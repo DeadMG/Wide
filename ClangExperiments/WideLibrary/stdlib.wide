@@ -1,0 +1,8 @@
+module Standard {
+    Main()
+        prolog {
+            ExportName = cpp.mangle(cpp("<WideLibrary/main_trampoline.cpp>").Wide.Main);
+        } {
+        return global.Main();
+    }
+}

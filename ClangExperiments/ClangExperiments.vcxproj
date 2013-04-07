@@ -1,0 +1,158 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{AA98AF13-88F5-4F69-B4FE-DE08499A8BCB}</ProjectGuid>
+    <Keyword>Win32Proj</Keyword>
+    <RootNamespace>ClangExperiments</RootNamespace>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v120_CTP_Nov2012</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v110</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <LinkIncremental>true</LinkIncremental>
+    <IncludePath>D:\Backups\Code\LLVM\tools\clang\lib;D:\Backups\Code\LLVM\tools\clang\include;D:\Backups\Code\LLVM\include;$(IncludePath)</IncludePath>
+    <LibraryPath>D:\Backups\Code\LLVM\build\lib\Debug;$(LibraryPath)</LibraryPath>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <LinkIncremental>false</LinkIncremental>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <ClCompile>
+      <PrecompiledHeader>
+      </PrecompiledHeader>
+      <WarningLevel>Level3</WarningLevel>
+      <Optimization>Disabled</Optimization>
+      <PreprocessorDefinitions>WIN32;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <PrecompiledHeader>
+      </PrecompiledHeader>
+      <Optimization>MaxSpeed</Optimization>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <PreprocessorDefinitions>WIN32;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="Stages\Codegen\FunctionCodeGen.cpp" />
+    <ClCompile Include="Stages\Codegen\Generator.cpp" />
+    <ClCompile Include="Stages\Codegen\Statement.cpp" />
+    <ClCompile Include="Stages\Semantic\Bool.cpp" />
+    <ClCompile Include="Stages\Semantic\ClangInclude.cpp" />
+    <ClCompile Include="Stages\Semantic\ClangNamespace.cpp" />
+    <ClCompile Include="Stages\Semantic\ClangOverloadSet.cpp" />
+    <ClCompile Include="Stages\Semantic\ClangTemplateClass.cpp" />
+    <ClCompile Include="Stages\Semantic\ClangTU.cpp" />
+    <ClCompile Include="Stages\Semantic\ConstructorType.cpp" />
+    <ClCompile Include="Stages\Semantic\DeferredType.cpp" />
+    <ClCompile Include="Stages\Semantic\FunctionType.cpp" />
+    <ClCompile Include="Stages\Semantic\IntegralType.cpp" />
+    <ClCompile Include="Stages\Semantic\OverloadSet.cpp" />
+    <ClCompile Include="Stages\Semantic\PrimitiveType.cpp" />
+    <ClCompile Include="Stages\Semantic\RvalueType.cpp" />
+    <ClCompile Include="Stages\Semantic\Type.cpp" />
+    <ClCompile Include="Stages\Semantic\Util.cpp" />
+    <ClCompile Include="main.cpp" />
+    <ClCompile Include="Stages\Parser\Builder.cpp" />
+    <ClCompile Include="Stages\Codegen\Expression.cpp" />
+    <ClCompile Include="Stages\Library.cpp" />
+    <ClCompile Include="Stages\Semantic\Analyzer.cpp" />
+    <ClCompile Include="Stages\Semantic\ClangType.cpp" />
+    <ClCompile Include="Stages\Semantic\Function.cpp" />
+    <ClCompile Include="Stages\Semantic\LvalueType.cpp" />
+    <ClCompile Include="Stages\Semantic\Module.cpp" />
+    <ClCompile Include="Stages\Semantic\StringType.cpp" />
+    <ClCompile Include="Stages\Semantic\Void.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="Stages\ClangOptions.h" />
+    <ClInclude Include="Stages\Codegen\Function.h" />
+    <ClInclude Include="Stages\Codegen\Generator.h" />
+    <ClInclude Include="Stages\Codegen\Statement.h" />
+    <ClInclude Include="Stages\LLVMOptions.h" />
+    <ClInclude Include="Stages\Parser\AST.h" />
+    <ClInclude Include="Stages\Semantic\Bool.h" />
+    <ClInclude Include="Stages\Semantic\ClangInclude.h" />
+    <ClInclude Include="Stages\Semantic\ClangNamespace.h" />
+    <ClInclude Include="Stages\Semantic\ClangOverloadSet.h" />
+    <ClInclude Include="Stages\Semantic\ClangTemplateClass.h" />
+    <ClInclude Include="Stages\Semantic\ClangTU.h" />
+    <ClInclude Include="Stages\Semantic\ConstructorType.h" />
+    <ClInclude Include="Stages\Semantic\DeferredType.h" />
+    <ClInclude Include="Stages\Semantic\FunctionType.h" />
+    <ClInclude Include="Stages\Semantic\IntegralType.h" />
+    <ClInclude Include="Stages\Semantic\PrimitiveType.h" />
+    <ClInclude Include="Stages\Semantic\RvalueType.h" />
+    <ClInclude Include="Stages\Semantic\Util.h" />
+    <ClInclude Include="Stages\Parser\Builder.h" />
+    <ClInclude Include="Stages\Codegen\Expression.h" />
+    <ClInclude Include="Stages\Lexer\lexer.h" />
+    <ClInclude Include="Stages\Library.h" />
+    <ClInclude Include="Stages\Semantic\Analyzer.h" />
+    <ClInclude Include="Stages\Parser\parser.h" />
+    <ClInclude Include="Stages\Semantic\ClangType.h" />
+    <ClInclude Include="Stages\Semantic\Function.h" />
+    <ClInclude Include="Stages\Semantic\LvalueType.h" />
+    <ClInclude Include="Stages\Semantic\Module.h" />
+    <ClInclude Include="Stages\Semantic\StringType.h" />
+    <ClInclude Include="Stages\Semantic\Type.h" />
+    <ClInclude Include="Stages\Codegen\Variable.h" />
+    <ClInclude Include="Stages\Lexer\Token.h" />
+    <ClInclude Include="Stages\Semantic\Variable.h" />
+    <ClInclude Include="Stages\Semantic\Void.h" />
+    <ClInclude Include="Stages\Semantic\OverloadSet.h" />
+    <ClInclude Include="Util\MakeUnique.h" />
+    <ClInclude Include="Util\MemoryArena.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="main.wide" />
+    <None Include="WideLibrary\stdlib.wide" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>
