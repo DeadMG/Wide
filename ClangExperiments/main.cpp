@@ -1,8 +1,6 @@
 // ClangExperiments.cpp : Defines the entry point for the console application.
 
-#include "Stages\Library.h"
-#include "Stages\ClangOptions.h"
-#include "Stages\LLVMOptions.h"
+#include "Stages/Wide.h"
 
 int main()
 {
@@ -16,10 +14,9 @@ int main()
     ClangOpts.HeaderSearchOptions->AddPath(MinGWInstallPath + "include\\c++\\4.6.3\\i686-w64-mingw32", clang::frontend::IncludeDirGroup::CXXSystem, false, false);
     ClangOpts.HeaderSearchOptions->AddPath(MinGWInstallPath + "i686-w64-mingw32\\include", clang::frontend::IncludeDirGroup::CXXSystem, false, false);
 
-    Wide::Library l(ClangOpts, LLVMOpts);
-    l.AddWideFile("main.wide");
-
-    l();
+    std::vector<std::string> files;
+    files.push_back("main.wide");
+    Wide::Compile(ClangOpts, LLVMOpts, files);
     
 	return 0;
 }

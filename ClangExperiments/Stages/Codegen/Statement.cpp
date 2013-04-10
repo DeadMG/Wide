@@ -11,6 +11,14 @@ using namespace Codegen;
 
 #pragma warning(pop)
 
+llvm::Value* ProcessBool(llvm::Value* val, llvm::IRBuilder<>& bb) {
+    if (val->getType() == llvm::IntegerType::getInt1Ty(bb.getContext()))
+        return val;
+    if (val->getType() == llvm::IntegerType::getInt8Ty(bb.getContext()))
+        return bb.CreateTrunc(val, llvm::IntegerType::getInt1Ty(bb.getContext()));
+    throw std::runtime_error("Attempted to code generate a boolean expression that was neither i1 nor i8.");
+}
+
 ReturnStatement::ReturnStatement(Expression* e) 
     : val(e) {}
 
@@ -38,7 +46,7 @@ void IfStatement::Build(llvm::IRBuilder<>& bb) {
     auto continue_bb = llvm::BasicBlock::Create(bb.getContext(), "continue_bb", bb.GetInsertBlock()->getParent());
     auto else_bb = false_br ? llvm::BasicBlock::Create(bb.getContext(), "false_bb", bb.GetInsertBlock()->getParent()) : continue_bb;
 
-    bb.CreateCondBr(condition->GetValue(bb), true_bb, else_bb);
+    bb.CreateCondBr(ProcessBool(condition->GetValue(bb), bb), true_bb, else_bb);
     bb.SetInsertPoint(true_bb);
     // May have caused it's own branches to other basic blocks.
     true_br->Build(bb);
@@ -59,7 +67,7 @@ void WhileStatement::Build(llvm::IRBuilder<>& bb) {
     auto continue_bb = llvm::BasicBlock::Create(bb.getContext(), "continue_bb", bb.GetInsertBlock()->getParent());
     bb.CreateBr(check_bb);
     bb.SetInsertPoint(check_bb);
-    bb.CreateCondBr(cond->GetValue(bb), loop_bb, continue_bb);
+    bb.CreateCondBr(ProcessBool(cond->GetValue(bb), bb), loop_bb, continue_bb);
     bb.SetInsertPoint(loop_bb);
     body->Build(bb);
     bb.CreateBr(check_bb);

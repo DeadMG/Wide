@@ -1,6 +1,6 @@
 #include "Bool.h"
 #include "ClangTU.h"
-#include "..\Codegen\Generator.h"
+#include "../Codegen/Generator.h"
 #include "Analyzer.h"
 
 #pragma warning(push, 0)
@@ -25,11 +25,9 @@ clang::QualType Bool::GetClangType(ClangUtil::ClangTU& where) {
 }
 
 Codegen::Expression* Bool::BuildBooleanConversion(Expression e, Analyzer& a) {
-    if (e.t->IsReference())
+    if (e.t->IsReference(this))
         e = e.t->BuildValue(e, a);
-    return a.gen->CreateTruncate(e.Expr, [](llvm::Module* m) {
-        return llvm::Type::getInt1Ty(m->getContext());
-    });
+    return e.Expr;
 }
 
 Expression Bool::BuildValueConstruction(std::vector<Expression> args, Analyzer& a) {    

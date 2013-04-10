@@ -4,16 +4,10 @@
 #include <memory>
 #include <functional>
 #include <algorithm>
+#include "MakeUnique.h"
  
 namespace Wide {
     namespace Memory {
-        template<typename T> std::unique_ptr<T> MakeUnique() {
-            return std::unique_ptr<T>(new T);
-        }
-        // Overloads with more parameters added as necessary
-        template<typename T, typename Arg1> std::unique_ptr<T> MakeUnique(Arg1&& arg) {
-            return std::unique_ptr<T>(new T(std::forward<Arg1>(arg)));
-        }
         class Arena {
         public:
             static const unsigned BufferSize = 20 * 1024; // Not chosen for any specific reason
@@ -83,6 +77,7 @@ namespace Wide {
                 }
             }
         public:
+            Arena(const Arena&);
             void empty() {
                 MemoryBuffer* buf = initial_buffer.get();
                 buf->usage = 0;
@@ -100,6 +95,9 @@ namespace Wide {
             {
                 UpdateListForNewOwner();
             }
+            /*Arena(const Arena& other) {
+                __debugbreak();
+            }*/
             Arena& operator=(Arena other) {
                 this->swap(other);
                 return *this;
@@ -138,6 +136,11 @@ namespace Wide {
             template<typename T, typename Arg1, typename Arg2, typename Arg3, typename Arg4> T* Allocate(Arg1&& other, Arg2&& other2, Arg3&& other3, Arg4&& other4) {
                 auto mem = tail->AllocateFor<T>();
                 T* ret = new (mem) T(std::forward<Arg1>(other), std::forward<Arg2>(other2), std::forward<Arg3>(other3), std::forward<Arg4>(other4));
+                return ret;
+            }
+            template<typename T, typename Arg1, typename Arg2, typename Arg3, typename Arg4, typename Arg5, typename Arg6> T* Allocate(Arg1&& other, Arg2&& other2, Arg3&& other3, Arg4&& other4, Arg5&& other5, Arg6&& other6) {
+                auto mem = tail->AllocateFor<T>();
+                T* ret = new (mem) T(std::forward<Arg1>(other), std::forward<Arg2>(other2), std::forward<Arg3>(other3), std::forward<Arg4>(other4), std::forward<Arg5>(other5), std::forward<Arg6>(other6));
                 return ret;
             }
         };

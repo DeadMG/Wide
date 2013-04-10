@@ -157,7 +157,7 @@ Expression ClangType::AccessMember(Expression val, std::string name, Analyzer& a
         }
         throw std::runtime_error("Found a decl but didn't know how to interpret it.");
     }    
-    auto ptr = Wide::Util::make_unique<clang::UnresolvedSet<8>>();
+    auto ptr = Wide::Memory::MakeUnique<clang::UnresolvedSet<8>>();
     clang::UnresolvedSet<8>& us = *ptr;
     for(auto it = lr.begin(); it != lr.end(); ++it) {
         us.addDecl(*it);
@@ -380,6 +380,6 @@ Wide::Codegen::Expression* ClangType::BuildBooleanConversion(Expression self, An
 
     // The return type should be bool.
     if (e.t == a.Boolean)
-        return e.t->BuildBooleanConversion(e, a);
+        return e.Expr;
     throw std::runtime_error("Attempted to contextually convert to bool, but Clang gave back a function that did not return a bool. WTF.");
 }

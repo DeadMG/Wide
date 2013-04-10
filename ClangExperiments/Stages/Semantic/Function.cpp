@@ -142,6 +142,15 @@ Expression Function::BuildCall(Expression, std::vector<Expression> args, Analyze
                         throw std::runtime_error("Error: variable shadowing " + var->name);
                 }
 
+                // If it's a function call, and it returns a complex T, then the return expression already points to
+                // a memory variable of type T. Just use that.
+                if (auto func = dynamic_cast<AST::FunctionCallExpr*>(var->initializer)) {
+                    if (result.t->IsReference() && result.t->IsReference()->IsComplexType()) {
+                        variables.back()[var->name].t = a.GetLvalueType(result.t);
+                        return variables.back()[var->name].Expr = result.Expr;
+                    }
+                }
+
                 std::vector<Expression> args;
                 args.push_back(result);
         

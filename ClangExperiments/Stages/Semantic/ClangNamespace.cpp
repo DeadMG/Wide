@@ -74,7 +74,7 @@ Expression ClangNamespace::AccessMember(Expression val, std::string name, Analyz
         }
         throw std::runtime_error("Found a decl but didn't know how to interpret it.");
     }
-    auto ptr = Wide::Util::make_unique<clang::UnresolvedSet<8>>();
+    auto ptr = Wide::Memory::MakeUnique<clang::UnresolvedSet<8>>();
     clang::UnresolvedSet<8>& us = *ptr;
     for(auto it = lr.begin(); it != lr.end(); ++it) {
         us.addDecl(*it);

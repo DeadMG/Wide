@@ -1,3 +1,2 @@
-void test() {
-    int* i = new int;
-}
+#include <iostream>
+#include <string>

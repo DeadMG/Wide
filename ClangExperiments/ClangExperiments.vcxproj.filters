@@ -18,9 +18,6 @@
     <ClInclude Include="Util\MakeUnique.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="Stages\Library.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="Util\MemoryArena.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -129,6 +126,48 @@
     <ClInclude Include="Stages\Semantic\DeferredType.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="Util\ConcurrentQueue.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Util\ConcurrentDetail\pplqueue.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Util\ConcurrentDetail\stdqueue.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Util\ConcurrentUnorderedMap.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Util\ConcurrentDetail\stdumap.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Util\ConcurrentDetail\pplumap.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Util\ConcurrentDetail\pplsampleumap.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Util\ParallelForEach.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Util\ConcurrentDetail\pplparallelforeach.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Util\ConcurrentDetail\stdparallelforeach.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Stages\Wide.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Util\ConcurrentVector.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Util\ConcurrentDetail\pplvector.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Util\ConcurrentDetail\stdvector.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="main.wide">
@@ -138,9 +177,6 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="Stages\Library.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="Stages\Semantic\Analyzer.cpp">
@@ -222,6 +258,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="Stages\Semantic\DeferredType.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Stages\Wide.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

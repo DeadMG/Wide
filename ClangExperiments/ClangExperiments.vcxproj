@@ -99,7 +99,6 @@
     <ClCompile Include="main.cpp" />
     <ClCompile Include="Stages\Parser\Builder.cpp" />
     <ClCompile Include="Stages\Codegen\Expression.cpp" />
-    <ClCompile Include="Stages\Library.cpp" />
     <ClCompile Include="Stages\Semantic\Analyzer.cpp" />
     <ClCompile Include="Stages\Semantic\ClangType.cpp" />
     <ClCompile Include="Stages\Semantic\Function.cpp" />
@@ -107,6 +106,7 @@
     <ClCompile Include="Stages\Semantic\Module.cpp" />
     <ClCompile Include="Stages\Semantic\StringType.cpp" />
     <ClCompile Include="Stages\Semantic\Void.cpp" />
+    <ClCompile Include="Stages\Wide.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Stages\ClangOptions.h" />
@@ -131,7 +131,6 @@
     <ClInclude Include="Stages\Parser\Builder.h" />
     <ClInclude Include="Stages\Codegen\Expression.h" />
     <ClInclude Include="Stages\Lexer\lexer.h" />
-    <ClInclude Include="Stages\Library.h" />
     <ClInclude Include="Stages\Semantic\Analyzer.h" />
     <ClInclude Include="Stages\Parser\parser.h" />
     <ClInclude Include="Stages\Semantic\ClangType.h" />
@@ -145,8 +144,22 @@
     <ClInclude Include="Stages\Semantic\Variable.h" />
     <ClInclude Include="Stages\Semantic\Void.h" />
     <ClInclude Include="Stages\Semantic\OverloadSet.h" />
+    <ClInclude Include="Util\ConcurrentDetail\pplparallelforeach.h" />
+    <ClInclude Include="Util\ConcurrentDetail\pplvector.h" />
+    <ClInclude Include="Util\ConcurrentDetail\stdparallelforeach.h" />
+    <ClInclude Include="Util\ConcurrentDetail\stdvector.h" />
+    <ClInclude Include="Util\ConcurrentVector.h" />
+    <ClInclude Include="Util\ParallelForEach.h" />
+    <ClInclude Include="Util\ConcurrentDetail\pplqueue.h" />
+    <ClInclude Include="Util\ConcurrentDetail\pplsampleumap.h" />
+    <ClInclude Include="Util\ConcurrentDetail\pplumap.h" />
+    <ClInclude Include="Util\ConcurrentDetail\stdqueue.h" />
+    <ClInclude Include="Util\ConcurrentDetail\stdumap.h" />
+    <ClInclude Include="Util\ConcurrentQueue.h" />
+    <ClInclude Include="Util\ConcurrentUnorderedMap.h" />
     <ClInclude Include="Util\MakeUnique.h" />
     <ClInclude Include="Util\MemoryArena.h" />
+    <ClInclude Include="Stages\Wide.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="main.wide" />

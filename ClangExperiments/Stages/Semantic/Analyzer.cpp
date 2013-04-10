@@ -61,7 +61,7 @@ Analyzer::Analyzer(const Options::Clang& opts, Codegen::Generator* g)
 
 void Analyzer::operator()(AST::Module* GlobalModule) {
     GetWideModule(GlobalModule)->AddSpecialMember("cpp", Expression(arena.Allocate<ClangIncludeEntity>(*this), nullptr));
-    GetWideModule(GlobalModule)->AddSpecialMember("void", Expression(Void = arena.Allocate<VoidType>(), nullptr));
+    GetWideModule(GlobalModule)->AddSpecialMember("void", Expression(GetConstructorType(Void = arena.Allocate<VoidType>()), nullptr));
     GetWideModule(GlobalModule)->AddSpecialMember("global", Expression(GetWideModule(GlobalModule), nullptr));
     GetWideModule(GlobalModule)->AddSpecialMember("int8", Expression(GetConstructorType(Int8 = arena.Allocate<IntegralType>(8)), nullptr));
     GetWideModule(GlobalModule)->AddSpecialMember("bool", Expression(GetConstructorType(Boolean = arena.Allocate<Bool>()), nullptr));

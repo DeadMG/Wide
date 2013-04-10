@@ -132,7 +132,7 @@ public:
 ClangTU::~ClangTU() {}
 
 ClangTU::ClangTU(llvm::LLVMContext& c, std::string file, Semantic::ClangCommonState& ccs)
-    : impl(Wide::Util::make_unique<Impl>(c, file, ccs)) 
+    : impl(Wide::Memory::MakeUnique<Impl>(c, file, ccs)) 
 {
 }
 

@@ -2,7 +2,7 @@
 
 #define _SCL_SECURE_NO_WARNINGS
 
-#include "..\..\Util\MemoryArena.h"
+#include "../../Util\MemoryArena.h"
 #include "Util.h"
 #include "../ClangOptions.h"
 #include "../LLVMOptions.h"
@@ -82,7 +82,6 @@ namespace Wide {
             llvm::raw_string_ostream error_stream;
             clang::DiagnosticsEngine engine;
             std::unique_ptr<clang::TargetInfo> targetinfo;
-                //(diagids, diagopts.getPtr(), new clang::TextDiagnosticPrinter(error_stream, diagopts.getPtr()), false)
             clang::CompilerInstance ci;
             clang::HeaderSearch hs;
             llvm::DataLayout layout;
