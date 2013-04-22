@@ -94,7 +94,7 @@ ClangType::ClangType(ClangUtil::ClangTU* src, clang::QualType t)
         [&]{ return from->GetSema().LookupDefaultConstructor(recdecl); }
     );
 }
-clang::QualType ClangType::GetClangType(ClangUtil::ClangTU& tu) {
+clang::QualType ClangType::GetClangType(ClangUtil::ClangTU& tu, Analyzer& a) {
     if (&tu != from)
         throw std::runtime_error("Attempted to use a C++ type outside the TU where it was declared.");
     return type;
@@ -179,7 +179,7 @@ Expression ClangType::BuildOverloadedOperator(Expression lhs, Expression rhs, An
        
     // Decay the types, because for some reason expressions of type T& are bad. They need to be lvalues of type T.
     auto lhsty = type.getNonLValueExprType(from->GetASTContext());
-    auto rhsty = rhs.t->GetClangType(*from).getNonLValueExprType(from->GetASTContext());
+    auto rhsty = rhs.t->GetClangType(*from, a).getNonLValueExprType(from->GetASTContext());
     clang::OpaqueValueExpr first(clang::SourceLocation(), lhsty, Semantic::GetKindOfType(lhs.t));
     exprs.push_back(&first);
     clang::OpaqueValueExpr second(clang::SourceLocation(), rhsty, Semantic::GetKindOfType(rhs.t));
@@ -275,7 +275,7 @@ Codegen::Expression* ClangType::BuildInplaceConstruction(Codegen::Expression* me
     }
     std::vector<clang::OpaqueValueExpr> exprs;
     for(auto x : args) {
-        exprs.push_back(clang::OpaqueValueExpr(clang::SourceLocation(), x.t->GetClangType(*from).getNonLValueExprType(from->GetASTContext()), GetKindOfType(x.t)));
+        exprs.push_back(clang::OpaqueValueExpr(clang::SourceLocation(), x.t->GetClangType(*from, a).getNonLValueExprType(from->GetASTContext()), GetKindOfType(x.t)));
     }
     clang::OverloadCandidateSet s((clang::SourceLocation()));
     std::vector<clang::Expr*> exprptrs;
@@ -342,7 +342,7 @@ Codegen::Expression* ClangType::BuildInplaceConstruction(Codegen::Expression* me
 
 bool ClangType::IsComplexType() {
     auto decl = type.getCanonicalType()->getAsCXXRecordDecl();
-    return decl && (decl->hasNonTrivialDestructor() || decl->hasNonTrivialCopyConstructor() || decl->hasNonTrivialMoveConstructor());
+	return decl && from->IsComplexType(decl);
 }
 
 Expression ClangType::BuildEQComparison(Expression lhs, Expression rhs, Analyzer& a) {

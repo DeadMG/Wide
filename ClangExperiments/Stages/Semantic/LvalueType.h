@@ -11,7 +11,7 @@ namespace Wide {
                 : Pointee(p) {}
             
             std::function<llvm::Type*(llvm::Module*)> GetLLVMType(Analyzer& a);        
-            clang::QualType GetClangType(ClangUtil::ClangTU& tu);        
+            clang::QualType GetClangType(ClangUtil::ClangTU& tu, Analyzer& a);        
             
             Expression BuildRightShift(Expression lhs, Expression rhs, Analyzer& a);
             Expression BuildLeftShift(Expression lhs, Expression rhs, Analyzer& a);
@@ -26,9 +26,17 @@ namespace Wide {
             Type* IsReference() {
                 return Pointee;
             }
+            bool IsReference(Type* t) {
+                return Pointee == t;
+            }
             Codegen::Expression* BuildBooleanConversion(Expression, Analyzer&);
             Expression BuildEQComparison(Expression lhs, Expression rhs, Analyzer& a);
             Expression BuildNEComparison(Expression lhs, Expression rhs, Analyzer& a);
+            
+            Expression BuildLTComparison(Expression lhs, Expression rhs, Analyzer& a);
+            Expression BuildLTEComparison(Expression lhs, Expression rhs, Analyzer& a);
+            Expression BuildGTComparison(Expression lhs, Expression rhs, Analyzer& a);
+            Expression BuildGTEComparison(Expression lhs, Expression rhs, Analyzer& a);
         };
     }
 }

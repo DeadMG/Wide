@@ -24,6 +24,7 @@ namespace clang {
     class GlobalDecl;
     class FieldDecl;
     class SourceLocation;
+	class CXXRecordDecl;
 }
 
 namespace Wide {
@@ -47,10 +48,10 @@ namespace Wide {
             std::function<llvm::Type*(llvm::Module*)> GetLLVMTypeFromClangType(clang::QualType t);
             std::string MangleName(clang::NamedDecl* D);
 
+			bool IsComplexType(clang::CXXRecordDecl* decl);
             clang::ASTContext& GetASTContext();
             clang::Sema& GetSema();
             clang::IdentifierInfo* GetIdentifierInfo(std::string ident);
-            llvm::Constant* GetAddrOfGlobal(clang::GlobalDecl GD);
             unsigned GetFieldNumber(clang::FieldDecl*);
             clang::SourceLocation GetFileEnd();
         };

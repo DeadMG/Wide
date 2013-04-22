@@ -33,7 +33,6 @@ void Generator::operator()() {
     llvm::InitializeAllTargetMCs();
     llvm::InitializeAllAsmPrinters();
     llvm::InitializeAllAsmParsers();
-
     std::unique_ptr<llvm::TargetMachine> targetmachine;
     std::string err;
     const llvm::Target& target = *llvm::TargetRegistry::lookupTarget(clangopts.TargetOptions.Triple, err);
@@ -64,8 +63,8 @@ Generator::Generator(const Options::LLVM& l, const Options::Clang& c)
     main.setTargetTriple(c.TargetOptions.Triple);
 }
 
-Function* Generator::CreateFunction(std::function<llvm::Type*(llvm::Module*)> ty, std::string name) {
-    auto p = arena.Allocate<Function>(std::move(ty), std::move(name));
+Function* Generator::CreateFunction(std::function<llvm::Type*(llvm::Module*)> ty, std::string name, bool tramp) {
+    auto p = arena.Allocate<Function>(std::move(ty), std::move(name), tramp);
     functions.push_back(p);
     return p;
 }
@@ -102,9 +101,14 @@ FunctionValue* Generator::CreateFunctionValue(std::string name) {
 }
 
 void Generator::EmitCode() {
+    std::string s;
+    llvm::raw_string_ostream stream(s);
+    main.print(stream, nullptr);
     for(auto&& x : functions) {
-        x->EmitCode(&main, context);
+        x->EmitCode(&main, context, *this);
     }    
+	s.clear();
+    main.print(stream, nullptr);
 }
 
 Int8Expression* Generator::CreateInt8Expression(char val) {

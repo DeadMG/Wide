@@ -39,7 +39,7 @@ Expression IntegralType::BuildValueConstruction(std::vector<Expression> args, An
     throw std::runtime_error("Don't support constructing an int8 from another type right now.");
 }
 
-clang::QualType IntegralType::GetClangType(ClangUtil::ClangTU& TU) {
+clang::QualType IntegralType::GetClangType(ClangUtil::ClangTU& TU, Analyzer& a) {
     return TU.GetASTContext().CharTy;
 }
 std::function<llvm::Type*(llvm::Module*)> IntegralType::GetLLVMType(Analyzer& a) {

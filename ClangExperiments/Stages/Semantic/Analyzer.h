@@ -91,7 +91,7 @@ namespace Wide {
         };
         class Analyzer {
             std::unordered_map<std::string, ClangUtil::ClangTU> headers;
-            std::unordered_map<clang::QualType, ClangType*, ClangUtil::ClangTypeHasher> ClangTypes;
+            std::unordered_map<clang::QualType, Type*, ClangUtil::ClangTypeHasher> ClangTypes;
             std::unordered_map<clang::DeclContext*, ClangNamespace*> ClangNamespaces;
             std::unordered_map<Type*, std::unordered_map<std::vector<Type*>, FunctionType*, VectorTypeHasher>> FunctionTypes;
             std::unordered_map<AST::Module*, Module*> WideModules;
@@ -105,6 +105,8 @@ namespace Wide {
             ClangCommonState ccs;
 
         public:
+            void AddClangType(clang::QualType t, Type* match);
+
             Wide::Memory::Arena arena;
 
             Codegen::Generator* gen;

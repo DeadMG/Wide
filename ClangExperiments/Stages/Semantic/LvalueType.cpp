@@ -22,8 +22,8 @@ std::function<llvm::Type*(llvm::Module*)> LvalueType::GetLLVMType(Analyzer& a) {
         return f(m)->getPointerTo();
     };
 }
-clang::QualType LvalueType::GetClangType(ClangUtil::ClangTU& tu) {
-   return tu.GetASTContext().getLValueReferenceType(Pointee->GetClangType(tu));
+clang::QualType LvalueType::GetClangType(ClangUtil::ClangTU& tu, Analyzer& a) {
+   return tu.GetASTContext().getLValueReferenceType(Pointee->GetClangType(tu, a));
 }
 Expression LvalueType::BuildAssignment(Expression lhs, Expression rhs, Analyzer& analyzer) {
     return Pointee->BuildAssignment(lhs, rhs, analyzer);
@@ -52,4 +52,16 @@ Expression LvalueType::BuildEQComparison(Expression lhs, Expression rhs, Analyze
 }
 Expression LvalueType::BuildNEComparison(Expression lhs, Expression rhs, Analyzer& a) {
     return Pointee->BuildNEComparison(lhs, rhs, a);
+}
+Expression LvalueType::BuildLTComparison(Expression lhs, Expression rhs, Analyzer& a) {
+    return Pointee->BuildLTComparison(lhs, rhs, a);
+}
+Expression LvalueType::BuildLTEComparison(Expression lhs, Expression rhs, Analyzer& a) {
+    return Pointee->BuildLTEComparison(lhs, rhs, a);
+}
+Expression LvalueType::BuildGTComparison(Expression lhs, Expression rhs, Analyzer& a) {
+    return Pointee->BuildGTComparison(lhs, rhs, a);
+}
+Expression LvalueType::BuildGTEComparison(Expression lhs, Expression rhs, Analyzer& a) {
+    return Pointee->BuildGTEComparison(lhs, rhs, a);
 }

@@ -39,7 +39,7 @@ namespace Wide {
 
             Generator(const Options::LLVM&, const Options::Clang&);
 
-            Function* CreateFunction(std::function<llvm::Type*(llvm::Module*)>, std::string);
+            Function* CreateFunction(std::function<llvm::Type*(llvm::Module*)>, std::string, bool trampoline = false);
 
             Variable* CreateVariable(std::function<llvm::Type*(llvm::Module*)>);
             FunctionCall* CreateFunctionCall(Expression*, std::vector<Expression*>, std::function<llvm::Type*(llvm::Module*)> = std::function<llvm::Type*(llvm::Module*)>());

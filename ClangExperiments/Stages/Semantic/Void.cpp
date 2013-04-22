@@ -18,6 +18,6 @@ std::function<llvm::Type*(llvm::Module*)> VoidType::GetLLVMType(Analyzer& a) {
     };
 }
 
-clang::QualType VoidType::GetClangType(ClangUtil::ClangTU& tu) {
+clang::QualType VoidType::GetClangType(ClangUtil::ClangTU& tu, Analyzer& a) {
     return tu.GetASTContext().VoidTy;
 }

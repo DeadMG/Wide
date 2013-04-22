@@ -28,7 +28,7 @@ llvm::Value* FunctionCall::ComputeValue(llvm::IRBuilder<>& builder) {
     // May have to insert bitcast because fuck Clang.
     auto funty = llvm::dyn_cast<llvm::Function>(obj)->getFunctionType();
     if (CastTy) {
-        auto t = static_cast<llvm::FunctionType*>(static_cast<llvm::PointerType*>(CastTy(builder.GetInsertBlock()->getParent()->getParent()))->getElementType());
+        auto t = llvm::dyn_cast<llvm::FunctionType>(llvm::dyn_cast<llvm::PointerType>(CastTy(builder.GetInsertBlock()->getParent()->getParent()))->getElementType());
         if (funty != t) {
             obj = builder.CreateBitCast(obj, CastTy(builder.GetInsertBlock()->getParent()->getParent()));
             funty = t;
@@ -39,8 +39,9 @@ llvm::Value* FunctionCall::ComputeValue(llvm::IRBuilder<>& builder) {
         auto val = arguments[i]->GetValue(builder);
         auto argty = val->getType();
         auto paramty = funty->getParamType(i);
-        if (argty != paramty)
+        if (argty != paramty) {
             __debugbreak();
+        }
         values.push_back(val);
     }
 

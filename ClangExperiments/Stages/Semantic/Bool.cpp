@@ -20,7 +20,7 @@ std::function<llvm::Type*(llvm::Module*)> Bool::GetLLVMType(Analyzer& a) {
     };
 }
 
-clang::QualType Bool::GetClangType(ClangUtil::ClangTU& where) {
+clang::QualType Bool::GetClangType(ClangUtil::ClangTU& where, Analyzer& a) {
     return where.GetASTContext().BoolTy;
 }
 

@@ -8,12 +8,14 @@ namespace Wide {
             IntegralType(unsigned bit)
                 : bits(bit) {}
             
-            clang::QualType GetClangType(ClangUtil::ClangTU& TU);
+            clang::QualType GetClangType(ClangUtil::ClangTU& TU, Analyzer& a);
             std::function<llvm::Type*(llvm::Module*)> GetLLVMType(Analyzer& a);
             Expression BuildValueConstruction(std::vector<Expression> args, Analyzer& a);
             
             Expression BuildRightShift(Expression lhs, Expression rhs, Analyzer& a);
             Expression BuildLeftShift(Expression lhs, Expression rhs, Analyzer& a);
+
+
         };
     }
 }

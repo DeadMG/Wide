@@ -86,7 +86,7 @@ public:
         , consumer(stuff)
         , sema(preproc, astcon, consumer, clang::TranslationUnitKind::TU_Complete) 
         , mod("", con)
-        , codegenmod(astcon, ccs.Options->CodegenOptions, ccs.Options->TargetOptions, mod, ccs.layout, ccs.engine)
+        , codegenmod(astcon, ccs.Options->CodegenOptions, mod, ccs.layout, ccs.engine)
         , filename(std::move(file))   
     {
         mod.setDataLayout(ccs.targetinfo->getTargetDescription());
@@ -155,9 +155,47 @@ clang::QualType Simplify(clang::QualType inc) {
 
 std::function<llvm::Type*(llvm::Module*)> ClangTU::GetLLVMTypeFromClangType(clang::QualType t) {
     auto imp = impl.get();
-    return [=](llvm::Module* mod) {
-        return imp->DeferredTypeMap[Simplify(t)](mod);
+
+    return [=](llvm::Module* mod) -> llvm::Type* {
+		// Below logic copy pastad from CodeGenModule::addRecordTypeName
+		auto RD = t.getCanonicalType()->getAsCXXRecordDecl();
+		std::string TypeName;
+		llvm::raw_string_ostream OS(TypeName);
+        OS << RD->getKindName() << '.';
+        if (RD->getIdentifier()) {
+          if (RD->getDeclContext())
+            RD->printQualifiedName(OS);
+          else
+            RD->printName(OS);
+        } else if (const clang::TypedefNameDecl *TDD = RD->getTypedefNameForAnonDecl()) {
+          if (TDD->getDeclContext())
+            TDD->printQualifiedName(OS);
+          else
+            TDD->printName(OS);
+        } else
+          OS << "anon";
+        
+		OS.flush();
+		if (mod->getTypeByName(TypeName)) 
+			return mod->getTypeByName(TypeName);
+		
+        std::string s;
+        llvm::raw_string_ostream stream(s);
+        mod->print(stream, nullptr);
+		assert(false && "Attempted to look up a Clang type, but it did not exist in the module. You need to find out where this type came from- is it some unconverted primitive type?");
+		//return imp->codegenmod.getTypes().ConvertType(t);
     };
+}
+
+bool ClangTU::IsComplexType(clang::CXXRecordDecl* decl) {
+	auto indirect = impl->codegenmod.getCXXABI().isReturnTypeIndirect(decl);
+	auto arg = impl->codegenmod.getCXXABI().getRecordArgABI(decl);
+	auto t = impl->astcon.getTypeDeclType(decl);
+	if (!indirect && arg != clang::CodeGen::CGCXXABI::RecordArgABI::RAA_Default)
+		assert(false);
+	if (indirect && arg != clang::CodeGen::CGCXXABI::RecordArgABI::RAA_Indirect)
+		assert(false);
+	return indirect;
 }
 
 std::string ClangTU::MangleName(clang::NamedDecl* D) {
@@ -227,43 +265,23 @@ std::string ClangTU::MangleName(clang::NamedDecl* D) {
 
     if (auto vardecl = llvm::dyn_cast<clang::VarDecl>(D)) {
         auto name = impl->codegenmod.getMangledName(vardecl);
-        if (impl->DeferredTypeMap.find(Simplify(vardecl->getType())) == impl->DeferredTypeMap.end()) {
-            impl->DeferredTypeMap[Simplify(vardecl->getType())] = [=](llvm::Module* mod) {
-                return static_cast<llvm::PointerType*>(mod->getGlobalVariable(name)->getType())->getElementType();
-            };
-        }
-        impl->codegenmod.GetAddrOfGlobal(vardecl);
         return name;
     }
     if (auto desdecl = llvm::dyn_cast<clang::CXXDestructorDecl>(D)) {
         RecursiveMarkTypes(desdecl->getParent());
-
-        auto gd = clang::GlobalDecl(desdecl, clang::CXXDtorType::Dtor_Complete);   
-        impl->codegenmod.GetAddrOfGlobal(gd);
-        auto name = impl->codegenmod.getMangledName(gd);   
-        auto t = impl->astcon.getRecordType(desdecl->getParent());
-        if (impl->DeferredTypeMap.find(Simplify(t)) == impl->DeferredTypeMap.end()) {
-            impl->DeferredTypeMap[Simplify(t)] = [=](llvm::Module* mod) {
-                // The first param of the constructor is a pointer to this, so find it and get the element type.
-                return static_cast<llvm::PointerType*>(mod->getFunction(name)->getFunctionType()->getParamType(0))->getElementType();
-            };
-        }
+        auto gd = clang::GlobalDecl(desdecl, clang::CXXDtorType::Dtor_Complete); 
+        desdecl->setInlineSpecified(false);  
+        auto name = impl->codegenmod.getMangledName(gd); 
         return name;
     }
     if (auto condecl = llvm::dyn_cast<clang::CXXConstructorDecl>(D)) {
 
         RecursiveMarkTypes(condecl->getParent());
 
-        auto gd = clang::GlobalDecl(condecl, clang::CXXCtorType::Ctor_Complete);   
-        impl->codegenmod.GetAddrOfGlobal(gd);
+        auto gd = clang::GlobalDecl(condecl, clang::CXXCtorType::Ctor_Complete);
+		impl->codegenmod.GetAddrOfGlobal(gd);
+        //condecl->setInlineSpecified(false);
         auto name = impl->codegenmod.getMangledName(gd);   
-        auto t = impl->astcon.getRecordType(condecl->getParent());
-        if (impl->DeferredTypeMap.find(Simplify(t)) == impl->DeferredTypeMap.end()) {
-            impl->DeferredTypeMap[Simplify(t)] = [=](llvm::Module* mod) {
-                // The first param of the constructor is a pointer to this, so find it and get the element type.
-                return static_cast<llvm::PointerType*>(mod->getFunction(name)->getFunctionType()->getParamType(0))->getElementType();
-            };
-        }
         return name;
     }
     if (auto funcdecl = llvm::dyn_cast<clang::FunctionDecl>(D)) {
@@ -279,60 +297,7 @@ std::string ClangTU::MangleName(clang::NamedDecl* D) {
 
         if (funcdecl->isTemplateInstantiation())
             impl->sema.InstantiateFunctionDefinition(clang::SourceLocation(), funcdecl, true, true);
-        auto fun = impl->codegenmod.GetAddrOfGlobal(funcdecl);
         auto name = impl->codegenmod.getMangledName(funcdecl);
-
-        // These counts mismatch for two reasons: this, and return type. Take care of "this" first.
-        // Then check the return type.
-        // Then do all the normal parameters.
-        auto count = static_cast<llvm::Function*>(fun)->getFunctionType()->getNumParams();
-        auto clangcount = funcdecl->getNumParams();
-        bool is_method = false;
-        if (auto methdecl = llvm::dyn_cast<clang::CXXMethodDecl>(D)) {
-            // If the LLVM function takes two more arguments, then complex return *and* this. Return goes first, so look at the second for this.
-            // Else, find it as the first parameter.
-            auto qt = impl->astcon.getRecordType(methdecl->getParent());
-            if (impl->DeferredTypeMap.find(Simplify(qt)) == impl->DeferredTypeMap.end()) {
-                impl->DeferredTypeMap[Simplify(qt)] = [=](llvm::Module* mod) -> llvm::Type* {
-                    return static_cast<llvm::PointerType*>(mod->getFunction(name)->getFunctionType()->getParamType((count - clangcount) - 1))->getElementType();
-                };
-            }
-            is_method = true;
-        }
-        // If we were a method, then this is taken care of, but if the count still disagrees by two, then find a ReturnType* as the first parameter.
-        // Else, find ReturnType as the return type.
-        if (is_method && (count - clangcount == 2) || !is_method && (count - clangcount == 1)) {
-            if (impl->DeferredTypeMap.find(Simplify(funcdecl->getResultType())) == impl->DeferredTypeMap.end()) {
-                impl->DeferredTypeMap[Simplify(funcdecl->getResultType())] = [=](llvm::Module* mod) -> llvm::Type* {
-                    return static_cast<llvm::PointerType*>(mod->getFunction(name)->getFunctionType()->getParamType(0))->getElementType();
-                };
-            }
-        } else {
-            // ReturnType is the real return type.
-            if (impl->DeferredTypeMap.find(Simplify(funcdecl->getResultType())) == impl->DeferredTypeMap.end()) {
-                impl->DeferredTypeMap[Simplify(funcdecl->getResultType())] = [=](llvm::Module* mod) -> llvm::Type* {
-                    return mod->getFunction(name)->getFunctionType()->getReturnType();
-                };
-            }
-        }
-        // Now proceed through the others. Start at count - clangcount and keep going till count.
-        for(std::size_t i = (count - clangcount) - 1; i < clangcount; ++i) {
-            // If it is a complex type by value, we will be passing a pointer to it.
-            if (impl->DeferredTypeMap.find(Simplify(funcdecl->getParamDecl(i)->getType())) == impl->DeferredTypeMap.end()) {
-                auto t = funcdecl->getParamDecl(i)->getType();
-                if (auto decl = t->getAsCXXRecordDecl()) {
-                    if(!(decl->hasTrivialCopyConstructor() && decl->hasTrivialMoveConstructor() && decl->hasTrivialDestructor())) {
-                        impl->DeferredTypeMap[Simplify(funcdecl->getParamDecl(i)->getType())] = [=](llvm::Module* mod) -> llvm::Type* {
-                            return static_cast<llvm::PointerType*>(mod->getFunction(name)->getFunctionType()->getParamType(i))->getElementType();
-                        };
-                    }
-                } else {
-                    impl->DeferredTypeMap[Simplify(funcdecl->getParamDecl(i)->getType())] = [=](llvm::Module* mod) -> llvm::Type* {
-                        return mod->getFunction(name)->getFunctionType()->getParamType(i);
-                    };
-                }
-            }
-        }
         return name;
     }
     throw std::runtime_error("Attempted to mangle a name that could not be mangled.");
@@ -348,10 +313,6 @@ clang::Sema& ClangTU::GetSema() {
 
 clang::IdentifierInfo* ClangTU::GetIdentifierInfo(std::string name) {
     return impl->preproc.getIdentifierInfo(name);
-}
-
-llvm::Constant* ClangTU::GetAddrOfGlobal(clang::GlobalDecl GD) {
-    return impl->codegenmod.GetAddrOfGlobal(GD);
 }
 
 unsigned ClangTU::GetFieldNumber(clang::FieldDecl* f) {

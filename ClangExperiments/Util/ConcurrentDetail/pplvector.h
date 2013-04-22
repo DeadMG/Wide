@@ -16,6 +16,9 @@ namespace Wide {
             typename ::Concurrency::concurrent_vector<T>::iterator end() {
                 return vec.end();
             }
+            bool empty() {
+                return vec.empty();
+            }
         };
     }
 }

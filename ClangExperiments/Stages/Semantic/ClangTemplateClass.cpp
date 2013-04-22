@@ -21,7 +21,7 @@ Expression ClangTemplateClass::BuildMetaCall(Expression, std::vector<Expression>
         auto con = dynamic_cast<ConstructorType*>(x.t);
         if (!con)
             throw std::runtime_error("Only support types as arguments to Clang templates right now.");
-        auto clangty = con->GetConstructedType()->GetClangType(*from);
+        auto clangty = con->GetConstructedType()->GetClangType(*from, a);
 
         auto tysrcinfo = from->GetASTContext().getTrivialTypeSourceInfo(clangty);
         

@@ -14,7 +14,7 @@ using namespace Semantic;
 
 #pragma warning(pop)
 
-clang::QualType Type::GetClangType(ClangUtil::ClangTU& TU) {
+clang::QualType Type::GetClangType(ClangUtil::ClangTU& TU, Analyzer& a) {
     throw std::runtime_error("This type has no Clang representation.");
 }
 

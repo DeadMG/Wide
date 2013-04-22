@@ -21,6 +21,9 @@ namespace Wide {
             typename std::vector<T>::iterator end() {
                 return vec.end();
             }
+            bool empty() {
+                return vec.empty();
+            }
         };
     }
 }

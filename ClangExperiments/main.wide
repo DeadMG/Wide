@@ -1,3 +1,12 @@
+using test := cpp("WideLibrary/test.h");
 Main() {
-     cpp("WideLibrary/test.h").std.cout << cpp("WideLibrary/test.h").std.string("Hello, World!");
+    test.f();
+	x := test.std.vector!(int8)();
+	test.std.sort(x.begin(), x.end(), helper);
+}
+helper(int8 lhs, int8 rhs) {
+    return true;
+}
+helper(test.std.string lhs, test.std.string rhs) {
+    return lhs;
 }

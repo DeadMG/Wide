@@ -13,7 +13,7 @@ namespace Wide {
                 : ReturnType(ret), Args(std::move(a)) {}
         
             std::function<llvm::Type*(llvm::Module*)> GetLLVMType(Analyzer& a);
-            clang::QualType GetClangType(ClangUtil::ClangTU& from);        
+            clang::QualType GetClangType(ClangUtil::ClangTU& from, Analyzer& a);        
             Expression BuildCall(Expression val, std::vector<Expression> args, Analyzer&);        
 
             Type* GetReturnType() { return ReturnType; }

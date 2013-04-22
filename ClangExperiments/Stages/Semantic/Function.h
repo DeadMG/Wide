@@ -34,13 +34,15 @@ namespace Wide {
             Codegen::Function* codefun;
             bool body;
 
+            void ComputeBody(Analyzer& a);
+
             std::vector<Codegen::Statement*> exprs;
             std::vector<std::unordered_map<std::string, Expression>> variables;
             std::string name;
         public:
             Function(std::vector<Type*> args, AST::Function* astfun, Analyzer& a);        
 
-            clang::QualType GetClangType(ClangUtil::ClangTU& where);        
+            clang::QualType GetClangType(ClangUtil::ClangTU& where, Analyzer& a);        
             std::function<llvm::Type*(llvm::Module*)> GetLLVMType(Analyzer& a);      
      
             Expression BuildCall(Expression, std::vector<Expression> args, Analyzer& a);        

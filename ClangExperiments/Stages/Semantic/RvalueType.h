@@ -12,7 +12,7 @@ namespace Wide {
                 return Pointee;
             }
             std::function<llvm::Type*(llvm::Module*)> GetLLVMType(Analyzer& a);
-            clang::QualType GetClangType(ClangUtil::ClangTU& tu);
+            clang::QualType GetClangType(ClangUtil::ClangTU& tu, Analyzer& a);
 
             Type* IsReference() {
                 return Pointee;

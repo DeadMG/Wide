@@ -94,19 +94,16 @@ Function::Function(std::vector<Type*> args, AST::Function* astfun, Analyzer& a)
     }
 }
 
-clang::QualType Function::GetClangType(ClangUtil::ClangTU& where) {
-    std::vector<clang::QualType> types;
-    for(auto x : Args)
-        types.push_back(x->GetClangType(where));
-    return where.GetASTContext().getFunctionType(ReturnType->GetClangType(where), types.data(), types.size(), clang::FunctionProtoType::ExtProtoInfo());
+clang::QualType Function::GetClangType(ClangUtil::ClangTU& where, Analyzer& a) {
+    if (!ReturnType)
+        ComputeBody(a);
+    return a.GetFunctionType(ReturnType, Args)->GetClangType(where, a);
 }
 
 std::function<llvm::Type*(llvm::Module*)> Function::GetLLVMType(Analyzer& a) {    
     return a.GetFunctionType(ReturnType, Args)->GetLLVMType(a);
 }
-Expression Function::BuildCall(Expression, std::vector<Expression> args, Analyzer& a) {
-    // Expect e to be null.
-    // We need the body to get the return type if it was not in the prolog, so lazy generate it.
+void Function::ComputeBody(Analyzer& a) {    
     if (!body) {        
         // Now the body.
         std::vector<std::tuple<unsigned, Type*>> RetExpressions;
@@ -127,9 +124,15 @@ Expression Function::BuildCall(Expression, std::vector<Expression> args, Analyze
                 } else {
                     // When returning an lvalue or rvalue, decay them.
                     auto result = a.AnalyzeExpression(this, ret->RetExpr);
-                    if (result.t->IsReference() && !result.t->IsReference()->IsComplexType())
-                            result = result.t->BuildValue(result, a);
-                    RetTypes.insert(result.t);
+                    if (result.t->IsReference() && !result.t->IsReference()->IsComplexType()) {
+                        result = result.t->BuildValue(result, a);
+                        RetTypes.insert(result.t);
+					} else {
+						if (result.t->IsReference())
+							RetTypes.insert(result.t->IsReference());
+						else
+							RetTypes.insert(result.t);
+					}
                     RetExpressions.push_back(std::make_tuple(exprs.size(), result.t));
                     return a.gen->CreateReturn(result.Expr);
                 }
@@ -197,10 +200,9 @@ Expression Function::BuildCall(Expression, std::vector<Expression> args, Analyze
         }
         
         if (RetTypes.empty()) {
-            RetTypes.insert(a.Void);
+            RetTypes.insert(ReturnType = a.Void);
             exprs.push_back(a.gen->CreateReturn());
-        }
-        if (RetTypes.size() == 1) {
+        } else if (RetTypes.size() == 1) {
             ReturnType = *RetTypes.begin();
             if (ReturnType->IsComplexType()) {
                 // If we're complex then first param is pointer to result, so fix up all returns to be an inplace construction to that expression.
@@ -214,7 +216,7 @@ Expression Function::BuildCall(Expression, std::vector<Expression> args, Analyze
                     out.t = ty;
                     args.push_back(out);
                     exprs[num] = ReturnType->BuildInplaceConstruction(a.gen->CreateParameterExpression(0), args, a);
-                    exprs.insert(exprs.begin() + num, a.gen->CreateReturn());
+                    exprs.insert(exprs.begin() + num + 1, a.gen->CreateReturn());
                 }
             }
         } else
@@ -227,7 +229,12 @@ Expression Function::BuildCall(Expression, std::vector<Expression> args, Analyze
         body = true;
         variables.clear();
     }
-
+}
+Expression Function::BuildCall(Expression, std::vector<Expression> args, Analyzer& a) {
+    // Expect e to be null.
+    // We need the body to get the return type if it was not in the prolog, so lazy generate it.
+    if (!body)
+        ComputeBody(a);
     Expression val;
     val.t = this;
     val.Expr = a.gen->CreateFunctionValue(name);

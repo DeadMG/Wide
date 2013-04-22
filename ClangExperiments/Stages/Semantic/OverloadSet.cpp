@@ -4,12 +4,22 @@
 #include "Function.h"
 #include "FunctionType.h"
 #include "../Parser/AST.h"
+#include "ClangTU.h"
 #include <array>
+#include <sstream>
+#include "Analyzer.h"
+#include "../Codegen/Generator.h"
+#include "../Codegen/Function.h"
 
 #pragma warning(push, 0)
 
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Module.h>
+#include <llvm/IR/DerivedTypes.h>
+#include <clang/AST/Type.h>
+#include <clang/AST/DeclCXX.h>
+#include <clang/AST/ASTContext.h>
+#include <clang/Sema/Sema.h>
 #include <llvm/IR/DerivedTypes.h>
 
 #pragma warning(pop)
@@ -27,7 +37,12 @@ std::function<llvm::Type*(llvm::Module*)> OverloadSet::GetLLVMType(Analyzer& a) 
     return [=](llvm::Module* m) -> llvm::Type* {
         if (*ty)
             return *ty;
-        return llvm::StructType::get(m->getContext());
+        std::stringstream stream;
+        stream << "class.__" << this;
+        if (m->getTypeByName(stream.str()))
+            return m->getTypeByName(stream.str());
+        else
+            return llvm::StructType::create(m->getContext(), stream.str());
     };
 }
 Expression OverloadSet::BuildCall(Expression e, std::vector<Expression> args, Analyzer& a) {
@@ -63,4 +78,84 @@ Expression OverloadSet::BuildValueConstruction(std::vector<Expression> args, Ana
     out.t = this;
     out.Expr = a.gen->CreateNull(GetLLVMType(a));
     return out;
+}
+clang::QualType OverloadSet::GetClangType(ClangUtil::ClangTU& TU, Analyzer& a) {
+    if (clangtypes.find(&TU) != clangtypes.end())
+        return clangtypes[&TU];
+
+    std::stringstream stream;
+    stream << "__" << this;
+    auto recdecl = clang::CXXRecordDecl::Create(TU.GetASTContext(), clang::TagDecl::TagKind::TTK_Struct, TU.GetDeclContext(), clang::SourceLocation(), clang::SourceLocation(), TU.GetIdentifierInfo(stream.str()));
+    recdecl->startDefinition();
+    for(auto&& f : funcs) {
+        auto meth = clang::CXXMethodDecl::Create(
+            TU.GetASTContext(), 
+            recdecl, 
+            clang::SourceLocation(), 
+            clang::DeclarationNameInfo(TU.GetASTContext().DeclarationNames.getCXXOperatorName(clang::OverloadedOperatorKind::OO_Call), clang::SourceLocation()),
+            f->GetClangType(TU, a),
+            0,
+            clang::FunctionDecl::StorageClass::SC_None,
+            false,
+            false,
+            clang::SourceLocation()
+        );        
+        assert(!meth->isStatic());
+        meth->setAccess(clang::AccessSpecifier::AS_public);
+        std::vector<clang::ParmVarDecl*> decls;
+        for(auto&& arg : f->GetSignature(a)->GetArguments()) {
+            decls.push_back(clang::ParmVarDecl::Create(TU.GetASTContext(),
+                meth,
+                clang::SourceLocation(),
+                clang::SourceLocation(),
+                nullptr,
+                arg->GetClangType(TU, a),
+                nullptr,
+                clang::VarDecl::StorageClass::SC_None,
+                nullptr
+            ));
+        }
+        meth->setParams(decls);
+        recdecl->addDecl(meth);
+        // If this is the first time, then we need to define the trampolines.
+        if (clangtypes.empty()) {
+            auto sig = f->GetSignature(a);
+            auto trampoline = a.gen->CreateFunction([=, &a, &TU](llvm::Module* m) -> llvm::Type* {
+                auto fty = llvm::dyn_cast<llvm::FunctionType>(sig->GetLLVMType(a)(m)->getPointerElementType());
+                std::vector<llvm::Type*> args;
+                for(auto it = fty->param_begin(); it != fty->param_end(); ++it) {
+                    args.push_back(*it);
+                }
+				// If T is complex, then "this" is the second argument. Else it is the first.
+				auto self = TU.GetLLVMTypeFromClangType(TU.GetASTContext().getTypeDeclType(recdecl))(m);
+				if (sig->GetReturnType()->IsComplexType()) {
+					args.insert(args.begin() + 1, self);
+				} else {
+					args.insert(args.begin(), self);
+				}
+                return llvm::FunctionType::get(fty->getReturnType(), args, false);
+            }, TU.MangleName(meth), true);// If an i8/i1 mismatch, fix it up for us.
+            // The only statement is return f().
+            std::vector<Codegen::Expression*> exprs;
+            // Fucking ABI putting complex return type parameter first before this.
+            // It's either "All except the first" or "All except the second", depending on whether or not the return type is complex.
+            if (sig->GetReturnType()->IsComplexType()) {
+                // Two hidden arguments: ret, this, skip this and do the rest.
+                exprs.push_back(a.gen->CreateParameterExpression(0));
+                for(std::size_t i = 2; i < sig->GetArguments().size() + 2; ++i) {
+                    exprs.push_back(a.gen->CreateParameterExpression(i));
+                }
+            } else {
+                // One hidden argument: this, pos 0. Skip it and do the rest.
+                for(std::size_t i = 1; i < sig->GetArguments().size() + 1; ++i) {
+                    exprs.push_back(a.gen->CreateParameterExpression(i));
+                }
+            }
+            trampoline->AddStatement(a.gen->CreateReturn(a.gen->CreateFunctionCall(a.gen->CreateFunctionValue(f->GetName()), exprs)));
+        }
+    }
+    recdecl->completeDefinition();
+    TU.GetDeclContext()->addDecl(recdecl);
+    a.AddClangType(TU.GetASTContext().getTypeDeclType(recdecl), this);
+    return clangtypes[&TU] = TU.GetASTContext().getTypeDeclType(recdecl);
 }

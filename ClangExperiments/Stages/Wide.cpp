@@ -15,8 +15,7 @@ void Wide::Compile(const Wide::Options::Clang& copts, const Wide::Options::LLVM&
     
     files.push_back("WideLibrary/stdlib.wide");
 
-    std::mutex m;    
-    std::atomic<bool> except = false;
+    Concurrency::Vector<std::string> excepts;
     Wide::Concurrency::ParallelForEach(files.begin(), files.end(), [&](const std::string& filename) {
         std::ifstream inputfile(filename, std::ios::binary | std::ios::in);
         std::noskipws(inputfile);
@@ -26,19 +25,18 @@ void Wide::Compile(const Wide::Options::Clang& copts, const Wide::Options::LLVM&
         try {
             Wide::Parser::ParseModuleContents(lex, ASTBuilder, ASTBuilder.GetGlobalModule());
         } catch(std::runtime_error& e) {
-            except = true;
-            std::lock_guard<std::mutex> lock(m);
-            std::cout << e.what() << "\n";
+            excepts.push_back(e.what());
         } catch(...) {
-            except = true;
-            std::lock_guard<std::mutex> lock(m);
-            std::cout << "Internal Compiler Error\n";
-            __debugbreak();
+            excepts.push_back("Unknown Internal Compiler Error.\n");
         }
     });
 
-    if (!except) {
+    if (excepts.empty()) {
         Sema(ASTBuilder.GetGlobalModule());
         Generator();
+    } else {
+        for(auto&& msg : excepts) {
+            std::cout << msg << "\n";
+        }
     }
 }

@@ -30,7 +30,7 @@ Expression ClangOverloadSet::BuildCallWithTemplateArguments(clang::TemplateArgum
         //exprs.push_back(Wide::Util::make_unique<clang::OpaqueValueExpr>(clang::SourceLocation(), nonstatic->GetClangType(*from).getNonLValueExprType(from->GetASTContext()), GetKindOfType(nonstatic)));
     }
     for(auto x : args) {
-        exprs.push_back(clang::OpaqueValueExpr(clang::SourceLocation(), x.t->GetClangType(*from).getNonLValueExprType(from->GetASTContext()), GetKindOfType(x.t)));
+        exprs.push_back(clang::OpaqueValueExpr(clang::SourceLocation(), x.t->GetClangType(*from, a).getNonLValueExprType(from->GetASTContext()), GetKindOfType(x.t)));
     }
     clang::OverloadCandidateSet s((clang::SourceLocation()));
     std::vector<clang::Expr*> exprptrs;
@@ -80,7 +80,7 @@ Expression ClangOverloadSet::BuildMetaCall(Expression val, std::vector<Expressio
         auto con = dynamic_cast<ConstructorType*>(x.t);
         if (!con)
             throw std::runtime_error("Only support types as arguments to Clang templates right now.");
-        auto clangty = con->GetConstructedType()->GetClangType(*from);
+        auto clangty = con->GetConstructedType()->GetClangType(*from, a);
 
         auto tysrcinfo = from->GetASTContext().getTrivialTypeSourceInfo(clangty);
         

@@ -18,7 +18,7 @@ namespace Wide {
         public:
             ClangType(ClangUtil::ClangTU* src, clang::QualType t);         
             std::function<llvm::Type*(llvm::Module*)> GetLLVMType(Analyzer& a);            
-            clang::QualType GetClangType(ClangUtil::ClangTU& tu);  
+            clang::QualType GetClangType(ClangUtil::ClangTU& tu, Analyzer& a);  
 
             Expression AccessMember(Expression val, std::string name, Analyzer& a);        
             Expression BuildCall(Expression val, std::vector<Expression> args, Analyzer& a);        

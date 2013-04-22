@@ -167,7 +167,7 @@ namespace Wide {
                 }
                 return result;
             }
-            explicit operator bool() const {
+            operator bool() const {
                 // If we're at the end, there are no more tokens.
                 if (current_iterator== end) {
                     return !putbacks.empty();

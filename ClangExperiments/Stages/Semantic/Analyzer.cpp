@@ -148,6 +148,16 @@ Expression Analyzer::AnalyzeExpression(Type* t, AST::Expression* e) {
         return lhs.t->BuildNEComparison(lhs, rhs, *this);        
     }
 
+    if (auto ge = dynamic_cast<AST::GTExpression*>(e)) {
+        auto lhs = AnalyzeExpression(t, ge->lhs);
+        auto rhs = AnalyzeExpression(t, ge->rhs);
+        return lhs.t->BuildGTComparison(lhs, rhs, *this);
+    }
+
+    if (auto integer = dynamic_cast<AST::IntegerExpression*>(e)) {
+        return Expression( this->Int8, gen->CreateInt8Expression(std::stol(integer->integral_value)));
+    }
+
     throw std::runtime_error("Unrecognized AST node");
 }
 
@@ -278,4 +288,9 @@ OverloadSet* Analyzer::GetOverloadSet(AST::FunctionOverloadSet* set) {
     if (OverloadSets.find(set) != OverloadSets.end())
         return OverloadSets[set];
     return OverloadSets[set] = arena.Allocate<OverloadSet>(set, *this);
+}
+void Analyzer::AddClangType(clang::QualType t, Type* match) {
+    if (ClangTypes.find(t) != ClangTypes.end())
+        throw std::runtime_error("Attempt to AddClangType on a type that already had a Clang type.");
+    ClangTypes[t] = match;
 }

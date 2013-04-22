@@ -21,8 +21,8 @@ std::function<llvm::Type*(llvm::Module*)> RvalueType::GetLLVMType(Analyzer& a) {
         return f(m)->getPointerTo();
     };
 }
-clang::QualType RvalueType::GetClangType(ClangUtil::ClangTU& tu) {
-    return tu.GetASTContext().getRValueReferenceType(GetPointee()->GetClangType(tu));
+clang::QualType RvalueType::GetClangType(ClangUtil::ClangTU& tu, Analyzer& a) {
+    return tu.GetASTContext().getRValueReferenceType(GetPointee()->GetClangType(tu, a));
 }
 
 Codegen::Expression* RvalueType::BuildBooleanConversion(Expression e, Analyzer& a) {
