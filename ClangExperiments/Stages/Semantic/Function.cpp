@@ -34,7 +34,6 @@ Function::Function(std::vector<Type*> args, AST::Function* astfun, Analyzer& a)
 , fun(astfun)
 , body(false)
 , codefun(nullptr) {    
-    // Deal with only typed parameters right now
     variables.push_back(std::unordered_map<std::string, Expression>()); // Push back the argument scope
     unsigned num = 0;
     for(auto&& arg : astfun->args) {

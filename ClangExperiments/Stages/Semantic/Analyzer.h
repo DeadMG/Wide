@@ -75,6 +75,7 @@ namespace Wide {
         struct Result;
         
         struct ClangCommonState {
+
             ClangCommonState(const Options::Clang& opts);
             const Options::Clang* Options;
             clang::FileManager FileManager;

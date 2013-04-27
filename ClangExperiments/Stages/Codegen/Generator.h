@@ -2,14 +2,15 @@
 
 #define _SCL_SECURE_NO_WARNINGS
 
-#include <deque>
-#include <vector>
-#include <functional>
 #include "../../Util/MemoryArena.h"
 #include "Expression.h"
-
 #include "../LLVMOptions.h"
 #include "../ClangOptions.h"
+#include <unordered_map>
+#include <deque>
+#include <vector>
+#include <unordered_set>
+#include <functional>
 
 #pragma warning(push, 0)
 
@@ -32,8 +33,16 @@ namespace Wide {
             void EmitCode();
             const Options::LLVM& llvmopts;
             const Options::Clang& clangopts;
+            std::unordered_map<llvm::Function*, Function*> funcs;
+            std::unordered_set<llvm::Type*> eliminate_types;
 
         public:            
+            bool IsEliminateType(llvm::Type*);
+            void AddEliminateType(llvm::Type*);
+
+            void TieFunction(llvm::Function*, Function*);
+            Function* FromLLVMFunc(llvm::Function*);
+
             llvm::LLVMContext context;
             llvm::Module main;
 

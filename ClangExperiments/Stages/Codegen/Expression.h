@@ -26,11 +26,11 @@ namespace Wide {
         public:
             Expression() : val(nullptr) {}
 
-            void Build(llvm::IRBuilder<>& bb);
-            llvm::Value* GetValue(llvm::IRBuilder<>& bb);
+            void Build(llvm::IRBuilder<>& bb, Generator& g);
+            llvm::Value* GetValue(llvm::IRBuilder<>& bb, Generator& g);
         protected:
             llvm::Value* val;
-            virtual llvm::Value* ComputeValue(llvm::IRBuilder<>&) = 0;
+            virtual llvm::Value* ComputeValue(llvm::IRBuilder<>&, Generator& g) = 0;
         };
 
         class Variable : public Expression {
@@ -38,7 +38,7 @@ namespace Wide {
         public:
             Variable(std::function<llvm::Type*(llvm::Module*)> ty)
                 : t(std::move(ty)) {}
-            llvm::Value* ComputeValue(llvm::IRBuilder<>&);
+            llvm::Value* ComputeValue(llvm::IRBuilder<>&, Generator& g);
         };
 
         class FunctionCall : public Expression {
@@ -48,7 +48,7 @@ namespace Wide {
         public:
             Expression* GetCallee() { return object; }
             FunctionCall(Expression* obj, std::vector<Expression*> args, std::function<llvm::Type*(llvm::Module*)>);
-            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder);
+            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g);
         };
         
         class FunctionValue : public Expression {
@@ -58,7 +58,7 @@ namespace Wide {
                 return mangled_name;
             }
             FunctionValue(std::string name);
-            llvm::Value* ComputeValue(llvm::IRBuilder<>&);
+            llvm::Value* ComputeValue(llvm::IRBuilder<>&, Generator& g);
         };
 
         class LoadExpression : public Expression {
@@ -67,7 +67,7 @@ namespace Wide {
             LoadExpression(Expression* o)
                 : obj(o) {}
 
-            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder);
+            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g);
         };
         
         class ChainExpression : public Expression {
@@ -77,7 +77,7 @@ namespace Wide {
             ChainExpression(Statement* stat, Expression* e)
                 : s(stat), next(e) {}
 
-            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder);
+            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g);
         };
         
         class StringExpression : public Expression {
@@ -86,7 +86,7 @@ namespace Wide {
             StringExpression(std::string expr)
                 : value(std::move(expr)) {}
 
-            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder);
+            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g);
 
             
             std::string GetContents() {
@@ -100,7 +100,7 @@ namespace Wide {
             NamedGlobalVariable(std::string mangledname)
                 : mangled(std::move(mangledname)) {}
 
-            llvm::Value* ComputeValue(llvm::IRBuilder<>&);
+            llvm::Value* ComputeValue(llvm::IRBuilder<>&, Generator& g);
         };              
 
         class StoreExpression : public Expression {
@@ -110,7 +110,7 @@ namespace Wide {
             StoreExpression(Expression* l, Expression* r)
                 : obj(l), val(r) {}
             
-            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder);
+            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g);
         };
 
         class Int8Expression : public Expression {
@@ -119,7 +119,7 @@ namespace Wide {
             Int8Expression(char val)
                 : value(val) {}
 
-            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder);
+            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g);
         };
 
         class FieldExpression : public Expression {
@@ -128,15 +128,16 @@ namespace Wide {
         public:
             FieldExpression(unsigned f, Expression* o)
                 : fieldnum(f), obj(o) {}
-            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder);
+            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g);
         };
 
+        class Generator;
         class ParamExpression : public Expression {
             std::function<unsigned()> param;
         public:
-            ParamExpression(std::function<unsigned()>  p)
+            ParamExpression(std::function<unsigned()> p)
                 : param(std::move(p)) {}
-            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder);
+            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g);
         };
 
         class TruncateExpression : public Expression {
@@ -145,7 +146,7 @@ namespace Wide {
         public:
             TruncateExpression(Expression* e, std::function<llvm::Type*(llvm::Module*)> type)
                 : val(e), ty(std::move(type)) {}
-            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder);
+            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g);
         };
 
         class NullExpression : public Expression {
@@ -153,7 +154,7 @@ namespace Wide {
         public:
             NullExpression(std::function<llvm::Type*(llvm::Module*)> type)
                 : ty(std::move(type)) {}
-            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder);
+            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g);
         };
 
         class IntegralLeftShiftExpression : public Expression {
@@ -162,7 +163,7 @@ namespace Wide {
         public:
             IntegralLeftShiftExpression(Expression* l, Expression* r)
                 : lhs(l), rhs(r) {}
-            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder);
+            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g);
         };
 
         class IntegralRightShiftExpression : public Expression {
@@ -171,7 +172,7 @@ namespace Wide {
         public:
             IntegralRightShiftExpression(Expression* l, Expression* r)
                 : lhs(l), rhs(r) {}
-            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder);
+            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g);
         };
     }
 }

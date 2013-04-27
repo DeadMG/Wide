@@ -5,6 +5,7 @@
 #include <memory>
 #include <string>
 #include <functional>
+#include <unordered_set>
 #include "Analyzer.h"
 
 namespace llvm {
@@ -25,6 +26,7 @@ namespace clang {
     class FieldDecl;
     class SourceLocation;
 	class CXXRecordDecl;
+    class FunctionDecl;
 }
 
 namespace Wide {
@@ -36,6 +38,7 @@ namespace Wide {
     namespace ClangUtil {
         class ClangTU {
             class Impl;
+            std::unordered_set<clang::FunctionDecl*> visited;
         public:
             std::unique_ptr<Impl> impl;
             ~ClangTU();

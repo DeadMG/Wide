@@ -25,13 +25,13 @@ ReturnStatement::ReturnStatement(Expression* e)
 ReturnStatement::ReturnStatement() 
     : val(nullptr) {}
 
-void ReturnStatement::Build(llvm::IRBuilder<>& bb) {
+void ReturnStatement::Build(llvm::IRBuilder<>& bb, Generator& g) {
     if (!val)
         bb.CreateRetVoid();
     else {
-        auto llvmval = val->GetValue(bb);
+        auto llvmval = val->GetValue(bb, g);
         if (llvmval->getType() != llvm::Type::getVoidTy(bb.getContext()))
-            bb.CreateRet(val->GetValue(bb));
+            bb.CreateRet(val->GetValue(bb, g));
         else
             bb.CreateRetVoid();
     }
@@ -41,35 +41,35 @@ Codegen::Expression* ReturnStatement::GetReturnExpression() {
     return val;
 }
 
-void IfStatement::Build(llvm::IRBuilder<>& bb) {
+void IfStatement::Build(llvm::IRBuilder<>& bb, Generator& g) {
     auto true_bb = llvm::BasicBlock::Create(bb.getContext(), "true_bb", bb.GetInsertBlock()->getParent());
     auto continue_bb = llvm::BasicBlock::Create(bb.getContext(), "continue_bb", bb.GetInsertBlock()->getParent());
     auto else_bb = false_br ? llvm::BasicBlock::Create(bb.getContext(), "false_bb", bb.GetInsertBlock()->getParent()) : continue_bb;
 
-    bb.CreateCondBr(ProcessBool(condition->GetValue(bb), bb), true_bb, else_bb);
+    bb.CreateCondBr(ProcessBool(condition->GetValue(bb, g), bb), true_bb, else_bb);
     bb.SetInsertPoint(true_bb);
     // May have caused it's own branches to other basic blocks.
-    true_br->Build(bb);
+    true_br->Build(bb, g);
     bb.CreateBr(continue_bb);
     
     if (false_br) {
         bb.SetInsertPoint(else_bb);
-        false_br->Build(bb);
+        false_br->Build(bb, g);
         bb.CreateBr(continue_bb);
     }
 
     bb.SetInsertPoint(continue_bb);
 }
 
-void WhileStatement::Build(llvm::IRBuilder<>& bb) {
+void WhileStatement::Build(llvm::IRBuilder<>& bb, Generator& g) {
     auto check_bb = llvm::BasicBlock::Create(bb.getContext(), "check_bb", bb.GetInsertBlock()->getParent());
     auto loop_bb = llvm::BasicBlock::Create(bb.getContext(), "loop_bb", bb.GetInsertBlock()->getParent());
     auto continue_bb = llvm::BasicBlock::Create(bb.getContext(), "continue_bb", bb.GetInsertBlock()->getParent());
     bb.CreateBr(check_bb);
     bb.SetInsertPoint(check_bb);
-    bb.CreateCondBr(ProcessBool(cond->GetValue(bb), bb), loop_bb, continue_bb);
+    bb.CreateCondBr(ProcessBool(cond->GetValue(bb, g), bb), loop_bb, continue_bb);
     bb.SetInsertPoint(loop_bb);
-    body->Build(bb);
+    body->Build(bb, g);
     bb.CreateBr(check_bb);
     bb.SetInsertPoint(continue_bb);
 }

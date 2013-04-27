@@ -16,39 +16,76 @@ using namespace Codegen;
 
 #pragma warning(pop)
 
+llvm::Value* Function::GetParameter(unsigned i) {
+    return ParameterValues[i];
+}
 void Function::EmitCode(llvm::Module* mod, llvm::LLVMContext& con, Generator& g) {
     llvm::Function* f = nullptr;
     if (f = mod->getFunction(name)) {
         if (f->getType() == Type(mod))
             f = mod->getFunction(name);
         else {
-			// If an i8/i1 mismatch, and we are a trampoline, just fix up the return statement and change the type. Else, fuck.			
-			if (!tramp || !(f->getReturnType() == llvm::IntegerType::getInt1Ty(con) && llvm::dyn_cast<llvm::FunctionType>(Type(mod))->getReturnType() == llvm::IntegerType::getInt8Ty(con)))
-				throw std::runtime_error("Found a function of the same name in the module but it had the wrong LLVM type.");
-			// Expect one return statement in a trampoline. Might modify if cause to later.
-			assert(statements.size() == 1 && "A trampoline must have only one return statement so that the codegen can fix up i8/i1 issues.");
-			auto ret = dynamic_cast<Codegen::ReturnStatement*>(statements[0]);
-			assert(ret && "A trampoline's single statement must be a return statement.");
-			statements[0] = g.CreateReturn(g.CreateTruncate(ret->GetReturnExpression(), [&](llvm::Module*) { return llvm::IntegerType::getInt1Ty(con); }));
+            auto fty = llvm::dyn_cast<llvm::FunctionType>(f->getType()->getElementType());
+            auto ty = llvm::dyn_cast<llvm::FunctionType>(llvm::dyn_cast<llvm::PointerType>(Type(mod))->getElementType());
+            
+            // Currently do not deal with byval, return coercion.
+			// If an i8/i1 mismatch, and we are a trampoline, just fix up the return statement and change the type.
+			if (tramp && fty->getReturnType() == llvm::IntegerType::getInt1Ty(con) && ty->getReturnType() == llvm::IntegerType::getInt8Ty(con)) {
+			    // Expect one return statement in a trampoline. Might modify if cause to later.
+			    assert(statements.size() == 1 && "A trampoline must have only one return statement so that the codegen can fix up i8/i1 issues.");
+			    auto ret = dynamic_cast<Codegen::ReturnStatement*>(statements[0]);
+			    assert(ret && "A trampoline's single statement must be a return statement.");
+			    statements[0] = g.CreateReturn(g.CreateTruncate(ret->GetReturnExpression(), [&](llvm::Module*) { return llvm::IntegerType::getInt1Ty(con); }));
+            } else {
+			    throw std::runtime_error("Found a function of the same name in the module but it had the wrong LLVM type.");
+            }
+
 			f = mod->getFunction(name);
+            
 		}
     } else {
-		auto ty = Type(mod);
-		llvm::FunctionType* t = nullptr;
-		if (auto ptr = llvm::dyn_cast<llvm::PointerType>(ty)) {
-			t = llvm::dyn_cast<llvm::FunctionType>(ptr->getElementType());
-		} else {
-			t = llvm::dyn_cast<llvm::FunctionType>(ty);
-		}
+        auto t = llvm::dyn_cast<llvm::FunctionType>(llvm::dyn_cast<llvm::PointerType>(Type(mod))->getElementType());
         f = llvm::Function::Create(t, llvm::GlobalValue::LinkageTypes::InternalLinkage, name, mod);
+
     }
 
     llvm::BasicBlock* bb = llvm::BasicBlock::Create(con, "entry", f);
     llvm::IRBuilder<> irbuilder(bb);
-    for(auto&& x : statements)
-        x->Build(irbuilder);
+    
+    auto fty = llvm::dyn_cast<llvm::FunctionType>(f->getType()->getElementType());
+    auto ty = llvm::dyn_cast<llvm::FunctionType>(llvm::dyn_cast<llvm::PointerType>(Type(mod))->getElementType());
 
-	if (llvm::verifyFunction(*f, llvm::VerifierFailureAction::ReturnStatusAction))
+    // Always in sync except when Clang skips an empty type parameter.
+    auto arg_begin = f->getArgumentList().begin();
+    for(std::size_t i = 0; i < ty->getNumParams(); ++i) {
+        if (ty->getParamType(i) == arg_begin->getType()) {
+            ParameterValues[i] = arg_begin;
+            ++arg_begin;
+            continue;
+        }
+        if (auto ptr = llvm::dyn_cast<llvm::PointerType>(ty->getParamType(i))) {
+            auto el = ptr->getElementType();
+            if (auto strct = llvm::dyn_cast<llvm::StructType>(el)) {
+                if (strct->getNumElements() == 1 && strct->getElementType(0) == llvm::IntegerType::getInt8Ty(con)) {
+                    ParameterValues[i] = irbuilder.CreateAlloca(ty->getParamType(i));
+                    continue;
+                }
+            }
+        }
+        if (ty->getParamType(i) == llvm::IntegerType::getInt8Ty(con) && arg_begin->getType() == llvm::IntegerType::getInt1Ty(con)) {
+            ParameterValues[i] = irbuilder.CreateZExt(arg_begin, llvm::IntegerType::getInt1Ty(con));
+            ++arg_begin;
+            continue;
+        }
+        assert(false && "The function type did not match the expected type and none of the compensation schemes were successful in resolving the mismatch.");
+    }
+
+    g.TieFunction(f, this);
+
+    for(auto&& x : statements)
+        x->Build(irbuilder, g);
+
+    if (llvm::verifyFunction(*f, llvm::VerifierFailureAction::PrintMessageAction))
 		__debugbreak();
 }
 

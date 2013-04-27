@@ -2,7 +2,11 @@ using test := cpp("WideLibrary/test.h");
 Main() {
     test.f();
 	x := test.std.vector!(int8)();
-	test.std.sort(x.begin(), x.end(), helper);
+	test.std.sort(x.begin(), x.end(), get_helper());
+}
+get_helper() {
+    test.std.cout << "get_helper";
+	return helper;
 }
 helper(int8 lhs, int8 rhs) {
     return true;

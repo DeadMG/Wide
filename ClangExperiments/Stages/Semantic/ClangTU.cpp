@@ -6,6 +6,7 @@
 #include <string>
 #include <fstream>
 #include <unordered_map>
+#include <unordered_set>
 
 #pragma warning(push, 0)
 
@@ -115,17 +116,6 @@ public:
         return astcon.getTranslationUnitDecl();
     }
 
-    void GenerateCodeAndLinkModule(llvm::Module* main) {
-        for(auto x : stuff)
-            codegenmod.EmitTopLevelDecl(x);
-        codegenmod.Release();
-
-        llvm::Linker link("", main);
-        link.LinkInModule(&mod);
-        link.releaseModule();
-        HandleErrors();
-    }
-
     // To be added: The relevant query APIs.
 };
 
@@ -140,7 +130,22 @@ ClangTU::ClangTU(ClangTU&& other)
     : impl(std::move(other.impl)) {}
 
 void ClangTU::GenerateCodeAndLinkModule(llvm::Module* main) {
-    return impl->GenerateCodeAndLinkModule(main);
+    for(auto x : impl->stuff)
+        impl->codegenmod.EmitTopLevelDecl(x);
+    /*for(auto x : visited) {
+        if (auto con = llvm::dyn_cast<clang::CXXConstructorDecl>(x)) {
+            impl->codegenmod.GetAddrOfGlobal(clang::GlobalDecl(con, clang::CXXCtorType::Ctor_Complete));
+        } else if (auto des = llvm::dyn_cast<clang::CXXDestructorDecl>(x)) {
+            impl->codegenmod.GetAddrOfGlobal(clang::GlobalDecl(des, clang::CXXDtorType::Dtor_Complete));
+        } else
+            impl->codegenmod.GetAddrOfGlobal(x);
+    }*/
+    impl->codegenmod.Release();
+
+    llvm::Linker link("", main);
+    link.LinkInModule(&impl->mod);
+    link.releaseModule();
+    impl->HandleErrors();
 }
 
 clang::DeclContext* ClangTU::GetDeclContext() {
@@ -184,6 +189,7 @@ std::function<llvm::Type*(llvm::Module*)> ClangTU::GetLLVMTypeFromClangType(clan
         mod->print(stream, nullptr);
 		assert(false && "Attempted to look up a Clang type, but it did not exist in the module. You need to find out where this type came from- is it some unconverted primitive type?");
 		//return imp->codegenmod.getTypes().ConvertType(t);
+        return nullptr; // Shut up control path warning
     };
 }
 
@@ -198,16 +204,27 @@ bool ClangTU::IsComplexType(clang::CXXRecordDecl* decl) {
 	return indirect;
 }
 
-std::string ClangTU::MangleName(clang::NamedDecl* D) {
-    
+std::string ClangTU::MangleName(clang::NamedDecl* D) {    
     auto MarkFunction = [&](clang::FunctionDecl* d) {
         struct GeneratingVisitor : public clang::RecursiveASTVisitor<GeneratingVisitor> {
             clang::ASTContext* astcon;
             clang::Sema* sema;
+            std::unordered_set<clang::FunctionDecl*>* visited;
 
             bool VisitFunctionDecl(clang::FunctionDecl* d) {
                 if (!d) return true;
+                if (visited->find(d) != visited->end())
+                    return true;
+                visited->insert(d);
+                if (d->isTemplateInstantiation()) {
+                    if (d->getTemplateSpecializationKind() == clang::TSK_ExplicitInstantiationDeclaration)
+                        d->setTemplateSpecializationKind(clang::TSK_ExplicitInstantiationDefinition);
+                    sema->InstantiateFunctionDefinition(clang::SourceLocation(), d, true, true);
+
+                }
                 d->setInlineSpecified(false);
+                d->setUsed(true);
+                d->setReferenced(true);
                 if (d->hasAttrs()) {
                     d->addAttr(new (*astcon) clang::UsedAttr(clang::SourceLocation(), *astcon));
                 } else {
@@ -215,8 +232,6 @@ std::string ClangTU::MangleName(clang::NamedDecl* D) {
                     v.push_back(new (*astcon) clang::UsedAttr(clang::SourceLocation(), *astcon));
                     d->setAttrs(v);
                 }                
-                if (d->isTemplateInstantiation())
-                    sema->InstantiateFunctionDefinition(clang::SourceLocation(), d, true, true);
                 if (d->hasBody())
                     TraverseStmt(d->getBody());
                 if (auto con = llvm::dyn_cast<clang::CXXConstructorDecl>(d)) {
@@ -237,12 +252,22 @@ std::string ClangTU::MangleName(clang::NamedDecl* D) {
         GeneratingVisitor v;
         v.astcon = &impl->astcon;
         v.sema = &impl->sema;
+        v.visited = &visited;
         v.VisitFunctionDecl(d);
     };
     
     std::function<void(clang::CXXRecordDecl*)> RecursiveMarkTypes;
     RecursiveMarkTypes = [&](clang::CXXRecordDecl* dec) {
         if (!dec) return;
+        if (auto spec = llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(dec)) {
+            if (!spec->getDefinition()) {
+                auto tsk = clang::TemplateSpecializationKind::TSK_ExplicitInstantiationDefinition;
+                if (GetSema().InstantiateClassTemplateSpecialization(GetFileEnd(), spec, tsk))
+                    throw std::runtime_error("Could not instantiate resulting class template specialization.");
+                
+                GetSema().InstantiateClassTemplateSpecializationMembers(GetFileEnd(), llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(spec->getDefinition()), tsk);
+            }
+        }
         MarkFunction(dec->getDestructor());
         for(auto ctor = dec->ctor_begin(); ctor != dec->ctor_end(); ++ctor)
             MarkFunction(*ctor);
@@ -265,38 +290,32 @@ std::string ClangTU::MangleName(clang::NamedDecl* D) {
 
     if (auto vardecl = llvm::dyn_cast<clang::VarDecl>(D)) {
         auto name = impl->codegenmod.getMangledName(vardecl);
+        if (vardecl->hasAttrs()) {
+            vardecl->addAttr(new (impl->astcon) clang::UsedAttr(clang::SourceLocation(), impl->astcon));
+        } else {
+            clang::AttrVec v;
+            v.push_back(new (impl->astcon) clang::UsedAttr(clang::SourceLocation(), impl->astcon));
+            vardecl->setAttrs(v);
+        }
+        impl->codegenmod.GetAddrOfGlobal(vardecl);
         return name;
     }
     if (auto desdecl = llvm::dyn_cast<clang::CXXDestructorDecl>(D)) {
-        RecursiveMarkTypes(desdecl->getParent());
+        MarkFunction(desdecl);
+        //RecursiveMarkTypes(desdecl->getParent());
         auto gd = clang::GlobalDecl(desdecl, clang::CXXDtorType::Dtor_Complete); 
-        desdecl->setInlineSpecified(false);  
         auto name = impl->codegenmod.getMangledName(gd); 
         return name;
     }
     if (auto condecl = llvm::dyn_cast<clang::CXXConstructorDecl>(D)) {
-
-        RecursiveMarkTypes(condecl->getParent());
-
+        MarkFunction(condecl);
+        //RecursiveMarkTypes(condecl->getParent());
         auto gd = clang::GlobalDecl(condecl, clang::CXXCtorType::Ctor_Complete);
-		impl->codegenmod.GetAddrOfGlobal(gd);
-        //condecl->setInlineSpecified(false);
         auto name = impl->codegenmod.getMangledName(gd);   
         return name;
     }
     if (auto funcdecl = llvm::dyn_cast<clang::FunctionDecl>(D)) {
-        funcdecl->setInlineSpecified(false);
-
-        if (funcdecl->hasAttrs()) {
-            funcdecl->addAttr(new (impl->astcon) clang::UsedAttr(clang::SourceLocation(), impl->astcon));
-        } else {
-            clang::AttrVec v;
-            v.push_back(new (impl->astcon) clang::UsedAttr(clang::SourceLocation(), impl->astcon));
-            funcdecl->setAttrs(v);
-        }
-
-        if (funcdecl->isTemplateInstantiation())
-            impl->sema.InstantiateFunctionDefinition(clang::SourceLocation(), funcdecl, true, true);
+        MarkFunction(funcdecl);
         auto name = impl->codegenmod.getMangledName(funcdecl);
         return name;
     }

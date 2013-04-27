@@ -100,7 +100,10 @@ FunctionValue* Generator::CreateFunctionValue(std::string name) {
     return arena.Allocate<FunctionValue>(name);
 }
 
-void Generator::EmitCode() {
+void Generator::EmitCode() {    
+    std::string err;
+    if (llvm::verifyModule(main, llvm::VerifierFailureAction::PrintMessageAction, &err))
+        __debugbreak();
     std::string s;
     llvm::raw_string_ostream stream(s);
     main.print(stream, nullptr);
@@ -108,7 +111,9 @@ void Generator::EmitCode() {
         x->EmitCode(&main, context, *this);
     }    
 	s.clear();
-    main.print(stream, nullptr);
+    main.print(stream, nullptr);    
+    if (llvm::verifyModule(main, llvm::VerifierFailureAction::PrintMessageAction, &err))
+        __debugbreak();
 }
 
 Int8Expression* Generator::CreateInt8Expression(char val) {
@@ -122,6 +127,14 @@ ChainExpression* Generator::CreateChainExpression(Statement* s, Expression* e) {
 FieldExpression* Generator::CreateFieldExpression(Expression* e, unsigned f) {
     return arena.Allocate<FieldExpression>(f, e);
 }           
+
+bool Generator::IsEliminateType(llvm::Type* t) {
+    return eliminate_types.find(t) != eliminate_types.end();
+}
+
+void Generator::AddEliminateType(llvm::Type* t) {
+    eliminate_types.insert(t);
+}
 
 ParamExpression* Generator::CreateParameterExpression(unsigned num) {
     return arena.Allocate<ParamExpression>([=]{ return num; });
@@ -157,5 +170,15 @@ IntegralLeftShiftExpression* Generator::CreateLeftShift(Expression* l, Expressio
 
 IntegralRightShiftExpression* Generator::CreateRightShift(Expression* l, Expression* r) {
     return arena.Allocate<IntegralRightShiftExpression>(l, r);
+}
+
+void Generator::TieFunction(llvm::Function* llvmf, Function* f) {
+    funcs[llvmf] = f;
+}
+
+Function* Generator::FromLLVMFunc(llvm::Function* f) {
+    if (funcs.find(f) == funcs.end())
+        assert(false && "Tried to look up an llvm Function that did not correspond to a Wide function.");
+    return funcs[f];
 }
 // Domagoj, you cockface.

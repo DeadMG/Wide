@@ -30,19 +30,22 @@ using namespace Semantic;
 OverloadSet::OverloadSet(AST::FunctionOverloadSet* s, Analyzer& a) {
     for(auto x : s->functions)
         funcs.push_back(a.GetWideFunction(x));
-    ty = std::make_shared<llvm::Type*>(nullptr);
 }
 std::function<llvm::Type*(llvm::Module*)> OverloadSet::GetLLVMType(Analyzer& a) {
     // Have to cache result - not fun.
+    auto g = a.gen;
     return [=](llvm::Module* m) -> llvm::Type* {
-        if (*ty)
-            return *ty;
         std::stringstream stream;
         stream << "class.__" << this;
+        llvm::Type* t = nullptr;
         if (m->getTypeByName(stream.str()))
-            return m->getTypeByName(stream.str());
-        else
-            return llvm::StructType::create(m->getContext(), stream.str());
+            t = m->getTypeByName(stream.str());
+        else {
+            auto int8ty = llvm::IntegerType::getInt8Ty(m->getContext());
+            t = llvm::StructType::create(stream.str(), int8ty, nullptr);
+        }
+        g->AddEliminateType(t);
+        return t;
     };
 }
 Expression OverloadSet::BuildCall(Expression e, std::vector<Expression> args, Analyzer& a) {
@@ -95,7 +98,7 @@ clang::QualType OverloadSet::GetClangType(ClangUtil::ClangTU& TU, Analyzer& a) {
             clang::DeclarationNameInfo(TU.GetASTContext().DeclarationNames.getCXXOperatorName(clang::OverloadedOperatorKind::OO_Call), clang::SourceLocation()),
             f->GetClangType(TU, a),
             0,
-            clang::FunctionDecl::StorageClass::SC_None,
+            clang::FunctionDecl::StorageClass::SC_Extern,
             false,
             false,
             clang::SourceLocation()
@@ -111,7 +114,7 @@ clang::QualType OverloadSet::GetClangType(ClangUtil::ClangTU& TU, Analyzer& a) {
                 nullptr,
                 arg->GetClangType(TU, a),
                 nullptr,
-                clang::VarDecl::StorageClass::SC_None,
+                clang::VarDecl::StorageClass::SC_Auto,
                 nullptr
             ));
         }
@@ -127,13 +130,14 @@ clang::QualType OverloadSet::GetClangType(ClangUtil::ClangTU& TU, Analyzer& a) {
                     args.push_back(*it);
                 }
 				// If T is complex, then "this" is the second argument. Else it is the first.
-				auto self = TU.GetLLVMTypeFromClangType(TU.GetASTContext().getTypeDeclType(recdecl))(m);
+
+                auto self = TU.GetLLVMTypeFromClangType(TU.GetASTContext().getTypeDeclType(recdecl))(m)->getPointerTo();
 				if (sig->GetReturnType()->IsComplexType()) {
 					args.insert(args.begin() + 1, self);
 				} else {
 					args.insert(args.begin(), self);
 				}
-                return llvm::FunctionType::get(fty->getReturnType(), args, false);
+                return llvm::FunctionType::get(fty->getReturnType(), args, false)->getPointerTo();
             }, TU.MangleName(meth), true);// If an i8/i1 mismatch, fix it up for us.
             // The only statement is return f().
             std::vector<Codegen::Expression*> exprs;

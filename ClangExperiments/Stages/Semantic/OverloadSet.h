@@ -12,7 +12,6 @@ namespace Wide {
         class Function;
         class OverloadSet : public PrimitiveType {
             std::vector<Function*> funcs;
-            std::shared_ptr<llvm::Type*> ty;
             std::unordered_map<ClangUtil::ClangTU*, clang::QualType> clangtypes;
         public:
             OverloadSet(AST::FunctionOverloadSet* s, Analyzer& a);
