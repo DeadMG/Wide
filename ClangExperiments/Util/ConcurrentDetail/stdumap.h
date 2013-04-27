@@ -4,12 +4,14 @@
 #include <unordered_map>
 
 namespace Wide {
-    class Concurrency {
+    namespace Concurrency {
         template<typename K, typename V, typename H = std::hash<K>, typename E = std::equal_to<K>> class UnorderedMap {
             std::mutex m;
             std::unordered_map<K, V, H, E> umap;
         public:
-            std::pair<bool, typename std::unordered_map<K, V, H, E>::iterator> insert(std::pair<const K, V> val) {
+            typedef typename std::unordered_map<K, V, H, E>::iterator iterator;
+
+            std::pair<bool, iterator> insert(std::pair<const K, V> val) {
                 std::lock_guard<std::mutex> lock(m);
                 return umap.insert(std::move(val));
             }

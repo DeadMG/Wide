@@ -5,6 +5,7 @@
 #include <vector>
 #include <stdexcept>
 #include <functional>
+#include <string>
 
 namespace llvm {
     class Type;
