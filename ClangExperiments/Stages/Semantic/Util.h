@@ -7,7 +7,13 @@
 
 namespace clang {
     class QualType;
+#if _MSC_VER
     enum ExprValueKind : int;
+#else
+}
+#include <clang/Basic/Specifiers.h>
+namespace clang {
+#endif
 }
 
 namespace Wide {

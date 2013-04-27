@@ -11,7 +11,7 @@ namespace Wide {
         public:
             typedef typename std::unordered_map<K, V, H, E>::iterator iterator;
 
-            std::pair<bool, iterator> insert(std::pair<const K, V> val) {
+            std::pair<iterator, bool> insert(std::pair<const K, V> val) {
                 std::lock_guard<std::mutex> lock(m);
                 return umap.insert(std::move(val));
             }

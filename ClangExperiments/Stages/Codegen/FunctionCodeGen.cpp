@@ -21,7 +21,7 @@ llvm::Value* Function::GetParameter(unsigned i) {
 }
 void Function::EmitCode(llvm::Module* mod, llvm::LLVMContext& con, Generator& g) {
     llvm::Function* f = nullptr;
-    if (f = mod->getFunction(name)) {
+    if ((f = mod->getFunction(name))) {
         if (f->getType() == Type(mod))
             f = mod->getFunction(name);
         else {
