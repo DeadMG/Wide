@@ -10,6 +10,7 @@
 #include <deque>
 #include <vector>
 #include <unordered_set>
+#include <string>
 #include <functional>
 
 #pragma warning(push, 0)

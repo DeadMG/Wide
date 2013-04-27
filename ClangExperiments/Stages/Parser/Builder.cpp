@@ -3,7 +3,7 @@
 using namespace Wide;
 using namespace AST;
 
-template<typename F, typename T> auto ConcurrentUseArena(T&& t, F&& f) -> decltype(f(std::declval<Wide::Memory::Arena>())) {
+template<typename F, typename T> auto ConcurrentUseArena(T&& t, F&& f) -> decltype(f(std::declval<Wide::Memory::Arena&>())) {
     Wide::Memory::Arena a;
     t.try_pop(a);
     struct last {

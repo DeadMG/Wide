@@ -6,7 +6,7 @@
 #include <string>
 #include <functional>
 #include <unordered_set>
-#include "Analyzer.h"
+#include "ClangCommonState.h"
 
 namespace llvm {
     class Module;

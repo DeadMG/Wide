@@ -10,8 +10,8 @@ namespace Wide {
             std::deque<T> queue;
         public:
             Queue() {}
-            Queue(const Queue&) { static_assert(false, "Concurrent queue cannot be guaranteed to be movable or copyable."); }
-            Queue(Queue&&) { static_assert(false, "Concurrent queue cannot be guaranteed to be movable or copyable."); }
+            Queue(const Queue&) = delete;
+            Queue(Queue&&) = delete;
             template<typename Iterator> Queue(Iterator begin, Iterator end) : queue(begin, end) {}
 
             bool try_pop(T& t) {

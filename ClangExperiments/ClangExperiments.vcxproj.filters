@@ -168,6 +168,9 @@
     <ClInclude Include="Util\ConcurrentDetail\stdvector.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="Stages\Semantic\ClangCommonState.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="main.wide">

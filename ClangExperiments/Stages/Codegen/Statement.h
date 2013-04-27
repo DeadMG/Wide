@@ -6,12 +6,18 @@
 
 namespace llvm {
     class Value;
+#ifdef _MSC_VER
     template <bool preserveNames = true>
         class IRBuilderDefaultInserter;
     class ConstantFolder;
     template<bool preserveNames = true, typename T = ConstantFolder,
         typename Inserter = IRBuilderDefaultInserter<preserveNames> >
     class IRBuilder;
+#else
+}
+#include <llvm/IR/IRBuilder.h>
+namespace llvm {
+#endif
     class Module;
 }
 

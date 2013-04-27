@@ -116,6 +116,7 @@
     <ClInclude Include="Stages\LLVMOptions.h" />
     <ClInclude Include="Stages\Parser\AST.h" />
     <ClInclude Include="Stages\Semantic\Bool.h" />
+    <ClInclude Include="Stages\Semantic\ClangCommonState.h" />
     <ClInclude Include="Stages\Semantic\ClangInclude.h" />
     <ClInclude Include="Stages\Semantic\ClangNamespace.h" />
     <ClInclude Include="Stages\Semantic\ClangOverloadSet.h" />

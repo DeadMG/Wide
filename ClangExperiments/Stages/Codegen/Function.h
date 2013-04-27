@@ -5,6 +5,7 @@
 #include <vector>
 #include <functional>
 #include <unordered_map>
+#include <string>
 
 namespace llvm {
     class Type;

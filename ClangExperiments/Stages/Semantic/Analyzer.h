@@ -6,6 +6,7 @@
 #include "Util.h"
 #include "../ClangOptions.h"
 #include "../LLVMOptions.h"
+#include "ClangCommonState.h"
 
 #include <string>
 #include <unordered_map>
@@ -70,23 +71,8 @@ namespace Wide {
         class FunctionType;
         class ClangOverloadSet;
         class ClangTemplateClass;
-        class OverloadSet;
-       
+        class OverloadSet;       
         struct Result;
-        
-        struct ClangCommonState {
-
-            ClangCommonState(const Options::Clang& opts);
-            const Options::Clang* Options;
-            clang::FileManager FileManager;
-            std::string errors;
-            llvm::raw_string_ostream error_stream;
-            clang::DiagnosticsEngine engine;
-            std::unique_ptr<clang::TargetInfo> targetinfo;
-            clang::CompilerInstance ci;
-            clang::HeaderSearch hs;
-            llvm::DataLayout layout;
-        };
         struct VectorTypeHasher {
             std::size_t operator()(const std::vector<Type*>& t) const;
         };
