@@ -26,8 +26,7 @@ namespace Wide {
             Expression BuildRightShift(Expression lhs, Expression rhs, Analyzer& a);
             Expression BuildAssignment(Expression, Expression, Analyzer&);
             Expression BuildEQComparison(Expression lhs, Expression rhs, Analyzer& a);            
-            Expression BuildNEComparison(Expression lhs, Expression rhs, Analyzer& a);              
-            Expression BuildValueConstruction(std::vector<Expression> args, Analyzer& a);            
+            Expression BuildNEComparison(Expression lhs, Expression rhs, Analyzer& a);             
             Expression BuildLTComparison(Expression lhs, Expression rhs, Analyzer& a);
             Expression BuildLTEComparison(Expression lhs, Expression rhs, Analyzer& a);
             Expression BuildGTComparison(Expression lhs, Expression rhs, Analyzer& a);

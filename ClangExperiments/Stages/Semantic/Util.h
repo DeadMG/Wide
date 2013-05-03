@@ -22,7 +22,6 @@ namespace Wide {
         clang::ExprValueKind GetKindOfType(Type* t);
     }
     namespace ClangUtil {
-        std::string GetDataLayoutForTriple(std::string triple);
         struct ClangTypeHasher {
             std::size_t operator()(clang::QualType t) const;
         };

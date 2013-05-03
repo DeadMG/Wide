@@ -102,7 +102,7 @@ Using* Builder::CreateUsingDefinition(std::string name, Expression* val, Module*
     auto p = ConcurrentUseArena(arenas, [&](Wide::Memory::Arena& arena) {
         return arena.Allocate<Using>(std::move(name), val, m);
     });
-    auto ret = m->decls.insert(std::pair<const std::string, ModuleLevelDeclaration*>(p->identifier, p));
+    auto ret = m->decls.insert(std::pair<const std::string, ModuleLevelDeclaration*>(p->name, p));
     if (!ret.second)
         throw std::runtime_error("Attempted to create a using, but there was already another declaration in that slot.");
     return p;
@@ -122,7 +122,30 @@ Module* Builder::CreateModule(std::string val, Module* m) {
     return p;
 }
 
-Function* Builder::CreateFunction(std::string name, std::vector<Statement*> body, std::vector<Statement*> prolog, Lexer::Range r, Module* m, std::vector<Function::FunctionArgument> args) {
+void Builder::CreateFunction(
+    std::string name, 
+    std::vector<Statement*> body, 
+    std::vector<Statement*> prolog, 
+    Lexer::Range r,
+    Type* p, 
+    std::vector<Function::FunctionArgument> args) 
+{
+    if (p->Functions.find(name) != p->Functions.end())
+        p->Functions[name]->functions.push_back(ConcurrentUseArena(arenas, [&](Wide::Memory::Arena& arena) -> AST::Function* {
+            return arena.Allocate<Function>(name, std::move(body), std::move(prolog), r, std::move(args), p);
+        }));
+    else {
+        auto pair = ConcurrentUseArena(arenas, [&](Wide::Memory::Arena& arena) {
+            return std::make_pair(
+                arena.Allocate<Function>(name, std::move(body), std::move(prolog), r, std::move(args), p),
+                arena.Allocate<FunctionOverloadSet>(name, p));
+        });
+        p->Functions[name] = pair.second;
+        pair.second->functions.push_back(pair.first);
+    }
+}
+
+void Builder::CreateFunction(std::string name, std::vector<Statement*> body, std::vector<Statement*> prolog, Lexer::Range r, Module* m, std::vector<Function::FunctionArgument> args) {
     auto p = ConcurrentUseArena(arenas, [&](Wide::Memory::Arena& arena) {
         return std::make_pair(
             arena.Allocate<Function>(name, std::move(body), std::move(prolog), r, std::move(args), m), 
@@ -132,12 +155,12 @@ Function* Builder::CreateFunction(std::string name, std::vector<Statement*> body
     if (!ret.second) {
         if (auto ovrset = dynamic_cast<AST::FunctionOverloadSet*>(ret.first->second)) {
             ovrset->functions.push_back(p.first);
-            return p.first;
+            return;
         } else
-            throw std::runtime_error("Attempted to insert a function, but there was alreadya nother declaration in that slot that was not a function overload set.");
+            throw std::runtime_error("Attempted to insert a function, but there was already another declaration in that slot that was not a function overload set.");
     }
     p.second->functions.push_back(p.first);
-    return p.first;
+    return;
 }
 
 std::vector<Function::FunctionArgument> Builder::CreateFunctionArgumentGroup() {
@@ -239,4 +262,24 @@ LTEExpression* Builder::CreateLTEExpression(Expression* lhs, Expression* rhs) {
     return ConcurrentUseArena(arenas, [&](Wide::Memory::Arena& arena) {
         return arena.Allocate<LTEExpression>(lhs, rhs);
     });
+}
+
+Type* Builder::CreateType(std::string name, Module* higher) {
+    auto ty = ConcurrentUseArena(arenas, [&](Wide::Memory::Arena& arena) {
+        return arena.Allocate<Type>(higher, name);
+    });
+    auto result = higher->decls.insert(std::make_pair(name, ty));
+    if (!result.second)
+        throw std::runtime_error("Attempted to insert a type into a module, but another type declaration already existed there.");
+    return ty;
+}
+
+ThisExpression* Builder::CreateThisExpression(Lexer::Range loc) {
+    return ConcurrentUseArena(arenas, [&](Wide::Memory::Arena& arena) {
+        return arena.Allocate<ThisExpression>(loc);
+    });
+}
+
+void Builder::AddTypeField(Type* t, TypeLevelDeclaration* decl) {
+    t->variables.push_back(decl);
 }

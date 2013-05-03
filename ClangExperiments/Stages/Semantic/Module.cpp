@@ -3,6 +3,8 @@
 #include "Analyzer.h"
 #include "Function.h"
 #include "OverloadSet.h"
+#include "ConstructorType.h"
+#include "UserDefinedType.h"
 
 #pragma warning(push, 0)
 
@@ -32,9 +34,12 @@ Expression Module::AccessMember(Expression val, std::string name, Analyzer& a) {
             return a.AnalyzeExpression(this, usedecl->expr);
         }
         if (auto overdecl = dynamic_cast<AST::FunctionOverloadSet*>(decl)) {
+            return a.GetOverloadSet(overdecl)->BuildValueConstruction(std::vector<Expression>(), a);          
+        }
+        if (auto tydecl = dynamic_cast<AST::Type*>(decl)) {
             Expression r;
-            r.t = a.GetOverloadSet(overdecl);
-            r.Expr = r.t->BuildValueConstruction(std::vector<Expression>(), a).Expr;
+            r.t = a.GetConstructorType(a.GetUDT(tydecl));
+            r.Expr = nullptr;
             return r;
         }
         throw std::runtime_error("Attempted to access a member of a Wide module that was not either another module, or a function.");
@@ -43,6 +48,6 @@ Expression Module::AccessMember(Expression val, std::string name, Analyzer& a) {
         return SpecialMembers[name];
     }
     if (m->higher)
-        return a.GetWideModule(m->higher)->AccessMember(val, name, a);
+        return a.GetDeclContext(m->higher)->AccessMember(val, name, a);
     throw std::runtime_error("Attempted to access a member of a Wide module that did not exist.");
 }

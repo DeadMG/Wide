@@ -1,16 +1,16 @@
-using test := cpp("WideLibrary/test.h");
+using std := cpp("WideLibrary/test.h").std;
 Main() {
-    test.f();
-	x := test.std.vector!(int8)();
-	test.std.sort(x.begin(), x.end(), get_helper());
+    fun := sample();
+    fun.y = 66;
+    fun.x = 65;
+    fun = fun;
 }
-get_helper() {
-    test.std.cout << "get_helper";
-	return helper;
-}
-helper(int8 lhs, int8 rhs) {
-    return true;
-}
-helper(test.std.string lhs, test.std.string rhs) {
-    return lhs;
+type sample {
+    x := int8();
+    y := int8();
+    operator=(sample other) {
+        x = other.x;
+        y = other.y;
+        std.cout << x << y;
+    }
 }

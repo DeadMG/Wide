@@ -27,6 +27,9 @@ namespace Wide {
             Exclaim,
             While,
             NotEqCmp,
+            This,
+            Type,
+            Operator,
 
             LT,
             LTE,

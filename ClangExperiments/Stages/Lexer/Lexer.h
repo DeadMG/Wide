@@ -76,6 +76,9 @@ namespace Wide {
                 keywords["if"] = TokenType::If;
                 keywords["else"] = TokenType::Else;
                 keywords["while"] = TokenType::While;
+                keywords["this"] = TokenType::This;
+                keywords["type"] = TokenType::Type;
+                keywords["operator"] = TokenType::Operator;
             }
             template<typename Iterator, typename Cont> Position increment(Position& p, Iterator& i, Cont&& cont) {
                 Position out(p);
@@ -240,7 +243,7 @@ namespace Wide {
                     }
                 }
                 if (args->singles.find(current()) != args->singles.end()) {
-                    Token t(current_position, args->singles[current()], std::string(current_iterator, current_iterator+ 1));
+                    Token t(current_position, args->singles[current()], std::string(current_iterator - 1, current_iterator));
                     args->increment(current_position, current_iterator, iterator_putbacks);
                     return t;
                 }

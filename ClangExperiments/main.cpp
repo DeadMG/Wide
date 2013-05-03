@@ -14,6 +14,8 @@ int main()
     ClangOpts.HeaderSearchOptions->AddPath(MinGWInstallPath + "include\\c++\\4.6.3\\i686-w64-mingw32", clang::frontend::IncludeDirGroup::CXXSystem, false, false);
     ClangOpts.HeaderSearchOptions->AddPath(MinGWInstallPath + "i686-w64-mingw32\\include", clang::frontend::IncludeDirGroup::CXXSystem, false, false);
 
+    //LLVMOpts.Passes.push_back(Wide::Options::CreateDeadCodeElimination());
+
     std::vector<std::string> files;
     files.push_back("main.wide");
     Wide::Compile(ClangOpts, LLVMOpts, files);

@@ -57,6 +57,8 @@ namespace Wide {
         struct Expression;
         struct ModuleLevelDeclaration;
         struct FunctionOverloadSet;
+        struct Type;
+        struct DeclContext;
     };
     namespace Semantic {
         struct Expression;
@@ -72,6 +74,7 @@ namespace Wide {
         class ClangOverloadSet;
         class ClangTemplateClass;
         class OverloadSet;       
+        class UserDefinedType;
         struct Result;
         struct VectorTypeHasher {
             std::size_t operator()(const std::vector<Type*>& t) const;
@@ -81,13 +84,16 @@ namespace Wide {
             std::unordered_map<clang::QualType, Type*, ClangUtil::ClangTypeHasher> ClangTypes;
             std::unordered_map<clang::DeclContext*, ClangNamespace*> ClangNamespaces;
             std::unordered_map<Type*, std::unordered_map<std::vector<Type*>, FunctionType*, VectorTypeHasher>> FunctionTypes;
-            std::unordered_map<AST::Module*, Module*> WideModules;
             std::unordered_map<AST::Function*, Function*> WideFunctions;
             std::unordered_map<Type*, LvalueType*> LvalueTypes;
-            std::unordered_map<Type*, RvalueType*> RvalueTypes;
+            std::unordered_map<Type*, Type*> RvalueTypes;
             std::unordered_map<Type*, ConstructorType*> ConstructorTypes;
             std::unordered_map<clang::ClassTemplateDecl*, ClangTemplateClass*> ClangTemplateClasses;
             std::unordered_map<AST::FunctionOverloadSet*, OverloadSet*> OverloadSets;
+
+            std::unordered_map<AST::DeclContext*, Type*> DeclContexts;
+            std::unordered_map<AST::Type*, UserDefinedType*> UDTs;
+            std::unordered_map<AST::Module*, Module*> WideModules;
 
             ClangCommonState ccs;
 
@@ -110,12 +116,14 @@ namespace Wide {
             ClangNamespace* GetClangNamespace(ClangUtil::ClangTU& from, clang::DeclContext* dc);
             FunctionType* GetFunctionType(Type* ret, const std::vector<Type*>& t);
             Module* GetWideModule(AST::Module* m);
-            Function* GetWideFunction(AST::Function* p);
+            Function* GetWideFunction(AST::Function* p, Type* nonstatic = nullptr);
             LvalueType* GetLvalueType(Type* t);
-            RvalueType* GetRvalueType(Type* t);
+            Type* GetRvalueType(Type* t);
             ConstructorType* GetConstructorType(Type* t);
             ClangTemplateClass* GetClangTemplateClass(ClangUtil::ClangTU& from, clang::ClassTemplateDecl*);
-            OverloadSet* GetOverloadSet(AST::FunctionOverloadSet* set);
+            OverloadSet* GetOverloadSet(AST::FunctionOverloadSet* set, Type* nonstatic = nullptr);
+            UserDefinedType* GetUDT(AST::Type*);
+            Type* GetDeclContext(AST::DeclContext* con);
             
             Expression AnalyzeExpression(Type* t, AST::Expression* e);
             Expression LookupIdentifier(AST::ModuleLevelDeclaration* decl, std::string ident);

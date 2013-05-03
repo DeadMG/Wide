@@ -95,6 +95,7 @@
     <ClCompile Include="Stages\Semantic\PrimitiveType.cpp" />
     <ClCompile Include="Stages\Semantic\RvalueType.cpp" />
     <ClCompile Include="Stages\Semantic\Type.cpp" />
+    <ClCompile Include="Stages\Semantic\UserDefinedType.cpp" />
     <ClCompile Include="Stages\Semantic\Util.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="Stages\Parser\Builder.cpp" />
@@ -128,6 +129,7 @@
     <ClInclude Include="Stages\Semantic\IntegralType.h" />
     <ClInclude Include="Stages\Semantic\PrimitiveType.h" />
     <ClInclude Include="Stages\Semantic\RvalueType.h" />
+    <ClInclude Include="Stages\Semantic\UserDefinedType.h" />
     <ClInclude Include="Stages\Semantic\Util.h" />
     <ClInclude Include="Stages\Parser\Builder.h" />
     <ClInclude Include="Stages\Codegen\Expression.h" />
@@ -161,10 +163,6 @@
     <ClInclude Include="Util\MakeUnique.h" />
     <ClInclude Include="Util\MemoryArena.h" />
     <ClInclude Include="Stages\Wide.h" />
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="main.wide" />
-    <None Include="WideLibrary\stdlib.wide" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

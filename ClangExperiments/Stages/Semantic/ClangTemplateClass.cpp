@@ -63,7 +63,7 @@ Expression ClangTemplateClass::BuildMetaCall(Expression, std::vector<Expression>
         if (from->GetSema().InstantiateClassTemplateSpecialization(loc, spec, tsk))
             throw std::runtime_error("Could not instantiate resulting class template specialization.");
 
-    from->GetSema().InstantiateClassTemplateSpecializationMembers(loc, llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(spec->getDefinition()), tsk);
+    //from->GetSema().InstantiateClassTemplateSpecializationMembers(loc, llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(spec->getDefinition()), tsk);
     
     Expression out;
     out.Expr = nullptr;

@@ -21,12 +21,37 @@ namespace Wide {
             Expression(Lexer::Range r)
                 : Statement(r) {}
         };
+        struct ThisExpression : Expression {
+            ThisExpression(Lexer::Range r)
+                : Expression(r) {}
+        };
+        struct DeclContext;
         struct ModuleLevelDeclaration {
-            ModuleLevelDeclaration(Module* above)
-                : higher(above) {}
-            Module* higher;
+            ModuleLevelDeclaration(DeclContext* above, std::string nam)
+                : higher(above), name(std::move(nam)) {}
+            DeclContext* higher;
             virtual ~ModuleLevelDeclaration() {} 
-            virtual std::string GetName() = 0; 
+            std::string GetName() { return name; }
+            std::string name;
+        };
+        struct DeclContext : public ModuleLevelDeclaration {
+            DeclContext(DeclContext* nested, std::string name)
+                : ModuleLevelDeclaration(nested, std::move(name)) {}
+        };
+        struct Module : public DeclContext {
+            Module(std::string nam, Module* parent)
+                : DeclContext(parent, std::move(nam)) {}
+            Concurrency::UnorderedMap<std::string, ModuleLevelDeclaration*> decls;
+        };
+        struct TypeLevelDeclaration {
+            virtual ~TypeLevelDeclaration() {}
+            virtual std::string GetName() = 0;
+        };
+        struct FunctionOverloadSet;
+        struct Type : public DeclContext {
+            Type(DeclContext* above, std::string name) : DeclContext(above, name) {}
+            std::vector<TypeLevelDeclaration*> variables;
+            std::unordered_map<std::string, FunctionOverloadSet*> Functions;
         };
         struct IdentifierExpr : Expression {
             IdentifierExpr(std::string nam, Lexer::Range loc)
@@ -60,20 +85,16 @@ namespace Wide {
             AssignmentExpr(Expression* l, Expression* r) : BinaryExpression(l, r) {}
         };
         struct Function : ModuleLevelDeclaration {
-            std::string name;
             struct FunctionArgument {
                  // May be null
                 Expression* type;
                 std::string name;
             };
-            Function(std::string nam, std::vector<Statement*> b, std::vector<Statement*> prolog, Lexer::Range loc, std::vector<FunctionArgument> ar, Module* m)
-                : name(std::move(nam)), prolog(std::move(prolog)), statements(std::move(b)), location(loc), args(std::move(ar)), ModuleLevelDeclaration(m) {}
+            Function(std::string nam, std::vector<Statement*> b, std::vector<Statement*> prolog, Lexer::Range loc, std::vector<FunctionArgument> ar, DeclContext* m)
+                : prolog(std::move(prolog)), statements(std::move(b)), location(loc), args(std::move(ar)), ModuleLevelDeclaration(m, std::move(nam)) {}
             std::vector<FunctionArgument> args;
             std::vector<Statement*> prolog;
             std::vector<Statement*> statements;
-            std::string GetName() {
-                return name;
-            }
             Lexer::Range location;
         };
         struct FunctionCallExpr : Expression {
@@ -82,30 +103,18 @@ namespace Wide {
             Expression* callee;
             std::vector<Expression*> args;
         };
-        struct Module : public ModuleLevelDeclaration {
-            std::string name;
-            Module(std::string nam, Module* parent)
-                : name(std::move(nam)), ModuleLevelDeclaration(parent) {}
-            std::string GetName() { return name; }
-            Concurrency::UnorderedMap<std::string, ModuleLevelDeclaration*> decls;
-        };
-        struct FunctionOverloadSet : public ModuleLevelDeclaration {
-            FunctionOverloadSet(std::string nam, Module* p)
-                : name(std::move(nam)), ModuleLevelDeclaration(p) {}
-            virtual std::string GetName() { return name; }
-            std::string name;
+        struct FunctionOverloadSet : public ModuleLevelDeclaration, public TypeLevelDeclaration {
+            FunctionOverloadSet(std::string nam, DeclContext* p)
+                : ModuleLevelDeclaration(p, std::move(nam)) {}
             Concurrency::Vector<Function*> functions;
+            virtual std::string GetName() { return ModuleLevelDeclaration::GetName(); }
         };
         /*struct QualifiedName {
             std::vector<std::string> components;
         };*/
         struct Using : public ModuleLevelDeclaration {
             Using(std::string name, Expression* ex, Module* m)
-                : identifier(std::move(name)), expr(ex), ModuleLevelDeclaration(m) {}
-            std::string GetName() {
-                return identifier;
-            }
-            std::string identifier;
+                : expr(ex), ModuleLevelDeclaration(m, std::move(name)) {}
             Expression* expr;
         };
         struct Return : public Statement {
@@ -113,9 +122,10 @@ namespace Wide {
             Return(Expression* e, Lexer::Range r) : RetExpr(e), Statement(r) {}
             Expression* RetExpr;
         };
-        struct VariableStatement : public Statement {
+        struct VariableStatement : public Statement, TypeLevelDeclaration {
             VariableStatement(std::string nam, Expression* expr, Lexer::Range r)
                 : name(std::move(nam)), initializer(expr), Statement(r) {}
+            virtual std::string GetName() { return name; }
             std::string name;
             Expression* initializer;
         };

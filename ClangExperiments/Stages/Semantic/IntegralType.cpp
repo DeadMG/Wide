@@ -40,7 +40,7 @@ Expression IntegralType::BuildValueConstruction(std::vector<Expression> args, An
 }
 
 clang::QualType IntegralType::GetClangType(ClangUtil::ClangTU& TU, Analyzer& a) {
-    return TU.GetASTContext().CharTy;
+    return TU.GetASTContext().UnsignedCharTy;
 }
 std::function<llvm::Type*(llvm::Module*)> IntegralType::GetLLVMType(Analyzer& a) {
     return [](llvm::Module* m) {

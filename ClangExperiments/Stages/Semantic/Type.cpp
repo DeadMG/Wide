@@ -33,3 +33,12 @@ Expression Type::BuildLvalueConstruction(std::vector<Expression> args, Analyzer&
     out.Expr = a.gen->CreateChainExpression(BuildInplaceConstruction(mem, args, a), mem);
     return out;
 }
+
+Expression Type::BuildValueConstruction(std::vector<Expression> args, Analyzer& a) {
+    if (IsComplexType())
+        throw std::runtime_error("Internal compiler error: Attempted to value construct a complex UDT.");
+    if (args.size() == 1 && args[0].t == this)
+        return args[0];
+    auto mem = a.gen->CreateVariable(GetLLVMType(a));
+    return Expression(this, a.gen->CreateLoad(a.gen->CreateChainExpression(BuildInplaceConstruction(mem, std::move(args), a), mem)));
+}

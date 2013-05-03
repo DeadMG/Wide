@@ -57,6 +57,16 @@ ClangType::ClangType(ClangUtil::ClangTU* src, clang::QualType t)
         }
     };
 
+    if (!recdecl->hasDefinition()) {
+        auto spec = llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(recdecl);
+        if (!spec)
+            throw std::runtime_error("Attempt to use a Clang type which was incomplete.");
+        auto loc = from->GetFileEnd();
+        auto tsk = clang::TemplateSpecializationKind::TSK_ExplicitInstantiationDefinition;
+        from->GetSema().InstantiateClassTemplateSpecialization(loc, spec, tsk);
+        //from->GetSema().InstantiateClassTemplateSpecializationMembers(loc, llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(spec->getDefinition()), tsk);
+    }
+
     ProcessImplicitSpecialMember(
         [&]{ return recdecl->needsImplicitCopyAssignment(); },
         [&]{ return from->GetSema().DeclareImplicitCopyAssignment(recdecl); },
@@ -250,18 +260,6 @@ Expression ClangType::BuildGTEComparison(Expression lhs, Expression rhs, Analyze
     return BuildOverloadedOperator(lhs, rhs, a, clang::OverloadedOperatorKind::OO_GreaterEqual, clang::BinaryOperatorKind::BO_GE);
 }
            
-Expression ClangType::BuildValueConstruction(std::vector<Expression> args, Analyzer& a) {
-    // Presumably, args[0].t != this
-    if (args[0].t == this)
-        return args[0];
-    
-    Expression out;
-    out.t = this;
-    auto mem = a.gen->CreateVariable(GetLLVMType(a));
-    out.Expr = a.gen->CreateLoad(a.gen->CreateChainExpression(BuildInplaceConstruction(mem, args, a), mem));
-    return out;
-}
-
 Codegen::Expression* ClangType::BuildInplaceConstruction(Codegen::Expression* mem, std::vector<Expression> args, Analyzer& a) {    
     if (args.size() == 1 && args[0].t == this) {
         return a.gen->CreateStore(mem, args[0].Expr);
@@ -383,3 +381,4 @@ Wide::Codegen::Expression* ClangType::BuildBooleanConversion(Expression self, An
         return e.Expr;
     throw std::runtime_error("Attempted to contextually convert to bool, but Clang gave back a function that did not return a bool. WTF.");
 }
+

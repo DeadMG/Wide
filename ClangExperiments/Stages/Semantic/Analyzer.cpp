@@ -19,6 +19,7 @@
 #include "Bool.h"
 #include "ClangTemplateClass.h"
 #include "OverloadSet.h"
+#include "UserDefinedType.h"
 #include <sstream>
 #include <iostream>
 #include <unordered_set>
@@ -60,7 +61,7 @@ Analyzer::Analyzer(const Options::Clang& opts, Codegen::Generator* g)
 }
 
 void Analyzer::operator()(AST::Module* GlobalModule) {
-    GetWideModule(GlobalModule)->AddSpecialMember("cpp", Expression(arena.Allocate<ClangIncludeEntity>(*this), nullptr));
+    GetWideModule(GlobalModule)->AddSpecialMember("cpp", Expression(arena.Allocate<ClangIncludeEntity>(), nullptr));
     GetWideModule(GlobalModule)->AddSpecialMember("void", Expression(GetConstructorType(Void = arena.Allocate<VoidType>()), nullptr));
     GetWideModule(GlobalModule)->AddSpecialMember("global", Expression(GetWideModule(GlobalModule), nullptr));
     GetWideModule(GlobalModule)->AddSpecialMember("int8", Expression(GetConstructorType(Int8 = arena.Allocate<IntegralType>(8)), nullptr));
@@ -157,6 +158,15 @@ Expression Analyzer::AnalyzeExpression(Type* t, AST::Expression* e) {
     if (auto integer = dynamic_cast<AST::IntegerExpression*>(e)) {
         return Expression( this->Int8, gen->CreateInt8Expression(std::stol(integer->integral_value)));
     }
+    if (auto self = dynamic_cast<AST::ThisExpression*>(e)) {
+        return t->AccessMember(Expression(), "this", *this);
+    }
+
+    if (auto ge = dynamic_cast<AST::LTExpression*>(e)) {
+        auto lhs = AnalyzeExpression(t, ge->lhs);
+        auto rhs = AnalyzeExpression(t, ge->rhs);
+        return lhs.t->BuildLTComparison(lhs, rhs, *this);
+    }
 
     throw std::runtime_error("Unrecognized AST node");
 }
@@ -164,13 +174,7 @@ Expression Analyzer::AnalyzeExpression(Type* t, AST::Expression* e) {
 ClangUtil::ClangTU* Analyzer::LoadCPPHeader(std::string file) {
     if (headers.find(file) != headers.end())
         return &headers.find(file)->second;
-    auto lam = [&](std::string err) {
-        std::cout << err;
-    };
-   // if (gen)
-        headers.insert(std::make_pair(file, ClangUtil::ClangTU(gen->context, file, ccs)));
-   // else
-   //     headers.insert(std::make_pair(file, ClangUtil::ClangTU(gen->context, file, ccs)));
+    headers.insert(std::make_pair(file, ClangUtil::ClangTU(gen->context, file, ccs)));
     auto ptr = &headers.find(file)->second;
     return ptr;
 }
@@ -224,16 +228,18 @@ FunctionType* Analyzer::GetFunctionType(Type* ret, const std::vector<Type*>& t) 
     return FunctionTypes[ret][t] = arena.Allocate<FunctionType>(ret, t);
 }
 
-Function* Analyzer::GetWideFunction(AST::Function* p) {
+Function* Analyzer::GetWideFunction(AST::Function* p, Type* nonstatic) {
     if (WideFunctions.find(p) != WideFunctions.end())
         return WideFunctions[p];
-    return WideFunctions[p] = arena.Allocate<Function>(std::vector<Type*>(), p, *this);
+    return WideFunctions[p] = arena.Allocate<Function>(std::vector<Type*>(), p, *this, nonstatic);
 }
 
 Module* Analyzer::GetWideModule(AST::Module* p) {
     if (WideModules.find(p) != WideModules.end())
         return WideModules[p];
-    return WideModules[p] = arena.Allocate<Module>(p);
+    auto mod = WideModules[p] = arena.Allocate<Module>(p);
+    DeclContexts[p] = mod;
+    return mod;
 }
 
 LvalueType* Analyzer::GetLvalueType(Type* t) {
@@ -257,17 +263,19 @@ LvalueType* Analyzer::GetLvalueType(Type* t) {
     return LvalueTypes[t] = arena.Allocate<LvalueType>(t);
 }
 
-RvalueType* Analyzer::GetRvalueType(Type* t) {    
+Type* Analyzer::GetRvalueType(Type* t) {    
     if (t == Void)
         throw std::runtime_error("Can't get an rvalue ref to void.");
-
+    
     if (RvalueTypes.find(t) != RvalueTypes.end())
         return RvalueTypes[t];
-
+    
     // Prefer hash lookup to dynamic_cast.
-    if (auto rval = dynamic_cast<RvalueType*>(t)) {
+    if (auto rval = dynamic_cast<RvalueType*>(t))
         return RvalueTypes[t] = rval;
-    }
+
+    if (auto lval = dynamic_cast<LvalueType*>(t))
+        return RvalueTypes[t] = lval;
 
     return RvalueTypes[t] = arena.Allocate<RvalueType>(t);
 }
@@ -284,13 +292,31 @@ ClangTemplateClass* Analyzer::GetClangTemplateClass(ClangUtil::ClangTU& from, cl
     return ClangTemplateClasses[decl] = arena.Allocate<ClangTemplateClass>(decl, &from);
 }
 
-OverloadSet* Analyzer::GetOverloadSet(AST::FunctionOverloadSet* set) {
+OverloadSet* Analyzer::GetOverloadSet(AST::FunctionOverloadSet* set, Type* t) {
     if (OverloadSets.find(set) != OverloadSets.end())
         return OverloadSets[set];
-    return OverloadSets[set] = arena.Allocate<OverloadSet>(set, *this);
+    return OverloadSets[set] = arena.Allocate<OverloadSet>(set, *this, t);
 }
 void Analyzer::AddClangType(clang::QualType t, Type* match) {
     if (ClangTypes.find(t) != ClangTypes.end())
         throw std::runtime_error("Attempt to AddClangType on a type that already had a Clang type.");
     ClangTypes[t] = match;
+}
+
+UserDefinedType* Analyzer::GetUDT(AST::Type* t) {
+    if (UDTs.find(t) != UDTs.end())
+        return UDTs[t];
+    auto ty = UDTs[t] = arena.Allocate<UserDefinedType>(t, *this);
+    DeclContexts[t] = ty;
+    return ty;
+}
+
+Type* Analyzer::GetDeclContext(AST::DeclContext* con) {
+    if (DeclContexts.find(con) != DeclContexts.end())
+        return DeclContexts[con];
+    if (auto mod = dynamic_cast<AST::Module*>(con))
+        return DeclContexts[con] = GetWideModule(mod);
+    if (auto ty = dynamic_cast<AST::Type*>(con))
+        return DeclContexts[con] = GetUDT(ty);
+    throw std::runtime_error("Encountered a DeclContext that was not a type or module.");
 }

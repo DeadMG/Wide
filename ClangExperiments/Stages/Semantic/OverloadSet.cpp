@@ -7,6 +7,7 @@
 #include "ClangTU.h"
 #include <array>
 #include <sstream>
+#include "LvalueType.h"
 #include "Analyzer.h"
 #include "../Codegen/Generator.h"
 #include "../Codegen/Function.h"
@@ -27,29 +28,51 @@
 using namespace Wide;
 using namespace Semantic;
 
-OverloadSet::OverloadSet(AST::FunctionOverloadSet* s, Analyzer& a) {
+OverloadSet::OverloadSet(AST::FunctionOverloadSet* s, Analyzer& a, Type* mem) {
     for(auto x : s->functions)
-        funcs.push_back(a.GetWideFunction(x));
+        funcs.push_back(a.GetWideFunction(x, mem));
+    nonstatic = mem;
 }
 std::function<llvm::Type*(llvm::Module*)> OverloadSet::GetLLVMType(Analyzer& a) {
     // Have to cache result - not fun.
     auto g = a.gen;
-    return [=](llvm::Module* m) -> llvm::Type* {
-        std::stringstream stream;
-        stream << "class.__" << this;
-        llvm::Type* t = nullptr;
-        if (m->getTypeByName(stream.str()))
-            t = m->getTypeByName(stream.str());
-        else {
-            auto int8ty = llvm::IntegerType::getInt8Ty(m->getContext());
-            t = llvm::StructType::create(stream.str(), int8ty, nullptr);
-        }
-        g->AddEliminateType(t);
-        return t;
-    };
+    std::stringstream stream;
+    stream << "struct.__" << this;
+    auto str = stream.str();
+    if (!nonstatic) {
+        return [=](llvm::Module* m) -> llvm::Type* {
+            llvm::Type* t = nullptr;
+            if (m->getTypeByName(str))
+                t = m->getTypeByName(str);
+            else {
+                auto int8ty = llvm::IntegerType::getInt8Ty(m->getContext());
+                t = llvm::StructType::create(str, int8ty, nullptr);
+            }
+            g->AddEliminateType(t);
+            return t;
+        };
+    } else {
+        auto ty = nonstatic->GetLLVMType(a);
+        return [=](llvm::Module* m) -> llvm::Type* {
+            llvm::Type* t = nullptr;
+            if (m->getTypeByName(str))
+                t = m->getTypeByName(str);
+            else {
+                t = llvm::StructType::create(str, ty(m)->getPointerTo(), nullptr);
+            }
+            return t;
+        };
+    }
 }
 Expression OverloadSet::BuildCall(Expression e, std::vector<Expression> args, Analyzer& a) {
     std::vector<Function*> ViableCandidates;
+
+    if (nonstatic) {
+        e = e.t->BuildValue(e, a);
+        e.t = a.GetLvalueType(nonstatic);
+        e.Expr = a.gen->CreateFieldExpression(e.Expr, 0);
+        args.insert(args.begin(), e);
+    }
 
     for(auto x : funcs) {
         if (x->GetSignature(a)->GetArguments().size() == args.size())
@@ -75,14 +98,25 @@ Expression OverloadSet::BuildValueConstruction(std::vector<Expression> args, Ana
             return args[0].t->BuildValue(args[0], a);
         if (args[0].t == this)
             return args[0];
-        throw std::runtime_error("Can only construct overload set from another overload set of the same type.");
+        if (nonstatic) {
+            if (args[0].t->IsReference(nonstatic)) {
+                auto var = a.gen->CreateVariable(GetLLVMType(a));
+                auto store = a.gen->CreateStore(a.gen->CreateFieldExpression(var, 0), args[0].Expr);
+                return Expression(this, a.gen->CreateChainExpression(store, a.gen->CreateLoad(var)));
+            }
+        }
+        throw std::runtime_error("Can only construct overload set from another overload set of the same type, or a reference to T.");
     }
+    if (nonstatic)
+        throw std::runtime_error("Cannot default-construct a non-static overload set.");
     Expression out;
     out.t = this;
     out.Expr = a.gen->CreateNull(GetLLVMType(a));
     return out;
 }
 clang::QualType OverloadSet::GetClangType(ClangUtil::ClangTU& TU, Analyzer& a) {
+    //if (nonstatic) throw std::runtime_error("Currently don't support Clang codegen for non-static overload sets.");
+
     if (clangtypes.find(&TU) != clangtypes.end())
         return clangtypes[&TU];
 
@@ -90,13 +124,38 @@ clang::QualType OverloadSet::GetClangType(ClangUtil::ClangTU& TU, Analyzer& a) {
     stream << "__" << this;
     auto recdecl = clang::CXXRecordDecl::Create(TU.GetASTContext(), clang::TagDecl::TagKind::TTK_Struct, TU.GetDeclContext(), clang::SourceLocation(), clang::SourceLocation(), TU.GetIdentifierInfo(stream.str()));
     recdecl->startDefinition();
+    if (nonstatic) {
+        auto var = clang::FieldDecl::Create(
+            TU.GetASTContext(),
+            recdecl,
+            clang::SourceLocation(),
+            clang::SourceLocation(),
+            TU.GetIdentifierInfo("__this"),
+            TU.GetASTContext().getPointerType(nonstatic->GetClangType(TU, a)),
+            nullptr,
+            nullptr,
+            false,
+            clang::InClassInitStyle::ICIS_NoInit
+        );
+        var->setAccess(clang::AccessSpecifier::AS_public);
+        recdecl->addDecl(var);
+    }
     for(auto&& f : funcs) {
+        // Instead of this, they will take a pointer to the recdecl here.
+        // Wide member function types take "this" into account, whereas Clang ones do not.
+        auto sig = f->GetSignature(a);
+        if (nonstatic) {
+            auto ret = sig->GetReturnType();
+            auto args = sig->GetArguments();
+            args.erase(args.begin());
+            sig = a.GetFunctionType(ret, args);
+        }
         auto meth = clang::CXXMethodDecl::Create(
             TU.GetASTContext(), 
             recdecl, 
             clang::SourceLocation(), 
             clang::DeclarationNameInfo(TU.GetASTContext().DeclarationNames.getCXXOperatorName(clang::OverloadedOperatorKind::OO_Call), clang::SourceLocation()),
-            f->GetClangType(TU, a),
+            sig->GetClangType(TU, a),
             0,
             clang::FunctionDecl::StorageClass::SC_Extern,
             false,
@@ -106,7 +165,7 @@ clang::QualType OverloadSet::GetClangType(ClangUtil::ClangTU& TU, Analyzer& a) {
         assert(!meth->isStatic());
         meth->setAccess(clang::AccessSpecifier::AS_public);
         std::vector<clang::ParmVarDecl*> decls;
-        for(auto&& arg : f->GetSignature(a)->GetArguments()) {
+        for(auto&& arg : sig->GetArguments()) {
             decls.push_back(clang::ParmVarDecl::Create(TU.GetASTContext(),
                 meth,
                 clang::SourceLocation(),
@@ -122,7 +181,6 @@ clang::QualType OverloadSet::GetClangType(ClangUtil::ClangTU& TU, Analyzer& a) {
         recdecl->addDecl(meth);
         // If this is the first time, then we need to define the trampolines.
         if (clangtypes.empty()) {
-            auto sig = f->GetSignature(a);
             auto trampoline = a.gen->CreateFunction([=, &a, &TU](llvm::Module* m) -> llvm::Type* {
                 auto fty = llvm::dyn_cast<llvm::FunctionType>(sig->GetLLVMType(a)(m)->getPointerElementType());
                 std::vector<llvm::Type*> args;
@@ -130,7 +188,6 @@ clang::QualType OverloadSet::GetClangType(ClangUtil::ClangTU& TU, Analyzer& a) {
                     args.push_back(*it);
                 }
 				// If T is complex, then "this" is the second argument. Else it is the first.
-
                 auto self = TU.GetLLVMTypeFromClangType(TU.GetASTContext().getTypeDeclType(recdecl))(m)->getPointerTo();
 				if (sig->GetReturnType()->IsComplexType()) {
 					args.insert(args.begin() + 1, self);
@@ -145,17 +202,22 @@ clang::QualType OverloadSet::GetClangType(ClangUtil::ClangTU& TU, Analyzer& a) {
             // It's either "All except the first" or "All except the second", depending on whether or not the return type is complex.
             if (sig->GetReturnType()->IsComplexType()) {
                 // Two hidden arguments: ret, this, skip this and do the rest.
+                // If we are nonstatic, then perform a load.
                 exprs.push_back(a.gen->CreateParameterExpression(0));
+                if (nonstatic)
+                    exprs.push_back(a.gen->CreateFieldExpression(a.gen->CreateParameterExpression(1), 0));
                 for(std::size_t i = 2; i < sig->GetArguments().size() + 2; ++i) {
                     exprs.push_back(a.gen->CreateParameterExpression(i));
                 }
             } else {
                 // One hidden argument: this, pos 0. Skip it and do the rest.
+                if (nonstatic)
+                    exprs.push_back(a.gen->CreateLoad(a.gen->CreateFieldExpression(a.gen->CreateParameterExpression(0), 0)));
                 for(std::size_t i = 1; i < sig->GetArguments().size() + 1; ++i) {
                     exprs.push_back(a.gen->CreateParameterExpression(i));
                 }
             }
-            trampoline->AddStatement(a.gen->CreateReturn(a.gen->CreateFunctionCall(a.gen->CreateFunctionValue(f->GetName()), exprs)));
+            trampoline->AddStatement(a.gen->CreateReturn(a.gen->CreateFunctionCall(a.gen->CreateFunctionValue(f->GetName()), exprs, f->GetLLVMType(a))));
         }
     }
     recdecl->completeDefinition();

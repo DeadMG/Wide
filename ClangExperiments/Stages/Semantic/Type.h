@@ -49,15 +49,15 @@ namespace Wide {
                 throw std::runtime_error("This type has no LLVM counterpart.");
             }
 
-            virtual Expression BuildValueConstruction(std::vector<Expression> args, Analyzer& a) {
-                throw std::runtime_error("Could not construct this type as a non-memory type, probably because it was a complex type.");
-            }
+            virtual Expression BuildValueConstruction(std::vector<Expression> args, Analyzer& a);
             virtual Expression BuildRvalueConstruction(std::vector<Expression> args, Analyzer& a);
             virtual Expression BuildLvalueConstruction(std::vector<Expression> args, Analyzer& a);
             virtual Codegen::Expression* BuildInplaceConstruction(Codegen::Expression* mem, std::vector<Expression> args, Analyzer& a) {
                 throw std::runtime_error("Could not inplace construct this type.");
             }
             virtual Expression BuildValue(Expression lhs, Analyzer& a) {
+                if (IsComplexType())
+                    throw std::runtime_error("Internal Compiler Error: Attempted to build a complex type into a register.");
                 return lhs;
             }            
 

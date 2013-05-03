@@ -2,6 +2,7 @@
 #include "Generator.h"
 #include "Function.h"
 #include <set>
+#include <array>
 
 #pragma warning(push, 0)
 
@@ -162,7 +163,14 @@ llvm::Value* ChainExpression::ComputeValue(llvm::IRBuilder<>& builder, Generator
 }
 
 llvm::Value* FieldExpression::ComputeValue(llvm::IRBuilder<>& builder, Generator& g) {
-    return builder.CreateStructGEP(obj->GetValue(builder, g), fieldnum);
+    auto val = obj->GetValue(builder, g);
+    if (val->getType()->isPointerTy())
+        return builder.CreateStructGEP(obj->GetValue(builder, g), fieldnum);
+    else {
+        std::vector<uint32_t> args;
+        args.push_back(fieldnum);
+        return builder.CreateExtractValue(val, args);
+    }
 }
 
 llvm::Value* ParamExpression::ComputeValue(llvm::IRBuilder<>& builder, Generator& g) {

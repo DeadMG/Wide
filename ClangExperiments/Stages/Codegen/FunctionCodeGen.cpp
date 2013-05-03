@@ -65,11 +65,9 @@ void Function::EmitCode(llvm::Module* mod, llvm::LLVMContext& con, Generator& g)
         }
         if (auto ptr = llvm::dyn_cast<llvm::PointerType>(ty->getParamType(i))) {
             auto el = ptr->getElementType();
-            if (auto strct = llvm::dyn_cast<llvm::StructType>(el)) {
-                if (strct->getNumElements() == 1 && strct->getElementType(0) == llvm::IntegerType::getInt8Ty(con)) {
-                    ParameterValues[i] = irbuilder.CreateAlloca(ty->getParamType(i));
-                    continue;
-                }
+            if (g.IsEliminateType(el)) {
+                ParameterValues[i] = irbuilder.CreateAlloca(ty->getParamType(i));
+                continue;
             }
         }
         if (ty->getParamType(i) == llvm::IntegerType::getInt8Ty(con) && arg_begin->getType() == llvm::IntegerType::getInt1Ty(con)) {

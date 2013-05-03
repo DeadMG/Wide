@@ -26,7 +26,6 @@ namespace Wide {
             AssignmentExpr* CreateAssignmentExpression(Expression* lhs, Expression* rhs);
             IntegerExpression* CreateIntegerExpression(std::string val, Lexer::Range r);
             RightShiftExpr* CreateRightShiftExpression(Expression* lhs, Expression* rhs);
-            std::vector<Function::FunctionArgument> CreateFunctionArgumentGroup();
             IfStatement* CreateIfStatement(Expression* cond, Statement* true_br, Statement* false_br, Lexer::Range loc);
             IfStatement* CreateIfStatement(Expression* cond, Statement* true_br, Lexer::Range loc);
             CompoundStatement* CreateCompoundStatement(std::vector<Statement*> true_br, Lexer::Range loc);
@@ -34,6 +33,7 @@ namespace Wide {
             NotEqCmpExpression* CreateNotEqCmpExpression(Expression* lhs, Expression* rhs);
             MetaCallExpr* CreateMetaFunctionCallExpression(Expression*, std::vector<Expression*>, Lexer::Range r);
             WhileStatement* CreateWhileStatement(Expression* cond, Statement* body, Lexer::Range loc);
+            ThisExpression* CreateThisExpression(Lexer::Range loc);
 
             OrExpression* CreateOrExpression(Expression* lhs, Expression* rhs);
             XorExpression* CreateXorExpression(Expression* lhs, Expression* rhs);
@@ -45,8 +45,13 @@ namespace Wide {
 
             Module* CreateModule(std::string val, Module* p);
             Using* CreateUsingDefinition(std::string val, Expression* expr, Module* p);
-            Function* CreateFunction(std::string name, std::vector<Statement*> body, std::vector<Statement*> prolog, Lexer::Range r, Module* p, std::vector<Function::FunctionArgument>);
+            void CreateFunction(std::string name, std::vector<Statement*> body, std::vector<Statement*> prolog, Lexer::Range r, Module* p, std::vector<Function::FunctionArgument>);
+            void CreateFunction(std::string name, std::vector<Statement*> body, std::vector<Statement*> prolog, Lexer::Range r, Type* p, std::vector<Function::FunctionArgument>);
+            Type* CreateType(std::string name, Module* p);
+            
+            std::vector<Function::FunctionArgument> CreateFunctionArgumentGroup();
 
+            void AddTypeField(Type*, TypeLevelDeclaration*);
             void AddArgumentToFunctionGroup(std::vector<Function::FunctionArgument>&, std::string, Expression*);
             void AddArgumentToFunctionGroup(std::vector<Function::FunctionArgument>&, std::string);
 

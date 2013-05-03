@@ -57,6 +57,8 @@ namespace Wide {
                 return sema.CreateStringExpression(t.GetValue(), t.GetLocation());
             if (t.GetType() == Lexer::TokenType::Integer)
                 return sema.CreateIntegerExpression(t.GetValue(), t.GetLocation());
+            if (t.GetType() == Lexer::TokenType::This)
+                return sema.CreateThisExpression(t.GetLocation());
             throw std::runtime_error("Expected expression, but could not find the start of an expression.");
         }
         
@@ -250,6 +252,16 @@ namespace Wide {
         template<typename Lex, typename Sema> typename ExprType<Sema>::type ParseExpression(Lex&& lex, Sema&& sema) {
             return ParseAssignmentExpression(std::forward<Lex>(lex), std::forward<Sema>(sema));
         }
+
+        template<typename Lex, typename Sema, typename Token> auto ParseVariableStatement(Lex&& lex, Sema&& sema, Token&& t) 
+        -> decltype(sema.CreateVariableStatement(t.GetValue(), typename ExprType<Sema>::type(), t.GetLocation())) {
+            // Expect to have already seen :=
+            auto expr = ParseExpression(std::forward<Lex>(lex), std::forward<Sema>(sema));
+            auto semi = lex();
+            if (semi.GetType() != Lexer::TokenType::Semicolon)
+                throw std::runtime_error("Expected semicolon after variable definition.");
+            return sema.CreateVariableStatement(t.GetValue(), std::move(expr), t.GetLocation() + semi.GetLocation());
+        }
         
         template<typename Lex, typename Sema> typename StmtType<Sema>::type ParseStatement(Lex&& lex, Sema&& sema) {
             // Check first token- if it is return, then parse return statement.
@@ -271,11 +283,7 @@ namespace Wide {
             if (t.GetType() == Lexer::TokenType::Identifier) {
                 auto next = lex();
                 if (next.GetType() == Lexer::TokenType::VarCreate) {
-                    auto expr = ParseExpression(std::forward<Lex>(lex), std::forward<Sema>(sema));
-                    auto semi = lex();
-                    if (semi.GetType() != Lexer::TokenType::Semicolon)
-                        throw std::runtime_error("Expected semicolon after variable definition.");
-                    return sema.CreateVariableStatement(t.GetValue(), std::move(expr), t.GetLocation() + semi.GetLocation());
+                    return ParseVariableStatement(std::forward<Lex>(lex), std::forward<Sema>(sema), t);
                 }
                 lex(next);
             }
@@ -366,10 +374,9 @@ namespace Wide {
         
         template<typename Lex, typename Sema, typename Token, typename Module> void ParseFunction(Lex&& lex, Sema&& sema, Token&& first, Module&& m) 
         {
-            // Identifier consumed
+            // Identifier ( consumed
             // The first two must be () but we can find either prolog then body, or body.
             // Expect ParseFunctionArguments to have consumed the ).
-            lex();
             auto group = ParseFunctionArguments(std::forward<Lex>(lex), std::forward<Sema>(sema));
             auto t = lex();
             auto prolog = sema.CreateStatementGroup();
@@ -421,7 +428,10 @@ namespace Wide {
             auto val = t.GetValue();
             t = lex();
             if (t.GetType() != Lexer::TokenType::VarCreate) {
-                throw std::runtime_error("Don't support non-assigning usings right now.");
+                if (t.GetType() == Lexer::TokenType::Assignment)
+                    std::cout << "Warning: = used in using instead of :=. Treating as :=.\n";
+                else
+                    throw std::runtime_error("Don't support non-assigning usings right now.");
             }
             auto def = sema.CreateUsingDefinition(std::move(val), ParseExpression(std::forward<Lex>(lex), std::forward<Sema>(sema)), m);
             t = lex();
@@ -442,10 +452,73 @@ namespace Wide {
                 throw std::runtime_error("Expected { after identifier when parsing module.");
             ParseModuleContents(std::forward<Lex>(lex), std::forward<Sema>(sema), mod);
         }
+
+        template<typename Lex, typename Sema, typename Module> void ParseTypeDeclaration(Lex&& lex, Sema&& sema, Module&& m) {
+            auto ident = lex();
+            if (ident.GetType() != Lexer::TokenType::Identifier)
+                throw std::runtime_error("Expected identifier after type.");
+            auto t = lex();
+            if (t.GetType() != Lexer::TokenType::OpenCurlyBracket)
+                throw std::runtime_error("Expected { after identifier.");
+            t = lex();
+            auto ty = sema.CreateType(ident.GetValue(), m);
+            while(t.GetType() != Lexer::TokenType::CloseCurlyBracket) {
+                if (t.GetType() == Lexer::TokenType::Identifier) {
+                    // Must be either := for variable or ( for function. Don't support functions yet.
+                    auto next = lex();
+                    if (next.GetType() == Lexer::TokenType::VarCreate) {
+                        auto var = ParseVariableStatement(std::forward<Lex>(lex), std::forward<Sema>(sema), t);
+                        sema.AddTypeField(ty, var);
+                        t = lex();
+                        continue;
+                    }
+                    if (next.GetType() == Lexer::TokenType::OpenBracket) {
+                        ParseFunction(std::forward<Lex>(lex), std::forward<Sema>(sema), t, ty);
+                        t = lex();
+                        continue;
+                    }
+                }
+                if (t.GetType() == Lexer::TokenType::Operator) {
+                    auto op = lex();
+                    // Only < supported right now
+                    static std::unordered_set<Lexer::TokenType> OverloadableOperators([]() -> std::unordered_set<Lexer::TokenType> {
+                        Lexer::TokenType tokens[] = {
+                            Lexer::TokenType::Assignment,
+                            Lexer::TokenType::EqCmp,
+                            Lexer::TokenType::NotEqCmp,
+                            Lexer::TokenType::GT,
+                            Lexer::TokenType::GTE,
+                            Lexer::TokenType::LT,
+                            Lexer::TokenType::LTE,
+                            Lexer::TokenType::And,
+                            Lexer::TokenType::Or,
+                            Lexer::TokenType::LeftShift,
+                            Lexer::TokenType::RightShift,
+                            Lexer::TokenType::Xor
+                        };
+                        return std::unordered_set<Lexer::TokenType>(std::begin(tokens), std::end(tokens));
+                    }());
+                    if (OverloadableOperators.find(op.GetType()) == OverloadableOperators.end())
+                        throw std::runtime_error("Only < supported as an overloadable operator right now.");
+                    auto bracket = lex();
+                    if (bracket.GetType() != Lexer::TokenType::OpenBracket)
+                        throw std::runtime_error("Expected ( after operator op to designate a type-scope operator overload.");
+                    ParseFunction(std::forward<Lex>(lex), std::forward<Sema>(sema), op, ty);
+                    t = lex();
+                    continue;
+                }
+                if (t.GetType() == Lexer::TokenType::Type)
+                    throw std::runtime_error("Constructor and destructors currently not supported.");
+                throw std::runtime_error("Only member variables supported right now and they open with an identifier.");
+            }
+        }
         
         template<typename Lex, typename Sema, typename Module> void ParseModuleLevelDeclaration(Lex&& lex, Sema&& sema, Module&& m) {
             auto token = lex();
             if (token.GetType() == Lexer::TokenType::Identifier) {
+                auto t = lex();
+                if (t.GetType() != Lexer::TokenType::OpenBracket)
+                    throw std::runtime_error("Expected ( after identifier to designate a function at module scope.");
                 ParseFunction(std::forward<Lex>(lex), std::forward<Sema>(sema), token, std::forward<Module>(m));
                 return;
             }
@@ -457,7 +530,26 @@ namespace Wide {
                 ParseModuleDeclaration(std::forward<Lex>(lex), std::forward<Sema>(sema), std::forward<Module>(m));
                 return;
             }
-            throw std::runtime_error("Only support function, using, or module right now.");
+            if (token.GetType() == Lexer::TokenType::Type) {
+                ParseTypeDeclaration(std::forward<Lex>(lex), std::forward<Sema>(sema), std::forward<Module>(m));
+                return;
+            }
+            if (token.GetType() == Lexer::TokenType::Semicolon) {
+                std::cout << "Warning: unnecessary semicolon at module scope. Skipping.\n";
+                return ParseModuleLevelDeclaration(std::forward<Lex>(lex), std::forward<Sema>(sema), std::forward<Module>(m));
+            }
+            if (token.GetType() == Lexer::TokenType::Operator) {
+                auto op = lex();
+                // Only < supported right now
+                if (op.GetType() != Lexer::TokenType::LT)
+                    throw std::runtime_error("Only < supported as an overloadable operator right now.");
+                auto bracket = lex();
+                if (bracket.GetType() != Lexer::TokenType::OpenBracket)
+                    throw std::runtime_error("Expected ( after operator op to designate a module-scope operator overload.");
+                ParseFunction(std::forward<Lex>(lex), std::forward<Sema>(sema), op, std::forward<Module>(m));
+                return;
+            }
+            throw std::runtime_error("Only support function, using, type, operator, or module right now.");
         }
             
         template<typename Lex, typename Sema, typename Module> void ParseModuleContents(Lex&& lex, Sema&& sema, Module&& m) {

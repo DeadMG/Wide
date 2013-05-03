@@ -115,8 +115,6 @@ public:
     clang::DeclContext* GetDeclContext() {
         return astcon.getTranslationUnitDecl();
     }
-
-    // To be added: The relevant query APIs.
 };
 
 ClangTU::~ClangTU() {}
@@ -132,14 +130,6 @@ ClangTU::ClangTU(ClangTU&& other)
 void ClangTU::GenerateCodeAndLinkModule(llvm::Module* main) {
     for(auto x : impl->stuff)
         impl->codegenmod.EmitTopLevelDecl(x);
-    /*for(auto x : visited) {
-        if (auto con = llvm::dyn_cast<clang::CXXConstructorDecl>(x)) {
-            impl->codegenmod.GetAddrOfGlobal(clang::GlobalDecl(con, clang::CXXCtorType::Ctor_Complete));
-        } else if (auto des = llvm::dyn_cast<clang::CXXDestructorDecl>(x)) {
-            impl->codegenmod.GetAddrOfGlobal(clang::GlobalDecl(des, clang::CXXDtorType::Dtor_Complete));
-        } else
-            impl->codegenmod.GetAddrOfGlobal(x);
-    }*/
     impl->codegenmod.Release();
 
     llvm::Linker link("", main);
@@ -188,7 +178,6 @@ std::function<llvm::Type*(llvm::Module*)> ClangTU::GetLLVMTypeFromClangType(clan
         llvm::raw_string_ostream stream(s);
         mod->print(stream, nullptr);
 		assert(false && "Attempted to look up a Clang type, but it did not exist in the module. You need to find out where this type came from- is it some unconverted primitive type?");
-		//return imp->codegenmod.getTypes().ConvertType(t);
         return nullptr; // Shut up control path warning
     };
 }
@@ -220,7 +209,6 @@ std::string ClangTU::MangleName(clang::NamedDecl* D) {
                     if (d->getTemplateSpecializationKind() == clang::TSK_ExplicitInstantiationDeclaration)
                         d->setTemplateSpecializationKind(clang::TSK_ExplicitInstantiationDefinition);
                     sema->InstantiateFunctionDefinition(clang::SourceLocation(), d, true, true);
-
                 }
                 d->setInlineSpecified(false);
                 d->setUsed(true);
@@ -235,8 +223,27 @@ std::string ClangTU::MangleName(clang::NamedDecl* D) {
                 if (d->hasBody())
                     TraverseStmt(d->getBody());
                 if (auto con = llvm::dyn_cast<clang::CXXConstructorDecl>(d)) {
+                    for(auto begin = con->decls_begin(); begin != con->decls_end(); ++begin) {
+                        TraverseDecl(*begin);
+                    }
+                    std::unordered_set<clang::FieldDecl*> fields;
+                    for(auto f = con->getParent()->field_begin(); f != con->getParent()->field_end(); ++f)
+                        fields.insert(*f);
+                    std::unordered_set<const clang::Type*> bases;
+                    for(auto f = con->getParent()->bases_begin(); f != con->getParent()->bases_end(); ++f)
+                        bases.insert(f->getType().getTypePtr());
                     for(auto begin = con->init_begin(); begin != con->init_end(); ++begin) {
                         TraverseStmt((*begin)->getInit());
+                        fields.erase((*begin)->getMember());
+                        bases.erase((*begin)->getBaseClass());
+                    }
+                    for(auto&& def : fields) {
+                        if (auto rec = def->getType()->getAsCXXRecordDecl())
+                            VisitFunctionDecl(sema->LookupDefaultConstructor(rec));
+                    }
+                    for(auto&& def : bases) {
+                        if (auto rec = def->getAsCXXRecordDecl())
+                            VisitFunctionDecl(sema->LookupDefaultConstructor(rec));
                     }
                 }
                 return true;

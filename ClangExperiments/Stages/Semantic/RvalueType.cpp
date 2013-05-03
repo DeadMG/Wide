@@ -42,3 +42,24 @@ Expression RvalueType::BuildValue(Expression lhs, Analyzer& analyzer) {
         out.Expr = analyzer.gen->CreateLoad(lhs.Expr);
     return out;
 }
+
+
+Expression RvalueType::BuildRightShift(Expression lhs, Expression rhs, Analyzer& a) {
+    return Pointee->BuildRightShift(lhs, rhs, a);
+}
+
+Expression RvalueType::BuildLeftShift(Expression lhs, Expression rhs, Analyzer& a) {
+    return Pointee->BuildLeftShift(lhs, rhs, a);
+}
+Expression RvalueType::BuildLTComparison(Expression lhs, Expression rhs, Analyzer& a) {
+    return Pointee->BuildLTComparison(lhs, rhs, a);
+}
+Expression RvalueType::BuildLTEComparison(Expression lhs, Expression rhs, Analyzer& a) {
+    return Pointee->BuildLTEComparison(lhs, rhs, a);
+}
+Expression RvalueType::BuildGTComparison(Expression lhs, Expression rhs, Analyzer& a) {
+    return Pointee->BuildGTComparison(lhs, rhs, a);
+}
+Expression RvalueType::BuildGTEComparison(Expression lhs, Expression rhs, Analyzer& a) {
+    return Pointee->BuildGTEComparison(lhs, rhs, a);
+}

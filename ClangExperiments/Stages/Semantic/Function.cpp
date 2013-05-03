@@ -9,6 +9,7 @@
 #include "Module.h"
 #include "LvalueType.h"
 #include "ConstructorType.h"
+#include "RvalueType.h"
 
 #include <unordered_set>
 #include <sstream>
@@ -28,16 +29,19 @@
 using namespace Wide;
 using namespace Semantic;
 
-Function::Function(std::vector<Type*> args, AST::Function* astfun, Analyzer& a)
+Function::Function(std::vector<Type*> args, AST::Function* astfun, Analyzer& a, Type* mem)
 : analyzer(a)
 , ReturnType(nullptr)
 , fun(astfun)
 , body(false)
-, codefun(nullptr) {    
+, codefun(nullptr)
+, member(mem) {    
     variables.push_back(std::unordered_map<std::string, Expression>()); // Push back the argument scope
     unsigned num = 0;
+    if (mem)
+        Args.push_back(a.GetLvalueType(mem));
     for(auto&& arg : astfun->args) {
-        auto param = [this, num] { return ReturnType->IsComplexType() ? num + 1 : num; };
+        auto param = [this, num] { return num + ReturnType->IsComplexType() + (member != nullptr); };
         auto ty = a.AnalyzeExpression(this, arg.type);
         auto con = dynamic_cast<ConstructorType*>(ty.t);
         if (!con)
@@ -94,13 +98,11 @@ Function::Function(std::vector<Type*> args, AST::Function* astfun, Analyzer& a)
 }
 
 clang::QualType Function::GetClangType(ClangUtil::ClangTU& where, Analyzer& a) {
-    if (!ReturnType)
-        ComputeBody(a);
-    return a.GetFunctionType(ReturnType, Args)->GetClangType(where, a);
+    return GetSignature(a)->GetClangType(where, a);
 }
 
 std::function<llvm::Type*(llvm::Module*)> Function::GetLLVMType(Analyzer& a) {    
-    return a.GetFunctionType(ReturnType, Args)->GetLLVMType(a);
+    return GetSignature(a)->GetLLVMType(a);
 }
 void Function::ComputeBody(Analyzer& a) {    
     if (!body) {        
@@ -211,8 +213,15 @@ void Function::ComputeBody(Analyzer& a) {
                     std::tie(num, ty) = tup;
                     std::vector<Expression> args;
                     Expression out;
+                    // If the return expression refers to a parameter or local variable, then move it implicitly.
                     out.Expr = static_cast<Codegen::ReturnStatement*>(exprs[num])->GetReturnExpression();
-                    out.t = ty;
+                    if (auto param = dynamic_cast<Codegen::ParamExpression*>(out.Expr)) {
+                        out.t = a.GetRvalueType(ty->IsReference());
+                    } else if (auto var = dynamic_cast<Codegen::Variable*>(out.Expr)) {
+                        out.t = a.GetRvalueType(ty->IsReference());
+                    } else {
+                        out.t = ty;
+                    }
                     args.push_back(out);
                     exprs[num] = ReturnType->BuildInplaceConstruction(a.gen->CreateParameterExpression(0), args, a);
                     exprs.insert(exprs.begin() + num + 1, a.gen->CreateReturn());
@@ -221,11 +230,13 @@ void Function::ComputeBody(Analyzer& a) {
         } else
             throw std::runtime_error("Attempted to return more than one type. Type deduction currently needs exact matches between return statements.");
         
+        // Prevent infinite recursion by setting this variable as soon as the return type is ready
+        // Else GetLLVMType() will call us again to prepare the return type.
+        body = true;
         if (!codefun)
             codefun = a.gen->CreateFunction(GetLLVMType(a), name);
         for(auto&& x : exprs)
             codefun->AddStatement(x);
-        body = true;
         variables.clear();
     }
 }
@@ -246,11 +257,19 @@ Expression Function::AccessMember(Expression e, std::string name, Analyzer& a) {
             return map[name];
         }
     }
-    return a.GetWideModule(fun->higher)->AccessMember(e, name, a);
+    if (member) {
+        Expression self(a.GetLvalueType(member), a.gen->CreateParameterExpression([this] { return ReturnType->IsComplexType(); }));
+        if (name == "this")
+            return self;
+        return self.t->AccessMember(self, std::move(name), a);
+    }
+    return a.GetDeclContext(fun->higher)->AccessMember(e, std::move(name), a);
 }
 std::string Function::GetName() {
     return name;
 }
 FunctionType* Function::GetSignature(Analyzer& a) {
+    if (!body)
+        ComputeBody(a);
     return a.GetFunctionType(ReturnType, Args);
 }

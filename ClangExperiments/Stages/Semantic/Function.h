@@ -33,14 +33,14 @@ namespace Wide {
             AST::Function* fun;
             Codegen::Function* codefun;
             bool body;
-
+            Type* member;
             void ComputeBody(Analyzer& a);
 
             std::vector<Codegen::Statement*> exprs;
             std::vector<std::unordered_map<std::string, Expression>> variables;
             std::string name;
         public:
-            Function(std::vector<Type*> args, AST::Function* astfun, Analyzer& a);        
+            Function(std::vector<Type*> args, AST::Function* astfun, Analyzer& a, Type* member = nullptr);        
 
             clang::QualType GetClangType(ClangUtil::ClangTU& where, Analyzer& a);        
             std::function<llvm::Type*(llvm::Module*)> GetLLVMType(Analyzer& a);      

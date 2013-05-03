@@ -20,7 +20,12 @@ namespace Wide {
                         Iterator it;
                         if (!its_queue.try_pop(it))
                             break;
-                        f(*it);
+                        try {
+                           f(*it);
+                        } catch(...) {
+                            __debugbreak();
+                            std::terminate();
+                        }
                     }
                 }));
             }
