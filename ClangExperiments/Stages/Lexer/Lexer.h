@@ -79,6 +79,7 @@ namespace Wide {
                 keywords["this"] = TokenType::This;
                 keywords["type"] = TokenType::Type;
                 keywords["operator"] = TokenType::Operator;
+                keywords["function"] = TokenType::Function;
             }
             template<typename Iterator, typename Cont> Position increment(Position& p, Iterator& i, Cont&& cont) {
                 Position out(p);

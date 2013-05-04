@@ -30,6 +30,9 @@ namespace Wide {
             This,
             Type,
             Operator,
+            Function,
+            OpenSquareBracket,
+            CloseSquareBracket,
 
             LT,
             LTE,

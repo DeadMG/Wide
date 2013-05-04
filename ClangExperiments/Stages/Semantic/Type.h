@@ -6,6 +6,7 @@
 #include <stdexcept>
 #include <functional>
 #include <string>
+#include <cassert>
 
 namespace llvm {
     class Type;
@@ -35,6 +36,21 @@ namespace Wide {
             Type* t;
             Codegen::Expression* Expr;
         };
+
+        enum ConversionRank {
+            // No-cost conversion like reference binding or exact match
+            Zero,
+
+            // Derived-to-base conversion and such
+            One,
+
+            // User-defined implicit conversion
+            Two,
+
+            // No conversion possible
+            None,
+        };
+
         struct Type  {
         public:
             virtual bool IsReference(Type*) {
@@ -98,7 +114,7 @@ namespace Wide {
                 throw std::runtime_error("This type cannot be compared for inequality.");
             }
             
-
+            virtual ConversionRank RankConversionFrom(Type* to, Analyzer& a);
             //Or,
             //And,
             //Xor

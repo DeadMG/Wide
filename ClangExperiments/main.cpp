@@ -6,6 +6,7 @@ int main()
 {
     Wide::Options::Clang ClangOpts;
     Wide::Options::LLVM LLVMOpts;
+
     ClangOpts.TargetOptions.Triple = "i686-pc-mingw32";
     ClangOpts.FrontendOptions.OutputFile = "yay.o";
     

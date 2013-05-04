@@ -35,6 +35,7 @@ namespace Wide {
 
             bool IsComplexType();
             Codegen::Expression* BuildInplaceConstruction(Codegen::Expression* mem, std::vector<Expression> args, Analyzer& a);
+            ConversionRank RankConversionFrom(Type* from, Analyzer& a);
         };
     }
 }

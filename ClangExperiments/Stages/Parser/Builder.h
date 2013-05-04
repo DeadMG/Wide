@@ -34,6 +34,7 @@ namespace Wide {
             MetaCallExpr* CreateMetaFunctionCallExpression(Expression*, std::vector<Expression*>, Lexer::Range r);
             WhileStatement* CreateWhileStatement(Expression* cond, Statement* body, Lexer::Range loc);
             ThisExpression* CreateThisExpression(Lexer::Range loc);
+            Lambda* CreateLambda(std::vector<FunctionArgument> args, std::vector<Statement*> body, Lexer::Range loc);
 
             OrExpression* CreateOrExpression(Expression* lhs, Expression* rhs);
             XorExpression* CreateXorExpression(Expression* lhs, Expression* rhs);
@@ -45,15 +46,15 @@ namespace Wide {
 
             Module* CreateModule(std::string val, Module* p);
             Using* CreateUsingDefinition(std::string val, Expression* expr, Module* p);
-            void CreateFunction(std::string name, std::vector<Statement*> body, std::vector<Statement*> prolog, Lexer::Range r, Module* p, std::vector<Function::FunctionArgument>);
-            void CreateFunction(std::string name, std::vector<Statement*> body, std::vector<Statement*> prolog, Lexer::Range r, Type* p, std::vector<Function::FunctionArgument>);
+            void CreateFunction(std::string name, std::vector<Statement*> body, std::vector<Statement*> prolog, Lexer::Range r, Module* p, std::vector<FunctionArgument>);
+            void CreateFunction(std::string name, std::vector<Statement*> body, std::vector<Statement*> prolog, Lexer::Range r, Type* p, std::vector<FunctionArgument>);
             Type* CreateType(std::string name, Module* p);
             
-            std::vector<Function::FunctionArgument> CreateFunctionArgumentGroup();
+            std::vector<FunctionArgument> CreateFunctionArgumentGroup();
 
             void AddTypeField(Type*, TypeLevelDeclaration*);
-            void AddArgumentToFunctionGroup(std::vector<Function::FunctionArgument>&, std::string, Expression*);
-            void AddArgumentToFunctionGroup(std::vector<Function::FunctionArgument>&, std::string);
+            void AddArgumentToFunctionGroup(std::vector<FunctionArgument>&, std::string, Expression*);
+            void AddArgumentToFunctionGroup(std::vector<FunctionArgument>&, std::string);
 
             Lexer::Range GetLocation(Statement* s) {
                 return s->location;

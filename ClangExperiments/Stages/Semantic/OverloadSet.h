@@ -11,7 +11,7 @@ namespace Wide {
     namespace Semantic {
         class Function;
         class OverloadSet : public PrimitiveType {
-            std::vector<Function*> funcs;
+            AST::FunctionOverloadSet* overset;
             std::unordered_map<ClangUtil::ClangTU*, clang::QualType> clangtypes;
             Type* nonstatic;
         public:

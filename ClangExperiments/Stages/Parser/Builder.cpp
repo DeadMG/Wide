@@ -128,7 +128,7 @@ void Builder::CreateFunction(
     std::vector<Statement*> prolog, 
     Lexer::Range r,
     Type* p, 
-    std::vector<Function::FunctionArgument> args) 
+    std::vector<FunctionArgument> args) 
 {
     if (p->Functions.find(name) != p->Functions.end())
         p->Functions[name]->functions.push_back(ConcurrentUseArena(arenas, [&](Wide::Memory::Arena& arena) -> AST::Function* {
@@ -145,7 +145,7 @@ void Builder::CreateFunction(
     }
 }
 
-void Builder::CreateFunction(std::string name, std::vector<Statement*> body, std::vector<Statement*> prolog, Lexer::Range r, Module* m, std::vector<Function::FunctionArgument> args) {
+void Builder::CreateFunction(std::string name, std::vector<Statement*> body, std::vector<Statement*> prolog, Lexer::Range r, Module* m, std::vector<FunctionArgument> args) {
     auto p = ConcurrentUseArena(arenas, [&](Wide::Memory::Arena& arena) {
         return std::make_pair(
             arena.Allocate<Function>(name, std::move(body), std::move(prolog), r, std::move(args), m), 
@@ -163,19 +163,19 @@ void Builder::CreateFunction(std::string name, std::vector<Statement*> body, std
     return;
 }
 
-std::vector<Function::FunctionArgument> Builder::CreateFunctionArgumentGroup() {
-    return std::vector<Function::FunctionArgument>();
+std::vector<FunctionArgument> Builder::CreateFunctionArgumentGroup() {
+    return std::vector<FunctionArgument>();
 }
 
-void Builder::AddArgumentToFunctionGroup(std::vector<Function::FunctionArgument>& args, std::string name) {
-    Function::FunctionArgument arg;
+void Builder::AddArgumentToFunctionGroup(std::vector<FunctionArgument>& args, std::string name) {
+    FunctionArgument arg;
     arg.name = name;
     arg.type = nullptr;
     args.push_back(arg);
 }
 
-void Builder::AddArgumentToFunctionGroup(std::vector<Function::FunctionArgument>& args, std::string name, Expression* t) {
-    Function::FunctionArgument arg;
+void Builder::AddArgumentToFunctionGroup(std::vector<FunctionArgument>& args, std::string name, Expression* t) {
+    FunctionArgument arg;
     arg.name = name;
     arg.type = t;
     args.push_back(arg);
@@ -282,4 +282,10 @@ ThisExpression* Builder::CreateThisExpression(Lexer::Range loc) {
 
 void Builder::AddTypeField(Type* t, TypeLevelDeclaration* decl) {
     t->variables.push_back(decl);
+}
+
+Lambda* Builder::CreateLambda(std::vector<FunctionArgument> args, std::vector<Statement*> body, Lexer::Range loc) {
+    return ConcurrentUseArena(arenas, [&](Wide::Memory::Arena& arena) {
+        return arena.Allocate<Lambda>(std::move(body), std::move(args), loc, false);
+    });
 }

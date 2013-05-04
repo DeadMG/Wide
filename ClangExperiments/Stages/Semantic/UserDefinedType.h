@@ -14,7 +14,11 @@ namespace Wide {
                 std::function<llvm::Type*(llvm::Module*)> llvmty;
                 std::string name;
             };
+
+            // Actually an ordered list of all members
             std::vector<member> llvmtypes;
+
+            // Actually a list of member variables
             std::unordered_map<std::string, unsigned> members;
             std::function<llvm::Type*(llvm::Module*)> ty;
             std::string llvmname;
@@ -30,6 +34,7 @@ namespace Wide {
             Expression AccessMember(Expression, std::string name, Analyzer& a);
             Expression BuildAssignment(Expression lhs, Expression rhs, Analyzer& a);
             Expression BuildLTComparison(Expression lhs, Expression rhs, Analyzer& a);
+            ConversionRank RankConversionFrom(Type* from, Analyzer& a);
         };
     }
 }

@@ -42,3 +42,17 @@ Expression Type::BuildValueConstruction(std::vector<Expression> args, Analyzer& 
     auto mem = a.gen->CreateVariable(GetLLVMType(a));
     return Expression(this, a.gen->CreateLoad(a.gen->CreateChainExpression(BuildInplaceConstruction(mem, std::move(args), a), mem)));
 }
+ConversionRank Type::RankConversionFrom(Type* from, Analyzer& a) {
+    // We only cover the following cases:
+    // U to T         - convertible for any U
+    // T& to T        - copyable
+    // T&& to T       - movable
+    // "this" is always the to type. We want to know if we can convert from "from" to "this".
+
+    // U to this&& is just U to this, then this to this&&. T to T&& is always valid- even for something like std::mutex.
+
+    // The default is not convertible but movable and copyable.
+    if (from->IsReference(this))
+        return ConversionRank::Zero;
+    return ConversionRank::None;
+}

@@ -275,11 +275,11 @@ Codegen::Expression* ClangType::BuildInplaceConstruction(Codegen::Expression* me
     for(auto x : args) {
         exprs.push_back(clang::OpaqueValueExpr(clang::SourceLocation(), x.t->GetClangType(*from, a).getNonLValueExprType(from->GetASTContext()), GetKindOfType(x.t)));
     }
-    clang::OverloadCandidateSet s((clang::SourceLocation()));
     std::vector<clang::Expr*> exprptrs;
     for(auto&& x : exprs) {
         exprptrs.push_back(&x);
     }
+    clang::OverloadCandidateSet s((clang::SourceLocation()));
     for(auto&& x : us) {
         auto con = static_cast<clang::CXXConstructorDecl*>(x);
         clang::DeclAccessPair d;
@@ -382,3 +382,32 @@ Wide::Codegen::Expression* ClangType::BuildBooleanConversion(Expression self, An
     throw std::runtime_error("Attempted to contextually convert to bool, but Clang gave back a function that did not return a bool. WTF.");
 }
 
+ConversionRank ClangType::RankConversionFrom(Type* src, Analyzer& a) {
+    // Now in the realms of: implicit conversions, is the type movable, etc.
+    clang::UnresolvedSet<8> us;
+
+    auto recdecl = type->getAsCXXRecordDecl();    
+    // The first argument is pseudo-this.
+    for(auto begin = recdecl->ctor_begin(); begin != recdecl->ctor_end(); ++begin) {
+        us.addDecl(*begin);
+    }
+
+    clang::OpaqueValueExpr ope(clang::SourceLocation(), src->GetClangType(*from, a).getNonLValueExprType(from->GetASTContext()), GetKindOfType(src));
+    std::vector<clang::Expr*> exprptrs;
+    exprptrs.push_back(&ope);
+    clang::OverloadCandidateSet s((clang::SourceLocation()));
+    for(auto&& x : us) {
+        auto con = static_cast<clang::CXXConstructorDecl*>(x);
+        clang::DeclAccessPair d;
+        d.set(con, con->getAccess());
+        from->GetSema().AddOverloadCandidate(con, d, exprptrs, s);
+    }
+    clang::OverloadCandidateSet::iterator best;
+    auto result = s.BestViableFunction(from->GetSema(), clang::SourceLocation(), best);
+    if (result != clang::OverloadingResult::OR_Success)
+        return ConversionRank::None;
+    // Assign ranks differently if it's a copy/move to if it's an implicit conversion
+    if (src->IsReference(this))
+        return ConversionRank::Zero;
+    return ConversionRank::Two;
+}

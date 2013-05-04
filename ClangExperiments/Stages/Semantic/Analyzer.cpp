@@ -228,10 +228,11 @@ FunctionType* Analyzer::GetFunctionType(Type* ret, const std::vector<Type*>& t) 
     return FunctionTypes[ret][t] = arena.Allocate<FunctionType>(ret, t);
 }
 
-Function* Analyzer::GetWideFunction(AST::Function* p, Type* nonstatic) {
+Function* Analyzer::GetWideFunction(AST::Function* p, Type* nonstatic, const std::vector<Type*>& types) {
     if (WideFunctions.find(p) != WideFunctions.end())
-        return WideFunctions[p];
-    return WideFunctions[p] = arena.Allocate<Function>(std::vector<Type*>(), p, *this, nonstatic);
+        if (WideFunctions[p].find(types) != WideFunctions[p].end())
+            return WideFunctions[p][types];
+    return WideFunctions[p][types] = arena.Allocate<Function>(types, p, *this, nonstatic);
 }
 
 Module* Analyzer::GetWideModule(AST::Module* p) {
@@ -319,4 +320,58 @@ Type* Analyzer::GetDeclContext(AST::DeclContext* con) {
     if (auto ty = dynamic_cast<AST::Type*>(con))
         return DeclContexts[con] = GetUDT(ty);
     throw std::runtime_error("Encountered a DeclContext that was not a type or module.");
+}
+
+ConversionRank Analyzer::RankConversion(Type* from, Type* to) {
+    //          T T& T&& to
+    //    T     0  x  0
+    //    T&    0  0  x
+    //    T&&   0  x  0
+    //    U     2  x  2
+    //    from
+
+    if (from == to) return ConversionRank::Zero;        
+    //          T T& T&& to
+    //    T        x  0
+    //    T&    0     x
+    //    T&&   0  x  
+    //    U     2  x  2
+    //    from
+
+    if (auto rval = dynamic_cast<RvalueType*>(to)) {
+        if (rval->GetPointee() == from) {
+            return ConversionRank::Zero;
+        }
+    }
+    //          T T& T&& to
+    //    T        x  
+    //    T&    0     x
+    //    T&&   0  x  
+    //    U     2  x  2
+    //    from
+
+    // Since we just covered the only T& case, if T& then fail
+    if (auto lval = dynamic_cast<LvalueType*>(to))
+        return ConversionRank::None;    
+    //          T T& T&& to
+    //    T           
+    //    T&    0     x
+    //    T&&   0      
+    //    U     2     2
+    //    from
+
+    if (auto rval = dynamic_cast<RvalueType*>(to))
+        if (auto lval = dynamic_cast<LvalueType*>(from))
+            if (lval->IsReference() == rval->IsReference())
+                return ConversionRank::None;
+    //          T            T&&
+    //    T           
+    //    T&    copyable    
+    //    T&&   movable      
+    //    U     convertible  U to T
+    //    from
+
+    // The only remaining cases are type-specific, not guaranteed for all types.
+    // Ask "to" to handle it.
+    return to->RankConversionFrom(from, *this);
 }

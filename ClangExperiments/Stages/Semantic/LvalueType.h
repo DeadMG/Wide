@@ -37,6 +37,11 @@ namespace Wide {
             Expression BuildLTEComparison(Expression lhs, Expression rhs, Analyzer& a);
             Expression BuildGTComparison(Expression lhs, Expression rhs, Analyzer& a);
             Expression BuildGTEComparison(Expression lhs, Expression rhs, Analyzer& a);
+            ConversionRank RankConversionFrom(Type* from, Analyzer& a) {
+                assert(false && "Internal Compiler Error: All T& conversions should be dealt with by Analyzer.");
+                // Just to shut up the compiler
+                return ConversionRank::None;
+            }
         };
     }
 }

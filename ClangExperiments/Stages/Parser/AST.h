@@ -84,12 +84,24 @@ namespace Wide {
         struct AssignmentExpr : BinaryExpression {
             AssignmentExpr(Expression* l, Expression* r) : BinaryExpression(l, r) {}
         };
+        struct FunctionArgument {
+             // May be null
+            Expression* type;
+            std::string name;
+        };
+        struct LambdaCapture {
+            Expression* initializer;
+            std::string name;
+        };
+        struct Lambda : Expression {
+            std::vector<FunctionArgument> args;
+            std::vector<Statement*> statements;
+            std::vector<LambdaCapture> Captures;
+            bool defaultref;
+            Lambda(std::vector<Statement*> body, std::vector<FunctionArgument> arg, Lexer::Range r, bool ref)
+                : args(std::move(arg)), statements(std::move(body)), Expression(r), defaultref(ref) {}
+        };
         struct Function : ModuleLevelDeclaration {
-            struct FunctionArgument {
-                 // May be null
-                Expression* type;
-                std::string name;
-            };
             Function(std::string nam, std::vector<Statement*> b, std::vector<Statement*> prolog, Lexer::Range loc, std::vector<FunctionArgument> ar, DeclContext* m)
                 : prolog(std::move(prolog)), statements(std::move(b)), location(loc), args(std::move(ar)), ModuleLevelDeclaration(m, std::move(nam)) {}
             std::vector<FunctionArgument> args;

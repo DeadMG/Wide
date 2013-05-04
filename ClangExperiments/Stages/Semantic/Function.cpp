@@ -35,34 +35,43 @@ Function::Function(std::vector<Type*> args, AST::Function* astfun, Analyzer& a, 
 , fun(astfun)
 , body(false)
 , codefun(nullptr)
-, member(mem) {    
+, member(mem) {
+    // Only match the non-concrete arguments.
     variables.push_back(std::unordered_map<std::string, Expression>()); // Push back the argument scope
     unsigned num = 0;
+    unsigned metaargs = 0;
     if (mem)
         Args.push_back(a.GetLvalueType(mem));
     for(auto&& arg : astfun->args) {
         auto param = [this, num] { return num + ReturnType->IsComplexType() + (member != nullptr); };
-        auto ty = a.AnalyzeExpression(this, arg.type);
-        auto con = dynamic_cast<ConstructorType*>(ty.t);
-        if (!con)
-            throw std::runtime_error("Attempted to create an argument, but the expression was not a type.");
-        // If con's type is complex, expect ptr.
-        auto t = con->GetConstructedType();
+        Type* ty = nullptr;
+        if (arg.type) {
+            auto con = dynamic_cast<ConstructorType*>(a.AnalyzeExpression(this, arg.type).t);            
+            if (!con)
+                throw std::runtime_error("Attempted to create an argument, but the expression was not a type.");
+            // If con's type is complex, expect ptr.
+            ty = con->GetConstructedType();
+        } else {
+            auto paramty = args.at(metaargs++);
+            // If this is some kind of reference, decay it.
+            if (paramty->IsReference()) paramty = paramty->IsReference();
+            ty = paramty;
+        }
         Expression var;
-        var.t = a.GetLvalueType(t);
-        if (t->IsComplexType()) {
+        var.t = a.GetLvalueType(ty);
+        if (ty->IsComplexType()) {
             var.Expr = a.gen->CreateParameterExpression(param);
         } else {
             std::vector<Expression> args;
             Expression arg;
             arg.Expr = a.gen->CreateParameterExpression(param);
-            arg.t = t;
+            arg.t = ty;
             args.push_back(arg);
-            var.Expr = t->BuildLvalueConstruction(args, a).Expr;
+            var.Expr = ty->BuildLvalueConstruction(args, a).Expr;
         }
         ++num;
         variables.back()[arg.name] = var;
-        Args.push_back(t);
+        Args.push_back(ty);
     }
 
     std::stringstream strstr;

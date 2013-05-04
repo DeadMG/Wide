@@ -225,3 +225,20 @@ Expression UserDefinedType::BuildLTComparison(Expression lhs, Expression rhs, An
     args.push_back(rhs);
     return a.GetDeclContext(type->higher)->AccessMember(Expression(), "<", a).t->BuildCall(Expression(), std::move(args), a);
 }
+ConversionRank UserDefinedType::RankConversionFrom(Type* from, Analyzer& a) {
+    if (from->IsReference(this)) {
+        // This handles all cases except T to T&&.
+        auto rank = ConversionRank::Zero;
+        for(auto mem : llvmtypes) {
+            if (auto lval = dynamic_cast<LvalueType*>(from)) {
+                rank = std::max(rank, a.RankConversion(a.GetLvalueType(mem.t), mem.t));
+            } else {
+                rank = std::max(rank, a.RankConversion(a.GetRvalueType(mem.t), mem.t));
+            }
+        }
+        return rank;
+    }
+    
+    // No U to T/T& conversions permitted right now
+    return ConversionRank::None;
+}

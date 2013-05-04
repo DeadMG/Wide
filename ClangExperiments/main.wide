@@ -1,16 +1,19 @@
 using std := cpp("WideLibrary/test.h").std;
-Main() {
-    fun := sample();
-    fun.y = 66;
-    fun.x = 65;
-    fun = fun;
+sort(cont, func) {
+    cont.push_back(66);
+    cont.push_back(65);
+    std.sort(cont.begin(), cont.end(), func);
+    std.cout << cont.front() << cont.back(); 
 }
-type sample {
-    x := int8();
-    y := int8();
-    operator=(sample other) {
-        x = other.x;
-        y = other.y;
-        std.cout << x << y;
-    }
+sort(cont) {
+    return sort(cont, less);
+}
+less(int8 lhs, int8 rhs) {
+    return true;
+}
+Main() {
+    vec := std.vector!(int8)();
+    deq := std.deque!(int8)();
+    sort(vec, less);
+    sort(deq, less);
 }

@@ -75,6 +75,7 @@ namespace Wide {
         class ClangTemplateClass;
         class OverloadSet;       
         class UserDefinedType;
+        enum ConversionRank;
         struct Result;
         struct VectorTypeHasher {
             std::size_t operator()(const std::vector<Type*>& t) const;
@@ -84,7 +85,7 @@ namespace Wide {
             std::unordered_map<clang::QualType, Type*, ClangUtil::ClangTypeHasher> ClangTypes;
             std::unordered_map<clang::DeclContext*, ClangNamespace*> ClangNamespaces;
             std::unordered_map<Type*, std::unordered_map<std::vector<Type*>, FunctionType*, VectorTypeHasher>> FunctionTypes;
-            std::unordered_map<AST::Function*, Function*> WideFunctions;
+            std::unordered_map<AST::Function*, std::unordered_map<std::vector<Type*>, Function*, VectorTypeHasher>> WideFunctions;
             std::unordered_map<Type*, LvalueType*> LvalueTypes;
             std::unordered_map<Type*, Type*> RvalueTypes;
             std::unordered_map<Type*, ConstructorType*> ConstructorTypes;
@@ -98,6 +99,8 @@ namespace Wide {
             ClangCommonState ccs;
 
         public:
+            ConversionRank RankConversion(Type* from, Type* to);
+
             void AddClangType(clang::QualType t, Type* match);
 
             Wide::Memory::Arena arena;
@@ -116,7 +119,7 @@ namespace Wide {
             ClangNamespace* GetClangNamespace(ClangUtil::ClangTU& from, clang::DeclContext* dc);
             FunctionType* GetFunctionType(Type* ret, const std::vector<Type*>& t);
             Module* GetWideModule(AST::Module* m);
-            Function* GetWideFunction(AST::Function* p, Type* nonstatic = nullptr);
+            Function* GetWideFunction(AST::Function* p, Type* nonstatic = nullptr, const std::vector<Type*>& = std::vector<Type*>());
             LvalueType* GetLvalueType(Type* t);
             Type* GetRvalueType(Type* t);
             ConstructorType* GetConstructorType(Type* t);

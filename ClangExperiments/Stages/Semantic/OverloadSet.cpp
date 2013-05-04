@@ -29,8 +29,7 @@ using namespace Wide;
 using namespace Semantic;
 
 OverloadSet::OverloadSet(AST::FunctionOverloadSet* s, Analyzer& a, Type* mem) {
-    for(auto x : s->functions)
-        funcs.push_back(a.GetWideFunction(x, mem));
+    overset = s;
     nonstatic = mem;
 }
 std::function<llvm::Type*(llvm::Module*)> OverloadSet::GetLLVMType(Analyzer& a) {
@@ -65,7 +64,7 @@ std::function<llvm::Type*(llvm::Module*)> OverloadSet::GetLLVMType(Analyzer& a) 
     }
 }
 Expression OverloadSet::BuildCall(Expression e, std::vector<Expression> args, Analyzer& a) {
-    std::vector<Function*> ViableCandidates;
+    std::vector<AST::Function*> ViableCandidates;
 
     if (nonstatic) {
         e = e.t->BuildValue(e, a);
@@ -74,21 +73,59 @@ Expression OverloadSet::BuildCall(Expression e, std::vector<Expression> args, An
         args.insert(args.begin(), e);
     }
 
-    for(auto x : funcs) {
-        if (x->GetSignature(a)->GetArguments().size() == args.size())
+    for(auto x : overset->functions) {
+        if (x->args.size() == args.size())
             ViableCandidates.push_back(x);
+    }
+
+    if (ViableCandidates.size() == 0)
+        throw std::runtime_error("Attempted to call a function, but there were none with the right amount of arguments.");
+
+    auto rank = std::vector<Function*>();
+    auto best_rank = ConversionRank::None;
+    for(auto f : ViableCandidates) {
+        auto types = std::vector<Type*>();
+        auto curr_rank = ConversionRank::Zero;
+        for(std::size_t i = 0; i < args.size(); ++i) {
+            if (f->args[i].type) {
+                auto con = overset->higher;
+                struct LookupType : Type {
+                    AST::DeclContext* con;
+                    Expression AccessMember(Expression self, std::string name, Analyzer& a) {
+                        return a.GetDeclContext(con)->AccessMember(self, std::move(name), a);
+                    }
+                };
+                LookupType lt;
+                lt.con = con;
+                auto argty = a.AnalyzeExpression(&lt, f->args[i].type);
+                curr_rank = std::max(curr_rank, a.RankConversion(args[i].t, argty.t));
+            } else {
+                types.push_back(args[i].t);
+            }
+        }
+        auto x = a.GetWideFunction(f, nonstatic, types);
+        if (curr_rank < best_rank) {
+            rank.clear();
+            rank.push_back(x);
+            best_rank = curr_rank;
+            continue;
+        }
+        if (curr_rank == best_rank && best_rank != ConversionRank::None) {
+            rank.push_back(x);
+        }
     }
     
     if (ViableCandidates.size() == 1) {
-        auto call = ViableCandidates[0]->BuildCall(e, std::move(args), a);
+        auto call = rank[0]->BuildCall(e, std::move(args), a);
         if (e.Expr)
             call.Expr = a.gen->CreateChainExpression(e.Expr, call.Expr);
         return call;
     }
-    if (ViableCandidates.size() == 0)
-        throw std::runtime_error("Attempted to call a function, but there were none with the right amount of arguments.");
 
-    throw std::runtime_error("Attempted to call a function, but the call was ambiguous.");
+    if (ViableCandidates.size() == 0)
+        throw std::runtime_error("Attempted to call a function overload set, but there were no matches.");
+
+    throw std::runtime_error("Attempted to call a function, but the call was ambiguous- there was more than one function of the correct ranking.");
 }
 Expression OverloadSet::BuildValueConstruction(std::vector<Expression> args, Analyzer& a) {
     if (args.size() > 1)
@@ -140,9 +177,11 @@ clang::QualType OverloadSet::GetClangType(ClangUtil::ClangTU& TU, Analyzer& a) {
         var->setAccess(clang::AccessSpecifier::AS_public);
         recdecl->addDecl(var);
     }
-    for(auto&& f : funcs) {
+    for(auto&& x : overset->functions) {
         // Instead of this, they will take a pointer to the recdecl here.
         // Wide member function types take "this" into account, whereas Clang ones do not.
+        for(auto arg : x->args) if (!arg.type) continue;
+        auto f = a.GetWideFunction(x, nonstatic);
         auto sig = f->GetSignature(a);
         if (nonstatic) {
             auto ret = sig->GetReturnType();

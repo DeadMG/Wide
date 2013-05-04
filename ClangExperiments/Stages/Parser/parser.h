@@ -59,6 +59,22 @@ namespace Wide {
                 return sema.CreateIntegerExpression(t.GetValue(), t.GetLocation());
             if (t.GetType() == Lexer::TokenType::This)
                 return sema.CreateThisExpression(t.GetLocation());
+            if (t.GetType() == Lexer::TokenType::Function) {
+                auto open = lex();
+                if (open.GetType() != Lexer::TokenType::OpenBracket)
+                    throw std::runtime_error("Expected ( after function in expression.");
+                auto args = ParseFunctionArguments(std::forward<Lex>(lex), std::forward<Sema>(sema));
+
+                auto pos = t.GetLocation();
+                auto grp = sema.CreateStatementGroup();
+                auto tok = lex();
+                while(t.GetType() != Lexer::TokenType::CloseCurlyBracket) {
+                    lex(tok);
+                    grp.push_back(ParseStatement(std::forward<Lex>(lex), std::forward<Sema>(sema)));
+                    tok = lex();
+                }
+                return sema.CreateLambda(std::move(args), std::move(grp), pos + tok.GetLocation());
+            }
             throw std::runtime_error("Expected expression, but could not find the start of an expression.");
         }
         
