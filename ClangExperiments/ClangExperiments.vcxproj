@@ -88,9 +88,9 @@
     <ClCompile Include="Stages\Semantic\ClangTemplateClass.cpp" />
     <ClCompile Include="Stages\Semantic\ClangTU.cpp" />
     <ClCompile Include="Stages\Semantic\ConstructorType.cpp" />
-    <ClCompile Include="Stages\Semantic\DeferredType.cpp" />
     <ClCompile Include="Stages\Semantic\FunctionType.cpp" />
     <ClCompile Include="Stages\Semantic\IntegralType.cpp" />
+    <ClCompile Include="Stages\Semantic\LambdaType.cpp" />
     <ClCompile Include="Stages\Semantic\OverloadSet.cpp" />
     <ClCompile Include="Stages\Semantic\PrimitiveType.cpp" />
     <ClCompile Include="Stages\Semantic\RvalueType.cpp" />
@@ -116,6 +116,7 @@
     <ClInclude Include="Stages\Codegen\Statement.h" />
     <ClInclude Include="Stages\LLVMOptions.h" />
     <ClInclude Include="Stages\Parser\AST.h" />
+    <ClInclude Include="Stages\Parser\ASTVisitor.h" />
     <ClInclude Include="Stages\Semantic\Bool.h" />
     <ClInclude Include="Stages\Semantic\ClangCommonState.h" />
     <ClInclude Include="Stages\Semantic\ClangInclude.h" />
@@ -124,9 +125,9 @@
     <ClInclude Include="Stages\Semantic\ClangTemplateClass.h" />
     <ClInclude Include="Stages\Semantic\ClangTU.h" />
     <ClInclude Include="Stages\Semantic\ConstructorType.h" />
-    <ClInclude Include="Stages\Semantic\DeferredType.h" />
     <ClInclude Include="Stages\Semantic\FunctionType.h" />
     <ClInclude Include="Stages\Semantic\IntegralType.h" />
+    <ClInclude Include="Stages\Semantic\LambdaType.h" />
     <ClInclude Include="Stages\Semantic\PrimitiveType.h" />
     <ClInclude Include="Stages\Semantic\RvalueType.h" />
     <ClInclude Include="Stages\Semantic\UserDefinedType.h" />

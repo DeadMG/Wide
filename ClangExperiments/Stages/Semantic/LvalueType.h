@@ -11,8 +11,9 @@ namespace Wide {
                 : Pointee(p) {}
             
             std::function<llvm::Type*(llvm::Module*)> GetLLVMType(Analyzer& a);        
-            clang::QualType GetClangType(ClangUtil::ClangTU& tu, Analyzer& a);        
-            
+            clang::QualType GetClangType(ClangUtil::ClangTU& tu, Analyzer& a);      
+
+            Codegen::Expression* BuildInplaceConstruction(Codegen::Expression* mem, std::vector<Expression> args, Analyzer& a);
             Expression BuildRightShift(Expression lhs, Expression rhs, Analyzer& a);
             Expression BuildLeftShift(Expression lhs, Expression rhs, Analyzer& a);
             Expression BuildCall(Expression e, std::vector<Expression> args, Analyzer& a) {
@@ -37,6 +38,7 @@ namespace Wide {
             Expression BuildLTEComparison(Expression lhs, Expression rhs, Analyzer& a);
             Expression BuildGTComparison(Expression lhs, Expression rhs, Analyzer& a);
             Expression BuildGTEComparison(Expression lhs, Expression rhs, Analyzer& a);
+
             ConversionRank RankConversionFrom(Type* from, Analyzer& a) {
                 assert(false && "Internal Compiler Error: All T& conversions should be dealt with by Analyzer.");
                 // Just to shut up the compiler

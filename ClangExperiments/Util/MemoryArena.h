@@ -138,9 +138,19 @@ namespace Wide {
                 T* ret = new (mem) T(std::forward<Arg1>(other), std::forward<Arg2>(other2), std::forward<Arg3>(other3), std::forward<Arg4>(other4));
                 return ret;
             }
+            template<typename T, typename Arg1, typename Arg2, typename Arg3, typename Arg4, typename Arg5> T* Allocate(Arg1&& other, Arg2&& other2, Arg3&& other3, Arg4&& other4, Arg5&& other5) {
+                auto mem = tail->AllocateFor<T>();
+                T* ret = new (mem) T(std::forward<Arg1>(other), std::forward<Arg2>(other2), std::forward<Arg3>(other3), std::forward<Arg4>(other4), std::forward<Arg5>(other5));
+                return ret;
+            }
             template<typename T, typename Arg1, typename Arg2, typename Arg3, typename Arg4, typename Arg5, typename Arg6> T* Allocate(Arg1&& other, Arg2&& other2, Arg3&& other3, Arg4&& other4, Arg5&& other5, Arg6&& other6) {
                 auto mem = tail->AllocateFor<T>();
                 T* ret = new (mem) T(std::forward<Arg1>(other), std::forward<Arg2>(other2), std::forward<Arg3>(other3), std::forward<Arg4>(other4), std::forward<Arg5>(other5), std::forward<Arg6>(other6));
+                return ret;
+            }
+            template<typename T, typename Arg1, typename Arg2, typename Arg3, typename Arg4, typename Arg5, typename Arg6, typename Arg7> T* Allocate(Arg1&& other, Arg2&& other2, Arg3&& other3, Arg4&& other4, Arg5&& other5, Arg6&& other6, Arg7&& other7) {
+                auto mem = tail->AllocateFor<T>();
+                T* ret = new (mem) T(std::forward<Arg1>(other), std::forward<Arg2>(other2), std::forward<Arg3>(other3), std::forward<Arg4>(other4), std::forward<Arg5>(other5), std::forward<Arg6>(other6), std::forward<Arg7>(other7));
                 return ret;
             }
         };

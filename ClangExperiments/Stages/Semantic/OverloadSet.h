@@ -10,12 +10,13 @@ namespace Wide {
     }
     namespace Semantic {
         class Function;
+        class UserDefinedType;
         class OverloadSet : public PrimitiveType {
             AST::FunctionOverloadSet* overset;
             std::unordered_map<ClangUtil::ClangTU*, clang::QualType> clangtypes;
-            Type* nonstatic;
+            UserDefinedType* nonstatic;
         public:
-            OverloadSet(AST::FunctionOverloadSet* s, Analyzer& a, Type* nonstatic = nullptr);
+            OverloadSet(AST::FunctionOverloadSet* s, Analyzer& a, UserDefinedType* nonstatic = nullptr);
             std::function<llvm::Type*(llvm::Module*)> GetLLVMType(Analyzer& a);
             clang::QualType GetClangType(ClangUtil::ClangTU& TU, Analyzer& a);
             Expression BuildCall(Expression, std::vector<Expression> args, Analyzer& a);

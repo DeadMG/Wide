@@ -14,8 +14,9 @@ Codegen::Expression* PrimitiveType::BuildInplaceConstruction(Codegen::Expression
 
 Expression PrimitiveType::BuildAssignment(Expression lhs, Expression rhs, Analyzer& a) {
     // x = y- x needs to be an lvalue.
-    if (!dynamic_cast<LvalueType*>(lhs.t))
-        throw std::runtime_error("Attempted to assign to a value or rvalue.");
+    // Commented out because lambda capture-by-ref currently assigns to an rvalue reference.
+    /*if (!dynamic_cast<LvalueType*>(lhs.t))
+        throw std::runtime_error("Attempted to assign to a value or rvalue.");*/
 
     // Primitives need assignment by value, so convert RHS to a value.
     rhs = rhs.t->BuildValue(rhs, a);

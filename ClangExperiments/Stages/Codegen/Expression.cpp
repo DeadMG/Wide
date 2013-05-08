@@ -193,3 +193,12 @@ llvm::Value* IntegralLeftShiftExpression::ComputeValue(llvm::IRBuilder<>& builde
 llvm::Value* IntegralRightShiftExpression::ComputeValue(llvm::IRBuilder<>& builder, Generator& g) {
     return builder.CreateLShr(lhs->GetValue(builder, g), rhs->GetValue(builder, g));
 }
+
+llvm::Value* IntegralLessThan::ComputeValue(llvm::IRBuilder<>& builder, Generator& g) {
+    // Semantic will expect an i8 here, not an i1.
+    return builder.CreateZExt(builder.CreateICmpSLT(lhs->GetValue(builder, g), rhs->GetValue(builder, g)), llvm::IntegerType::getInt8Ty(builder.getContext()));
+}
+
+llvm::Value* ZExt::ComputeValue(llvm::IRBuilder<>& builder, Generator& g) {
+    return builder.CreateZExt(from->GetValue(builder, g), to(builder.GetInsertBlock()->getParent()->getParent()));
+}

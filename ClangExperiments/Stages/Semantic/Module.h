@@ -15,7 +15,7 @@ namespace Wide {
             std::unordered_map<std::string, Expression> SpecialMembers;
         public:
             Module(AST::Module* p);
-        
+            AST::DeclContext* GetDeclContext();
             void AddSpecialMember(std::string name, Expression t);            
             Expression AccessMember(Expression val, std::string name, Analyzer& a);
         };

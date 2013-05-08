@@ -119,12 +119,12 @@ namespace Wide {
             ClangNamespace* GetClangNamespace(ClangUtil::ClangTU& from, clang::DeclContext* dc);
             FunctionType* GetFunctionType(Type* ret, const std::vector<Type*>& t);
             Module* GetWideModule(AST::Module* m);
-            Function* GetWideFunction(AST::Function* p, Type* nonstatic = nullptr, const std::vector<Type*>& = std::vector<Type*>());
+            Function* GetWideFunction(AST::Function* p, UserDefinedType* nonstatic = nullptr, const std::vector<Type*>& = std::vector<Type*>());
             LvalueType* GetLvalueType(Type* t);
             Type* GetRvalueType(Type* t);
             ConstructorType* GetConstructorType(Type* t);
             ClangTemplateClass* GetClangTemplateClass(ClangUtil::ClangTU& from, clang::ClassTemplateDecl*);
-            OverloadSet* GetOverloadSet(AST::FunctionOverloadSet* set, Type* nonstatic = nullptr);
+            OverloadSet* GetOverloadSet(AST::FunctionOverloadSet* set, UserDefinedType* nonstatic = nullptr);
             UserDefinedType* GetUDT(AST::Type*);
             Type* GetDeclContext(AST::DeclContext* con);
             

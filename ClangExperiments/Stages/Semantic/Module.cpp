@@ -51,3 +51,7 @@ Expression Module::AccessMember(Expression val, std::string name, Analyzer& a) {
         return a.GetDeclContext(m->higher)->AccessMember(val, name, a);
     throw std::runtime_error("Attempted to access a member of a Wide module that did not exist.");
 }
+
+AST::DeclContext* Module::GetDeclContext() {
+    return m->higher;
+}

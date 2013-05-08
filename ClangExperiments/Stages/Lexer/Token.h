@@ -33,6 +33,7 @@ namespace Wide {
             Function,
             OpenSquareBracket,
             CloseSquareBracket,
+            Colon,
 
             LT,
             LTE,

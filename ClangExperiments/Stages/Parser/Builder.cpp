@@ -128,16 +128,19 @@ void Builder::CreateFunction(
     std::vector<Statement*> prolog, 
     Lexer::Range r,
     Type* p, 
-    std::vector<FunctionArgument> args) 
+    std::vector<FunctionArgument> args, 
+    std::vector<VariableStatement*> caps) 
 {
+    if (name == "(")
+        name = "()";
     if (p->Functions.find(name) != p->Functions.end())
         p->Functions[name]->functions.push_back(ConcurrentUseArena(arenas, [&](Wide::Memory::Arena& arena) -> AST::Function* {
-            return arena.Allocate<Function>(name, std::move(body), std::move(prolog), r, std::move(args), p);
+            return arena.Allocate<Function>(name, std::move(body), std::move(prolog), r, std::move(args), p, std::move(caps));
         }));
     else {
         auto pair = ConcurrentUseArena(arenas, [&](Wide::Memory::Arena& arena) {
             return std::make_pair(
-                arena.Allocate<Function>(name, std::move(body), std::move(prolog), r, std::move(args), p),
+                arena.Allocate<Function>(name, std::move(body), std::move(prolog), r, std::move(args), p, std::move(caps)),
                 arena.Allocate<FunctionOverloadSet>(name, p));
         });
         p->Functions[name] = pair.second;
@@ -145,10 +148,12 @@ void Builder::CreateFunction(
     }
 }
 
-void Builder::CreateFunction(std::string name, std::vector<Statement*> body, std::vector<Statement*> prolog, Lexer::Range r, Module* m, std::vector<FunctionArgument> args) {
+void Builder::CreateFunction(std::string name, std::vector<Statement*> body, std::vector<Statement*> prolog, Lexer::Range r, Module* m, std::vector<FunctionArgument> args, std::vector<VariableStatement*> caps) {
+    if (name == "(")
+        throw std::runtime_error("operator() must be a type-scope function.");
     auto p = ConcurrentUseArena(arenas, [&](Wide::Memory::Arena& arena) {
         return std::make_pair(
-            arena.Allocate<Function>(name, std::move(body), std::move(prolog), r, std::move(args), m), 
+            arena.Allocate<Function>(name, std::move(body), std::move(prolog), r, std::move(args), m, std::move(caps)), 
             arena.Allocate<FunctionOverloadSet>(name, m));
     });
     auto ret = m->decls.insert(std::make_pair(name, p.second));
@@ -280,12 +285,20 @@ ThisExpression* Builder::CreateThisExpression(Lexer::Range loc) {
     });
 }
 
-void Builder::AddTypeField(Type* t, TypeLevelDeclaration* decl) {
+void Builder::AddTypeField(Type* t, VariableStatement* decl) {
     t->variables.push_back(decl);
 }
 
-Lambda* Builder::CreateLambda(std::vector<FunctionArgument> args, std::vector<Statement*> body, Lexer::Range loc) {
+Lambda* Builder::CreateLambda(std::vector<FunctionArgument> args, std::vector<Statement*> body, Lexer::Range loc, bool defaultref, std::vector<VariableStatement*> captures) {
     return ConcurrentUseArena(arenas, [&](Wide::Memory::Arena& arena) {
-        return arena.Allocate<Lambda>(std::move(body), std::move(args), loc, false);
+        return arena.Allocate<Lambda>(std::move(body), std::move(args), loc, defaultref, std::move(captures));
     });
+}
+
+void Builder::AddCaptureToGroup(std::vector<VariableStatement*>& l, VariableStatement* b) {
+    l.push_back(b);
+}
+
+std::vector<VariableStatement*> Builder::CreateCaptureGroup() {
+    return std::vector<VariableStatement*>();
 }

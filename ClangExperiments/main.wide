@@ -1,19 +1,11 @@
-using std := cpp("WideLibrary/test.h").std;
-sort(cont, func) {
-    cont.push_back(66);
-    cont.push_back(65);
-    std.sort(cont.begin(), cont.end(), func);
-    std.cout << cont.front() << cont.back(); 
-}
-sort(cont) {
-    return sort(cont, less);
-}
-less(int8 lhs, int8 rhs) {
-    return true;
-}
+using test := cpp("WideLibrary/test.h");
+using std := test.std;
 Main() {
-    vec := std.vector!(int8)();
-    deq := std.deque!(int8)();
-    sort(vec, less);
-    sort(deq, less);
+    var := true;
+    fun := function()[&] {
+        std.cout << var;
+    };
+    fun();
+    var = false;
+    fun();
 }

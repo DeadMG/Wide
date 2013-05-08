@@ -23,6 +23,7 @@ Expression Type::BuildRvalueConstruction(std::vector<Expression> args, Analyzer&
     out.t = a.GetRvalueType(this);
     auto mem = a.gen->CreateVariable(GetLLVMType(a));
     out.Expr = a.gen->CreateChainExpression(BuildInplaceConstruction(mem, args, a), mem);
+    out.steal = true;
     return out;
 }
 

@@ -55,6 +55,9 @@ namespace Wide {
                 singles['&'] = TokenType::And;
                 singles['<'] = TokenType::LT;
                 singles['>'] = TokenType::GT;
+                singles['['] = TokenType::OpenSquareBracket;
+                singles[']'] = TokenType::CloseSquareBracket;
+                singles[':'] = TokenType::Colon;
                 
                 doubles['<']['<'] = TokenType::LeftShift;
                 doubles['>']['>'] = TokenType::RightShift;

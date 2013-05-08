@@ -10,6 +10,7 @@
 #include "LvalueType.h"
 #include "ConstructorType.h"
 #include "RvalueType.h"
+#include "UserDefinedType.h"
 
 #include <unordered_set>
 #include <sstream>
@@ -29,7 +30,7 @@
 using namespace Wide;
 using namespace Semantic;
 
-Function::Function(std::vector<Type*> args, AST::Function* astfun, Analyzer& a, Type* mem)
+Function::Function(std::vector<Type*> args, AST::Function* astfun, Analyzer& a, UserDefinedType* mem)
 : analyzer(a)
 , ReturnType(nullptr)
 , fun(astfun)
@@ -67,7 +68,10 @@ Function::Function(std::vector<Type*> args, AST::Function* astfun, Analyzer& a, 
             arg.Expr = a.gen->CreateParameterExpression(param);
             arg.t = ty;
             args.push_back(arg);
-            var.Expr = ty->BuildLvalueConstruction(args, a).Expr;
+            if (arg.t->IsReference())
+                var.Expr = arg.Expr;
+            else
+                var.Expr = ty->BuildLvalueConstruction(args, a).Expr;
         }
         ++num;
         variables.back()[arg.name] = var;
@@ -106,6 +110,10 @@ Function::Function(std::vector<Type*> args, AST::Function* astfun, Analyzer& a, 
     }
 }
 
+AST::DeclContext* Function::GetDeclContext() {
+    return fun->higher;
+}
+
 clang::QualType Function::GetClangType(ClangUtil::ClangTU& where, Analyzer& a) {
     return GetSignature(a)->GetClangType(where, a);
 }
@@ -115,6 +123,32 @@ std::function<llvm::Type*(llvm::Module*)> Function::GetLLVMType(Analyzer& a) {
 }
 void Function::ComputeBody(Analyzer& a) {    
     if (!body) {        
+        // Initializers first, if we are a constructor
+        if (member && !fun->initializers.empty()) {
+            auto self = AccessMember(Expression(), "this", a);
+            auto members = member->GetMembers();
+            for(auto&& x : members) {
+                auto has_initializer = [&](std::string name) -> AST::VariableStatement* {
+                    for(auto&& x : fun->initializers)
+                        if(x->name == name)
+                            return x;
+                    return nullptr;
+                };
+                if (auto init = has_initializer(x.name)) {
+                    // AccessMember will automatically give us back a T*, but we need the T** here.
+                    auto mem = a.gen->CreateFieldExpression(self.Expr, x.num);
+                    std::vector<Expression> args;
+                    if (init->initializer)
+                        args.push_back(a.AnalyzeExpression(this, init->initializer));
+                    exprs.push_back(x.t->BuildInplaceConstruction(mem, std::move(args), a));
+                } else {
+                    // Don't care about if x.t is ref because refs can't be default-constructed anyway.
+                    auto mem = self.t->AccessMember(self, init->name, a);
+                    std::vector<Expression> args;
+                    exprs.push_back(mem.t->BuildInplaceConstruction(mem.Expr, std::move(args), a));
+                }
+            }
+        }
         // Now the body.
         std::vector<std::tuple<unsigned, Type*>> RetExpressions;
         std::unordered_set<Type*> RetTypes;
@@ -157,19 +191,26 @@ void Function::ComputeBody(Analyzer& a) {
 
                 // If it's a function call, and it returns a complex T, then the return expression already points to
                 // a memory variable of type T. Just use that.
-                if (auto func = dynamic_cast<AST::FunctionCallExpr*>(var->initializer)) {
+                // This only works for AST function calls, e.g. f(), it doesn't work for, say, lambda expressions.
+                // Go down to the LLVM level.
+                /*if (auto func = dynamic_cast<AST::FunctionCallExpr*>(var->initializer)) {
                     if (result.t->IsReference() && result.t->IsReference()->IsComplexType()) {
                         variables.back()[var->name].t = a.GetLvalueType(result.t);
                         return variables.back()[var->name].Expr = result.Expr;
                     }
-                }
-
+                }*/
                 std::vector<Expression> args;
                 args.push_back(result);
         
                 if (result.t->IsReference()) {
-                    result.t = a.GetLvalueType(result.t);
-                    variables.back()[var->name] = result.t->IsReference()->BuildLvalueConstruction(args, a);         
+                    if (!result.steal) {
+                        result.t = a.GetLvalueType(result.t);
+                        variables.back()[var->name] = result.t->IsReference()->BuildLvalueConstruction(args, a);         
+                    } else {
+                        result.steal = false;
+                        result.t = a.GetLvalueType(result.t);
+                        variables.back()[var->name] = result;
+                    }
                 } else {
                     variables.back()[var->name] = result.t->BuildLvalueConstruction(args, a);
                 }
@@ -270,7 +311,12 @@ Expression Function::AccessMember(Expression e, std::string name, Analyzer& a) {
         Expression self(a.GetLvalueType(member), a.gen->CreateParameterExpression([this] { return ReturnType->IsComplexType(); }));
         if (name == "this")
             return self;
-        return self.t->AccessMember(self, std::move(name), a);
+        if (member->HasMember(name))
+            return self.t->AccessMember(self, std::move(name), a);
+        auto context = member->GetDeclContext();
+        while(auto ty = dynamic_cast<AST::Type*>(context))
+            context = a.GetDeclContext(context)->GetDeclContext();
+        return a.GetDeclContext(context)->AccessMember(Expression(), name, a);
     }
     return a.GetDeclContext(fun->higher)->AccessMember(e, std::move(name), a);
 }
@@ -281,4 +327,13 @@ FunctionType* Function::GetSignature(Analyzer& a) {
     if (!body)
         ComputeBody(a);
     return a.GetFunctionType(ReturnType, Args);
+}
+bool Function::HasLocalVariable(std::string name) {
+    for(auto it = variables.rbegin(); it != variables.rend(); ++it) {
+        auto&& map = *it;
+        if (map.find(name) != map.end()) {
+            return true;
+        }
+    }
+    return false;
 }

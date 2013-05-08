@@ -79,7 +79,15 @@ void Analyzer::operator()(AST::Module* GlobalModule) {
     }
 }
 
+#include "../Parser/ASTVisitor.h"
+
 Expression Analyzer::AnalyzeExpression(Type* t, AST::Expression* e) {
+    struct SemanticExpression : public AST::Expression {
+        Semantic::Expression e;
+        SemanticExpression(Semantic::Expression expr)
+            : e(expr), AST::Expression(Lexer::Range()) {}
+    };
+
     if (auto str = dynamic_cast<AST::StringExpr*>(e)) {
         Expression out;
         out.t = LiteralStringType;
@@ -119,6 +127,8 @@ Expression Analyzer::AnalyzeExpression(Type* t, AST::Expression* e) {
     }
 
     if (auto ident = dynamic_cast<AST::IdentifierExpr*>(e)) {
+        while (auto udt = dynamic_cast<UserDefinedType*>(t))
+            t = GetDeclContext(udt->GetDeclContext());
         return t->AccessMember(Expression(), ident->val, *this);
     }
 
@@ -166,6 +176,125 @@ Expression Analyzer::AnalyzeExpression(Type* t, AST::Expression* e) {
         auto lhs = AnalyzeExpression(t, ge->lhs);
         auto rhs = AnalyzeExpression(t, ge->rhs);
         return lhs.t->BuildLTComparison(lhs, rhs, *this);
+    }
+
+    // Ugly to perform an AST-level transformation in the analyzer
+    // But hey- the AST exists to represent the exact source.
+    if (auto lam = dynamic_cast<AST::Lambda*>(e)) {
+
+        auto ty = arena.Allocate<AST::Type>(t->GetDeclContext(), "");
+        auto ovr = arena.Allocate<AST::FunctionOverloadSet>("()", ty);
+        auto fargs = lam->args;
+        auto fun = arena.Allocate<AST::Function>("()", lam->statements, std::vector<AST::Statement*>(), lam->location, std::move(fargs), ty, std::vector<AST::VariableStatement*>());
+        ovr->functions.push_back(fun);
+        ty->Functions["()"] = ovr;
+
+        // Need to not-capture things that would be available anyway.
+        
+        std::vector<std::unordered_set<std::string>> lambda_locals;
+        std::unordered_set<std::string> captures;
+        struct LambdaVisitor : AST::Visitor<LambdaVisitor> {
+            std::vector<std::unordered_set<std::string>>* lambda_locals;
+            std::unordered_set<std::string>* captures;
+            void VisitVariableStatement(AST::VariableStatement* v) {
+                lambda_locals->back().insert(v->name);
+            }
+            void VisitLambdaArgument(AST::FunctionArgument* arg) {
+                lambda_locals->back().insert(arg->name);
+            }
+            void VisitLambda(AST::Lambda* l) {
+                lambda_locals->emplace_back();
+                for(auto&& x : l->args)
+                    VisitLambdaArgument(&x);
+                lambda_locals->emplace_back();
+                for(auto&& x : l->statements)
+                    VisitStatement(x);
+                lambda_locals->pop_back();
+                lambda_locals->pop_back();
+            }
+            void VisitIdentifier(AST::IdentifierExpr* e) {
+                for(auto&& scope : *lambda_locals)
+                    if (scope.find(e->val) != scope.end())
+                        return;
+                captures->insert(e->val);
+            }
+            void VisitCompoundStatement(AST::CompoundStatement* cs) {
+                lambda_locals->emplace_back();
+                for(auto&& x : cs->stmts)
+                    VisitStatement(cs);
+                lambda_locals->pop_back();
+            }
+            void VisitWhileStatement(AST::WhileStatement* wh) {
+                lambda_locals->emplace_back();
+                VisitExpression(wh->condition);
+                VisitStatement(wh->body);
+                lambda_locals->pop_back();
+            }
+            void VisitIfStatement(AST::IfStatement* br) {
+                lambda_locals->emplace_back();
+                VisitExpression(br->condition);
+                lambda_locals->emplace_back();
+                VisitStatement(br->true_statement);
+                lambda_locals->pop_back();
+                lambda_locals->pop_back();
+                lambda_locals->emplace_back();
+                VisitStatement(br->false_statement);
+                lambda_locals->pop_back();
+            }
+        };
+        LambdaVisitor l;
+        l.captures = &captures;
+        l.lambda_locals = &lambda_locals;
+        l.VisitLambda(lam);
+        
+        auto lamty = GetUDT(ty);
+        
+        // We obviously don't want to capture module-scope names.
+        // Only capture from the local scope, and from "this".
+        auto caps = std::move(captures);
+        for(auto&& name : caps) {
+            if (auto fun = dynamic_cast<Function*>(t)) {
+                if (fun->HasLocalVariable(name))
+                    captures.insert(name);
+                auto context = GetDeclContext(fun->GetDeclContext());
+                if (auto udt = dynamic_cast<UserDefinedType*>(context)) {
+                    if (udt->HasMember(name))
+                        captures.insert(name);
+                }
+            }
+        }
+
+
+        std::vector<AST::VariableStatement*> initializers;
+        std::vector<AST::FunctionArgument> funargs;
+        unsigned num = 0;
+        for(auto&& name : captures) {
+            std::stringstream str;
+            str << "__param" << num;
+            auto capty = t->AccessMember(Expression(), name, *this).t;
+            initializers.push_back(arena.Allocate<AST::VariableStatement>(name, arena.Allocate<AST::IdentifierExpr>(str.str(), Lexer::Range()), Lexer::Range()));
+            AST::FunctionArgument f;
+            f.name = str.str();
+            f.type = arena.Allocate<SemanticExpression>(Expression(GetConstructorType(capty), nullptr));
+            funargs.push_back(f);
+            if (!lam->defaultref)
+                capty = capty->Decay();
+            lamty->AddMemberVariable(capty, name);
+            ++num;
+        }
+        std::vector<Expression> args;
+        auto conoverset = arena.Allocate<AST::FunctionOverloadSet>("type", ty);
+        conoverset->functions.push_back(arena.Allocate<AST::Function>("type", std::vector<AST::Statement*>(), std::vector<AST::Statement*>(), Lexer::Range(), std::move(funargs), ty, std::move(initializers)));
+        ty->Functions["type"] = conoverset;
+        for(auto&& name : captures) {
+            args.push_back(t->AccessMember(Expression(), name, *this));        
+        }
+        auto obj = lamty->BuildRvalueConstruction(std::move(args), *this);
+        return obj;
+    }
+
+    if (auto semexpr = dynamic_cast<SemanticExpression*>(e)) {
+        return semexpr->e;
     }
 
     throw std::runtime_error("Unrecognized AST node");
@@ -228,7 +357,7 @@ FunctionType* Analyzer::GetFunctionType(Type* ret, const std::vector<Type*>& t) 
     return FunctionTypes[ret][t] = arena.Allocate<FunctionType>(ret, t);
 }
 
-Function* Analyzer::GetWideFunction(AST::Function* p, Type* nonstatic, const std::vector<Type*>& types) {
+Function* Analyzer::GetWideFunction(AST::Function* p, UserDefinedType* nonstatic, const std::vector<Type*>& types) {
     if (WideFunctions.find(p) != WideFunctions.end())
         if (WideFunctions[p].find(types) != WideFunctions[p].end())
             return WideFunctions[p][types];
@@ -293,7 +422,7 @@ ClangTemplateClass* Analyzer::GetClangTemplateClass(ClangUtil::ClangTU& from, cl
     return ClangTemplateClasses[decl] = arena.Allocate<ClangTemplateClass>(decl, &from);
 }
 
-OverloadSet* Analyzer::GetOverloadSet(AST::FunctionOverloadSet* set, Type* t) {
+OverloadSet* Analyzer::GetOverloadSet(AST::FunctionOverloadSet* set, UserDefinedType* t) {
     if (OverloadSets.find(set) != OverloadSets.end())
         return OverloadSets[set];
     return OverloadSets[set] = arena.Allocate<OverloadSet>(set, *this, t);

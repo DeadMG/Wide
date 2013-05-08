@@ -124,9 +124,11 @@ Expression FunctionType::BuildCall(Expression val, std::vector<Expression> args,
         // Insert a bit cast because Clang sucks.
         out.Expr = a.gen->CreateFunctionCall(val.Expr, e, GetLLVMType(a));
         // If out's T is complex, then call f() and return e[0], which is the memory we allocated to store T, which is now constructed.
+        // Also mark it for stealing
         if (out.t->IsComplexType()) {
             out.Expr = a.gen->CreateChainExpression(out.Expr, e[0]);
             out.t = a.GetRvalueType(out.t);
+            out.steal = true;
         }
     }
     return out;

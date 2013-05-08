@@ -11,6 +11,8 @@
 #include "Analyzer.h"
 #include "../Codegen/Generator.h"
 #include "../Codegen/Function.h"
+#include "ConstructorType.h"
+#include "UserDefinedType.h"
 
 #pragma warning(push, 0)
 
@@ -28,7 +30,7 @@
 using namespace Wide;
 using namespace Semantic;
 
-OverloadSet::OverloadSet(AST::FunctionOverloadSet* s, Analyzer& a, Type* mem) {
+OverloadSet::OverloadSet(AST::FunctionOverloadSet* s, Analyzer& a, UserDefinedType* mem) {
     overset = s;
     nonstatic = mem;
 }
@@ -74,8 +76,13 @@ Expression OverloadSet::BuildCall(Expression e, std::vector<Expression> args, An
     }
 
     for(auto x : overset->functions) {
-        if (x->args.size() == args.size())
-            ViableCandidates.push_back(x);
+        if (nonstatic) {
+            if (x->args.size() + 1 == args.size())
+                ViableCandidates.push_back(x);
+        } else {
+            if (x->args.size() == args.size())
+                ViableCandidates.push_back(x);
+        }
     }
 
     if (ViableCandidates.size() == 0)
@@ -84,11 +91,16 @@ Expression OverloadSet::BuildCall(Expression e, std::vector<Expression> args, An
     auto rank = std::vector<Function*>();
     auto best_rank = ConversionRank::None;
     for(auto f : ViableCandidates) {
+        //__debugbreak();
         auto types = std::vector<Type*>();
         auto curr_rank = ConversionRank::Zero;
         for(std::size_t i = 0; i < args.size(); ++i) {
-            if (f->args[i].type) {
+            if (nonstatic && i == 0) continue;
+            auto fi = nonstatic ? i - 1 : i;
+            if (f->args[fi].type) {
                 auto con = overset->higher;
+                while(auto type = dynamic_cast<AST::Type*>(con))
+                    con = type->higher;
                 struct LookupType : Type {
                     AST::DeclContext* con;
                     Expression AccessMember(Expression self, std::string name, Analyzer& a) {
@@ -97,8 +109,12 @@ Expression OverloadSet::BuildCall(Expression e, std::vector<Expression> args, An
                 };
                 LookupType lt;
                 lt.con = con;
-                auto argty = a.AnalyzeExpression(&lt, f->args[i].type);
-                curr_rank = std::max(curr_rank, a.RankConversion(args[i].t, argty.t));
+                auto argty = a.AnalyzeExpression(&lt, f->args[fi].type).t;
+                if (auto con = dynamic_cast<ConstructorType*>(argty))
+                    argty = con->GetConstructedType();
+                else
+                    throw std::runtime_error("The expression for a function argument must be a type.");
+                curr_rank = std::max(curr_rank, a.RankConversion(args[i].t, argty));
             } else {
                 types.push_back(args[i].t);
             }
@@ -115,14 +131,14 @@ Expression OverloadSet::BuildCall(Expression e, std::vector<Expression> args, An
         }
     }
     
-    if (ViableCandidates.size() == 1) {
+    if (rank.size() == 1) {
         auto call = rank[0]->BuildCall(e, std::move(args), a);
         if (e.Expr)
             call.Expr = a.gen->CreateChainExpression(e.Expr, call.Expr);
         return call;
     }
 
-    if (ViableCandidates.size() == 0)
+    if (rank.size() == 0)
         throw std::runtime_error("Attempted to call a function overload set, but there were no matches.");
 
     throw std::runtime_error("Attempted to call a function, but the call was ambiguous- there was more than one function of the correct ranking.");
@@ -140,6 +156,9 @@ Expression OverloadSet::BuildValueConstruction(std::vector<Expression> args, Ana
                 auto var = a.gen->CreateVariable(GetLLVMType(a));
                 auto store = a.gen->CreateStore(a.gen->CreateFieldExpression(var, 0), args[0].Expr);
                 return Expression(this, a.gen->CreateChainExpression(store, a.gen->CreateLoad(var)));
+            } 
+            if (args[0].t == nonstatic) {
+                assert("Internal compiler error: Attempt to call a member function of a value.");
             }
         }
         throw std::runtime_error("Can only construct overload set from another overload set of the same type, or a reference to T.");

@@ -40,7 +40,6 @@ namespace Wide {
         public:            
             bool IsEliminateType(llvm::Type*);
             void AddEliminateType(llvm::Type*);
-
             void TieFunction(llvm::Function*, Function*);
             Function* FromLLVMFunc(llvm::Function*);
 
@@ -72,6 +71,8 @@ namespace Wide {
             NullExpression* CreateNull(std::function<llvm::Type*(llvm::Module*)> type);
             IntegralLeftShiftExpression* CreateLeftShift(Expression*, Expression*);
             IntegralRightShiftExpression* CreateRightShift(Expression*, Expression*);
+            IntegralLessThan* CreateSLT(Expression* lhs, Expression* rhs);
+            ZExt* CreateZeroExtension(Expression* val, std::function<llvm::Type*(llvm::Module*)> to);
 
             void operator()();
         };

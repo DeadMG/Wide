@@ -1,10 +1,10 @@
 #pragma once
 
-#include "Type.h"
+#include "PrimitiveType.h"
 
 namespace Wide {
     namespace Semantic {
-        class StringType : public Type {
+        class StringType : public PrimitiveType {
             llvm::LLVMContext* con;
         public:
             StringType() {}

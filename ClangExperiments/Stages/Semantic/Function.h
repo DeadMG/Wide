@@ -26,6 +26,7 @@ namespace Wide {
     }
     namespace Semantic {
         class FunctionType;
+        class UserDefinedType;
         class Function : public Type {
             Type* ReturnType;
             std::vector<Type*> Args;
@@ -33,17 +34,19 @@ namespace Wide {
             AST::Function* fun;
             Codegen::Function* codefun;
             bool body;
-            Type* member;
+            UserDefinedType* member;
             void ComputeBody(Analyzer& a);
 
             std::vector<Codegen::Statement*> exprs;
             std::vector<std::unordered_map<std::string, Expression>> variables;
             std::string name;
         public:
-            Function(std::vector<Type*> args, AST::Function* astfun, Analyzer& a, Type* member = nullptr);        
+            bool HasLocalVariable(std::string name);
+            Function(std::vector<Type*> args, AST::Function* astfun, Analyzer& a, UserDefinedType* member = nullptr);        
 
             clang::QualType GetClangType(ClangUtil::ClangTU& where, Analyzer& a);        
-            std::function<llvm::Type*(llvm::Module*)> GetLLVMType(Analyzer& a);      
+            std::function<llvm::Type*(llvm::Module*)> GetLLVMType(Analyzer& a); 
+            AST::DeclContext* GetDeclContext();
      
             Expression BuildCall(Expression, std::vector<Expression> args, Analyzer& a);        
             Expression AccessMember(Expression, std::string name, Analyzer& a);   

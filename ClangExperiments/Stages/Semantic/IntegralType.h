@@ -14,8 +14,7 @@ namespace Wide {
             
             Expression BuildRightShift(Expression lhs, Expression rhs, Analyzer& a);
             Expression BuildLeftShift(Expression lhs, Expression rhs, Analyzer& a);
-
-
+            Expression BuildLTComparison(Expression lhs, Expression rhs, Analyzer& a);
         };
     }
 }

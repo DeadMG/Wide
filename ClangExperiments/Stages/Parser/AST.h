@@ -43,14 +43,11 @@ namespace Wide {
                 : DeclContext(parent, std::move(nam)) {}
             Concurrency::UnorderedMap<std::string, ModuleLevelDeclaration*> decls;
         };
-        struct TypeLevelDeclaration {
-            virtual ~TypeLevelDeclaration() {}
-            virtual std::string GetName() = 0;
-        };
         struct FunctionOverloadSet;
+        struct VariableStatement;
         struct Type : public DeclContext {
             Type(DeclContext* above, std::string name) : DeclContext(above, name) {}
-            std::vector<TypeLevelDeclaration*> variables;
+            std::vector<VariableStatement*> variables;
             std::unordered_map<std::string, FunctionOverloadSet*> Functions;
         };
         struct IdentifierExpr : Expression {
@@ -89,24 +86,21 @@ namespace Wide {
             Expression* type;
             std::string name;
         };
-        struct LambdaCapture {
-            Expression* initializer;
-            std::string name;
-        };
         struct Lambda : Expression {
             std::vector<FunctionArgument> args;
             std::vector<Statement*> statements;
-            std::vector<LambdaCapture> Captures;
+            std::vector<VariableStatement*> Captures;
             bool defaultref;
-            Lambda(std::vector<Statement*> body, std::vector<FunctionArgument> arg, Lexer::Range r, bool ref)
-                : args(std::move(arg)), statements(std::move(body)), Expression(r), defaultref(ref) {}
+            Lambda(std::vector<Statement*> body, std::vector<FunctionArgument> arg, Lexer::Range r, bool ref, std::vector<VariableStatement*> caps)
+                : args(std::move(arg)), statements(std::move(body)), Expression(r), defaultref(ref), Captures(std::move(caps)) {}
         };
         struct Function : ModuleLevelDeclaration {
-            Function(std::string nam, std::vector<Statement*> b, std::vector<Statement*> prolog, Lexer::Range loc, std::vector<FunctionArgument> ar, DeclContext* m)
-                : prolog(std::move(prolog)), statements(std::move(b)), location(loc), args(std::move(ar)), ModuleLevelDeclaration(m, std::move(nam)) {}
+            Function(std::string nam, std::vector<Statement*> b, std::vector<Statement*> prolog, Lexer::Range loc, std::vector<FunctionArgument> ar, DeclContext* m, std::vector<VariableStatement*> caps)
+                : prolog(std::move(prolog)), statements(std::move(b)), location(loc), args(std::move(ar)), ModuleLevelDeclaration(m, std::move(nam)), initializers(std::move(caps)) {}
             std::vector<FunctionArgument> args;
             std::vector<Statement*> prolog;
             std::vector<Statement*> statements;
+            std::vector<VariableStatement*> initializers;
             Lexer::Range location;
         };
         struct FunctionCallExpr : Expression {
@@ -115,11 +109,10 @@ namespace Wide {
             Expression* callee;
             std::vector<Expression*> args;
         };
-        struct FunctionOverloadSet : public ModuleLevelDeclaration, public TypeLevelDeclaration {
+        struct FunctionOverloadSet : public ModuleLevelDeclaration {
             FunctionOverloadSet(std::string nam, DeclContext* p)
                 : ModuleLevelDeclaration(p, std::move(nam)) {}
             Concurrency::Vector<Function*> functions;
-            virtual std::string GetName() { return ModuleLevelDeclaration::GetName(); }
         };
         /*struct QualifiedName {
             std::vector<std::string> components;
@@ -134,10 +127,9 @@ namespace Wide {
             Return(Expression* e, Lexer::Range r) : RetExpr(e), Statement(r) {}
             Expression* RetExpr;
         };
-        struct VariableStatement : public Statement, TypeLevelDeclaration {
+        struct VariableStatement : public Statement {
             VariableStatement(std::string nam, Expression* expr, Lexer::Range r)
                 : name(std::move(nam)), initializer(expr), Statement(r) {}
-            virtual std::string GetName() { return name; }
             std::string name;
             Expression* initializer;
         };
@@ -199,5 +191,6 @@ namespace Wide {
             Statement* body;
             Expression* condition;
         };
+
     }
 }

@@ -123,9 +123,6 @@
     <ClInclude Include="Stages\Semantic\OverloadSet.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="Stages\Semantic\DeferredType.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="Util\ConcurrentQueue.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -172,6 +169,12 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="Stages\Semantic\UserDefinedType.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Stages\Semantic\LambdaType.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Stages\Parser\ASTVisitor.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
@@ -257,13 +260,13 @@
     <ClCompile Include="Stages\Semantic\OverloadSet.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="Stages\Semantic\DeferredType.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="Stages\Wide.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="Stages\Semantic\UserDefinedType.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Stages\Semantic\LambdaType.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

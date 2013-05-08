@@ -181,4 +181,8 @@ Function* Generator::FromLLVMFunc(llvm::Function* f) {
         assert(false && "Tried to look up an llvm Function that did not correspond to a Wide function.");
     return funcs[f];
 }
+
 // Domagoj, you cockface.
+IntegralLessThan* Generator::CreateSLT(Expression* lhs, Expression* rhs) {
+    return arena.Allocate<IntegralLessThan>(lhs, rhs);
+}

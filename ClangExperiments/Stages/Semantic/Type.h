@@ -24,17 +24,22 @@ namespace Wide {
         struct Expression;
         class Generator;
     }
+    namespace AST {
+        struct DeclContext;
+    }
     namespace Semantic {
         class Analyzer;
         struct Type;
         struct Expression {
             Expression()
                 : t(nullptr)
-                , Expr(nullptr) {}
+                , Expr(nullptr)
+                , steal(false) {}
             Expression(Type* ty, Codegen::Expression* ex)
-                : t(ty), Expr(ex) {}
+                : t(ty), Expr(ex), steal(false) {}
             Type* t;
             Codegen::Expression* Expr;
+            bool steal;
         };
 
         enum ConversionRank {
@@ -50,7 +55,6 @@ namespace Wide {
             // No conversion possible
             None,
         };
-
         struct Type  {
         public:
             virtual bool IsReference(Type*) {
@@ -59,12 +63,19 @@ namespace Wide {
             virtual Type* IsReference() {
                 return nullptr;
             }
+            virtual AST::DeclContext* GetDeclContext() {
+                return nullptr;
+            }
             virtual bool IsComplexType() { return false; }
             virtual clang::QualType GetClangType(ClangUtil::ClangTU& TU, Analyzer& a);
             virtual std::function<llvm::Type*(llvm::Module*)> GetLLVMType(Analyzer& a) {
                 throw std::runtime_error("This type has no LLVM counterpart.");
             }
-
+            Type* Decay() {
+                if (IsReference())
+                    return IsReference();
+                return this;
+            }
             virtual Expression BuildValueConstruction(std::vector<Expression> args, Analyzer& a);
             virtual Expression BuildRvalueConstruction(std::vector<Expression> args, Analyzer& a);
             virtual Expression BuildLvalueConstruction(std::vector<Expression> args, Analyzer& a);

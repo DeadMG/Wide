@@ -39,6 +39,24 @@ namespace Wide {
         template<typename T> struct StmtType {        
             typedef typename std::decay<decltype(*std::declval<T>().CreateStatementGroup().begin())>::type type;
         };
+        template<typename Lex, typename Sema, typename Caps> void ParseLambdaCaptures(Lex&& lex, Sema&& sema, Caps&& caps) {
+            auto tok = lex();
+            while(true) {
+                if (tok.GetType() != Lexer::TokenType::Identifier)
+                    throw std::runtime_error("Expected identifier to introduce a lambda capture.");
+                auto varassign = lex();
+                if (varassign.GetType() != Lexer::TokenType::VarCreate)
+                    throw std::runtime_error("Expected := after identifer when parsing lambda capture.");
+                sema.AddCaptureToGroup(caps, ParseVariableStatement(std::forward<Lex>(lex), std::forward<Sema>(sema), tok));
+                tok = lex();
+                if (tok.GetType() == Lexer::TokenType::CloseSquareBracket)
+                    break;
+                else if (tok.GetType() == Lexer::TokenType::Comma)
+                    tok = lex();
+                else
+                    throw std::runtime_error("Expected , or ] after a lambda capture.");
+            }
+        }
         template<typename Lex, typename Sema> typename ExprType<Sema>::type ParsePrimaryExpression(Lex&& lex, Sema&& sema) {
             // ident
             // string
@@ -68,12 +86,33 @@ namespace Wide {
                 auto pos = t.GetLocation();
                 auto grp = sema.CreateStatementGroup();
                 auto tok = lex();
-                while(t.GetType() != Lexer::TokenType::CloseCurlyBracket) {
+                auto caps = sema.CreateCaptureGroup();
+                bool defaultref = false;
+                if (tok.GetType() == Lexer::TokenType::OpenSquareBracket) {
+                    tok = lex();
+                    if (tok.GetType() == Lexer::TokenType::And) {
+                        defaultref = true;
+                        tok = lex();
+                        if (tok.GetType() == Lexer::TokenType::Comma)
+                            ParseLambdaCaptures(std::forward<Lex>(lex), std::forward<Sema>(sema), caps);
+                        else if (tok.GetType() == Lexer::TokenType::CloseSquareBracket)
+                            tok = lex();
+                        else 
+                            throw std::runtime_error("Expected ] or , after [& in a lambda capture.");
+                    } else {
+                        lex(tok);
+                        ParseLambdaCaptures(std::forward<Lex>(lex), std::forward<Sema>(sema), caps);
+                    }
+                }
+                if (tok.GetType() != Lexer::TokenType::OpenCurlyBracket)
+                    throw std::runtime_error("Expected { after function(args).");
+                tok = lex();
+                while(tok.GetType() != Lexer::TokenType::CloseCurlyBracket) {
                     lex(tok);
                     grp.push_back(ParseStatement(std::forward<Lex>(lex), std::forward<Sema>(sema)));
                     tok = lex();
                 }
-                return sema.CreateLambda(std::move(args), std::move(grp), pos + tok.GetLocation());
+                return sema.CreateLambda(std::move(args), std::move(grp), pos + tok.GetLocation(), defaultref, std::move(caps));
             }
             throw std::runtime_error("Expected expression, but could not find the start of an expression.");
         }
@@ -411,14 +450,40 @@ namespace Wide {
                 // Consume the close curly of the end of the prolog, leaving { for the next section to find.
                 t = lex();
             }
+            auto initializers = sema.CreateInitializerGroup();
+            if (first.GetType() == Lexer::TokenType::Type) {
+                // Constructor- check for initializer list
+                while(t.GetType() == Lexer::TokenType::Colon) {
+                    // Expect identifer ( expression )
+                    auto name = lex();
+                    if (name.GetType() != Lexer::TokenType::Identifier)
+                        throw std::runtime_error("Expected identifier after : to name a member to initialize in a constructor.");
+                    auto open = lex();
+                    if (open.GetType() != Lexer::TokenType::OpenBracket)
+                        throw std::runtime_error("Expected ( after identifier when creating ctor initializer.");
+                    auto next = lex();
+                    if (next.GetType() == Lexer::TokenType::CloseBracket) {
+                        // Empty initializer- e.g. : x()
+                        sema.AddInitializerToGroup(initializers, sema.CreateVariableStatement(name.GetValue(), nullptr, t.GetLocation() + next.GetLocation()));
+                        continue;
+                    }
+                    lex(next);
+                    auto expr = ParseExpression(std::forward<Lex>(lex), std::forward<Sema>(sema));
+                    next = lex();
+                    if (next.GetType() != Lexer::TokenType::CloseBracket)
+                        throw std::runtime_error("Expected ) to close a member initializer after parsing : identifier ( expression");
+                    sema.AddInitializerToGroup(initializers, sema.CreateVariableStatement(name.GetValue(), std::move(expr), t.GetLocation() + next.GetLocation()));
+                    t = lex();
+                }
+            }
             if (t.GetType() != Lexer::TokenType::OpenCurlyBracket) {
-                throw std::runtime_error("Expected prolog or { after function arguments.");
+                throw std::runtime_error("Expected { after function arguments or prolog");
             }
             auto stmts = sema.CreateStatementGroup();
             auto pos = first.GetLocation();
             t = lex();
             if (t.GetType() == Lexer::TokenType::CloseCurlyBracket) {
-                sema.CreateFunction(first.GetValue(), std::move(stmts), std::move(prolog), pos + t.GetLocation(), m, std::move(group));
+                sema.CreateFunction(first.GetValue(), std::move(stmts), std::move(prolog), pos + t.GetLocation(), m, std::move(group), std::move(initializers));
                 return;
             }
             lex(t);
@@ -431,7 +496,7 @@ namespace Wide {
                 }
                 lex(t);
             }
-            sema.CreateFunction(first.GetValue(), std::move(stmts), std::move(prolog), pos, m, std::move(group));
+            sema.CreateFunction(first.GetValue(), std::move(stmts), std::move(prolog), pos, m, std::move(group), std::move(initializers));
         }
 
         template<typename Lex, typename Sema, typename Module> 
@@ -510,12 +575,18 @@ namespace Wide {
                             Lexer::TokenType::Or,
                             Lexer::TokenType::LeftShift,
                             Lexer::TokenType::RightShift,
-                            Lexer::TokenType::Xor
+                            Lexer::TokenType::Xor,
+                            Lexer::TokenType::OpenBracket
                         };
                         return std::unordered_set<Lexer::TokenType>(std::begin(tokens), std::end(tokens));
                     }());
+                    if (op.GetType() == Lexer::TokenType::OpenBracket) {
+                        auto t = lex();
+                        if (t.GetType() != Lexer::TokenType::CloseBracket)
+                            throw std::runtime_error("Expected ) after operator(.");
+                    }
                     if (OverloadableOperators.find(op.GetType()) == OverloadableOperators.end())
-                        throw std::runtime_error("Only < supported as an overloadable operator right now.");
+                        throw std::runtime_error("This operator was not found on the supported operators list.");
                     auto bracket = lex();
                     if (bracket.GetType() != Lexer::TokenType::OpenBracket)
                         throw std::runtime_error("Expected ( after operator op to designate a type-scope operator overload.");
@@ -523,8 +594,14 @@ namespace Wide {
                     t = lex();
                     continue;
                 }
-                if (t.GetType() == Lexer::TokenType::Type)
-                    throw std::runtime_error("Constructor and destructors currently not supported.");
+                if (t.GetType() == Lexer::TokenType::Type) {
+                    auto open = lex();
+                    if (open.GetType() != Lexer::TokenType::OpenBracket)
+                        throw std::runtime_error("Expected ( after type to introduce a constructor at type scope.");
+                    ParseFunction(std::forward<Lex>(lex), std::forward<Sema>(sema), t, ty);
+                    t = lex();
+                    continue;
+                }
                 throw std::runtime_error("Only member variables supported right now and they open with an identifier.");
             }
         }

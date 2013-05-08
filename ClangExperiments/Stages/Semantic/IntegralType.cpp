@@ -69,3 +69,8 @@ Expression IntegralType::BuildLeftShift(Expression lhs, Expression rhs, Analyzer
     out.Expr = a.gen->CreateLeftShift(lhs.Expr, rhs.Expr);
     return out;
 }
+Expression IntegralType::BuildLTComparison(Expression lhs, Expression rhs, Analyzer& a) {
+    lhs = lhs.t->BuildValue(lhs, a);
+    rhs = rhs.t->BuildValue(rhs, a);
+    return Expression(a.Boolean, a.gen->CreateSLT(lhs.Expr, rhs.Expr));
+}

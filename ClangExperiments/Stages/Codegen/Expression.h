@@ -175,5 +175,23 @@ namespace Wide {
                 : lhs(l), rhs(r) {}
             llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g);
         };
+
+        class IntegralLessThan : public Expression {
+            Expression* lhs;
+            Expression* rhs;
+        public:
+            IntegralLessThan(Expression* l, Expression* r)
+                : lhs(l), rhs(r) {}
+            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g);
+        };
+
+        class ZExt : public Expression {
+            Expression* from;
+            std::function<llvm::Type*(llvm::Module*)> to;
+        public:
+            ZExt(Expression* f, std::function<llvm::Type*(llvm::Module*)> ty)
+                : from(f), to(std::move(ty)) {}
+            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g);
+        };
     }
 }

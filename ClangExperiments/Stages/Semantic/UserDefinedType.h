@@ -11,7 +11,6 @@ namespace Wide {
             struct member {
                 Type* t;
                 unsigned num;
-                std::function<llvm::Type*(llvm::Module*)> llvmty;
                 std::string name;
             };
 
@@ -24,7 +23,11 @@ namespace Wide {
             std::string llvmname;
             std::unordered_map<ClangUtil::ClangTU*, clang::QualType> clangtypes;
         public:
+            std::vector<member> GetMembers() { return llvmtypes; }
             UserDefinedType(AST::Type* t, Analyzer& a);
+            AST::DeclContext* GetDeclContext();
+            void AddMemberVariable(Type* t, std::string name);
+            bool HasMember(std::string name);
 
             bool IsComplexType();
             std::function<llvm::Type*(llvm::Module*)> GetLLVMType(Analyzer& a);
@@ -35,6 +38,7 @@ namespace Wide {
             Expression BuildAssignment(Expression lhs, Expression rhs, Analyzer& a);
             Expression BuildLTComparison(Expression lhs, Expression rhs, Analyzer& a);
             ConversionRank RankConversionFrom(Type* from, Analyzer& a);
+            Expression BuildCall(Expression val, std::vector<Expression> args, Analyzer& a);
         };
     }
 }
