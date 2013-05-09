@@ -20,6 +20,8 @@ int main()
     std::vector<std::string> files;
     files.push_back("main.wide");
     Wide::Compile(ClangOpts, LLVMOpts, files);
+
+
     
 	return 0;
 }

@@ -302,3 +302,9 @@ void Builder::AddCaptureToGroup(std::vector<VariableStatement*>& l, VariableStat
 std::vector<VariableStatement*> Builder::CreateCaptureGroup() {
     return std::vector<VariableStatement*>();
 }
+
+DereferenceExpression* Builder::CreateDereferenceExpression(Expression* e, Lexer::Range loc) {
+    return ConcurrentUseArena(arenas, [&](Wide::Memory::Arena& arena) {
+        return arena.Allocate<DereferenceExpression>(e, loc);
+    });
+}

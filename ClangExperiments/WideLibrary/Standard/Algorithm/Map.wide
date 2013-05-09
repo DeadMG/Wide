@@ -1,0 +1,12 @@
+module Standard {
+    module Algorithm {
+        Map(range, fun) {
+            return function()[range := std.move(range), fun := std.move(fun)] {
+                 var := range();
+                 if (var) return Containers.Optional!(decltype(fun(*var)))(fun(*std.move(var)));
+                 return Containers.Optional!(decltype(fun(*var)))(Containers.Optional.None);
+            };
+        }
+    }
+}
+               

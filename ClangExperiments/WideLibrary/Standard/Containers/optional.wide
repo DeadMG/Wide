@@ -1,0 +1,6 @@
+module Standard {
+    module Containers {
+        using Optional := cpp("WideLibrary/test.h").Wide.Util.optional;
+        using None := cpp("WideLibrary/test.h").Wide.Util.none;
+    }
+}

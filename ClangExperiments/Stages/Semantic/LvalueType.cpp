@@ -72,3 +72,7 @@ Codegen::Expression* LvalueType::BuildInplaceConstruction(Codegen::Expression* m
         throw std::runtime_error("Cannot construct a reference from anything but another reference of the same type");
     return a.gen->CreateStore(mem, args[0].Expr);
 }
+
+Expression LvalueType::BuildDereference(Expression obj, Analyzer& a) {
+    return Pointee->BuildDereference(obj, a);
+}

@@ -7,6 +7,8 @@
 #include <fstream>
 #include <unordered_map>
 #include <unordered_set>
+#include "Analyzer.h"
+#include "../Codegen/Generator.h"
 
 #pragma warning(push, 0)
 
@@ -148,10 +150,10 @@ clang::QualType Simplify(clang::QualType inc) {
     return inc;
 }
 
-std::function<llvm::Type*(llvm::Module*)> ClangTU::GetLLVMTypeFromClangType(clang::QualType t) {
+std::function<llvm::Type*(llvm::Module*)> ClangTU::GetLLVMTypeFromClangType(clang::QualType t, Semantic::Analyzer& a) {
     auto imp = impl.get();
 
-    return [=](llvm::Module* mod) -> llvm::Type* {
+    return [=, &a](llvm::Module* mod) -> llvm::Type* {
 		// Below logic copy pastad from CodeGenModule::addRecordTypeName
 		auto RD = t.getCanonicalType()->getAsCXXRecordDecl();
 		std::string TypeName;
@@ -171,8 +173,12 @@ std::function<llvm::Type*(llvm::Module*)> ClangTU::GetLLVMTypeFromClangType(clan
           OS << "anon";
         
 		OS.flush();
-		if (mod->getTypeByName(TypeName)) 
-			return mod->getTypeByName(TypeName);
+		auto ty = mod->getTypeByName(TypeName);      
+        if (ty) {
+            if (t->getAsCXXRecordDecl()->field_empty())
+                a.gen->AddEliminateType(ty);
+            return ty;
+        }
 		
         std::string s;
         llvm::raw_string_ostream stream(s);

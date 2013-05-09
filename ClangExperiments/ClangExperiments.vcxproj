@@ -19,7 +19,7 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
-    <PlatformToolset>v110</PlatformToolset>
+    <PlatformToolset>v120_CTP_Nov2012</PlatformToolset>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
@@ -90,7 +90,7 @@
     <ClCompile Include="Stages\Semantic\ConstructorType.cpp" />
     <ClCompile Include="Stages\Semantic\FunctionType.cpp" />
     <ClCompile Include="Stages\Semantic\IntegralType.cpp" />
-    <ClCompile Include="Stages\Semantic\LambdaType.cpp" />
+    <ClCompile Include="Stages\Semantic\LvalueType.cpp" />
     <ClCompile Include="Stages\Semantic\OverloadSet.cpp" />
     <ClCompile Include="Stages\Semantic\PrimitiveType.cpp" />
     <ClCompile Include="Stages\Semantic\RvalueType.cpp" />
@@ -103,13 +103,13 @@
     <ClCompile Include="Stages\Semantic\Analyzer.cpp" />
     <ClCompile Include="Stages\Semantic\ClangType.cpp" />
     <ClCompile Include="Stages\Semantic\Function.cpp" />
-    <ClCompile Include="Stages\Semantic\LvalueType.cpp" />
     <ClCompile Include="Stages\Semantic\Module.cpp" />
     <ClCompile Include="Stages\Semantic\StringType.cpp" />
     <ClCompile Include="Stages\Semantic\Void.cpp" />
     <ClCompile Include="Stages\Wide.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="Util\IstreamRange.h" />
     <ClInclude Include="Stages\ClangOptions.h" />
     <ClInclude Include="Stages\Codegen\Function.h" />
     <ClInclude Include="Stages\Codegen\Generator.h" />
@@ -153,6 +153,8 @@
     <ClInclude Include="Util\ConcurrentDetail\stdparallelforeach.h" />
     <ClInclude Include="Util\ConcurrentDetail\stdvector.h" />
     <ClInclude Include="Util\ConcurrentVector.h" />
+    <ClInclude Include="Util\Ranges\IteratorRange.h" />
+    <ClInclude Include="Util\Ranges\Optional.h" />
     <ClInclude Include="Util\ParallelForEach.h" />
     <ClInclude Include="Util\ConcurrentDetail\pplqueue.h" />
     <ClInclude Include="Util\ConcurrentDetail\pplsampleumap.h" />

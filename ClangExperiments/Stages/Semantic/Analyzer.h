@@ -27,6 +27,7 @@
 #ifndef _MSC_VER
 #include "ClangTU.h"
 #include <clang/AST/Type.h>
+#include "Type.h"
 #endif
 
 namespace llvm {

@@ -9,6 +9,7 @@
 #include "Function.h"
 #include "FunctionType.h"
 #include "../Codegen/Function.h"
+#include "ConstructorType.h"
 
 #include <sstream>
 
@@ -41,8 +42,10 @@ UserDefinedType::UserDefinedType(AST::Type* t, Analyzer& a) {
     for(auto&& decl : t->variables) {
         if (auto var = dynamic_cast<AST::VariableStatement*>(decl)) {
             auto expr = a.AnalyzeExpression(this, var->initializer);
-            if (expr.t->IsReference())
-                expr.t = expr.t->IsReference();
+            if (auto con = dynamic_cast<ConstructorType*>(expr.t))
+                expr.t = con->GetConstructedType();
+            else
+                throw std::runtime_error("Expected the expression giving the type of a member variable to be a type.");
             member m;
             m.t = expr.t;
             m.num = llvmtypes.size();
@@ -82,19 +85,6 @@ std::function<llvm::Type*(llvm::Module*)> UserDefinedType::GetLLVMType(Analyzer&
     return ty;
 }
 
-void UserDefinedType::AddMemberVariable(Type* t, std::string name) {
-    member m;
-    m.t = t;
-    m.num = llvmtypes.size();
-    m.name = name;
-    if (members.find(name) == members.end()) {
-        members[name] = llvmtypes.size();
-        llvmtypes.push_back(m);
-        return;
-    }
-    throw std::runtime_error("Attempted to add a member variable of a name which was already in the list.");
-}
-
 Codegen::Expression* UserDefinedType::BuildInplaceConstruction(Codegen::Expression* mem, std::vector<Expression> args, Analyzer& a) {
     if (type->Functions.find("type") != type->Functions.end()) {
         std::vector<Expression> setargs;
@@ -121,7 +111,7 @@ Codegen::Expression* UserDefinedType::BuildInplaceConstruction(Codegen::Expressi
         }
         for(auto&& x : llvmtypes) {
             Type* t;
-            if (auto l = dynamic_cast<LvalueType*>(args[0].t)) {
+            if (dynamic_cast<LvalueType*>(args[0].t)) {
                 t = a.GetLvalueType(x.t);
             } else {
                 t = a.GetRvalueType(x.t);
@@ -145,7 +135,7 @@ Expression UserDefinedType::AccessMember(Expression expr, std::string name, Anal
         Expression out;
         if (expr.t->IsReference()) {
             out.Expr = a.gen->CreateFieldExpression(expr.Expr, member.num);
-            if (auto l = dynamic_cast<LvalueType*>(expr.t)) {
+            if (dynamic_cast<LvalueType*>(expr.t)) {
                 out.t = a.GetLvalueType(member.t);
             } else {
                 out.t = a.GetRvalueType(member.t);
@@ -176,7 +166,7 @@ AST::DeclContext* UserDefinedType::GetDeclContext() {
 }
 
 Expression UserDefinedType::BuildAssignment(Expression lhs, Expression rhs, Analyzer& a) {
-    if (auto val = dynamic_cast<LvalueType*>(lhs.t)) {
+    if (dynamic_cast<LvalueType*>(lhs.t)) {
         // If we have an overloaded operator, call that.
         if (type->Functions.find("=") != type->Functions.end()) {
             std::vector<Expression> args;
@@ -198,7 +188,7 @@ Expression UserDefinedType::BuildAssignment(Expression lhs, Expression rhs, Anal
             if (x.t->IsReference())
                 throw std::runtime_error("Attempted to assign to a user-defined type which had a member reference but no user-defined assignment operator.");
             Type* t;
-            if (auto l = dynamic_cast<LvalueType*>(rhs.t)) {
+            if (dynamic_cast<LvalueType*>(rhs.t)) {
                 t = a.GetLvalueType(x.t);
             } else {
                 t = a.GetRvalueType(x.t);
@@ -295,7 +285,7 @@ clang::QualType UserDefinedType::GetClangType(ClangUtil::ClangTU& TU, Analyzer& 
                         args.push_back(*it);
                     }
 		    		// If T is complex, then "this" is the second argument. Else it is the first.
-                    auto self = TU.GetLLVMTypeFromClangType(TU.GetASTContext().getTypeDeclType(recdecl))(m)->getPointerTo();
+                    auto self = TU.GetLLVMTypeFromClangType(TU.GetASTContext().getTypeDeclType(recdecl), a)(m)->getPointerTo();
 		    		if (sig->GetReturnType()->IsComplexType()) {
 		    			args.insert(args.begin() + 1, self);
 		    		} else {
@@ -352,7 +342,7 @@ ConversionRank UserDefinedType::RankConversionFrom(Type* from, Analyzer& a) {
         // This handles all cases except T to T&&.
         auto rank = ConversionRank::Zero;
         for(auto mem : llvmtypes) {
-            if (auto lval = dynamic_cast<LvalueType*>(from)) {
+            if (dynamic_cast<LvalueType*>(from)) {
                 rank = std::max(rank, a.RankConversion(a.GetLvalueType(mem.t), mem.t));
             } else {
                 rank = std::max(rank, a.RankConversion(a.GetRvalueType(mem.t), mem.t));

@@ -125,7 +125,7 @@ Expression ClangType::AccessMember(Expression val, std::string name, Analyzer& a
             // Check for members first.
             if (auto field = llvm::dyn_cast<clang::FieldDecl>(lr.getFoundDecl())) {
                 Expression out;
-                if (auto lval = dynamic_cast<LvalueType*>(val.t)) {
+                if (dynamic_cast<LvalueType*>(val.t)) {
                     // The result is an lvalue of that type.
                     out.t = a.GetLvalueType(a.GetClangType(*from, field->getType()));
                 } else {
@@ -241,7 +241,7 @@ Expression ClangType::BuildRightShift(Expression lhs, Expression rhs, Analyzer& 
 }
 
 std::function<llvm::Type*(llvm::Module*)> ClangType::GetLLVMType(Analyzer& a) {
-    return from->GetLLVMTypeFromClangType(type);
+    return from->GetLLVMTypeFromClangType(type, a);
 }
 
 Expression ClangType::BuildAssignment(Expression lhs, Expression rhs, Analyzer& a) {
@@ -410,4 +410,23 @@ ConversionRank ClangType::RankConversionFrom(Type* src, Analyzer& a) {
     if (src->IsReference(this))
         return ConversionRank::Zero;
     return ConversionRank::Two;
+}
+
+Expression ClangType::BuildDereference(Expression self, Analyzer& a) {
+    clang::OpaqueValueExpr ope(clang::SourceLocation(), type.getNonLValueExprType(from->GetASTContext()), Semantic::GetKindOfType(self.t));
+    auto declname = from->GetASTContext().DeclarationNames.getCXXOperatorName(clang::OverloadedOperatorKind::OO_Star);
+    clang::LookupResult lr(from->GetSema(), clang::DeclarationNameInfo(declname, clang::SourceLocation()), clang::Sema::LookupNameKind::LookupOrdinaryName);
+    auto result = from->GetSema().LookupQualifiedName(lr, type->getAsCXXRecordDecl(), false);
+    if (!result) {
+        throw std::runtime_error("Attempted to de-reference a Clang type, but Clang said that it could not find the member.");
+    }
+    auto ptr = Wide::Memory::MakeUnique<clang::UnresolvedSet<8>>();
+    clang::UnresolvedSet<8>& us = *ptr;
+    for(auto it = lr.begin(); it != lr.end(); ++it) {
+        us.addDecl(*it);
+    }
+    Expression out;
+    out.t = a.arena.Allocate<ClangOverloadSet>(std::move(ptr), from, this);
+    out.Expr = self.Expr;
+    return out.t->BuildCall(out, std::vector<Expression>(), a);
 }

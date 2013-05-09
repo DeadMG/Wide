@@ -49,7 +49,7 @@ namespace Wide {
                 for(auto&& x : s->stmts)
                     crtp_cast().VisitStatement(x);
             }
-            void VisitVariableStatement(VariableStatement* s) { crtp_cast().VisitExpression(v->initializer); }
+            void VisitVariableStatement(VariableStatement* s) { crtp_cast().VisitExpression(s->initializer); }
             void VisitIfStatement(IfStatement* s) { 
                 crtp_cast().VisitExpression(s->condition);
                 crtp_cast().VisitStatement(s->true_statement);

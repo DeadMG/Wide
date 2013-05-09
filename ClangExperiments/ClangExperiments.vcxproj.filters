@@ -177,6 +177,15 @@
     <ClInclude Include="Stages\Parser\ASTVisitor.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="Util\IstreamRange.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Util\Ranges\Optional.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Util\Ranges\IteratorRange.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp">
@@ -195,9 +204,6 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="Stages\Semantic\Function.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="Stages\Semantic\LvalueType.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="Stages\Semantic\Util.cpp">
@@ -266,7 +272,7 @@
     <ClCompile Include="Stages\Semantic\UserDefinedType.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="Stages\Semantic\LambdaType.cpp">
+    <ClCompile Include="Stages\Semantic\LvalueType.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

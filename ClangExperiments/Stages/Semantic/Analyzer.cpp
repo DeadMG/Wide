@@ -40,13 +40,13 @@ namespace Wide {
 }
 
 ClangCommonState::ClangCommonState(const Options::Clang& opts)
-        : Options(&opts)
-        , error_stream(errors)
-        , FileManager(opts.FileSearchOptions)
-        , engine(opts.DiagnosticIDs, opts.DiagnosticOptions.getPtr(), new clang::TextDiagnosticPrinter(error_stream, opts.DiagnosticOptions.getPtr()), false)
-        , targetinfo(Wide::ClangUtil::CreateTargetInfoFromTriple(engine, opts.TargetOptions.Triple))
-        , hs(opts.HeaderSearchOptions, FileManager, engine, opts.LanguageOptions, targetinfo.get())
-        , layout(targetinfo->getTargetDescription())
+   : Options(&opts)
+   , error_stream(errors)
+   , FileManager(opts.FileSearchOptions)
+   , engine(opts.DiagnosticIDs, opts.DiagnosticOptions.getPtr(), new clang::TextDiagnosticPrinter(error_stream, opts.DiagnosticOptions.getPtr()), false)
+   , targetinfo(Wide::ClangUtil::CreateTargetInfoFromTriple(engine, opts.TargetOptions.Triple))
+   , hs(opts.HeaderSearchOptions, FileManager, engine, opts.LanguageOptions, targetinfo.get())
+   , layout(targetinfo->getTargetDescription())
 {
 }
 
@@ -61,6 +61,14 @@ Analyzer::Analyzer(const Options::Clang& opts, Codegen::Generator* g)
 }
 
 void Analyzer::operator()(AST::Module* GlobalModule) {
+    struct decltypetype : public Type {
+        Expression BuildCall(Expression obj, std::vector<Expression> args, Analyzer& a) {
+            if (args.size() != 1)
+                throw std::runtime_error("Attempt to call decltype with more or less than 1 argument.");
+            return Expression(a.GetConstructorType(args[0].t), nullptr);
+        }
+    };
+
     GetWideModule(GlobalModule)->AddSpecialMember("cpp", Expression(arena.Allocate<ClangIncludeEntity>(), nullptr));
     GetWideModule(GlobalModule)->AddSpecialMember("void", Expression(GetConstructorType(Void = arena.Allocate<VoidType>()), nullptr));
     GetWideModule(GlobalModule)->AddSpecialMember("global", Expression(GetWideModule(GlobalModule), nullptr));
@@ -68,6 +76,7 @@ void Analyzer::operator()(AST::Module* GlobalModule) {
     GetWideModule(GlobalModule)->AddSpecialMember("bool", Expression(GetConstructorType(Boolean = arena.Allocate<Bool>()), nullptr));
     GetWideModule(GlobalModule)->AddSpecialMember("true", Expression(Boolean, gen->CreateInt8Expression(1)));
     GetWideModule(GlobalModule)->AddSpecialMember("false", Expression(Boolean, gen->CreateInt8Expression(0)));
+    GetWideModule(GlobalModule)->AddSpecialMember("decltype", Expression(arena.Allocate<decltypetype>(), nullptr));
 
     try {      
         GetWideModule(GlobalModule)->AccessMember(Expression(), "Standard", *this).t->AccessMember(Expression(), "Main", *this).t->BuildCall(Expression(), std::vector<Expression>(), *this);
@@ -168,7 +177,7 @@ Expression Analyzer::AnalyzeExpression(Type* t, AST::Expression* e) {
     if (auto integer = dynamic_cast<AST::IntegerExpression*>(e)) {
         return Expression( this->Int8, gen->CreateInt8Expression(std::stol(integer->integral_value)));
     }
-    if (auto self = dynamic_cast<AST::ThisExpression*>(e)) {
+    if (dynamic_cast<AST::ThisExpression*>(e)) {
         return t->AccessMember(Expression(), "this", *this);
     }
 
@@ -192,11 +201,15 @@ Expression Analyzer::AnalyzeExpression(Type* t, AST::Expression* e) {
         // Need to not-capture things that would be available anyway.
         
         std::vector<std::unordered_set<std::string>> lambda_locals;
+        // Only implicit captures.
         std::unordered_set<std::string> captures;
         struct LambdaVisitor : AST::Visitor<LambdaVisitor> {
             std::vector<std::unordered_set<std::string>>* lambda_locals;
             std::unordered_set<std::string>* captures;
             void VisitVariableStatement(AST::VariableStatement* v) {
+                lambda_locals->back().insert(v->name);
+            }
+            void VisitLambdaCapture(AST::VariableStatement* v) {
                 lambda_locals->back().insert(v->name);
             }
             void VisitLambdaArgument(AST::FunctionArgument* arg) {
@@ -206,6 +219,8 @@ Expression Analyzer::AnalyzeExpression(Type* t, AST::Expression* e) {
                 lambda_locals->emplace_back();
                 for(auto&& x : l->args)
                     VisitLambdaArgument(&x);
+                for(auto&& x : l->Captures)
+                    VisitLambdaCapture(x);
                 lambda_locals->emplace_back();
                 for(auto&& x : l->statements)
                     VisitStatement(x);
@@ -221,7 +236,7 @@ Expression Analyzer::AnalyzeExpression(Type* t, AST::Expression* e) {
             void VisitCompoundStatement(AST::CompoundStatement* cs) {
                 lambda_locals->emplace_back();
                 for(auto&& x : cs->stmts)
-                    VisitStatement(cs);
+                    VisitStatement(x);
                 lambda_locals->pop_back();
             }
             void VisitWhileStatement(AST::WhileStatement* wh) {
@@ -246,9 +261,7 @@ Expression Analyzer::AnalyzeExpression(Type* t, AST::Expression* e) {
         l.captures = &captures;
         l.lambda_locals = &lambda_locals;
         l.VisitLambda(lam);
-        
-        auto lamty = GetUDT(ty);
-        
+                
         // We obviously don't want to capture module-scope names.
         // Only capture from the local scope, and from "this".
         auto caps = std::move(captures);
@@ -264,10 +277,27 @@ Expression Analyzer::AnalyzeExpression(Type* t, AST::Expression* e) {
             }
         }
 
-
+        // Just as a double-check, eliminate all explicit captures from the list. This should never have any effect
+        // but I'll hunt down any bugs caused by eliminating it later.
+        for(auto&& arg : lam->Captures)
+            caps.erase(arg->name);
         std::vector<AST::VariableStatement*> initializers;
         std::vector<AST::FunctionArgument> funargs;
+        std::vector<Expression> args;
         unsigned num = 0;
+        for(auto&& arg : lam->Captures) {
+            std::stringstream str;
+            str << "__param" << num;
+            auto init = AnalyzeExpression(t, arg->initializer);
+            AST::FunctionArgument f;
+            f.name = str.str();
+            f.type = arena.Allocate<SemanticExpression>(Expression(GetConstructorType(init.t), nullptr));
+            ty->variables.push_back(arena.Allocate<AST::VariableStatement>(arg->name, arena.Allocate<SemanticExpression>(Expression(GetConstructorType(init.t->Decay()), nullptr)), Lexer::Range()));
+            initializers.push_back(arena.Allocate<AST::VariableStatement>(arg->name, arena.Allocate<AST::IdentifierExpr>(str.str(), Lexer::Range()), Lexer::Range()));
+            funargs.push_back(f);
+            ++num;
+            args.push_back(init);
+        }
         for(auto&& name : captures) {
             std::stringstream str;
             str << "__param" << num;
@@ -279,22 +309,25 @@ Expression Analyzer::AnalyzeExpression(Type* t, AST::Expression* e) {
             funargs.push_back(f);
             if (!lam->defaultref)
                 capty = capty->Decay();
-            lamty->AddMemberVariable(capty, name);
+            ty->variables.push_back(arena.Allocate<AST::VariableStatement>(name, arena.Allocate<SemanticExpression>(Expression(GetConstructorType(capty), nullptr)), Lexer::Range()));
             ++num;
+            args.push_back(t->AccessMember(Expression(), name, *this));        
         }
-        std::vector<Expression> args;
         auto conoverset = arena.Allocate<AST::FunctionOverloadSet>("type", ty);
         conoverset->functions.push_back(arena.Allocate<AST::Function>("type", std::vector<AST::Statement*>(), std::vector<AST::Statement*>(), Lexer::Range(), std::move(funargs), ty, std::move(initializers)));
         ty->Functions["type"] = conoverset;
-        for(auto&& name : captures) {
-            args.push_back(t->AccessMember(Expression(), name, *this));        
-        }
+        auto lamty = GetUDT(ty);
         auto obj = lamty->BuildRvalueConstruction(std::move(args), *this);
         return obj;
     }
 
     if (auto semexpr = dynamic_cast<SemanticExpression*>(e)) {
         return semexpr->e;
+    }
+
+    if (auto derefexpr = dynamic_cast<AST::DereferenceExpression*>(e)) {
+        auto obj = AnalyzeExpression(t, derefexpr->ex);
+        return obj.t->BuildDereference(obj, *this);
     }
 
     throw std::runtime_error("Unrecognized AST node");

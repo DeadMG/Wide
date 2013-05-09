@@ -31,6 +31,7 @@ namespace clang {
 
 namespace Wide {
     namespace Semantic {        
+        class Analyzer;
         struct ClangTypeHasher {
             std::size_t operator()(clang::QualType t) const;
         };
@@ -48,7 +49,7 @@ namespace Wide {
             ClangTU(ClangTU&&);
 
             ClangTU(llvm::LLVMContext& c, std::string file, Semantic::ClangCommonState&);
-            std::function<llvm::Type*(llvm::Module*)> GetLLVMTypeFromClangType(clang::QualType t);
+            std::function<llvm::Type*(llvm::Module*)> GetLLVMTypeFromClangType(clang::QualType t, Semantic::Analyzer& a);
             std::string MangleName(clang::NamedDecl* D);
 
 			bool IsComplexType(clang::CXXRecordDecl* decl);

@@ -246,7 +246,7 @@ clang::QualType OverloadSet::GetClangType(ClangUtil::ClangTU& TU, Analyzer& a) {
                     args.push_back(*it);
                 }
 				// If T is complex, then "this" is the second argument. Else it is the first.
-                auto self = TU.GetLLVMTypeFromClangType(TU.GetASTContext().getTypeDeclType(recdecl))(m)->getPointerTo();
+                auto self = TU.GetLLVMTypeFromClangType(TU.GetASTContext().getTypeDeclType(recdecl), a)(m)->getPointerTo();
 				if (sig->GetReturnType()->IsComplexType()) {
 					args.insert(args.begin() + 1, self);
 				} else {

@@ -33,6 +33,7 @@ namespace Wide {
             WhileStatement* CreateWhileStatement(Expression* cond, Statement* body, Lexer::Range loc);
             ThisExpression* CreateThisExpression(Lexer::Range loc);
             Lambda* CreateLambda(std::vector<FunctionArgument> args, std::vector<Statement*> body, Lexer::Range loc, bool defaultref, std::vector<VariableStatement*> caps);
+            DereferenceExpression* CreateDereferenceExpression(Expression* e, Lexer::Range loc);
 
             OrExpression* CreateOrExpression(Expression* lhs, Expression* rhs);
             XorExpression* CreateXorExpression(Expression* lhs, Expression* rhs);

@@ -3,6 +3,12 @@
 #include "Type.h"
 #include "../Parser/AST.h"
 
+#ifndef _MSC_VER
+#pragma warning(push, 0)
+#include <clang/AST/Type.h>
+#pragma warning(pop)
+#endif
+
 namespace Wide {
     namespace Semantic {
         class UserDefinedType : public Type {
@@ -26,7 +32,6 @@ namespace Wide {
             std::vector<member> GetMembers() { return llvmtypes; }
             UserDefinedType(AST::Type* t, Analyzer& a);
             AST::DeclContext* GetDeclContext();
-            void AddMemberVariable(Type* t, std::string name);
             bool HasMember(std::string name);
 
             bool IsComplexType();

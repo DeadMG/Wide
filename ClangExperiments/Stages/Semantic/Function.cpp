@@ -265,9 +265,9 @@ void Function::ComputeBody(Analyzer& a) {
                     Expression out;
                     // If the return expression refers to a parameter or local variable, then move it implicitly.
                     out.Expr = static_cast<Codegen::ReturnStatement*>(exprs[num])->GetReturnExpression();
-                    if (auto param = dynamic_cast<Codegen::ParamExpression*>(out.Expr)) {
+                    if (dynamic_cast<Codegen::ParamExpression*>(out.Expr)) {
                         out.t = a.GetRvalueType(ty->IsReference());
-                    } else if (auto var = dynamic_cast<Codegen::Variable*>(out.Expr)) {
+                    } else if (dynamic_cast<Codegen::Variable*>(out.Expr)) {
                         out.t = a.GetRvalueType(ty->IsReference());
                     } else {
                         out.t = ty;

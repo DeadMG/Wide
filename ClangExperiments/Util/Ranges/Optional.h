@@ -1,11 +1,16 @@
-#include <iostream>
-#include <string>
-#include <vector>
-#include <algorithm>
-#include <tuple>
-#include <set>
-#include <deque>
+// Ogonek
+//
+// Written in 2013 by Martinho Fernandes <martinho.fernandes@gmail.com>
+//
+// To the extent possible under law, the author(s) have dedicated all copyright and related
+//
+// and neighboring rights to this software to the public domain worldwide. This software is
+// distributed without any warranty.
+//
+// You should have received a copy of the CC0 Public Domain Dedication along with this software.
+// If not, see <http://creativecommons.org/publicdomain/zero/1.0/>.
 
+// A simplistic boost.optional replacement with moves
 
 #pragma once
 
@@ -14,7 +19,7 @@
 
 namespace Wide {
     namespace Util {
-        struct none_t {} none = {};
+        struct none_t {} const none = {};
 
         template <typename T>
         struct optional {
@@ -65,7 +70,6 @@ namespace Wide {
 
             T& operator*() { return get(); }
             T const& operator*() const { return get(); }
-            T&& operator*() && { return std::move(get()); }
 
             T* operator->() { return &get(); }
             T const* operator->() const { return &get(); }

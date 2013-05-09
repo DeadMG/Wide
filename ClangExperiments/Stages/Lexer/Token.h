@@ -34,6 +34,8 @@ namespace Wide {
             OpenSquareBracket,
             CloseSquareBracket,
             Colon,
+            Dereference,
+            PointerAccess,
 
             LT,
             LTE,

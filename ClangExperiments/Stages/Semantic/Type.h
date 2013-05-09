@@ -124,6 +124,9 @@ namespace Wide {
             virtual Expression BuildGTEComparison(Expression lhs, Expression rhs, Analyzer& a) {
                 throw std::runtime_error("This type cannot be compared for inequality.");
             }
+            virtual Expression BuildDereference(Expression obj, Analyzer& a) {
+                throw std::runtime_error("This type does not support de-referencing.");
+            }
             
             virtual ConversionRank RankConversionFrom(Type* to, Analyzer& a);
             //Or,

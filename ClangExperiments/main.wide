@@ -1,11 +1,12 @@
-using test := cpp("WideLibrary/test.h");
-using std := test.std;
+using Optional := Standard.Container.Optional;
+using None := Standard.Container.None;
+using Map := Standard.Algorithm.Map;
 Main() {
-    var := true;
-    fun := function()[&] {
-        std.cout << var;
+    r := function()[min := 0, max := 10] {
+        if (min == max) return Optional!(int8)(None);
+        var := Optional!(int8)(min);
+        min += 1;
+        return var;
     };
-    fun();
-    var = false;
-    fun();
+    Standard.Algorithm.Map(
 }

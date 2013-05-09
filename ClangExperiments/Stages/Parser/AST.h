@@ -156,6 +156,11 @@ namespace Wide {
         struct NotEqCmpExpression : public BinaryExpression {
             NotEqCmpExpression(Expression* l, Expression* r) : BinaryExpression(l, r) {}
         };
+        struct DereferenceExpression : public Expression {
+            Expression* ex;
+            DereferenceExpression(Expression* e, Lexer::Range pos)
+                : ex(e), Expression(pos) {}
+        };
 
         struct OrExpression : public BinaryExpression {
             OrExpression(Expression* l, Expression* r) : BinaryExpression(l, r) {}

@@ -14,6 +14,8 @@ void Wide::Compile(const Wide::Options::Clang& copts, const Wide::Options::LLVM&
     Wide::Semantic::Analyzer Sema(copts, &Generator);
     
     files.push_back("WideLibrary/stdlib.wide");
+    files.push_back("WideLibrary/Standard/Containers/optional.wide");
+    files.push_back("WideLibrary/Standard/Algorithms/map.wide");
 
     Concurrency::Vector<std::string> excepts;
     Wide::Concurrency::ParallelForEach(files.begin(), files.end(), [&](const std::string& filename) {
