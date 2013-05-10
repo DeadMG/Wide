@@ -39,6 +39,9 @@ namespace Wide {
         template<typename T> struct StmtType {        
             typedef typename std::decay<decltype(*std::declval<T>().CreateStatementGroup().begin())>::type type;
         };
+        template<typename Lex, typename Sema> typename ExprType<Sema>::type ParseExpression(Lex&& lex, Sema&& sema);
+        template<typename Lex, typename Sema, typename Group> void ParseFunctionArguments(Lex&& lex, Sema&& sema, Group&& group);
+        template<typename Lex, typename Sema> typename StmtType<Sema>::type ParseStatement(Lex&& lex, Sema&& sema);
         template<typename Lex, typename Sema, typename Caps> void ParseLambdaCaptures(Lex&& lex, Sema&& sema, Caps&& caps) {
             auto tok = lex();
             while(true) {
@@ -528,14 +531,13 @@ namespace Wide {
                 else
                     throw std::runtime_error("Don't support non-assigning usings right now.");
             }
-            auto def = sema.CreateUsingDefinition(std::move(val), ParseExpression(lex, sema), m);
+            sema.CreateUsingDefinition(std::move(val), ParseExpression(lex, sema), m);
             t = lex();
             if (t.GetType() != Lexer::TokenType::Semicolon)
                 throw std::runtime_error("Expected semicolon after using.");
         }
         
-        //template<typename Lex, typename Sema, typename Module> void ParseModuleContents(Lex&& lex, Sema&& sema, Module&& m);
-        
+        template<typename Lex, typename Sema, typename Module> void ParseModuleContents(Lex&& lex, Sema&& sema, Module&& m);        
         template<typename Lex, typename Sema, typename Module> void ParseModuleDeclaration(Lex&& lex, Sema&& sema, Module&& m) {
             // Already got module
             auto ident = lex();

@@ -4,7 +4,7 @@
 #include <memory>
 #include <unordered_map>
 
-#ifdef _MSC_VER
+#ifndef _MSC_VER
 #pragma warning(push, 0)
 #include <clang/AST/Type.h>
 #pragma warning(pop)

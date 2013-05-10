@@ -6,6 +6,6 @@
 #else
 #error "Visual Studio must be at least v10 or above to compile Wide."
 #endif
-#else*/
+#else
 #include "ConcurrentDetail/stdparallelforeach.h"
 #endif

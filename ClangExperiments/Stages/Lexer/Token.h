@@ -1,5 +1,7 @@
 #pragma once
 
+#include <unordered_set>
+
 namespace Wide {
     namespace Lexer {
         enum TokenType {
@@ -89,4 +91,11 @@ namespace Wide {
                 return Range(rhs, lhs);
         }
     }
+}
+namespace std {
+    template<> struct hash<Wide::Lexer::TokenType> {
+        std::size_t operator()(Wide::Lexer::TokenType ty) {
+            return std::hash<int>()((int)ty);
+        }
+    };
 }
