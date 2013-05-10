@@ -22,7 +22,7 @@ namespace Wide {
         struct Type;
         struct Variable;
     }
-    namespace Codegen { 
+    namespace Codegen {
         struct Expression : Statement {
         public:
             Expression() : val(nullptr) {}

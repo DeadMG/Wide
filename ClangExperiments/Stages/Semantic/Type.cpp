@@ -22,7 +22,10 @@ Expression Type::BuildRvalueConstruction(std::vector<Expression> args, Analyzer&
     Expression out;
     out.t = a.GetRvalueType(this);
     auto mem = a.gen->CreateVariable(GetLLVMType(a));
-    out.Expr = a.gen->CreateChainExpression(BuildInplaceConstruction(mem, args, a), mem);
+    if (!IsComplexType() && args.size() == 1 && args[0].t == this)
+        out.Expr = a.gen->CreateChainExpression(a.gen->CreateStore(mem, args[0].Expr), mem);
+    else
+        out.Expr = a.gen->CreateChainExpression(BuildInplaceConstruction(mem, args, a), mem);
     out.steal = true;
     return out;
 }
@@ -31,7 +34,10 @@ Expression Type::BuildLvalueConstruction(std::vector<Expression> args, Analyzer&
     Expression out;
     out.t = a.GetLvalueType(this);
     auto mem = a.gen->CreateVariable(GetLLVMType(a));
-    out.Expr = a.gen->CreateChainExpression(BuildInplaceConstruction(mem, args, a), mem);
+    if (!IsComplexType() && args.size() == 1 && args[0].t == this)
+        out.Expr = a.gen->CreateChainExpression(a.gen->CreateStore(mem, args[0].Expr), mem);
+    else
+        out.Expr = a.gen->CreateChainExpression(BuildInplaceConstruction(mem, args, a), mem);
     return out;
 }
 

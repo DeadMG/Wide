@@ -23,14 +23,13 @@ namespace llvm {
 
 namespace Wide {
     namespace Codegen {
-        struct Expression;
         class Generator;
+        struct Expression;
         class Statement {
         public:
             virtual ~Statement() {}
             virtual void Build(llvm::IRBuilder<>& bb, Generator& g) = 0;
         };
-
         class ReturnStatement : public Statement {
             Expression* val;
         public:

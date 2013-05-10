@@ -109,6 +109,7 @@
     <ClCompile Include="Stages\Wide.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="Stages\Parser\Parser.h" />
     <ClInclude Include="Util\IstreamRange.h" />
     <ClInclude Include="Stages\ClangOptions.h" />
     <ClInclude Include="Stages\Codegen\Function.h" />
@@ -136,7 +137,6 @@
     <ClInclude Include="Stages\Codegen\Expression.h" />
     <ClInclude Include="Stages\Lexer\lexer.h" />
     <ClInclude Include="Stages\Semantic\Analyzer.h" />
-    <ClInclude Include="Stages\Parser\parser.h" />
     <ClInclude Include="Stages\Semantic\ClangType.h" />
     <ClInclude Include="Stages\Semantic\Function.h" />
     <ClInclude Include="Stages\Semantic\LvalueType.h" />

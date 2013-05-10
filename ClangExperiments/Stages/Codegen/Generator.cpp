@@ -121,6 +121,7 @@ Int8Expression* Generator::CreateInt8Expression(char val) {
 }
 
 ChainExpression* Generator::CreateChainExpression(Statement* s, Expression* e) {
+    assert(s); assert(e);
     return arena.Allocate<ChainExpression>(s, e);
 }
 
@@ -153,6 +154,7 @@ TruncateExpression* Generator::CreateTruncate(Expression* expr, std::function<ll
 }
 
 ChainStatement* Generator::CreateChainStatement(Statement* l, Statement* r) {
+    assert(l); assert(r);
     return arena.Allocate<ChainStatement>(l, r);
 }
 

@@ -94,7 +94,7 @@ namespace Wide {
 }
 namespace std {
     template<> struct hash<Wide::Lexer::TokenType> {
-        std::size_t operator()(Wide::Lexer::TokenType ty) {
+        std::size_t operator()(Wide::Lexer::TokenType ty) const {
             return std::hash<int>()((int)ty);
         }
     };

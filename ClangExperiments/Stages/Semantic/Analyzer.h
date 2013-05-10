@@ -112,7 +112,10 @@ namespace Wide {
             Type* Void;
             Type* Int8;
             Type* Boolean;
-
+            
+            void AddDefaultConstructor(AST::Type* t, UserDefinedType* ty);
+            void AddCopyConstructor(AST::Type* t, UserDefinedType* ty);
+            void AddMoveConstructor(AST::Type* t, UserDefinedType* ty);
             
             // The contract of this function is to return the Wide type that corresponds to that Clang type.
             // Not to return a ClangType instance.

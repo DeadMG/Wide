@@ -88,14 +88,18 @@ void Analyzer::operator()(AST::Module* GlobalModule) {
     }
 }
 
-#include "../Parser/ASTVisitor.h"
-
-Expression Analyzer::AnalyzeExpression(Type* t, AST::Expression* e) {
+// Used for convenience when doing AST-level manipulations
+namespace {
     struct SemanticExpression : public AST::Expression {
         Semantic::Expression e;
         SemanticExpression(Semantic::Expression expr)
             : e(expr), AST::Expression(Lexer::Range()) {}
     };
+}
+
+#include "../Parser/ASTVisitor.h"
+
+Expression Analyzer::AnalyzeExpression(Type* t, AST::Expression* e) {
 
     if (auto str = dynamic_cast<AST::StringExpr*>(e)) {
         Expression out;
@@ -317,6 +321,8 @@ Expression Analyzer::AnalyzeExpression(Type* t, AST::Expression* e) {
         conoverset->functions.push_back(arena.Allocate<AST::Function>("type", std::vector<AST::Statement*>(), std::vector<AST::Statement*>(), Lexer::Range(), std::move(funargs), ty, std::move(initializers)));
         ty->Functions["type"] = conoverset;
         auto lamty = GetUDT(ty);
+        AddCopyConstructor(ty, lamty);
+        AddMoveConstructor(ty, lamty);
         auto obj = lamty->BuildRvalueConstruction(std::move(args), *this);
         return obj;
     }
@@ -536,4 +542,51 @@ ConversionRank Analyzer::RankConversion(Type* from, Type* to) {
     // The only remaining cases are type-specific, not guaranteed for all types.
     // Ask "to" to handle it.
     return to->RankConversionFrom(from, *this);
+}
+
+void Analyzer::AddCopyConstructor(AST::Type* t, UserDefinedType* ty) {
+    auto members = ty->GetMembers();
+    auto should = true;
+    for(auto&& m : members) {
+        should = should && (RankConversion(GetLvalueType(m.t), m.t) == ConversionRank::Zero);
+    }
+    if (!should) return;
+    std::vector<AST::FunctionArgument> args;
+    AST::FunctionArgument self;
+    self.name = "other";
+    self.type = arena.Allocate<SemanticExpression>(Expression(GetConstructorType(GetLvalueType(ty)), nullptr));
+    args.push_back(self);
+
+    std::vector<AST::VariableStatement*> initializers;
+    for(auto&& m : members) {
+        initializers.push_back(
+            arena.Allocate<AST::VariableStatement>(m.name, arena.Allocate<AST::MemAccessExpr>(m.name, arena.Allocate<AST::IdentifierExpr>("other", Lexer::Range()), Lexer::Range()), Lexer::Range())
+        );
+    }
+    if (t->Functions.find("type") == t->Functions.end())
+        t->Functions["type"] = arena.Allocate<AST::FunctionOverloadSet>("type", t);
+    t->Functions["type"]->functions.push_back(arena.Allocate<AST::Function>("type", std::vector<AST::Statement*>(), std::vector<AST::Statement*>(), Lexer::Range(), std::move(args), t, std::move(initializers)));
+}
+
+void Analyzer::AddMoveConstructor(AST::Type* t, UserDefinedType* ty) {
+    auto members = ty->GetMembers();
+    auto should = true;
+    for(auto&& m : members) {
+        should = should && (RankConversion(GetRvalueType(m.t), m.t) == ConversionRank::Zero);
+    }
+    if (!should) return;
+    std::vector<AST::FunctionArgument> args;
+    AST::FunctionArgument self;
+    self.name = "other";
+    self.type = arena.Allocate<SemanticExpression>(Expression(GetConstructorType(GetRvalueType(ty)), nullptr));
+    args.push_back(self);
+
+    std::vector<AST::VariableStatement*> initializers;
+    auto other = Expression(GetRvalueType(ty), gen->CreateParameterExpression(1));
+    for(auto&& m : members) {
+        initializers.push_back(arena.Allocate<AST::VariableStatement>(m.name, arena.Allocate<SemanticExpression>(other.t->AccessMember(other, m.name, *this)), Lexer::Range()));
+    }
+    if (t->Functions.find("type") == t->Functions.end())
+        t->Functions["type"] = arena.Allocate<AST::FunctionOverloadSet>("type", t);
+    t->Functions["type"]->functions.push_back(arena.Allocate<AST::Function>("type", std::vector<AST::Statement*>(), std::vector<AST::Statement*>(), Lexer::Range(), std::move(args), t, std::move(initializers)));
 }

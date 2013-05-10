@@ -6,31 +6,6 @@
 #include "../Lexer/Token.h"
 #include "../Util/MakeUnique.h"
 
-// Lexing interface:
-// operator() for a token
-// explicit operator bool for if more tokens
-// operator()(Token t) for putback.
-
-// Token interface:
-// Movable
-// t.GetType() returns TokenType enumeration.
-
-// Semantic interface:
-// Expression type - A movable type which represents an expression. Isn't created directly.
-// Statement type - A movable type which represents a statement. Isn't created directly. A statement is implicitly constructible from an rvalue expression.
-// ModuleLevelDeclaration type - A movable type which represents any definition at module level.
-// CreateStatementGroup() - creates a movable type which can hold multiple instances of the statement type. push_back should add an rvalue of type statement.
-// CreateExpressionGroup() - creates a movable type which can hold multiple instances of the expression type. push_back should add an rvalue of type expression.
-// CreateIdentExpression(std::string val) - creates an identifier expression, where the identifier is the argument.
-// CreateStringExpression(std::string val) - creates a string expression, where the value of the string is the argument.
-// CreateMemberAccessExpression(std::string mem, Expression obj) - creates a member access expression, where the "mem" member of "obj" is accessed.
-// CreateLeftShiftExpression(Expression lhs, Expression rhs) - creates a left shift expression.
-// CreateFunction(std::string name, StatementGroup group) - creates a function 
-// CreateFunctionCallExpression(Expression, ExpressionGroup) - creates a function call expr, where 1 is object and 2 is arguments.
-// CreateReturn(Expression) - return expr;
-// CreateReturn() - return;
-// CreateIntegerExpression(std::string);
-
 namespace Wide {
     namespace Parser {
         template<typename T> struct ExprType {
@@ -41,6 +16,7 @@ namespace Wide {
         };
         template<typename Lex, typename Sema> typename ExprType<Sema>::type ParseExpression(Lex&& lex, Sema&& sema);
         template<typename Lex, typename Sema, typename Group> void ParseFunctionArguments(Lex&& lex, Sema&& sema, Group&& group);
+        template<typename Lex, typename Sema> auto ParseFunctionArguments(Lex&& lex, Sema&& sema) -> decltype(sema.CreateFunctionArgumentGroup());
         template<typename Lex, typename Sema> typename StmtType<Sema>::type ParseStatement(Lex&& lex, Sema&& sema);
         template<typename Lex, typename Sema, typename Caps> void ParseLambdaCaptures(Lex&& lex, Sema&& sema, Caps&& caps) {
             auto tok = lex();

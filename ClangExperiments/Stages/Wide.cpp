@@ -15,11 +15,13 @@ void Wide::Compile(const Wide::Options::Clang& copts, const Wide::Options::LLVM&
     
     files.push_back("WideLibrary/stdlib.wide");
     files.push_back("WideLibrary/Standard/Containers/optional.wide");
-    files.push_back("WideLibrary/Standard/Algorithms/map.wide");
+    files.push_back("WideLibrary/Standard/Algorithm/map.wide");
 
     Concurrency::Vector<std::string> excepts;
     Wide::Concurrency::ParallelForEach(files.begin(), files.end(), [&](const std::string& filename) {
         std::ifstream inputfile(filename, std::ios::binary | std::ios::in);
+        if (!inputfile)
+            throw std::runtime_error("Could not open this input file.");
         std::noskipws(inputfile);
         Wide::Lexer::Arguments largs;
         auto contents = std::string(std::istream_iterator<char>(inputfile), std::istream_iterator<char>());

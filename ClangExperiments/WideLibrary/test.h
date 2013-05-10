@@ -5,10 +5,7 @@
 #include <tuple>
 #include <set>
 #include <deque>
-
-
-#pragma once
-
+#include <sstream>
 #include <cassert>
 #include <type_traits>
 
@@ -63,8 +60,8 @@ namespace Wide {
                 if(present) destroy();
             }
 
-            T& operator*() { return get(); }
-            T const& operator*() const { return get(); }
+            T& operator*() & { return get(); }
+            T const& operator*() const & { return get(); }
             T&& operator*() && { return std::move(get()); }
 
             T* operator->() { return &get(); }
@@ -99,3 +96,12 @@ namespace Wide {
         };
     }
 } 
+
+template<typename T> std::string to_string(T t) {
+    std::stringstream strstr;
+    strstr << t;
+    return strstr.str();
+}
+template<> std::string to_string<char>(char c) {
+    return to_string((short)c);
+}

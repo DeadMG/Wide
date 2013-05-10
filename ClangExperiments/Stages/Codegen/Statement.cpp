@@ -50,12 +50,14 @@ void IfStatement::Build(llvm::IRBuilder<>& bb, Generator& g) {
     bb.SetInsertPoint(true_bb);
     // May have caused it's own branches to other basic blocks.
     true_br->Build(bb, g);
-    bb.CreateBr(continue_bb);
+    if (!bb.GetInsertBlock()->back().isTerminator())
+        bb.CreateBr(continue_bb);
     
     if (false_br) {
         bb.SetInsertPoint(else_bb);
         false_br->Build(bb, g);
-        bb.CreateBr(continue_bb);
+        if (!bb.GetInsertBlock()->back().isTerminator())
+            bb.CreateBr(continue_bb);
     }
 
     bb.SetInsertPoint(continue_bb);

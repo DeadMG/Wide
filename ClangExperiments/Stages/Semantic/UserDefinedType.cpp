@@ -79,6 +79,11 @@ UserDefinedType::UserDefinedType(AST::Type* t, Analyzer& a) {
     };
 
     members = std::move(mem);
+
+    if (type->Functions.find("type") == type->Functions.end()) {
+        a.AddCopyConstructor(type, this);
+        a.AddMoveConstructor(type, this);
+    }
 }
 
 std::function<llvm::Type*(llvm::Module*)> UserDefinedType::GetLLVMType(Analyzer& a) {

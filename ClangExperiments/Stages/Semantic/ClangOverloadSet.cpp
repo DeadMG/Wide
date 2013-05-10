@@ -48,8 +48,9 @@ Expression ClangOverloadSet::BuildCallWithTemplateArguments(clang::TemplateArgum
         throw std::runtime_error("Attempted to make an overloaded call, but Clang said that there were no viable functions.");
     auto fun = best->Function;
     std::vector<Type*> types;
-    if (nonstatic)
+    if (nonstatic) {
         types.push_back(nonstatic);
+    }
     for(unsigned i = 0; i < fun->getNumParams(); ++i) {
         types.push_back(a.GetClangType(*from, fun->getParamDecl(i)->getType()));
     }

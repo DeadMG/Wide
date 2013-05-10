@@ -178,8 +178,28 @@ Expression ClangType::AccessMember(Expression val, std::string name, Analyzer& a
     return out;
 }
 
-Expression ClangType::BuildCall(Expression val, std::vector<Expression> args, Analyzer& a) {
-    throw std::runtime_error("Attempted to call a Clang object. Will deal with this later.");
+Expression ClangType::BuildCall(Expression self, std::vector<Expression> args, Analyzer& a) {
+    clang::OpaqueValueExpr ope(clang::SourceLocation(), type.getNonLValueExprType(from->GetASTContext()), Semantic::GetKindOfType(self.t));
+    auto declname = from->GetASTContext().DeclarationNames.getCXXOperatorName(clang::OverloadedOperatorKind::OO_Call);
+    clang::LookupResult lr(from->GetSema(), clang::DeclarationNameInfo(declname, clang::SourceLocation()), clang::Sema::LookupNameKind::LookupOrdinaryName);
+    auto result = from->GetSema().LookupQualifiedName(lr, type->getAsCXXRecordDecl(), false);
+    if (!result) {
+        throw std::runtime_error("Attempted to call a Clang type, but Clang said that it could not find the member.");
+    }
+    auto ptr = Wide::Memory::MakeUnique<clang::UnresolvedSet<8>>();
+    clang::UnresolvedSet<8>& us = *ptr;
+    for(auto it = lr.begin(); it != lr.end(); ++it) {
+        us.addDecl(*it);
+    }
+    Expression out;
+    if (!self.t->IsReference()) {
+        std::vector<Expression> args;
+        args.push_back(self);
+        self = self.t->BuildRvalueConstruction(std::move(args), a);
+    }
+    out.t = a.arena.Allocate<ClangOverloadSet>(std::move(ptr), from, self.t);
+    out.Expr = self.Expr;
+    return out.t->BuildCall(out, std::move(args), a);
 }
 
 Expression ClangType::BuildOverloadedOperator(Expression lhs, Expression rhs, Analyzer& a, clang::OverloadedOperatorKind opkind, clang::BinaryOperator::Opcode opcode) {
@@ -295,7 +315,9 @@ Codegen::Expression* ClangType::BuildInplaceConstruction(Codegen::Expression* me
     if (result == clang::OverloadingResult::OR_No_Viable_Function)
         throw std::runtime_error("Attempted to call an overloaded constructor, but Clang said that there were no viable functions.");
     auto fun = best->Function;
-    
+    if (args.size() == 0 && fun->isTrivial()) {
+        return mem;
+    }
 
     std::vector<Type*> types;
 
@@ -355,7 +377,12 @@ Wide::Codegen::Expression* ClangType::BuildBooleanConversion(Expression self, An
     auto p = from->GetSema().PerformContextuallyConvertToBool(&ope);
     if (!p.get())
         throw std::runtime_error("Attempted to convert an object to bool contextually, but Clang said this was not possible.");
-    auto callexpr = llvm::dyn_cast<clang::CallExpr>(p.get());
+    clang::CallExpr* callexpr;
+    if (auto ice = llvm::dyn_cast<clang::ImplicitCastExpr>(p.get())) {
+        callexpr = llvm::dyn_cast<clang::CallExpr>(ice->getSubExpr());
+    } else {
+        callexpr = llvm::dyn_cast<clang::CallExpr>(p.get());
+    }
        
     auto fun = callexpr->getDirectCallee();
     if (!fun) {

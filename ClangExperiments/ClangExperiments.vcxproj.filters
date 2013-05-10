@@ -42,9 +42,6 @@
     <ClInclude Include="Stages\Semantic\LvalueType.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="Stages\Parser\parser.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="Stages\Lexer\lexer.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -184,6 +181,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="Util\Ranges\IteratorRange.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Stages\Parser\parser.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

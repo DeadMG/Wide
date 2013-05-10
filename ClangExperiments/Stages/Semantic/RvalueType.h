@@ -40,6 +40,9 @@ namespace Wide {
             Expression BuildLTEComparison(Expression lhs, Expression rhs, Analyzer& a);
             Expression BuildGTComparison(Expression lhs, Expression rhs, Analyzer& a);
             Expression BuildGTEComparison(Expression lhs, Expression rhs, Analyzer& a);
+            Expression BuildDereference(Expression obj, Analyzer& a) {
+                return Pointee->BuildDereference(obj, a);
+            }
             ConversionRank RankConversionFrom(Type* from, Analyzer& a) {
                 // This will only ever get called when a.RankConversion(from, to) is called where to is T&&
                 // and from is U. This is the same as the rank of U to T, so just return that.

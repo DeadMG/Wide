@@ -135,7 +135,8 @@ void Function::ComputeBody(Analyzer& a) {
                     return nullptr;
                 };
                 if (auto init = has_initializer(x.name)) {
-                    // AccessMember will automatically give us back a T*, but we need the T** here.
+                    // AccessMember will automatically give us back a T*, but we need the T** here
+                    // if the type of this member is a reference.
                     auto mem = a.gen->CreateFieldExpression(self.Expr, x.num);
                     std::vector<Expression> args;
                     if (init->initializer)
@@ -150,8 +151,6 @@ void Function::ComputeBody(Analyzer& a) {
             }
         }
         // Now the body.
-        std::vector<std::tuple<unsigned, Type*>> RetExpressions;
-        std::unordered_set<Type*> RetTypes;
         variables.push_back(std::unordered_map<std::string, Expression>()); // Push back the function body scope.
         std::function<Codegen::Statement*(AST::Statement*)> AnalyzeStatement;
         AnalyzeStatement = [&](AST::Statement* stmt) -> Codegen::Statement* {        
@@ -163,22 +162,23 @@ void Function::ComputeBody(Analyzer& a) {
         
             if (auto ret = dynamic_cast<AST::Return*>(stmt)) {
                 if (!ret->RetExpr) {
-                    RetTypes.insert(a.Void);                
+                    ReturnType = a.Void;               
                     return a.gen->CreateReturn();
                 } else {
                     // When returning an lvalue or rvalue, decay them.
                     auto result = a.AnalyzeExpression(this, ret->RetExpr);
-                    if (result.t->IsReference() && !result.t->IsReference()->IsComplexType()) {
-                        result = result.t->BuildValue(result, a);
-                        RetTypes.insert(result.t);
-					} else {
-						if (result.t->IsReference())
-							RetTypes.insert(result.t->IsReference());
-						else
-							RetTypes.insert(result.t);
-					}
-                    RetExpressions.push_back(std::make_tuple(exprs.size(), result.t));
-                    return a.gen->CreateReturn(result.Expr);
+                    if (!ReturnType)
+                        ReturnType = result.t->Decay();
+                    else if (ReturnType != result.t->Decay())
+                        throw std::runtime_error("Attempted to return more than 1 post-decay type from a function.");
+                    
+                    // Deal with emplacing the result
+                    if (ReturnType->IsComplexType()) {
+                        std::vector<Expression> args;
+                        args.push_back(result);
+                        return a.gen->CreateReturn(ReturnType->BuildInplaceConstruction(a.gen->CreateParameterExpression(0), std::move(args), a));
+                    } else
+                        return a.gen->CreateReturn(result.t->BuildValue(result, a).Expr);
                 }
             }
             if (auto var = dynamic_cast<AST::VariableStatement*>(stmt)) {
@@ -250,39 +250,12 @@ void Function::ComputeBody(Analyzer& a) {
             exprs.push_back(AnalyzeStatement(fun->statements[i]));
         }
         
-        if (RetTypes.empty()) {
-            RetTypes.insert(ReturnType = a.Void);
-            exprs.push_back(a.gen->CreateReturn());
-        } else if (RetTypes.size() == 1) {
-            ReturnType = *RetTypes.begin();
-            if (ReturnType->IsComplexType()) {
-                // If we're complex then first param is pointer to result, so fix up all returns to be an inplace construction to that expression.
-                for(auto&& tup : RetExpressions) {
-                    Type* ty;
-                    unsigned num;
-                    std::tie(num, ty) = tup;
-                    std::vector<Expression> args;
-                    Expression out;
-                    // If the return expression refers to a parameter or local variable, then move it implicitly.
-                    out.Expr = static_cast<Codegen::ReturnStatement*>(exprs[num])->GetReturnExpression();
-                    if (dynamic_cast<Codegen::ParamExpression*>(out.Expr)) {
-                        out.t = a.GetRvalueType(ty->IsReference());
-                    } else if (dynamic_cast<Codegen::Variable*>(out.Expr)) {
-                        out.t = a.GetRvalueType(ty->IsReference());
-                    } else {
-                        out.t = ty;
-                    }
-                    args.push_back(out);
-                    exprs[num] = ReturnType->BuildInplaceConstruction(a.gen->CreateParameterExpression(0), args, a);
-                    exprs.insert(exprs.begin() + num + 1, a.gen->CreateReturn());
-                }
-            }
-        } else
-            throw std::runtime_error("Attempted to return more than one type. Type deduction currently needs exact matches between return statements.");
-        
         // Prevent infinite recursion by setting this variable as soon as the return type is ready
         // Else GetLLVMType() will call us again to prepare the return type.
         body = true;
+
+        // Occurs if no return statements.
+        if (!ReturnType) { ReturnType = a.Void; exprs.push_back(a.gen->CreateReturn()); }
         if (!codefun)
             codefun = a.gen->CreateFunction(GetLLVMType(a), name);
         for(auto&& x : exprs)
