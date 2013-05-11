@@ -1,0 +1,11 @@
+module Standard {
+    module Algorithm {
+        ForEach(range, fun) {
+            var := range();
+            while(var) {
+                fun(*std.move(var));
+                var = range();
+            }
+        }
+    }
+}

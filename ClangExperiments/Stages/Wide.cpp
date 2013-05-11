@@ -15,7 +15,11 @@ void Wide::Compile(const Wide::Options::Clang& copts, const Wide::Options::LLVM&
     
     files.push_back("WideLibrary/stdlib.wide");
     files.push_back("WideLibrary/Standard/Containers/optional.wide");
-    files.push_back("WideLibrary/Standard/Algorithm/map.wide");
+    files.push_back("WideLibrary/Standard/Algorithm/Map.wide");
+    files.push_back("WideLibrary/Standard/Algorithm/Filter.wide");
+    files.push_back("WideLibrary/Standard/Algorithm/Concat.wide");
+    files.push_back("WideLibrary/Standard/Algorithm/ForEach.wide");
+    files.push_back("WideLibrary/Standard/Algorithm/Fold.wide");
 
     Concurrency::Vector<std::string> excepts;
     Wide::Concurrency::ParallelForEach(files.begin(), files.end(), [&](const std::string& filename) {

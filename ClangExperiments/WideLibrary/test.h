@@ -97,11 +97,8 @@ namespace Wide {
     }
 } 
 
-template<typename T> std::string to_string(T t) {
+std::string to_string(char c) {
     std::stringstream strstr;
-    strstr << t;
+    strstr << (short)c;
     return strstr.str();
-}
-template<> std::string to_string<char>(char c) {
-    return to_string((short)c);
 }

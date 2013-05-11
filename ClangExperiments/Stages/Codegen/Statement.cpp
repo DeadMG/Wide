@@ -72,6 +72,7 @@ void WhileStatement::Build(llvm::IRBuilder<>& bb, Generator& g) {
     bb.CreateCondBr(ProcessBool(cond->GetValue(bb, g), bb), loop_bb, continue_bb);
     bb.SetInsertPoint(loop_bb);
     body->Build(bb, g);
-    bb.CreateBr(check_bb);
+    if (!bb.GetInsertBlock()->back().isTerminator())
+        bb.CreateBr(check_bb);
     bb.SetInsertPoint(continue_bb);
 }

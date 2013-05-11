@@ -1,0 +1,15 @@
+module Standard {
+    module Algorithm {
+        Fold(range, pred) {
+            var := range();
+            return Fold(range, pred, *std.move(var));
+        }
+        Fold(range, pred, initial) {
+            var := range();
+            if (var)
+                return Fold(std.move(range), std.move(pred), pred(std.move(initial), *std.move(var)));
+            else
+                return std.move(initial);
+        }
+    }
+}

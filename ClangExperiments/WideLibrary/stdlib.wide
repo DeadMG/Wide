@@ -1,6 +1,5 @@
+using std := cpp("WideLibrary/test.h").std;
 module Standard {
-    using test := cpp("WideLibrary/test.h");
-    using std := test.std;
     Main()
         prolog {
             ExportName = cpp.mangle(cpp("<WideLibrary/main_trampoline.cpp>").Wide.Main);

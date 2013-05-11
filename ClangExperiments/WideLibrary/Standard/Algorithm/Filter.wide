@@ -1,0 +1,14 @@
+module Standard {
+    module Algorithm {
+        Filter(range, pred) {
+            return function()[range := std.move(range), pred := std.move(pred)] {
+                 var := range();
+                 while(var) {
+                     if (pred(*var)) return std.move(var);
+                     var = range();
+                 }
+                 return Containers.None;
+            };
+        }
+    }
+}

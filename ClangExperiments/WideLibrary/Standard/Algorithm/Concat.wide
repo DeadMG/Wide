@@ -1,0 +1,14 @@
+module Standard {
+    module Algorithm {
+        Concat(range1, range2) {
+            return function()[first := true, range1 := std.move(range1), range2 := std.move(range2)] {
+                if (first) {
+                    var := range1();
+                    if (var) return std.move(var);
+                    first = false;
+                }
+                return range2();
+            };
+        }
+    }
+}

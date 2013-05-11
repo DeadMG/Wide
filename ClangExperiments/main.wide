@@ -2,18 +2,22 @@ using Optional := Standard.Containers.Optional;
 using None := Standard.Containers.None;
 using Map := Standard.Algorithm.Map;
 using test := cpp("WideLibrary/test.h");
-using std := test.std;
 Main() {
-    r := function()[min := 0, max := 10] {
-        if (std.equal_to!(int8)()(min, max)) return Optional!(int8)(None);
-        var := Optional!(int8)(min);
-        min = std.plus!(int8)()(min, 1);
-        return var;
-    };
-    newr := Standard.Algorithm.Map(r, function(int8 arg) { return std.multiplies!(int8)()(arg, 2); });
-    var := newr();
-    while(var) {
-        std.cout << test.to_string(*var);
-        var = newr();
-    }
+    Standard.Algorithm.ForEach(
+        Standard.Algorithm.Filter(
+            Standard.Algorithm.Map(
+                function()[min := 0, max := 10] {
+                    if (std.equal_to!(int8)()(min, max)) return Optional!(int8)(None);
+                    var := Optional!(int8)(min);
+                    min = std.plus!(int8)()(min, 1);
+                    return var;
+                }, 
+                function(int8 arg) { return std.multiplies!(int8)()(arg, 2); }
+            ), 
+            function(int8 arg) { return arg < 10; }
+        ),
+        function(int8 arg) {
+            std.cout << test.to_string(arg);
+        }
+    );
 }

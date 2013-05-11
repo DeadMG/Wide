@@ -169,7 +169,7 @@ void Function::ComputeBody(Analyzer& a) {
                     auto result = a.AnalyzeExpression(this, ret->RetExpr);
                     if (!ReturnType)
                         ReturnType = result.t->Decay();
-                    else if (ReturnType != result.t->Decay())
+                    else if (ReturnType != result.t->Decay() && (a.RankConversion(result.t, ReturnType) == ConversionRank::None || a.RankConversion(ReturnType, result.t->Decay()) != ConversionRank::None))
                         throw std::runtime_error("Attempted to return more than 1 post-decay type from a function.");
                     
                     // Deal with emplacing the result
