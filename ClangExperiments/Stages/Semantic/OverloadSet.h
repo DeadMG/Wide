@@ -27,6 +27,7 @@ namespace Wide {
             clang::QualType GetClangType(ClangUtil::ClangTU& TU, Analyzer& a);
             Expression BuildCall(Expression, std::vector<Expression> args, Analyzer& a);
             Expression BuildValueConstruction(std::vector<Expression> args, Analyzer& a);
+            ConversionRank ResolveOverloadRank(std::vector<Type*> types, Analyzer& a);
         };
     }
 }

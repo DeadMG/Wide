@@ -11,7 +11,9 @@
 
 namespace Wide {
     namespace Semantic {
+        class Function;
         class UserDefinedType : public Type {
+            Function* destructor;
             AST::Type* type;
             bool iscomplex;
             struct member {
@@ -28,9 +30,10 @@ namespace Wide {
             std::function<llvm::Type*(llvm::Module*)> ty;
             std::string llvmname;
             std::unordered_map<ClangUtil::ClangTU*, clang::QualType> clangtypes;
+            Expression BuildBinaryOperator(std::string opname, Expression lhs, Expression rhs, Analyzer& a);
         public:
             std::vector<member> GetMembers() { return llvmtypes; }
-            UserDefinedType(AST::Type* t, Analyzer& a);
+            UserDefinedType(AST::Type* t, Analyzer& a, Type* context);
             AST::DeclContext* GetDeclContext();
             bool HasMember(std::string name);
 
@@ -44,6 +47,8 @@ namespace Wide {
             Expression BuildLTComparison(Expression lhs, Expression rhs, Analyzer& a);
             ConversionRank RankConversionFrom(Type* from, Analyzer& a);
             Expression BuildCall(Expression val, std::vector<Expression> args, Analyzer& a);
+            Codegen::Expression* BuildDestructor(Expression obj, Analyzer& a);
+            Expression BuildOr(Expression lhs, Expression rhs, Analyzer& a);
         };
     }
 }

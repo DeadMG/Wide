@@ -45,8 +45,8 @@ namespace Wide {
         };
         struct FunctionOverloadSet;
         struct VariableStatement;
-        struct Type : public DeclContext {
-            Type(DeclContext* above, std::string name) : DeclContext(above, name) {}
+        struct Type : public DeclContext, Expression {
+            Type(DeclContext* above, std::string name) : DeclContext(above, name), Expression(Lexer::Range()) {}
             std::vector<VariableStatement*> variables;
             std::unordered_map<std::string, FunctionOverloadSet*> Functions;
         };
@@ -94,9 +94,9 @@ namespace Wide {
             Lambda(std::vector<Statement*> body, std::vector<FunctionArgument> arg, Lexer::Range r, bool ref, std::vector<VariableStatement*> caps)
                 : args(std::move(arg)), statements(std::move(body)), Expression(r), defaultref(ref), Captures(std::move(caps)) {}
         };
-        struct Function : ModuleLevelDeclaration {
+        struct Function : DeclContext {
             Function(std::string nam, std::vector<Statement*> b, std::vector<Statement*> prolog, Lexer::Range loc, std::vector<FunctionArgument> ar, DeclContext* m, std::vector<VariableStatement*> caps)
-                : prolog(std::move(prolog)), statements(std::move(b)), location(loc), args(std::move(ar)), ModuleLevelDeclaration(m, std::move(nam)), initializers(std::move(caps)) {}
+                : prolog(std::move(prolog)), statements(std::move(b)), location(loc), args(std::move(ar)), DeclContext(m, std::move(nam)), initializers(std::move(caps)) {}
             std::vector<FunctionArgument> args;
             std::vector<Statement*> prolog;
             std::vector<Statement*> statements;
@@ -156,12 +156,28 @@ namespace Wide {
         struct NotEqCmpExpression : public BinaryExpression {
             NotEqCmpExpression(Expression* l, Expression* r) : BinaryExpression(l, r) {}
         };
-        struct DereferenceExpression : public Expression {
-            Expression* ex;
-            DereferenceExpression(Expression* e, Lexer::Range pos)
-                : ex(e), Expression(pos) {}
+        struct AutoExpression : public Expression {
+            AutoExpression(Lexer::Range loc)
+                : Expression(loc) {}
         };
-
+        struct UnaryExpression : public Expression {
+            UnaryExpression(Expression* expr, Lexer::Range loc)
+                : ex(expr), Expression(loc) {}
+            Expression* ex;
+        };
+        struct PointerAccess : public UnaryExpression {
+            std::string member;
+            PointerAccess(std::string name, Expression* expr, Lexer::Range loc)
+                : UnaryExpression(expr, loc), member(std::move(name)) {}
+        };
+        struct DereferenceExpression : public UnaryExpression {
+            DereferenceExpression(Expression* e, Lexer::Range pos)
+                : UnaryExpression(e, pos) {}
+        };
+        struct NegateExpression : public UnaryExpression {
+            NegateExpression(Expression* e, Lexer::Range pos)
+                : UnaryExpression(e, pos) {}
+        };
         struct OrExpression : public BinaryExpression {
             OrExpression(Expression* l, Expression* r) : BinaryExpression(l, r) {}
         };
@@ -196,6 +212,21 @@ namespace Wide {
             Statement* body;
             Expression* condition;
         };
-
+        struct Increment : public UnaryExpression {
+            bool postfix;
+            Increment(Expression* ex, Lexer::Range r, bool post)
+                : UnaryExpression(ex, r), postfix(post) {}
+        };
+        struct Decrement : public UnaryExpression {
+            bool postfix;
+            Decrement(Expression* ex, Lexer::Range r, bool post)
+                : UnaryExpression(ex, r), postfix(post) {}
+        };
+        struct Addition : public BinaryExpression {
+            Addition(Expression* l, Expression* r) : BinaryExpression(l, r) {}
+        };
+        struct Multiply : public BinaryExpression {
+            Multiply(Expression* l, Expression* r) : BinaryExpression(l, r) {}
+        };
     }
 }

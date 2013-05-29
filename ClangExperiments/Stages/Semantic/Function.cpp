@@ -34,7 +34,6 @@ Function::Function(std::vector<Type*> args, AST::Function* astfun, Analyzer& a, 
 : analyzer(a)
 , ReturnType(nullptr)
 , fun(astfun)
-, body(false)
 , codefun(nullptr)
 , member(mem) {
     // Only match the non-concrete arguments.
@@ -45,19 +44,7 @@ Function::Function(std::vector<Type*> args, AST::Function* astfun, Analyzer& a, 
         Args.push_back(a.GetLvalueType(mem));
     for(auto&& arg : astfun->args) {
         auto param = [this, num] { return num + ReturnType->IsComplexType() + (member != nullptr); };
-        Type* ty = nullptr;
-        if (arg.type) {
-            auto con = dynamic_cast<ConstructorType*>(a.AnalyzeExpression(this, arg.type).t);            
-            if (!con)
-                throw std::runtime_error("Attempted to create an argument, but the expression was not a type.");
-            // If con's type is complex, expect ptr.
-            ty = con->GetConstructedType();
-        } else {
-            auto paramty = args.at(metaargs++);
-            // If this is some kind of reference, decay it.
-            if (paramty->IsReference()) paramty = paramty->IsReference();
-            ty = paramty;
-        }
+        Type* ty = args[num];
         Expression var;
         var.t = a.GetLvalueType(ty);
         if (ty->IsComplexType()) {
@@ -75,6 +62,7 @@ Function::Function(std::vector<Type*> args, AST::Function* astfun, Analyzer& a, 
         }
         ++num;
         variables.back()[arg.name] = var;
+        exprs.push_back(var.Expr);
         Args.push_back(ty);
     }
 
@@ -97,21 +85,21 @@ Function::Function(std::vector<Type*> args, AST::Function* astfun, Analyzer& a, 
                 throw std::runtime_error("Prolog right-hand-sides of ExportName must be of string type!");
             name = str->GetContents();     
         }
-        if (ident->val == "ReturnType") {
+        /*if (ident->val == "ReturnType") {
             auto ty = dynamic_cast<ConstructorType*>(expr.t);
             if (!ty)
                 throw std::runtime_error("Prolog right-hand-side of ReturnType must be a type.");
             ReturnType = ty->GetConstructedType();
-        }
+        }*/
     }
     if (ReturnType) {
         // We have the name and signature- declare, and generate the body later.
-        codefun = a.gen->CreateFunction(GetLLVMType(a), name);
+        codefun = a.gen->CreateFunction(GetLLVMType(a), name, this);
     }
 }
 
 AST::DeclContext* Function::GetDeclContext() {
-    return fun->higher;
+    return fun;
 }
 
 clang::QualType Function::GetClangType(ClangUtil::ClangTU& where, Analyzer& a) {
@@ -122,9 +110,9 @@ std::function<llvm::Type*(llvm::Module*)> Function::GetLLVMType(Analyzer& a) {
     return GetSignature(a)->GetLLVMType(a);
 }
 void Function::ComputeBody(Analyzer& a) {    
-    if (!body) {        
+    if (!ReturnType) {        
         // Initializers first, if we are a constructor
-        if (member && !fun->initializers.empty()) {
+        if (member && fun->name == "type") {
             auto self = AccessMember(Expression(), "this", a);
             auto members = member->GetMembers();
             for(auto&& x : members) {
@@ -144,9 +132,11 @@ void Function::ComputeBody(Analyzer& a) {
                     exprs.push_back(x.t->BuildInplaceConstruction(mem, std::move(args), a));
                 } else {
                     // Don't care about if x.t is ref because refs can't be default-constructed anyway.
-                    auto mem = self.t->AccessMember(self, init->name, a);
+                    if (x.t->IsReference())
+                        throw std::runtime_error("Failed to initialize a reference member.");
+                    auto mem = self.t->AccessMember(self, x.name, a);                   
                     std::vector<Expression> args;
-                    exprs.push_back(mem.t->BuildInplaceConstruction(mem.Expr, std::move(args), a));
+                    exprs.push_back(x.t->BuildInplaceConstruction(mem.Expr, std::move(args), a));
                 }
             }
         }
@@ -208,6 +198,10 @@ void Function::ComputeBody(Analyzer& a) {
                         variables.back()[var->name] = result.t->IsReference()->BuildLvalueConstruction(args, a);         
                     } else {
                         result.steal = false;
+                        // If I've been asked to steal an lvalue, it's because I rvalue constructed an lvalue reference
+                        // So the expr will be T** whereas I want just T*
+                        if (dynamic_cast<LvalueType*>(result.t))
+                            result.Expr = a.gen->CreateLoad(result.Expr);
                         result.t = a.GetLvalueType(result.t);
                         variables.back()[var->name] = result;
                     }
@@ -221,8 +215,6 @@ void Function::ComputeBody(Analyzer& a) {
                 variables.push_back(std::unordered_map<std::string, Expression>());
                 if (comp->stmts.size() == 0)
                     return nullptr;
-                if (comp->stmts.size() == 1)
-                    return AnalyzeStatement(comp->stmts.back());
                 Codegen::Statement* chain = nullptr;
                 for(auto&& x : comp->stmts) {
                     if (!chain) chain = AnalyzeStatement(x);
@@ -252,26 +244,21 @@ void Function::ComputeBody(Analyzer& a) {
         
         // Prevent infinite recursion by setting this variable as soon as the return type is ready
         // Else GetLLVMType() will call us again to prepare the return type.
-        body = true;
 
         // Occurs if no return statements.
         if (!ReturnType) { ReturnType = a.Void; exprs.push_back(a.gen->CreateReturn()); }
         if (!codefun)
-            codefun = a.gen->CreateFunction(GetLLVMType(a), name);
+            codefun = a.gen->CreateFunction(GetLLVMType(a), name, this);
         for(auto&& x : exprs)
             codefun->AddStatement(x);
         variables.clear();
     }
 }
 Expression Function::BuildCall(Expression, std::vector<Expression> args, Analyzer& a) {
-    // Expect e to be null.
-    // We need the body to get the return type if it was not in the prolog, so lazy generate it.
-    if (!body)
-        ComputeBody(a);
     Expression val;
     val.t = this;
     val.Expr = a.gen->CreateFunctionValue(name);
-    return a.GetFunctionType(ReturnType, Args)->BuildCall(val, std::move(args), a);
+    return GetSignature(a)->BuildCall(val, std::move(args), a);
 }
 Expression Function::AccessMember(Expression e, std::string name, Analyzer& a) {
     for(auto it = variables.rbegin(); it != variables.rend(); ++it) {
@@ -286,9 +273,9 @@ Expression Function::AccessMember(Expression e, std::string name, Analyzer& a) {
             return self;
         if (member->HasMember(name))
             return self.t->AccessMember(self, std::move(name), a);
-        auto context = member->GetDeclContext();
+        auto context = member->GetDeclContext()->higher;
         while(auto ty = dynamic_cast<AST::Type*>(context))
-            context = a.GetDeclContext(context)->GetDeclContext();
+            context = context->higher;
         return a.GetDeclContext(context)->AccessMember(Expression(), name, a);
     }
     return a.GetDeclContext(fun->higher)->AccessMember(e, std::move(name), a);
@@ -297,7 +284,7 @@ std::string Function::GetName() {
     return name;
 }
 FunctionType* Function::GetSignature(Analyzer& a) {
-    if (!body)
+    if (!ReturnType)
         ComputeBody(a);
     return a.GetFunctionType(ReturnType, Args);
 }

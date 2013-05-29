@@ -15,6 +15,9 @@ namespace llvm {
 }
 
 namespace Wide {
+    namespace Semantic {
+        class Function;
+    }
     namespace Codegen {
         class Statement;
 		class Generator;
@@ -24,6 +27,7 @@ namespace Wide {
             std::string name;
 			bool tramp;
             std::unordered_map<unsigned, llvm::Value*> ParameterValues;
+            Semantic::Function* debug;
         public:
             llvm::Value* GetParameter(unsigned i);
             void AddStatement(Statement* s) {
@@ -33,7 +37,7 @@ namespace Wide {
             
             void EmitCode(llvm::Module*, llvm::LLVMContext& con, Generator&);
                         
-            Function(std::function<llvm::Type*(llvm::Module*)> ty, std::string name, bool trampoline = false);
+            Function(std::function<llvm::Type*(llvm::Module*)> ty, std::string name, Semantic::Function* debug, bool trampoline = false);
         };
     }
 }

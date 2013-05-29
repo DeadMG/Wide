@@ -1,0 +1,11 @@
+module Standard {
+    module Range {
+        Delimited(begin, end) {
+            return function()[begin := std.move(begin), end := std.move(end)] {
+                //std.cout << "Delimited(begin, end)" << begin << " " << end << "\n";
+                if (begin ~= end) return Containers.Optional!(decltype(begin)->decay)(begin++);
+                return Containers.None;
+            };
+        }
+    }
+}

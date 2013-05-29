@@ -63,8 +63,8 @@ Generator::Generator(const Options::LLVM& l, const Options::Clang& c)
     main.setTargetTriple(c.TargetOptions.Triple);
 }
 
-Function* Generator::CreateFunction(std::function<llvm::Type*(llvm::Module*)> ty, std::string name, bool tramp) {
-    auto p = arena.Allocate<Function>(std::move(ty), std::move(name), tramp);
+Function* Generator::CreateFunction(std::function<llvm::Type*(llvm::Module*)> ty, std::string name, Semantic::Function* debug, bool tramp) {
+    auto p = arena.Allocate<Function>(std::move(ty), std::move(name), debug, tramp);
     functions.push_back(p);
     return p;
 }
@@ -74,6 +74,8 @@ Variable* Generator::CreateVariable(std::function<llvm::Type*(llvm::Module*)> t)
 }
 
 FunctionCall* Generator::CreateFunctionCall(Expression* obj, std::vector<Expression*> args, std::function<llvm::Type*(llvm::Module*)> ty) {
+    for(auto ex : args)
+        assert(ex && "Attempt to pass a nullptr argument to CreateFunctionCall.");
     return arena.Allocate<FunctionCall>(obj, std::move(args), std::move(ty));
 }
 
@@ -116,10 +118,13 @@ void Generator::EmitCode() {
         __debugbreak();
 }
 
-Int8Expression* Generator::CreateInt8Expression(char val) {
-    return arena.Allocate<Int8Expression>(val);
+NegateExpression* Generator::CreateNegateExpression(Expression* val) {
+    return arena.Allocate<NegateExpression>(val);
 }
 
+IntegralExpression* Generator::CreateIntegralExpression(uint64_t val, bool is_signed, std::function<llvm::Type*(llvm::Module*)> ty) {
+    return arena.Allocate<IntegralExpression>(val, is_signed, std::move(ty));
+}
 ChainExpression* Generator::CreateChainExpression(Statement* s, Expression* e) {
     assert(s); assert(e);
     return arena.Allocate<ChainExpression>(s, e);
@@ -170,8 +175,8 @@ IntegralLeftShiftExpression* Generator::CreateLeftShift(Expression* l, Expressio
     return arena.Allocate<IntegralLeftShiftExpression>(l, r);
 }
 
-IntegralRightShiftExpression* Generator::CreateRightShift(Expression* l, Expression* r) {
-    return arena.Allocate<IntegralRightShiftExpression>(l, r);
+IntegralRightShiftExpression* Generator::CreateRightShift(Expression* l, Expression* r, bool s) {
+    return arena.Allocate<IntegralRightShiftExpression>(l, r, s);
 }
 
 void Generator::TieFunction(llvm::Function* llvmf, Function* f) {
@@ -186,5 +191,31 @@ Function* Generator::FromLLVMFunc(llvm::Function* f) {
 
 // Domagoj, you cockface.
 IntegralLessThan* Generator::CreateSLT(Expression* lhs, Expression* rhs) {
-    return arena.Allocate<IntegralLessThan>(lhs, rhs);
+    return arena.Allocate<IntegralLessThan>(lhs, rhs, true);
+}
+IntegralLessThan* Generator::CreateULT(Expression* lhs, Expression* rhs) {
+    return arena.Allocate<IntegralLessThan>(lhs, rhs, false);
+}
+
+OrExpression* Generator::CreateOrExpression(Expression* lhs, Expression* rhs) {
+    return arena.Allocate<OrExpression>(lhs, rhs);
+}
+EqualityExpression* Generator::CreateEqualityExpression(Expression* lhs, Expression* rhs) {
+    return arena.Allocate<EqualityExpression>(lhs, rhs);
+}
+PlusExpression* Generator::CreatePlusExpression(Expression* lhs, Expression* rhs) {
+    return arena.Allocate<PlusExpression>(lhs, rhs);
+}
+MultiplyExpression* Generator::CreateMultiplyExpression(Expression* lhs, Expression* rhs) {
+    return arena.Allocate<MultiplyExpression>(lhs, rhs);
+}
+AndExpression* Generator::CreateAndExpression(Expression* lhs, Expression* rhs) {
+    return arena.Allocate<AndExpression>(lhs, rhs);
+}
+
+ZExt* Generator::CreateZeroExtension(Expression* e, std::function<llvm::Type*(llvm::Module*)> func) {
+    return arena.Allocate<ZExt>(e, std::move(func));
+}
+SExt* Generator::CreateSignedExtension(Expression* e, std::function<llvm::Type*(llvm::Module*)> func) {
+    return arena.Allocate<SExt>(e, std::move(func));
 }

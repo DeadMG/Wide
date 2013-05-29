@@ -8,6 +8,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include "Analyzer.h"
+#include "ClangType.h"
 #include "../Codegen/Generator.h"
 
 #pragma warning(push, 0)
@@ -70,9 +71,7 @@ public:
     
     // Clang has a really annoying habit of changing it's mind about this
     // producing multiple distinct llvm::Type*s for one QualType, so perform
-    // our own caching on top.
-    std::unordered_map<clang::QualType, llvm::Type*, ClangTypeHasher> typemap;
-    
+    // our own caching on top.    
     void HandleErrors() {
         if (ccs.engine.hasFatalErrorOccurred())
             throw std::runtime_error(ccs.errors);
@@ -153,9 +152,43 @@ clang::QualType Simplify(clang::QualType inc) {
 std::function<llvm::Type*(llvm::Module*)> ClangTU::GetLLVMTypeFromClangType(clang::QualType t, Semantic::Analyzer& a) {
     auto imp = impl.get();
 
-    return [=, &a](llvm::Module* mod) -> llvm::Type* {
-		// Below logic copy pastad from CodeGenModule::addRecordTypeName
+    return [this, imp, t, &a](llvm::Module* mod) -> llvm::Type* {
+        // If we were converted from some Wide type, go to them instead of going through LLVM named type.
+        if (!dynamic_cast<Semantic::ClangType*>(a.GetClangType(*this, t))) {
+            return a.GetClangType(*this, t)->GetLLVMType(a)(mod);
+        }
+        
 		auto RD = t.getCanonicalType()->getAsCXXRecordDecl();
+        /*if (!RD->field_empty()) {
+            // If we are non-empty, we can't be an eliminate type
+
+            // Check constructors, methods, and destructors
+            if (RD->ctor_begin() != RD->ctor_end()) {
+            }
+            if (RD->getDestructor()) {
+                auto debug = llvm::dyn_cast<llvm::PointerType>(mod->getFunction(MangleName(RD->getDestructor()))->getArgumentList().front().getType())->getElementType();
+                return debug;
+            }
+            // Methods: Gotta be careful about them complex returns
+            if (RD->method_begin() != RD->method_end()) {
+                auto meth = *RD->method_begin();
+                // Complex T* goes first, this second
+                if (IsComplexType(meth->getResultType()->getAsCXXRecordDecl())) {
+                    auto debug = llvm::dyn_cast<llvm::PointerType>((++mod->getFunction(MangleName(*RD->method_begin()))->getArgumentList().begin())->getType())->getElementType();
+                    return debug;
+
+                }
+                // This first
+                auto debug = llvm::dyn_cast<llvm::PointerType>(mod->getFunction(MangleName(*RD->method_begin()))->getArgumentList().front().getType())->getElementType();
+                return debug;
+            }
+            // If we have no methods, no destructor, and no constructor, seems like an eliminate type
+            // Just fall back to the named type.
+        }*/
+        if (prebaked_types.find(t) != prebaked_types.end())
+            return prebaked_types[t](mod);
+
+		// Below logic copy pastad from CodeGenModule::addRecordTypeName
 		std::string TypeName;
 		llvm::raw_string_ostream OS(TypeName);
         OS << RD->getKindName() << '.';
@@ -189,6 +222,7 @@ std::function<llvm::Type*(llvm::Module*)> ClangTU::GetLLVMTypeFromClangType(clan
 }
 
 bool ClangTU::IsComplexType(clang::CXXRecordDecl* decl) {
+    if (!decl) return false;
 	auto indirect = impl->codegenmod.getCXXABI().isReturnTypeIndirect(decl);
 	auto arg = impl->codegenmod.getCXXABI().getRecordArgABI(decl);
 	auto t = impl->astcon.getTypeDeclType(decl);
@@ -321,10 +355,25 @@ std::string ClangTU::MangleName(clang::NamedDecl* D) {
         return name;
     }
     if (auto condecl = llvm::dyn_cast<clang::CXXConstructorDecl>(D)) {
+        assert(!condecl->isTrivial());
         MarkFunction(condecl);
         //RecursiveMarkTypes(condecl->getParent());
         auto gd = clang::GlobalDecl(condecl, clang::CXXCtorType::Ctor_Complete);
         auto name = impl->codegenmod.getMangledName(gd);   
+
+        // this is always first argument
+        if (!condecl->getParent()->field_empty()) {
+            prebaked_types[GetASTContext().getTypeDeclType(condecl->getParent())] = [=](llvm::Module* mod) -> llvm::Type* {
+                auto func = mod->getFunction(name);
+                auto&& list = func->getArgumentList();
+                auto&& first = list.front();
+                auto type = first.getType();
+                auto ptr = llvm::dyn_cast<llvm::PointerType>(type);
+                auto debug = ptr->getElementType();
+                return debug;
+            };
+        }
+
         return name;
     }
     if (auto funcdecl = llvm::dyn_cast<clang::FunctionDecl>(D)) {

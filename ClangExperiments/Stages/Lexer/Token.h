@@ -38,6 +38,10 @@ namespace Wide {
             Colon,
             Dereference,
             PointerAccess,
+            Negate,
+            Plus,
+            Increment,
+            Decrement,
 
             LT,
             LTE,

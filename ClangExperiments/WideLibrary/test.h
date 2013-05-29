@@ -3,11 +3,14 @@
 #include <vector>
 #include <algorithm>
 #include <tuple>
+#include <array>
 #include <set>
 #include <deque>
 #include <sstream>
 #include <cassert>
 #include <type_traits>
+#include <utility>
+#include <new>
 
 namespace Wide {
     namespace Util {
@@ -70,7 +73,7 @@ namespace Wide {
             explicit operator bool() const { return present; }
 
         private:
-            typedef std::aligned_storage<sizeof(T), std::alignment_of<T>::value> storage_type;
+            typedef /*typename std::aligned_storage<sizeof(T), std::alignment_of<T>::value>::type*/ std::array<char, sizeof(T)> storage_type;
 
             template <typename Args>
             void place(Args&& args) {
@@ -96,9 +99,14 @@ namespace Wide {
         };
     }
 } 
-
+/*
 std::string to_string(char c) {
     std::stringstream strstr;
     strstr << (short)c;
     return strstr.str();
 }
+template<typename T> std::string to_string(T t) {
+    std::stringstream strstr;
+    strstr << t;
+    return strstr.str();
+}*/

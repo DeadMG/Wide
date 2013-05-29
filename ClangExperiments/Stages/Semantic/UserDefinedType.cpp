@@ -33,15 +33,22 @@ bool UserDefinedType::IsComplexType() {
     return iscomplex;
 }
 
-UserDefinedType::UserDefinedType(AST::Type* t, Analyzer& a) {
+struct SemanticExpression : public AST::Expression {
+    Semantic::Expression e;
+    SemanticExpression(Semantic::Expression expr)
+        : e(expr), AST::Expression(Lexer::Range()) {}
+};
+
+UserDefinedType::UserDefinedType(AST::Type* t, Analyzer& a, Type* context) {
     iscomplex = false;
-    // Only assign these at the end of the constructor so that we don't permit something like type t { x := 1; y := x + 1; };
+    destructor = nullptr;
     std::unordered_map<std::string, unsigned> mem;
     type = t;
 
     for(auto&& decl : t->variables) {
         if (auto var = dynamic_cast<AST::VariableStatement*>(decl)) {
-            auto expr = a.AnalyzeExpression(this, var->initializer);
+            auto expr = a.AnalyzeExpression(context, var->initializer);
+            expr.t = expr.t->Decay();
             if (auto con = dynamic_cast<ConstructorType*>(expr.t))
                 expr.t = con->GetConstructedType();
             else
@@ -80,9 +87,48 @@ UserDefinedType::UserDefinedType(AST::Type* t, Analyzer& a) {
 
     members = std::move(mem);
 
+    iscomplex = iscomplex || type->Functions.find("~type") != type->Functions.end();
+    if (type->Functions.find("type") != type->Functions.end()) {
+        std::vector<Type*> self;
+        self.push_back(a.GetLvalueType(this));
+        iscomplex = iscomplex || a.GetOverloadSet(type->Functions["type"], this)->ResolveOverloadRank(std::move(self), a) != ConversionRank::None;
+        //self.push_back(a.GetRvalueType(this));
+        //iscomplex = iscomplex || a.GetOverloadSet(type->Functions["type"], this)->ResolveOverloadRank(std::move(self), a) != ConversionRank::None;
+    }
+
     if (type->Functions.find("type") == type->Functions.end()) {
+        a.AddDefaultConstructor(type, this);
         a.AddCopyConstructor(type, this);
         a.AddMoveConstructor(type, this);
+    }
+
+    if (IsComplexType()) {
+
+        // Generate the destructor
+        std::vector<AST::Statement*> body;
+        for(auto x = llvmtypes.rbegin(); x != llvmtypes.rend(); ++x) {
+            if (x->t->IsReference()) continue;
+            auto mem = Expression(a.GetLvalueType(x->t), a.gen->CreateFieldExpression(a.gen->CreateParameterExpression(0), x->num));
+            body.push_back(a.arena.Allocate<SemanticExpression>(Expression(nullptr, mem.t->BuildDestructor(mem, a))));
+        }
+        
+        if (type->Functions.find("~type") != type->Functions.end()) {
+            body.insert(body.begin(), a.arena.Allocate<SemanticExpression>(a.GetWideFunction(*type->Functions["~type"]->functions.begin(), this)->BuildCall(Expression(), std::vector<Expression>(), a)));
+        }
+        
+        destructor = 
+            a.GetWideFunction(
+                a.arena.Allocate<AST::Function>(
+                    "~type", 
+                    std::move(body), 
+                    std::vector<AST::Statement*>(), 
+                    Lexer::Range(), 
+                    std::vector<AST::FunctionArgument>(), 
+                    GetDeclContext(), 
+                    std::vector<AST::VariableStatement*>()
+                ), 
+                this
+            );
     }
 }
 
@@ -91,47 +137,14 @@ std::function<llvm::Type*(llvm::Module*)> UserDefinedType::GetLLVMType(Analyzer&
 }
 
 Codegen::Expression* UserDefinedType::BuildInplaceConstruction(Codegen::Expression* mem, std::vector<Expression> args, Analyzer& a) {
-    if (type->Functions.find("type") != type->Functions.end()) {
-        std::vector<Expression> setargs;
-        setargs.push_back(Expression(a.GetLvalueType(this), mem));
-        auto set = a.GetOverloadSet(type->Functions["type"], this)->BuildValueConstruction(std::move(setargs), a);
-        return set.t->BuildCall(set, std::move(args), a).Expr;
+    if (!IsComplexType() && args.size() == 1 && args[0].t->Decay() == this) {
+        auto val = args[0].t->BuildValue(args[0], a);
+        return a.gen->CreateStore(mem, val.Expr);
     }
-    Codegen::Expression* e = nullptr;
-    if (args.size() == 0) {
-        for(auto&& x : llvmtypes) {
-            auto construct = x.t->BuildInplaceConstruction(a.gen->CreateFieldExpression(mem, x.num), args, a);
-            e = e ? a.gen->CreateChainExpression(e, construct) : construct;
-        }
-    }
-    if (args.size() == 1) {
-        auto ty = args[0].t;
-        if (!ty->IsReference(this)) {
-            if (ty == this) {
-                if (!IsComplexType())
-                    return a.gen->CreateStore(mem, args[0].Expr);
-                throw std::runtime_error("Internal compiler error: Found a value of a complex type.");
-            }
-            throw std::runtime_error("Attempt to construct a user-defined type with something that was not another instance of that type.");
-        }
-        for(auto&& x : llvmtypes) {
-            Type* t;
-            if (dynamic_cast<LvalueType*>(args[0].t)) {
-                t = a.GetLvalueType(x.t);
-            } else {
-                t = a.GetRvalueType(x.t);
-            }
-            Expression arg(t, a.gen->CreateFieldExpression(args[0].Expr, x.num));
-            std::vector<Expression> arguments;
-            arguments.push_back(arg);
-            auto construct = x.t->BuildInplaceConstruction(a.gen->CreateFieldExpression(mem, x.num), std::move(arguments), a);
-            e = e ? a.gen->CreateChainExpression(e, construct) : construct;
-        }
-    }
-    // Can happen if the user declared no members.
-    // mem is a safe thing to return as the user will almost always simply create a chain with the memory anyway.
-    if (!e) e = mem;
-    return e;
+    std::vector<Expression> setargs;
+    setargs.push_back(Expression(a.GetLvalueType(this), mem));
+    auto set = a.GetOverloadSet(type->Functions["type"], this)->BuildValueConstruction(std::move(setargs), a);
+    return set.t->BuildCall(set, std::move(args), a).Expr;
 }
 
 Expression UserDefinedType::AccessMember(Expression expr, std::string name, Analyzer& a) {
@@ -167,7 +180,7 @@ Expression UserDefinedType::AccessMember(Expression expr, std::string name, Anal
 }
 
 AST::DeclContext* UserDefinedType::GetDeclContext() {
-    return type->higher;
+    return type;
 }
 
 Expression UserDefinedType::BuildAssignment(Expression lhs, Expression rhs, Analyzer& a) {
@@ -297,7 +310,7 @@ clang::QualType UserDefinedType::GetClangType(ClangUtil::ClangTU& TU, Analyzer& 
 		    			args.insert(args.begin(), self);
 		    		}
                     return llvm::FunctionType::get(fty->getReturnType(), args, false)->getPointerTo();
-                }, TU.MangleName(meth), true);// If an i8/i1 mismatch, fix it up for us amongst other things.
+                }, TU.MangleName(meth), nullptr, true);// If an i8/i1 mismatch, fix it up for us amongst other things.
                 // The only statement is return f().
                 std::vector<Codegen::Expression*> exprs;
                 // Unlike OverloadSet, we wish to simply forward all parameters after ABI adjustment performed by FunctionCall in Codegen.
@@ -318,6 +331,7 @@ clang::QualType UserDefinedType::GetClangType(ClangUtil::ClangTU& TU, Analyzer& 
     }
 
     recdecl->completeDefinition();
+    auto size = TU.GetASTContext().getTypeSizeInChars(TU.GetASTContext().getTypeDeclType(recdecl).getTypePtr());
     TU.GetDeclContext()->addDecl(recdecl);
     a.AddClangType(TU.GetASTContext().getTypeDeclType(recdecl), this);
     return clangtypes[&TU] = TU.GetASTContext().getTypeDeclType(recdecl);
@@ -327,11 +341,11 @@ bool UserDefinedType::HasMember(std::string name) {
     return type->Functions.find(name) != type->Functions.end() || members.find(name) != members.end();
 }
 
-Expression UserDefinedType::BuildLTComparison(Expression lhs, Expression rhs, Analyzer& a) {
-    if (type->Functions.find("<") != type->Functions.end()) {
+Expression UserDefinedType::BuildBinaryOperator(std::string opname, Expression lhs, Expression rhs, Analyzer& a) {
+    if (type->Functions.find(opname) != type->Functions.end()) {
         std::vector<Expression> args;
         args.push_back(lhs);
-        auto func = a.GetOverloadSet(type->Functions["<"], this)->BuildValueConstruction(args, a);
+        auto func = a.GetOverloadSet(type->Functions[opname], this)->BuildValueConstruction(args, a);
         args.pop_back();
         args.push_back(rhs);
         return func.t->BuildCall(func, args, a);
@@ -340,27 +354,37 @@ Expression UserDefinedType::BuildLTComparison(Expression lhs, Expression rhs, An
     std::vector<Expression> args;
     args.push_back(lhs);
     args.push_back(rhs);
-    return a.GetDeclContext(type->higher)->AccessMember(Expression(), "<", a).t->BuildCall(Expression(), std::move(args), a);
+    try {
+        return a.GetDeclContext(type->higher)->AccessMember(Expression(), opname, a).t->BuildCall(Expression(), args, a);
+    } catch(...) {
+        return a.GetDeclContext(rhs.t->GetDeclContext()->higher)->AccessMember(Expression(), opname, a).t->BuildCall(Expression(), std::move(args), a);
+    }
+}
+
+Expression UserDefinedType::BuildLTComparison(Expression lhs, Expression rhs, Analyzer& a) {
+    return BuildBinaryOperator("<", lhs, rhs, a);
 }
 ConversionRank UserDefinedType::RankConversionFrom(Type* from, Analyzer& a) {
-    if (from->IsReference(this)) {
-        // This handles all cases except T to T&&.
-        auto rank = ConversionRank::Zero;
-        for(auto mem : llvmtypes) {
-            if (dynamic_cast<LvalueType*>(from)) {
-                rank = std::max(rank, a.RankConversion(a.GetLvalueType(mem.t), mem.t));
-            } else {
-                rank = std::max(rank, a.RankConversion(a.GetRvalueType(mem.t), mem.t));
-            }
-        }
-        return rank;
-    }
-    
-    // No U to T/T& conversions permitted right now
-    return ConversionRank::None;
+    std::vector<Type*> arg;
+    arg.push_back(from);
+    return a.GetOverloadSet(type->Functions["type"], this)->ResolveOverloadRank(std::move(arg), a);
 }
 
 Expression UserDefinedType::BuildCall(Expression val, std::vector<Expression> args, Analyzer& a) {
     auto set = AccessMember(val, "()", a);
     return set.t->BuildCall(set, std::move(args), a);
+}
+
+Codegen::Expression* UserDefinedType::BuildDestructor(Expression obj, Analyzer& a) {
+    if (IsComplexType()) {
+        obj.t = a.GetLvalueType(obj.t);
+        std::vector<Expression> args;
+        args.push_back(obj);
+        return destructor->BuildCall(Expression(), std::move(args), a).Expr;
+    } 
+    return nullptr;
+}
+
+Expression UserDefinedType::BuildOr(Expression lhs, Expression rhs, Analyzer& a) {
+    return BuildBinaryOperator("|", lhs, rhs, a);
 }

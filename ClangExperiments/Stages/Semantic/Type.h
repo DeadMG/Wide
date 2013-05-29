@@ -109,9 +109,7 @@ namespace Wide {
             virtual Expression BuildEQComparison(Expression lhs, Expression rhs, Analyzer& a) {
                 throw std::runtime_error("This type cannot be compared.");
             }
-            virtual Expression BuildNEComparison(Expression lhs, Expression rhs, Analyzer& a) {
-                throw std::runtime_error("This type cannot be compared for inequality.");
-            }
+            virtual Expression BuildNEComparison(Expression lhs, Expression rhs, Analyzer& a);
             virtual Expression BuildLTComparison(Expression lhs, Expression rhs, Analyzer& a) {
                 throw std::runtime_error("This type cannot be compared for inequality.");
             }
@@ -127,7 +125,38 @@ namespace Wide {
             virtual Expression BuildDereference(Expression obj, Analyzer& a) {
                 throw std::runtime_error("This type does not support de-referencing.");
             }
+            virtual Expression BuildOr(Expression lhs, Expression rhs, Analyzer& a) {
+                if (IsReference())
+                    return IsReference()->BuildOr(lhs, rhs, a);
+                throw std::runtime_error("Attempted to use operator| on a type that did not support it.");
+            }
+            virtual Expression BuildAnd(Expression lhs, Expression rhs, Analyzer& a) {
+                if (IsReference())
+                    return IsReference()->BuildAnd(lhs, rhs, a);
+                throw std::runtime_error("Attempted to use operator| on a type that did not support it.");
+            }
             
+            virtual Expression BuildMultiply(Expression lhs, Expression rhs, Analyzer& a) {
+                if (IsReference())
+                    return IsReference()->BuildMultiply(lhs, rhs, a);
+                throw std::runtime_error("Attempted to multiply a type that did not support it.");
+            }
+            virtual Expression BuildPlus(Expression lhs, Expression rhs, Analyzer& a) {
+                if (IsReference())
+                    return IsReference()->BuildPlus(lhs, rhs, a);
+                throw std::runtime_error("Attempted to add a type that did not support it.");
+            }
+            virtual Expression BuildIncrement(Expression obj, bool postfix, Analyzer& a) {
+                if (IsReference())
+                    return IsReference()->BuildIncrement(obj, postfix, a);
+                throw std::runtime_error("Attempted to increment a type that did not support it.");
+            }
+
+            virtual Expression PointerAccessMember(Expression obj, std::string name, Analyzer& a) {
+                obj = obj.t->BuildDereference(obj, a);
+                return obj.t->AccessMember(obj, std::move(name), a);
+            }
+
             virtual ConversionRank RankConversionFrom(Type* to, Analyzer& a);
             //Or,
             //And,
@@ -135,6 +164,7 @@ namespace Wide {
             virtual Codegen::Expression* BuildBooleanConversion(Expression val, Analyzer& a) {
                 throw std::runtime_error("Could not convert a type to boolean.");
             }
+            virtual Codegen::Expression* BuildDestructor(Expression val, Analyzer& a) { return nullptr; }
                         
             virtual ~Type() {}
         };     

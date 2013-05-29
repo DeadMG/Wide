@@ -13,13 +13,30 @@ void Wide::Compile(const Wide::Options::Clang& copts, const Wide::Options::LLVM&
     Wide::AST::Builder ASTBuilder;
     Wide::Semantic::Analyzer Sema(copts, &Generator);
     
-    files.push_back("WideLibrary/stdlib.wide");
-    files.push_back("WideLibrary/Standard/Containers/optional.wide");
-    files.push_back("WideLibrary/Standard/Algorithm/Map.wide");
+    files.push_back("WideLibrary/Standard/Algorithm/All.wide");
+    files.push_back("WideLibrary/Standard/Algorithm/Any.wide");
+    files.push_back("WideLibrary/Standard/Algorithm/Append.wide");
+    files.push_back("WideLibrary/Standard/Algorithm/Combiner.wide");
+    files.push_back("WideLibrary/Standard/Algorithm/Copy.wide");
+    files.push_back("WideLibrary/Standard/Algorithm/Count.wide");
+    files.push_back("WideLibrary/Standard/Algorithm/Drop.wide");
+    files.push_back("WideLibrary/Standard/Algorithm/DropWhile.wide");
     files.push_back("WideLibrary/Standard/Algorithm/Filter.wide");
-    files.push_back("WideLibrary/Standard/Algorithm/Concat.wide");
-    files.push_back("WideLibrary/Standard/Algorithm/ForEach.wide");
+    files.push_back("WideLibrary/Standard/Algorithm/Find.wide");
+    files.push_back("WideLibrary/Standard/Algorithm/Flatten.wide");
     files.push_back("WideLibrary/Standard/Algorithm/Fold.wide");
+    files.push_back("WideLibrary/Standard/Algorithm/ForEach.wide");
+    files.push_back("WideLibrary/Standard/Algorithm/Map.wide");
+    files.push_back("WideLibrary/Standard/Algorithm/None.wide");
+    files.push_back("WideLibrary/Standard/Algorithm/Take.wide");
+    files.push_back("WideLibrary/Standard/Algorithm/TakeWhile.wide");
+    files.push_back("WideLibrary/Standard/Containers/optional.wide");
+    files.push_back("WideLibrary/Standard/Containers/Pair.wide");
+    files.push_back("WideLibrary/Standard/Range/BackInserter.wide");
+    files.push_back("WideLibrary/Standard/Range/Delimited.wide");
+    files.push_back("WideLibrary/Standard/Range/Repeat.wide");
+    files.push_back("WideLibrary/Standard/Range/StreamInserter.wide");
+    files.push_back("WideLibrary/stdlib.wide");
 
     Concurrency::Vector<std::string> excepts;
     Wide::Concurrency::ParallelForEach(files.begin(), files.end(), [&](const std::string& filename) {

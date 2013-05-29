@@ -37,6 +37,8 @@ namespace Wide {
             Codegen::Expression* BuildInplaceConstruction(Codegen::Expression* mem, std::vector<Expression> args, Analyzer& a);
             ConversionRank RankConversionFrom(Type* from, Analyzer& a);
             Expression BuildDereference(Expression obj, Analyzer& a);
+            Codegen::Expression* BuildDestructor(Expression obj, Analyzer& a);
+            Expression BuildIncrement(Expression obj, bool postfix, Analyzer& a);
         };
     }
 }

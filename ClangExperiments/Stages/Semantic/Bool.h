@@ -11,6 +11,8 @@ namespace Wide {
 
             Codegen::Expression* BuildBooleanConversion(Expression, Analyzer& a);
             Expression BuildValueConstruction(std::vector<Expression> args, Analyzer& a);
+            Expression BuildOr(Expression lhs, Expression rhs, Analyzer& a);
+            Expression BuildAnd(Expression lhs, Expression rhs, Analyzer& a);
         };
     }
 }

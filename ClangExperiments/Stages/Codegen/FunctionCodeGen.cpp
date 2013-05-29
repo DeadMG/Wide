@@ -87,8 +87,9 @@ void Function::EmitCode(llvm::Module* mod, llvm::LLVMContext& con, Generator& g)
 		__debugbreak();
 }
 
-Function::Function(std::function<llvm::Type*(llvm::Module*)> ret, std::string name, bool trampoline)
+Function::Function(std::function<llvm::Type*(llvm::Module*)> ret, std::string name, Semantic::Function* de,  bool trampoline)
     : Type(ret)
     , name(std::move(name))
 	, tramp(trampoline)
+    , debug(de)
 {}

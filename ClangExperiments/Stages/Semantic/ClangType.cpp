@@ -280,7 +280,7 @@ Expression ClangType::BuildGTEComparison(Expression lhs, Expression rhs, Analyze
     return BuildOverloadedOperator(lhs, rhs, a, clang::OverloadedOperatorKind::OO_GreaterEqual, clang::BinaryOperatorKind::BO_GE);
 }
            
-Codegen::Expression* ClangType::BuildInplaceConstruction(Codegen::Expression* mem, std::vector<Expression> args, Analyzer& a) {    
+Codegen::Expression* ClangType::BuildInplaceConstruction(Codegen::Expression* mem, std::vector<Expression> args, Analyzer& a) {
     if (args.size() == 1 && args[0].t == this) {
         return a.gen->CreateStore(mem, args[0].Expr);
     }
@@ -318,13 +318,16 @@ Codegen::Expression* ClangType::BuildInplaceConstruction(Codegen::Expression* me
     if (args.size() == 0 && fun->isTrivial()) {
         return mem;
     }
+    if (args.size() == 1 && fun->isTrivial() && args[0].t->Decay() == this) {
+        return a.gen->CreateStore(mem, args[0].t->BuildValue(args[0], a).Expr);
+    }
 
     std::vector<Type*> types;
 
     // Constructor signatures don't seem to include the need for "this", so just lie.
     // It all turns out alright.
     Expression self;
-    self.t = a.GetRvalueType(this);
+    self.t = a.GetLvalueType(this);
     self.Expr = mem;
     types.push_back(self.t);
 
@@ -453,7 +456,50 @@ Expression ClangType::BuildDereference(Expression self, Analyzer& a) {
         us.addDecl(*it);
     }
     Expression out;
-    out.t = a.arena.Allocate<ClangOverloadSet>(std::move(ptr), from, this);
+    out.t = a.arena.Allocate<ClangOverloadSet>(std::move(ptr), from, a.GetLvalueType(this));
+    out.Expr = self.Expr;
+    return out.t->BuildCall(out, std::vector<Expression>(), a);
+}
+
+Codegen::Expression* ClangType::BuildDestructor(Expression obj, Analyzer& a) {
+    assert(obj.t->IsReference() && "Internal compiler error: Attempted to destruct a value.");
+    if (!type->getAsCXXRecordDecl()) return nullptr;
+    if (type->getAsCXXRecordDecl()->hasTrivialDestructor()) return nullptr;
+    auto decl = from->GetSema().LookupDestructor(type->getAsCXXRecordDecl());
+    // void(T*)
+    Expression out;
+    out.Expr = a.gen->CreateFunctionValue(from->MangleName(decl));
+    std::vector<Type*> t;
+    t.push_back(obj.t);
+    out.t = a.GetFunctionType(a.Void, t);
+    std::vector<Expression> args;
+    args.push_back(obj);
+    return out.t->BuildCall(out, std::move(args), a).Expr;
+}
+
+Expression ClangType::BuildIncrement(Expression self, bool postfix, Analyzer& a) {
+    if (postfix) {
+        std::vector<Expression> args;
+        args.push_back(self);
+        auto result = BuildRvalueConstruction(args, a);
+        self = self.t->BuildIncrement(self, false, a);
+        result.Expr = a.gen->CreateChainExpression(a.gen->CreateChainExpression(result.Expr, self.Expr), result.Expr);
+        return result;
+    }
+    clang::OpaqueValueExpr ope(clang::SourceLocation(), type.getNonLValueExprType(from->GetASTContext()), Semantic::GetKindOfType(self.t));
+    auto declname = from->GetASTContext().DeclarationNames.getCXXOperatorName(clang::OverloadedOperatorKind::OO_PlusPlus);
+    clang::LookupResult lr(from->GetSema(), clang::DeclarationNameInfo(declname, clang::SourceLocation()), clang::Sema::LookupNameKind::LookupOrdinaryName);
+    auto result = from->GetSema().LookupQualifiedName(lr, type->getAsCXXRecordDecl(), false);
+    if (!result) {
+        throw std::runtime_error("Attempted to de-reference a Clang type, but Clang said that it could not find the member.");
+    }
+    auto ptr = Wide::Memory::MakeUnique<clang::UnresolvedSet<8>>();
+    clang::UnresolvedSet<8>& us = *ptr;
+    for(auto it = lr.begin(); it != lr.end(); ++it) {
+        us.addDecl(*it);
+    }
+    Expression out;
+    out.t = a.arena.Allocate<ClangOverloadSet>(std::move(ptr), from, a.GetLvalueType(this));
     out.Expr = self.Expr;
     return out.t->BuildCall(out, std::vector<Expression>(), a);
 }

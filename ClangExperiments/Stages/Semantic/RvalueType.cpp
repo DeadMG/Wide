@@ -63,3 +63,6 @@ Expression RvalueType::BuildGTComparison(Expression lhs, Expression rhs, Analyze
 Expression RvalueType::BuildGTEComparison(Expression lhs, Expression rhs, Analyzer& a) {
     return Pointee->BuildGTEComparison(lhs, rhs, a);
 }
+Expression RvalueType::PointerAccessMember(Expression obj, std::string name, Analyzer& a) {
+    return Pointee->PointerAccessMember(obj, name, a);
+}

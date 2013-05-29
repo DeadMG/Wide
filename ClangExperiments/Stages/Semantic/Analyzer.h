@@ -76,6 +76,7 @@ namespace Wide {
         class ClangTemplateClass;
         class OverloadSet;       
         class UserDefinedType;
+        class IntegralType;
         enum ConversionRank;
         struct Result;
         struct VectorTypeHasher {
@@ -94,8 +95,9 @@ namespace Wide {
             std::unordered_map<AST::FunctionOverloadSet*, OverloadSet*> OverloadSets;
 
             std::unordered_map<AST::DeclContext*, Type*> DeclContexts;
-            std::unordered_map<AST::Type*, UserDefinedType*> UDTs;
+            std::unordered_map<AST::Type*, std::unordered_map<Type*, UserDefinedType*>> UDTs;
             std::unordered_map<AST::Module*, Module*> WideModules;
+            std::unordered_map<unsigned, std::unordered_map<bool, IntegralType*>> integers;
 
             ClangCommonState ccs;
 
@@ -110,7 +112,6 @@ namespace Wide {
 
             Type* LiteralStringType;
             Type* Void;
-            Type* Int8;
             Type* Boolean;
             
             void AddDefaultConstructor(AST::Type* t, UserDefinedType* ty);
@@ -129,8 +130,9 @@ namespace Wide {
             ConstructorType* GetConstructorType(Type* t);
             ClangTemplateClass* GetClangTemplateClass(ClangUtil::ClangTU& from, clang::ClassTemplateDecl*);
             OverloadSet* GetOverloadSet(AST::FunctionOverloadSet* set, UserDefinedType* nonstatic = nullptr);
-            UserDefinedType* GetUDT(AST::Type*);
+            UserDefinedType* GetUDT(AST::Type*, Type* context);
             Type* GetDeclContext(AST::DeclContext* con);
+            IntegralType* GetIntegralType(unsigned, bool);
             
             Expression AnalyzeExpression(Type* t, AST::Expression* e);
             Expression LookupIdentifier(AST::ModuleLevelDeclaration* decl, std::string ident);

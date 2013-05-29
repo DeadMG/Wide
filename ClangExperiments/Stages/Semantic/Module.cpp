@@ -1,10 +1,14 @@
 #include "Module.h"
 #include "../Parser/AST.h"
+#include "LvalueType.h"
 #include "Analyzer.h"
 #include "Function.h"
+#include "ClangNamespace.h"
 #include "OverloadSet.h"
 #include "ConstructorType.h"
 #include "UserDefinedType.h"
+#include "ClangTemplateClass.h"
+#include "../Codegen/Generator.h"
 
 #pragma warning(push, 0)
 
@@ -31,15 +35,29 @@ Expression Module::AccessMember(Expression val, std::string name, Analyzer& a) {
             return r;
         }
         if (auto usedecl = dynamic_cast<AST::Using*>(decl)) {
-            return a.AnalyzeExpression(this, usedecl->expr);
+            auto expr = a.AnalyzeExpression(this, usedecl->expr);
+            if (auto conty = dynamic_cast<ConstructorType*>(expr.t->Decay())) {
+                return conty->BuildValueConstruction(std::vector<Expression>(), a);
+            }
+            if (auto fun = dynamic_cast<OverloadSet*>(expr.t->Decay()))
+                return expr;
+            if (auto temp = dynamic_cast<ClangTemplateClass*>(expr.t))
+                return expr;
+            if (auto lval = dynamic_cast<LvalueType*>(expr.t))
+                return expr;
+            if (auto nam = dynamic_cast<ClangNamespace*>(expr.t))
+                return expr;
+            if (auto mod = dynamic_cast<Module*>(expr.t))
+                return expr;
+            throw std::runtime_error("Attempted to using something that was not a type, template, module, or function");
         }
         if (auto overdecl = dynamic_cast<AST::FunctionOverloadSet*>(decl)) {
             return a.GetOverloadSet(overdecl)->BuildValueConstruction(std::vector<Expression>(), a);          
         }
         if (auto tydecl = dynamic_cast<AST::Type*>(decl)) {
             Expression r;
-            r.t = a.GetConstructorType(a.GetUDT(tydecl));
-            r.Expr = nullptr;
+            r.t = a.GetConstructorType(a.GetUDT(tydecl, this));
+            r.Expr = a.gen->CreateLoad(a.gen->CreateVariable(a.GetConstructorType(a.GetUDT(tydecl, this))->GetLLVMType(a)));
             return r;
         }
         throw std::runtime_error("Attempted to access a member of a Wide module that was not either another module, or a function.");
@@ -53,5 +71,5 @@ Expression Module::AccessMember(Expression val, std::string name, Analyzer& a) {
 }
 
 AST::DeclContext* Module::GetDeclContext() {
-    return m->higher;
+    return m;
 }

@@ -103,30 +103,46 @@ Expression OverloadSet::BuildCall(Expression e, std::vector<Expression> args, An
                     con = type->higher;
                 struct LookupType : Type {
                     AST::DeclContext* con;
+                    Type* autotype;
                     Expression AccessMember(Expression self, std::string name, Analyzer& a) {
+                        if (name == "auto")
+                            return a.GetConstructorType(autotype->Decay())->BuildValueConstruction(std::vector<Expression>(), a);
                         return a.GetDeclContext(con)->AccessMember(self, std::move(name), a);
                     }
                 };
                 LookupType lt;
                 lt.con = con;
+                lt.autotype = args[i].t;
                 auto argty = a.AnalyzeExpression(&lt, f->args[fi].type).t;
                 if (auto con = dynamic_cast<ConstructorType*>(argty))
                     argty = con->GetConstructedType();
                 else
                     throw std::runtime_error("The expression for a function argument must be a type.");
-                curr_rank = std::max(curr_rank, a.RankConversion(args[i].t, argty));
+
+                // Prevent move constructors matching- so if T(T&&), T(U), T(T(U)) should not match as well as T(U)
+                if (nonstatic 
+                    && overset->name == "type"
+                    && args.size() == 2
+                    && argty->IsReference(nonstatic)) 
+                {
+                    curr_rank = argty == args[i].t ? ConversionRank::Zero : ConversionRank::None;
+                } else {
+                    curr_rank = std::max(curr_rank, a.RankConversion(args[i].t, argty));
+                }
+                types.push_back(argty);
             } else {
-                types.push_back(args[i].t);
+                types.push_back(args[i].t->Decay());
             }
         }
-        auto x = a.GetWideFunction(f, nonstatic, types);
         if (curr_rank < best_rank) {
+            auto x = a.GetWideFunction(f, nonstatic, types);
             rank.clear();
             rank.push_back(x);
             best_rank = curr_rank;
             continue;
         }
         if (curr_rank == best_rank && best_rank != ConversionRank::None) {
+            auto x = a.GetWideFunction(f, nonstatic, types);
             rank.push_back(x);
         }
     }
@@ -143,6 +159,91 @@ Expression OverloadSet::BuildCall(Expression e, std::vector<Expression> args, An
 
     throw std::runtime_error("Attempted to call a function, but the call was ambiguous- there was more than one function of the correct ranking.");
 }
+
+ConversionRank OverloadSet::ResolveOverloadRank(std::vector<Type*> args, Analyzer& a) {
+    std::vector<AST::Function*> ViableCandidates;
+
+    if (nonstatic) {
+        args.insert(args.begin(), a.GetLvalueType(nonstatic));
+    }
+
+    for(auto x : overset->functions) {
+        if (nonstatic) {
+            if (x->args.size() + 1 == args.size())
+                ViableCandidates.push_back(x);
+        } else {
+            if (x->args.size() == args.size())
+                ViableCandidates.push_back(x);
+        }
+    }
+
+    if (ViableCandidates.size() == 0)
+        return ConversionRank::None;
+
+    // We need slightly different rules for constructors.
+    auto rank = std::vector<Function*>();
+    auto best_rank = ConversionRank::None;
+    for(auto f : ViableCandidates) {
+        //__debugbreak();
+        auto types = std::vector<Type*>();
+        auto curr_rank = ConversionRank::Zero;
+        for(std::size_t i = 0; i < args.size(); ++i) {
+            if (nonstatic && i == 0) continue;
+            auto fi = nonstatic ? i - 1 : i;
+            if (f->args[fi].type) {
+                auto con = overset->higher;
+                while(auto type = dynamic_cast<AST::Type*>(con))
+                    con = type->higher;
+                struct LookupType : Type {
+                    AST::DeclContext* con;
+                    Expression AccessMember(Expression self, std::string name, Analyzer& a) {
+                        return a.GetDeclContext(con)->AccessMember(self, std::move(name), a);
+                    }
+                };
+                LookupType lt;
+                lt.con = con;
+                auto argty = a.AnalyzeExpression(&lt, f->args[fi].type).t;
+                if (auto con = dynamic_cast<ConstructorType*>(argty))
+                    argty = con->GetConstructedType();
+                else
+                    throw std::runtime_error("The expression for a function argument must be a type.");
+
+                // Prevent infinite recursion by disabling conversion checks on copy/move constructors
+                if (nonstatic 
+                    && overset->name == "type"
+                    && args.size() == 2) {
+                    if (argty->IsReference(nonstatic)) {
+                        curr_rank = argty == args[i] ? ConversionRank::Zero : ConversionRank::None;
+                    } else {
+                        curr_rank = std::max(ConversionRank::Two, a.RankConversion(args[i], argty));
+                    }
+                } else {
+                    curr_rank = std::max(curr_rank, a.RankConversion(args[i], argty));
+                }
+                types.push_back(argty);
+            } else {
+                types.push_back(args[i]->Decay());
+            }
+        }
+        auto x = a.GetWideFunction(f, nonstatic, types);
+        if (curr_rank < best_rank) {
+            rank.clear();
+            rank.push_back(x);
+            best_rank = curr_rank;
+            continue;
+        }
+        if (curr_rank == best_rank && best_rank != ConversionRank::None) {
+            rank.push_back(x);
+        }
+    }
+    
+    if (rank.size() == 1) {
+        return best_rank;
+    }
+
+    return ConversionRank::None;
+}
+
 Expression OverloadSet::BuildValueConstruction(std::vector<Expression> args, Analyzer& a) {
     if (args.size() > 1)
         throw std::runtime_error("Cannot construct an overload set from more than one argument.");
@@ -253,7 +354,7 @@ clang::QualType OverloadSet::GetClangType(ClangUtil::ClangTU& TU, Analyzer& a) {
 					args.insert(args.begin(), self);
 				}
                 return llvm::FunctionType::get(fty->getReturnType(), args, false)->getPointerTo();
-            }, TU.MangleName(meth), true);// If an i8/i1 mismatch, fix it up for us.
+            }, TU.MangleName(meth), nullptr, true);// If an i8/i1 mismatch, fix it up for us.
             // The only statement is return f().
             std::vector<Codegen::Expression*> exprs;
             // Fucking ABI putting complex return type parameter first before this.

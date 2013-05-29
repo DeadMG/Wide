@@ -114,14 +114,17 @@ namespace Wide {
             llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g);
         };
 
-        class Int8Expression : public Expression {
-            char value;
+        class IntegralExpression : public Expression {
+            unsigned long long value;
+            bool sign;
+            std::function<llvm::Type*(llvm::Module*)> type;
         public:
-            Int8Expression(char val)
-                : value(val) {}
+            IntegralExpression(unsigned long long val, bool s, std::function<llvm::Type*(llvm::Module*)> t)
+                : value(val), sign(s), type(std::move(t)) {}
 
             llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g);
         };
+
 
         class FieldExpression : public Expression {
             unsigned fieldnum;
@@ -132,7 +135,6 @@ namespace Wide {
             llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g);
         };
 
-        class Generator;
         class ParamExpression : public Expression {
             std::function<unsigned()> param;
         public:
@@ -170,18 +172,20 @@ namespace Wide {
         class IntegralRightShiftExpression : public Expression {
             Expression* lhs;
             Expression* rhs;
+            bool is_signed;
         public:
-            IntegralRightShiftExpression(Expression* l, Expression* r)
-                : lhs(l), rhs(r) {}
+            IntegralRightShiftExpression(Expression* l, Expression* r, bool s)
+                : lhs(l), rhs(r), is_signed(s) {}
             llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g);
         };
 
         class IntegralLessThan : public Expression {
             Expression* lhs;
             Expression* rhs;
+            bool sign;
         public:
-            IntegralLessThan(Expression* l, Expression* r)
-                : lhs(l), rhs(r) {}
+            IntegralLessThan(Expression* l, Expression* r, bool sign)
+                : lhs(l), rhs(r), sign(sign) {}
             llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g);
         };
 
@@ -191,6 +195,65 @@ namespace Wide {
         public:
             ZExt(Expression* f, std::function<llvm::Type*(llvm::Module*)> ty)
                 : from(f), to(std::move(ty)) {}
+            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g);
+        };
+
+        class SExt : public Expression {
+            Expression* from;
+            std::function<llvm::Type*(llvm::Module*)> to;
+        public:
+            SExt(Expression* f, std::function<llvm::Type*(llvm::Module*)> ty)
+                : from(f), to(std::move(ty)) {}
+            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g);
+        };
+
+        class NegateExpression : public Expression {
+            Expression* expr;
+        public:
+            NegateExpression(Expression* ex)
+                : expr(ex) {}
+            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g);
+        };
+
+        class OrExpression : public Expression {
+            Expression* lhs;
+            Expression* rhs;
+        public:
+            OrExpression(Expression* l, Expression* r)
+                : lhs(l), rhs(r) {}
+            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g);
+        };
+        class AndExpression : public Expression {
+            Expression* lhs;
+            Expression* rhs;
+        public:
+            AndExpression(Expression* l, Expression* r)
+                : lhs(l), rhs(r) {}
+            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g);
+        };
+
+        class EqualityExpression : public Expression {
+            Expression* lhs;
+            Expression* rhs;
+        public:
+            EqualityExpression(Expression* l, Expression* r)
+                : lhs(l), rhs(r) {}
+            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g);
+        };
+        class PlusExpression : public Expression  {
+            Expression* lhs;
+            Expression* rhs;
+        public:
+            PlusExpression(Expression* l, Expression* r)
+                : lhs(l), rhs(r) {}
+            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g);
+        };
+        class MultiplyExpression : public Expression  {
+            Expression* lhs;
+            Expression* rhs;
+        public:
+            MultiplyExpression(Expression* l, Expression* r)
+                : lhs(l), rhs(r) {}
             llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g);
         };
     }

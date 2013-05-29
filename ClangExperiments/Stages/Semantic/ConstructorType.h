@@ -15,6 +15,9 @@ namespace Wide {
                 return t;
             }
             Expression AccessMember(Expression, std::string name, Analyzer& a);
+            std::function<llvm::Type*(llvm::Module*)> GetLLVMType(Analyzer& a);
+            Codegen::Expression* BuildInplaceConstruction(Codegen::Expression* mem, std::vector<Expression> args, Analyzer& a);
+            Expression PointerAccessMember(Expression obj, std::string name, Analyzer& a);
         };
     }
 }

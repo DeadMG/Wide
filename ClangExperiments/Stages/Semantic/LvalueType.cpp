@@ -76,3 +76,6 @@ Codegen::Expression* LvalueType::BuildInplaceConstruction(Codegen::Expression* m
 Expression LvalueType::BuildDereference(Expression obj, Analyzer& a) {
     return Pointee->BuildDereference(obj, a);
 }
+Expression LvalueType::PointerAccessMember(Expression obj, std::string name, Analyzer& a) {
+    return Pointee->PointerAccessMember(obj, name, a);
+}

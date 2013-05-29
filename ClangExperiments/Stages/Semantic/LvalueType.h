@@ -31,6 +31,7 @@ namespace Wide {
                 return Pointee == t;
             }
             Codegen::Expression* BuildBooleanConversion(Expression, Analyzer&);
+            AST::DeclContext* GetDeclContext() { return Pointee->GetDeclContext(); }
             Expression BuildEQComparison(Expression lhs, Expression rhs, Analyzer& a);
             Expression BuildNEComparison(Expression lhs, Expression rhs, Analyzer& a);
             
@@ -39,6 +40,7 @@ namespace Wide {
             Expression BuildGTComparison(Expression lhs, Expression rhs, Analyzer& a);
             Expression BuildGTEComparison(Expression lhs, Expression rhs, Analyzer& a);
             Expression BuildDereference(Expression obj, Analyzer& a);
+            Expression PointerAccessMember(Expression obj, std::string name, Analyzer& a);
 
             ConversionRank RankConversionFrom(Type* from, Analyzer& a) {
                 assert(false && "Internal Compiler Error: All T& conversions should be dealt with by Analyzer.");

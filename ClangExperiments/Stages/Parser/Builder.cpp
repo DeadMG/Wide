@@ -151,6 +151,7 @@ void Builder::CreateFunction(
 void Builder::CreateFunction(std::string name, std::vector<Statement*> body, std::vector<Statement*> prolog, Lexer::Range r, Module* m, std::vector<FunctionArgument> args, std::vector<VariableStatement*> caps) {
     if (name == "(")
         throw std::runtime_error("operator() must be a type-scope function.");
+
     auto p = ConcurrentUseArena(arenas, [&](Wide::Memory::Arena& arena) {
         return std::make_pair(
             arena.Allocate<Function>(name, std::move(body), std::move(prolog), r, std::move(args), m, std::move(caps)), 
@@ -269,13 +270,15 @@ LTEExpression* Builder::CreateLTEExpression(Expression* lhs, Expression* rhs) {
     });
 }
 
-Type* Builder::CreateType(std::string name, Module* higher) {
+Type* Builder::CreateType(std::string name, DeclContext* higher) {
     auto ty = ConcurrentUseArena(arenas, [&](Wide::Memory::Arena& arena) {
         return arena.Allocate<Type>(higher, name);
     });
-    auto result = higher->decls.insert(std::make_pair(name, ty));
-    if (!result.second)
-        throw std::runtime_error("Attempted to insert a type into a module, but another type declaration already existed there.");
+    if (auto mod = dynamic_cast<AST::Module*>(higher)) {
+        auto result = mod->decls.insert(std::make_pair(name, ty));
+        if (!result.second)
+            throw std::runtime_error("Attempted to insert a type into a module, but another type declaration already existed there.");
+    }
     return ty;
 }
 
@@ -306,5 +309,54 @@ std::vector<VariableStatement*> Builder::CreateCaptureGroup() {
 DereferenceExpression* Builder::CreateDereferenceExpression(Expression* e, Lexer::Range loc) {
     return ConcurrentUseArena(arenas, [&](Wide::Memory::Arena& arena) {
         return arena.Allocate<DereferenceExpression>(e, loc);
+    });
+}
+
+NegateExpression* Builder::CreateNegateExpression(Expression* e, Lexer::Range loc) {
+    return ConcurrentUseArena(arenas, [&](Wide::Memory::Arena& arena) {
+        return arena.Allocate<NegateExpression>(e, loc);
+    });
+}
+
+Increment* Builder::CreatePrefixIncrement(Expression* ex, Lexer::Range r) {
+    return ConcurrentUseArena(arenas, [&](Wide::Memory::Arena& arena) {
+        return arena.Allocate<Increment>(ex, r, false);
+    });
+}
+Increment* Builder::CreatePostfixIncrement(Expression* ex, Lexer::Range r) {
+    return ConcurrentUseArena(arenas, [&](Wide::Memory::Arena& arena) {
+        return arena.Allocate<Increment>(ex, r, true);
+    });
+}
+Decrement* Builder::CreatePrefixDecrement(Expression* ex, Lexer::Range r) {
+    return ConcurrentUseArena(arenas, [&](Wide::Memory::Arena& arena) {
+        return arena.Allocate<Decrement>(ex, r, false);
+    });
+}
+Decrement* Builder::CreatePostfixDecrement(Expression* ex, Lexer::Range r) {
+    return ConcurrentUseArena(arenas, [&](Wide::Memory::Arena& arena) {
+        return arena.Allocate<Decrement>(ex, r, true);
+    });
+}
+Addition* Builder::CreateAdditionExpression(Expression* lhs, Expression* rhs) {
+    return ConcurrentUseArena(arenas, [&](Wide::Memory::Arena& arena) {
+        return arena.Allocate<Addition>(lhs, rhs);
+    });
+}
+Multiply* Builder::CreateMultiplyExpression(Expression* lhs, Expression* rhs) {
+    return ConcurrentUseArena(arenas, [&](Wide::Memory::Arena& arena) {
+        return arena.Allocate<Multiply>(lhs, rhs);
+    });
+}
+
+PointerAccess* Builder::CreatePointerAccessExpression(std::string mem, Expression* e, Lexer::Range r) {
+    return ConcurrentUseArena(arenas, [&](Wide::Memory::Arena& arena) {
+        return arena.Allocate<PointerAccess>(std::move(mem), e, r);
+    });
+}
+
+AutoExpression* Builder::CreateAutoExpression(Lexer::Range loc) {
+    return ConcurrentUseArena(arenas, [&](Wide::Memory::Arena& arena) {
+        return arena.Allocate<AutoExpression>(loc);
     });
 }

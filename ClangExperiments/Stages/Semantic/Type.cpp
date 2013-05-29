@@ -22,9 +22,10 @@ Expression Type::BuildRvalueConstruction(std::vector<Expression> args, Analyzer&
     Expression out;
     out.t = a.GetRvalueType(this);
     auto mem = a.gen->CreateVariable(GetLLVMType(a));
-    if (!IsComplexType() && args.size() == 1 && args[0].t == this)
+    if (!IsComplexType() && args.size() == 1 && args[0].t->Decay() == this) {
+        args[0] = args[0].t->BuildValue(args[0], a);
         out.Expr = a.gen->CreateChainExpression(a.gen->CreateStore(mem, args[0].Expr), mem);
-    else
+    } else
         out.Expr = a.gen->CreateChainExpression(BuildInplaceConstruction(mem, args, a), mem);
     out.steal = true;
     return out;
@@ -34,11 +35,11 @@ Expression Type::BuildLvalueConstruction(std::vector<Expression> args, Analyzer&
     Expression out;
     out.t = a.GetLvalueType(this);
     auto mem = a.gen->CreateVariable(GetLLVMType(a));
-    if (!IsComplexType() && args.size() == 1 && args[0].t == this)
+    if (!IsComplexType() && args.size() == 1 && args[0].t->Decay() == this) {
+        args[0] = args[0].t->BuildValue(args[0], a);
         out.Expr = a.gen->CreateChainExpression(a.gen->CreateStore(mem, args[0].Expr), mem);
-    else
-        out.Expr = a.gen->CreateChainExpression(BuildInplaceConstruction(mem, args, a), mem);
-    return out;
+    } else
+        out.Expr = a.gen->CreateChainExpression(BuildInplaceConstruction(mem, args, a), mem);    return out;
 }
 
 Expression Type::BuildValueConstruction(std::vector<Expression> args, Analyzer& a) {
@@ -62,4 +63,11 @@ ConversionRank Type::RankConversionFrom(Type* from, Analyzer& a) {
     if (from->IsReference(this))
         return ConversionRank::Zero;
     return ConversionRank::None;
+}
+Expression Type::BuildNEComparison(Expression lhs, Expression rhs, Analyzer& a) {
+    auto expr = lhs.t->BuildEQComparison(lhs, rhs, a);
+    if (expr.t != a.Boolean)
+        throw std::runtime_error("Cannot automatically implement ~= on top of an == that does not return a boolean.");
+    expr.Expr = a.gen->CreateNegateExpression(expr.Expr);
+    return expr;
 }

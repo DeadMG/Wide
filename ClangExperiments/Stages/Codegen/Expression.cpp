@@ -212,9 +212,11 @@ llvm::Value* NamedGlobalVariable::ComputeValue(llvm::IRBuilder<>& builder, Gener
     return builder.GetInsertBlock()->getParent()->getParent()->getGlobalVariable(mangled);
 }
 
-llvm::Value* Int8Expression::ComputeValue(llvm::IRBuilder<>& builder, Generator& g) {
-    return builder.getInt8(value);
+llvm::Value* IntegralExpression::ComputeValue(llvm::IRBuilder<>& builder, Generator& g) {
+    auto ty = llvm::dyn_cast<llvm::IntegerType>(type(builder.GetInsertBlock()->getParent()->getParent()));
+    return llvm::ConstantInt::get(ty, value, !sign);
 }
+
 
 llvm::Value* Variable::ComputeValue(llvm::IRBuilder<>& builder, Generator& g) {
     return builder.CreateAlloca(t(builder.GetInsertBlock()->getParent()->getParent()));
@@ -222,6 +224,7 @@ llvm::Value* Variable::ComputeValue(llvm::IRBuilder<>& builder, Generator& g) {
 
 llvm::Value* ChainExpression::ComputeValue(llvm::IRBuilder<>& builder, Generator& g) {
     s->Build(builder, g);
+    
     return next->GetValue(builder, g);
 }
 
@@ -254,14 +257,46 @@ llvm::Value* IntegralLeftShiftExpression::ComputeValue(llvm::IRBuilder<>& builde
 }
 
 llvm::Value* IntegralRightShiftExpression::ComputeValue(llvm::IRBuilder<>& builder, Generator& g) {
-    return builder.CreateLShr(lhs->GetValue(builder, g), rhs->GetValue(builder, g));
+    if (is_signed)
+        return builder.CreateAShr(lhs->GetValue(builder, g), rhs->GetValue(builder, g));
+    else
+        return builder.CreateLShr(lhs->GetValue(builder, g), rhs->GetValue(builder, g));
 }
 
 llvm::Value* IntegralLessThan::ComputeValue(llvm::IRBuilder<>& builder, Generator& g) {
     // Semantic will expect an i8 here, not an i1.
-    return builder.CreateZExt(builder.CreateICmpSLT(lhs->GetValue(builder, g), rhs->GetValue(builder, g)), llvm::IntegerType::getInt8Ty(builder.getContext()));
+    auto cmp = sign ? llvm::CmpInst::Predicate::ICMP_SLT : llvm::CmpInst::Predicate::ICMP_ULT;
+    return builder.CreateZExt(builder.CreateICmp(cmp, lhs->GetValue(builder, g), rhs->GetValue(builder, g)), llvm::IntegerType::getInt8Ty(builder.getContext()));
 }
 
 llvm::Value* ZExt::ComputeValue(llvm::IRBuilder<>& builder, Generator& g) {
     return builder.CreateZExt(from->GetValue(builder, g), to(builder.GetInsertBlock()->getParent()->getParent()));
+}
+llvm::Value* SExt::ComputeValue(llvm::IRBuilder<>& builder, Generator& g) {
+    return builder.CreateSExt(from->GetValue(builder, g), to(builder.GetInsertBlock()->getParent()->getParent()));
+}
+
+llvm::Value* NegateExpression::ComputeValue(llvm::IRBuilder<>& builder, Generator& g) {
+    auto obj = expr->GetValue(builder, g);
+    return builder.CreateNot(obj);
+}
+
+llvm::Value* OrExpression::ComputeValue(llvm::IRBuilder<>& builder, Generator& g) {
+    return builder.CreateOr(lhs->GetValue(builder, g), rhs->GetValue(builder, g));
+}
+
+llvm::Value* EqualityExpression::ComputeValue(llvm::IRBuilder<>& builder, Generator& g) {
+    return builder.CreateICmpEQ(lhs->GetValue(builder, g), rhs->GetValue(builder, g));
+}
+
+llvm::Value* PlusExpression::ComputeValue(llvm::IRBuilder<>& builder, Generator& g) {
+    return builder.CreateAdd(lhs->GetValue(builder, g), rhs->GetValue(builder, g));
+}
+
+llvm::Value* MultiplyExpression::ComputeValue(llvm::IRBuilder<>& builder, Generator& g) {
+    return builder.CreateMul(lhs->GetValue(builder, g), rhs->GetValue(builder, g));
+}
+
+llvm::Value* AndExpression::ComputeValue(llvm::IRBuilder<>& builder, Generator& g) {
+    return builder.CreateAnd(lhs->GetValue(builder, g), rhs->GetValue(builder, g));
 }

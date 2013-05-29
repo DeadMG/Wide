@@ -43,6 +43,8 @@ namespace Wide {
             Expression BuildDereference(Expression obj, Analyzer& a) {
                 return Pointee->BuildDereference(obj, a);
             }
+            Expression PointerAccessMember(Expression obj, std::string name, Analyzer& a);
+            AST::DeclContext* GetDeclContext() { return Pointee->GetDeclContext(); }
             ConversionRank RankConversionFrom(Type* from, Analyzer& a) {
                 // This will only ever get called when a.RankConversion(from, to) is called where to is T&&
                 // and from is U. This is the same as the rank of U to T, so just return that.

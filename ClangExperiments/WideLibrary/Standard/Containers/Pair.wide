@@ -1,0 +1,10 @@
+module Standard {
+    module Containers {
+        Pair(first, second) {
+            return type {
+                first := first;
+                second := second;
+            };
+        }
+    }
+}

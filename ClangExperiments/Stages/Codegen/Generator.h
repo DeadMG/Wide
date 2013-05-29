@@ -25,6 +25,9 @@ namespace llvm {
     class Type;
 }
 namespace Wide {
+    namespace Semantic {
+        class Function;
+    }
     namespace Codegen {
         class Function;
         class Generator {
@@ -48,7 +51,7 @@ namespace Wide {
 
             Generator(const Options::LLVM&, const Options::Clang&);
 
-            Function* CreateFunction(std::function<llvm::Type*(llvm::Module*)>, std::string, bool trampoline = false);
+            Function* CreateFunction(std::function<llvm::Type*(llvm::Module*)>, std::string, Semantic::Function* debug, bool trampoline = false);
 
             Variable* CreateVariable(std::function<llvm::Type*(llvm::Module*)>);
             FunctionCall* CreateFunctionCall(Expression*, std::vector<Expression*>, std::function<llvm::Type*(llvm::Module*)> = std::function<llvm::Type*(llvm::Module*)>());
@@ -59,7 +62,7 @@ namespace Wide {
             ReturnStatement* CreateReturn();
             ReturnStatement* CreateReturn(Expression*);
             FunctionValue* CreateFunctionValue(std::string);
-            Int8Expression* CreateInt8Expression(char val);
+            IntegralExpression* CreateIntegralExpression(uint64_t val, bool is_signed, std::function<llvm::Type*(llvm::Module*)> ty);
             ChainExpression* CreateChainExpression(Statement*, Expression*);
             FieldExpression* CreateFieldExpression(Expression*, unsigned);
             ParamExpression* CreateParameterExpression(unsigned);
@@ -70,9 +73,17 @@ namespace Wide {
             WhileStatement* CreateWhile(Expression*, Statement*);
             NullExpression* CreateNull(std::function<llvm::Type*(llvm::Module*)> type);
             IntegralLeftShiftExpression* CreateLeftShift(Expression*, Expression*);
-            IntegralRightShiftExpression* CreateRightShift(Expression*, Expression*);
+            IntegralRightShiftExpression* CreateRightShift(Expression*, Expression*, bool);
             IntegralLessThan* CreateSLT(Expression* lhs, Expression* rhs);
             ZExt* CreateZeroExtension(Expression* val, std::function<llvm::Type*(llvm::Module*)> to);
+            NegateExpression* CreateNegateExpression(Expression* val);
+            OrExpression* CreateOrExpression(Expression* lhs, Expression* rhs);
+            EqualityExpression* CreateEqualityExpression(Expression* lhs, Expression* rhs);
+            PlusExpression* CreatePlusExpression(Expression* lhs, Expression* rhs);
+            MultiplyExpression* CreateMultiplyExpression(Expression* lhs, Expression* rhs);
+            AndExpression* CreateAndExpression(Expression* lhs, Expression* rhs);
+            IntegralLessThan* CreateULT(Expression* lhs, Expression* rhs);
+            SExt* CreateSignedExtension(Expression* val, std::function<llvm::Type*(llvm::Module*)> to);
 
             void operator()();
         };

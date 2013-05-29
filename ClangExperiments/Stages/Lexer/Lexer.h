@@ -59,15 +59,19 @@ namespace Wide {
                 singles[']'] = TokenType::CloseSquareBracket;
                 singles[':'] = TokenType::Colon;
                 singles['*'] = TokenType::Dereference;
+                singles['~'] = TokenType::Negate;
+                singles['+'] = TokenType::Plus;
 
                 doubles['-']['>'] = TokenType::PointerAccess;                
                 doubles['<']['<'] = TokenType::LeftShift;
                 doubles['>']['>'] = TokenType::RightShift;
                 doubles[':']['='] = TokenType::VarCreate;
                 doubles['=']['='] = TokenType::EqCmp;
-                doubles['!']['='] = TokenType::NotEqCmp;
+                doubles['~']['='] = TokenType::NotEqCmp;
                 doubles['<']['='] = TokenType::LTE;
                 doubles['>']['='] = TokenType::GTE;
+                doubles['+']['+'] = TokenType::Increment;
+                doubles['-']['-'] = TokenType::Decrement;
         
                 whitespace.insert('\r');
                 whitespace.insert('\t');

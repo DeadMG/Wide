@@ -7,7 +7,25 @@
 #include "../Util/MakeUnique.h"
 
 namespace Wide {
-    namespace Parser {
+    namespace Parser {        
+        static const std::unordered_set<Lexer::TokenType> OverloadableOperators([]() -> std::unordered_set<Lexer::TokenType> {
+            Lexer::TokenType tokens[] = {
+                Lexer::TokenType::Assignment,
+                Lexer::TokenType::EqCmp,
+                Lexer::TokenType::NotEqCmp,
+                Lexer::TokenType::GT,
+                Lexer::TokenType::GTE,
+                Lexer::TokenType::LT,
+                Lexer::TokenType::LTE,
+                Lexer::TokenType::And,
+                Lexer::TokenType::Or,
+                Lexer::TokenType::LeftShift,
+                Lexer::TokenType::RightShift,
+                Lexer::TokenType::Xor,
+                Lexer::TokenType::OpenBracket
+            };
+            return std::unordered_set<Lexer::TokenType>(std::begin(tokens), std::end(tokens));
+        }());
         template<typename T> struct ExprType {
             typedef typename std::decay<decltype(*std::declval<T>().CreateExpressionGroup().begin())>::type type;
         };
@@ -18,6 +36,7 @@ namespace Wide {
         template<typename Lex, typename Sema, typename Group> void ParseFunctionArguments(Lex&& lex, Sema&& sema, Group&& group);
         template<typename Lex, typename Sema> auto ParseFunctionArguments(Lex&& lex, Sema&& sema) -> decltype(sema.CreateFunctionArgumentGroup());
         template<typename Lex, typename Sema> typename StmtType<Sema>::type ParseStatement(Lex&& lex, Sema&& sema);
+        template<typename Lex, typename Sema, typename Ty> void ParseTypeBody(Lex&& lex, Sema&& sema, Ty&& ty);
         template<typename Lex, typename Sema, typename Caps> void ParseLambdaCaptures(Lex&& lex, Sema&& sema, Caps&& caps) {
             auto tok = lex();
             while(true) {
@@ -97,6 +116,16 @@ namespace Wide {
                 }
                 return sema.CreateLambda(std::move(args), std::move(grp), pos + tok.GetLocation(), defaultref, std::move(caps));
             }
+            if (t.GetType() == Lexer::TokenType::Type) {
+                auto ty = sema.CreateType("__unnamed", nullptr);
+                if (lex().GetType() != Lexer::TokenType::OpenCurlyBracket)
+                    throw std::runtime_error("Expected { after type in expression.");
+                ParseTypeBody(lex, sema, ty);
+                return ty;
+            }
+            /*if (t.GetType() == Lexer::TokenType::Auto) {
+                return sema.CreateAutoExpression(t.GetLocation());
+            }*/
             throw std::runtime_error("Expected expression, but could not find the start of an expression.");
         }
         
@@ -116,6 +145,18 @@ namespace Wide {
                auto t = lex();
                if (t.GetType() == Lexer::TokenType::Dot) {
                    expr = sema.CreateMemberAccessExpression(lex().GetValue(), std::move(expr), sema.GetLocation(expr) + t.GetLocation());
+                   continue;
+               }
+               if (t.GetType() == Lexer::TokenType::PointerAccess) {
+                   expr = sema.CreatePointerAccessExpression(lex().GetValue(), std::move(expr), sema.GetLocation(expr) + t.GetLocation());
+                   continue;
+               }
+               if (t.GetType() == Lexer::TokenType::Increment) {
+                   expr = sema.CreatePostfixIncrement(std::move(expr), sema.GetLocation(expr) + t.GetLocation());
+                   continue;
+               }
+               if (t.GetType() == Lexer::TokenType::Decrement) {
+                   expr = sema.CreatePostfixDecrement(std::move(expr), sema.GetLocation(expr) + t.GetLocation());
                    continue;
                }
                if (t.GetType() == Lexer::TokenType::OpenBracket) {
@@ -153,21 +194,67 @@ namespace Wide {
                 auto expr = ParseUnaryExpression(lex, sema);
                 return sema.CreateDereferenceExpression(expr, tok.GetLocation() + sema.GetLocation(expr));
             }
+            if (tok.GetType() == Lexer::TokenType::Negate) {
+                auto expr = ParseUnaryExpression(lex, sema);
+                return sema.CreateNegateExpression(expr, tok.GetLocation() + sema.GetLocation(expr));
+            }
+            if (tok.GetType() == Lexer::TokenType::Increment) {
+                auto expr = ParseUnaryExpression(lex, sema);
+                return sema.CreatePrefixIncrement(expr, tok.GetLocation() + sema.GetLocation(expr));
+            }
+            if (tok.GetType() == Lexer::TokenType::Decrement) {
+                auto expr = ParseUnaryExpression(lex, sema);
+                return sema.CreatePrefixDecrement(expr, tok.GetLocation() + sema.GetLocation(expr));
+            }
             lex(tok);
             return ParsePostfixExpression(lex, sema);
         }
-                
-        template<typename Lex, typename Sema, typename Expr> typename ExprType<Sema>::type ParseShiftExpression(Expr e, Lex&& lex, Sema&& sema) {
+
+        template<typename Lex, typename Sema, typename Expr> typename ExprType<Sema>::type ParseMultiplicativeExpression(Expr e, Lex&& lex, Sema&& sema) {
             auto lhs = std::move(e);
             while(true) {
                 auto t = lex();
-                if (t.GetType() == Lexer::TokenType::LeftShift) {
+                if (t.GetType() == Lexer::TokenType::Dereference) {
                     auto rhs = ParseUnaryExpression(lex, sema);
+                    lhs = sema.CreateMultiplyExpression(std::move(lhs), std::move(rhs));
+                    continue;
+                }
+                lex(t);
+                return std::move(lhs);
+            }
+        }
+        template<typename Lex, typename Sema> typename ExprType<Sema>::type ParseMultiplicativeExpression(Lex&& lex, Sema&& sema) {
+            return ParseMultiplicativeExpression(ParseUnaryExpression(lex, sema), lex, sema);
+        }
+
+        template<typename Lex, typename Sema, typename Expr> typename ExprType<Sema>::type ParseAdditiveExpression(Expr e, Lex&& lex, Sema&& sema) {
+            auto lhs = ParseMultiplicativeExpression(std::move(e), lex, sema);
+            while(true) {
+                auto t = lex();
+                if (t.GetType() == Lexer::TokenType::Plus) {
+                    auto rhs = ParseMultiplicativeExpression(lex, sema);
+                    lhs = sema.CreateAdditionExpression(std::move(lhs), std::move(rhs));
+                    continue;
+                }
+                lex(t);
+                return std::move(lhs);
+            }
+        }
+        template<typename Lex, typename Sema> typename ExprType<Sema>::type ParseAdditiveExpression(Lex&& lex, Sema&& sema) {
+            return ParseAdditiveExpression(ParseUnaryExpression(lex, sema), lex, sema);
+        }
+                
+        template<typename Lex, typename Sema, typename Expr> typename ExprType<Sema>::type ParseShiftExpression(Expr e, Lex&& lex, Sema&& sema) {
+            auto lhs = ParseAdditiveExpression(std::move(e), lex, sema);
+            while(true) {
+                auto t = lex();
+                if (t.GetType() == Lexer::TokenType::LeftShift) {
+                    auto rhs = ParseAdditiveExpression(lex, sema);
                     lhs = sema.CreateLeftShiftExpression(std::move(lhs), std::move(rhs));
                     continue;
                 }
                 if (t.GetType() == Lexer::TokenType::RightShift) {
-                    auto rhs = ParseUnaryExpression(lex, sema);
+                    auto rhs = ParseAdditiveExpression(lex, sema);
                     lhs = sema.CreateRightShiftExpression(std::move(lhs), std::move(rhs));
                     continue;
                 }
@@ -210,7 +297,7 @@ namespace Wide {
         }
         
         template<typename Lex, typename Sema> typename ExprType<Sema>::type ParseRelationalExpression(Lex&& lex, Sema&& sema) {
-            return ParseRelationalExpression(ParsePostfixExpression(lex, sema), lex, sema);
+            return ParseRelationalExpression(ParseUnaryExpression(lex, sema), lex, sema);
         }
         
         template<typename Lex, typename Sema, typename Expr> typename ExprType<Sema>::type ParseEqualityExpression(Expr e, Lex&& lex, Sema&& sema) {
@@ -233,7 +320,7 @@ namespace Wide {
         }
         
         template<typename Lex, typename Sema> typename ExprType<Sema>::type ParseEqualityExpression(Lex&& lex, Sema&& sema) {
-            return ParseEqualityExpression(ParsePostfixExpression(lex, sema), lex, sema);
+            return ParseEqualityExpression(ParseUnaryExpression(lex, sema), lex, sema);
         }
         
         template<typename Lex, typename Sema, typename Postfix> typename ExprType<Sema>::type ParseXorExpression(Postfix&& fix, Lex&& lex, Sema&& sema) {
@@ -251,7 +338,7 @@ namespace Wide {
         }
         
         template<typename Lex, typename Sema> typename ExprType<Sema>::type ParseXorExpression(Lex&& lex, Sema&& sema) {
-            return ParseXorExpression(ParsePostfixExpression(lex, sema), lex, sema);
+            return ParseXorExpression(ParseUnaryExpression(lex, sema), lex, sema);
         }
         
         template<typename Lex, typename Sema, typename Postfix> typename ExprType<Sema>::type ParseAndExpression(Postfix&& fix, Lex&& lex, Sema&& sema) {
@@ -269,7 +356,7 @@ namespace Wide {
         }
         
         template<typename Lex, typename Sema> typename ExprType<Sema>::type ParseAndExpression(Lex&& lex, Sema&& sema) {
-            return ParseAndExpression(ParsePostfixExpression(lex, sema), lex, sema);
+            return ParseAndExpression(ParseUnaryExpression(lex, sema), lex, sema);
         }
         
         template<typename Lex, typename Sema, typename Postfix> typename ExprType<Sema>::type ParseOrExpression(Postfix&& fix, Lex&& lex, Sema&& sema) {
@@ -475,8 +562,14 @@ namespace Wide {
             auto stmts = sema.CreateStatementGroup();
             auto pos = first.GetLocation();
             t = lex();
+            auto val = first.GetValue();
+            switch(first.GetType()) {
+            case Lexer::TokenType::Or:
+                val = "|";
+                break;
+            }
             if (t.GetType() == Lexer::TokenType::CloseCurlyBracket) {
-                sema.CreateFunction(first.GetValue(), std::move(stmts), std::move(prolog), pos + t.GetLocation(), m, std::move(group), std::move(initializers));
+                sema.CreateFunction(val, std::move(stmts), std::move(prolog), pos + t.GetLocation(), m, std::move(group), std::move(initializers));
                 return;
             }
             lex(t);
@@ -489,7 +582,7 @@ namespace Wide {
                 }
                 lex(t);
             }
-            sema.CreateFunction(first.GetValue(), std::move(stmts), std::move(prolog), pos, m, std::move(group), std::move(initializers));
+            sema.CreateFunction(val, std::move(stmts), std::move(prolog), pos, m, std::move(group), std::move(initializers));
         }
 
         template<typename Lex, typename Sema, typename Module> 
@@ -526,15 +619,8 @@ namespace Wide {
             ParseModuleContents(lex, sema, mod);
         }
 
-        template<typename Lex, typename Sema, typename Module> void ParseTypeDeclaration(Lex&& lex, Sema&& sema, Module&& m) {
-            auto ident = lex();
-            if (ident.GetType() != Lexer::TokenType::Identifier)
-                throw std::runtime_error("Expected identifier after type.");
+        template<typename Lex, typename Sema, typename Ty> void ParseTypeBody(Lex&& lex, Sema&& sema, Ty&& ty) {
             auto t = lex();
-            if (t.GetType() != Lexer::TokenType::OpenCurlyBracket)
-                throw std::runtime_error("Expected { after identifier.");
-            t = lex();
-            auto ty = sema.CreateType(ident.GetValue(), m);
             while(t.GetType() != Lexer::TokenType::CloseCurlyBracket) {
                 if (t.GetType() == Lexer::TokenType::Identifier) {
                     // Must be either := for variable or ( for function. Don't support functions yet.
@@ -554,24 +640,6 @@ namespace Wide {
                 if (t.GetType() == Lexer::TokenType::Operator) {
                     auto op = lex();
                     // Only < supported right now
-                    static std::unordered_set<Lexer::TokenType> OverloadableOperators([]() -> std::unordered_set<Lexer::TokenType> {
-                        Lexer::TokenType tokens[] = {
-                            Lexer::TokenType::Assignment,
-                            Lexer::TokenType::EqCmp,
-                            Lexer::TokenType::NotEqCmp,
-                            Lexer::TokenType::GT,
-                            Lexer::TokenType::GTE,
-                            Lexer::TokenType::LT,
-                            Lexer::TokenType::LTE,
-                            Lexer::TokenType::And,
-                            Lexer::TokenType::Or,
-                            Lexer::TokenType::LeftShift,
-                            Lexer::TokenType::RightShift,
-                            Lexer::TokenType::Xor,
-                            Lexer::TokenType::OpenBracket
-                        };
-                        return std::unordered_set<Lexer::TokenType>(std::begin(tokens), std::end(tokens));
-                    }());
                     if (op.GetType() == Lexer::TokenType::OpenBracket) {
                         auto t = lex();
                         if (t.GetType() != Lexer::TokenType::CloseBracket)
@@ -596,6 +664,17 @@ namespace Wide {
                 }
                 throw std::runtime_error("Only member variables supported right now and they open with an identifier.");
             }
+        }
+
+        template<typename Lex, typename Sema, typename Module> void ParseTypeDeclaration(Lex&& lex, Sema&& sema, Module&& m) {
+            auto ident = lex();
+            if (ident.GetType() != Lexer::TokenType::Identifier)
+                throw std::runtime_error("Expected identifier after type.");
+            auto t = lex();
+            if (t.GetType() != Lexer::TokenType::OpenCurlyBracket)
+                throw std::runtime_error("Expected { after identifier.");
+            auto ty = sema.CreateType(ident.GetValue(), m);
+            return ParseTypeBody(lex, sema, ty);
         }
         
         template<typename Lex, typename Sema, typename Module> void ParseModuleLevelDeclaration(Lex&& lex, Sema&& sema, Module&& m) {
@@ -626,8 +705,13 @@ namespace Wide {
             if (token.GetType() == Lexer::TokenType::Operator) {
                 auto op = lex();
                 // Only < supported right now
-                if (op.GetType() != Lexer::TokenType::LT)
-                    throw std::runtime_error("Only < supported as an overloadable operator right now.");
+                if (op.GetType() == Lexer::TokenType::OpenBracket) {
+                    auto t = lex();
+                    if (t.GetType() != Lexer::TokenType::CloseBracket)
+                        throw std::runtime_error("Expected ) after operator(.");
+                }
+                if (OverloadableOperators.find(op.GetType()) == OverloadableOperators.end())
+                    throw std::runtime_error("This operator was not found on the supported operators list.");
                 auto bracket = lex();
                 if (bracket.GetType() != Lexer::TokenType::OpenBracket)
                     throw std::runtime_error("Expected ( after operator op to designate a module-scope operator overload.");

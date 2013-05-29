@@ -56,7 +56,7 @@ Expression ClangNamespace::AccessMember(Expression val, std::string name, Analyz
         }
         if (auto namedecl = llvm::dyn_cast<clang::NamespaceDecl>(result)) {
             Expression out;
-            out.t = a.GetClangNamespace(*from, namedecl);
+            out.t = a.GetConstructorType(a.GetClangNamespace(*from, namedecl));
             out.Expr = nullptr;
             return out;
         }

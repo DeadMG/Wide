@@ -1,10 +1,12 @@
 module Standard {
     module Algorithm {
-        Map(range, fun) {
-            return function()[range := std.move(range), fun := std.move(fun)] {
-                 var := range();
-                 if (var) return Containers.Optional!(decltype(fun(*std.move(var))))(fun(*std.move(var)));
-                 return Containers.None;
+        Map(fun) {
+            return function(range)[fun := std.move(fun)] {
+                return function()[range := std.move(range), fun := std.move(fun)] {
+                     var := range();
+                     if (var) return Containers.Optional!(decltype(fun(*std.move(var)))->decay)(fun(*std.move(var)));
+                     return Containers.None;
+                };
             };
         }
     }

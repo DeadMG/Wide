@@ -33,7 +33,6 @@ namespace Wide {
             Analyzer& analyzer;
             AST::Function* fun;
             Codegen::Function* codefun;
-            bool body;
             UserDefinedType* member;
             void ComputeBody(Analyzer& a);
 
@@ -51,6 +50,7 @@ namespace Wide {
             Expression BuildCall(Expression, std::vector<Expression> args, Analyzer& a);        
             Expression AccessMember(Expression, std::string name, Analyzer& a);   
             std::string GetName();
+            UserDefinedType* IsMember() { return member; }
 
             FunctionType* GetSignature(Analyzer& a);
         };

@@ -39,6 +39,11 @@ namespace Wide {
                 if (auto lam = dynamic_cast<Lambda*>(e)) { crtp_cast().VisitLambda(lam); return; }
                 if (auto ass = dynamic_cast<AssignmentExpr*>(e)) { crtp_cast().VisitAssignment(ass); return; }
                 if (auto deref = dynamic_cast<DereferenceExpression*>(e)) { crtp_cast().VisitDereference(deref); return; }
+                if (auto neg = dynamic_cast<NegateExpression*>(e)) { crtp_cast().VisitNegate(neg); return; }
+                if (auto inc = dynamic_cast<Increment*>(e)) { crtp_cast().VisitIncrement(inc); return; }
+                if (auto plus = dynamic_cast<Addition*>(e)) { crtp_cast().VisitAddition(plus); return; }
+                if (auto mul = dynamic_cast<Multiply*>(e)) { crtp_cast().VisitMultiply(mul); return; }
+                if (auto ptr = dynamic_cast<PointerAccess*>(e)) { crtp_cast().VisitPointerAccess(ptr); return; }
                 assert(false && "Internal Compiler Error: Encountered unknown expression node in AST::Visitor.");
             }            
 
@@ -103,7 +108,12 @@ namespace Wide {
             void VisitLessThanOrEqual(LTEExpression* e) { return crtp_cast().VisitBinaryExpression(e); }
             void VisitGreaterThan(GTExpression* e) { return crtp_cast().VisitBinaryExpression(e); }
             void VisitGreaterThanOrEqual(GTEExpression* e) { return crtp_cast().VisitBinaryExpression(e); }        
-            void VisitInteger(IntegerExpression* e) { }            
+            void VisitInteger(IntegerExpression* e) { }
+            void VisitNegate(NegateExpression* e) { return crtp_cast().VisitExpression(e->ex); }
+            void VisitIncrement(Increment* i) { return crtp_cast().VisitExpression(i->ex); }
+            void VisitAddition(Addition* a) { return crtp_cast().VisitBinaryExpression(a); }
+            void VisitMultiply(Multiply* m) { return crtp_cast().VisitBinaryExpression(m); }
+            void VisitPointerAccess(PointerAccess* p) { return crtp_cast().VisitExpression(p->ex); }
         };
     }
 }

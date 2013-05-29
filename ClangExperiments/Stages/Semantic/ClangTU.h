@@ -40,6 +40,7 @@ namespace Wide {
         class ClangTU {
             class Impl;
             std::unordered_set<clang::FunctionDecl*> visited;
+            std::unordered_map<clang::QualType, std::function<llvm::Type*(llvm::Module*)>, ClangTypeHasher> prebaked_types;
         public:
             std::unique_ptr<Impl> impl;
             ~ClangTU();

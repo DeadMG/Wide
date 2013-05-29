@@ -34,7 +34,7 @@ Expression Bool::BuildValueConstruction(std::vector<Expression> args, Analyzer& 
     if (args.empty()) {
         Expression out;
         out.t = this;
-        out.Expr = a.gen->CreateInt8Expression(0);
+        out.Expr = a.gen->CreateIntegralExpression(0, false, GetLLVMType(a));
         return out;
     }
 
@@ -52,4 +52,16 @@ Expression Bool::BuildValueConstruction(std::vector<Expression> args, Analyzer& 
 
     // No U conversions supported right now.
     throw std::runtime_error("Don't support constructing a bool from another type right now.");
+}
+
+Expression Bool::BuildOr(Expression lhs, Expression rhs, Analyzer& a) {
+    lhs = lhs.t->BuildValue(lhs, a);
+    rhs = rhs.t->BuildValue(rhs, a);
+    return Expression(this, a.gen->CreateOrExpression(lhs.Expr, rhs.Expr));
+}
+
+Expression Bool::BuildAnd(Expression lhs, Expression rhs, Analyzer& a) {
+    lhs = lhs.t->BuildValue(lhs, a);
+    rhs = rhs.t->BuildValue(rhs, a);
+    return Expression(this, a.gen->CreateAndExpression(lhs.Expr, rhs.Expr));
 }

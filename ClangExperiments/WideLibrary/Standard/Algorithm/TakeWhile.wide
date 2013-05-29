@@ -1,0 +1,16 @@
+module Standard {
+    module Algorithm {
+        TakeWhile(pred) {
+            return function(range)[pred := std.move(pred)] {
+                return function()[range := std.move(range), done := false, pred := std.move(pred)] {
+                    if(~done) {
+                        var := range();
+                        if (~var | ~pred(*var)) { done = true; var = Containers.None; }
+                        return var;
+                    }
+                    return Containers.None;
+                };
+            };
+        }
+    }
+}

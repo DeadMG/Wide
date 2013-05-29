@@ -1,0 +1,10 @@
+module Standard {
+    module Range {
+        StreamInserter(auto->lvalue stream) {
+            return function(val)[&] { stream << (std.move(val)); };
+        }
+        StreamInserter(auto->rvalue stream) {
+            return function(val)[stream := std.move(stream)] { stream << std.move(val); };
+        }
+    }
+}
