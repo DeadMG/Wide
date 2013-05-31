@@ -174,6 +174,10 @@ namespace Wide {
             DereferenceExpression(Expression* e, Lexer::Range pos)
                 : UnaryExpression(e, pos) {}
         };
+        struct AddressOfExpression : public UnaryExpression {
+            AddressOfExpression(Expression* e, Lexer::Range pos)
+                : UnaryExpression(e, pos) {}
+        };
         struct NegateExpression : public UnaryExpression {
             NegateExpression(Expression* e, Lexer::Range pos)
                 : UnaryExpression(e, pos) {}

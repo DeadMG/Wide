@@ -53,7 +53,7 @@ namespace Wide {
 
             Function* CreateFunction(std::function<llvm::Type*(llvm::Module*)>, std::string, Semantic::Function* debug, bool trampoline = false);
 
-            Variable* CreateVariable(std::function<llvm::Type*(llvm::Module*)>);
+            Variable* CreateVariable(std::function<llvm::Type*(llvm::Module*)>, unsigned alignment);
             FunctionCall* CreateFunctionCall(Expression*, std::vector<Expression*>, std::function<llvm::Type*(llvm::Module*)> = std::function<llvm::Type*(llvm::Module*)>());
             StringExpression* CreateStringExpression(std::string);
             NamedGlobalVariable* CreateGlobalVariable(std::string);
@@ -65,6 +65,7 @@ namespace Wide {
             IntegralExpression* CreateIntegralExpression(uint64_t val, bool is_signed, std::function<llvm::Type*(llvm::Module*)> ty);
             ChainExpression* CreateChainExpression(Statement*, Expression*);
             FieldExpression* CreateFieldExpression(Expression*, unsigned);
+            FieldExpression* CreateFieldExpression(Expression*, std::function<unsigned()>);
             ParamExpression* CreateParameterExpression(unsigned);
             ParamExpression* CreateParameterExpression(std::function<unsigned()>);
             IfStatement* CreateIfStatement(Expression*, Statement*, Statement*);
@@ -84,6 +85,7 @@ namespace Wide {
             AndExpression* CreateAndExpression(Expression* lhs, Expression* rhs);
             IntegralLessThan* CreateULT(Expression* lhs, Expression* rhs);
             SExt* CreateSignedExtension(Expression* val, std::function<llvm::Type*(llvm::Module*)> to);
+            IsNullExpression* CreateIsNullExpression(Expression* val);
 
             void operator()();
         };

@@ -1,5 +1,7 @@
 #include "StringType.h"
 #include "ClangTU.h"
+#include "Analyzer.h"
+#include "../Codegen/Generator.h"
 
 #pragma warning(push, 0)
 
@@ -21,4 +23,11 @@ std::function<llvm::Type*(llvm::Module*)> StringType::GetLLVMType(Analyzer& a) {
 clang::QualType StringType::GetClangType(Wide::ClangUtil::ClangTU& TU, Analyzer& a) {
     auto&& astcon = TU.GetDeclContext()->getParentASTContext();
     return astcon.getPointerType(astcon.CharTy);
+}
+
+std::size_t StringType::size(Analyzer& a) {
+    return llvm::DataLayout(a.gen->main.getDataLayout()).getPointerSize();
+}
+std::size_t StringType::alignment(Analyzer& a) {
+    return llvm::DataLayout(a.gen->main.getDataLayout()).getPointerABIAlignment();
 }

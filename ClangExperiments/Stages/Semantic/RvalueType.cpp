@@ -66,3 +66,9 @@ Expression RvalueType::BuildGTEComparison(Expression lhs, Expression rhs, Analyz
 Expression RvalueType::PointerAccessMember(Expression obj, std::string name, Analyzer& a) {
     return Pointee->PointerAccessMember(obj, name, a);
 }
+std::size_t RvalueType::size(Analyzer& a) {
+    return llvm::DataLayout(a.gen->main.getDataLayout()).getPointerSize();
+}
+std::size_t RvalueType::alignment(Analyzer& a) {
+    return llvm::DataLayout(a.gen->main.getDataLayout()).getPointerABIAlignment();
+}

@@ -44,42 +44,57 @@ UserDefinedType::UserDefinedType(AST::Type* t, Analyzer& a, Type* context) {
     destructor = nullptr;
     std::unordered_map<std::string, unsigned> mem;
     type = t;
-
-    for(auto&& decl : t->variables) {
-        if (auto var = dynamic_cast<AST::VariableStatement*>(decl)) {
-            auto expr = a.AnalyzeExpression(context, var->initializer);
-            expr.t = expr.t->Decay();
-            if (auto con = dynamic_cast<ConstructorType*>(expr.t))
-                expr.t = con->GetConstructedType();
-            else
-                throw std::runtime_error("Expected the expression giving the type of a member variable to be a type.");
-            member m;
-            m.t = expr.t;
-            m.num = llvmtypes.size();
-            m.name = decl->name;
-            mem[var->name] = llvmtypes.size();
-            llvmtypes.push_back(m);
-            iscomplex = iscomplex || expr.t->IsComplexType();
-        }
-    }
-    
+    allocsize = 0;
+    align = 0;
     std::stringstream stream;
     stream << "struct.__" << this;
     llvmname = stream.str();
 
+    for(auto&& var : t->variables) {
+        auto expr = a.AnalyzeExpression(context, var->initializer);
+        expr.t = expr.t->Decay();
+        if (auto con = dynamic_cast<ConstructorType*>(expr.t))
+            expr.t = con->GetConstructedType();
+        else
+            throw std::runtime_error("Expected the expression giving the type of a member variable to be a type.");
+        member m;
+        m.t = expr.t;
+        auto talign = m.t->alignment(a);
+        if (allocsize % talign != 0) {
+            auto adjustment = (allocsize % talign);
+            allocsize += adjustment;
+            types.push_back([&a, adjustment](llvm::Module* mod) {
+                return llvm::ArrayType::get(llvm::IntegerType::getInt8Ty(mod->getContext()), adjustment);
+            });
+        }
+        align = std::max(align, talign);
+        allocsize += m.t->size(a);
+
+        m.num = types.size();
+        m.name = var->name;
+        mem[var->name] = llvmtypes.size();
+        types.push_back(m.t->GetLLVMType(a));
+        llvmtypes.push_back(m);
+        iscomplex = iscomplex || expr.t->IsComplexType();
+    }
+    if (t->variables.empty()) {
+        allocsize = llvm::DataLayout(a.gen->main.getDataLayout()).getTypeAllocSize(llvm::IntegerType::getInt8Ty(a.gen->context));
+        align = llvm::DataLayout(a.gen->main.getDataLayout()).getABIIntegerTypeAlignment(8);
+    }
+    
     ty = [&](llvm::Module* m) -> llvm::Type* {
         if (m->getTypeByName(llvmname)) {
             if (llvmtypes.empty())
                 a.gen->AddEliminateType(m->getTypeByName(llvmname));
             return m->getTypeByName(llvmname);
         }
-        std::vector<llvm::Type*> types;
-        for(auto&& x : llvmtypes)
-            types.push_back(x.t->GetLLVMType(a)(m));
-        if (types.empty()) {
-            types.push_back(llvm::IntegerType::getInt8Ty(m->getContext()));
+        std::vector<llvm::Type*> llvmtypes;
+        for(auto&& x : types)
+            llvmtypes.push_back(x(m));
+        if (llvmtypes.empty()) {
+            llvmtypes.push_back(llvm::IntegerType::getInt8Ty(m->getContext()));
         }
-        auto ty = llvm::StructType::create(types, llvmname);
+        auto ty = llvm::StructType::create(llvmtypes, llvmname);
         if (llvmtypes.empty())
             a.gen->AddEliminateType(ty);
         return ty;
@@ -108,7 +123,8 @@ UserDefinedType::UserDefinedType(AST::Type* t, Analyzer& a, Type* context) {
         std::vector<AST::Statement*> body;
         for(auto x = llvmtypes.rbegin(); x != llvmtypes.rend(); ++x) {
             if (x->t->IsReference()) continue;
-            auto mem = Expression(a.GetLvalueType(x->t), a.gen->CreateFieldExpression(a.gen->CreateParameterExpression(0), x->num));
+            auto num = x->num;
+            auto mem = Expression(a.GetLvalueType(x->t), a.gen->CreateFieldExpression(a.gen->CreateParameterExpression(0), [this, num] { return AdjustFieldOffset(num); }));
             body.push_back(a.arena.Allocate<SemanticExpression>(Expression(nullptr, mem.t->BuildDestructor(mem, a))));
         }
         
@@ -151,8 +167,9 @@ Expression UserDefinedType::AccessMember(Expression expr, std::string name, Anal
     if (members.find(name) != members.end()) {
         auto member = llvmtypes[members[name]];
         Expression out;
+        auto num = member.num;
         if (expr.t->IsReference()) {
-            out.Expr = a.gen->CreateFieldExpression(expr.Expr, member.num);
+            out.Expr = a.gen->CreateFieldExpression(expr.Expr, [this, num] { return AdjustFieldOffset(num); });
             if (dynamic_cast<LvalueType*>(expr.t)) {
                 out.t = a.GetLvalueType(member.t);
             } else {
@@ -164,7 +181,7 @@ Expression UserDefinedType::AccessMember(Expression expr, std::string name, Anal
                 out.Expr = a.gen->CreateLoad(out.Expr);
             return out;
         } else {
-            out.Expr = a.gen->CreateFieldExpression(expr.Expr, member.num);
+            out.Expr = a.gen->CreateFieldExpression(expr.Expr, [this, num] { return AdjustFieldOffset(num); });
             out.t = member.t;
             return out;
         }
@@ -211,8 +228,9 @@ Expression UserDefinedType::BuildAssignment(Expression lhs, Expression rhs, Anal
             } else {
                 t = a.GetRvalueType(x.t);
             }
-            Expression rhs(t, a.gen->CreateFieldExpression(rhs.Expr, x.num));
-            Expression lhs(a.GetLvalueType(x.t), a.gen->CreateFieldExpression(lhs.Expr, x.num));
+            auto num = x.num;
+            Expression rhs(t, a.gen->CreateFieldExpression(rhs.Expr, [this, num] { return AdjustFieldOffset(num);}));
+            Expression lhs(a.GetLvalueType(x.t), a.gen->CreateFieldExpression(lhs.Expr, [this, num] { return AdjustFieldOffset(num);}));
 
             auto construct = x.t->BuildAssignment(lhs, rhs, a);
             e = e ? a.gen->CreateChainExpression(e, construct.Expr) : construct.Expr;
@@ -387,4 +405,16 @@ Codegen::Expression* UserDefinedType::BuildDestructor(Expression obj, Analyzer& 
 
 Expression UserDefinedType::BuildOr(Expression lhs, Expression rhs, Analyzer& a) {
     return BuildBinaryOperator("|", lhs, rhs, a);
+}
+
+std::size_t UserDefinedType::size(Analyzer& a) {
+    return allocsize;
+}
+std::size_t UserDefinedType::alignment(Analyzer& a) {
+    return align;
+}
+unsigned UserDefinedType::AdjustFieldOffset(unsigned index) {
+    return index;
+    /*if (clangtypes.empty()) return index;
+    return clangtypes.begin()->first->GetFieldNumber(*std::next(clangtypes.begin()->second->getAsCXXRecordDecl()->field_begin(), index));*/
 }

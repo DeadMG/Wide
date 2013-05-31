@@ -2,6 +2,7 @@
 #include "Analyzer.h"
 #include "LvalueType.h"
 #include "RvalueType.h"
+#include "PointerType.h"
 #include "../Codegen/Generator.h"
 #include "../Codegen/Expression.h"
 
@@ -21,7 +22,7 @@ clang::QualType Type::GetClangType(ClangUtil::ClangTU& TU, Analyzer& a) {
 Expression Type::BuildRvalueConstruction(std::vector<Expression> args, Analyzer& a) {
     Expression out;
     out.t = a.GetRvalueType(this);
-    auto mem = a.gen->CreateVariable(GetLLVMType(a));
+    auto mem = a.gen->CreateVariable(GetLLVMType(a), alignment(a));
     if (!IsComplexType() && args.size() == 1 && args[0].t->Decay() == this) {
         args[0] = args[0].t->BuildValue(args[0], a);
         out.Expr = a.gen->CreateChainExpression(a.gen->CreateStore(mem, args[0].Expr), mem);
@@ -34,7 +35,7 @@ Expression Type::BuildRvalueConstruction(std::vector<Expression> args, Analyzer&
 Expression Type::BuildLvalueConstruction(std::vector<Expression> args, Analyzer& a) {
     Expression out;
     out.t = a.GetLvalueType(this);
-    auto mem = a.gen->CreateVariable(GetLLVMType(a));
+    auto mem = a.gen->CreateVariable(GetLLVMType(a), alignment(a));
     if (!IsComplexType() && args.size() == 1 && args[0].t->Decay() == this) {
         args[0] = args[0].t->BuildValue(args[0], a);
         out.Expr = a.gen->CreateChainExpression(a.gen->CreateStore(mem, args[0].Expr), mem);
@@ -47,7 +48,7 @@ Expression Type::BuildValueConstruction(std::vector<Expression> args, Analyzer& 
         throw std::runtime_error("Internal compiler error: Attempted to value construct a complex UDT.");
     if (args.size() == 1 && args[0].t == this)
         return args[0];
-    auto mem = a.gen->CreateVariable(GetLLVMType(a));
+    auto mem = a.gen->CreateVariable(GetLLVMType(a), alignment(a));
     return Expression(this, a.gen->CreateLoad(a.gen->CreateChainExpression(BuildInplaceConstruction(mem, std::move(args), a), mem)));
 }
 ConversionRank Type::RankConversionFrom(Type* from, Analyzer& a) {
@@ -70,4 +71,10 @@ Expression Type::BuildNEComparison(Expression lhs, Expression rhs, Analyzer& a) 
         throw std::runtime_error("Cannot automatically implement ~= on top of an == that does not return a boolean.");
     expr.Expr = a.gen->CreateNegateExpression(expr.Expr);
     return expr;
+}
+Expression Type::AddressOf(Expression obj, Analyzer& a) {
+    // TODO: Remove this restriction, it is not very Wide.
+    if (!dynamic_cast<LvalueType*>(obj.t))
+        throw std::runtime_error("Attempted to take the address of something that was not an lvalue.");
+    return Expression(a.GetPointerType(obj.t->Decay()), obj.Expr);
 }

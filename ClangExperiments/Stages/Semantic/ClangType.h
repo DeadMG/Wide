@@ -39,6 +39,8 @@ namespace Wide {
             Expression BuildDereference(Expression obj, Analyzer& a);
             Codegen::Expression* BuildDestructor(Expression obj, Analyzer& a);
             Expression BuildIncrement(Expression obj, bool postfix, Analyzer& a);
+            std::size_t size(Analyzer& a);
+            std::size_t alignment(Analyzer& a);
         };
     }
 }

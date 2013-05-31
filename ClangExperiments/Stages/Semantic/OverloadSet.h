@@ -28,6 +28,8 @@ namespace Wide {
             Expression BuildCall(Expression, std::vector<Expression> args, Analyzer& a);
             Expression BuildValueConstruction(std::vector<Expression> args, Analyzer& a);
             ConversionRank ResolveOverloadRank(std::vector<Type*> types, Analyzer& a);
+            std::size_t size(Analyzer& a);
+            std::size_t alignment(Analyzer& a);
         };
     }
 }

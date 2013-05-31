@@ -65,3 +65,10 @@ Expression Bool::BuildAnd(Expression lhs, Expression rhs, Analyzer& a) {
     rhs = rhs.t->BuildValue(rhs, a);
     return Expression(this, a.gen->CreateAndExpression(lhs.Expr, rhs.Expr));
 }
+
+std::size_t Bool::size(Analyzer& a) {
+    return 1;
+}
+std::size_t Bool::alignment(Analyzer& a) {
+    return 1;
+}

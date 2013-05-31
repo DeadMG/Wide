@@ -22,6 +22,8 @@ namespace Wide {
             Expression BuildPlus(Expression lhs, Expression rhs, Analyzer& a);
             Expression BuildIncrement(Expression obj, bool postfix, Analyzer& a);
             Codegen::Expression* BuildInplaceConstruction(Codegen::Expression* mem, std::vector<Expression> args, Analyzer& a);
+            std::size_t size(Analyzer& a);
+            std::size_t alignment(Analyzer& a);
         };
     }
 }

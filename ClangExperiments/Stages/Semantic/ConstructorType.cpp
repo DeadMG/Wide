@@ -2,6 +2,8 @@
 #include "Analyzer.h"
 #include "LvalueType.h"
 #include "RvalueType.h"
+#include "../Codegen/Generator.h"
+#include "PointerType.h"
 #include <sstream>
 
 #pragma warning(push, 0)
@@ -43,14 +45,19 @@ Codegen::Expression* ConstructorType::BuildInplaceConstruction(Codegen::Expressi
 }
 
 Expression ConstructorType::PointerAccessMember(Expression obj, std::string name, Analyzer& a) {
-    if (name == "decay") {
+    if (name == "decay")
         return a.GetConstructorType(t->Decay())->BuildValueConstruction(std::vector<Expression>(), a);
-    }
-    if (name == "lvalue") {
+    if (name == "lvalue")
         return a.GetConstructorType(a.GetLvalueType(t))->BuildValueConstruction(std::vector<Expression>(), a);
-    }
-    if (name == "rvalue") {
+    if (name == "rvalue")
         return a.GetConstructorType(a.GetRvalueType(t))->BuildValueConstruction(std::vector<Expression>(), a);
-    }
+    if (name == "pointer")
+        return a.GetConstructorType(a.GetPointerType(t))->BuildValueConstruction(std::vector<Expression>(), a);
     throw std::runtime_error("Attempted to access the special members of a type, but the identifier provided did not name them.");
+}
+std::size_t ConstructorType::size(Analyzer& a) {
+    return llvm::DataLayout(a.gen->main.getDataLayout()).getTypeAllocSize(llvm::IntegerType::getInt8Ty(a.gen->context));
+}
+std::size_t ConstructorType::alignment(Analyzer& a) {
+    return llvm::DataLayout(a.gen->main.getDataLayout()).getABIIntegerTypeAlignment(8);
 }

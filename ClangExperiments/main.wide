@@ -3,10 +3,7 @@ using Range := Standard.Range;
 using Algorithm := Standard.Algorithm;
 
 Main() {
-    x := std.vector!(int8)();
-    Range.Delimited(1, 11) | Algorithm.Copy(Range.BackInserter(x));
-    Range.Delimited(x.begin(), x.end())
-        | Algorithm.Map(function(it) { return *it; })
+    Range.Delimited(1, 11)
         | Algorithm.Map(function(val) { return Range.Delimited(1, val + 1); })
         | Algorithm.Flatten()
         | Algorithm.Copy(Range.StreamInserter(std.cout));

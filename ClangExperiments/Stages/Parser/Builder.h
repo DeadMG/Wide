@@ -51,7 +51,8 @@ namespace Wide {
             AutoExpression* CreateAutoExpression(Lexer::Range loc);
             Decrement* CreatePrefixDecrement(Expression* ex, Lexer::Range r);
             Decrement* CreatePostfixDecrement(Expression* ex, Lexer::Range r);
-            
+            AddressOfExpression* CreateAddressOf(Expression* ex, Lexer::Range r);
+
             std::vector<Statement*> CreateStatementGroup();
             std::vector<Expression*> CreateExpressionGroup();
             std::vector<VariableStatement*> CreateCaptureGroup();

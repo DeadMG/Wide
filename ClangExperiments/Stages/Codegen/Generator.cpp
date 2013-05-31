@@ -69,8 +69,8 @@ Function* Generator::CreateFunction(std::function<llvm::Type*(llvm::Module*)> ty
     return p;
 }
 
-Variable* Generator::CreateVariable(std::function<llvm::Type*(llvm::Module*)> t) {
-    return arena.Allocate<Variable>(std::move(t));
+Variable* Generator::CreateVariable(std::function<llvm::Type*(llvm::Module*)> t, unsigned align) {
+    return arena.Allocate<Variable>(std::move(t), align);
 }
 
 FunctionCall* Generator::CreateFunctionCall(Expression* obj, std::vector<Expression*> args, std::function<llvm::Type*(llvm::Module*)> ty) {
@@ -131,6 +131,9 @@ ChainExpression* Generator::CreateChainExpression(Statement* s, Expression* e) {
 }
 
 FieldExpression* Generator::CreateFieldExpression(Expression* e, unsigned f) {
+    return arena.Allocate<FieldExpression>([=] { return f; }, e);
+}        
+FieldExpression* Generator::CreateFieldExpression(Expression* e, std::function<unsigned()> f) {
     return arena.Allocate<FieldExpression>(f, e);
 }           
 
@@ -218,4 +221,7 @@ ZExt* Generator::CreateZeroExtension(Expression* e, std::function<llvm::Type*(ll
 }
 SExt* Generator::CreateSignedExtension(Expression* e, std::function<llvm::Type*(llvm::Module*)> func) {
     return arena.Allocate<SExt>(e, std::move(func));
+}
+IsNullExpression* Generator::CreateIsNullExpression(Expression* e) {
+    return arena.Allocate<IsNullExpression>(e);
 }

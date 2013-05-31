@@ -186,6 +186,12 @@
     <ClInclude Include="Stages\Parser\parser.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="Stages\Semantic\PointerType.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Stages\Semantic\NullType.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp">
@@ -273,6 +279,12 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="Stages\Semantic\LvalueType.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Stages\Semantic\PointerType.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Stages\Semantic\NullType.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

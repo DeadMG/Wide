@@ -36,9 +36,10 @@ namespace Wide {
 
         class Variable : public Expression {
             std::function<llvm::Type*(llvm::Module*)> t;
+            unsigned align;
         public:
-            Variable(std::function<llvm::Type*(llvm::Module*)> ty)
-                : t(std::move(ty)) {}
+            Variable(std::function<llvm::Type*(llvm::Module*)> ty, unsigned alignment)
+                : t(std::move(ty)), align(alignment) {}
             llvm::Value* ComputeValue(llvm::IRBuilder<>&, Generator& g);
         };
 
@@ -127,10 +128,10 @@ namespace Wide {
 
 
         class FieldExpression : public Expression {
-            unsigned fieldnum;
+            std::function<unsigned()> fieldnum;
             Expression* obj;
         public:
-            FieldExpression(unsigned f, Expression* o)
+            FieldExpression(std::function<unsigned()> f, Expression* o)
                 : fieldnum(f), obj(o) {}
             llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g);
         };
@@ -254,6 +255,14 @@ namespace Wide {
         public:
             MultiplyExpression(Expression* l, Expression* r)
                 : lhs(l), rhs(r) {}
+            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g);
+        };
+
+        class IsNullExpression : public Expression {
+            Expression* ptr;
+        public:
+            IsNullExpression(Expression* p)
+                : ptr(p) {}
             llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g);
         };
     }

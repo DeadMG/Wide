@@ -50,6 +50,8 @@ namespace Wide {
                 // and from is U. This is the same as the rank of U to T, so just return that.
                 return Pointee->RankConversionFrom(from, a);
             }
+            std::size_t size(Analyzer& a);
+            std::size_t alignment(Analyzer& a);
         };
     }
 }

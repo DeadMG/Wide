@@ -157,3 +157,9 @@ Codegen::Expression* IntegralType::BuildInplaceConstruction(Codegen::Expression*
     }
     return a.gen->CreateStore(mem, a.gen->CreateIntegralExpression(0, false, GetLLVMType(a)));
 }
+std::size_t IntegralType::size(Analyzer& a) {
+    return llvm::DataLayout(a.gen->main.getDataLayout()).getTypeAllocSize(GetLLVMType(a)(&a.gen->main));
+}
+std::size_t IntegralType::alignment(Analyzer& a) {
+    return llvm::DataLayout(a.gen->main.getDataLayout()).getABIIntegerTypeAlignment(bits);
+}

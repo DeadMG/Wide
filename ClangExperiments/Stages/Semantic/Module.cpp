@@ -55,10 +55,7 @@ Expression Module::AccessMember(Expression val, std::string name, Analyzer& a) {
             return a.GetOverloadSet(overdecl)->BuildValueConstruction(std::vector<Expression>(), a);          
         }
         if (auto tydecl = dynamic_cast<AST::Type*>(decl)) {
-            Expression r;
-            r.t = a.GetConstructorType(a.GetUDT(tydecl, this));
-            r.Expr = a.gen->CreateLoad(a.gen->CreateVariable(a.GetConstructorType(a.GetUDT(tydecl, this))->GetLLVMType(a)));
-            return r;
+            return a.GetConstructorType(a.GetUDT(tydecl, this))->BuildValueConstruction(std::vector<Expression>(), a);
         }
         throw std::runtime_error("Attempted to access a member of a Wide module that was not either another module, or a function.");
     }

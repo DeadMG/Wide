@@ -503,3 +503,10 @@ Expression ClangType::BuildIncrement(Expression self, bool postfix, Analyzer& a)
     out.Expr = self.Expr;
     return out.t->BuildCall(out, std::vector<Expression>(), a);
 }
+
+std::size_t ClangType::size(Analyzer& a) {
+    return from->GetASTContext().getTypeSizeInChars(type).getQuantity();
+}
+std::size_t ClangType::alignment(Analyzer& a) {
+    return from->GetASTContext().getTypeAlignInChars(type).getQuantity();
+}

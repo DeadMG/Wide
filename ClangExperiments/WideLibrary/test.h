@@ -73,7 +73,7 @@ namespace Wide {
             explicit operator bool() const { return present; }
 
         private:
-            typedef /*typename std::aligned_storage<sizeof(T), std::alignment_of<T>::value>::type*/ std::array<char, sizeof(T)> storage_type;
+            typedef typename std::aligned_storage<sizeof(T), std::alignment_of<T>::value>::type storage_type;
 
             template <typename Args>
             void place(Args&& args) {

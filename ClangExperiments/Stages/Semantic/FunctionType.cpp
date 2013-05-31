@@ -58,7 +58,7 @@ Expression FunctionType::BuildCall(Expression val, std::vector<Expression> args,
         std::vector<Codegen::Expression*> e;
         // If the return type is complex, pass in pointer to result to be constructed, and mark our return type as an rvalue ref.
         if (out.t->IsComplexType()) {
-            e.push_back(a.gen->CreateVariable(out.t->GetLLVMType(a)));
+            e.push_back(a.gen->CreateVariable(out.t->GetLLVMType(a), out.t->alignment(a)));
         }
         for(unsigned int i = 0; i < args.size(); ++i) {
             // If we take T, and the argument is T, then wahey.

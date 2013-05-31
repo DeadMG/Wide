@@ -79,3 +79,9 @@ Expression LvalueType::BuildDereference(Expression obj, Analyzer& a) {
 Expression LvalueType::PointerAccessMember(Expression obj, std::string name, Analyzer& a) {
     return Pointee->PointerAccessMember(obj, name, a);
 }
+std::size_t LvalueType::size(Analyzer& a) {
+    return llvm::DataLayout(a.gen->main.getDataLayout()).getPointerSize();
+}
+std::size_t LvalueType::alignment(Analyzer& a) {
+    return llvm::DataLayout(a.gen->main.getDataLayout()).getPointerABIAlignment();
+}

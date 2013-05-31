@@ -360,3 +360,9 @@ AutoExpression* Builder::CreateAutoExpression(Lexer::Range loc) {
         return arena.Allocate<AutoExpression>(loc);
     });
 }
+
+AddressOfExpression* Builder::CreateAddressOf(Expression* e, Lexer::Range loc) {
+    return ConcurrentUseArena(arenas, [&](Wide::Memory::Arena& arena) {
+        return arena.Allocate<AddressOfExpression>(e, loc);
+    });
+}

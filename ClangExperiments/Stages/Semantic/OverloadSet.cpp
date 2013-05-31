@@ -254,7 +254,7 @@ Expression OverloadSet::BuildValueConstruction(std::vector<Expression> args, Ana
             return args[0];
         if (nonstatic) {
             if (args[0].t->IsReference(nonstatic)) {
-                auto var = a.gen->CreateVariable(GetLLVMType(a));
+                auto var = a.gen->CreateVariable(GetLLVMType(a), alignment(a));
                 auto store = a.gen->CreateStore(a.gen->CreateFieldExpression(var, 0), args[0].Expr);
                 return Expression(this, a.gen->CreateChainExpression(store, a.gen->CreateLoad(var)));
             } 
@@ -383,4 +383,12 @@ clang::QualType OverloadSet::GetClangType(ClangUtil::ClangTU& TU, Analyzer& a) {
     TU.GetDeclContext()->addDecl(recdecl);
     a.AddClangType(TU.GetASTContext().getTypeDeclType(recdecl), this);
     return clangtypes[&TU] = TU.GetASTContext().getTypeDeclType(recdecl);
+}
+std::size_t OverloadSet::size(Analyzer& a) {
+    if (!nonstatic) return llvm::DataLayout(a.gen->main.getDataLayout()).getTypeAllocSize(llvm::IntegerType::getInt8Ty(a.gen->context));
+    return llvm::DataLayout(a.gen->main.getDataLayout()).getPointerSize();
+}
+std::size_t OverloadSet::alignment(Analyzer& a) {
+    if (!nonstatic) return llvm::DataLayout(a.gen->main.getDataLayout()).getABIIntegerTypeAlignment(8);
+    return llvm::DataLayout(a.gen->main.getDataLayout()).getPointerABIAlignment();
 }

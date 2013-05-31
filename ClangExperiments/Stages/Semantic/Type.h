@@ -157,6 +157,8 @@ namespace Wide {
                 return obj.t->AccessMember(obj, std::move(name), a);
             }
 
+            virtual Expression AddressOf(Expression obj, Analyzer& a);
+
             virtual ConversionRank RankConversionFrom(Type* to, Analyzer& a);
             //Or,
             //And,
@@ -165,6 +167,8 @@ namespace Wide {
                 throw std::runtime_error("Could not convert a type to boolean.");
             }
             virtual Codegen::Expression* BuildDestructor(Expression val, Analyzer& a) { return nullptr; }
+            virtual std::size_t size(Analyzer& a) { throw std::runtime_error("Attempted to size a meta-type that does not have a run-time size."); }
+            virtual std::size_t alignment(Analyzer& a) { throw std::runtime_error("Attempted to align a meta-type that does not have a run-time alignment."); }
                         
             virtual ~Type() {}
         };     

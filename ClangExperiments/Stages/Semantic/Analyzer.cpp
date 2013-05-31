@@ -16,10 +16,12 @@
 #include "ConstructorType.h"
 #include "RvalueType.h"
 #include "ClangInclude.h"
+#include "PointerType.h"
 #include "Bool.h"
 #include "ClangTemplateClass.h"
 #include "OverloadSet.h"
 #include "UserDefinedType.h"
+#include "NullType.h"
 #include <sstream>
 #include <iostream>
 #include <unordered_set>
@@ -39,7 +41,6 @@ namespace Wide {
         clang::TargetInfo* CreateTargetInfoFromTriple(clang::DiagnosticsEngine& engine, std::string triple); 
     }
 }
-
 
 struct SemanticExpression : public AST::Expression {
     Semantic::Expression e;
@@ -64,12 +65,15 @@ Analyzer::~Analyzer() {}
 Analyzer::Analyzer(const Options::Clang& opts, Codegen::Generator* g)    
     : ccs(opts)
     , gen(g)
+    , null(nullptr)
 {
     LiteralStringType = arena.Allocate<StringType>();
 }
 
 void Analyzer::operator()(AST::Module* GlobalModule) {
-    struct decltypetype : public Type {        
+    struct decltypetype : public Type {  
+        std::size_t size(Analyzer& a) { return llvm::DataLayout(a.gen->main.getDataLayout()).getTypeAllocSize(llvm::IntegerType::getInt8Ty(a.gen->context)); }
+        std::size_t alignment(Analyzer& a) { return llvm::DataLayout(a.gen->main.getDataLayout()).getABIIntegerTypeAlignment(8); }
         std::function<llvm::Type*(llvm::Module*)> GetLLVMType(Analyzer& a) {
             std::stringstream typenam;
             typenam << this;
@@ -94,14 +98,14 @@ void Analyzer::operator()(AST::Module* GlobalModule) {
                 throw std::runtime_error("Attempt to call decltype with more or less than 1 argument.");
 
             if (auto con = dynamic_cast<ConstructorType*>(args[0].t->Decay())) {
-                return Expression(con, a.gen->CreateLoad(a.gen->CreateVariable(a.GetConstructorType(args[0].t)->GetLLVMType(a))));
+                return a.GetConstructorType(args[0].t)->BuildValueConstruction(std::vector<Expression>(), a);
             }
             if (!dynamic_cast<LvalueType*>(args[0].t))
                 args[0].t = a.GetRvalueType(args[0].t);
-            return Expression(a.GetConstructorType(args[0].t), a.gen->CreateLoad(a.gen->CreateVariable(a.GetConstructorType(args[0].t)->GetLLVMType(a))));
+            return a.GetConstructorType(args[0].t)->BuildValueConstruction(std::vector<Expression>(), a);
         }
     };
-
+    
     GetWideModule(GlobalModule)->AddSpecialMember("cpp", Expression(arena.Allocate<ClangIncludeEntity>(), nullptr));
     GetWideModule(GlobalModule)->AddSpecialMember("void", Expression(GetConstructorType(Void = arena.Allocate<VoidType>()), nullptr));
     GetWideModule(GlobalModule)->AddSpecialMember("global", Expression(GetWideModule(GlobalModule), nullptr));
@@ -122,6 +126,8 @@ void Analyzer::operator()(AST::Module* GlobalModule) {
     GetWideModule(GlobalModule)->AddSpecialMember("int", GetWideModule(GlobalModule)->AccessMember(Expression(), "int32", *this));
     GetWideModule(GlobalModule)->AddSpecialMember("short", GetWideModule(GlobalModule)->AccessMember(Expression(), "int16", *this));
     GetWideModule(GlobalModule)->AddSpecialMember("long", GetWideModule(GlobalModule)->AccessMember(Expression(), "int64", *this));
+
+    GetWideModule(GlobalModule)->AddSpecialMember("null", GetNullType()->BuildValueConstruction(std::vector<Expression>(), *this));
 
     try {      
         GetWideModule(GlobalModule)->AccessMember(Expression(), "Standard", *this).t->AccessMember(Expression(), "Main", *this).t->BuildCall(Expression(), std::vector<Expression>(), *this);
@@ -410,7 +416,7 @@ Expression Analyzer::AnalyzeExpression(Type* t, AST::Expression* e) {
     if (auto ty = dynamic_cast<AST::Type*>(e)) {
         ty->higher = t->GetDeclContext();
         auto udt = GetUDT(ty, t);
-        return Expression(GetConstructorType(udt), gen->CreateLoad(gen->CreateVariable(GetConstructorType(udt)->GetLLVMType(*this))));
+        return GetConstructorType(udt)->BuildValueConstruction(std::vector<Expression>(), *this);
     }
 
     if (auto ptr = dynamic_cast<AST::PointerAccess*>(e)) {
@@ -418,9 +424,10 @@ Expression Analyzer::AnalyzeExpression(Type* t, AST::Expression* e) {
         return expr.t->PointerAccessMember(expr, ptr->member, *this);
     }
 
-    /*if (auto aut = dynamic_cast<AST::AutoExpression*>(e)) {
-        return t->AccessMember(Expression(), "auto", *this);
-    }*/
+    if (auto add = dynamic_cast<AST::AddressOfExpression*>(e)) {
+        auto expr = AnalyzeExpression(t, add->ex);
+        return expr.t->AddressOf(expr, *this);
+    }
 
     throw std::runtime_error("Unrecognized AST node");
 }
@@ -718,4 +725,14 @@ IntegralType* Analyzer::GetIntegralType(unsigned bits, bool sign) {
         if (integers[bits].find(sign) != integers[bits].end())
             return integers[bits][sign];
     return integers[bits][sign] = arena.Allocate<IntegralType>(bits, sign);
+}
+PointerType* Analyzer::GetPointerType(Type* to) {
+    if (Pointers.find(to) != Pointers.end())
+        return Pointers[to];
+    return Pointers[to] = arena.Allocate<PointerType>(to);
+}
+
+NullType* Analyzer::GetNullType() {
+    if (null) return null;
+    return null = arena.Allocate<NullType>();
 }

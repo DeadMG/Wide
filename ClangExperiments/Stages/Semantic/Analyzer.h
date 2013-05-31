@@ -77,6 +77,8 @@ namespace Wide {
         class OverloadSet;       
         class UserDefinedType;
         class IntegralType;
+        class PointerType;
+        struct NullType;
         enum ConversionRank;
         struct Result;
         struct VectorTypeHasher {
@@ -98,8 +100,11 @@ namespace Wide {
             std::unordered_map<AST::Type*, std::unordered_map<Type*, UserDefinedType*>> UDTs;
             std::unordered_map<AST::Module*, Module*> WideModules;
             std::unordered_map<unsigned, std::unordered_map<bool, IntegralType*>> integers;
+            std::unordered_map<Type*, PointerType*> Pointers;
 
             ClangCommonState ccs;
+
+            NullType* null;
 
         public:
             ConversionRank RankConversion(Type* from, Type* to);
@@ -133,6 +138,8 @@ namespace Wide {
             UserDefinedType* GetUDT(AST::Type*, Type* context);
             Type* GetDeclContext(AST::DeclContext* con);
             IntegralType* GetIntegralType(unsigned, bool);
+            PointerType* GetPointerType(Type* to);
+            NullType* GetNullType();
             
             Expression AnalyzeExpression(Type* t, AST::Expression* e);
             Expression LookupIdentifier(AST::ModuleLevelDeclaration* decl, std::string ident);

@@ -206,6 +206,10 @@ namespace Wide {
                 auto expr = ParseUnaryExpression(lex, sema);
                 return sema.CreatePrefixDecrement(expr, tok.GetLocation() + sema.GetLocation(expr));
             }
+            if (tok.GetType() == Lexer::TokenType::And) {
+                auto expr = ParseUnaryExpression(lex, sema);
+                return sema.CreateAddressOf(expr, tok.GetLocation() + sema.GetLocation(expr));
+            }
             lex(tok);
             return ParsePostfixExpression(lex, sema);
         }

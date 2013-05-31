@@ -46,7 +46,9 @@ namespace Wide {
                 assert(false && "Internal Compiler Error: All T& conversions should be dealt with by Analyzer.");
                 // Just to shut up the compiler
                 return ConversionRank::None;
-            }
+            }            
+            std::size_t size(Analyzer& a);
+            std::size_t alignment(Analyzer& a);
         };
     }
 }

@@ -13,6 +13,8 @@ namespace Wide {
             Expression BuildValueConstruction(std::vector<Expression> args, Analyzer& a);
             Expression BuildOr(Expression lhs, Expression rhs, Analyzer& a);
             Expression BuildAnd(Expression lhs, Expression rhs, Analyzer& a);
+            std::size_t size(Analyzer& a);
+            std::size_t alignment(Analyzer& a);
         };
     }
 }

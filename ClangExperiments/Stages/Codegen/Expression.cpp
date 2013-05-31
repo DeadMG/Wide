@@ -219,7 +219,9 @@ llvm::Value* IntegralExpression::ComputeValue(llvm::IRBuilder<>& builder, Genera
 
 
 llvm::Value* Variable::ComputeValue(llvm::IRBuilder<>& builder, Generator& g) {
-    return builder.CreateAlloca(t(builder.GetInsertBlock()->getParent()->getParent()));
+    auto alloc = builder.CreateAlloca(t(builder.GetInsertBlock()->getParent()->getParent()));
+    alloc->setAlignment(align);
+    return alloc;
 }
 
 llvm::Value* ChainExpression::ComputeValue(llvm::IRBuilder<>& builder, Generator& g) {
@@ -231,10 +233,10 @@ llvm::Value* ChainExpression::ComputeValue(llvm::IRBuilder<>& builder, Generator
 llvm::Value* FieldExpression::ComputeValue(llvm::IRBuilder<>& builder, Generator& g) {
     auto val = obj->GetValue(builder, g);
     if (val->getType()->isPointerTy())
-        return builder.CreateStructGEP(obj->GetValue(builder, g), fieldnum);
+        return builder.CreateStructGEP(obj->GetValue(builder, g), fieldnum());
     else {
         std::vector<uint32_t> args;
-        args.push_back(fieldnum);
+        args.push_back(fieldnum());
         return builder.CreateExtractValue(val, args);
     }
 }
@@ -299,4 +301,8 @@ llvm::Value* MultiplyExpression::ComputeValue(llvm::IRBuilder<>& builder, Genera
 
 llvm::Value* AndExpression::ComputeValue(llvm::IRBuilder<>& builder, Generator& g) {
     return builder.CreateAnd(lhs->GetValue(builder, g), rhs->GetValue(builder, g));
+}
+
+llvm::Value* IsNullExpression::ComputeValue(llvm::IRBuilder<>& builder, Generator& g) {
+    return builder.CreateZExt(builder.CreateIsNull(ptr->GetValue(builder, g)), llvm::IntegerType::getInt8Ty(builder.getContext()));
 }
