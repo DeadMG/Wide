@@ -20,9 +20,9 @@ namespace Wide {
         class OverloadSet : public PrimitiveType {
             AST::FunctionOverloadSet* overset;
             std::unordered_map<ClangUtil::ClangTU*, clang::QualType> clangtypes;
-            UserDefinedType* nonstatic;
+            Type* nonstatic;
         public:
-            OverloadSet(AST::FunctionOverloadSet* s, Analyzer& a, UserDefinedType* nonstatic = nullptr);
+            OverloadSet(AST::FunctionOverloadSet* s, Analyzer& a, Type* nonstatic = nullptr);
             std::function<llvm::Type*(llvm::Module*)> GetLLVMType(Analyzer& a);
             clang::QualType GetClangType(ClangUtil::ClangTU& TU, Analyzer& a);
             Expression BuildCall(Expression, std::vector<Expression> args, Analyzer& a);
@@ -30,6 +30,8 @@ namespace Wide {
             ConversionRank ResolveOverloadRank(std::vector<Type*> types, Analyzer& a);
             std::size_t size(Analyzer& a);
             std::size_t alignment(Analyzer& a);
+
+            using Type::BuildValueConstruction;
         };
     }
 }

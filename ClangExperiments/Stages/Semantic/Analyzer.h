@@ -94,7 +94,7 @@ namespace Wide {
             std::unordered_map<Type*, Type*> RvalueTypes;
             std::unordered_map<Type*, ConstructorType*> ConstructorTypes;
             std::unordered_map<clang::ClassTemplateDecl*, ClangTemplateClass*> ClangTemplateClasses;
-            std::unordered_map<AST::FunctionOverloadSet*, OverloadSet*> OverloadSets;
+            std::unordered_map<AST::FunctionOverloadSet*, std::unordered_map<Type*, OverloadSet*>> OverloadSets;
 
             std::unordered_map<AST::DeclContext*, Type*> DeclContexts;
             std::unordered_map<AST::Type*, std::unordered_map<Type*, UserDefinedType*>> UDTs;
@@ -134,7 +134,7 @@ namespace Wide {
             Type* GetRvalueType(Type* t);
             ConstructorType* GetConstructorType(Type* t);
             ClangTemplateClass* GetClangTemplateClass(ClangUtil::ClangTU& from, clang::ClassTemplateDecl*);
-            OverloadSet* GetOverloadSet(AST::FunctionOverloadSet* set, UserDefinedType* nonstatic = nullptr);
+            OverloadSet* GetOverloadSet(AST::FunctionOverloadSet* set, Type* nonstatic = nullptr);
             UserDefinedType* GetUDT(AST::Type*, Type* context);
             Type* GetDeclContext(AST::DeclContext* con);
             IntegralType* GetIntegralType(unsigned, bool);

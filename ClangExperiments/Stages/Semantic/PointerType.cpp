@@ -28,9 +28,7 @@ std::function<llvm::Type*(llvm::Module*)> PointerType::GetLLVMType(Analyzer& a) 
 }
 
 Expression PointerType::BuildDereference(Expression val, Analyzer& a) {
-    if (val.t->IsReference())
-        val = val.t->BuildValue(val, a);
-    return Expression(a.GetLvalueType(pointee), val.Expr);
+    return Expression(a.GetLvalueType(pointee), val.BuildValue(a).Expr);
 }
 
 Codegen::Expression* PointerType::BuildInplaceConstruction(Codegen::Expression* mem, std::vector<Expression> args, Analyzer& a) {
@@ -39,18 +37,16 @@ Codegen::Expression* PointerType::BuildInplaceConstruction(Codegen::Expression* 
     if (args.size() == 0)
         throw std::runtime_error("Attempted to default-construct a pointer.");
     args[0] = args[0].t->BuildValue(args[0], a);
-    if (args[0].t == this)
-        return a.gen->CreateStore(mem, args[0].Expr);
-    if (args[0].t == a.GetNullType())
+    if (args[0].t->Decay() == this)
+        return a.gen->CreateStore(mem, args[0].t->BuildValue(args[0], a).Expr);
+    if (args[0].t->Decay() == a.GetNullType())
         return a.gen->CreateStore(mem, a.gen->CreateChainExpression(args[0].Expr, a.gen->CreateNull(GetLLVMType(a))));
     throw std::runtime_error("Attempted to construct a pointer from something that was not a pointer of the same type or null.");
 }
 
 Expression PointerType::BuildAssignment(Expression obj, Expression arg, Analyzer& a) {
     if (!obj.t->IsReference(this)) throw std::runtime_error("Attempted to assign to an rvalue pointer.");
-    std::vector<Expression> args;
-    args.push_back(arg);
-    return Expression(this, a.gen->CreateChainExpression(BuildInplaceConstruction(obj.Expr, args, a), obj.Expr));
+    return Expression(this, a.gen->CreateChainExpression(BuildInplaceConstruction(obj.Expr, arg, a), obj.Expr));
 }
 
 Expression PointerType::BuildEQComparison(Expression lhs, Expression rhs, Analyzer& a) {

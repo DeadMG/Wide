@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Type.h"
+#include "MetaType.h"
 #include <string>
 #include <unordered_map>
 
@@ -10,7 +10,7 @@ namespace clang {
 
 namespace Wide {
     namespace Semantic {        
-        class ClangNamespace : public Type {
+        class ClangNamespace : public MetaType {
             clang::DeclContext* con;
             ClangUtil::ClangTU* from;
         public:

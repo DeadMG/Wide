@@ -29,15 +29,12 @@ Expression Module::AccessMember(Expression val, std::string name, Analyzer& a) {
     if (m->decls.find(name) != m->decls.end()) {
         auto decl = m->decls[name];
         if (auto moddecl = dynamic_cast<AST::Module*>(decl)) {
-            Expression r;
-            r.t = a.GetWideModule(moddecl);
-            r.Expr = nullptr;
-            return r;
+            return a.GetWideModule(moddecl)->BuildValueConstruction(a);
         }
         if (auto usedecl = dynamic_cast<AST::Using*>(decl)) {
             auto expr = a.AnalyzeExpression(this, usedecl->expr);
             if (auto conty = dynamic_cast<ConstructorType*>(expr.t->Decay())) {
-                return conty->BuildValueConstruction(std::vector<Expression>(), a);
+                return conty->BuildValueConstruction(a);
             }
             if (auto fun = dynamic_cast<OverloadSet*>(expr.t->Decay()))
                 return expr;
@@ -52,10 +49,10 @@ Expression Module::AccessMember(Expression val, std::string name, Analyzer& a) {
             throw std::runtime_error("Attempted to using something that was not a type, template, module, or function");
         }
         if (auto overdecl = dynamic_cast<AST::FunctionOverloadSet*>(decl)) {
-            return a.GetOverloadSet(overdecl)->BuildValueConstruction(std::vector<Expression>(), a);          
+            return a.GetOverloadSet(overdecl)->BuildValueConstruction(a);          
         }
         if (auto tydecl = dynamic_cast<AST::Type*>(decl)) {
-            return a.GetConstructorType(a.GetUDT(tydecl, this))->BuildValueConstruction(std::vector<Expression>(), a);
+            return a.GetConstructorType(a.GetUDT(tydecl, this))->BuildValueConstruction(a);
         }
         throw std::runtime_error("Attempted to access a member of a Wide module that was not either another module, or a function.");
     }

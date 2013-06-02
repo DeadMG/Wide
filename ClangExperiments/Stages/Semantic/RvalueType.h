@@ -12,7 +12,8 @@ namespace Wide {
                 return Pointee;
             }
             std::function<llvm::Type*(llvm::Module*)> GetLLVMType(Analyzer& a);
-            clang::QualType GetClangType(ClangUtil::ClangTU& tu, Analyzer& a);            
+            clang::QualType GetClangType(ClangUtil::ClangTU& tu, Analyzer& a);  
+            Codegen::Expression* BuildInplaceConstruction(Codegen::Expression* mem, std::vector<Expression> args, Analyzer& a);          
             
             Expression BuildRightShift(Expression lhs, Expression rhs, Analyzer& a);
             Expression BuildLeftShift(Expression lhs, Expression rhs, Analyzer& a);

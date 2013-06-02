@@ -13,10 +13,11 @@ namespace Wide {
     namespace Semantic {
         class Function;
         class UserDefinedType : public Type {
+            Analyzer& a;
             std::size_t align;
             std::size_t allocsize;
-            Function* destructor;
             AST::Type* type;
+            bool processedconstructors;
             bool iscomplex;
             struct member {
                 Type* t;
@@ -52,7 +53,6 @@ namespace Wide {
             Expression BuildLTComparison(Expression lhs, Expression rhs, Analyzer& a);
             ConversionRank RankConversionFrom(Type* from, Analyzer& a);
             Expression BuildCall(Expression val, std::vector<Expression> args, Analyzer& a);
-            Codegen::Expression* BuildDestructor(Expression obj, Analyzer& a);
             Expression BuildOr(Expression lhs, Expression rhs, Analyzer& a);
             std::size_t size(Analyzer& a);
             std::size_t alignment(Analyzer& a);

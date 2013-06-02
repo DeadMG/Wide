@@ -51,7 +51,8 @@ void Generator::operator()() {
     for(auto&& pass : llvmopts.Passes)        
         pm.add(pass->createPass(pass->getPassID()));
 
-    targetmachine->addPassesToEmitFile(pm, format_out, llvm::TargetMachine::CodeGenFileType::CGFT_ObjectFile);
+    if (llvmopts.Emit)
+        targetmachine->addPassesToEmitFile(pm, format_out, llvm::TargetMachine::CodeGenFileType::CGFT_ObjectFile);
     pm.run(main);
 }
 

@@ -72,3 +72,11 @@ std::size_t RvalueType::size(Analyzer& a) {
 std::size_t RvalueType::alignment(Analyzer& a) {
     return llvm::DataLayout(a.gen->main.getDataLayout()).getPointerABIAlignment();
 }
+
+Codegen::Expression* RvalueType::BuildInplaceConstruction(Codegen::Expression* mem, std::vector<Expression> args, Analyzer& a) {
+    if (args.size() == 0)
+        throw std::runtime_error("Cannot default-construct a reference type.");
+    if (args.size() > 1 || args[0].t != this)
+        throw std::runtime_error("Cannot construct a reference from anything but another reference of the same type");
+    return a.gen->CreateStore(mem, args[0].Expr);
+}

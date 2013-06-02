@@ -3,8 +3,6 @@ using Range := Standard.Range;
 using Algorithm := Standard.Algorithm;
 
 Main() {
-    Range.Delimited(1, 11)
-        | Algorithm.Map(function(val) { return Range.Delimited(1, val + 1); })
-        | Algorithm.Flatten()
-        | Algorithm.Copy(Range.StreamInserter(std.cout));
+    x := Standard.Containers.List(int)();
+    z := std.move(x);
 }

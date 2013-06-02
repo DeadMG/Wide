@@ -18,6 +18,7 @@ namespace Wide {
                 Lexer::TokenType::LT,
                 Lexer::TokenType::LTE,
                 Lexer::TokenType::And,
+                Lexer::TokenType::Dereference,
                 Lexer::TokenType::Or,
                 Lexer::TokenType::LeftShift,
                 Lexer::TokenType::RightShift,
@@ -119,7 +120,7 @@ namespace Wide {
             if (t.GetType() == Lexer::TokenType::Type) {
                 auto ty = sema.CreateType("__unnamed", nullptr);
                 if (lex().GetType() != Lexer::TokenType::OpenCurlyBracket)
-                    throw std::runtime_error("Expected { after type in expression.");
+                    throw std::runtime_error("Expected { after type in a type expression.");
                 ParseTypeBody(lex, sema, ty);
                 return ty;
             }
@@ -144,11 +145,31 @@ namespace Wide {
             while(true) {
                auto t = lex();
                if (t.GetType() == Lexer::TokenType::Dot) {
-                   expr = sema.CreateMemberAccessExpression(lex().GetValue(), std::move(expr), sema.GetLocation(expr) + t.GetLocation());
+                   auto t = lex();
+                   if (t.GetType() == Lexer::TokenType::Negate) {
+                       auto next = lex();
+                       if (next.GetType() == Lexer::TokenType::Type) {
+                           expr = sema.CreateMemberAccessExpression("~type", std::move(expr), sema.GetLocation(expr) + t.GetLocation());
+                           continue;
+                       }
+                   }
+                   if (t.GetType() != Lexer::TokenType::Identifier)
+                       throw std::runtime_error("Attempted to access a member through expr.ident, but didn't find ident or ~type after ->.");
+                   expr = sema.CreateMemberAccessExpression(t.GetValue(), std::move(expr), sema.GetLocation(expr) + t.GetLocation());
                    continue;
                }
                if (t.GetType() == Lexer::TokenType::PointerAccess) {
-                   expr = sema.CreatePointerAccessExpression(lex().GetValue(), std::move(expr), sema.GetLocation(expr) + t.GetLocation());
+                   auto t = lex();
+                   if (t.GetType() == Lexer::TokenType::Negate) {
+                       auto next = lex();
+                       if (next.GetType() == Lexer::TokenType::Type) {
+                           expr = sema.CreatePointerAccessExpression("~type", std::move(expr), sema.GetLocation(expr) + t.GetLocation());
+                           continue;
+                       }
+                   }
+                   if (t.GetType() != Lexer::TokenType::Identifier)
+                       throw std::runtime_error("Attempted to access a member through expr->ident, but didn't find ident or ~type after ->.");
+                   expr = sema.CreatePointerAccessExpression(t.GetValue(), std::move(expr), sema.GetLocation(expr) + t.GetLocation());
                    continue;
                }
                if (t.GetType() == Lexer::TokenType::Increment) {
@@ -498,9 +519,9 @@ namespace Wide {
                     lex(t);
                     auto ty = ParseExpression(lex, sema);
                     auto ident = lex();
-                    if (ident.GetType() != Lexer::TokenType::Identifier)
+                    if (ident.GetType() != Lexer::TokenType::Identifier && ident.GetType() != Lexer::TokenType::This)
                         throw std::runtime_error("Expected identifier after expression when parsing function argument.");
-                    sema.AddArgumentToFunctionGroup(ret, ident.GetValue(), ty);
+                    sema.AddArgumentToFunctionGroup(ret, ident.GetType() == Lexer::TokenType::This ? "this" : ident.GetValue(), ty);
                     t2 = lex();
                     if (t2.GetType() == Lexer::TokenType::CloseBracket)
                         break;
@@ -570,6 +591,9 @@ namespace Wide {
             switch(first.GetType()) {
             case Lexer::TokenType::Or:
                 val = "|";
+                break;
+            case Lexer::TokenType::Negate:
+                val = "~type";
                 break;
             }
             if (t.GetType() == Lexer::TokenType::CloseCurlyBracket) {
@@ -659,6 +683,17 @@ namespace Wide {
                     continue;
                 }
                 if (t.GetType() == Lexer::TokenType::Type) {
+                    auto open = lex();
+                    if (open.GetType() != Lexer::TokenType::OpenBracket)
+                        throw std::runtime_error("Expected ( after type to introduce a constructor at type scope.");
+                    ParseFunction(lex, sema, t, ty);
+                    t = lex();
+                    continue;
+                }
+                if (t.GetType() == Lexer::TokenType::Negate) {
+                    auto next = lex();
+                    if (next.GetType() != Lexer::TokenType::Type)
+                        throw std::runtime_error("Expected to find type after ~ at type scope.");
                     auto open = lex();
                     if (open.GetType() != Lexer::TokenType::OpenBracket)
                         throw std::runtime_error("Expected ( after type to introduce a constructor at type scope.");

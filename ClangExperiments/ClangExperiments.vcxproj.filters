@@ -192,6 +192,9 @@
     <ClInclude Include="Stages\Semantic\NullType.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="Stages\Semantic\MetaType.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp">
@@ -285,6 +288,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="Stages\Semantic\NullType.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Stages\Semantic\MetaType.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

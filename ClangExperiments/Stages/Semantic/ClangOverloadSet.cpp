@@ -54,12 +54,7 @@ Expression ClangOverloadSet::BuildCallWithTemplateArguments(clang::TemplateArgum
     for(unsigned i = 0; i < fun->getNumParams(); ++i) {
         types.push_back(a.GetClangType(*from, fun->getParamDecl(i)->getType()));
     }
-    auto funty = a.GetFunctionType(a.GetClangType(*from, fun->getResultType()), types);
-    Expression obj;
-    obj.t = funty;
-    obj.Expr = a.gen->CreateFunctionValue(from->MangleName(fun));
-    auto ret = funty->BuildCall(obj, args, a);
-    return ret;
+    return Expression(a.GetFunctionType(a.GetClangType(*from, fun->getResultType()), types), a.gen->CreateFunctionValue(from->MangleName(fun))).BuildCall(args, a);
 }
 
 Expression ClangOverloadSet::BuildCall(Expression mem, std::vector<Expression> args, Analyzer& a) {
@@ -74,7 +69,6 @@ Expression ClangOverloadSet::BuildMetaCall(Expression val, std::vector<Expressio
             return set->BuildCallWithTemplateArguments(&tempargs, val, std::move(args), a);
         }
     };
-    Expression out;
     auto tset = a.arena.Allocate<TemplateOverloadSet>();
     tset->set = this;    
     for(auto&& x : args) {
@@ -87,7 +81,5 @@ Expression ClangOverloadSet::BuildMetaCall(Expression val, std::vector<Expressio
         
         tset->tempargs.addArgument(clang::TemplateArgumentLoc(clang::TemplateArgument(clangty), tysrcinfo));
     }
-    out.Expr = val.Expr;
-    out.t = tset;
-    return out;
+    return Expression(tset, val.Expr);
 }

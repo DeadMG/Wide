@@ -18,7 +18,7 @@ using namespace Semantic;
 
 Expression ClangIncludeEntity::AccessMember(Expression, std::string name, Analyzer& a) {
     if (name == "mangle") {
-        struct ClangNameMangler : public Type {
+        struct ClangNameMangler : public MetaType {
             Expression BuildCall(Expression, std::vector<Expression> args, Analyzer& a) {
                 if (args.size() != 1)
                     throw std::runtime_error("Attempt to mangle name but passed more than one object.");
@@ -27,16 +27,10 @@ Expression ClangIncludeEntity::AccessMember(Expression, std::string name, Analyz
                 auto fun = dynamic_cast<Codegen::FunctionValue*>(args[0].Expr);
                 if (!fun)
                     throw std::runtime_error("The argument was not a Clang mangled function name.");
-                Expression out;
-                out.t = a.LiteralStringType;
-                out.Expr = a.gen->CreateStringExpression(fun->GetMangledName());
-                return out;
+                return Expression(a.LiteralStringType, a.gen->CreateStringExpression(fun->GetMangledName()));
             }
         };
-        Expression out;
-        out.Expr = nullptr;
-        out.t = a.arena.Allocate<ClangNameMangler>();
-        return out;
+        return a.arena.Allocate<ClangNameMangler>()->BuildValueConstruction(a);
     }
     throw std::runtime_error("Attempted to access a member of ClangIncludeEntity that did not exist.");
 }
@@ -54,8 +48,5 @@ Expression ClangIncludeEntity::BuildCall(Expression e, std::vector<Expression> a
         name = std::string(name.begin(), name.end() - 1);
     auto clangtu = a.LoadCPPHeader(std::move(name));
 
-    Expression out;
-    out.t = a.GetClangNamespace(*clangtu, clangtu->GetDeclContext());
-    out.Expr = nullptr;
-    return out;
+    return a.GetClangNamespace(*clangtu, clangtu->GetDeclContext())->BuildValueConstruction(a);
 }

@@ -40,7 +40,7 @@ Function::Function(std::vector<Type*> args, AST::Function* astfun, Analyzer& a, 
     variables.push_back(std::unordered_map<std::string, Expression>()); // Push back the argument scope
     unsigned num = 0;
     unsigned metaargs = 0;
-    if (mem)
+    if (mem && (astfun->args.size() < 1 || astfun->args.front().name != "this"))
         Args.push_back(a.GetLvalueType(mem));
     for(auto&& arg : astfun->args) {
         auto param = [this, num] { return num + ReturnType->IsComplexType() + (member != nullptr); };
@@ -158,7 +158,7 @@ void Function::ComputeBody(Analyzer& a) {
                     // When returning an lvalue or rvalue, decay them.
                     auto result = a.AnalyzeExpression(this, ret->RetExpr);
                     if (!ReturnType)
-                        ReturnType = result.t->Decay();
+                        ReturnType = result.steal ? result.t : result.t->Decay();
                     else if (ReturnType != result.t->Decay() && (a.RankConversion(result.t, ReturnType) == ConversionRank::None || a.RankConversion(ReturnType, result.t->Decay()) != ConversionRank::None))
                         throw std::runtime_error("Attempted to return more than 1 post-decay type from a function.");
                     
@@ -274,7 +274,7 @@ Expression Function::AccessMember(Expression e, std::string name, Analyzer& a) {
         if (member->HasMember(name))
             return self.t->AccessMember(self, std::move(name), a);
         auto context = member->GetDeclContext()->higher;
-        while(auto ty = dynamic_cast<AST::Type*>(context))
+        while(!dynamic_cast<AST::Module*>(context))
             context = context->higher;
         return a.GetDeclContext(context)->AccessMember(Expression(), name, a);
     }

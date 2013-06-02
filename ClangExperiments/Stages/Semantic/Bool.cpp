@@ -25,17 +25,12 @@ clang::QualType Bool::GetClangType(ClangUtil::ClangTU& where, Analyzer& a) {
 }
 
 Codegen::Expression* Bool::BuildBooleanConversion(Expression e, Analyzer& a) {
-    if (e.t->IsReference(this))
-        e = e.t->BuildValue(e, a);
-    return e.Expr;
+    return e.BuildValue(a).Expr;
 }
 
 Expression Bool::BuildValueConstruction(std::vector<Expression> args, Analyzer& a) {    
     if (args.empty()) {
-        Expression out;
-        out.t = this;
-        out.Expr = a.gen->CreateIntegralExpression(0, false, GetLLVMType(a));
-        return out;
+        return Expression(this, a.gen->CreateIntegralExpression(0, false, GetLLVMType(a)));
     }
 
     // This function may be directly or indirectly invoked to construct from some other U. But currently we don't support that for primitives.
@@ -48,27 +43,23 @@ Expression Bool::BuildValueConstruction(std::vector<Expression> args, Analyzer& 
 
     // If args[0] is T& or T&&, BuildValue().
     if (args[0].t->IsReference(this))
-        return args[0].t->BuildValue(args[0], a);
+        return args[0].BuildValue(a);
 
     // No U conversions supported right now.
     throw std::runtime_error("Don't support constructing a bool from another type right now.");
 }
 
 Expression Bool::BuildOr(Expression lhs, Expression rhs, Analyzer& a) {
-    lhs = lhs.t->BuildValue(lhs, a);
-    rhs = rhs.t->BuildValue(rhs, a);
-    return Expression(this, a.gen->CreateOrExpression(lhs.Expr, rhs.Expr));
+    return Expression(this, a.gen->CreateOrExpression(lhs.BuildBooleanConversion(a), rhs.BuildBooleanConversion(a)));
 }
 
 Expression Bool::BuildAnd(Expression lhs, Expression rhs, Analyzer& a) {
-    lhs = lhs.t->BuildValue(lhs, a);
-    rhs = rhs.t->BuildValue(rhs, a);
-    return Expression(this, a.gen->CreateAndExpression(lhs.Expr, rhs.Expr));
+    return Expression(this, a.gen->CreateAndExpression(lhs.BuildBooleanConversion(a), rhs.BuildBooleanConversion(a)));
 }
 
 std::size_t Bool::size(Analyzer& a) {
-    return 1;
+    return llvm::DataLayout(a.gen->main.getDataLayout()).getTypeAllocSize(llvm::IntegerType::getInt8Ty(a.gen->context));
 }
 std::size_t Bool::alignment(Analyzer& a) {
-    return 1;
+    return llvm::DataLayout(a.gen->main.getDataLayout()).getABIIntegerTypeAlignment(8);
 }

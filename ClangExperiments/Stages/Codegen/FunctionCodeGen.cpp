@@ -81,7 +81,7 @@ void Function::EmitCode(llvm::Module* mod, llvm::LLVMContext& con, Generator& g)
     g.TieFunction(f, this);
 
     for(auto&& x : statements)
-        x->Build(irbuilder, g);
+        x ? x->Build(irbuilder, g) : void();
 
     if (llvm::verifyFunction(*f, llvm::VerifierFailureAction::PrintMessageAction))
 		__debugbreak();

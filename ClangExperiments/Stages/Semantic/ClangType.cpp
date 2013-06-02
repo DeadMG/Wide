@@ -281,13 +281,19 @@ Expression ClangType::BuildGTEComparison(Expression lhs, Expression rhs, Analyze
 }
            
 Codegen::Expression* ClangType::BuildInplaceConstruction(Codegen::Expression* mem, std::vector<Expression> args, Analyzer& a) {
-    if (args.size() == 1 && args[0].t == this) {
-        return a.gen->CreateStore(mem, args[0].Expr);
+    if (args.size() == 1 && args[0].t->Decay() == this && !IsComplexType()) {
+        return a.gen->CreateStore(mem, args[0].t->BuildValue(args[0], a).Expr);
     }
     clang::UnresolvedSet<8> us;
 
     auto recdecl = type->getAsCXXRecordDecl();    
     // The first argument is pseudo-this.
+    if (!recdecl) {
+        type->dump();
+        // Just store.
+        __debugbreak();
+    }
+
     for(auto begin = recdecl->ctor_begin(); begin != recdecl->ctor_end(); ++begin) {
         us.addDecl(*begin);
     }
@@ -407,6 +413,7 @@ Wide::Codegen::Expression* ClangType::BuildBooleanConversion(Expression self, An
     auto e = funty->BuildCall(clangfunc, std::move(expressions), a);
 
     // The return type should be bool.
+    // If the function really returns an i1, the code generator will implicitly patch it up for us.
     if (e.t == a.Boolean)
         return e.Expr;
     throw std::runtime_error("Attempted to contextually convert to bool, but Clang gave back a function that did not return a bool. WTF.");

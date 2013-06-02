@@ -91,6 +91,7 @@
     <ClCompile Include="Stages\Semantic\FunctionType.cpp" />
     <ClCompile Include="Stages\Semantic\IntegralType.cpp" />
     <ClCompile Include="Stages\Semantic\LvalueType.cpp" />
+    <ClCompile Include="Stages\Semantic\MetaType.cpp" />
     <ClCompile Include="Stages\Semantic\NullType.cpp" />
     <ClCompile Include="Stages\Semantic\OverloadSet.cpp" />
     <ClCompile Include="Stages\Semantic\PointerType.cpp" />
@@ -112,6 +113,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Stages\Parser\Parser.h" />
+    <ClInclude Include="Stages\Semantic\MetaType.h" />
     <ClInclude Include="Stages\Semantic\NullType.h" />
     <ClInclude Include="Stages\Semantic\PointerType.h" />
     <ClInclude Include="Util\IstreamRange.h" />
