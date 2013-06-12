@@ -37,40 +37,23 @@ Expression ClangNamespace::AccessMember(Expression val, std::string name, Analyz
         auto result = lr.getFoundDecl()->getCanonicalDecl();
         // If result is a function, namespace, or variable decl, we're good. Else, cry like a little girl. A LITTLE GIRL.
         if (auto fundecl = llvm::dyn_cast<clang::FunctionDecl>(result)) {
-            Expression out;
             std::vector<Type*> args;
             for(auto decl = fundecl->param_begin(); decl != fundecl->param_end(); ++decl) {
                 args.push_back(a.GetClangType(*from, (*decl)->getType()));
             }
-            out.t = a.GetFunctionType(a.GetClangType(*from, fundecl->getResultType()), args);
-            if (a.gen)
-                out.Expr = a.gen->CreateFunctionValue(from->MangleName(fundecl));
-            return out;
+            return Expression(a.GetFunctionType(a.GetClangType(*from, fundecl->getResultType()), args), a.gen->CreateFunctionValue(from->MangleName(fundecl)));
         }
         if (auto vardecl = llvm::dyn_cast<clang::VarDecl>(result)) {
-            Expression out;
-            out.t = a.GetLvalueType(a.GetClangType(*from, vardecl->getType()));
-            if (a.gen)
-                out.Expr = a.gen->CreateGlobalVariable(from->MangleName(vardecl));
-            return out;
+            return Expression(a.GetLvalueType(a.GetClangType(*from, vardecl->getType())), a.gen->CreateGlobalVariable(from->MangleName(vardecl)));
         }
         if (auto namedecl = llvm::dyn_cast<clang::NamespaceDecl>(result)) {
-            Expression out;
-            out.t = a.GetConstructorType(a.GetClangNamespace(*from, namedecl));
-            out.Expr = nullptr;
-            return out;
+            return a.GetConstructorType(a.GetClangNamespace(*from, namedecl))->BuildValueConstruction(a);
         }
         if (auto typedefdecl = llvm::dyn_cast<clang::TypeDecl>(result)) {
-            Expression out;
-            out.Expr = nullptr;
-            out.t = a.GetConstructorType(a.GetClangType(*from, from->GetASTContext().getTypeDeclType(typedefdecl)));
-            return out;
+            return a.GetConstructorType(a.GetClangType(*from, from->GetASTContext().getTypeDeclType(typedefdecl)))->BuildValueConstruction(a);
         }
         if (auto tempdecl = llvm::dyn_cast<clang::ClassTemplateDecl>(result)) {
-            Expression out;
-            out.Expr = nullptr;
-            out.t = a.GetClangTemplateClass(*from, tempdecl);
-            return out;
+            return a.GetClangTemplateClass(*from, tempdecl)->BuildValueConstruction(a);
         }
         throw std::runtime_error("Found a decl but didn't know how to interpret it.");
     }
@@ -79,10 +62,5 @@ Expression ClangNamespace::AccessMember(Expression val, std::string name, Analyz
     for(auto it = lr.begin(); it != lr.end(); ++it) {
         us.addDecl(*it);
     }
-    Expression out;
-    out.t = a.arena.Allocate<ClangOverloadSet>(std::move(ptr), from, nullptr);
-    out.Expr = nullptr;
-    return out;
-
-   // throw std::runtime_error("Found a member in a Clang namespace, but it was not of a type that was supported.");
+    return Expression(a.arena.Allocate<ClangOverloadSet>(std::move(ptr), from, nullptr), nullptr);
 }

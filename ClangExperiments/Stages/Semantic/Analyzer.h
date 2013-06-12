@@ -94,7 +94,7 @@ namespace Wide {
             std::unordered_map<Type*, Type*> RvalueTypes;
             std::unordered_map<Type*, ConstructorType*> ConstructorTypes;
             std::unordered_map<clang::ClassTemplateDecl*, ClangTemplateClass*> ClangTemplateClasses;
-            std::unordered_map<AST::FunctionOverloadSet*, OverloadSet*> OverloadSets;
+            std::unordered_map<AST::FunctionOverloadSet*, std::unordered_map<Type*, OverloadSet*>> OverloadSets;
 
             std::unordered_map<AST::DeclContext*, Type*> DeclContexts;
             std::unordered_map<AST::Type*, std::unordered_map<Type*, UserDefinedType*>> UDTs;
@@ -105,6 +105,10 @@ namespace Wide {
             ClangCommonState ccs;
 
             NullType* null;
+            Type* LiteralStringType;
+            Type* Void;
+            Type* Boolean;
+            Type* NothingFunctor;
 
         public:
             ConversionRank RankConversion(Type* from, Type* to);
@@ -115,9 +119,11 @@ namespace Wide {
 
             Codegen::Generator* gen;
 
-            Type* LiteralStringType;
-            Type* Void;
-            Type* Boolean;
+            Type* GetVoidType();
+            Type* GetNullType();
+            Type* GetBooleanType();
+            Type* GetNothingFunctorType();
+            Type* GetLiteralStringType();
             
             void AddDefaultConstructor(AST::Type* t, UserDefinedType* ty);
             void AddCopyConstructor(AST::Type* t, UserDefinedType* ty);
@@ -134,12 +140,11 @@ namespace Wide {
             Type* GetRvalueType(Type* t);
             ConstructorType* GetConstructorType(Type* t);
             ClangTemplateClass* GetClangTemplateClass(ClangUtil::ClangTU& from, clang::ClassTemplateDecl*);
-            OverloadSet* GetOverloadSet(AST::FunctionOverloadSet* set, UserDefinedType* nonstatic = nullptr);
+            OverloadSet* GetOverloadSet(AST::FunctionOverloadSet* set, Type* nonstatic = nullptr);
             UserDefinedType* GetUDT(AST::Type*, Type* context);
             Type* GetDeclContext(AST::DeclContext* con);
             IntegralType* GetIntegralType(unsigned, bool);
             PointerType* GetPointerType(Type* to);
-            NullType* GetNullType();
             
             Expression AnalyzeExpression(Type* t, AST::Expression* e);
             Expression LookupIdentifier(AST::ModuleLevelDeclaration* decl, std::string ident);

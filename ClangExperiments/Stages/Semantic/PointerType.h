@@ -7,6 +7,8 @@ namespace Wide {
         class PointerType : public Type {
             Type* pointee;
         public:
+            using Type::BuildInplaceConstruction;
+
             PointerType(Type* point);
             Codegen::Expression* BuildInplaceConstruction(Codegen::Expression* mem, std::vector<Expression> args, Analyzer& a);
             Expression BuildDereference(Expression obj, Analyzer& a);

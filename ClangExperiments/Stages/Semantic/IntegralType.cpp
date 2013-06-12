@@ -47,24 +47,18 @@ std::function<llvm::Type*(llvm::Module*)> IntegralType::GetLLVMType(Analyzer& a)
     };
 }
 Expression IntegralType::BuildRightShift(Expression lhs, Expression rhs, Analyzer& a) {
-    lhs = lhs.t->BuildValue(lhs, a);
-    rhs = rhs.t->BuildValue(rhs, a);
+    lhs = lhs.BuildValue(a);
+    rhs = rhs.BuildValue(a);
     if (!dynamic_cast<IntegralType*>(rhs.t)) throw std::runtime_error("Attempted to compare an integer with something that was not an integer.");
     Extend(lhs, rhs, a);
-    Expression out;
-    out.t = this;
-    out.Expr = a.gen->CreateRightShift(lhs.Expr, rhs.Expr, is_signed);
-    return out;
+    return Expression(lhs.t, a.gen->CreateRightShift(lhs.Expr, rhs.Expr, is_signed));
 }
 Expression IntegralType::BuildLeftShift(Expression lhs, Expression rhs, Analyzer& a) {
-    lhs = lhs.t->BuildValue(lhs, a);
-    rhs = rhs.t->BuildValue(rhs, a);
+    lhs = lhs.BuildValue(a);
+    rhs = rhs.BuildValue(a);
     if (!dynamic_cast<IntegralType*>(rhs.t)) throw std::runtime_error("Attempted to compare an integer with something that was not an integer.");
     Extend(lhs, rhs, a);
-    Expression out;
-    out.t = this;
-    out.Expr = a.gen->CreateLeftShift(lhs.Expr, rhs.Expr);
-    return out;
+    return Expression(lhs.t, a.gen->CreateLeftShift(lhs.Expr, rhs.Expr));
 }
 
 void IntegralType::Extend(Expression& lhs, Expression& rhs, Analyzer& a) {
@@ -88,8 +82,8 @@ void IntegralType::Extend(Expression& lhs, Expression& rhs, Analyzer& a) {
 }
 
 Expression IntegralType::BuildLTComparison(Expression lhs, Expression rhs, Analyzer& a) {
-    lhs = lhs.t->BuildValue(lhs, a);
-    rhs = rhs.t->BuildValue(rhs, a);
+    lhs = lhs.BuildValue(a);
+    rhs = rhs.BuildValue(a);
     auto int_type = dynamic_cast<IntegralType*>(rhs.t);
     if (!int_type) throw std::runtime_error("Attempted to compare an integer type with something that was not another integer.");
     if (is_signed != int_type->is_signed) throw std::runtime_error("Attempted to compare an integer type with a value of another integer type of different signedness.");
@@ -97,28 +91,28 @@ Expression IntegralType::BuildLTComparison(Expression lhs, Expression rhs, Analy
     Extend(lhs, rhs, a);
 
     if (is_signed)
-        return Expression(a.Boolean, a.gen->CreateSLT(lhs.Expr, rhs.Expr));
+        return Expression(a.GetBooleanType(), a.gen->CreateSLT(lhs.Expr, rhs.Expr));
     else
-        return Expression(a.Boolean, a.gen->CreateULT(lhs.Expr, rhs.Expr));
+        return Expression(a.GetBooleanType(), a.gen->CreateULT(lhs.Expr, rhs.Expr));
 }
 Expression IntegralType::BuildEQComparison(Expression lhs, Expression rhs, Analyzer& a) {
-    lhs = lhs.t->BuildValue(lhs, a);
-    rhs = rhs.t->BuildValue(rhs, a);
+    lhs = lhs.BuildValue(a);
+    rhs = rhs.BuildValue(a);
     if (!dynamic_cast<IntegralType*>(rhs.t)) throw std::runtime_error("Attempted to compare an integer with something that was not an integer.");
     Extend(lhs, rhs, a);
-    return Expression(a.Boolean, a.gen->CreateEqualityExpression(lhs.Expr, rhs.Expr));
+    return Expression(a.GetBooleanType(), a.gen->CreateEqualityExpression(lhs.Expr, rhs.Expr));
 }
 
 Expression IntegralType::BuildMultiply(Expression lhs, Expression rhs, Analyzer& a) {
-    lhs = lhs.t->BuildValue(lhs, a);
-    rhs = rhs.t->BuildValue(rhs, a);
+    lhs = lhs.BuildValue(a);
+    rhs = rhs.BuildValue(a);
     if (!dynamic_cast<IntegralType*>(rhs.t)) throw std::runtime_error("Attempted to multiply an integer with something that was not an integer.");
     Extend(lhs, rhs, a);
     return Expression(this, a.gen->CreateMultiplyExpression(lhs.Expr, rhs.Expr));
 }
-Expression IntegralType::BuildPlus(Expression lhs, Expression rhs, Analyzer& a) {    
-    lhs = lhs.t->BuildValue(lhs, a);
-    rhs = rhs.t->BuildValue(rhs, a);
+Expression IntegralType::BuildPlus(Expression lhs, Expression rhs, Analyzer& a) {   
+    lhs = lhs.BuildValue(a);
+    rhs = rhs.BuildValue(a);
     if (!dynamic_cast<IntegralType*>(rhs.t)) throw std::runtime_error("Attempted to add an integer with something that was not an integer.");
     Extend(lhs, rhs, a);
     return Expression(lhs.t, a.gen->CreatePlusExpression(lhs.Expr, rhs.Expr));

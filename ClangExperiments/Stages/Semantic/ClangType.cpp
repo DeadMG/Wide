@@ -281,13 +281,19 @@ Expression ClangType::BuildGTEComparison(Expression lhs, Expression rhs, Analyze
 }
            
 Codegen::Expression* ClangType::BuildInplaceConstruction(Codegen::Expression* mem, std::vector<Expression> args, Analyzer& a) {
-    if (args.size() == 1 && args[0].t == this) {
-        return a.gen->CreateStore(mem, args[0].Expr);
+    if (args.size() == 1 && args[0].t->Decay() == this && !IsComplexType()) {
+        return a.gen->CreateStore(mem, args[0].t->BuildValue(args[0], a).Expr);
     }
     clang::UnresolvedSet<8> us;
 
     auto recdecl = type->getAsCXXRecordDecl();    
     // The first argument is pseudo-this.
+    if (!recdecl) {
+        type->dump();
+        // Just store.
+        __debugbreak();
+    }
+
     for(auto begin = recdecl->ctor_begin(); begin != recdecl->ctor_end(); ++begin) {
         us.addDecl(*begin);
     }
@@ -407,7 +413,8 @@ Wide::Codegen::Expression* ClangType::BuildBooleanConversion(Expression self, An
     auto e = funty->BuildCall(clangfunc, std::move(expressions), a);
 
     // The return type should be bool.
-    if (e.t == a.Boolean)
+    // If the function really returns an i1, the code generator will implicitly patch it up for us.
+    if (e.t == a.GetBooleanType())
         return e.Expr;
     throw std::runtime_error("Attempted to contextually convert to bool, but Clang gave back a function that did not return a bool. WTF.");
 }
@@ -459,22 +466,6 @@ Expression ClangType::BuildDereference(Expression self, Analyzer& a) {
     out.t = a.arena.Allocate<ClangOverloadSet>(std::move(ptr), from, a.GetLvalueType(this));
     out.Expr = self.Expr;
     return out.t->BuildCall(out, std::vector<Expression>(), a);
-}
-
-Codegen::Expression* ClangType::BuildDestructor(Expression obj, Analyzer& a) {
-    assert(obj.t->IsReference() && "Internal compiler error: Attempted to destruct a value.");
-    if (!type->getAsCXXRecordDecl()) return nullptr;
-    if (type->getAsCXXRecordDecl()->hasTrivialDestructor()) return nullptr;
-    auto decl = from->GetSema().LookupDestructor(type->getAsCXXRecordDecl());
-    // void(T*)
-    Expression out;
-    out.Expr = a.gen->CreateFunctionValue(from->MangleName(decl));
-    std::vector<Type*> t;
-    t.push_back(obj.t);
-    out.t = a.GetFunctionType(a.Void, t);
-    std::vector<Expression> args;
-    args.push_back(obj);
-    return out.t->BuildCall(out, std::move(args), a).Expr;
 }
 
 Expression ClangType::BuildIncrement(Expression self, bool postfix, Analyzer& a) {

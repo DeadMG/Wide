@@ -22,6 +22,7 @@
 #include "OverloadSet.h"
 #include "UserDefinedType.h"
 #include "NullType.h"
+#include "MetaType.h"
 #include <sstream>
 #include <iostream>
 #include <unordered_set>
@@ -68,31 +69,17 @@ Analyzer::Analyzer(const Options::Clang& opts, Codegen::Generator* g)
     , null(nullptr)
 {
     LiteralStringType = arena.Allocate<StringType>();
+    struct NothingCall : public MetaType {
+        Expression BuildCall(Expression val, std::vector<Expression> args, Analyzer& a) {
+            return val;
+        }
+    };
+    null = arena.Allocate<NullType>();
+    NothingFunctor = arena.Allocate<NothingCall>();
 }
 
 void Analyzer::operator()(AST::Module* GlobalModule) {
-    struct decltypetype : public Type {  
-        std::size_t size(Analyzer& a) { return llvm::DataLayout(a.gen->main.getDataLayout()).getTypeAllocSize(llvm::IntegerType::getInt8Ty(a.gen->context)); }
-        std::size_t alignment(Analyzer& a) { return llvm::DataLayout(a.gen->main.getDataLayout()).getABIIntegerTypeAlignment(8); }
-        std::function<llvm::Type*(llvm::Module*)> GetLLVMType(Analyzer& a) {
-            std::stringstream typenam;
-            typenam << this;
-            auto nam = typenam.str();
-            return [=](llvm::Module* mod) -> llvm::Type* {
-                if (mod->getTypeByName(nam))
-                    return mod->getTypeByName(nam);
-                return llvm::StructType::create(nam, llvm::IntegerType::getInt8Ty(mod->getContext()), nullptr);
-            };
-        }
-
-        Codegen::Expression* BuildInplaceConstruction(Codegen::Expression* mem, std::vector<Expression> args, Analyzer& a) {
-            if (args.size() > 1)
-                throw std::runtime_error("Attempt to construct a type object with too many arguments.");
-            if (args.size() == 1 && args[0].t->Decay() != this)
-                throw std::runtime_error("Attempt to construct a type object with something other than another instance of that type.");
-            return mem;
-        }
-
+    struct decltypetype : public MetaType { 
         Expression BuildCall(Expression obj, std::vector<Expression> args, Analyzer& a) {
             if (args.size() != 1)
                 throw std::runtime_error("Attempt to call decltype with more or less than 1 argument.");
@@ -103,6 +90,26 @@ void Analyzer::operator()(AST::Module* GlobalModule) {
             if (!dynamic_cast<LvalueType*>(args[0].t))
                 args[0].t = a.GetRvalueType(args[0].t);
             return a.GetConstructorType(args[0].t)->BuildValueConstruction(std::vector<Expression>(), a);
+        }
+    };
+
+    struct PointerCastType : public MetaType {
+        Expression BuildCall(Expression obj, std::vector<Expression> args, Analyzer& a) {
+            if (args.size() != 2)
+                throw std::runtime_error("Attempted to call reinterpret_cast with a number of arguments that was not two.");
+            auto conty = dynamic_cast<ConstructorType*>(args[0].t->Decay());
+            if (!conty) throw std::runtime_error("Attempted to call reinterpret_cast with a first argument that was not a type.");
+            if (!dynamic_cast<PointerType*>(conty->GetConstructedType())) throw std::runtime_error("Attempted to call reinterpret_cast with a first argument that was not a pointer type.");
+            if (!dynamic_cast<PointerType*>(args[1].t->Decay())) throw std::runtime_error("Attempted to call reinterpret_cast with a second argument that was not of pointer type.");
+            return Expression(conty->GetConstructedType(), args[1].Expr);
+        }
+    };
+
+    struct MoveType : public MetaType {
+        Expression BuildCall(Expression obj, std::vector<Expression> args, Analyzer& a) {
+            if (args.size() != 1)
+                throw std::runtime_error("Attempt to call move with a number of arguments that was not one.");
+            return Expression(a.GetRvalueType(args[0].t->Decay()), args[0].Expr);
         }
     };
     
@@ -128,6 +135,8 @@ void Analyzer::operator()(AST::Module* GlobalModule) {
     GetWideModule(GlobalModule)->AddSpecialMember("long", GetWideModule(GlobalModule)->AccessMember(Expression(), "int64", *this));
 
     GetWideModule(GlobalModule)->AddSpecialMember("null", GetNullType()->BuildValueConstruction(std::vector<Expression>(), *this));
+    GetWideModule(GlobalModule)->AddSpecialMember("reinterpret_cast", arena.Allocate<PointerCastType>()->BuildValueConstruction(std::vector<Expression>(), *this));
+    GetWideModule(GlobalModule)->AddSpecialMember("move", arena.Allocate<MoveType>()->BuildValueConstruction(std::vector<Expression>(), *this));
 
     try {      
         GetWideModule(GlobalModule)->AccessMember(Expression(), "Standard", *this).t->AccessMember(Expression(), "Main", *this).t->BuildCall(Expression(), std::vector<Expression>(), *this);
@@ -155,19 +164,18 @@ Expression Analyzer::AnalyzeExpression(Type* t, AST::Expression* e) {
         auto lhs = AnalyzeExpression(t, shift->lhs);
         auto rhs = AnalyzeExpression(t, shift->rhs);
 
-        return lhs.t->BuildLeftShift(lhs, rhs, *this);
+        return lhs.BuildLeftShift(rhs, *this);
     }
 
     if (auto shift = dynamic_cast<AST::RightShiftExpr*>(e)) {
         auto lhs = AnalyzeExpression(t, shift->lhs);
         auto rhs = AnalyzeExpression(t, shift->rhs);
-
-        return lhs.t->BuildRightShift(lhs, rhs, *this);
+        return lhs.BuildRightShift(rhs, *this);
     }
 
     if (auto access = dynamic_cast<AST::MemAccessExpr*>(e)) {
         auto val = AnalyzeExpression(t, access->expr);
-        return val.t->AccessMember(val, access->mem, *this);
+        return val.AccessMember(access->mem, *this);
     }
 
     if (auto funccall = dynamic_cast<AST::FunctionCallExpr*>(e)) {
@@ -179,7 +187,7 @@ Expression Analyzer::AnalyzeExpression(Type* t, AST::Expression* e) {
                 __debugbreak();
         }
 
-        return fun.t->BuildCall(fun, std::move(args), *this);
+        return fun.BuildCall(std::move(args), *this);
     }
 
     if (auto ident = dynamic_cast<AST::IdentifierExpr*>(e)) {
@@ -191,13 +199,13 @@ Expression Analyzer::AnalyzeExpression(Type* t, AST::Expression* e) {
     if (auto ass = dynamic_cast<AST::AssignmentExpr*>(e)) {
         auto lhs = AnalyzeExpression(t, ass->lhs);
         auto rhs = AnalyzeExpression(t, ass->rhs);
-        return lhs.t->BuildAssignment(lhs, rhs, *this);
+        return lhs.BuildAssignment(rhs, *this);
     }
 
     if (auto cmp = dynamic_cast<AST::EqCmpExpression*>(e)) {        
         auto lhs = AnalyzeExpression(t, cmp->lhs);
         auto rhs = AnalyzeExpression(t, cmp->rhs);
-        return lhs.t->BuildEQComparison(lhs, rhs, *this);
+        return lhs.BuildEQComparison(rhs, *this);
     }
 
     if (auto mcall = dynamic_cast<AST::MetaCallExpr*>(e)) {
@@ -206,19 +214,19 @@ Expression Analyzer::AnalyzeExpression(Type* t, AST::Expression* e) {
         for(auto&& arg : mcall->args)
             args.push_back(AnalyzeExpression(t, arg));
 
-        return fun.t->BuildMetaCall(fun, std::move(args), *this);
+        return fun.BuildMetaCall(std::move(args), *this);
     }
 
     if (auto neq = dynamic_cast<AST::NotEqCmpExpression*>(e)) {     
         auto lhs = AnalyzeExpression(t, neq->lhs);
         auto rhs = AnalyzeExpression(t, neq->rhs);
-        return lhs.t->BuildNEComparison(lhs, rhs, *this);        
+        return lhs.BuildNEComparison(rhs, *this);        
     }
 
     if (auto ge = dynamic_cast<AST::GTExpression*>(e)) {
         auto lhs = AnalyzeExpression(t, ge->lhs);
         auto rhs = AnalyzeExpression(t, ge->rhs);
-        return lhs.t->BuildGTComparison(lhs, rhs, *this);
+        return lhs.BuildGTComparison(rhs, *this);
     }
 
     if (auto integer = dynamic_cast<AST::IntegerExpression*>(e)) {
@@ -231,11 +239,11 @@ Expression Analyzer::AnalyzeExpression(Type* t, AST::Expression* e) {
     if (auto ge = dynamic_cast<AST::LTExpression*>(e)) {
         auto lhs = AnalyzeExpression(t, ge->lhs);
         auto rhs = AnalyzeExpression(t, ge->rhs);
-        return lhs.t->BuildLTComparison(lhs, rhs, *this);
+        return lhs.BuildLTComparison(rhs, *this);
     }
     if (auto ne = dynamic_cast<AST::NegateExpression*>(e)) {
         auto expr = AnalyzeExpression(t, ne->ex);
-        expr.Expr = gen->CreateNegateExpression(expr.t->BuildBooleanConversion(expr, *this));
+        expr.Expr = gen->CreateNegateExpression(expr.BuildBooleanConversion(*this));
         expr.t = Boolean;
         return expr;
     }
@@ -382,51 +390,48 @@ Expression Analyzer::AnalyzeExpression(Type* t, AST::Expression* e) {
     }
 
     if (auto derefexpr = dynamic_cast<AST::DereferenceExpression*>(e)) {
-        auto obj = AnalyzeExpression(t, derefexpr->ex);
-        return obj.t->BuildDereference(obj, *this);
+        return AnalyzeExpression(t, derefexpr->ex).BuildDereference(*this);
     }
 
     if (auto orexpr = dynamic_cast<AST::OrExpression*>(e)) {
         auto lhs = AnalyzeExpression(t, orexpr->lhs);
         auto rhs = AnalyzeExpression(t, orexpr->rhs);
-        return lhs.t->BuildOr(lhs, rhs, *this);
+        return lhs.BuildOr(rhs, *this);
     }
 
     if (auto andexpr = dynamic_cast<AST::AndExpression*>(e)) {
         auto lhs = AnalyzeExpression(t, andexpr->lhs);
         auto rhs = AnalyzeExpression(t, andexpr->rhs);
-        return lhs.t->BuildAnd(lhs, rhs, *this);
+        return lhs.BuildAnd(rhs, *this);
     }
 
     if (auto mul = dynamic_cast<AST::Multiply*>(e)) {
         auto lhs = AnalyzeExpression(t, mul->lhs);
         auto rhs = AnalyzeExpression(t, mul->rhs);
-        return lhs.t->BuildMultiply(lhs, rhs, *this);
+        return lhs.BuildMultiply(rhs, *this);
     }
     if (auto inc = dynamic_cast<AST::Increment*>(e)) {
         auto lhs = AnalyzeExpression(t, inc->ex);
-        return lhs.t->BuildIncrement(lhs, inc->postfix, *this);
+        return lhs.BuildIncrement(inc->postfix, *this);
     }
     if (auto plus = dynamic_cast<AST::Addition*>(e)) {
         auto lhs = AnalyzeExpression(t, plus->lhs);
         auto rhs = AnalyzeExpression(t, plus->rhs);
-        return lhs.t->BuildPlus(lhs, rhs, *this);
+        return lhs.BuildPlus(rhs, *this);
     }
 
     if (auto ty = dynamic_cast<AST::Type*>(e)) {
         ty->higher = t->GetDeclContext();
         auto udt = GetUDT(ty, t);
-        return GetConstructorType(udt)->BuildValueConstruction(std::vector<Expression>(), *this);
+        return GetConstructorType(udt)->BuildValueConstruction(*this);
     }
 
     if (auto ptr = dynamic_cast<AST::PointerAccess*>(e)) {
-        auto expr = AnalyzeExpression(t, ptr->ex);
-        return expr.t->PointerAccessMember(expr, ptr->member, *this);
+        return AnalyzeExpression(t, ptr->ex).PointerAccessMember(ptr->member, *this);
     }
 
     if (auto add = dynamic_cast<AST::AddressOfExpression*>(e)) {
-        auto expr = AnalyzeExpression(t, add->ex);
-        return expr.t->AddressOf(expr, *this);
+        return AnalyzeExpression(t, add->ex).AddressOf(*this);
     }
 
     throw std::runtime_error("Unrecognized AST node");
@@ -460,6 +465,7 @@ Type* Analyzer::GetClangType(ClangUtil::ClangTU& from, clang::QualType t) {
         auto pt = t->getPointeeType();
         if (pt->isCharType())
             return LiteralStringType;
+        return GetPointerType(GetClangType(from, pt));
     }
     if (t->isBooleanType())
         return Boolean;
@@ -556,10 +562,13 @@ ClangTemplateClass* Analyzer::GetClangTemplateClass(ClangUtil::ClangTU& from, cl
     return ClangTemplateClasses[decl] = arena.Allocate<ClangTemplateClass>(decl, &from);
 }
 
-OverloadSet* Analyzer::GetOverloadSet(AST::FunctionOverloadSet* set, UserDefinedType* t) {
+OverloadSet* Analyzer::GetOverloadSet(AST::FunctionOverloadSet* set, Type* t) {
+    if (t)
+        assert(dynamic_cast<UserDefinedType*>(t->Decay()));
     if (OverloadSets.find(set) != OverloadSets.end())
-        return OverloadSets[set];
-    return OverloadSets[set] = arena.Allocate<OverloadSet>(set, *this, t);
+        if (OverloadSets[set].find(t) != OverloadSets[set].end())
+            return OverloadSets[set][t];
+    return OverloadSets[set][t] = arena.Allocate<OverloadSet>(set, *this, t);
 }
 void Analyzer::AddClangType(clang::QualType t, Type* match) {
     if (ClangTypes.find(t) != ClangTypes.end())
@@ -731,8 +740,18 @@ PointerType* Analyzer::GetPointerType(Type* to) {
         return Pointers[to];
     return Pointers[to] = arena.Allocate<PointerType>(to);
 }
-
-NullType* Analyzer::GetNullType() {
-    if (null) return null;
-    return null = arena.Allocate<NullType>();
+Type* Analyzer::GetNullType() {
+    return null;
+}
+Type* Analyzer::GetBooleanType() {
+    return Boolean;
+}
+Type* Analyzer::GetVoidType() {
+    return Void;
+}
+Type* Analyzer::GetNothingFunctorType() {
+    return NothingFunctor;
+}
+Type* Analyzer::GetLiteralStringType() {
+    return LiteralStringType;
 }

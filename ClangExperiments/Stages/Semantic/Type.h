@@ -37,9 +37,43 @@ namespace Wide {
                 , steal(false) {}
             Expression(Type* ty, Codegen::Expression* ex)
                 : t(ty), Expr(ex), steal(false) {}
+
             Type* t;
             Codegen::Expression* Expr;
             bool steal;
+            
+            /*Expression BuildValueConstruction(std::vector<Expression> args, Analyzer& a);
+            Expression BuildRvalueConstruction(std::vector<Expression> args, Analyzer& a);
+            Expression BuildLvalueConstruction(std::vector<Expression> args, Analyzer& a);
+            Codegen::Expression* BuildInplaceConstruction(Codegen::Expression* mem, std::vector<Expression> args, Analyzer& a);*/
+
+            Expression BuildValue(Analyzer& a);
+            Expression BuildRightShift(Expression rhs, Analyzer& a);
+            Expression BuildLeftShift(Expression rhs, Analyzer& a);
+            Expression BuildAssignment(Expression rhs, Analyzer& a);
+            Expression AccessMember(std::string name, Analyzer& a);
+            Expression BuildCall(std::vector<Expression> args, Analyzer& a);
+            Expression BuildCall(Expression arg, Analyzer& a);
+            Expression BuildCall(Analyzer& a);
+            Expression BuildMetaCall(std::vector<Expression> args, Analyzer& a);
+            Expression BuildEQComparison(Expression rhs, Analyzer& a);
+            Expression BuildNEComparison(Expression rhs, Analyzer& a);
+            Expression BuildLTComparison(Expression rhs, Analyzer& a);
+            Expression BuildLTEComparison(Expression rhs, Analyzer& a);
+            Expression BuildGTComparison(Expression rhs, Analyzer& a);
+            Expression BuildGTEComparison(Expression rhs, Analyzer& a);
+            Expression BuildDereference(Analyzer& a);
+            Expression BuildOr(Expression rhs, Analyzer& a);
+            Expression BuildAnd(Expression rhs, Analyzer& a);            
+            Expression BuildMultiply(Expression rhs, Analyzer& a);
+            Expression BuildPlus(Expression rhs, Analyzer& a);
+            Expression BuildIncrement(bool postfix, Analyzer& a);
+
+            Expression PointerAccessMember(std::string name, Analyzer& a);
+
+            Expression AddressOf(Analyzer& a);
+
+            Codegen::Expression* BuildBooleanConversion(Analyzer& a);
         };
 
         enum ConversionRank {
@@ -82,6 +116,17 @@ namespace Wide {
             virtual Codegen::Expression* BuildInplaceConstruction(Codegen::Expression* mem, std::vector<Expression> args, Analyzer& a) {
                 throw std::runtime_error("Could not inplace construct this type.");
             }
+            
+            virtual Expression BuildValueConstruction(Expression arg, Analyzer& a);
+            virtual Expression BuildRvalueConstruction(Expression arg, Analyzer& a);
+            virtual Expression BuildLvalueConstruction(Expression args, Analyzer& a);
+            virtual Codegen::Expression* BuildInplaceConstruction(Codegen::Expression* mem, Expression args, Analyzer& a);
+
+            virtual Expression BuildValueConstruction(Analyzer& a);
+            virtual Expression BuildRvalueConstruction(Analyzer& a);
+            virtual Expression BuildLvalueConstruction(Analyzer& a);
+            virtual Codegen::Expression* BuildInplaceConstruction(Codegen::Expression* mem, Analyzer& a);
+
             virtual Expression BuildValue(Expression lhs, Analyzer& a) {
                 if (IsComplexType())
                     throw std::runtime_error("Internal Compiler Error: Attempted to build a complex type into a register.");
@@ -97,9 +142,7 @@ namespace Wide {
             virtual Expression BuildAssignment(Expression lhs, Expression rhs, Analyzer& a) {
                 throw std::runtime_error("Attempted to assign to a type that did not support it.");
             }            
-            virtual Expression AccessMember(Expression, std::string name, Analyzer& a) {
-                throw std::runtime_error("Attempted to access the member of a type that did not support it.");
-            }
+            virtual Expression AccessMember(Expression, std::string name, Analyzer& a);
             virtual Expression BuildCall(Expression val, std::vector<Expression> args, Analyzer& a) {
                 throw std::runtime_error("Attempted to call a type that did not support it.");
             }
@@ -166,7 +209,6 @@ namespace Wide {
             virtual Codegen::Expression* BuildBooleanConversion(Expression val, Analyzer& a) {
                 throw std::runtime_error("Could not convert a type to boolean.");
             }
-            virtual Codegen::Expression* BuildDestructor(Expression val, Analyzer& a) { return nullptr; }
             virtual std::size_t size(Analyzer& a) { throw std::runtime_error("Attempted to size a meta-type that does not have a run-time size."); }
             virtual std::size_t alignment(Analyzer& a) { throw std::runtime_error("Attempted to align a meta-type that does not have a run-time alignment."); }
                         

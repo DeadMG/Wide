@@ -2,9 +2,9 @@ using test := cpp("WideLibrary/test.h");
 using Range := Standard.Range;
 using Algorithm := Standard.Algorithm;
 
+type t {
+    ~type() { std.cout << "~t()"; }
+}
 Main() {
-    Range.Delimited(1, 11)
-        | Algorithm.Map(function(val) { return Range.Delimited(1, val + 1); })
-        | Algorithm.Flatten()
-        | Algorithm.Copy(Range.StreamInserter(std.cout));
+    y := t();
 }

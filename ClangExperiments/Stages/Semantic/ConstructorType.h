@@ -1,25 +1,22 @@
 #pragma once
 
-#include "Type.h"
+#include "MetaType.h"
 
 namespace Wide {
     namespace Semantic {
-        class ConstructorType : public Type {
+        class ConstructorType : public MetaType {
             Type* t;
+            Type* emplace;
         public:
-            ConstructorType(Type* con)
-                : t(con) {}
+            ConstructorType(Type* con);
             Expression BuildCall(Expression, std::vector<Expression>, Analyzer& a);
 
             Type* GetConstructedType() {
                 return t;
             }
             Expression AccessMember(Expression, std::string name, Analyzer& a);
-            std::function<llvm::Type*(llvm::Module*)> GetLLVMType(Analyzer& a);
-            Codegen::Expression* BuildInplaceConstruction(Codegen::Expression* mem, std::vector<Expression> args, Analyzer& a);
             Expression PointerAccessMember(Expression obj, std::string name, Analyzer& a);
-            std::size_t size(Analyzer& a);
-            std::size_t alignment(Analyzer& a);
+            using Type::BuildValueConstruction;
         };
     }
 }

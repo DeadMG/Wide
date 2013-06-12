@@ -2,6 +2,8 @@
 #include "ConstructorType.h"
 #include "Analyzer.h"
 #include "ClangTU.h"
+#include "../Codegen/Expression.h"
+#include "IntegralType.h"
 
 using namespace Wide;
 using namespace Semantic;
@@ -15,17 +17,25 @@ using namespace Semantic;
 
 #pragma warning(pop)
 
-Expression ClangTemplateClass::BuildMetaCall(Expression, std::vector<Expression> args, Analyzer& a) {
+Expression ClangTemplateClass::BuildCall(Expression, std::vector<Expression> args, Analyzer& a) {
     clang::TemplateArgumentListInfo tl;
     for(auto&& x : args) {
-        auto con = dynamic_cast<ConstructorType*>(x.t);
-        if (!con)
-            throw std::runtime_error("Only support types as arguments to Clang templates right now.");
-        auto clangty = con->GetConstructedType()->GetClangType(*from, a);
-
-        auto tysrcinfo = from->GetASTContext().getTrivialTypeSourceInfo(clangty);
-        
-        tl.addArgument(clang::TemplateArgumentLoc(clang::TemplateArgument(clangty), tysrcinfo));
+        if (auto con = dynamic_cast<ConstructorType*>(x.t)) {
+            auto clangty = con->GetConstructedType()->GetClangType(*from, a);
+            
+            auto tysrcinfo = from->GetASTContext().getTrivialTypeSourceInfo(clangty);
+            
+            tl.addArgument(clang::TemplateArgumentLoc(clang::TemplateArgument(clangty), tysrcinfo));
+        }
+        if (auto in = dynamic_cast<IntegralType*>(x.t)) {
+            if (auto integral = dynamic_cast<Codegen::IntegralExpression*>(x.Expr)) {
+                clang::IntegerLiteral lit(from->GetASTContext(), llvm::APInt(64, integral->value, integral->sign), from->GetASTContext().LongLongTy, clang::SourceLocation());
+                tl.addArgument(clang::TemplateArgumentLoc(clang::TemplateArgument(&lit), clang::TemplateArgumentLocInfo()));
+            } else {
+                throw std::runtime_error("Attempted to pass a non-literal integer to a Clang template.");
+            }
+        }
+        throw std::runtime_error("Attempted to pass something that was not an integer or a type to a Clang template.");
     }
     
     llvm::SmallVector<clang::TemplateArgument, 10> tempargs;
@@ -65,8 +75,5 @@ Expression ClangTemplateClass::BuildMetaCall(Expression, std::vector<Expression>
 
     //from->GetSema().InstantiateClassTemplateSpecializationMembers(loc, llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(spec->getDefinition()), tsk);
     
-    Expression out;
-    out.Expr = nullptr;
-    out.t = a.GetConstructorType(a.GetClangType(*from, from->GetASTContext().getRecordType(spec)));
-    return out;
+    return a.GetConstructorType(a.GetClangType(*from, from->GetASTContext().getRecordType(spec)))->BuildValueConstruction(a);
 }

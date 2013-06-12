@@ -21,7 +21,7 @@ std::function<llvm::Type*(llvm::Module*)> FunctionType::GetLLVMType(Analyzer& a)
     std::function<llvm::Type*(llvm::Module*)> ret;
     std::vector<std::function<llvm::Type*(llvm::Module*)>> args;
     if (ReturnType->IsComplexType()) {
-        ret = a.Void->GetLLVMType(a);
+        ret = a.GetVoidType()->GetLLVMType(a);
         args.push_back(a.GetRvalueType(ReturnType)->GetLLVMType(a));
     } else {
         ret = ReturnType->GetLLVMType(a);
@@ -75,15 +75,13 @@ Expression FunctionType::BuildCall(Expression val, std::vector<Expression> args,
                     continue;
                 }
                 // Else, we have a complex T from some U, in which case, perform rvalue construction.
-                std::vector<Expression> conargs;
-                conargs.push_back(args[i]);
-                e.push_back(Args[i]->BuildRvalueConstruction(conargs, a).Expr);
+                e.push_back(Args[i]->BuildRvalueConstruction(args[i], a).Expr);
                 continue;
             }
 
             // If we take value T, and the argument is T& or T&&, then just decay no problem.
             if (args[i].t->IsReference(Args[i])) {
-                e.push_back(args[i].t->BuildValue(args[i], a).Expr);
+                e.push_back(args[i].BuildValue(a).Expr);
                 continue;
             }
 
@@ -99,9 +97,7 @@ Expression FunctionType::BuildCall(Expression val, std::vector<Expression> args,
 
                 // Try a copy. The user knows that unless inheritance is involved, we'll need a new value here anyway.
                 // T::BuildRvalueConstruction called to construct a T in memory from T or some U, which may be reference.
-                std::vector<Expression> conargs;
-                conargs.push_back(args[i]);
-                e.push_back(rval->GetPointee()->BuildRvalueConstruction(conargs, a).Expr);
+                e.push_back(rval->GetPointee()->BuildRvalueConstruction(args[i], a).Expr);
                 continue;
             }
 
@@ -109,17 +105,13 @@ Expression FunctionType::BuildCall(Expression val, std::vector<Expression> args,
             // The only way this can work is if U inherits from T, or offers a UDC to T&, neither of which we support right now.
             // Except where Clang takes as const T& an rvalue, in which case we need to create an rvalue of U but pretend it's an lvalue.
             if (auto lval = dynamic_cast<LvalueType*>(Args[i])) {
-                std::vector<Expression> conargs;
-                conargs.push_back(args[i]);
-                e.push_back(lval->IsReference()->BuildLvalueConstruction(conargs, a).Expr);
+                e.push_back(lval->IsReference()->BuildLvalueConstruction(args[i], a).Expr);
                 continue;
             }
 
             // We take a value T, and we need to construct from some U. Use ValueConstruction.
             // Type::BuildValueConstruction called.
-            std::vector<Expression> conargs;
-            conargs.push_back(args[i]);
-            e.push_back(Args[i]->BuildValueConstruction(conargs, a).Expr);
+            e.push_back(Args[i]->BuildValueConstruction(args[i], a).Expr);
         }
         // Insert a bit cast because Clang sucks.
         out.Expr = a.gen->CreateFunctionCall(val.Expr, e, GetLLVMType(a));

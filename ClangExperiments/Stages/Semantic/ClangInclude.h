@@ -1,10 +1,10 @@
 #pragma once
 
-#include "Type.h"
+#include "MetaType.h"
 
 namespace Wide {
     namespace Semantic {
-        class ClangIncludeEntity : public Type {
+        class ClangIncludeEntity : public MetaType {
         public:
             ClangIncludeEntity() {}
                 

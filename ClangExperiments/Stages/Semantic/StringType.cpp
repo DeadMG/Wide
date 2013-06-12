@@ -21,8 +21,7 @@ std::function<llvm::Type*(llvm::Module*)> StringType::GetLLVMType(Analyzer& a) {
     };
 }
 clang::QualType StringType::GetClangType(Wide::ClangUtil::ClangTU& TU, Analyzer& a) {
-    auto&& astcon = TU.GetDeclContext()->getParentASTContext();
-    return astcon.getPointerType(astcon.CharTy);
+    return TU.GetASTContext().getPointerType(TU.GetASTContext().CharTy);
 }
 
 std::size_t StringType::size(Analyzer& a) {

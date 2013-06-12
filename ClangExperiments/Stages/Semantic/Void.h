@@ -1,10 +1,10 @@
 #pragma once
 
-#include "Type.h"
+#include "MetaType.h"
 
 namespace Wide {
     namespace Semantic {
-        class VoidType : public Type {
+        class VoidType : public MetaType {
         public:
             std::function<llvm::Type*(llvm::Module*)> GetLLVMType(Analyzer& a);
             clang::QualType GetClangType(ClangUtil::ClangTU& tu, Analyzer& a);

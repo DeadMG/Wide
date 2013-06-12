@@ -116,12 +116,13 @@ namespace Wide {
         };
 
         class IntegralExpression : public Expression {
-            unsigned long long value;
-            bool sign;
             std::function<llvm::Type*(llvm::Module*)> type;
         public:
             IntegralExpression(unsigned long long val, bool s, std::function<llvm::Type*(llvm::Module*)> t)
                 : value(val), sign(s), type(std::move(t)) {}
+
+            unsigned long long value;
+            bool sign;
 
             llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g);
         };

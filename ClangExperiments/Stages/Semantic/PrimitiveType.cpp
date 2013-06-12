@@ -28,8 +28,5 @@ Expression PrimitiveType::BuildAssignment(Expression lhs, Expression rhs, Analyz
     rhs = rhs.t->BuildValue(rhs, a);
     if (rhs.t != this)
         throw std::runtime_error("Cannot assign from one primitive type to another.");
-    Expression out;
-    out.t = lhs.t;
-    out.Expr = a.gen->CreateStore(lhs.Expr, rhs.Expr);
-    return out;
+    return Expression(lhs.t, a.gen->CreateStore(lhs.Expr, rhs.Expr));
 }

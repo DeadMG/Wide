@@ -30,7 +30,12 @@
 using namespace Wide;
 using namespace Semantic;
 
-OverloadSet::OverloadSet(AST::FunctionOverloadSet* s, Analyzer& a, UserDefinedType* mem) {
+template<typename T, typename U> T* debug_cast(U* other) {
+    assert(dynamic_cast<T*>(other));
+    return static_cast<T*>(other);
+}
+
+OverloadSet::OverloadSet(AST::FunctionOverloadSet* s, Analyzer& a, Type* mem) {
     overset = s;
     nonstatic = mem;
 }
@@ -53,7 +58,7 @@ std::function<llvm::Type*(llvm::Module*)> OverloadSet::GetLLVMType(Analyzer& a) 
             return t;
         };
     } else {
-        auto ty = nonstatic->GetLLVMType(a);
+        auto ty = nonstatic->Decay()->GetLLVMType(a);
         return [=](llvm::Module* m) -> llvm::Type* {
             llvm::Type* t = nullptr;
             if (m->getTypeByName(str))
@@ -70,13 +75,17 @@ Expression OverloadSet::BuildCall(Expression e, std::vector<Expression> args, An
 
     if (nonstatic) {
         e = e.t->BuildValue(e, a);
-        e.t = a.GetLvalueType(nonstatic);
+        e.t = nonstatic;
         e.Expr = a.gen->CreateFieldExpression(e.Expr, 0);
         args.insert(args.begin(), e);
     }
 
+    // Really badly named
+    auto skipfirst = [&](AST::Function* x) {
+        return nonstatic && (x->args.size() < 1 || x->args.front().name != "this");
+    };
     for(auto x : overset->functions) {
-        if (nonstatic) {
+        if (nonstatic && skipfirst(x)) {
             if (x->args.size() + 1 == args.size())
                 ViableCandidates.push_back(x);
         } else {
@@ -95,16 +104,19 @@ Expression OverloadSet::BuildCall(Expression e, std::vector<Expression> args, An
         auto types = std::vector<Type*>();
         auto curr_rank = ConversionRank::Zero;
         for(std::size_t i = 0; i < args.size(); ++i) {
-            if (nonstatic && i == 0) continue;
-            auto fi = nonstatic ? i - 1 : i;
+            if (skipfirst(f) && i == 0) continue;
+            auto fi = skipfirst(f) ? i - 1 : i;
             if (f->args[fi].type) {
                 auto con = overset->higher;
-                while(auto type = dynamic_cast<AST::Type*>(con))
-                    con = type->higher;
+                while(!dynamic_cast<AST::Module*>(con))
+                    con = con->higher;
                 struct LookupType : Type {
                     AST::DeclContext* con;
                     Type* autotype;
+                    Type* nonstatic;
                     Expression AccessMember(Expression self, std::string name, Analyzer& a) {
+                        if (name == "this")
+                            return a.GetConstructorType(nonstatic)->BuildValueConstruction(std::vector<Expression>(), a);
                         if (name == "auto")
                             return a.GetConstructorType(autotype->Decay())->BuildValueConstruction(std::vector<Expression>(), a);
                         return a.GetDeclContext(con)->AccessMember(self, std::move(name), a);
@@ -113,6 +125,7 @@ Expression OverloadSet::BuildCall(Expression e, std::vector<Expression> args, An
                 LookupType lt;
                 lt.con = con;
                 lt.autotype = args[i].t;
+                lt.nonstatic = nonstatic;
                 auto argty = a.AnalyzeExpression(&lt, f->args[fi].type).t;
                 if (auto con = dynamic_cast<ConstructorType*>(argty))
                     argty = con->GetConstructedType();
@@ -123,7 +136,7 @@ Expression OverloadSet::BuildCall(Expression e, std::vector<Expression> args, An
                 if (nonstatic 
                     && overset->name == "type"
                     && args.size() == 2
-                    && argty->IsReference(nonstatic)) 
+                    && argty->IsReference(nonstatic->Decay())) 
                 {
                     curr_rank = argty == args[i].t ? ConversionRank::Zero : ConversionRank::None;
                 } else {
@@ -134,15 +147,16 @@ Expression OverloadSet::BuildCall(Expression e, std::vector<Expression> args, An
                 types.push_back(args[i].t->Decay());
             }
         }
+        auto udt = nonstatic ? debug_cast<UserDefinedType>(nonstatic->Decay()) : nullptr;
         if (curr_rank < best_rank) {
-            auto x = a.GetWideFunction(f, nonstatic, types);
+            auto x = a.GetWideFunction(f, udt , types);
             rank.clear();
             rank.push_back(x);
             best_rank = curr_rank;
             continue;
         }
         if (curr_rank == best_rank && best_rank != ConversionRank::None) {
-            auto x = a.GetWideFunction(f, nonstatic, types);
+            auto x = a.GetWideFunction(f, udt, types);
             rank.push_back(x);
         }
     }
@@ -192,16 +206,24 @@ ConversionRank OverloadSet::ResolveOverloadRank(std::vector<Type*> args, Analyze
             auto fi = nonstatic ? i - 1 : i;
             if (f->args[fi].type) {
                 auto con = overset->higher;
-                while(auto type = dynamic_cast<AST::Type*>(con))
-                    con = type->higher;
+                while(!dynamic_cast<AST::Module*>(con))
+                    con = con->higher;
                 struct LookupType : Type {
                     AST::DeclContext* con;
+                    Type* nonstatic;
                     Expression AccessMember(Expression self, std::string name, Analyzer& a) {
+                        if (name == "this") {
+                            return a.GetConstructorType(nonstatic)->BuildValueConstruction(std::vector<Expression>(), a);
+                        }
+                        auto udt = debug_cast<UserDefinedType>(nonstatic->Decay());
+                        if (udt->HasMember(name))
+                            return udt->AccessMember(self, name, a);
                         return a.GetDeclContext(con)->AccessMember(self, std::move(name), a);
                     }
                 };
                 LookupType lt;
                 lt.con = con;
+                lt.nonstatic = nonstatic;
                 auto argty = a.AnalyzeExpression(&lt, f->args[fi].type).t;
                 if (auto con = dynamic_cast<ConstructorType*>(argty))
                     argty = con->GetConstructedType();
@@ -212,7 +234,7 @@ ConversionRank OverloadSet::ResolveOverloadRank(std::vector<Type*> args, Analyze
                 if (nonstatic 
                     && overset->name == "type"
                     && args.size() == 2) {
-                    if (argty->IsReference(nonstatic)) {
+                    if (argty->IsReference(nonstatic->Decay())) {
                         curr_rank = argty == args[i] ? ConversionRank::Zero : ConversionRank::None;
                     } else {
                         curr_rank = std::max(ConversionRank::Two, a.RankConversion(args[i], argty));
@@ -225,7 +247,7 @@ ConversionRank OverloadSet::ResolveOverloadRank(std::vector<Type*> args, Analyze
                 types.push_back(args[i]->Decay());
             }
         }
-        auto x = a.GetWideFunction(f, nonstatic, types);
+        auto x = a.GetWideFunction(f, debug_cast<UserDefinedType>(nonstatic->Decay()), types);
         if (curr_rank < best_rank) {
             rank.clear();
             rank.push_back(x);
@@ -253,7 +275,7 @@ Expression OverloadSet::BuildValueConstruction(std::vector<Expression> args, Ana
         if (args[0].t == this)
             return args[0];
         if (nonstatic) {
-            if (args[0].t->IsReference(nonstatic)) {
+            if (args[0].t->IsReference(nonstatic) || (nonstatic->IsReference() && (nonstatic->IsReference() == args[0].t->IsReference()))) {
                 auto var = a.gen->CreateVariable(GetLLVMType(a), alignment(a));
                 auto store = a.gen->CreateStore(a.gen->CreateFieldExpression(var, 0), args[0].Expr);
                 return Expression(this, a.gen->CreateChainExpression(store, a.gen->CreateLoad(var)));
@@ -288,7 +310,7 @@ clang::QualType OverloadSet::GetClangType(ClangUtil::ClangTU& TU, Analyzer& a) {
             clang::SourceLocation(),
             clang::SourceLocation(),
             TU.GetIdentifierInfo("__this"),
-            TU.GetASTContext().getPointerType(nonstatic->GetClangType(TU, a)),
+            TU.GetASTContext().getPointerType(nonstatic->Decay()->GetClangType(TU, a)),
             nullptr,
             nullptr,
             false,
@@ -301,7 +323,7 @@ clang::QualType OverloadSet::GetClangType(ClangUtil::ClangTU& TU, Analyzer& a) {
         // Instead of this, they will take a pointer to the recdecl here.
         // Wide member function types take "this" into account, whereas Clang ones do not.
         for(auto arg : x->args) if (!arg.type) continue;
-        auto f = a.GetWideFunction(x, nonstatic);
+        auto f = a.GetWideFunction(x, debug_cast<UserDefinedType>(nonstatic->Decay()));
         auto sig = f->GetSignature(a);
         if (nonstatic) {
             auto ret = sig->GetReturnType();
