@@ -30,6 +30,7 @@ void Wide::Compile(const Wide::Options::Clang& copts, const Wide::Options::LLVM&
     files.push_back("WideLibrary/Standard/Algorithm/None.wide");
     files.push_back("WideLibrary/Standard/Algorithm/Take.wide");
     files.push_back("WideLibrary/Standard/Algorithm/TakeWhile.wide");
+    files.push_back("WideLibrary/Standard/Containers/List.wide");
     files.push_back("WideLibrary/Standard/Containers/optional.wide");
     files.push_back("WideLibrary/Standard/Range/BackInserter.wide");
     files.push_back("WideLibrary/Standard/Range/Delimited.wide");

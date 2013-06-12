@@ -196,3 +196,116 @@ Expression Type::AccessMember(Expression, std::string name, Analyzer& a) {
         return a.GetNothingFunctorType()->BuildValueConstruction(a);
     throw std::runtime_error("Attempted to access the member of a type that did not support it.");
 }
+
+Expression Expression::BuildValue(Analyzer& a) {
+    return t->BuildValue(*this, a);
+}
+Expression Expression::BuildRightShift(Expression rhs, Analyzer& a) {
+    return t->BuildRightShift(*this, rhs, a);
+}
+Expression Expression::BuildLeftShift(Expression rhs, Analyzer& a) {
+    return t->BuildLeftShift(*this, rhs, a);
+}
+Expression Expression::BuildAssignment(Expression rhs, Analyzer& a){
+    return t->BuildAssignment(*this, rhs, a);
+}
+Expression Expression::AccessMember(std::string name, Analyzer& a){
+    return t->AccessMember(*this, std::move(name), a);
+}
+Expression Expression::BuildCall(std::vector<Expression> args, Analyzer& a) {
+    return t->BuildCall(*this, std::move(args), a);
+}
+Expression Expression::BuildMetaCall(std::vector<Expression> args, Analyzer& a) {
+    return t->BuildMetaCall(*this, std::move(args), a);
+}
+Expression Expression::BuildEQComparison(Expression rhs, Analyzer& a) {
+    return t->BuildEQComparison(*this, rhs, a);
+}
+Expression Expression::BuildNEComparison(Expression rhs, Analyzer& a) {
+    return t->BuildNEComparison(*this, rhs, a);
+}
+Expression Expression::BuildLTComparison(Expression rhs, Analyzer& a) {
+    return t->BuildLTComparison(*this, rhs, a);
+}
+Expression Expression::BuildLTEComparison(Expression rhs, Analyzer& a) {
+    return t->BuildLTEComparison(*this, rhs, a);
+}
+Expression Expression::BuildGTComparison(Expression rhs, Analyzer& a) {
+    return t->BuildGTComparison(*this, rhs, a);
+}
+Expression Expression::BuildGTEComparison(Expression rhs, Analyzer& a) {
+    return t->BuildGTEComparison(*this, rhs, a);
+}
+Expression Expression::BuildDereference(Analyzer& a)  {
+    return t->BuildDereference(*this, a);
+}
+Expression Expression::BuildOr(Expression rhs, Analyzer& a) {
+    return t->BuildOr(*this, rhs, a);
+}
+Expression Expression::BuildAnd(Expression rhs, Analyzer& a) {
+    return t->BuildAnd(*this, rhs, a);
+}          
+Expression Expression::BuildMultiply(Expression rhs, Analyzer& a) {
+    return t->BuildMultiply(*this, rhs, a);
+}          
+Expression Expression::BuildPlus(Expression rhs, Analyzer& a) {
+    return t->BuildPlus(*this, rhs, a);
+}          
+Expression Expression::BuildIncrement(bool postfix, Analyzer& a) {
+    return t->BuildIncrement(*this, postfix, a);
+}          
+Expression Expression::PointerAccessMember(std::string name, Analyzer& a) {
+    return t->PointerAccessMember(*this, std::move(name), a);
+}
+Expression Expression::AddressOf(Analyzer& a) {
+    return t->AddressOf(*this, a);
+}
+Codegen::Expression* Expression::BuildBooleanConversion(Analyzer& a) {
+    return t->BuildBooleanConversion(*this, a);
+}
+
+Expression Type::BuildValueConstruction(Expression arg, Analyzer& a) {
+    std::vector<Expression> args;
+    args.push_back(arg);
+    return BuildValueConstruction(std::move(args), a);
+}
+Expression Type::BuildRvalueConstruction(Expression arg, Analyzer& a) {
+    std::vector<Expression> args;
+    args.push_back(arg);
+    return BuildRvalueConstruction(std::move(args), a);
+}
+Expression Type::BuildLvalueConstruction(Expression arg, Analyzer& a) {
+    std::vector<Expression> args;
+    args.push_back(arg);
+    return BuildLvalueConstruction(std::move(args), a);
+}
+Codegen::Expression* Type::BuildInplaceConstruction(Codegen::Expression* mem, Expression arg, Analyzer& a){
+    std::vector<Expression> args;
+    args.push_back(arg);
+    return BuildInplaceConstruction(mem, std::move(args), a);
+}
+Expression Expression::BuildCall(Expression arg, Analyzer& a) {
+    std::vector<Expression> args;
+    args.push_back(arg);
+    return BuildCall(std::move(args), a);
+}
+Expression Type::BuildValueConstruction(Analyzer& a) {
+    std::vector<Expression> args;
+    return BuildValueConstruction(args, a);
+}
+Expression Type::BuildRvalueConstruction(Analyzer& a) {
+    std::vector<Expression> args;
+    return BuildRvalueConstruction(args, a);
+}
+Expression Type::BuildLvalueConstruction(Analyzer& a) {
+    std::vector<Expression> args;
+    return BuildLvalueConstruction(args, a);
+}
+Codegen::Expression* Type::BuildInplaceConstruction(Codegen::Expression* mem, Analyzer& a) {
+    std::vector<Expression> args;
+    return BuildInplaceConstruction(mem, args, a);
+}
+Expression Expression::BuildCall(Analyzer& a) {
+    std::vector<Expression> args;
+    return BuildCall(args, a);
+}
