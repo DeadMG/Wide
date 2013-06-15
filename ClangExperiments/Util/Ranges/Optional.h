@@ -28,18 +28,18 @@ namespace Wide {
 
             optional(none_t) : present(false) {}
 
-            optional(T const& t) {
+            optional(T const& t) : present(false) {
                 place(t);
             }
-            optional(T&& t) {
+            optional(T&& t) : present(false) {
                 place(std::move(t));
             }
 
-            optional(optional const& that) {
+            optional(optional const& that) : present(false) {
                 if(that.present) place(*that);
                 else present = false;
             }
-            optional(optional&& that) {
+            optional(optional&& that) : present(false) {
                 if(that.present) place(std::move(*that));
                 else present = false;
             }
@@ -74,10 +74,10 @@ namespace Wide {
             T* operator->() { return &get(); }
             T const* operator->() const { return &get(); }
 
-            explicit operator bool() const { return present; }
+            operator bool() const { return present; }
 
         private:
-            typedef std::aligned_storage<sizeof(T), std::alignment_of<T>::value> storage_type;
+            typedef typename std::aligned_storage<sizeof(T), std::alignment_of<T>::value>::type storage_type;
 
             template <typename Args>
             void place(Args&& args) {
@@ -98,7 +98,7 @@ namespace Wide {
                 return *static_cast<T const*>(static_cast<void const*>(&storage));
             }
 
-            bool present = false;
+            bool present;
             storage_type storage;
         };
     }

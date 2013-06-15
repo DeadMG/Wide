@@ -5,6 +5,7 @@
 #include "Lexer/Lexer.h"
 #include "../Util/ParallelForEach.h"
 #include "Parser/Parser.h"
+#include "../Util/Ranges/IStreamRange.h"
 #include <mutex>
 #include <atomic>
 
@@ -30,7 +31,6 @@ void Wide::Compile(const Wide::Options::Clang& copts, const Wide::Options::LLVM&
     files.push_back("WideLibrary/Standard/Algorithm/None.wide");
     files.push_back("WideLibrary/Standard/Algorithm/Take.wide");
     files.push_back("WideLibrary/Standard/Algorithm/TakeWhile.wide");
-    files.push_back("WideLibrary/Standard/Containers/List.wide");
     files.push_back("WideLibrary/Standard/Containers/optional.wide");
     files.push_back("WideLibrary/Standard/Range/BackInserter.wide");
     files.push_back("WideLibrary/Standard/Range/Delimited.wide");
@@ -45,10 +45,10 @@ void Wide::Compile(const Wide::Options::Clang& copts, const Wide::Options::LLVM&
             throw std::runtime_error("Could not open this input file.");
         std::noskipws(inputfile);
         Wide::Lexer::Arguments largs;
-        auto contents = std::string(std::istream_iterator<char>(inputfile), std::istream_iterator<char>());
-        Wide::Lexer::Invocation<decltype(contents.begin())> lex(largs, contents.begin(), contents.end());
+        auto contents = Wide::Range::IStreamRange(inputfile);
+        Wide::Lexer::Invocation<decltype(contents)> lex(largs, contents);
         try {
-            Wide::Parser::ParseModuleContents(lex, ASTBuilder, ASTBuilder.GetGlobalModule());
+            Wide::Parser::ParseGlobalModuleContents(lex, ASTBuilder, ASTBuilder.GetGlobalModule());
         } catch(std::runtime_error& e) {
             excepts.push_back(e.what());
         } catch(...) {

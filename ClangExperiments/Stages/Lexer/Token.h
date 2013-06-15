@@ -42,6 +42,7 @@ namespace Wide {
             Plus,
             Increment,
             Decrement,
+            Minus,
 
             LT,
             LTE,
@@ -68,11 +69,11 @@ namespace Wide {
             return lhs.offset == rhs.offset;
         }
         struct Range {
-            Range(Position lhs, Position rhs)
-                : begin(lhs), end(rhs) {}
             Range() {}
             Range(Position pos)
                 : begin(pos), end(pos) {}
+            Range(Position lhs, Position rhs)
+                : begin(lhs), end(rhs) {}
             Position begin, end;
             Range operator+(Range other) const {
                 Range out(*this);

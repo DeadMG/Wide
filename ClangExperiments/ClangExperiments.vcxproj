@@ -160,6 +160,7 @@
     <ClInclude Include="Util\ConcurrentDetail\stdparallelforeach.h" />
     <ClInclude Include="Util\ConcurrentDetail\stdvector.h" />
     <ClInclude Include="Util\ConcurrentVector.h" />
+    <ClInclude Include="Util\Ranges\IStreamRange.h" />
     <ClInclude Include="Util\Ranges\IteratorRange.h" />
     <ClInclude Include="Util\Ranges\Optional.h" />
     <ClInclude Include="Util\ParallelForEach.h" />

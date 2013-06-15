@@ -196,7 +196,7 @@ Expression Type::AccessMember(Expression, std::string name, Analyzer& a) {
         return a.GetNothingFunctorType()->BuildValueConstruction(a);
     throw std::runtime_error("Attempted to access the member of a type that did not support it.");
 }
-
+/*
 Expression Expression::BuildValue(Analyzer& a) {
     return t->BuildValue(*this, a);
 }
@@ -308,4 +308,4 @@ Codegen::Expression* Type::BuildInplaceConstruction(Codegen::Expression* mem, An
 Expression Expression::BuildCall(Analyzer& a) {
     std::vector<Expression> args;
     return BuildCall(args, a);
-}
+}*/

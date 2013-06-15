@@ -8,6 +8,11 @@
 
 namespace Wide {
     namespace Parser {        
+        template<typename F> auto assume(F&& f) -> decltype(*f()) {
+            auto x = f();
+            if (!x) throw std::runtime_error("Encountered unexpected end of input.");
+            return std::move(*x);
+        }
         static const std::unordered_set<Lexer::TokenType> OverloadableOperators([]() -> std::unordered_set<Lexer::TokenType> {
             Lexer::TokenType tokens[] = {
                 Lexer::TokenType::Assignment,
@@ -760,17 +765,40 @@ namespace Wide {
             throw std::runtime_error("Only support function, using, type, operator, or module right now.");
         }
             
+
+        template<typename Lex, typename Sema, typename Module> void ParseGlobalModuleContents(Lex&& lex, Sema&& sema, Module&& m) {
+            typedef std::decay<decltype(*lex())>::type token_type;
+            
+            struct AssumeLexer {
+                typename std::decay<Lex>::type* lex;
+                token_type operator()() {
+                    auto val = (*lex)();
+                    if (!val) throw std::runtime_error("Encountered unexpected end of input.");
+                    return std::move(*val);
+                }
+                void operator()(token_type arg) {
+                    (*lex)(std::move(arg));
+                }
+            };
+            auto val = lex();
+            while (val) {
+                if (val->GetType() == Lexer::TokenType::CloseCurlyBracket)
+                    return;
+                lex(*val);
+                AssumeLexer lexer;
+                lexer.lex = &lex;
+                ParseModuleLevelDeclaration(lexer, sema, m);
+                val = lex();
+            }
+        }
         template<typename Lex, typename Sema, typename Module> void ParseModuleContents(Lex&& lex, Sema&& sema, Module&& m) {
             // Should really be refactored later into ParseGlobalModuleContents and ParseModuleDeclaration
-            while(lex) {
-                ParseModuleLevelDeclaration(lex, sema, m);
-                if (lex) {
-                    auto t = lex();
-                    if (t.GetType() == Lexer::TokenType::CloseCurlyBracket)
-                        return;
-                    lex(t);
-                }
-            }
+            ParseModuleLevelDeclaration(lex, sema, m);
+            auto t = lex();
+            if (t.GetType() == Lexer::TokenType::CloseCurlyBracket)
+                return;
+            lex(t);
+            return ParseModuleContents(lex, sema, m);
         }
     }
 }
