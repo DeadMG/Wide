@@ -5,7 +5,7 @@ using System.Text;
 using System.Threading.Tasks;
 using System.Runtime.InteropServices;
 
-namespace W
+namespace VisualWide
 {
     class Lexer : IDisposable {
         public enum Failure : int {
@@ -105,6 +105,8 @@ namespace W
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
         private delegate ErrorToken ErrorCallback(Position p, [MarshalAs(UnmanagedType.I4)]Failure f);
 
+        public delegate void Error(LexerError le);
+
         [DllImport("CAPI.dll", CallingConvention = CallingConvention.Cdecl)]
         private static extern System.IntPtr CreateLexer(
             [MarshalAs(UnmanagedType.FunctionPtr)]LexerCallback callback,
@@ -137,7 +139,7 @@ namespace W
         [DllImport("CAPI.dll", CallingConvention = CallingConvention.Cdecl)]
         private static extern byte IsKeywordType(System.IntPtr lexer, TokenType type);
 
-        public class LexerError : System.Exception
+        public class LexerError
         {
             public Position where;
             public Failure what;
@@ -155,17 +157,18 @@ namespace W
             DeleteLexer(NativeLexerHandle);
             NativeLexerHandle = IntPtr.Zero;
         }
-
+        
         string contents;
         IntPtr NativeLexerHandle;
         LexerCallback PreventLexerCallbackGC;
         CommentCallback PreventCommentCallbackGC;
+        CommentCallback RealCommentCallback;
         ErrorCallback PreventErrorCallbackGC;
         int offset = 0;
         System.Tuple<Position, Failure> error;
 
-        public Lexer(String data, CommentCallback comment) {
-            contents = data;
+        public Lexer() {
+            contents = "";
             PreventLexerCallbackGC = con =>
             {
                 var ret = new MaybeByte();
@@ -176,7 +179,10 @@ namespace W
                 }
                 return ret;                
             };
-            PreventCommentCallbackGC = comment;
+            PreventCommentCallbackGC = (where) =>
+            {
+                RealCommentCallback(where);
+            };
             PreventErrorCallbackGC = (Position p, Failure f) => {
                 error = new System.Tuple<Position, Failure>(p, f);
                 var ret = new ErrorToken();
@@ -193,6 +199,8 @@ namespace W
 
         public void SetContents(String content)
         {
+            if (!content.EndsWith("\n"))
+                content += "\n";
             if (NativeLexerHandle == IntPtr.Zero)
                 throw new System.InvalidOperationException("Attempted to read from a post-disposed Lexer.");
             contents = content;
@@ -200,8 +208,9 @@ namespace W
             ClearLexerState(NativeLexerHandle);
         }
 
-        public Nullable<Token> Read()
+        public Nullable<Token> Read(Error err, CommentCallback comment)
         {
+            RealCommentCallback = comment;
             if (NativeLexerHandle == IntPtr.Zero)
                 throw new System.InvalidOperationException("Attempted to read from a post-disposed Lexer.");
             var result = GetToken(NativeLexerHandle);
@@ -214,7 +223,8 @@ namespace W
                 except.what = error.Item2;
                 except.where = error.Item1;
                 error = null;
-                throw except;
+                err(except);
+                return null;
             }
 
             // Maybe just at the end

@@ -5,9 +5,12 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ClangExperiments", "ClangEx
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "CAPI", "..\CAPI\CAPI.vcxproj", "{71A09227-1E78-4626-A080-0E5022668E1C}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "W", "..\W\W.csproj", "{BEEB31A9-3A86-4EFC-AC4A-B5FE8DF04F4A}"
-EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{550749A8-5419-4A66-9248-D6E59270FDAA}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VisualWide", "..\VisualWide\VisualWide.csproj", "{F8ED64AD-9E1D-44AC-947B-C8F21D84D8A2}"
+	ProjectSection(ProjectDependencies) = postProject
+		{71A09227-1E78-4626-A080-0E5022668E1C} = {71A09227-1E78-4626-A080-0E5022668E1C}
+	EndProjectSection
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -39,21 +42,18 @@ Global
 		{71A09227-1E78-4626-A080-0E5022668E1C}.Release|Mixed Platforms.Build.0 = Release|Win32
 		{71A09227-1E78-4626-A080-0E5022668E1C}.Release|Win32.ActiveCfg = Release|Win32
 		{71A09227-1E78-4626-A080-0E5022668E1C}.Release|Win32.Build.0 = Release|Win32
-		{BEEB31A9-3A86-4EFC-AC4A-B5FE8DF04F4A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{BEEB31A9-3A86-4EFC-AC4A-B5FE8DF04F4A}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{BEEB31A9-3A86-4EFC-AC4A-B5FE8DF04F4A}.Debug|Mixed Platforms.ActiveCfg = Debug|Any CPU
-		{BEEB31A9-3A86-4EFC-AC4A-B5FE8DF04F4A}.Debug|Mixed Platforms.Build.0 = Debug|Any CPU
-		{BEEB31A9-3A86-4EFC-AC4A-B5FE8DF04F4A}.Debug|Win32.ActiveCfg = Debug|Any CPU
-		{BEEB31A9-3A86-4EFC-AC4A-B5FE8DF04F4A}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{BEEB31A9-3A86-4EFC-AC4A-B5FE8DF04F4A}.Release|Any CPU.Build.0 = Release|Any CPU
-		{BEEB31A9-3A86-4EFC-AC4A-B5FE8DF04F4A}.Release|Mixed Platforms.ActiveCfg = Release|Any CPU
-		{BEEB31A9-3A86-4EFC-AC4A-B5FE8DF04F4A}.Release|Mixed Platforms.Build.0 = Release|Any CPU
-		{BEEB31A9-3A86-4EFC-AC4A-B5FE8DF04F4A}.Release|Win32.ActiveCfg = Release|Any CPU
+		{F8ED64AD-9E1D-44AC-947B-C8F21D84D8A2}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F8ED64AD-9E1D-44AC-947B-C8F21D84D8A2}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F8ED64AD-9E1D-44AC-947B-C8F21D84D8A2}.Debug|Mixed Platforms.ActiveCfg = Debug|Any CPU
+		{F8ED64AD-9E1D-44AC-947B-C8F21D84D8A2}.Debug|Mixed Platforms.Build.0 = Debug|Any CPU
+		{F8ED64AD-9E1D-44AC-947B-C8F21D84D8A2}.Debug|Win32.ActiveCfg = Debug|Any CPU
+		{F8ED64AD-9E1D-44AC-947B-C8F21D84D8A2}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F8ED64AD-9E1D-44AC-947B-C8F21D84D8A2}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F8ED64AD-9E1D-44AC-947B-C8F21D84D8A2}.Release|Mixed Platforms.ActiveCfg = Release|Any CPU
+		{F8ED64AD-9E1D-44AC-947B-C8F21D84D8A2}.Release|Mixed Platforms.Build.0 = Release|Any CPU
+		{F8ED64AD-9E1D-44AC-947B-C8F21D84D8A2}.Release|Win32.ActiveCfg = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
-	EndGlobalSection
-	GlobalSection(Performance) = preSolution
-		HasPerformanceSessions = true
 	EndGlobalSection
 EndGlobal
