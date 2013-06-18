@@ -42,9 +42,11 @@
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="ContentType.cs" />
     <Compile Include="Lexer.cs" />
-    <Compile Include="Source Highlighting\ClassificationFormats.cs" />
-    <Compile Include="Source Highlighting\SourceHighlighting.cs" />
+    <Compile Include="SourceHighlighting\ClassificationFormats.cs" />
+    <Compile Include="SourceHighlighting\HighlightWordTagger.cs" />
+    <Compile Include="SourceHighlighting\HighlightWordTaggerProvider.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>
