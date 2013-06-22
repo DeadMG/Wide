@@ -48,7 +48,7 @@ void Wide::Compile(const Wide::Options::Clang& copts, const Wide::Options::LLVM&
         auto contents = Wide::Range::IStreamRange(inputfile);
         Wide::Lexer::Invocation<decltype(contents)> lex(largs, contents);
         try {
-            Wide::Parser::ParseGlobalModuleContents(lex, ASTBuilder, ASTBuilder.GetGlobalModule());
+            Wide::Parser::ParseGlobalModuleContents(lex, AST::ThreadLocalBuilder(ASTBuilder), ASTBuilder.GetGlobalModule());
         } catch(std::runtime_error& e) {
             excepts.push_back(e.what());
         } catch(...) {

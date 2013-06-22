@@ -2,9 +2,6 @@ using test := cpp("WideLibrary/test.h");
 using Range := Standard.Range;
 using Algorithm := Standard.Algorithm;
 
-type t {
-    ~type() { std.cout << "~t()"; }
-}
 Main() {
-    y := t();
+    cpp("iostream").std.cout << "Hello, World!";
 }
