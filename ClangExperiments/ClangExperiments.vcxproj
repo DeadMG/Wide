@@ -81,6 +81,7 @@
     <ClCompile Include="Stages\Codegen\FunctionCodeGen.cpp" />
     <ClCompile Include="Stages\Codegen\Generator.cpp" />
     <ClCompile Include="Stages\Codegen\Statement.cpp" />
+    <ClCompile Include="Stages\Lexer\lexerstatics.cpp" />
     <ClCompile Include="Stages\Semantic\Bool.cpp" />
     <ClCompile Include="Stages\Semantic\ClangInclude.cpp" />
     <ClCompile Include="Stages\Semantic\ClangNamespace.cpp" />

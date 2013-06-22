@@ -7,7 +7,7 @@ using System.Runtime.InteropServices;
 
 namespace VisualWide
 {
-    class Lexer : IDisposable {
+    class Lexer {
         public enum Failure : int {
             UnterminatedStringLiteral,
             UnlexableCharacter,
@@ -81,14 +81,6 @@ namespace VisualWide
             public Position end;
         }
         
-        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi)]
-        public struct ErrorToken {
-            public Range location;
-            public TokenType type; 
-            IntPtr s;
-            public string value { get { return Marshal.PtrToStringAnsi(s); } }
-        }
-
         public struct Token
         {
             public Range location;
@@ -100,143 +92,74 @@ namespace VisualWide
         private delegate MaybeByte LexerCallback(System.IntPtr arg);
 
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-        public delegate void CommentCallback(Range arg);
+        private delegate void RawCommentCallback(Range arg, System.IntPtr con);
 
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-        private delegate ErrorToken ErrorCallback(Position p, [MarshalAs(UnmanagedType.I4)]Failure f);
+        private delegate byte RawErrorCallback(Position p, Failure f, System.IntPtr con);
 
-        public delegate void Error(LexerError le);
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        private delegate byte RawTokenCallback(Range r, [MarshalAs(UnmanagedType.LPStr)]string s, TokenType type, System.IntPtr context);
+
+        public delegate bool TokenCallback(Token t);
+        public delegate bool ErrorCallback(Position p, Failure f);
+        public delegate void CommentCallback(Range arg);
 
         [DllImport("CAPI.dll", CallingConvention = CallingConvention.Cdecl)]
-        private static extern System.IntPtr CreateLexer(
-            [MarshalAs(UnmanagedType.FunctionPtr)]LexerCallback callback,
+        private static extern void LexWide(
             System.IntPtr context,
-            [MarshalAs(UnmanagedType.FunctionPtr)]CommentCallback comment,
-            [MarshalAs(UnmanagedType.FunctionPtr)]ErrorCallback error
+            [MarshalAs(UnmanagedType.FunctionPtr)]LexerCallback callback,
+            [MarshalAs(UnmanagedType.FunctionPtr)]RawCommentCallback comment,
+            [MarshalAs(UnmanagedType.FunctionPtr)]RawErrorCallback error,
+            [MarshalAs(UnmanagedType.FunctionPtr)]RawTokenCallback token
         );
-
+        
         [DllImport("CAPI.dll", CallingConvention = CallingConvention.Cdecl)]
-        private static extern System.IntPtr GetToken(System.IntPtr lexer);
-
-        [DllImport("CAPI.dll", CallingConvention = CallingConvention.Cdecl)]
-        private static extern IntPtr GetTokenValue(System.IntPtr token);
-
-        [DllImport("CAPI.dll", CallingConvention = CallingConvention.Cdecl)]
-        private static extern TokenType GetTokenType(System.IntPtr token);
-
-        [DllImport("CAPI.dll", CallingConvention = CallingConvention.Cdecl)]
-        private static extern Range GetTokenLocation(System.IntPtr token);
-
-        [DllImport("CAPI.dll", CallingConvention = CallingConvention.Cdecl)]
-        private static extern void DeleteToken(System.IntPtr token);
-
-        [DllImport("CAPI.dll", CallingConvention = CallingConvention.Cdecl)]
-        private static extern void DeleteLexer(System.IntPtr lexer);
-
-        [DllImport("CAPI.dll", CallingConvention = CallingConvention.Cdecl)]
-        private static extern void ClearLexerState(System.IntPtr lexer);
-
-        [DllImport("CAPI.dll", CallingConvention = CallingConvention.Cdecl)]
-        private static extern byte IsKeywordType(System.IntPtr lexer, TokenType type);
-
-        public class LexerError
-        {
-            public Position where;
-            public Failure what;
-        }
-
+        private static extern byte IsKeywordType(TokenType type);
+        
         public bool IsKeyword(TokenType t)
         {
-            if (NativeLexerHandle == IntPtr.Zero)
-                throw new System.InvalidOperationException("Attempted to read from a post-disposed Lexer.");
-            return IsKeywordType(NativeLexerHandle, t) == 1;
+            return IsKeywordType(t) == 1;
         }
 
-        public void Dispose()
+        public void Read(
+            System.String contents,
+            ErrorCallback err, 
+            CommentCallback comment,
+            TokenCallback token
+            )
         {
-            DeleteLexer(NativeLexerHandle);
-            NativeLexerHandle = IntPtr.Zero;
-        }
-        
-        string contents;
-        IntPtr NativeLexerHandle;
-        LexerCallback PreventLexerCallbackGC;
-        CommentCallback PreventCommentCallbackGC;
-        CommentCallback RealCommentCallback;
-        ErrorCallback PreventErrorCallbackGC;
-        int offset = 0;
-        System.Tuple<Position, Failure> error;
-
-        public Lexer() {
-            contents = "";
-            PreventLexerCallbackGC = con =>
-            {
-                var ret = new MaybeByte();
-                ret.present = (byte)(offset < contents.Length ? 1 : 0);
-                if (ret.present == 1)
-                {
-                    ret.asciichar = (byte)contents[offset++];
-                }
-                return ret;                
-            };
-            PreventCommentCallbackGC = (where) =>
-            {
-                RealCommentCallback(where);
-            };
-            PreventErrorCallbackGC = (Position p, Failure f) => {
-                error = new System.Tuple<Position, Failure>(p, f);
-                var ret = new ErrorToken();
-                //ret.value = "Fail.";
-                return ret;
-            };
-            NativeLexerHandle = CreateLexer(
-                PreventLexerCallbackGC,
+            if (!contents.EndsWith("\n"))
+                contents += "\n";
+            int offset = 0;
+            LexWide(
                 System.IntPtr.Zero,
-                PreventCommentCallbackGC,
-                PreventErrorCallbackGC
+                (context) =>
+                {
+                    var ret = new MaybeByte();
+                    ret.present = (byte)(offset < contents.Length ? 1 : 0);
+                    if (ret.present == 1)
+                    {
+                        ret.asciichar = (byte)contents[offset++];
+                    }
+                    return ret;
+                },
+                (where, context) =>
+                {
+                    comment(where);
+                },
+                (pos, fail, context) =>
+                {
+                    return err(pos, fail) ? (byte)1 : (byte)0;
+                },
+                (where, value, type, context) =>
+                {
+                    var tok = new Token();
+                    tok.location = where;
+                    tok.value = value;
+                    tok.type = type;
+                    return token(tok) ? (byte)1 : (byte)0;
+                }
             );
-        }
-
-        public void SetContents(String content)
-        {
-            if (!content.EndsWith("\n"))
-                content += "\n";
-            if (NativeLexerHandle == IntPtr.Zero)
-                throw new System.InvalidOperationException("Attempted to read from a post-disposed Lexer.");
-            contents = content;
-            offset = 0;
-            ClearLexerState(NativeLexerHandle);
-        }
-
-        public Nullable<Token> Read(Error err, CommentCallback comment)
-        {
-            RealCommentCallback = comment;
-            if (NativeLexerHandle == IntPtr.Zero)
-                throw new System.InvalidOperationException("Attempted to read from a post-disposed Lexer.");
-            var result = GetToken(NativeLexerHandle);
-            
-            // Maybe error
-            if (error != null)
-            {
-                DeleteToken(result);
-                var except = new LexerError();
-                except.what = error.Item2;
-                except.where = error.Item1;
-                error = null;
-                err(except);
-                return null;
-            }
-
-            // Maybe just at the end
-            if (result == System.IntPtr.Zero)
-                return null;
-
-            var retval = new Token();
-            retval.value = Marshal.PtrToStringAnsi(GetTokenValue(result));
-            retval.type = GetTokenType(result);
-            retval.location = GetTokenLocation(result);
-            DeleteToken(result);
-            return retval;
         }
     }
 }

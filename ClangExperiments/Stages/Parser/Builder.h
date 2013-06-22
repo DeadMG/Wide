@@ -21,6 +21,7 @@ namespace Wide {
             Return* CreateReturn(Expression* expr, Lexer::Range r);
             Return* CreateReturn(Lexer::Range r);
             VariableStatement* CreateVariableStatement(std::string name, Expression* value, Lexer::Range r);
+            VariableStatement* CreateVariableStatement(std::string name, Lexer::Range r) { return CreateVariableStatement(std::move(name), nullptr, r); }
             AssignmentExpr* CreateAssignmentExpression(Expression* lhs, Expression* rhs);
             IntegerExpression* CreateIntegerExpression(std::string val, Lexer::Range r);
             RightShiftExpr* CreateRightShiftExpression(Expression* lhs, Expression* rhs);
@@ -62,7 +63,9 @@ namespace Wide {
             Using* CreateUsingDefinition(std::string val, Expression* expr, Module* p);
             void CreateFunction(std::string name, std::vector<Statement*> body, std::vector<Statement*> prolog, Lexer::Range r, Module* p, std::vector<FunctionArgument>, std::vector<VariableStatement*> caps);
             void CreateFunction(std::string name, std::vector<Statement*> body, std::vector<Statement*> prolog, Lexer::Range r, Type* p, std::vector<FunctionArgument>, std::vector<VariableStatement*> caps);
-            Type* CreateType(std::string name, DeclContext* p);
+            Type* CreateType(std::string name, DeclContext* p, Lexer::Range loc);
+            Type* CreateType(std::string name, Lexer::Range loc) { return CreateType(std::move(name), nullptr, loc); }
+            void SetTypeEndLocation(Lexer::Range loc, Type* t);
             
             std::vector<FunctionArgument> CreateFunctionArgumentGroup();
 
@@ -72,12 +75,17 @@ namespace Wide {
             void AddCaptureToGroup(std::vector<VariableStatement*>& l, VariableStatement*);
             void AddInitializerToGroup(std::vector<VariableStatement*>& l, VariableStatement* b) { return AddCaptureToGroup(l, b); }
 
+            void AddStatementToGroup(std::vector<Statement*>&, Statement*);
+            void AddExpressionToGroup(std::vector<Expression*>&, Expression*);
+
             Lexer::Range GetLocation(Statement* s) {
                 return s->location;
             }
 
             Module* GetGlobalModule();
 
+            typedef Statement* StatementType;
+            typedef Expression* ExpressionType;
         };
     }
 }

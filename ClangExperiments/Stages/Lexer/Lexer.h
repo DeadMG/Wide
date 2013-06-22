@@ -28,88 +28,21 @@ namespace Wide {
                 UnlexableCharacter,
                 UnterminatedComment
             };
-            std::unordered_map<char, TokenType> singles;
-            std::unordered_map<char, std::unordered_map<char, TokenType>> doubles;
-            std::unordered_set<char> whitespace;
-            std::unordered_map<std::string, TokenType> keywords;
-            std::unordered_set<TokenType> KeywordTypes;
-            std::function<Token(Position, Failure)> OnError;
+            static const std::unordered_map<char, TokenType> singles;
+            static const std::unordered_map<char, std::unordered_map<char, TokenType>> doubles;
+            static const std::unordered_set<char> whitespace;
+            static const std::unordered_map<std::string, TokenType> keywords;
+            static const std::unordered_set<TokenType> KeywordTypes;
             std::function<void(Range)> OnComment;
             int tabsize;
             Arguments()
                 : tabsize(4) 
             {
-                OnError = [](Position, Failure) -> Token {
-                    throw std::runtime_error("Fuckshitballs.");
-                };
                 OnComment = [](Range) {};
-
-                // Aassumes that all doubles lead with a character that is a valid single.
-                // If this assumption changes, must modify lexer body.
-                singles[';'] = TokenType::Semicolon;
-                singles['.'] = TokenType::Dot;
-                singles['}'] = TokenType::CloseCurlyBracket;
-                singles['{'] = TokenType::OpenCurlyBracket;
-                singles[')'] = TokenType::CloseBracket;
-                singles['('] = TokenType::OpenBracket;
-                singles[','] = TokenType::Comma;
-                singles['!'] = TokenType::Exclaim;
-                singles['|'] = TokenType::Or;
-                singles['^'] = TokenType::Xor;
-                singles['&'] = TokenType::And;
-                singles['['] = TokenType::OpenSquareBracket;
-                singles[']'] = TokenType::CloseSquareBracket;
-                singles['*'] = TokenType::Dereference;
-                singles['+'] = TokenType::Plus;
-                
-                singles['-'] = TokenType::Minus;
-                doubles['-']['>'] = TokenType::PointerAccess;        
-                doubles['-']['-'] = TokenType::Decrement;
-                
-                singles['<'] = TokenType::LT;
-                doubles['<']['<'] = TokenType::LeftShift;
-                doubles['<']['='] = TokenType::LTE;
-                
-                singles['>'] = TokenType::GT;
-                doubles['>']['>'] = TokenType::RightShift;
-                doubles['>']['='] = TokenType::GTE;
-                
-                singles[':'] = TokenType::Colon;
-                doubles[':']['='] = TokenType::VarCreate;
-                
-                singles['='] = TokenType::Assignment;
-                doubles['=']['='] = TokenType::EqCmp;
-                
-                singles['~'] = TokenType::Negate;
-                doubles['~']['='] = TokenType::NotEqCmp;
-                
-                singles['+'] = TokenType::Plus;
-                doubles['+']['+'] = TokenType::Increment;
-        
-                whitespace.insert('\r');
-                whitespace.insert('\t');
-                whitespace.insert('\n');
-                whitespace.insert(' ');
-        
-                keywords["return"] = TokenType::Return;
-                keywords["using"] = TokenType::Using;
-                keywords["prolog"] = TokenType::Prolog;
-                keywords["module"] = TokenType::Module;
-                keywords["if"] = TokenType::If;
-                keywords["else"] = TokenType::Else;
-                keywords["while"] = TokenType::While;
-                keywords["this"] = TokenType::This;
-                keywords["type"] = TokenType::Type;
-                keywords["operator"] = TokenType::Operator;
-                keywords["function"] = TokenType::Function;
-
-                for(auto&& x : keywords)
-                    KeywordTypes.insert(x.second);
             }
         };
         template<typename Range> class Invocation {
             Arguments* args;
-            Range r;
             Position current_position;
             std::vector<Token> token_putbacks;
             Wide::Util::optional<std::pair<char, Position>> putback;
@@ -187,10 +120,13 @@ namespace Wide {
                     args->OnComment(start + current_position);
                     return (*this)();
                 }
-                return args->OnError(start, Arguments::Failure::UnterminatedComment);
+                return OnError(start, Arguments::Failure::UnterminatedComment, this);
             }
 
         public:
+            Range r;
+            std::function<Wide::Util::optional<Token>(Position, Arguments::Failure, Invocation*)> OnError;
+
             void clear() {
                 putback = Wide::Util::none;
                 token_putbacks.clear();
@@ -198,7 +134,12 @@ namespace Wide {
             }
 
             Invocation(Arguments& arg, Range range)
-                : args(&arg), r(range) {}
+                : args(&arg), r(range) {
+
+                OnError = [](Position, Arguments::Failure, Invocation* self) {
+                    return (*self)();
+                };
+            }
 
             Wide::Util::optional<Lexer::Token> operator()() {
                 if (!token_putbacks.empty()) {
@@ -219,16 +160,13 @@ namespace Wide {
                     auto next = get();
                     if (next && *next == '/' || *next == '*') {
                         if (*next == '/') {
-                            Wide::Util::optional<char> val;
-                            while(val = get()) {
+                            // An //comment at the end of the file is NOT an unterminated comment.
+                            while(auto val = get()) {
                                 if (*val == '\n')
                                     break;
                             }
-                            if (val) {
-                                args->OnComment(begin_pos + current_position);
-                                return (*this)();
-                            }
-                            return args->OnError(begin_pos, Arguments::Failure::UnterminatedComment);
+                            args->OnComment(begin_pos + current_position);
+                            return (*this)();
                         }
                         if (*next == '*') {
                             return ParseCComments(begin_pos);
@@ -244,15 +182,15 @@ namespace Wide {
                 // Aassumes that all doubles lead with a character that is a valid single.
                 if (args->singles.find(*val) != args->singles.end()) {
                     auto this_token = [&] {
-                        return Wide::Lexer::Token(begin_pos, args->singles[*val], std::string(*val, 1));
+                        return Wide::Lexer::Token(begin_pos, args->singles.at(*val), std::string(*val, 1));
                     };
                     if (args->doubles.find(*val) == args->doubles.end())
                         return this_token();
                     auto old_pos = current_position;
                     auto second = get();
                     if (!second) return this_token();
-                    if (args->doubles[*val].find(*second) != args->doubles[*val].end()) {
-                        return Wide::Lexer::Token(begin_pos, args->doubles[*val][*second], std::string(*val, 1) + std::string(*second, 1));
+                    if (args->doubles.at(*val).find(*second) != args->doubles.at(*val).end()) {
+                        return Wide::Lexer::Token(begin_pos, args->doubles.at(*val).at(*second), std::string(*val, 1) + std::string(*second, 1));
                     }
                     putback = std::make_pair(*second, current_position);
                     current_position = old_pos;
@@ -269,13 +207,13 @@ namespace Wide {
                         variable_length_value.push_back(*next);
                     }
                     if (!next)
-                        return args->OnError(begin_pos, Arguments::Failure::UnterminatedStringLiteral);
+                        return OnError(begin_pos, Arguments::Failure::UnterminatedStringLiteral, this);
                     return Wide::Lexer::Token(begin_pos + current_position, TokenType::String, escape(variable_length_value));
                 }
 
                 TokenType result = TokenType::Integer;
                 if (!((*val >= '0' && *val <= '9') || (*val >= 'a' && *val <= 'z') || (*val >= 'A' && *val <= 'Z') || *val == '_')) {
-                    return args->OnError(begin_pos, Arguments::Failure::UnlexableCharacter);
+                    return OnError(begin_pos, Arguments::Failure::UnlexableCharacter, this);
                 }
                 auto old_pos = current_position;
                 while(val) {
@@ -292,7 +230,7 @@ namespace Wide {
                     val = get();
                 }
                 if (args->keywords.find(variable_length_value) != args->keywords.end()) {
-                    return Wide::Lexer::Token(begin_pos + current_position, args->keywords[variable_length_value], variable_length_value);
+                    return Wide::Lexer::Token(begin_pos + current_position, args->keywords.at(variable_length_value), variable_length_value);
                 }
                 return Wide::Lexer::Token(begin_pos + current_position, result, variable_length_value);
             }

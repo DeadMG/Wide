@@ -22,7 +22,6 @@ namespace VisualWide
             IClassificationType Keyword;
             IClassificationType Comment;
             IClassificationType Literal;
-            Lexer lexer;
 
             // Probably a giant memory leak
             Dictionary<ITextSnapshot, List<TagSpan<ClassificationTag>>> SnapshotResults = new Dictionary<ITextSnapshot, List<TagSpan<ClassificationTag>>>();
@@ -30,7 +29,6 @@ namespace VisualWide
             public HighlightWordTagger(ITextBuffer sourceBuffer, IClassificationTypeRegistryService typeService)
             {
                 TextBuffer = sourceBuffer;
-                lexer = new Lexer();
 
                 TextBuffer.Changed += (sender, args) =>
                 {
@@ -63,62 +61,50 @@ namespace VisualWide
                 return new Span((int)range.begin.offset, (int)(range.end.offset - range.begin.offset));
             }
 
-            void Dispose()
-            {
-                lexer.Dispose();
-            }
-
             void LexSnapshot(ITextSnapshot shot)
             {
                 if (SnapshotResults.ContainsKey(shot))
                     return;
 
+                var lexer = new Lexer();
                 var list = new List<TagSpan<ClassificationTag>>();
                 SnapshotResults[shot] = list;
-                lexer.SetContents(shot.GetText());
-                Nullable<Lexer.Token> tok;
-                while (true)
-                {
-                    bool error = false;
-                    tok = lexer.Read(except =>
+                lexer.Read(
+                    shot.GetText(),
+                    (where, what) =>
                     {
-
-                        error = true;
-                        if (except.what == Lexer.Failure.UnlexableCharacter)
-                            return;
+                        if (what == Lexer.Failure.UnlexableCharacter)
+                            return false;
                         var loc = new Span(
-                            (int)except.where.offset,
-                            (int)shot.Length - (int)except.where.offset
+                            (int)where.offset,
+                            (int)shot.Length - (int)where.offset
                         );
-                        if (except.what == Lexer.Failure.UnterminatedComment)
+                        if (what == Lexer.Failure.UnterminatedComment)
                             list.Add(new TagSpan<ClassificationTag>(new SnapshotSpan(shot, loc), new ClassificationTag(Comment)));
-                        if (except.what == Lexer.Failure.UnterminatedStringLiteral)
+                        if (what == Lexer.Failure.UnterminatedStringLiteral)
                             list.Add(new TagSpan<ClassificationTag>(new SnapshotSpan(shot, loc), new ClassificationTag(Literal)));
-                    }, where =>
+                        return false;
+                    }, 
+                    where =>
                     {
                         // Clamp this so it doesn't go over the end when we add \n in the lexer.
                         where.end.offset = where.end.offset > shot.Length ? (uint)(shot.Length) : where.end.offset;
                         var loc = SpanFromLexer(where);
                         list.Add(new TagSpan<ClassificationTag>(new SnapshotSpan(shot, loc), new ClassificationTag(Comment)));
-                    });
-
-                    if (tok == null)
-                        if (!error)
-                            return;
-                        else
-                            continue;
-
-                    var token = tok.Value;
-                    var location = SpanFromLexer(token.location);
-                    if (token.type == Lexer.TokenType.String || token.type == Lexer.TokenType.Integer)
-                    {
-                        list.Add(new TagSpan<ClassificationTag>(new SnapshotSpan(shot, location), new ClassificationTag(Literal)));
+                    },
+                    token => {
+                        var location = SpanFromLexer(token.location);
+                        if (token.type == Lexer.TokenType.String || token.type == Lexer.TokenType.Integer)
+                        {
+                            list.Add(new TagSpan<ClassificationTag>(new SnapshotSpan(shot, location), new ClassificationTag(Literal)));
+                        }
+                        if (lexer.IsKeyword(token.type))
+                        {
+                            list.Add(new TagSpan<ClassificationTag>(new SnapshotSpan(shot, location), new ClassificationTag(Keyword)));
+                        }
+                        return false;
                     }
-                    if (lexer.IsKeyword(token.type))
-                    {
-                        list.Add(new TagSpan<ClassificationTag>(new SnapshotSpan(shot, location), new ClassificationTag(Keyword)));
-                    }
-                }
+                );
             }
 
             public event EventHandler<SnapshotSpanEventArgs> TagsChanged = delegate { };

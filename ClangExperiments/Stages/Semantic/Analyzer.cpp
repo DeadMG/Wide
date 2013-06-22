@@ -254,7 +254,7 @@ Expression Analyzer::AnalyzeExpression(Type* t, AST::Expression* e) {
         auto context = t->GetDeclContext()->higher;
         while(auto udt = dynamic_cast<AST::Type*>(context))
             context = udt->higher;
-        auto ty = arena.Allocate<AST::Type>(context, "");
+        auto ty = arena.Allocate<AST::Type>(context, "", lam->location);
         auto ovr = arena.Allocate<AST::FunctionOverloadSet>("()", ty);
         auto fargs = lam->args;
         auto fun = arena.Allocate<AST::Function>("()", lam->statements, std::vector<AST::Statement*>(), lam->location, std::move(fargs), ty, std::vector<AST::VariableStatement*>());

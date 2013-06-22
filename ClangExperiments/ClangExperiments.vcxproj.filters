@@ -299,5 +299,8 @@
     <ClCompile Include="Stages\Semantic\MetaType.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="Stages\Lexer\lexerstatics.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
 </Project>

@@ -44,8 +44,9 @@ void Function::EmitCode(llvm::Module* mod, llvm::LLVMContext& con, Generator& g)
             
 		}
     } else {
+        auto linkage = tramp ? llvm::GlobalValue::LinkageTypes::ExternalLinkage : llvm::GlobalValue::LinkageTypes::InternalLinkage;
         auto t = llvm::dyn_cast<llvm::FunctionType>(llvm::dyn_cast<llvm::PointerType>(Type(mod))->getElementType());
-        f = llvm::Function::Create(t, llvm::GlobalValue::LinkageTypes::InternalLinkage, name, mod);
+        f = llvm::Function::Create(t, linkage, name, mod);
 
     }
 
@@ -66,7 +67,7 @@ void Function::EmitCode(llvm::Module* mod, llvm::LLVMContext& con, Generator& g)
         if (auto ptr = llvm::dyn_cast<llvm::PointerType>(ty->getParamType(i))) {
             auto el = ptr->getElementType();
             if (g.IsEliminateType(el)) {
-                ParameterValues[i] = irbuilder.CreateAlloca(ty->getParamType(i));
+                ParameterValues[i] = llvm::Constant::getNullValue(ty->getParamType(i));
                 continue;
             }
         }

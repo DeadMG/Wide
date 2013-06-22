@@ -270,9 +270,9 @@ LTEExpression* Builder::CreateLTEExpression(Expression* lhs, Expression* rhs) {
     });
 }
 
-Type* Builder::CreateType(std::string name, DeclContext* higher) {
+Type* Builder::CreateType(std::string name, DeclContext* higher, Lexer::Range loc) {
     auto ty = ConcurrentUseArena(arenas, [&](Wide::Memory::Arena& arena) {
-        return arena.Allocate<Type>(higher, name);
+        return arena.Allocate<Type>(higher, name, loc);
     });
     if (auto mod = dynamic_cast<AST::Module*>(higher)) {
         auto result = mod->decls.insert(std::make_pair(name, ty));
@@ -365,4 +365,14 @@ AddressOfExpression* Builder::CreateAddressOf(Expression* e, Lexer::Range loc) {
     return ConcurrentUseArena(arenas, [&](Wide::Memory::Arena& arena) {
         return arena.Allocate<AddressOfExpression>(e, loc);
     });
+}
+
+void Builder::AddStatementToGroup(std::vector<Statement*>& grp, Statement* stmt) {
+    return grp.push_back(stmt);
+}
+void Builder::AddExpressionToGroup(std::vector<Expression*>& grp, Expression* expr) {
+    return grp.push_back(expr);
+}
+void Builder::SetTypeEndLocation(Lexer::Range loc, Type* t) {
+    t->location = t->location + loc;
 }

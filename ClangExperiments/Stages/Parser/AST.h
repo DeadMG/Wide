@@ -46,7 +46,7 @@ namespace Wide {
         struct FunctionOverloadSet;
         struct VariableStatement;
         struct Type : public DeclContext, Expression {
-            Type(DeclContext* above, std::string name) : DeclContext(above, name), Expression(Lexer::Range()) {}
+            Type(DeclContext* above, std::string name, Lexer::Range loc) : DeclContext(above, name), Expression(loc) {}
             std::vector<VariableStatement*> variables;
             std::unordered_map<std::string, FunctionOverloadSet*> Functions;
         };
