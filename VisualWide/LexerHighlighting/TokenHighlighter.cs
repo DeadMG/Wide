@@ -83,7 +83,7 @@ namespace VisualWide
 
             public ITagger<T> CreateTagger<T>(ITextBuffer buffer) where T : ITag
             {
-                return new TokenHighlighter(buffer.Properties.GetOrCreateSingletonProperty(typeof(LexerProvider), () => new LexerProvider(buffer)), ClassificationTypeRegistry) as ITagger<T>;
+                return new TokenHighlighter(LexerProvider.GetProviderForBuffer(buffer), ClassificationTypeRegistry) as ITagger<T>;
             }
         }
 
@@ -116,11 +116,11 @@ namespace VisualWide
                     {
                         if (token.where.IntersectsWith(span))
                         {
-                            if (token.what.type == Lexer.TokenType.String || token.what.type == Lexer.TokenType.Integer)
+                            if (token.type == LexerProvider.TokenType.String || token.type == LexerProvider.TokenType.Integer)
                             {
                                 yield return new TagSpan<ClassificationTag>(token.where, new ClassificationTag(Literal));
                             }
-                            if (Lexer.IsKeyword(token.what.type))
+                            if (LexerProvider.IsKeyword(token.type))
                             {
                                 yield return new TagSpan<ClassificationTag>(token.where, new ClassificationTag(Keyword));
                             }
@@ -133,9 +133,9 @@ namespace VisualWide
                 }
                 foreach (var error in provider.GetErrors(spans[0].Snapshot))
                 {
-                    if (error.what == Lexer.Failure.UnterminatedComment)
+                    if (error.what == LexerProvider.Failure.UnterminatedComment)
                         yield return new TagSpan<ClassificationTag>(error.where, new ClassificationTag(Comment));
-                    if (error.what == Lexer.Failure.UnterminatedStringLiteral)
+                    if (error.what == LexerProvider.Failure.UnterminatedStringLiteral)
                         yield return new TagSpan<ClassificationTag>(error.where, new ClassificationTag(Literal));
                 }
             }

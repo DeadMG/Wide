@@ -3,7 +3,9 @@
 
 namespace CEquivalents {
     struct LexerResult {
-        Token t;
+        Range location;
+        Wide::Lexer::TokenType type;
+        char* value;
         bool exists;
     };
     struct ParserLexer {
@@ -18,7 +20,7 @@ namespace CEquivalents {
             }
             auto tok = TokenCallback(context);
             if (tok.exists)
-                return Wide::Lexer::Token(tok.t.location, tok.t.type, tok.t.value);
+                return Wide::Lexer::Token(tok.location, tok.type, tok.value);
             return Wide::Util::none;
         }
         void operator()(Wide::Lexer::Token t) {
@@ -84,11 +86,12 @@ namespace CEquivalents {
         std::nullptr_t CreateInitializerGroup() { return CreateCaptureGroup(); }
         std::nullptr_t CreateFunctionArgumentGroup() { return nullptr; }
         
-        std::nullptr_t CreateModule(std::string val, std::nullptr_t p) { return nullptr; }
-        std::nullptr_t CreateUsingDefinition(std::string val, Wide::Lexer::Range expr, std::nullptr_t p) { return nullptr; }
-        void CreateFunction(std::string name, std::nullptr_t, std::nullptr_t, Wide::Lexer::Range r, std::nullptr_t p, std::nullptr_t, std::nullptr_t) {}
-        void CreateFunction(std::string name, std::nullptr_t, std::nullptr_t, Wide::Lexer::Range r, Wide::Lexer::Range p, std::nullptr_t, std::nullptr_t) {}
-        Wide::Lexer::Range CreateType(std::string name, std::nullptr_t p, Wide::Lexer::Range r) { return r; }        
+        Wide::Lexer::Range CreateModule(std::string val, Wide::Lexer::Range p, Wide::Lexer::Range r) { return r; }
+        std::nullptr_t CreateUsingDefinition(std::string val, Wide::Lexer::Range expr, Wide::Lexer::Range p) { return nullptr; }
+        //void CreateFunction(std::string name, std::nullptr_t, std::nullptr_t, Wide::Lexer::Range r, std::nullptr_t p, std::nullptr_t, std::nullptr_t) { OutliningCallback(r, OutliningType::Function); }
+        void CreateFunction(std::string name, std::nullptr_t, std::nullptr_t, Wide::Lexer::Range r, Wide::Lexer::Range p, std::nullptr_t, std::nullptr_t) { OutliningCallback(r, OutliningType::Function); }
+        //Wide::Lexer::Range CreateType(std::string name, std::nullptr_t p, Wide::Lexer::Range r) { return r; }        
+        Wide::Lexer::Range CreateType(std::string name, Wide::Lexer::Range p, Wide::Lexer::Range r) { return r; }       
         Wide::Lexer::Range CreateType(std::string name, Wide::Lexer::Range r) { return r; }
 
         void AddTypeField(Wide::Lexer::Range r, Wide::Lexer::Range) {}
@@ -98,6 +101,7 @@ namespace CEquivalents {
         void AddInitializerToGroup(std::nullptr_t& l, Wide::Lexer::Range b) { return AddCaptureToGroup(l, b); }
         void AddStatementToGroup(std::nullptr_t, Wide::Lexer::Range r) {}
         void SetTypeEndLocation(Wide::Lexer::Range& r, Wide::Lexer::Range val) { r = r + val; OutliningCallback(r, OutliningType::Type); }
+        void SetModuleEndLocation(Wide::Lexer::Range& r, Wide::Lexer::Range val) { r = r + val; OutliningCallback(r, OutliningType::Module); }
         void AddExpressionToGroup(std::nullptr_t, Wide::Lexer::Range r) {}
 
         Wide::Lexer::Range GetLocation(Wide::Lexer::Range s) {
@@ -114,12 +118,12 @@ namespace CEquivalents {
 extern "C" __declspec(dllexport) void ParseWide(
     void* context,
     std::add_pointer<CEquivalents::LexerResult(void*)>::type TokenCallback,
-    std::add_pointer<void(CEquivalents::Range r, CEquivalents::OutliningType)>::type OutliningCallback
+    std::add_pointer<void(CEquivalents::Range r, CEquivalents::OutliningType, void*)>::type OutliningCallback
 ) {
     CEquivalents::ParserLexer pl;
     pl.context = context;
     pl.TokenCallback = TokenCallback;
     try {
-        Wide::Parser::ParseGlobalModuleContents(pl, CEquivalents::Builder([=](Wide::Lexer::Range r, CEquivalents::OutliningType t) { return OutliningCallback(r, t); }), nullptr);
+        Wide::Parser::ParseGlobalModuleContents(pl, CEquivalents::Builder([=](Wide::Lexer::Range r, CEquivalents::OutliningType t) { return OutliningCallback(r, t, context); }), Wide::Lexer::Range());
     } catch(...) {}
 }

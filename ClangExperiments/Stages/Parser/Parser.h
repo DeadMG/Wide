@@ -543,6 +543,7 @@ namespace Wide {
             // Expect ParseFunctionArguments to have consumed the ).
             auto group = ParseFunctionArguments(lex, sema);
             auto t = lex();
+            auto loc = t.GetLocation();
             auto prolog = sema.CreateStatementGroup();
             if (t.GetType() == Lexer::TokenType::Prolog) {
                 t = lex();
@@ -601,20 +602,20 @@ namespace Wide {
                 break;
             }
             if (t.GetType() == Lexer::TokenType::CloseCurlyBracket) {
-                sema.CreateFunction(val, std::move(stmts), std::move(prolog), pos + t.GetLocation(), m, std::move(group), std::move(initializers));
+                sema.CreateFunction(val, std::move(stmts), std::move(prolog), loc + t.GetLocation(), m, std::move(group), std::move(initializers));
                 return;
             }
             lex(t);
             while(true) {
                 sema.AddStatementToGroup(stmts, ParseStatement(lex, sema));
-                auto t = lex();
+                t = lex();
                 if (t.GetType() == Lexer::TokenType::CloseCurlyBracket) {
                     pos = pos + t.GetLocation();
                     break;
                 }
                 lex(t);
             }
-            sema.CreateFunction(val, std::move(stmts), std::move(prolog), pos, m, std::move(group), std::move(initializers));
+            sema.CreateFunction(val, std::move(stmts), std::move(prolog), loc + t.GetLocation(), m, std::move(group), std::move(initializers));
         }
 
         template<typename Lex, typename Sema, typename Module> 
@@ -644,10 +645,10 @@ namespace Wide {
             auto ident = lex();
             if (ident.GetType() != Lexer::TokenType::Identifier)
                 throw std::runtime_error("Expected identifier after module.");
-            auto mod = sema.CreateModule(ident.GetValue(), m);
             auto curly = lex();
             if (curly.GetType() != Lexer::TokenType::OpenCurlyBracket)
                 throw std::runtime_error("Expected { after identifier when parsing module.");
+            auto mod = sema.CreateModule(ident.GetValue(), m, curly.GetLocation());
             ParseModuleContents(lex, sema, mod);
         }
 
@@ -717,7 +718,7 @@ namespace Wide {
             auto t = lex();
             if (t.GetType() != Lexer::TokenType::OpenCurlyBracket)
                 throw std::runtime_error("Expected { after identifier.");
-            auto ty = sema.CreateType(ident.GetValue(), m, loc);
+            auto ty = sema.CreateType(ident.GetValue(), m, t.GetLocation());
             return ParseTypeBody(lex, sema, ty);
         }
         
@@ -781,8 +782,6 @@ namespace Wide {
             };
             auto val = lex();
             while (val) {
-                if (val->GetType() == Lexer::TokenType::CloseCurlyBracket)
-                    return;
                 lex(*val);
                 AssumeLexer lexer;
                 lexer.lex = &lex;
@@ -792,11 +791,13 @@ namespace Wide {
         }
         template<typename Lex, typename Sema, typename Module> void ParseModuleContents(Lex&& lex, Sema&& sema, Module&& m) {
             // Should really be refactored later into ParseGlobalModuleContents and ParseModuleDeclaration
-            ParseModuleLevelDeclaration(lex, sema, m);
             auto t = lex();
-            if (t.GetType() == Lexer::TokenType::CloseCurlyBracket)
+            if (t.GetType() == Lexer::TokenType::CloseCurlyBracket) {
+                sema.SetModuleEndLocation(m, t.GetLocation());
                 return;
+            }
             lex(t);
+            ParseModuleLevelDeclaration(lex, sema, m);
             return ParseModuleContents(lex, sema, m);
         }
     }

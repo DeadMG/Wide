@@ -22,7 +22,7 @@ namespace VisualWide.SourceHighlighting
     {
         public ITagger<T> CreateTagger<T>(ITextBuffer buffer) where T : ITag
         {
-            return new LexerErrorTagger(buffer.Properties.GetOrCreateSingletonProperty(typeof(LexerProvider), () => new LexerProvider(buffer))) as ITagger<T>;
+            return new LexerErrorTagger(LexerProvider.GetProviderForBuffer(buffer)) as ITagger<T>;
         }
     }
     
@@ -46,15 +46,15 @@ namespace VisualWide.SourceHighlighting
                 {
                     if (error.where.IntersectsWith(span))
                     {
-                        if (error.what == Lexer.Failure.UnlexableCharacter)
+                        if (error.what == LexerProvider.Failure.UnlexableCharacter)
                         {
                             yield return new TagSpan<ErrorTag>(error.where, new ErrorTag("syntax error", "The Wide lexer could not recognize this character."));
                         }
-                        if (error.what == Lexer.Failure.UnterminatedStringLiteral)
+                        if (error.what == LexerProvider.Failure.UnterminatedStringLiteral)
                         {
                             yield return new TagSpan<ErrorTag>(new SnapshotSpan(shot, new Span(shot.Length - 1, 1)), new ErrorTag("syntax error", "This string is unterminated."));
                         }
-                        if (error.what == Lexer.Failure.UnterminatedComment)
+                        if (error.what == LexerProvider.Failure.UnterminatedComment)
                         {
                             yield return new TagSpan<ErrorTag>(new SnapshotSpan(shot, new Span(shot.Length - 1, 1)), new ErrorTag("syntax error", "This comment is unterminated."));
                         }

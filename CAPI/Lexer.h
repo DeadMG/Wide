@@ -43,12 +43,6 @@ namespace CEquivalents {
             return Wide::Lexer::Range(begin, end);
         }
     };
-
-    struct Token {
-        Range location;
-        Wide::Lexer::TokenType type;
-        char* value;
-    };
     struct LexerBody {
         LexerBody(LexerRange r)
             : inv(args, r) {}

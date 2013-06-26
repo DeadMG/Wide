@@ -16,29 +16,189 @@ namespace VisualWide
 {
     class LexerProvider
     {
+        public static LexerProvider GetProviderForBuffer(ITextBuffer buf)
+        {
+            return buf.Properties.GetOrCreateSingletonProperty(typeof(LexerProvider), () => new LexerProvider(buf));
+        }
+        public enum Failure : int
+        {
+            UnterminatedStringLiteral,
+            UnlexableCharacter,
+            UnterminatedComment
+        };
+        public enum TokenType : int
+        {
+            OpenBracket,
+            CloseBracket,
+            Dot,
+            Semicolon,
+            Identifier,
+            String,
+            LeftShift,
+            RightShift,
+            OpenCurlyBracket,
+            CloseCurlyBracket,
+            Return,
+            Assignment,
+            VarCreate,
+            Comma,
+            Integer,
+            Using,
+            Prolog,
+            Module,
+            If,
+            Else,
+            EqCmp,
+            Exclaim,
+            While,
+            NotEqCmp,
+            This,
+            Type,
+            Operator,
+            Function,
+            OpenSquareBracket,
+            CloseSquareBracket,
+            Colon,
+            Dereference,
+            PointerAccess,
+            Negate,
+            Plus,
+            Increment,
+            Decrement,
+            Minus,
+
+            LT,
+            LTE,
+            GT,
+            GTE,
+            Or,
+            And,
+            Xor
+        }
+
+        [StructLayout(LayoutKind.Sequential, Pack = 8)]
+        private struct MaybeByte
+        {
+            public byte asciichar;
+            public byte present;
+        }
+
+        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi)]
+        public struct Position
+        {
+            public UInt32 column;
+            public UInt32 line;
+            public UInt32 offset;
+        }
+
+        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi)]
+        public struct Range
+        {
+            public Position begin;
+            public Position end;
+        }
+        
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        private delegate MaybeByte LexerCallback(System.IntPtr arg);
+
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        private delegate void RawCommentCallback(Range arg, System.IntPtr con);
+
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        private delegate byte RawErrorCallback(Position p, Failure f, System.IntPtr con);
+
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        private delegate byte RawTokenCallback(Range r, [MarshalAs(UnmanagedType.LPStr)]string s, TokenType type, System.IntPtr context);
+
+        private delegate bool TokenCallback(Range loc, string s, TokenType t);
+        private delegate bool ErrorCallback(Position p, Failure f);
+        private delegate void CommentCallback(Range arg);
+
+        [DllImport("CAPI.dll", CallingConvention = CallingConvention.Cdecl)]
+        private static extern void LexWide(
+            System.IntPtr context,
+            [MarshalAs(UnmanagedType.FunctionPtr)]LexerCallback callback,
+            [MarshalAs(UnmanagedType.FunctionPtr)]RawCommentCallback comment,
+            [MarshalAs(UnmanagedType.FunctionPtr)]RawErrorCallback error,
+            [MarshalAs(UnmanagedType.FunctionPtr)]RawTokenCallback token
+        );
+
+        [DllImport("CAPI.dll", CallingConvention = CallingConvention.Cdecl)]
+        private static extern byte IsKeywordType(TokenType type);
+
+        public static bool IsKeyword(TokenType t)
+        {
+            return IsKeywordType(t) == 1;
+        }
+
+        private static void Read(
+            System.String contents,
+            ErrorCallback err,
+            CommentCallback comment,
+            TokenCallback token
+            )
+        {
+            if (!contents.EndsWith("\n"))
+                contents += "\n";
+            int offset = 0;
+            LexWide(
+                System.IntPtr.Zero,
+                (context) =>
+                {
+                    var ret = new MaybeByte();
+                    ret.present = (byte)(offset < contents.Length ? 1 : 0);
+                    if (ret.present == 1)
+                    {
+                        ret.asciichar = (byte)contents[offset++];
+                    }
+                    return ret;
+                },
+                (where, context) =>
+                {
+                    comment(where);
+                },
+                (pos, fail, context) =>
+                {
+                    return err(pos, fail) ? (byte)1 : (byte)0;
+                },
+                (where, value, type, context) =>
+                {
+                    var tok = new Token();
+                    tok.location = where;
+                    tok.value = value;
+                    tok.type = type;
+                    return token(where, value, type) ? (byte)1 : (byte)0;
+                }
+            );
+        }
+
         public struct Error
         {
-            public Error(SnapshotSpan loc, Lexer.Failure err)
+            public Error(SnapshotSpan loc, Failure err)
             {
                 where = loc;
                 what = err;
             }
             public SnapshotSpan where;
-            public Lexer.Failure what;
+            public Failure what;
         }
 
         public struct Token
         {
-            public Token(SnapshotSpan span, Lexer.Token tok)
+            public Token(SnapshotSpan span, Range r, string val, TokenType t)
             {
                 where = span;
-                what = tok;
+                location = r;
+                type = t;
+                value = val;
             }
             public SnapshotSpan where;
-            public Lexer.Token what;
+            public Range location;
+            public TokenType type;
+            public string value;
         }
 
-        public class ResultTypes
+        class ResultTypes
         {
             public List<SnapshotSpan> comments = new List<SnapshotSpan>();
             public List<Token> tokens = new List<Token>();
@@ -71,16 +231,15 @@ namespace VisualWide
             return SnapshotResults[shot].errors;
         }
 
-        public LexerProvider(ITextBuffer buf) {
+        LexerProvider(ITextBuffer buf) {
             TextBuffer = buf;
 
             buf.Changed += (sender, args) => {
-                LexSnapshot(args.After);
                 TagsChanged(new SnapshotSpan(args.After, new Span(0, args.After.Length)));
             };
         }
 
-        Span SpanFromLexer(Lexer.Range range)
+        public static Span SpanFromLexer(Range range)
         {
             return new Span((int)range.begin.offset, (int)(range.end.offset - range.begin.offset));
         }
@@ -91,12 +250,12 @@ namespace VisualWide
                 return;
             var list = new ResultTypes();
             SnapshotResults[shot] = list;
-            Lexer.Read(
+            Read(
                 shot.GetText(),
                 (where, what) =>
                 {
                     Span loc;
-                    if (what == Lexer.Failure.UnlexableCharacter)
+                    if (what == Failure.UnlexableCharacter)
                         loc = new Span((int)where.offset, 0);
                     else
                         loc = new Span(
@@ -112,9 +271,9 @@ namespace VisualWide
                     where.end.offset = where.end.offset > shot.Length ? (uint)(shot.Length) : where.end.offset;
                     list.comments.Add(new SnapshotSpan(shot, SpanFromLexer(where)));
                 },
-                token =>
+                (where, what, type) =>
                 {
-                    list.tokens.Add(new Token(new SnapshotSpan(shot, SpanFromLexer(token.location)), token));
+                    list.tokens.Add(new Token(new SnapshotSpan(shot, SpanFromLexer(where)), where, what, type));
                     return false;
                 }
             );
