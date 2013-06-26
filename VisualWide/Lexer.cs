@@ -116,12 +116,12 @@ namespace VisualWide
         [DllImport("CAPI.dll", CallingConvention = CallingConvention.Cdecl)]
         private static extern byte IsKeywordType(TokenType type);
         
-        public bool IsKeyword(TokenType t)
+        public static bool IsKeyword(TokenType t)
         {
             return IsKeywordType(t) == 1;
         }
 
-        public void Read(
+        public static void Read(
             System.String contents,
             ErrorCallback err, 
             CommentCallback comment,

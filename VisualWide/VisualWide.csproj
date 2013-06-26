@@ -44,10 +44,10 @@
   <ItemGroup>
     <Compile Include="ContentType.cs" />
     <Compile Include="Lexer.cs" />
-    <Compile Include="SourceHighlighting\ClassificationFormats.cs" />
-    <Compile Include="SourceHighlighting\HighlightWordTagger.cs" />
-    <Compile Include="SourceHighlighting\HighlightWordTaggerProvider.cs" />
+    <Compile Include="SourceHighlighting\TokenHighlighter.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="SourceHighlighting\ErrorHighlighter.cs" />
+    <Compile Include="SourceHighlighting\LexerProvider.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="source.extension.vsixmanifest">

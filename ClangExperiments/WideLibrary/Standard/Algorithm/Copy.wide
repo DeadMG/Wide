@@ -1,7 +1,0 @@
-module Standard {
-    module Algorithm {
-        Copy(fun) {
-            return ForEach(function(val)[fun := std.move(fun)] { fun(val); });
-        }
-    }
-}

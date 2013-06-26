@@ -20,6 +20,14 @@ namespace CEquivalents {
             : column(pos.column)
             , line(pos.line)
             , offset(pos.offset) {}
+
+        operator Wide::Lexer::Position() {
+            Wide::Lexer::Position p;
+            p.column = column;
+            p.line = line;
+            p.offset = offset;
+            return p;
+        }
         unsigned column;
         unsigned line;
         unsigned offset;
@@ -30,16 +38,16 @@ namespace CEquivalents {
         Range(Wide::Lexer::Range r)
             : begin(r.begin), end(r.end) {}
         Position begin, end;
+        
+        operator Wide::Lexer::Range() {
+            return Wide::Lexer::Range(begin, end);
+        }
     };
 
     struct Token {
         Range location;
         Wide::Lexer::TokenType type;
         char* value;
-    };
-    struct LexerResult {
-        Token t;
-        bool exists;
     };
     struct LexerBody {
         LexerBody(LexerRange r)

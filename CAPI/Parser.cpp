@@ -2,16 +2,27 @@
 #include "Stages/Parser/Parser.h"
 
 namespace CEquivalents {
+    struct LexerResult {
+        Token t;
+        bool exists;
+    };
     struct ParserLexer {
-        CEquivalents::LexerBody* lexer;
+        void* context;
+        std::add_pointer<CEquivalents::LexerResult(void*)>::type TokenCallback;
+        std::deque<Wide::Lexer::Token> putback;
         Wide::Util::optional<Wide::Lexer::Token> operator()() {
-            auto tok = lexer->inv();
-            if (tok && lexer->TokenCallback(tok->GetLocation(), tok->GetValue().c_str(), tok->GetType()))
-                return tok;
+            if (!putback.empty()) {
+                auto val = putback.back();
+                putback.pop_back();
+                return std::move(val);
+            }
+            auto tok = TokenCallback(context);
+            if (tok.exists)
+                return Wide::Lexer::Token(tok.t.location, tok.t.type, tok.t.value);
             return Wide::Util::none;
         }
         void operator()(Wide::Lexer::Token t) {
-            lexer->inv(std::move(t));
+            putback.push_back(std::move(t));
         }
     };
 
@@ -100,12 +111,14 @@ namespace CEquivalents {
     };
 }
 
-extern "C" __declspec(dllexport) void Parse(
-    CEquivalents::LexerBody* lexer,
+extern "C" __declspec(dllexport) void ParseWide(
+    void* context,
+    std::add_pointer<CEquivalents::LexerResult(void*)>::type TokenCallback,
     std::add_pointer<void(CEquivalents::Range r, CEquivalents::OutliningType)>::type OutliningCallback
 ) {
     CEquivalents::ParserLexer pl;
-    pl.lexer = lexer;
+    pl.context = context;
+    pl.TokenCallback = TokenCallback;
     try {
         Wide::Parser::ParseGlobalModuleContents(pl, CEquivalents::Builder([=](Wide::Lexer::Range r, CEquivalents::OutliningType t) { return OutliningCallback(r, t); }), nullptr);
     } catch(...) {}
