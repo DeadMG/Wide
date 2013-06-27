@@ -54,6 +54,7 @@
       <WarningLevel>Level3</WarningLevel>
       <Optimization>Disabled</Optimization>
       <PreprocessorDefinitions>WIN32;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -161,6 +162,7 @@
     <ClInclude Include="Util\ConcurrentDetail\stdparallelforeach.h" />
     <ClInclude Include="Util\ConcurrentDetail\stdvector.h" />
     <ClInclude Include="Util\ConcurrentVector.h" />
+    <ClInclude Include="Util\MakeUnique.h" />
     <ClInclude Include="Util\Ranges\IStreamRange.h" />
     <ClInclude Include="Util\Ranges\IteratorRange.h" />
     <ClInclude Include="Util\Ranges\Optional.h" />
@@ -172,7 +174,6 @@
     <ClInclude Include="Util\ConcurrentDetail\stdumap.h" />
     <ClInclude Include="Util\ConcurrentQueue.h" />
     <ClInclude Include="Util\ConcurrentUnorderedMap.h" />
-    <ClInclude Include="Util\MakeUnique.h" />
     <ClInclude Include="Util\MemoryArena.h" />
     <ClInclude Include="Stages\Wide.h" />
   </ItemGroup>

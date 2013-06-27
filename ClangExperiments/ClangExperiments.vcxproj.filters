@@ -15,9 +15,6 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="Util\MakeUnique.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="Util\MemoryArena.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -199,6 +196,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="Util\Ranges\IStreamRange.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Util\MakeUnique.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

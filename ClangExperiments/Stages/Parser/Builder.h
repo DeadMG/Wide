@@ -144,13 +144,14 @@ namespace Wide {
             std::vector<VariableStatement*> CreateInitializerGroup() 
             { return CreateCaptureGroup(); }
             
-            Module* CreateModule(std::string val, Module* p);
+            Module* CreateModule(std::string val, Module* p, Lexer::Range r);
             Using* CreateUsingDefinition(std::string val, Expression* expr, Module* p);
             void CreateFunction(std::string name, std::vector<Statement*> body, std::vector<Statement*> prolog, Lexer::Range r, Module* p, std::vector<FunctionArgument>, std::vector<VariableStatement*> caps);
             void CreateFunction(std::string name, std::vector<Statement*> body, std::vector<Statement*> prolog, Lexer::Range r, Type* p, std::vector<FunctionArgument>, std::vector<VariableStatement*> caps);
             Type* CreateType(std::string name, DeclContext* p, Lexer::Range loc);
             Type* CreateType(std::string name, Lexer::Range loc) { return CreateType(std::move(name), nullptr, loc); }
             void SetTypeEndLocation(Lexer::Range loc, Type* t) { t->location = t->location + loc; }
+			void SetModuleEndLocation(Module* m, Lexer::Range loc) {}
             
             std::vector<FunctionArgument> CreateFunctionArgumentGroup() { return std::vector<FunctionArgument>(); }
 

@@ -23,7 +23,6 @@
 #include <clang/AST/DeclCXX.h>
 #include <clang/AST/ASTContext.h>
 #include <clang/Sema/Sema.h>
-#include <llvm/IR/DerivedTypes.h>
 
 #pragma warning(pop)
 

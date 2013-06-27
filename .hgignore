@@ -80,3 +80,13 @@ ClangExperiments/names.txt
 ClangExperiments/linktimenames.txt
 ClangExperiments/ClangExperiments.opensdf
 VisualWide/CAPI.dll
+ClangExperiments/Backup/source.extension.vsixmanifest
+ClangExperiments/Backup/VisualWide.csproj
+ClangExperiments/Backup/Properties/AssemblyInfo.cs
+ClangExperiments/Backup/ParserProvider.cs
+ClangExperiments/Backup/ParserHighlighting/OutliningProvider.cs
+ClangExperiments/Backup/LexerProvider.cs
+ClangExperiments/Backup/LexerHighlighting/TokenHighlighter.cs
+ClangExperiments/Backup/LexerHighlighting/ErrorHighlighter.cs
+ClangExperiments/Backup/ContentType.cs
+ClangExperiments/Backup/CAPI.dll

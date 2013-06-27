@@ -34,7 +34,7 @@ Using* ThreadLocalBuilder::CreateUsingDefinition(std::string name, Expression* v
     return p;
 }
 
-Module* ThreadLocalBuilder::CreateModule(std::string val, Module* m) {
+Module* ThreadLocalBuilder::CreateModule(std::string val, Module* m, Lexer::Range l) {
     auto p = arena.Allocate<Module>(std::move(val), m);
     auto ret = m->decls.insert(std::pair<const std::string, ModuleLevelDeclaration*>(p->name, p));
     if (!ret.second) {
