@@ -18,7 +18,6 @@ void Wide::Compile(const Wide::Options::Clang& copts, const Wide::Options::LLVM&
     files.push_back("WideLibrary/Standard/Algorithm/Any.wide");
     files.push_back("WideLibrary/Standard/Algorithm/Append.wide");
     files.push_back("WideLibrary/Standard/Algorithm/Combiner.wide");
-    files.push_back("WideLibrary/Standard/Algorithm/Copy.wide");
     files.push_back("WideLibrary/Standard/Algorithm/Count.wide");
     files.push_back("WideLibrary/Standard/Algorithm/Drop.wide");
     files.push_back("WideLibrary/Standard/Algorithm/DropWhile.wide");
@@ -36,6 +35,7 @@ void Wide::Compile(const Wide::Options::Clang& copts, const Wide::Options::LLVM&
     files.push_back("WideLibrary/Standard/Range/Delimited.wide");
     files.push_back("WideLibrary/Standard/Range/Repeat.wide");
     files.push_back("WideLibrary/Standard/Range/StreamInserter.wide");
+    files.push_back("WideLibrary/Standard/Utility/Move.wide");
     files.push_back("WideLibrary/stdlib.wide");
 
     Concurrency::Vector<std::string> excepts;

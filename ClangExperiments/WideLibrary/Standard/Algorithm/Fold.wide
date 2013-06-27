@@ -1,17 +1,17 @@
 module Standard {
     module Algorithm {
         Fold(pred) {
-            return function(range)[pred := std.move(pred)] {
+            return function(range)[pred := Utility.Move(pred)] {
                 var := range();
-                return Fold(std.move(pred), *std.move(var))(std.move(range));
+                return Fold(Utility.Move(pred), *Utility.Move(var))(Utility.Move(range));
             };
         }
         Fold(pred, initial) {
-            return function(range)[pred := std.move(pred), initial := std.move(initial)] {
+            return function(range)[pred := Utility.Move(pred), initial := Utility.Move(initial)] {
                 var := range();
                 if (~var)
-                    return std.move(initial);
-                return Fold(std.move(pred), pred(std.move(initial), *std.move(var)))(std.move(range));
+                    return Utility.Move(initial);
+                return Fold(Utility.Move(pred), pred(Utility.Move(initial), *Utility.Move(var)))(Utility.Move(range));
             };
         }
     }

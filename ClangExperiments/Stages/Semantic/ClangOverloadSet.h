@@ -22,6 +22,14 @@ namespace Wide {
             
             Expression BuildCall(Expression val, std::vector<Expression> args, Analyzer& a);
             Expression BuildMetaCall(Expression val, std::vector<Expression> args, Analyzer& a);
+
+            std::function<llvm::Type*(llvm::Module*)> GetLLVMType(Analyzer& a);
+
+            Expression BuildValueConstruction(std::vector<Expression> args, Analyzer& a);
+            std::size_t size(Analyzer& a);
+            std::size_t alignment(Analyzer& a);
+
+            using Type::BuildValueConstruction;
         };
     }
 }

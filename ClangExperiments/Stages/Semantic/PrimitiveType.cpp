@@ -1,7 +1,7 @@
 #include "PrimitiveType.h"
 #include "../Codegen/Expression.h"
 #include "Analyzer.h"
-#include "LvalueType.h"
+#include "Reference.h"
 #include "../Codegen/Generator.h"
 
 using namespace Wide;

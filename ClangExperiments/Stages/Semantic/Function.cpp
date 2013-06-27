@@ -7,9 +7,8 @@
 #include "../Codegen/Generator.h"
 #include "ClangTU.h"
 #include "Module.h"
-#include "LvalueType.h"
+#include "Reference.h"
 #include "ConstructorType.h"
-#include "RvalueType.h"
 #include "UserDefinedType.h"
 
 #include <unordered_set>
@@ -158,7 +157,7 @@ void Function::ComputeBody(Analyzer& a) {
                     // When returning an lvalue or rvalue, decay them.
                     auto result = a.AnalyzeExpression(this, ret->RetExpr);
                     if (!ReturnType)
-                        ReturnType = result.steal ? result.t : result.t->Decay();
+                        ReturnType = result.t->Decay();
                     else if (ReturnType != result.t->Decay() && (a.RankConversion(result.t, ReturnType) == ConversionRank::None || a.RankConversion(ReturnType, result.t->Decay()) != ConversionRank::None))
                         throw std::runtime_error("Attempted to return more than 1 post-decay type from a function.");
                     
@@ -200,8 +199,8 @@ void Function::ComputeBody(Analyzer& a) {
                         result.steal = false;
                         // If I've been asked to steal an lvalue, it's because I rvalue constructed an lvalue reference
                         // So the expr will be T** whereas I want just T*
-                        if (dynamic_cast<LvalueType*>(result.t))
-                            result.Expr = a.gen->CreateLoad(result.Expr);
+                        //if (dynamic_cast<LvalueType*>(result.t))
+                        //    result.Expr = a.gen->CreateLoad(result.Expr);
                         result.t = a.GetLvalueType(result.t);
                         variables.back()[var->name] = result;
                     }

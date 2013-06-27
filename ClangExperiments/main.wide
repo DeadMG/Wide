@@ -3,5 +3,7 @@ using Range := Standard.Range;
 using Algorithm := Standard.Algorithm;
 
 Main() {
-    cpp("iostream").std.cout << "Hello, World!";
+    Range.Delimited(1, 11)
+        | Algorithm.Map(function(val) { return 2 * val; })
+        | Algorithm.ForEach(Range.StreamInserter(std.cout));
 }

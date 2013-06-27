@@ -7,7 +7,7 @@
 #include "ClangTU.h"
 #include <array>
 #include <sstream>
-#include "LvalueType.h"
+#include "Reference.h"
 #include "Analyzer.h"
 #include "../Codegen/Generator.h"
 #include "../Codegen/Function.h"
@@ -132,10 +132,11 @@ Expression OverloadSet::BuildCall(Expression e, std::vector<Expression> args, An
                     throw std::runtime_error("The expression for a function argument must be a type.");
 
                 // Prevent move constructors matching- so if T(T&&), T(U), T(T(U)) should not match as well as T(U)
+                // Also, if the argument is T&& or T&, prevent others matching.
                 if (nonstatic 
                     && overset->name == "type"
                     && args.size() == 2
-                    && argty->IsReference(nonstatic->Decay())) 
+                    && (argty->IsReference(nonstatic->Decay()) || args[i].t->IsReference(nonstatic->Decay()))) 
                 {
                     curr_rank = argty == args[i].t ? ConversionRank::Zero : ConversionRank::None;
                 } else {

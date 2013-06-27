@@ -1,7 +1,6 @@
 #include "Type.h"
 #include "Analyzer.h"
-#include "LvalueType.h"
-#include "RvalueType.h"
+#include "Reference.h"
 #include "PointerType.h"
 #include "../Codegen/Generator.h"
 #include "../Codegen/Expression.h"

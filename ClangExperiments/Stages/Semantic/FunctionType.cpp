@@ -2,8 +2,7 @@
 #include "Analyzer.h"
 #include "../Codegen/Expression.h"
 #include "../Codegen/Generator.h"
-#include "LvalueType.h"
-#include "RvalueType.h"
+#include "Reference.h"
 #include "ClangTU.h"
 
 #pragma warning(push, 0)
@@ -97,7 +96,7 @@ Expression FunctionType::BuildCall(Expression val, std::vector<Expression> args,
 
                 // Try a copy. The user knows that unless inheritance is involved, we'll need a new value here anyway.
                 // T::BuildRvalueConstruction called to construct a T in memory from T or some U, which may be reference.
-                e.push_back(rval->GetPointee()->BuildRvalueConstruction(args[i], a).Expr);
+                e.push_back(rval->IsReference()->BuildRvalueConstruction(args[i], a).Expr);
                 continue;
             }
 

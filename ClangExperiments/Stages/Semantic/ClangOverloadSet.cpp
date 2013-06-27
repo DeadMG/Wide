@@ -7,11 +7,15 @@
 #include "ConstructorType.h"
 #include "FunctionType.h"
 #include "Analyzer.h"
+#include <sstream>
 
 #pragma warning(push, 0)
 
 #include <clang/Sema/Sema.h>
 #include <clang/AST/ASTContext.h>
+#include <llvm/IR/LLVMContext.h>
+#include <llvm/IR/Module.h>
+#include <llvm/IR/DerivedTypes.h>
 
 #pragma warning(pop)
 
@@ -25,7 +29,9 @@ Expression ClangOverloadSet::BuildCallWithTemplateArguments(clang::TemplateArgum
     std::vector<clang::OpaqueValueExpr> exprs;
     if (nonstatic) {
         // The mem's type will be this, even though we don't actually want that. Set it back to the original type.
+        mem = mem.BuildValue(a);
         mem.t = nonstatic;
+        mem.Expr = a.gen->CreateFieldExpression(mem.Expr, 0);
         args.insert(args.begin(), mem);
         //exprs.push_back(Wide::Util::make_unique<clang::OpaqueValueExpr>(clang::SourceLocation(), nonstatic->GetClangType(*from).getNonLValueExprType(from->GetASTContext()), GetKindOfType(nonstatic)));
     }
@@ -82,4 +88,72 @@ Expression ClangOverloadSet::BuildMetaCall(Expression val, std::vector<Expressio
         tset->tempargs.addArgument(clang::TemplateArgumentLoc(clang::TemplateArgument(clangty), tysrcinfo));
     }
     return Expression(tset, val.Expr);
+}
+
+std::function<llvm::Type*(llvm::Module*)> ClangOverloadSet::GetLLVMType(Analyzer& a) {
+    // Have to cache result - not fun.
+    auto g = a.gen;
+    std::stringstream stream;
+    stream << "struct.__" << this;
+    auto str = stream.str();
+    if (!nonstatic) {
+        return [=](llvm::Module* m) -> llvm::Type* {
+            llvm::Type* t = nullptr;
+            if (m->getTypeByName(str))
+                t = m->getTypeByName(str);
+            else {
+                auto int8ty = llvm::IntegerType::getInt8Ty(m->getContext());
+                t = llvm::StructType::create(str, int8ty, nullptr);
+            }
+            g->AddEliminateType(t);
+            return t;
+        };
+    } else {
+        auto ty = nonstatic->Decay()->GetLLVMType(a);
+        return [=](llvm::Module* m) -> llvm::Type* {
+            llvm::Type* t = nullptr;
+            if (m->getTypeByName(str))
+                t = m->getTypeByName(str);
+            else {
+                t = llvm::StructType::create(str, ty(m)->getPointerTo(), nullptr);
+            }
+            return t;
+        };
+    }
+}
+
+std::size_t ClangOverloadSet::size(Analyzer& a) {
+    if (!nonstatic) return llvm::DataLayout(a.gen->main.getDataLayout()).getTypeAllocSize(llvm::IntegerType::getInt8Ty(a.gen->context));
+    return llvm::DataLayout(a.gen->main.getDataLayout()).getPointerSize();
+}
+std::size_t ClangOverloadSet::alignment(Analyzer& a) {
+    if (!nonstatic) return llvm::DataLayout(a.gen->main.getDataLayout()).getABIIntegerTypeAlignment(8);
+    return llvm::DataLayout(a.gen->main.getDataLayout()).getPointerABIAlignment();
+}
+Expression ClangOverloadSet::BuildValueConstruction(std::vector<Expression> args, Analyzer& a) {
+    if (args.size() > 1)
+        throw std::runtime_error("Cannot construct an overload set from more than one argument.");
+    if (args.size() == 1) {
+        if (args[0].t->IsReference(this))
+            return args[0].t->BuildValue(args[0], a);
+        if (args[0].t == this)
+            return args[0];
+        if (nonstatic) {
+            if (args[0].t->IsReference(nonstatic) || (nonstatic->IsReference() && (nonstatic->IsReference() == args[0].t->IsReference()))) {
+                auto var = a.gen->CreateVariable(GetLLVMType(a), alignment(a));
+                auto store = a.gen->CreateStore(a.gen->CreateFieldExpression(var, 0), args[0].Expr);
+                return Expression(this, a.gen->CreateChainExpression(store, a.gen->CreateLoad(var)));
+            } 
+            if (args[0].t == nonstatic) {
+                assert("Internal compiler error: Attempt to call a member function of a value.");
+            }
+        }
+        throw std::runtime_error("Can only construct overload set from another overload set of the same type, or a reference to T.");
+    }
+    if (nonstatic)
+        throw std::runtime_error("Cannot default-construct a non-static overload set.");
+    Expression out;
+    out.t = this;
+    out.Expr = a.gen->CreateNull(GetLLVMType(a));
+    return out;
 }

@@ -3,7 +3,7 @@
 #include "FunctionType.h"
 #include "Analyzer.h"
 #include "../../Util/MakeUnique.h"
-#include "LvalueType.h"
+#include "Reference.h"
 #include "ClangOverloadSet.h"
 #include "ConstructorType.h"
 #include "../Codegen/Expression.h"

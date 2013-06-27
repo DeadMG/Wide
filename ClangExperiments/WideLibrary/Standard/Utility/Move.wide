@@ -1,0 +1,10 @@
+module Standard {
+    module Utility {
+	    Move(auto->lvalue arg) {
+		    return decltype(arg)->decay->rvalue(arg);
+		}
+		Move(auto->rvalue arg) {
+		    return decltype(arg)->decay->rvalue(arg);
+		}
+	}
+}

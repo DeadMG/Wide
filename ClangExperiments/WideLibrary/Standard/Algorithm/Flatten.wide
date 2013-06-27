@@ -2,7 +2,7 @@ module Standard {
     module Algorithm {
         Flatten() {
             return function(range) {
-                return function()[range := std.move(range), first := true, begin := decltype(range())->decay()] {
+                return function()[range := Utility.Move(range), first := true, begin := decltype(range())->decay()] {
                     if (first) {
                         begin = range();
                         first = false;
@@ -14,7 +14,7 @@ module Standard {
                         if (~begin) { return Containers.None; }
                         var = (*begin)();
                     }
-                    return std.move(var);
+                    return Utility.Move(var);
                 };
             };
         }

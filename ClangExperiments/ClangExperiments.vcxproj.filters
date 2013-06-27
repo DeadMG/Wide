@@ -36,9 +36,6 @@
     <ClInclude Include="Stages\Semantic\Function.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="Stages\Semantic\LvalueType.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="Stages\Lexer\lexer.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -88,9 +85,6 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="Stages\Semantic\ClangOverloadSet.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="Stages\Semantic\RvalueType.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="Stages\Semantic\PrimitiveType.h">
@@ -201,6 +195,9 @@
     <ClInclude Include="Util\MakeUnique.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="Stages\Semantic\Reference.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp">
@@ -260,9 +257,6 @@
     <ClCompile Include="Stages\Semantic\Type.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="Stages\Semantic\RvalueType.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="Stages\Semantic\PrimitiveType.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -287,9 +281,6 @@
     <ClCompile Include="Stages\Semantic\UserDefinedType.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="Stages\Semantic\LvalueType.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="Stages\Semantic\PointerType.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -300,6 +291,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="Stages\Lexer\lexerstatics.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Stages\Semantic\Reference.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

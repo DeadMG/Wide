@@ -1,6 +1,6 @@
 #include "Module.h"
 #include "../Parser/AST.h"
-#include "LvalueType.h"
+#include "Reference.h"
 #include "Analyzer.h"
 #include "Function.h"
 #include "ClangNamespace.h"

@@ -26,11 +26,13 @@ Expression ClangTemplateClass::BuildCall(Expression, std::vector<Expression> arg
             auto tysrcinfo = from->GetASTContext().getTrivialTypeSourceInfo(clangty);
             
             tl.addArgument(clang::TemplateArgumentLoc(clang::TemplateArgument(clangty), tysrcinfo));
+            continue;
         }
         if (auto in = dynamic_cast<IntegralType*>(x.t)) {
             if (auto integral = dynamic_cast<Codegen::IntegralExpression*>(x.Expr)) {
                 clang::IntegerLiteral lit(from->GetASTContext(), llvm::APInt(64, integral->value, integral->sign), from->GetASTContext().LongLongTy, clang::SourceLocation());
                 tl.addArgument(clang::TemplateArgumentLoc(clang::TemplateArgument(&lit), clang::TemplateArgumentLocInfo()));
+                continue;
             } else {
                 throw std::runtime_error("Attempted to pass a non-literal integer to a Clang template.");
             }

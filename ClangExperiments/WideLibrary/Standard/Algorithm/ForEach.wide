@@ -1,10 +1,10 @@
 module Standard {
     module Algorithm {
         ForEach(fun) {
-            return function(range)[fun := std.move(fun)] {
+            return function(range)[fun := Utility.Move(fun)] {
                 var := range();
                 while(var) {
-                    fun(*std.move(var));
+                    fun(*Utility.Move(var));
                     var = range();
                 }
             };

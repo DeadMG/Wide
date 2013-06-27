@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Type.h"
+#include <unordered_map>
 
 #pragma warning(push, 0)
 
@@ -9,9 +10,14 @@
 
 #pragma warning(pop)
 
+namespace clang {
+    class LookupResult;
+}
 namespace Wide {
-    namespace Semantic {                
+    namespace Semantic {       
         class ClangType : public Type {
+            std::unordered_map<std::string, Type*> LookupResultCache;
+            Expression BuildOverloadSet(Expression self, std::string name, clang::LookupResult& lr, Analyzer& a);
             Expression BuildOverloadedOperator(Expression lhs, Expression rhs, Analyzer& a, clang::OverloadedOperatorKind, clang::BinaryOperatorKind);
             ClangUtil::ClangTU* from;
             clang::QualType type;

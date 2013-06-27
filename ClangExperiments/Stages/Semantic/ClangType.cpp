@@ -6,8 +6,7 @@
 #include "ClangOverloadSet.h"
 #include "ClangTU.h"
 #include "../Codegen/Generator.h"
-#include "LvalueType.h"
-#include "RvalueType.h"
+#include "Reference.h"
 #include "ClangTemplateClass.h"
 #include "ConstructorType.h"
 
@@ -110,7 +109,31 @@ clang::QualType ClangType::GetClangType(ClangUtil::ClangTU& tu, Analyzer& a) {
     return type;
 }
 
+Expression ClangType::BuildOverloadSet(Expression self, std::string name, clang::LookupResult& lr, Analyzer& a) {
+    auto ptr = Wide::Memory::MakeUnique<clang::UnresolvedSet<8>>();
+    clang::UnresolvedSet<8>& us = *ptr;
+    for(auto it = lr.begin(); it != lr.end(); ++it) {
+        us.addDecl(*it);
+    }
+    Expression out;
+    if (self.t && !self.t->IsReference()) {
+        std::vector<Expression> args;
+        args.push_back(self);
+        self = self.t->BuildRvalueConstruction(std::move(args), a);
+    }
+    LookupResultCache[name] = a.arena.Allocate<ClangOverloadSet>(std::move(ptr), from, self.t);
+    std::vector<Expression> args;
+    if (self.t)
+        args.push_back(self);
+    return LookupResultCache[name]->BuildValueConstruction(self, a);
+}
+
 Expression ClangType::AccessMember(Expression val, std::string name, Analyzer& a) {
+    if (LookupResultCache.find(name) != LookupResultCache.end()) {
+        std::vector<Expression> args;
+        if (val.Expr) args.push_back(val);
+        return LookupResultCache[name]->BuildValueConstruction(std::move(args), a);
+    }
     clang::LookupResult lr(
         from->GetSema(), 
         clang::DeclarationNameInfo(clang::DeclarationName(from->GetIdentifierInfo(name)), clang::SourceLocation()),
@@ -167,15 +190,7 @@ Expression ClangType::AccessMember(Expression val, std::string name, Analyzer& a
         }
         throw std::runtime_error("Found a decl but didn't know how to interpret it.");
     }    
-    auto ptr = Wide::Memory::MakeUnique<clang::UnresolvedSet<8>>();
-    clang::UnresolvedSet<8>& us = *ptr;
-    for(auto it = lr.begin(); it != lr.end(); ++it) {
-        us.addDecl(*it);
-    }
-    Expression out;
-    out.t = a.arena.Allocate<ClangOverloadSet>(std::move(ptr), from, val.Expr ? this : nullptr);
-    out.Expr = val.Expr;
-    return out;
+    return BuildOverloadSet(val, std::move(name), lr, a);
 }
 
 Expression ClangType::BuildCall(Expression self, std::vector<Expression> args, Analyzer& a) {
@@ -186,20 +201,7 @@ Expression ClangType::BuildCall(Expression self, std::vector<Expression> args, A
     if (!result) {
         throw std::runtime_error("Attempted to call a Clang type, but Clang said that it could not find the member.");
     }
-    auto ptr = Wide::Memory::MakeUnique<clang::UnresolvedSet<8>>();
-    clang::UnresolvedSet<8>& us = *ptr;
-    for(auto it = lr.begin(); it != lr.end(); ++it) {
-        us.addDecl(*it);
-    }
-    Expression out;
-    if (!self.t->IsReference()) {
-        std::vector<Expression> args;
-        args.push_back(self);
-        self = self.t->BuildRvalueConstruction(std::move(args), a);
-    }
-    out.t = a.arena.Allocate<ClangOverloadSet>(std::move(ptr), from, self.t);
-    out.Expr = self.Expr;
-    return out.t->BuildCall(out, std::move(args), a);
+    return BuildOverloadSet(self, "()", lr, a).BuildCall(std::move(args), a);
 }
 
 Expression ClangType::BuildOverloadedOperator(Expression lhs, Expression rhs, Analyzer& a, clang::OverloadedOperatorKind opkind, clang::BinaryOperator::Opcode opcode) {
@@ -457,15 +459,7 @@ Expression ClangType::BuildDereference(Expression self, Analyzer& a) {
     if (!result) {
         throw std::runtime_error("Attempted to de-reference a Clang type, but Clang said that it could not find the member.");
     }
-    auto ptr = Wide::Memory::MakeUnique<clang::UnresolvedSet<8>>();
-    clang::UnresolvedSet<8>& us = *ptr;
-    for(auto it = lr.begin(); it != lr.end(); ++it) {
-        us.addDecl(*it);
-    }
-    Expression out;
-    out.t = a.arena.Allocate<ClangOverloadSet>(std::move(ptr), from, a.GetLvalueType(this));
-    out.Expr = self.Expr;
-    return out.t->BuildCall(out, std::vector<Expression>(), a);
+    return BuildOverloadSet(self, "*", lr, a).BuildCall(a);
 }
 
 Expression ClangType::BuildIncrement(Expression self, bool postfix, Analyzer& a) {
@@ -484,15 +478,7 @@ Expression ClangType::BuildIncrement(Expression self, bool postfix, Analyzer& a)
     if (!result) {
         throw std::runtime_error("Attempted to de-reference a Clang type, but Clang said that it could not find the member.");
     }
-    auto ptr = Wide::Memory::MakeUnique<clang::UnresolvedSet<8>>();
-    clang::UnresolvedSet<8>& us = *ptr;
-    for(auto it = lr.begin(); it != lr.end(); ++it) {
-        us.addDecl(*it);
-    }
-    Expression out;
-    out.t = a.arena.Allocate<ClangOverloadSet>(std::move(ptr), from, a.GetLvalueType(this));
-    out.Expr = self.Expr;
-    return out.t->BuildCall(out, std::vector<Expression>(), a);
+    return BuildOverloadSet(self, "p++", lr, a).BuildCall(a);
 }
 
 std::size_t ClangType::size(Analyzer& a) {

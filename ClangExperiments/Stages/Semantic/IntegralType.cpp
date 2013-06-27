@@ -3,8 +3,7 @@
 #include "ClangTU.h"
 #include "../Codegen/Generator.h"
 #include "../Codegen/Expression.h"
-#include "RvalueType.h"
-#include "LvalueType.h"
+#include "Reference.h"
 
 #pragma warning(push, 0)
 

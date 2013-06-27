@@ -8,13 +8,12 @@
 #include "StringType.h"
 #include "Module.h"
 #include "Function.h"
-#include "LvalueType.h"
+#include "Reference.h"
 #include "FunctionType.h"
 #include "ClangNamespace.h"
 #include "Void.h"
 #include "IntegralType.h"
 #include "ConstructorType.h"
-#include "RvalueType.h"
 #include "ClangInclude.h"
 #include "PointerType.h"
 #include "Bool.h"
@@ -136,7 +135,7 @@ void Analyzer::operator()(AST::Module* GlobalModule) {
 
     GetWideModule(GlobalModule)->AddSpecialMember("null", GetNullType()->BuildValueConstruction(std::vector<Expression>(), *this));
     GetWideModule(GlobalModule)->AddSpecialMember("reinterpret_cast", arena.Allocate<PointerCastType>()->BuildValueConstruction(std::vector<Expression>(), *this));
-    GetWideModule(GlobalModule)->AddSpecialMember("move", arena.Allocate<MoveType>()->BuildValueConstruction(std::vector<Expression>(), *this));
+    //GetWideModule(GlobalModule)->AddSpecialMember("move", arena.Allocate<MoveType>()->BuildValueConstruction(std::vector<Expression>(), *this));
 
     try {      
         GetWideModule(GlobalModule)->AccessMember(Expression(), "Standard", *this).t->AccessMember(Expression(), "Main", *this).t->BuildCall(Expression(), std::vector<Expression>(), *this);
@@ -527,7 +526,7 @@ LvalueType* Analyzer::GetLvalueType(Type* t) {
     // This implements "named rvalue ref is an lvalue", and static_cast<T&&>(T&).
     // by permitting T&& & to become T&.
     if (auto rval = dynamic_cast<RvalueType*>(t)) {
-        return LvalueTypes[t] = GetLvalueType(rval->GetPointee());
+        return LvalueTypes[t] = GetLvalueType(rval->IsReference());
     }
 
     return LvalueTypes[t] = arena.Allocate<LvalueType>(t);
@@ -609,7 +608,7 @@ ConversionRank Analyzer::RankConversion(Type* from, Type* to) {
     //    from
 
     if (auto rval = dynamic_cast<RvalueType*>(to)) {
-        if (rval->GetPointee() == from) {
+        if (rval->IsReference() == from) {
             return ConversionRank::Zero;
         }
     }
@@ -634,7 +633,7 @@ ConversionRank Analyzer::RankConversion(Type* from, Type* to) {
         if (auto lval = dynamic_cast<LvalueType*>(from))
             if (lval->IsReference() == rval->IsReference())
                 return ConversionRank::None;
-    //          T            T&&
+    //          T            T&&       U
     //    T           
     //    T&    copyable    
     //    T&&   movable      
