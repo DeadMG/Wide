@@ -133,9 +133,8 @@ void ClangTU::GenerateCodeAndLinkModule(llvm::Module* main) {
         impl->codegenmod.EmitTopLevelDecl(x);
     impl->codegenmod.Release();
 
-    llvm::Linker link("", main);
-    link.LinkInModule(&impl->mod);
-    link.releaseModule();
+    llvm::Linker link(main);
+    link.linkInModule(&impl->mod, &impl->ccs.errors);
     impl->HandleErrors();
 }
 

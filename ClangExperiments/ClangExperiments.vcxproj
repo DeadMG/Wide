@@ -41,7 +41,7 @@
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <LinkIncremental>true</LinkIncremental>
-    <IncludePath>D:\Backups\Code\LLVM\tools\clang\lib;D:\Backups\Code\LLVM\tools\clang\include;D:\Backups\Code\LLVM\include;$(IncludePath)</IncludePath>
+    <IncludePath>D:\Backups\Code\LLVM\build\tools\clang\include;D:\Backups\Code\LLVM\tools\clang\lib;D:\Backups\Code\LLVM\tools\clang\include;D:\Backups\Code\LLVM\include;$(IncludePath)</IncludePath>
     <LibraryPath>D:\Backups\Code\LLVM\build\lib\Debug;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
@@ -55,6 +55,7 @@
       <Optimization>Disabled</Optimization>
       <PreprocessorDefinitions>WIN32;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
