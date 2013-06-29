@@ -14,7 +14,7 @@ using System.Runtime.InteropServices;
 
 namespace VisualWide
 {
-    class LexerProvider
+    public class LexerProvider
     {
         public static LexerProvider GetProviderForBuffer(ITextBuffer buf)
         {
@@ -118,9 +118,9 @@ namespace VisualWide
         private static extern void LexWide(
             System.IntPtr context,
             [MarshalAs(UnmanagedType.FunctionPtr)]LexerCallback callback,
+            [MarshalAs(UnmanagedType.FunctionPtr)]RawTokenCallback token,
             [MarshalAs(UnmanagedType.FunctionPtr)]RawCommentCallback comment,
-            [MarshalAs(UnmanagedType.FunctionPtr)]RawErrorCallback error,
-            [MarshalAs(UnmanagedType.FunctionPtr)]RawTokenCallback token
+            [MarshalAs(UnmanagedType.FunctionPtr)]RawErrorCallback error
         );
 
         [DllImport("CAPI.dll", CallingConvention = CallingConvention.Cdecl)]
@@ -153,14 +153,6 @@ namespace VisualWide
                     }
                     return ret;
                 },
-                (where, context) =>
-                {
-                    comment(where);
-                },
-                (pos, fail, context) =>
-                {
-                    return err(pos, fail) ? (byte)1 : (byte)0;
-                },
                 (where, value, type, context) =>
                 {
                     var tok = new Token();
@@ -168,6 +160,14 @@ namespace VisualWide
                     tok.value = value;
                     tok.type = type;
                     return token(where, value, type) ? (byte)1 : (byte)0;
+                },
+                (where, context) =>
+                {
+                    comment(where);
+                },
+                (pos, fail, context) =>
+                {
+                    return err(pos, fail) ? (byte)1 : (byte)0;
                 }
             );
         }

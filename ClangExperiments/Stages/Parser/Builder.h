@@ -6,6 +6,9 @@
 #include "../../Util/ConcurrentQueue.h"
 
 namespace Wide {
+    namespace Parser {
+        enum Error;
+    }
     namespace AST {
         class Builder;
         class ThreadLocalBuilder {
@@ -171,6 +174,8 @@ namespace Wide {
             Lexer::Range GetLocation(Statement* s) {
                 return s->location;
             }
+
+            void Error(Wide::Lexer::Range, Parser::Error) {}
 
             typedef Statement* StatementType;
             typedef Expression* ExpressionType;

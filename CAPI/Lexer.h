@@ -5,6 +5,7 @@ namespace CEquivalents {
         char val;
         bool present;
     };
+
     struct LexerRange {
         void* context;
         std::add_pointer<CEquivalents::OptionalChar(void*)>::type curr;
@@ -15,6 +16,7 @@ namespace CEquivalents {
             return Wide::Util::none;
         }
     };
+
     struct Position {
         Position(Wide::Lexer::Position pos)
             : column(pos.column)
@@ -32,6 +34,7 @@ namespace CEquivalents {
         unsigned line;
         unsigned offset;
     };
+
     struct Range {
         Range(Position first, Position last)
             : begin(first), end(last) {}
@@ -43,11 +46,11 @@ namespace CEquivalents {
             return Wide::Lexer::Range(begin, end);
         }
     };
+
     struct LexerBody {
         LexerBody(LexerRange r)
             : inv(args, r) {}
         Wide::Lexer::Arguments args;
         Wide::Lexer::Invocation<LexerRange> inv;
-        std::function<bool(CEquivalents::Range, const char*, Wide::Lexer::TokenType)> TokenCallback;
     };
 }

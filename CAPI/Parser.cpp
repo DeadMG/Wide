@@ -36,9 +36,6 @@ namespace CEquivalents {
     
     class Builder {
     public:     
-        Builder(std::function<void(Wide::Lexer::Range, OutliningType)> outlining)
-            : OutliningCallback(std::move(outlining)) {}
-
         Wide::Lexer::Range CreateIdentExpression(std::string name, Wide::Lexer::Range r) { return r; }
         Wide::Lexer::Range CreateStringExpression(std::string val, Wide::Lexer::Range r) { return r; }
         Wide::Lexer::Range CreateMemberAccessExpression(std::string mem, Wide::Lexer::Range e, Wide::Lexer::Range r) { return e + r; }
@@ -51,8 +48,10 @@ namespace CEquivalents {
         Wide::Lexer::Range CreateAssignmentExpression(Wide::Lexer::Range lhs, Wide::Lexer::Range rhs) { return lhs + rhs; }
         Wide::Lexer::Range CreateIntegerExpression(std::string val, Wide::Lexer::Range r) { return r; }
         Wide::Lexer::Range CreateRightShiftExpression(Wide::Lexer::Range lhs, Wide::Lexer::Range rhs) { return lhs + rhs; }
-        Wide::Lexer::Range CreateIfStatement(Wide::Lexer::Range cond, Wide::Lexer::Range true_br, Wide::Lexer::Range false_br, Wide::Lexer::Range loc) { return loc; }
-        Wide::Lexer::Range CreateIfStatement(Wide::Lexer::Range cond, Wide::Lexer::Range true_br, Wide::Lexer::Range loc) { return loc; }
+        Wide::Lexer::Range CreateIfStatement(Wide::Lexer::Range cond, Wide::Lexer::Range true_br, Wide::Lexer::Range false_br, Wide::Lexer::Range loc) 
+        { return loc; }
+        Wide::Lexer::Range CreateIfStatement(Wide::Lexer::Range cond, Wide::Lexer::Range true_br, Wide::Lexer::Range loc) 
+        { return loc; }
         Wide::Lexer::Range CreateCompoundStatement(std::nullptr_t true_br, Wide::Lexer::Range loc) { return loc; }
         Wide::Lexer::Range CreateEqCmpExpression(Wide::Lexer::Range lhs, Wide::Lexer::Range rhs) { return lhs + rhs; }
         Wide::Lexer::Range CreateNotEqCmpExpression(Wide::Lexer::Range lhs, Wide::Lexer::Range rhs) { return lhs + rhs; }
@@ -88,9 +87,7 @@ namespace CEquivalents {
         
         Wide::Lexer::Range CreateModule(std::string val, Wide::Lexer::Range p, Wide::Lexer::Range r) { return r; }
         std::nullptr_t CreateUsingDefinition(std::string val, Wide::Lexer::Range expr, Wide::Lexer::Range p) { return nullptr; }
-        //void CreateFunction(std::string name, std::nullptr_t, std::nullptr_t, Wide::Lexer::Range r, std::nullptr_t p, std::nullptr_t, std::nullptr_t) { OutliningCallback(r, OutliningType::Function); }
         void CreateFunction(std::string name, std::nullptr_t, std::nullptr_t, Wide::Lexer::Range r, Wide::Lexer::Range p, std::nullptr_t, std::nullptr_t) { OutliningCallback(r, OutliningType::Function); }
-        //Wide::Lexer::Range CreateType(std::string name, std::nullptr_t p, Wide::Lexer::Range r) { return r; }        
         Wide::Lexer::Range CreateType(std::string name, Wide::Lexer::Range p, Wide::Lexer::Range r) { return r; }       
         Wide::Lexer::Range CreateType(std::string name, Wide::Lexer::Range r) { return r; }
 
@@ -100,30 +97,54 @@ namespace CEquivalents {
         void AddCaptureToGroup(std::nullptr_t& l, Wide::Lexer::Range) {}
         void AddInitializerToGroup(std::nullptr_t& l, Wide::Lexer::Range b) { return AddCaptureToGroup(l, b); }
         void AddStatementToGroup(std::nullptr_t, Wide::Lexer::Range r) {}
-        void SetTypeEndLocation(Wide::Lexer::Range& r, Wide::Lexer::Range val) { r = r + val; OutliningCallback(r, OutliningType::Type); }
+        void SetTypeEndLocation(Wide::Lexer::Range& r, Wide::Lexer::Range val) {  r = r + val; OutliningCallback(r, OutliningType::Type); }
         void SetModuleEndLocation(Wide::Lexer::Range& r, Wide::Lexer::Range val) { r = r + val; OutliningCallback(r, OutliningType::Module); }
         void AddExpressionToGroup(std::nullptr_t, Wide::Lexer::Range r) {}
 
         Wide::Lexer::Range GetLocation(Wide::Lexer::Range s) {
             return s;
         }
-
+        
         typedef Wide::Lexer::Range StatementType;
         typedef Wide::Lexer::Range ExpressionType;
 
         std::function<void(Wide::Lexer::Range r, CEquivalents::OutliningType type)> OutliningCallback;
+        std::function<void(Wide::Lexer::Range, Wide::Parser::Error)> ErrorCallback;
+        std::function<void(Wide::Lexer::Range, Wide::Parser::Warning)> WarningCallback;
+
+        void Error(Wide::Lexer::Range where, Wide::Parser::Error what) {
+            ErrorCallback(where, what);
+        }
+        void Warning(Wide::Lexer::Range where, Wide::Parser::Warning what) {
+            WarningCallback(where, what);
+        }
     };
 }
 
 extern "C" __declspec(dllexport) void ParseWide(
     void* context,
     std::add_pointer<CEquivalents::LexerResult(void*)>::type TokenCallback,
-    std::add_pointer<void(CEquivalents::Range r, CEquivalents::OutliningType, void*)>::type OutliningCallback
+    std::add_pointer<void(CEquivalents::Range, CEquivalents::OutliningType, void*)>::type OutliningCallback,
+    std::add_pointer<void(CEquivalents::Range, Wide::Parser::Error, void*)>::type ErrorCallback,
+    std::add_pointer<void(CEquivalents::Range, Wide::Parser::Warning, void*)>::type WarningCallback
 ) {
+    CEquivalents::Builder builder;
+    builder.OutliningCallback = [=](Wide::Lexer::Range r, CEquivalents::OutliningType t) { return OutliningCallback(r, t, context); };
+    builder.ErrorCallback = [=](Wide::Lexer::Range where, Wide::Parser::Error what) { return ErrorCallback(where, what, context); };
+    builder.WarningCallback = [=](Wide::Lexer::Range where, Wide::Parser::Warning what) { return WarningCallback(where, what, context); };
     CEquivalents::ParserLexer pl;
     pl.context = context;
     pl.TokenCallback = TokenCallback;
     try {
-        Wide::Parser::ParseGlobalModuleContents(pl, CEquivalents::Builder([=](Wide::Lexer::Range r, CEquivalents::OutliningType t) { return OutliningCallback(r, t, context); }), Wide::Lexer::Range());
-    } catch(...) {}
+        Wide::Parser::ParseGlobalModuleContents(pl, builder, Wide::Lexer::Range());
+    } catch(Wide::Parser::UnrecoverableError e) {
+        ErrorCallback(e.where(), e.error(), context);
+    } catch(...) {
+    }
+}
+
+extern "C" __declspec(dllexport) const char* GetParserErrorString(Wide::Parser::Error err) {
+    if (Wide::Parser::ErrorStrings.find(err) == Wide::Parser::ErrorStrings.end())
+        return nullptr;
+    return Wide::Parser::ErrorStrings[err].c_str();
 }
