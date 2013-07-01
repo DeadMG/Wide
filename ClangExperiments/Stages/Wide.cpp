@@ -8,6 +8,7 @@
 #include "../Util/Ranges/IStreamRange.h"
 #include <mutex>
 #include <atomic>
+#include <sstream>
 
 void Wide::Compile(const Wide::Options::Clang& copts, const Wide::Options::LLVM& lopts, std::vector<std::string> files) {    
     Wide::Codegen::Generator Generator(lopts, copts);
@@ -31,6 +32,7 @@ void Wide::Compile(const Wide::Options::Clang& copts, const Wide::Options::LLVM&
     files.push_back("WideLibrary/Standard/Algorithm/Take.wide");
     files.push_back("WideLibrary/Standard/Algorithm/TakeWhile.wide");
     files.push_back("WideLibrary/Standard/Containers/optional.wide");
+    files.push_back("WideLibrary/Standard/IO/Stream.wide");
     files.push_back("WideLibrary/Standard/Range/BackInserter.wide");
     files.push_back("WideLibrary/Standard/Range/Delimited.wide");
     files.push_back("WideLibrary/Standard/Range/Repeat.wide");
@@ -49,8 +51,11 @@ void Wide::Compile(const Wide::Options::Clang& copts, const Wide::Options::LLVM&
         Wide::Lexer::Invocation<decltype(contents)> lex(largs, contents);
         try {
             Wide::Parser::ParseGlobalModuleContents(lex, AST::ThreadLocalBuilder(ASTBuilder), ASTBuilder.GetGlobalModule());
-        } catch(std::runtime_error& e) {
-            excepts.push_back(e.what());
+        } catch(Wide::Parser::UnrecoverableError& e) {
+            std::stringstream str;
+            str << "Error in file " << filename << ", line " << e.where().begin.line << " column " << e.where().begin.column << ":\n";
+            str << e.what() << "\n";
+            excepts.push_back(str.str());
         } catch(...) {
             excepts.push_back("Unknown Internal Compiler Error.\n");
         }

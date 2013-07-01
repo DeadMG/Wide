@@ -383,6 +383,7 @@ Expression UserDefinedType::BuildLTComparison(Expression lhs, Expression rhs, An
     return BuildBinaryOperator("<", lhs, rhs, a);
 }
 ConversionRank UserDefinedType::RankConversionFrom(Type* from, Analyzer& a) {
+    IsComplexType();
     std::vector<Type*> arg;
     arg.push_back(from);
     return a.GetOverloadSet(type->Functions["type"], a.GetLvalueType(this))->ResolveOverloadRank(std::move(arg), a);

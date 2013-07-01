@@ -3,7 +3,5 @@ using Range := Standard.Range;
 using Algorithm := Standard.Algorithm;
 
 Main() {
-    Range.Delimited(1, 11)
-        | Algorithm.Map(function(val) { return 2 * val; })
-        | Algorithm.ForEach(Range.StreamInserter(std.cout));
+    Standard.IO.Stream("CONOUT$")(uint8(uint64(65)));
 }

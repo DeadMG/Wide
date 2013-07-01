@@ -146,6 +146,8 @@ Codegen::Expression* IntegralType::BuildInplaceConstruction(Codegen::Expression*
             return a.gen->CreateStore(mem, a.gen->CreateSignedExtension(args[0].Expr, GetLLVMType(a)));
         if (!is_signed && !inttype->is_signed)
             return a.gen->CreateStore(mem, a.gen->CreateZeroExtension(args[0].Expr, GetLLVMType(a)));
+        if (bits == inttype->bits)
+            return a.gen->CreateStore(mem, args[0].Expr);
         throw std::runtime_error("It is illegal to perform a signed->unsigned and widening conversion in one step.");
     }
     return a.gen->CreateStore(mem, a.gen->CreateIntegralExpression(0, false, GetLLVMType(a)));

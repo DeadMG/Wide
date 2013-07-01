@@ -23,7 +23,10 @@ clang::QualType PointerType::GetClangType(ClangUtil::ClangTU& tu, Analyzer& a) {
 
 std::function<llvm::Type*(llvm::Module*)> PointerType::GetLLVMType(Analyzer& a) {
     return [=, &a](llvm::Module* mod) {
-        return llvm::PointerType::get(pointee->GetLLVMType(a)(mod), 0);
+        auto ty = pointee->GetLLVMType(a)(mod);
+        if (ty->isVoidTy())
+            ty = llvm::IntegerType::getInt8Ty(mod->getContext());
+        return llvm::PointerType::get(ty, 0);
     };
 }
 

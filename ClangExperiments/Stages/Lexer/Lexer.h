@@ -46,6 +46,7 @@ namespace Wide {
             Position current_position;
             std::vector<Token> token_putbacks;
             Wide::Util::optional<std::pair<char, Position>> putback;
+            Lexer::Range lastpos;
 
             std::string escape(std::string val) {
                 std::string result;
@@ -127,6 +128,11 @@ namespace Wide {
             Range r;
             std::function<Wide::Util::optional<Token>(Position, Arguments::Failure, Invocation*)> OnError;
 
+            // Used only for some error handling in the parser
+            Lexer::Range GetLastPosition() {
+                return lastpos;
+            }
+
             void clear() {
                 putback = Wide::Util::none;
                 token_putbacks.clear();
@@ -145,6 +151,7 @@ namespace Wide {
                 if (!token_putbacks.empty()) {
                     auto tok = token_putbacks.back();
                     token_putbacks.pop_back();
+                    lastpos = tok.GetLocation();
                     return tok;
                 }
                 
@@ -182,7 +189,8 @@ namespace Wide {
                 // Aassumes that all doubles lead with a character that is a valid single.
                 if (args->singles.find(*val) != args->singles.end()) {
                     auto this_token = [&] {
-                        return Wide::Lexer::Token(begin_pos, args->singles.at(*val), std::string(*val, 1));
+                        lastpos = begin_pos;
+                        return Wide::Lexer::Token(begin_pos, args->singles.at(*val), std::string(1, *val));
                     };
                     if (args->doubles.find(*val) == args->doubles.end())
                         return this_token();
@@ -190,7 +198,8 @@ namespace Wide {
                     auto second = get();
                     if (!second) return this_token();
                     if (args->doubles.at(*val).find(*second) != args->doubles.at(*val).end()) {
-                        return Wide::Lexer::Token(begin_pos, args->doubles.at(*val).at(*second), std::string(*val, 1) + std::string(*second, 1));
+                        lastpos = Lexer::Range(begin_pos);
+                        return Wide::Lexer::Token(begin_pos, args->doubles.at(*val).at(*second), std::string(1, *val) + std::string(1, *second));
                     }
                     putback = std::make_pair(*second, current_position);
                     current_position = old_pos;
@@ -208,6 +217,7 @@ namespace Wide {
                     }
                     if (!next)
                         return OnError(begin_pos, Arguments::Failure::UnterminatedStringLiteral, this);
+                    lastpos = begin_pos + current_position;
                     return Wide::Lexer::Token(begin_pos + current_position, TokenType::String, escape(variable_length_value));
                 }
 
@@ -229,6 +239,7 @@ namespace Wide {
                     old_pos = current_position;
                     val = get();
                 }
+                lastpos = begin_pos + current_position;
                 if (args->keywords.find(variable_length_value) != args->keywords.end()) {
                     return Wide::Lexer::Token(begin_pos + current_position, args->keywords.at(variable_length_value), variable_length_value);
                 }

@@ -11,20 +11,27 @@ namespace CEquivalents {
     struct ParserLexer {
         void* context;
         std::add_pointer<CEquivalents::LexerResult(void*)>::type TokenCallback;
+        Wide::Lexer::Range lastpos;
         std::deque<Wide::Lexer::Token> putback;
         Wide::Util::optional<Wide::Lexer::Token> operator()() {
             if (!putback.empty()) {
                 auto val = putback.back();
                 putback.pop_back();
+                lastpos = val.GetLocation();
                 return std::move(val);
             }
             auto tok = TokenCallback(context);
-            if (tok.exists)
+            if (tok.exists) {
+                lastpos = tok.location;
                 return Wide::Lexer::Token(tok.location, tok.type, tok.value);
+            }
             return Wide::Util::none;
         }
         void operator()(Wide::Lexer::Token t) {
             putback.push_back(std::move(t));
+        }
+        Wide::Lexer::Range GetLastPosition() {
+            return lastpos;
         }
     };
 
@@ -146,5 +153,5 @@ extern "C" __declspec(dllexport) void ParseWide(
 extern "C" __declspec(dllexport) const char* GetParserErrorString(Wide::Parser::Error err) {
     if (Wide::Parser::ErrorStrings.find(err) == Wide::Parser::ErrorStrings.end())
         return nullptr;
-    return Wide::Parser::ErrorStrings[err].c_str();
+    return Wide::Parser::ErrorStrings.at(err).c_str();
 }

@@ -46,14 +46,19 @@ namespace Wide {
             NonOverloadableOperator,
             NoOperatorFound,
             GlobalFunctionCallOperator,
-            ModuleScopeTypeNoIdentifier
+            ModuleScopeTypeNoIdentifier,
+            ModuleScopeTypeNoCurlyBrace,
+            ModuleScopeTypeIdentifierButFunction,
+            ModuleRequiresTerminatingCurly,
+            TypeRequiresTerminatingCurly,
+            TypeScopeExpectedMemberAfterIdentifier
         };
 
         enum Warning {
             SemicolonAfterTypeDefinition
         };
 
-        std::unordered_map<Error, std::string> ErrorStrings([]() -> std::unordered_map<Error, std::string> {
+        static const std::unordered_map<Error, std::string> ErrorStrings([]() -> std::unordered_map<Error, std::string> {
             std::pair<Error, std::string> strings[] = {
                 std::make_pair(Error::ModuleScopeFunctionNoOpenBracket, "Expected ( after identifier, to denote a function at module scope."),
                 std::make_pair(Error::UnrecognizedTokenModuleScope, "Expected module, using, operator, type, or identifier to begin a production at module scope."),
@@ -61,7 +66,12 @@ namespace Wide {
                 std::make_pair(Error::NoOperatorFound, "Expected to find an operator after operator to denote an operator overload at module scope."),
                 std::make_pair(Error::ModuleScopeOperatorNoOpenBracket, "Expected ( after operator, to denote an operator overload at module scope."),
                 std::make_pair(Error::GlobalFunctionCallOperator, "Found operator() at global scope. Function call operator may only be defined at type scope."),
-                std::make_pair(Error::ModuleScopeTypeNoIdentifier, "Expected identifier after type, to denote a type at module scope.")
+                std::make_pair(Error::ModuleScopeTypeNoIdentifier, "Expected identifier after type, to denote a type at module scope."),
+                std::make_pair(Error::ModuleScopeTypeNoCurlyBrace, "Expected { after type identifier at module scope, to denote a type at module scope."),
+                std::make_pair(Error::ModuleScopeTypeIdentifierButFunction, "Expected identifier { after type, to denote a type at module scope."),
+                std::make_pair(Error::ModuleRequiresTerminatingCurly, "Expected } to terminate a module." ),
+                std::make_pair(Error::TypeRequiresTerminatingCurly, "Expected } to terminate a type at module scope."),
+                std::make_pair(Error::TypeScopeExpectedMemberAfterIdentifier, "Expected := or ( after identifier, to denote a member variable or function at type scope.")
             };
             return std::unordered_map<Error, std::string>(std::begin(strings), std::end(strings));
         }());
@@ -73,7 +83,7 @@ namespace Wide {
             UnrecoverableError(Lexer::Range pos, Error error)
                 : err(error), loc(pos) {}
             const char* what() {
-                return ErrorStrings[err].c_str();
+                return ErrorStrings.at(err).c_str();
             }
             Lexer::Range where() {
                 return loc;
@@ -93,7 +103,7 @@ namespace Wide {
         template<typename Lex, typename Sema, typename Group, typename Loc> void ParseFunctionArguments(Lex&& lex, Sema&& sema, Group&& group, Loc&& open);
         template<typename Lex, typename Sema, typename Loc> auto ParseFunctionArguments(Lex&& lex, Sema&& sema, Loc&& open) -> decltype(sema.CreateFunctionArgumentGroup());
         template<typename Lex, typename Sema> typename StmtType<Sema>::type ParseStatement(Lex&& lex, Sema&& sema);
-        template<typename Lex, typename Sema, typename Ty> void ParseTypeBody(Lex&& lex, Sema&& sema, Ty&& ty);
+        template<typename Lex, typename Sema, typename Ty> void ParseTypeBody(Lex&& lex, Sema&& sema, Ty&& ty, bool modulescope);
         template<typename Lex, typename Sema, typename Caps, typename Loc> void ParseLambdaCaptures(Lex&& lex, Sema&& sema, Caps&& caps, Loc&& loc) {
             auto tok = lex();
             while(true) {
@@ -181,7 +191,7 @@ namespace Wide {
                 if (curly.GetType() != Lexer::TokenType::OpenCurlyBracket)
                     throw std::runtime_error("Expected { after type in a type expression.");
                 auto ty = sema.CreateType("__unnamed", curly.GetLocation());
-                ParseTypeBody(lex, sema, ty);
+                ParseTypeBody(lex, sema, ty, false);
                 return ty;
             }
             /*if (t.GetType() == Lexer::TokenType::Auto) {
@@ -717,11 +727,15 @@ namespace Wide {
             ParseModuleContents(lex, sema, mod);
         }
 
-        template<typename Lex, typename Sema, typename Ty> void ParseTypeBody(Lex&& lex, Sema&& sema, Ty&& ty) {
+        template<typename Lex, typename Sema, typename Ty> void ParseTypeBody(Lex&& lex, Sema&& sema, Ty&& ty, bool modulescope) {
             auto t = lex();
             while(t.GetType() != Lexer::TokenType::CloseCurlyBracket) {
+
                 if (t.GetType() == Lexer::TokenType::Identifier) {
                     // Must be either := for variable or ( for function. Don't support functions yet.
+                    if (!lex) {
+                        throw UnrecoverableError(t.GetLocation(), Error::TypeScopeExpectedMemberAfterIdentifier);
+                    }
                     auto next = lex();
                     if (next.GetType() == Lexer::TokenType::VarCreate) {
                         auto var = ParseVariableStatement(lex, sema, t);
@@ -734,10 +748,28 @@ namespace Wide {
                         t = lex();
                         continue;
                     }
+                    // Found type [x] { ident ?
+                    if (modulescope) {
+                        if (ModuleGrammarIntroducers.find(next.GetType()) != ModuleGrammarIntroducers.end()) {
+                            sema.Error(t.GetLocation(), Error::TypeScopeExpectedMemberAfterIdentifier);
+                            lex(next);
+                            return;
+                        }
+                        throw UnrecoverableError(t.GetLocation(), Error::TypeScopeExpectedMemberAfterIdentifier);
+                    }
+                    // Got to consider the cases of 
+                    // f := type {
+                    // x += y; // existing code
+                    // and
+                    // f := type {
+                    //     x // partially written
+                    // if (expr)
+                    // Lots of possibilities here, as the user may or may not intend the identifier to be part of the type.
+
+
                 }
                 if (t.GetType() == Lexer::TokenType::Operator) {
                     auto op = lex();
-                    // Only < supported right now
                     if (op.GetType() == Lexer::TokenType::OpenBracket) {
                         auto t = lex();
                         if (t.GetType() != Lexer::TokenType::CloseBracket)
@@ -781,13 +813,36 @@ namespace Wide {
                 throw UnrecoverableError(loc, Error::ModuleScopeTypeNoIdentifier);
             }
             auto ident = lex();
-            if (ident.GetType() != Lexer::TokenType::Identifier)
-                throw std::runtime_error("Expected identifier after type.");
+            if (ident.GetType() != Lexer::TokenType::Identifier) {
+                if (ModuleGrammarIntroducers.find(ident.GetType()) != ModuleGrammarIntroducers.end()) {
+                    sema.Error(loc, Error::ModuleScopeTypeNoIdentifier);
+                    lex(ident);
+                    return;
+                }
+                throw UnrecoverableError(loc, Error::ModuleScopeTypeNoIdentifier);
+            }
+            if (!lex) {
+                throw UnrecoverableError(ident.GetLocation(), Error::ModuleScopeTypeNoCurlyBrace);
+            }
             auto t = lex();
-            if (t.GetType() != Lexer::TokenType::OpenCurlyBracket)
-                throw std::runtime_error("Expected { after identifier.");
+            if (t.GetType() != Lexer::TokenType::OpenCurlyBracket) {
+                // We can have type x() if the user started to define a type whilst in module scope, before a function.
+                // So issue a different error in this context.
+                if (t.GetType() == Lexer::TokenType::OpenBracket) {
+                    sema.Error(loc, Error::ModuleScopeTypeIdentifierButFunction);
+                    lex(t);
+                    lex(ident);
+                    return;
+                }
+                if (ModuleGrammarIntroducers.find(t.GetType()) != ModuleGrammarIntroducers.end()) {
+                    sema.Error(ident.GetLocation(), Error::ModuleScopeTypeNoCurlyBrace);
+                    lex(t);
+                    return;
+                }
+                throw UnrecoverableError(ident.GetLocation(), Error::ModuleScopeTypeNoCurlyBrace);
+            }
             auto ty = sema.CreateType(ident.GetValue(), m, t.GetLocation());
-            return ParseTypeBody(lex, sema, ty);
+            return ParseTypeBody(lex, sema, ty, true);
         }
         
         template<typename Lex, typename Sema, typename Module> void ParseModuleLevelDeclaration(Lex&& lex, Sema&& sema, Module&& m) {
@@ -798,10 +853,12 @@ namespace Wide {
                 }
                 auto t = lex();
                 if (t.GetType() != Lexer::TokenType::OpenBracket) {
-                    sema.Error(token.GetLocation(), Error::ModuleScopeFunctionNoOpenBracket);
+                    //
                     // If the user is entering a new function above valid content, the tokens here will be identifier, using, module, type, operator.
                     if (ModuleGrammarIntroducers.find(t.GetType()) == ModuleGrammarIntroducers.end())
                         throw UnrecoverableError(t.GetLocation(), Error::ModuleScopeFunctionNoOpenBracket);
+                    else
+                        sema.Error(token.GetLocation(), Error::ModuleScopeFunctionNoOpenBracket);
                     // Else, skip over this apparently partly-written declaration.
                     lex(t);
                     return;
@@ -837,20 +894,7 @@ namespace Wide {
                         } else
                             lex(tok);
                     }
-                    sema.Error(loc, Error::GlobalFunctionCallOperator);
-                    // Attempt to skip ahead to the next declaration.
-                    unsigned braces = 0;
-                    while(true) {
-                        auto tok = lex();
-                        if (tok.GetType() == Lexer::TokenType::OpenBracket || tok.GetType() == Lexer::TokenType::OpenCurlyBracket || tok.GetType() == Lexer::TokenType::OpenSquareBracket)
-                            braces++;
-                        if (tok.GetType() == Lexer::TokenType::CloseBracket || tok.GetType() == Lexer::TokenType::CloseCurlyBracket || tok.GetType() == Lexer::TokenType::CloseSquareBracket)
-                            braces--;
-                        if (ModuleGrammarIntroducers.find(tok.GetType()) != ModuleGrammarIntroducers.end() && braces == 0) {
-                            lex(tok);
-                            return;
-                        }
-                    }
+                    throw UnrecoverableError(loc, Error::GlobalFunctionCallOperator);
                 }
                 if (OverloadableOperators.find(op.GetType()) == OverloadableOperators.end()) {
                     auto err = Error::NonOverloadableOperator;
@@ -898,6 +942,9 @@ namespace Wide {
                     (*lex)(std::move(*val));
                     return true;
                 }
+                Lexer::Range GetLastPosition() {
+                    return lex->GetLastPosition();
+                }
             };
             auto val = lex();
             while (val) {
@@ -911,6 +958,9 @@ namespace Wide {
 
         template<typename Lex, typename Sema, typename Module> void ParseModuleContents(Lex&& lex, Sema&& sema, Module&& m) {
             // Should really be refactored later into ParseGlobalModuleContents and ParseModuleDeclaration
+            if (!lex) {
+                throw UnrecoverableError(lex.GetLastPosition(), Error::ModuleRequiresTerminatingCurly);
+            }
             auto t = lex();
             if (t.GetType() == Lexer::TokenType::CloseCurlyBracket) {
                 sema.SetModuleEndLocation(m, t.GetLocation());

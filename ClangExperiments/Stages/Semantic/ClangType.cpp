@@ -157,16 +157,8 @@ Expression ClangType::AccessMember(Expression val, std::string name, Analyzer& a
                 out.Expr = a.gen->CreateFieldExpression(val.Expr, from->GetFieldNumber(field));
                 return out;
             }        
-            if (auto fun = llvm::dyn_cast<clang::CXXMethodDecl>(lr.getFoundDecl())) {                
-                Expression out;
-                std::vector<Type*> args;
-                for(auto decl = fun->param_begin(); decl != fun->param_end(); ++decl) {
-                    args.push_back(a.GetClangType(*from, (*decl)->getType()));
-                }
-                out.t = a.GetFunctionType(a.GetClangType(*from, fun->getResultType()), args);
-                if (a.gen)
-                    out.Expr = a.gen->CreateFunctionValue(from->MangleName(fun));
-                return out;
+            if (auto fun = llvm::dyn_cast<clang::CXXMethodDecl>(lr.getFoundDecl())) {     
+                return BuildOverloadSet(val, std::move(name), lr, a);
             }
         }
         if (auto ty = llvm::dyn_cast<clang::TypeDecl>(lr.getFoundDecl())) {

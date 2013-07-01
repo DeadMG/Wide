@@ -358,7 +358,8 @@ std::string ClangTU::MangleName(clang::NamedDecl* D) {
         MarkFunction(condecl);
         //RecursiveMarkTypes(condecl->getParent());
         auto gd = clang::GlobalDecl(condecl, clang::CXXCtorType::Ctor_Complete);
-        auto name = impl->codegenmod.getMangledName(gd);   
+        auto name = impl->codegenmod.getMangledName(gd);  
+        auto global = impl->codegenmod.GetAddrOfGlobal(gd); 
 
         // this is always first argument
         if (!condecl->getParent()->field_empty()) {
@@ -378,6 +379,7 @@ std::string ClangTU::MangleName(clang::NamedDecl* D) {
     if (auto funcdecl = llvm::dyn_cast<clang::FunctionDecl>(D)) {
         MarkFunction(funcdecl);
         auto name = impl->codegenmod.getMangledName(funcdecl);
+        auto global = impl->codegenmod.GetAddrOfGlobal(funcdecl);
         return name;
     }
     throw std::runtime_error("Attempted to mangle a name that could not be mangled.");
