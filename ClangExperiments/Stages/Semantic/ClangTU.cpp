@@ -133,6 +133,10 @@ void ClangTU::GenerateCodeAndLinkModule(llvm::Module* main) {
         impl->codegenmod.EmitTopLevelDecl(x);
     impl->codegenmod.Release();
 
+    std::string mod;
+    llvm::raw_string_ostream stream(mod);
+    impl->mod.print(stream, nullptr);
+
     llvm::Linker link(main);
     link.linkInModule(&impl->mod, &impl->ccs.errors);
     impl->HandleErrors();
@@ -238,6 +242,7 @@ std::string ClangTU::MangleName(clang::NamedDecl* D) {
             clang::ASTContext* astcon;
             clang::Sema* sema;
             std::unordered_set<clang::FunctionDecl*>* visited;
+            clang::CodeGen::CodeGenModule* module;
 
             bool VisitFunctionDecl(clang::FunctionDecl* d) {
                 if (!d) return true;
@@ -250,8 +255,20 @@ std::string ClangTU::MangleName(clang::NamedDecl* D) {
                     sema->InstantiateFunctionDefinition(clang::SourceLocation(), d, true, true);
                 }
                 d->setInlineSpecified(false);
-                d->setUsed(true);
-                d->setReferenced(true);
+                //d->setUsed(true);
+                //d->setReferenced(true);
+                d->setLateTemplateParsed(false);
+
+                if (d->isExternC())
+                    module->GetAddrOfGlobal(d);
+
+                if (auto con = llvm::dyn_cast<clang::CXXConstructorDecl>(d)) {
+                    module->GetAddrOfGlobal(clang::GlobalDecl(con, clang::CXXCtorType::Ctor_Complete));
+                } else if (auto des = llvm::dyn_cast<clang::CXXDestructorDecl>(d)) {
+                    module->GetAddrOfGlobal(clang::GlobalDecl(des, clang::CXXDtorType::Dtor_Complete));
+                } else
+                    module->GetAddrOfGlobal(d);
+
                 if (d->hasAttrs()) {
                     d->addAttr(new (*astcon) clang::UsedAttr(clang::SourceLocation(), *astcon));
                 } else {
@@ -299,41 +316,10 @@ std::string ClangTU::MangleName(clang::NamedDecl* D) {
         v.astcon = &impl->astcon;
         v.sema = &impl->sema;
         v.visited = &visited;
+        v.module = &impl->codegenmod;
         v.VisitFunctionDecl(d);
     };
     
-    std::function<void(clang::CXXRecordDecl*)> RecursiveMarkTypes;
-    RecursiveMarkTypes = [&](clang::CXXRecordDecl* dec) {
-        if (!dec) return;
-        if (auto spec = llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(dec)) {
-            if (!spec->getDefinition()) {
-                auto tsk = clang::TemplateSpecializationKind::TSK_ExplicitInstantiationDefinition;
-                if (GetSema().InstantiateClassTemplateSpecialization(GetFileEnd(), spec, tsk))
-                    throw std::runtime_error("Could not instantiate resulting class template specialization.");
-                
-                GetSema().InstantiateClassTemplateSpecializationMembers(GetFileEnd(), llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(spec->getDefinition()), tsk);
-            }
-        }
-        MarkFunction(dec->getDestructor());
-        for(auto ctor = dec->ctor_begin(); ctor != dec->ctor_end(); ++ctor)
-            MarkFunction(*ctor);
-        for(auto mem = dec->method_begin(); mem != dec->method_end(); ++mem)
-            MarkFunction(*mem);
-        if (!dec->hasDefinition()) return;
-        for(auto base = dec->bases_begin(); base != dec->bases_end(); ++base)
-            RecursiveMarkTypes(base->getType()->getAsCXXRecordDecl());
-        for(auto field = dec->field_begin(); field != dec->field_end(); ++field)
-            RecursiveMarkTypes(field->getType()->getAsCXXRecordDecl());
-        for(auto decl = dec->decls_begin(); decl != dec->decls_end(); ++decl) {
-            if (auto fun = llvm::dyn_cast<clang::FunctionDecl>(*decl))
-                MarkFunction(fun);
-            if (auto record = llvm::dyn_cast<clang::CXXRecordDecl>(*decl))
-                RecursiveMarkTypes(record);
-            if (auto type = llvm::dyn_cast<clang::TypedefDecl>(*decl))
-                RecursiveMarkTypes(impl->astcon.getTypeDeclType(type)->getAsCXXRecordDecl());
-        }
-    };
-
     if (auto vardecl = llvm::dyn_cast<clang::VarDecl>(D)) {
         auto name = impl->codegenmod.getMangledName(vardecl);
         if (vardecl->hasAttrs()) {
@@ -359,7 +345,6 @@ std::string ClangTU::MangleName(clang::NamedDecl* D) {
         //RecursiveMarkTypes(condecl->getParent());
         auto gd = clang::GlobalDecl(condecl, clang::CXXCtorType::Ctor_Complete);
         auto name = impl->codegenmod.getMangledName(gd);  
-        auto global = impl->codegenmod.GetAddrOfGlobal(gd); 
 
         // this is always first argument
         if (!condecl->getParent()->field_empty()) {
@@ -379,7 +364,6 @@ std::string ClangTU::MangleName(clang::NamedDecl* D) {
     if (auto funcdecl = llvm::dyn_cast<clang::FunctionDecl>(D)) {
         MarkFunction(funcdecl);
         auto name = impl->codegenmod.getMangledName(funcdecl);
-        auto global = impl->codegenmod.GetAddrOfGlobal(funcdecl);
         return name;
     }
     throw std::runtime_error("Attempted to mangle a name that could not be mangled.");

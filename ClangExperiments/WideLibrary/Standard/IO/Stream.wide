@@ -53,8 +53,13 @@ module Standard {
                 null
             ));
         }
-        Stream(path) {
-            return Stream(path, Read());
+        Stream(std.string path) {
+            std.cout << path.c_str();
+            return function(val) {
+                //std.cout << val;
+                var := Windows.HANDLE(null);
+            };
+            //return Stream(Utility.Move(path), Read());
         }
     }
 }

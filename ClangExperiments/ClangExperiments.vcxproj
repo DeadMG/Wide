@@ -120,7 +120,6 @@
     <ClInclude Include="Stages\Semantic\PointerType.h" />
     <ClInclude Include="Stages\Semantic\Reference.h" />
     <ClInclude Include="Stages\Semantic\VectorTypeHasher.h" />
-    <ClInclude Include="Util\IstreamRange.h" />
     <ClInclude Include="Stages\ClangOptions.h" />
     <ClInclude Include="Stages\Codegen\Function.h" />
     <ClInclude Include="Stages\Codegen\Generator.h" />
@@ -175,6 +174,7 @@
     <ClInclude Include="Util\ConcurrentUnorderedMap.h" />
     <ClInclude Include="Util\MemoryArena.h" />
     <ClInclude Include="Stages\Wide.h" />
+    <ClInclude Include="Util\Ranges\StringRange.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

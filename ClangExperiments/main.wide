@@ -3,5 +3,9 @@ using Range := Standard.Range;
 using Algorithm := Standard.Algorithm;
 
 Main() {
-    Standard.IO.Stream("CONOUT$")(uint8(uint64(65)));
+    Standard.IO.Stream("CONOUT$")(uint8(uint64(66)));
+    //x := std.string("Hello, World!");
+    //y := x;
+    //z := std.move(x);
+    //std.cout << z;
 }
