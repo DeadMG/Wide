@@ -24,6 +24,7 @@ namespace Wide {
                 // ONLY LLVM Field index, NOT index into llvmtypes
                 unsigned num;
                 std::string name;
+                AST::Expression* InClassInitializer;
             };
 
             // Actually an ordered list of all members

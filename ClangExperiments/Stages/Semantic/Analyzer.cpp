@@ -721,9 +721,9 @@ void Analyzer::AddDefaultConstructor(AST::Type* t, UserDefinedType* ty) {
     
     std::vector<AST::FunctionArgument> args;
     std::vector<AST::VariableStatement*> initializers;
-    for(auto&& m : members) {
+    /*for(auto&& m : members) {
         initializers.push_back(arena.Allocate<AST::VariableStatement>(m.name, nullptr, Lexer::Range()));
-    }
+    }*/
     if (t->Functions.find("type") == t->Functions.end())
         t->Functions["type"] = arena.Allocate<AST::FunctionOverloadSet>("type", t);
     t->Functions["type"]->functions.push_back(arena.Allocate<AST::Function>("type", std::vector<AST::Statement*>(), std::vector<AST::Statement*>(), Lexer::Range(), std::move(args), t, std::move(initializers)));

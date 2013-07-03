@@ -85,11 +85,13 @@ UserDefinedType::UserDefinedType(AST::Type* t, Analyzer& a, Type* context)
     for(auto&& var : t->variables) {
         auto expr = a.AnalyzeExpression(&lcontext, var->initializer);
         expr.t = expr.t->Decay();
-        if (auto con = dynamic_cast<ConstructorType*>(expr.t))
-            expr.t = con->GetConstructedType();
-        else
-            throw std::runtime_error("Expected the expression giving the type of a member variable to be a type.");
         member m;
+        if (auto con = dynamic_cast<ConstructorType*>(expr.t)) {
+            expr.t = con->GetConstructedType();
+            m.InClassInitializer = nullptr;
+        } else {
+            m.InClassInitializer = var->initializer;
+        }
         m.t = expr.t;
         auto talign = m.t->alignment(a);
         if (allocsize % talign != 0) {

@@ -134,6 +134,23 @@ Expression ClangType::AccessMember(Expression val, std::string name, Analyzer& a
         if (val.Expr) args.push_back(val);
         return LookupResultCache[name]->BuildValueConstruction(std::move(args), a);
     }
+    if (name == "~type") {
+        auto des = from->GetSema().LookupDestructor(type->getAsCXXRecordDecl());
+        auto ptr = Wide::Memory::MakeUnique<clang::UnresolvedSet<8>>();
+        clang::UnresolvedSet<8>& us = *ptr;
+        us.addDecl(des);
+        
+        if (val.t && !val.t->IsReference()) {
+            std::vector<Expression> args;
+            args.push_back(val);
+            val = val.t->BuildRvalueConstruction(std::move(args), a);
+        }
+        LookupResultCache[name] = a.arena.Allocate<ClangOverloadSet>(std::move(ptr), from, val.t);
+        std::vector<Expression> args;
+        if (val.t)
+            args.push_back(val);
+        return LookupResultCache[name]->BuildValueConstruction(val, a);
+    }
     clang::LookupResult lr(
         from->GetSema(), 
         clang::DeclarationNameInfo(clang::DeclarationName(from->GetIdentifierInfo(name)), clang::SourceLocation()),

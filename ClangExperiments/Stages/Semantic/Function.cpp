@@ -131,6 +131,15 @@ void Function::ComputeBody(Analyzer& a) {
                     exprs.push_back(x.t->BuildInplaceConstruction(mem, std::move(args), a));
                 } else {
                     // Don't care about if x.t is ref because refs can't be default-constructed anyway.
+                    if (x.InClassInitializer)
+                    {
+                        auto expr = a.AnalyzeExpression(this, x.InClassInitializer);
+                        auto mem = self.t->AccessMember(self, x.name, a);                   
+                        std::vector<Expression> args;
+                        args.push_back(expr);
+                        exprs.push_back(x.t->BuildInplaceConstruction(mem.Expr, std::move(args), a));
+                        continue;
+                    }
                     if (x.t->IsReference())
                         throw std::runtime_error("Failed to initialize a reference member.");
                     auto mem = self.t->AccessMember(self, x.name, a);                   
