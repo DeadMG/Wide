@@ -39,7 +39,7 @@ namespace Wide {
             return std::unordered_set<Lexer::TokenType>(std::begin(tokens), std::end(tokens));
         }());
          
-        enum Error {
+        enum Error : int {
             ModuleScopeFunctionNoOpenBracket,
             ModuleScopeOperatorNoOpenBracket,
             UnrecognizedTokenModuleScope,

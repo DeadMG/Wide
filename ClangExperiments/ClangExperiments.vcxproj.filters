@@ -51,9 +51,6 @@
     <ClInclude Include="Stages\Semantic\ClangTU.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="Stages\Parser\AST.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="Stages\Semantic\Variable.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -76,9 +73,6 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="Stages\Codegen\Function.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="Stages\Parser\Builder.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="Stages\Semantic\IntegralType.h">
@@ -162,9 +156,6 @@
     <ClInclude Include="Stages\Semantic\LambdaType.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="Stages\Parser\ASTVisitor.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="Util\Ranges\Optional.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -196,6 +187,15 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="Util\Ranges\StringRange.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Stages\Parser\Builder.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Stages\Parser\ASTVisitor.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Stages\Parser\AST.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
@@ -240,9 +240,6 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="Stages\Codegen\Statement.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="Stages\Parser\Builder.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="Stages\Codegen\FunctionCodeGen.cpp">
@@ -294,6 +291,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="Stages\Semantic\Reference.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Stages\Parser\Builder.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

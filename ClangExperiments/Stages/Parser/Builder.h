@@ -7,7 +7,7 @@
 
 namespace Wide {
     namespace Parser {
-        enum Error;
+        enum Error : int;
     }
     namespace AST {
         class Builder;

@@ -44,7 +44,7 @@ namespace Wide {
         template<typename Range> class Invocation {
             Arguments* args;
             Position current_position;
-            std::vector<Token> token_putbacks;
+            std::deque<Token> token_putbacks;
             Wide::Util::optional<std::pair<char, Position>> putback;
             Lexer::Range lastpos;
 
