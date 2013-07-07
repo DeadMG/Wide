@@ -46,7 +46,7 @@ namespace Wide {
 #pragma comment( lib, "clangBasic.lib" )
 #pragma comment( lib, "clangCodeGen.lib" )
 #pragma comment( lib, "clangDriver.lib" )
-#pragma comment( lib, "clangDynamicASTMatchers.lib" )
+//#pragma comment( lib, "clangDynamicASTMatchers.lib" )
 #pragma comment( lib, "clangEdit.lib" )
 #pragma comment( lib, "clangFormat.lib" )
 #pragma comment( lib, "clangFrontend.lib" )

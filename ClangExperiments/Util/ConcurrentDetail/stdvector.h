@@ -14,6 +14,10 @@ namespace Wide {
                 vec.push_back(std::move(t));
             }
 
+            Vector& operator=(const Vector& other) {
+                vec = other.vec;
+            }
+
             // Not concurrency safe:
             typename std::vector<T>::iterator begin() {
                 return vec.begin();

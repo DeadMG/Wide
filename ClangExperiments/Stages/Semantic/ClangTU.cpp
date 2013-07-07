@@ -54,9 +54,24 @@ namespace Wide {
     }
 }
 
+namespace Wide {
+    namespace ClangUtil {
+        clang::TargetInfo* CreateTargetInfoFromTriple(clang::DiagnosticsEngine& engine, std::string triple); 
+    }
+}
+
 class ClangTU::Impl {
-public:
-    Semantic::ClangCommonState& ccs;
+public:    
+    const Options::Clang* Options;
+    clang::FileManager FileManager;
+    std::string errors;
+    llvm::raw_string_ostream error_stream;
+    clang::DiagnosticsEngine engine;
+    std::unique_ptr<clang::TargetInfo> targetinfo;
+    clang::CompilerInstance ci;
+    clang::HeaderSearch hs;
+    llvm::DataLayout layout;
+
     clang::LangOptions langopts;
     std::vector<clang::Decl*> stuff;
     clang::SourceManager sm;
@@ -73,33 +88,39 @@ public:
     // producing multiple distinct llvm::Type*s for one QualType, so perform
     // our own caching on top.    
     void HandleErrors() {
-        if (ccs.engine.hasFatalErrorOccurred())
-            throw std::runtime_error(ccs.errors);
-        if (!ccs.errors.empty()) ccs.Options->OnDiagnostic(ccs.errors);
-        ccs.errors.clear();
+        if (engine.hasFatalErrorOccurred())
+            throw std::runtime_error(errors);
+        if (!errors.empty()) Options->OnDiagnostic(errors);
+        errors.clear();
     }
     
-    Impl(llvm::LLVMContext& con, std::string file, Semantic::ClangCommonState& state)
-        : ccs(state)
-        , sm(ccs.engine, ccs.FileManager)
-        , langopts(ccs.Options->LanguageOptions)
-        , preproc(ccs.Options->PreprocessorOptions, ccs.engine, langopts, ccs.targetinfo.get(), sm, ccs.hs, ccs.ci)
-        , astcon(langopts, sm, ccs.targetinfo.get(), preproc.getIdentifierTable(), preproc.getSelectorTable(), preproc.getBuiltinInfo(), 1000)
+    Impl(llvm::LLVMContext& con, std::string file, const Wide::Options::Clang& opts)        
+        : Options(&opts)
+        , error_stream(errors)
+        , FileManager(opts.FileSearchOptions)
+        , engine(opts.DiagnosticIDs, opts.DiagnosticOptions.getPtr(), new clang::TextDiagnosticPrinter(error_stream, opts.DiagnosticOptions.getPtr()), false)
+        , targetinfo(Wide::ClangUtil::CreateTargetInfoFromTriple(engine, opts.TargetOptions.Triple))
+        , hs(opts.HeaderSearchOptions, FileManager, engine, opts.LanguageOptions, targetinfo.get())
+        , layout(targetinfo->getTargetDescription())
+        , sm(engine, FileManager)
+        , langopts(Options->LanguageOptions)
+        , preproc(Options->PreprocessorOptions, engine, langopts, targetinfo.get(), sm, hs, ci)
+        , astcon(langopts, sm, targetinfo.get(), preproc.getIdentifierTable(), preproc.getSelectorTable(), preproc.getBuiltinInfo(), 1000)
         , consumer(stuff)
         , sema(preproc, astcon, consumer, clang::TranslationUnitKind::TU_Complete) 
         , mod("", con)
-        , codegenmod(astcon, ccs.Options->CodegenOptions, mod, ccs.layout, ccs.engine)
+        , codegenmod(astcon, Options->CodegenOptions, mod, layout, engine)
         , filename(std::move(file))   
     {
-        mod.setDataLayout(ccs.targetinfo->getTargetDescription());
-        mod.setTargetTriple(ccs.Options->TargetOptions.Triple);
-        clang::InitializePreprocessor(preproc, *ccs.Options->PreprocessorOptions, *ccs.Options->HeaderSearchOptions, ccs.Options->FrontendOptions);
-        preproc.getBuiltinInfo().InitializeBuiltins(preproc.getIdentifierTable(), ccs.Options->LanguageOptions);
+        mod.setDataLayout(targetinfo->getTargetDescription());
+        mod.setTargetTriple(Options->TargetOptions.Triple);
+        clang::InitializePreprocessor(preproc, *Options->PreprocessorOptions, *Options->HeaderSearchOptions, Options->FrontendOptions);
+        preproc.getBuiltinInfo().InitializeBuiltins(preproc.getIdentifierTable(), Options->LanguageOptions);
 
         const clang::DirectoryLookup* directlookup = nullptr;
-        auto entry = ccs.hs.LookupFile(filename, true, nullptr, directlookup, nullptr, nullptr, nullptr, nullptr);
+        auto entry = hs.LookupFile(filename, true, nullptr, directlookup, nullptr, nullptr, nullptr, nullptr);
         if (!entry)
-            entry = ccs.FileManager.getFile(filename);
+            entry = FileManager.getFile(filename);
         if (!entry)
             throw std::runtime_error("Could not find file " + filename);
         
@@ -107,9 +128,9 @@ public:
         if (fileid.isInvalid())
             throw std::runtime_error("Error translating file " + filename);
         sm.setMainFileID(fileid);
-        ccs.engine.getClient()->BeginSourceFile(ccs.Options->LanguageOptions, &preproc);
+        engine.getClient()->BeginSourceFile(Options->LanguageOptions, &preproc);
         ParseAST(sema);
-        ccs.engine.getClient()->EndSourceFile();
+        engine.getClient()->EndSourceFile();
         HandleErrors();
     }
 
@@ -120,7 +141,7 @@ public:
 
 ClangTU::~ClangTU() {}
 
-ClangTU::ClangTU(llvm::LLVMContext& c, std::string file, Semantic::ClangCommonState& ccs)
+ClangTU::ClangTU(llvm::LLVMContext& c, std::string file, const Wide::Options::Clang& ccs)
     : impl(Wide::Memory::MakeUnique<Impl>(c, file, ccs)) 
 {
 }
@@ -138,7 +159,7 @@ void ClangTU::GenerateCodeAndLinkModule(llvm::Module* main) {
     impl->mod.print(stream, nullptr);
 
     llvm::Linker link(main);
-    link.linkInModule(&impl->mod, &impl->ccs.errors);
+    link.linkInModule(&impl->mod, &impl->errors);
     impl->HandleErrors();
 }
 

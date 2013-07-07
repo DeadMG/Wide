@@ -102,7 +102,7 @@ namespace Wide {
             std::unordered_map<unsigned, std::unordered_map<bool, IntegralType*>> integers;
             std::unordered_map<Type*, PointerType*> Pointers;
 
-            ClangCommonState ccs;
+            const Options::Clang* clangopts;
 
             NullType* null;
             Type* LiteralStringType;

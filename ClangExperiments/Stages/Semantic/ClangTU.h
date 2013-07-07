@@ -49,7 +49,7 @@ namespace Wide {
 
             ClangTU(ClangTU&&);
 
-            ClangTU(llvm::LLVMContext& c, std::string file, Semantic::ClangCommonState&);
+            ClangTU(llvm::LLVMContext& c, std::string file, const Wide::Options::Clang&);
             std::function<llvm::Type*(llvm::Module*)> GetLLVMTypeFromClangType(clang::QualType t, Semantic::Analyzer& a);
             std::string MangleName(clang::NamedDecl* D);
 

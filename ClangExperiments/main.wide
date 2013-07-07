@@ -7,6 +7,6 @@ type t {
     str := std.string("Hello, World!");
 }
 Main() {
-    //Standard.IO.Stream("CONOUT$")(uint8(uint64(66)));
-    std.cout << t().var << t().str;
+    Standard.IO.Out(uint8(uint64(66)));
+    std.cout << t().str.c_str();
 }

@@ -36,11 +36,6 @@
 using namespace Wide;
 using namespace Semantic;
 
-namespace Wide {
-    namespace ClangUtil {
-        clang::TargetInfo* CreateTargetInfoFromTriple(clang::DiagnosticsEngine& engine, std::string triple); 
-    }
-}
 
 struct SemanticExpression : public AST::Expression {
     Semantic::Expression e;
@@ -48,22 +43,11 @@ struct SemanticExpression : public AST::Expression {
         : e(expr), AST::Expression(Lexer::Range()) {}
 };
 
-ClangCommonState::ClangCommonState(const Options::Clang& opts)
-   : Options(&opts)
-   , error_stream(errors)
-   , FileManager(opts.FileSearchOptions)
-   , engine(opts.DiagnosticIDs, opts.DiagnosticOptions.getPtr(), new clang::TextDiagnosticPrinter(error_stream, opts.DiagnosticOptions.getPtr()), false)
-   , targetinfo(Wide::ClangUtil::CreateTargetInfoFromTriple(engine, opts.TargetOptions.Triple))
-   , hs(opts.HeaderSearchOptions, FileManager, engine, opts.LanguageOptions, targetinfo.get())
-   , layout(targetinfo->getTargetDescription())
-{
-}
-
 // After definition of type
 Analyzer::~Analyzer() {}
 
 Analyzer::Analyzer(const Options::Clang& opts, Codegen::Generator* g)    
-    : ccs(opts)
+    : clangopts(&opts)
     , gen(g)
     , null(nullptr)
 {
@@ -439,7 +423,7 @@ Expression Analyzer::AnalyzeExpression(Type* t, AST::Expression* e) {
 ClangUtil::ClangTU* Analyzer::LoadCPPHeader(std::string file) {
     if (headers.find(file) != headers.end())
         return &headers.find(file)->second;
-    headers.insert(std::make_pair(file, ClangUtil::ClangTU(gen->context, file, ccs)));
+    headers.insert(std::make_pair(file, ClangUtil::ClangTU(gen->context, file, *clangopts)));
     auto ptr = &headers.find(file)->second;
     return ptr;
 }

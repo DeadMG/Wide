@@ -11,7 +11,7 @@ int main()
     ClangOpts.FrontendOptions.OutputFile = "yay.o";
     ClangOpts.LanguageOptions.CPlusPlus1y = true;
     
-    const std::string MinGWInstallPath = "D:\\Backups\\unsorted\\i686-w64-mingw32-gcc-dw2-4.6.3-1-release-win32_rubenvb\\mingw32-dw2\\";
+    const std::string MinGWInstallPath = "D:\\Backups\\unsorted\\MinGW\\mingw32-dw2\\";
 
     ClangOpts.HeaderSearchOptions->AddPath(MinGWInstallPath + "include\\c++\\4.6.3", clang::frontend::IncludeDirGroup::CXXSystem, false, false);
     ClangOpts.HeaderSearchOptions->AddPath(MinGWInstallPath + "include\\c++\\4.6.3\\i686-w64-mingw32", clang::frontend::IncludeDirGroup::CXXSystem, false, false);
