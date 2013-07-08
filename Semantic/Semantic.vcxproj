@@ -10,21 +10,74 @@
       <Platform>Win32</Platform>
     </ProjectConfiguration>
   </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="Analyzer.cpp" />
+    <ClCompile Include="Bool.cpp" />
+    <ClCompile Include="ClangInclude.cpp" />
+    <ClCompile Include="ClangNamespace.cpp" />
+    <ClCompile Include="ClangOverloadSet.cpp" />
+    <ClCompile Include="ClangTemplateClass.cpp" />
+    <ClCompile Include="ClangTU.cpp" />
+    <ClCompile Include="ClangType.cpp" />
+    <ClCompile Include="ConstructorType.cpp" />
+    <ClCompile Include="Function.cpp" />
+    <ClCompile Include="FunctionType.cpp" />
+    <ClCompile Include="IntegralType.cpp" />
+    <ClCompile Include="MetaType.cpp" />
+    <ClCompile Include="Module.cpp" />
+    <ClCompile Include="NullType.cpp" />
+    <ClCompile Include="OverloadSet.cpp" />
+    <ClCompile Include="PointerType.cpp" />
+    <ClCompile Include="PrimitiveType.cpp" />
+    <ClCompile Include="Reference.cpp" />
+    <ClCompile Include="StringType.cpp" />
+    <ClCompile Include="Type.cpp" />
+    <ClCompile Include="UserDefinedType.cpp" />
+    <ClCompile Include="Util.cpp" />
+    <ClCompile Include="Void.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="Analyzer.h" />
+    <ClInclude Include="Bool.h" />
+    <ClInclude Include="ClangInclude.h" />
+    <ClInclude Include="ClangNamespace.h" />
+    <ClInclude Include="ClangOptions.h" />
+    <ClInclude Include="ClangOverloadSet.h" />
+    <ClInclude Include="ClangTemplateClass.h" />
+    <ClInclude Include="ClangTU.h" />
+    <ClInclude Include="ClangType.h" />
+    <ClInclude Include="ConstructorType.h" />
+    <ClInclude Include="Function.h" />
+    <ClInclude Include="FunctionType.h" />
+    <ClInclude Include="IntegralType.h" />
+    <ClInclude Include="MetaType.h" />
+    <ClInclude Include="Module.h" />
+    <ClInclude Include="NullType.h" />
+    <ClInclude Include="OverloadSet.h" />
+    <ClInclude Include="PointerType.h" />
+    <ClInclude Include="PrimitiveType.h" />
+    <ClInclude Include="Reference.h" />
+    <ClInclude Include="StringType.h" />
+    <ClInclude Include="Type.h" />
+    <ClInclude Include="UserDefinedType.h" />
+    <ClInclude Include="Util.h" />
+    <ClInclude Include="VectorTypeHasher.h" />
+    <ClInclude Include="Void.h" />
+  </ItemGroup>
   <PropertyGroup Label="Globals">
-    <ProjectGuid>{AA98AF13-88F5-4F69-B4FE-DE08499A8BCB}</ProjectGuid>
+    <ProjectGuid>{EF49E6D9-D629-4DED-A11E-9E10C4575F9D}</ProjectGuid>
     <Keyword>Win32Proj</Keyword>
-    <RootNamespace>ClangExperiments</RootNamespace>
-    <ProjectName>Driver</ProjectName>
+    <RootNamespace>Semantic</RootNamespace>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
-    <ConfigurationType>Application</ConfigurationType>
+    <ConfigurationType>StaticLibrary</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
-    <PlatformToolset>v120_CTP_Nov2012</PlatformToolset>
+    <PlatformToolset>v110</PlatformToolset>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
-    <ConfigurationType>Application</ConfigurationType>
+    <ConfigurationType>StaticLibrary</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
     <PlatformToolset>v120_CTP_Nov2012</PlatformToolset>
     <WholeProgramOptimization>true</WholeProgramOptimization>
@@ -40,16 +93,9 @@
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
-    <LinkIncremental>true</LinkIncremental>
-    <IncludePath>D:\Backups\Code\LLVM\build\tools\clang\include;D:\Backups\Code\LLVM\tools\clang\lib;D:\Backups\Code\LLVM\tools\clang\include;D:\Backups\Code\LLVM\include;$(IncludePath)</IncludePath>
-    <LibraryPath>D:\Backups\Code\LLVM\build\lib\Debug;$(LibraryPath)</LibraryPath>
-  </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
-    <LinkIncremental>false</LinkIncremental>
-    <IncludePath>$(SolutionDir)..\;D:\Backups\Code\LLVM\tools\clang\lib;D:\Backups\Code\LLVM\build\tools\clang\include;D:\Backups\Code\LLVM\tools\clang\include;D:\Backups\Code\LLVM\include;$(SolutionDir)..\;$(IncludePath)</IncludePath>
-    <LibraryPath>D:\Backups\Code\LLVM\build\lib\Release;$(LibraryPath)</LibraryPath>
     <OutDir>$(SolutionDir)..\Build\$(PlatformName)\$(Configuration)\</OutDir>
+    <IncludePath>$(SolutionDir)..\;D:\Backups\Code\LLVM\tools\clang\lib;D:\Backups\Code\LLVM\build\tools\clang\include;D:\Backups\Code\LLVM\tools\clang\include;D:\Backups\Code\LLVM\include;$(VCInstallPath_CTP_NOV2012)\include;$(IncludePath)</IncludePath>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
@@ -57,12 +103,10 @@
       </PrecompiledHeader>
       <WarningLevel>Level3</WarningLevel>
       <Optimization>Disabled</Optimization>
-      <PreprocessorDefinitions>WIN32;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <MultiProcessorCompilation>true</MultiProcessorCompilation>
-      <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
+      <PreprocessorDefinitions>WIN32;_DEBUG;_LIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
     <Link>
-      <SubSystem>Console</SubSystem>
+      <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
   </ItemDefinitionGroup>
@@ -72,26 +116,17 @@
       <PrecompiledHeader>
       </PrecompiledHeader>
       <Optimization>MaxSpeed</Optimization>
-      <FunctionLevelLinking>false</FunctionLevelLinking>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
-      <PreprocessorDefinitions>WIN32;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>WIN32;NDEBUG;_LIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
     <Link>
-      <SubSystem>Console</SubSystem>
-      <GenerateDebugInformation>false</GenerateDebugInformation>
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
-      <AdditionalDependencies>$(OutDir)Lexer.lib;$(OutDir)Parser.lib;$(OutDir)Codegen.lib;$(OutDir)Semantic.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;comdlg32.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;odbc32.lib;odbccp32.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
-  <ItemGroup>
-    <ClCompile Include="main.cpp" />
-  </ItemGroup>
-  <ItemGroup>
-    <ClInclude Include="Stages\Semantic\LambdaType.h" />
-    <ClInclude Include="Stages\Codegen\Variable.h" />
-    <ClInclude Include="Stages\Semantic\Variable.h" />
-  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>

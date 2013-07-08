@@ -1,4 +1,4 @@
-#include "Stages/Lexer/Lexer.h"
+#include <Lexer/Lexer.h>
 
 namespace CEquivalents {
     struct OptionalChar {

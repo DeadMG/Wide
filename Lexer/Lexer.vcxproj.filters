@@ -15,18 +15,15 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="Stages\Semantic\Variable.h">
+    <ClInclude Include="Lexer.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="Stages\Codegen\Variable.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="Stages\Semantic\LambdaType.h">
+    <ClInclude Include="Token.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="main.cpp">
+    <ClCompile Include="Lexer.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

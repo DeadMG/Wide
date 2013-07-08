@@ -1,5 +1,5 @@
-#include "Lexer.h"
-#include "Stages/Parser/Parser.h"
+#include <CAPI/Lexer.h>
+#include <Parser/Parser.h>
 
 namespace CEquivalents {
     struct LexerResult {

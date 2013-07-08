@@ -1,4 +1,4 @@
-#include "Lexer.h"
+#include <CAPI/Lexer.h>
 
 extern "C" __declspec(dllexport) void LexWide(
     void* con,
