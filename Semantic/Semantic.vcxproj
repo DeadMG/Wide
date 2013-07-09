@@ -73,7 +73,7 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
     <ConfigurationType>StaticLibrary</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
-    <PlatformToolset>v110</PlatformToolset>
+    <PlatformToolset>v120_CTP_Nov2012</PlatformToolset>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
@@ -96,6 +96,11 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <OutDir>$(SolutionDir)..\Build\$(PlatformName)\$(Configuration)\</OutDir>
     <IncludePath>$(SolutionDir)..\;D:\Backups\Code\LLVM\tools\clang\lib;D:\Backups\Code\LLVM\build\tools\clang\include;D:\Backups\Code\LLVM\tools\clang\include;D:\Backups\Code\LLVM\include;$(VCInstallPath_CTP_NOV2012)\include;$(IncludePath)</IncludePath>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <IncludePath>D:\Backups\Code\LLVM\tools\clang\lib;D:\Backups\Code\LLVM\build\tools\clang\include;D:\Backups\Code\LLVM\tools\clang\include;D:\Backups\Code\LLVM\include;$(SolutionDir)..\;$(VCInstallDir)include;$(VCInstallDir)atlmfc\include;$(WindowsSDK_IncludePath);</IncludePath>
+    <LibraryPath>D:\Backups\Code\LLVM\build\lib\Debug;$(LibraryPath)</LibraryPath>
+    <OutDir>$(SolutionDir)..\Build\$(PlatformName)\$(Configuration)\</OutDir>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>

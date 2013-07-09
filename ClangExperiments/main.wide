@@ -1,12 +1,3 @@
-using test := cpp("WideLibrary/test.h");
-using Range := Standard.Range;
-using Algorithm := Standard.Algorithm;
-
-type t {
-    var := false;
-    str := std.string("Hello, World!");
-}
 Main() {
-    Standard.IO.Out(uint8(uint64(66)));
-    std.cout << t().str.c_str();
+    std.cout << std.string("Hello, World");
 }

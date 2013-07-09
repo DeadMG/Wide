@@ -40,6 +40,7 @@ Render/Render.sdf
 blank/blank/Bison/experiment.tab.cpp
 Render/Render.opensdf
 Render/CodeAnalyst/*
+Deployment/*
 *.rar
 *.exp
 *.lib
