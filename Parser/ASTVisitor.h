@@ -44,6 +44,8 @@ namespace Wide {
                 if (auto plus = dynamic_cast<Addition*>(e)) { crtp_cast().VisitAddition(plus); return; }
                 if (auto mul = dynamic_cast<Multiply*>(e)) { crtp_cast().VisitMultiply(mul); return; }
                 if (auto ptr = dynamic_cast<PointerAccess*>(e)) { crtp_cast().VisitPointerAccess(ptr); return; }
+                if (auto self = dynamic_cast<ThisExpression*>(e)) { crtp_cast().VisitThisExpression(self); return; }
+                if (auto dec = dynamic_cast<Decrement*>(e)) { return crtp_cast().VisitDecrement(dec); }
                 assert(false && "Internal Compiler Error: Encountered unknown expression node in AST::Visitor.");
             }            
 
@@ -51,7 +53,7 @@ namespace Wide {
                 crtp_cast().VisitExpression(s->condition);
                 crtp_cast().VisitStatement(s->body);
             }
-            void VisitReturnStatement(Return* r) { crtp_cast().VisitExpression(r->RetExpr); }
+            void VisitReturnStatement(Return* r) { if (r->RetExpr) crtp_cast().VisitExpression(r->RetExpr); }
             void VisitCompoundStatement(CompoundStatement* s) { 
                 for(auto&& x : s->stmts)
                     crtp_cast().VisitStatement(x);
@@ -114,6 +116,8 @@ namespace Wide {
             void VisitAddition(Addition* a) { return crtp_cast().VisitBinaryExpression(a); }
             void VisitMultiply(Multiply* m) { return crtp_cast().VisitBinaryExpression(m); }
             void VisitPointerAccess(PointerAccess* p) { return crtp_cast().VisitExpression(p->ex); }
+            void VisitThisExpression(ThisExpression* expr) {}
+            void VisitDecrement(Decrement* d) { return crtp_cast().VisitExpression(d->ex); }
         };
     }
 }

@@ -1,3 +1,10 @@
 Main() {
-    std.cout << std.string("Hello, World");
+    x := function(val) {
+        if (false) return;
+        if (val < 5) {
+	       std.cout << val;
+	       this(++val);
+        }
+    };
+    x(0);
 }

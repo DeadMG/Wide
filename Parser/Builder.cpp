@@ -14,8 +14,8 @@ Builder::Builder()
     arenas.push(std::move(arena));
 }
 
-ThreadLocalBuilder::ThreadLocalBuilder(Builder& build)
-    : b(&build) 
+ThreadLocalBuilder::ThreadLocalBuilder(Builder& build, std::function<void(Lexer::Range, Parser::Error)> err)
+    : b(&build), error(std::move(err)) 
 {
     // Re-use arena if possible; else stick with our new arena.
     build.arenas.try_pop(arena);
@@ -251,4 +251,6 @@ Lexer::Range ThreadLocalBuilder::GetLocation(Statement* s) {
     return s->location;
 }
 
-void ThreadLocalBuilder::Error(Wide::Lexer::Range, Parser::Error) {}
+void ThreadLocalBuilder::Error(Wide::Lexer::Range r, Parser::Error e) {
+    error(r, e);
+}

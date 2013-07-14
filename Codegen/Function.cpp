@@ -47,7 +47,6 @@ void Function::EmitCode(llvm::Module* mod, llvm::LLVMContext& con, Generator& g)
         auto linkage = tramp ? llvm::GlobalValue::LinkageTypes::ExternalLinkage : llvm::GlobalValue::LinkageTypes::InternalLinkage;
         auto t = llvm::dyn_cast<llvm::FunctionType>(llvm::dyn_cast<llvm::PointerType>(Type(mod))->getElementType());
         f = llvm::Function::Create(t, linkage, name, mod);
-
     }
 
     llvm::BasicBlock* bb = llvm::BasicBlock::Create(con, "entry", f);

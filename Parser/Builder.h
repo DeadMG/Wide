@@ -1,5 +1,6 @@
 #pragma once
 
+#include <functional>
 #include <Parser/AST.h>
 #include <Util/MemoryArena.h>
 #include <Util/ConcurrentQueue.h>
@@ -13,8 +14,9 @@ namespace Wide {
         class ThreadLocalBuilder {
             Wide::Memory::Arena arena;
             Builder* b;
+            std::function<void(Lexer::Range, Parser::Error)> error;
         public:
-            ThreadLocalBuilder(Builder&);
+            ThreadLocalBuilder(Builder&, std::function<void(Lexer::Range, Parser::Error)>);
             ~ThreadLocalBuilder();
 
             IdentifierExpr* CreateIdentExpression(std::string name, Lexer::Range r);

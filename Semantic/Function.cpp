@@ -255,6 +255,8 @@ void Function::ComputeBody(Analyzer& a) {
 
         // Occurs if no return statements.
         if (!ReturnType) { ReturnType = a.GetVoidType(); exprs.push_back(a.gen->CreateReturn()); }
+        if (ReturnType == a.GetVoidType() && !dynamic_cast<Codegen::ReturnStatement*>(exprs.back()))
+            exprs.push_back(a.gen->CreateReturn());
         if (!codefun)
             codefun = a.gen->CreateFunction(GetLLVMType(a), name, this);
         for(auto&& x : exprs)

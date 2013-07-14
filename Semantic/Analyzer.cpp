@@ -410,7 +410,7 @@ Expression Analyzer::AnalyzeExpression(Type* t, AST::Expression* e) {
         return AnalyzeExpression(t, add->ex).AddressOf(*this);
     }
 
-    throw std::runtime_error("Unrecognized AST node");
+    throw std::runtime_error("Internal Compiler Error: Unrecognized AST node");
 }
 
 ClangUtil::ClangTU* Analyzer::LoadCPPHeader(std::string file) {
