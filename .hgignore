@@ -24,6 +24,10 @@ syntax: glob
 *.scc
 *.sdf
 *.exe
+*.vcxproj
+*.sln
+*.vcxproj.filters
+*.vcxproj.filters.user
 [Bb]in
 [Dd]ebug*/
 obj/
