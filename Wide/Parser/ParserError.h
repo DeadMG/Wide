@@ -6,7 +6,6 @@
 
 namespace Wide {
     namespace Parser {
-
         enum Error : int {
             ModuleScopeFunctionNoOpenBracket,
             ModuleScopeOperatorNoOpenBracket,
@@ -26,7 +25,19 @@ namespace Wide {
         enum Warning {
             SemicolonAfterTypeDefinition
         };
-
+    }
+}
+#ifndef _MSC_VER
+namespace std {
+    struct hash<Wide::Parser::Error> {
+        std::size_t operator()(Wide::Parser::Error p) const {
+            return hash<int>()((int)p);
+        }
+    };
+}
+#endif
+namespace Wide {
+    namespace Parser {
         static const std::unordered_map<Error, std::string> ErrorStrings([]() -> std::unordered_map<Error, std::string> {
             std::pair<Error, std::string> strings[] = {
                 std::make_pair(Error::ModuleScopeFunctionNoOpenBracket, "Expected ( after identifier, to denote a function at module scope."),

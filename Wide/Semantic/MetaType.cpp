@@ -5,7 +5,7 @@
 
 #pragma warning(push, 0)
 #include <llvm/IR/Module.h>
-#include <llvm/ir/DerivedTypes.h>
+#include <llvm/IR/DerivedTypes.h>
 #pragma warning(pop)
 
 using namespace Wide;

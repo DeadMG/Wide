@@ -5,7 +5,7 @@
 
 #pragma warning(push, 0)
 
-#include <Codegen/CodeGenModule.h>
+#include <CodeGen/CodeGenModule.h>
 #include <clang/Frontend/CodeGenOptions.h>
 #include <clang/Basic/TargetOptions.h>
 #include <clang/Basic/TargetInfo.h>

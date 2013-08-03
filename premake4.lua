@@ -14,7 +14,8 @@ function AddClangDependencies(conf)
         "tools/clang/include", 
         "build/tools/clang/include", 
         "include", 
-        "tools/clang/lib" 
+        "tools/clang/lib", 
+        "build/include"
     }
     for k, v in pairs(llvmincludes) do
         includedirs({ _OPTIONS["llvm-path"] .. v })
@@ -240,6 +241,13 @@ local WideProjects = {
             links { "Lexer" }
         end 
     },
+    {
+        name = "WideLibrary",
+        action = function()
+            files ({ "Wide/WideLibrary/**.wide"})
+            postbuildcommands ({ "(robocopy /mir \"Standard\" \"../Deployment/WideLibrary/Standard\") ^& IF %ERRORLEVEL% LEQ 1 exit 0" })
+        end
+    }
 }
 
 local SupportedConfigurations = { "Debug", "Release" }
@@ -249,6 +257,9 @@ language("C++")
 configurations(SupportedConfigurations)
 platforms(SupportedPlatforms)
 kind("StaticLib")
+if (!os.is("Windows")) then
+    buildoptions  {"-std=c++11", "-D __STDC_CONSTANT_MACROS"}
+end
 includedirs("./")
 location("Wide")
 for k, v in pairs(WideProjects) do
@@ -262,6 +273,7 @@ for k, v in pairs(WideProjects) do
                 configuration { plat, conf }
                 if plat == "x32" then plat = "x86" end
                 if v.configure then v.configure(plat, conf) end
+                objdir("Wide/Obj/" .. plat .. "/" .. conf .. "/")
                 if conf == "Debug" then 
                     flags("Symbols")
                 else

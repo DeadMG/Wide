@@ -77,7 +77,7 @@ int main(int argc, char** argv)
         ("output", boost::program_options::value<std::string>(), "The output file. Defaulted to \"a.o\".")
         ("triple", boost::program_options::value<std::string>(), "The target triple. Defaulted to"
 #ifdef _MSC_VER
-        "\"i686-pc-mingw32\".")
+        "i686-pc-mingw32.")
 #else
         "the LLVM Host triple.")
 #endif

@@ -10,6 +10,10 @@
 #include <unordered_set>
 #include <unordered_map>
 
+#ifndef _MSC_VER
+#include <clang/AST/Type.h>
+#endif
+
 namespace llvm {
     class Module;
     class LLVMContext;

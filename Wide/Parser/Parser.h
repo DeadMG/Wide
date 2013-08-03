@@ -899,7 +899,7 @@ namespace Wide {
             
 
         template<typename Lex, typename Sema, typename Module> void ParseGlobalModuleContents(Lex&& lex, Sema&& sema, Module&& m) {
-            typedef std::decay<decltype(*lex())>::type token_type;
+            typedef typename std::decay<decltype(*lex())>::type token_type;
             
             struct AssumeLexer {
                 typename std::decay<Lex>::type* lex;

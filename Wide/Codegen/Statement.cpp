@@ -1,5 +1,6 @@
 #include <Wide/Codegen/Statement.h>
 #include <Wide/Codegen/Expression.h>
+#include <stdexcept>
 
 using namespace Wide;
 using namespace Codegen;
