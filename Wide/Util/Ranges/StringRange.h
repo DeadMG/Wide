@@ -5,15 +5,16 @@
 
 namespace Wide {
     namespace Range {
-        struct stringrange : public  {
+        struct stringrange {
             std::string value;
-            detail::IteratorRange<std::string::iterator> range;
-            stringrange(std::string val)
-                : value(std::move(val))
-                , range(value.begin(), value.end())
-            {}
+			std::size_t index;
+			stringrange(std::string val)
+				: value(std::move(val))
+				, index(0) {}
             Util::optional<char> operator()() {
-                return range();
+				if (index < value.size())
+					return value[index++];
+				return Wide::Util::none;
             }
         };
         stringrange StringRange(std::string val) {

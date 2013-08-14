@@ -3,7 +3,6 @@
 #define _SCL_SECURE_NO_WARNINGS
 
 #include <string>
-#include <fstream>
 
 namespace clang {
     class QualType;

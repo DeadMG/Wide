@@ -1,7 +1,6 @@
 #include <Wide/Semantic/Util.h>
 #include <Wide/Semantic/Reference.h>
 #include <unordered_map>
-#include <iostream>
 
 #pragma warning(push, 0)
 

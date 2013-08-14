@@ -5,28 +5,29 @@ using namespace Lexer;
 
 const std::unordered_map<char, TokenType> Arguments::singles = []() -> std::unordered_map<char, TokenType> {
     std::unordered_map<char, TokenType> singles;
-    singles[';'] = TokenType::Semicolon;
+    singles['+'] = TokenType::Plus;
     singles['.'] = TokenType::Dot;
-    singles['}'] = TokenType::CloseCurlyBracket;
-    singles['{'] = TokenType::OpenCurlyBracket;
+    singles['-'] = TokenType::Minus;
+    singles[','] = TokenType::Comma;
+    singles[';'] = TokenType::Semicolon;
+    singles['~'] = TokenType::Negate;
     singles[')'] = TokenType::CloseBracket;
     singles['('] = TokenType::OpenBracket;
-    singles[','] = TokenType::Comma;
-    singles['!'] = TokenType::Exclaim;
-    singles['|'] = TokenType::Or;
-    singles['^'] = TokenType::Xor;
-    singles['&'] = TokenType::And;
-    singles['['] = TokenType::OpenSquareBracket;
     singles[']'] = TokenType::CloseSquareBracket;
-    singles['*'] = TokenType::Dereference;
-    singles['+'] = TokenType::Plus;
-    singles['-'] = TokenType::Minus;
-    singles['<'] = TokenType::LT;
+    singles['['] = TokenType::OpenSquareBracket;
+    singles['{'] = TokenType::OpenCurlyBracket;
+    singles['}'] = TokenType::CloseCurlyBracket;
     singles['>'] = TokenType::GT;
-    singles[':'] = TokenType::Colon;    
+    singles['<'] = TokenType::LT;
+    singles['&'] = TokenType::And;
+    singles['|'] = TokenType::Or;
+    singles['*'] = TokenType::Dereference;
+	singles['%'] = TokenType::Modulo;
     singles['='] = TokenType::Assignment;
-    singles['~'] = TokenType::Negate;
-    singles['+'] = TokenType::Plus;
+    singles['!'] = TokenType::Exclaim;
+	singles['/'] = TokenType::Divide;
+    singles['^'] = TokenType::Xor;
+    singles[':'] = TokenType::Colon;    
     return singles;
 }();
 
@@ -35,17 +36,33 @@ const std::unordered_map<char, std::unordered_map<char, TokenType>> Arguments::d
     // If this assumption changes, must modify lexer body.
 
     std::unordered_map<char, std::unordered_map<char, TokenType>> doubles;
-    doubles['-']['>'] = TokenType::PointerAccess;        
+    doubles['+']['+'] = TokenType::Increment;    
     doubles['-']['-'] = TokenType::Decrement;    
+    doubles['>']['>'] = TokenType::RightShift; 
     doubles['<']['<'] = TokenType::LeftShift;
-    doubles['<']['='] = TokenType::LTE;    
-    doubles['>']['>'] = TokenType::RightShift;
-    doubles['>']['='] = TokenType::GTE;    
-    doubles[':']['='] = TokenType::VarCreate;    
+	doubles['-']['='] = TokenType::MinusAssign;
+	doubles['+']['='] = TokenType::PlusAssign;
+    doubles['-']['>'] = TokenType::PointerAccess;
+	doubles['&']['='] = TokenType::AndAssign;
+	doubles['|']['='] = TokenType::OrAssign;
+	doubles['*']['='] = TokenType::MulAssign;
+	doubles['%']['='] = TokenType::ModAssign;
     doubles['=']['='] = TokenType::EqCmp;    
     doubles['~']['='] = TokenType::NotEqCmp;    
-    doubles['+']['+'] = TokenType::Increment;
+	doubles['/']['='] = TokenType::DivAssign;
+	doubles['^']['='] = TokenType::XorAssign;
+    doubles['<']['='] = TokenType::LTE;    
+    doubles['>']['='] = TokenType::GTE;    
+    doubles[':']['='] = TokenType::VarCreate;    
     return doubles;
+}();
+
+const std::unordered_map<char, std::unordered_map<char, std::unordered_map<char, TokenType>>> Arguments::triples = []() -> std::unordered_map<char, std::unordered_map<char, std::unordered_map<char, TokenType>>> {
+	std::unordered_map<char, std::unordered_map<char, std::unordered_map<char, TokenType>>> triples;
+	triples['>']['>']['='] = TokenType::RightShiftAssign;
+	triples['<']['<']['='] = TokenType::LeftShiftAssign;
+	triples['.']['.']['.'] = TokenType::Ellipsis;
+	return triples;
 }();
 
 const std::unordered_set<char> Arguments::whitespace = []() -> std::unordered_set<char> {

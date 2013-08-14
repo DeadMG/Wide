@@ -202,10 +202,7 @@ local WideProjects = {
             else
                 postbuildcommands ({ "cp /Y \"../Build/" .. plat .. "/" .. conf .. "/Driver\" \"../Deployment/Wide\"" })
             end
-        end
-    },
-    { 
-        name = "Test", 
+        end,
     },
     { 
         name = "Util", 
@@ -238,7 +235,7 @@ local WideProjects = {
         name = "CAPI", 
         action = function()
             kind "SharedLib"
-            links { "Lexer" }
+            links { "Lexer", "Parser" }
         end 
     },
     {
@@ -247,7 +244,21 @@ local WideProjects = {
             files ({ "Wide/WideLibrary/**.wide"})
             postbuildcommands ({ "(robocopy /mir \"Standard\" \"../Deployment/WideLibrary/Standard\") ^& IF %ERRORLEVEL% LEQ 1 exit 0" })
         end
-    }
+    },
+    { 
+        name = "LexerTest", 
+        action = function() 
+            kind("ConsoleApp")
+            links { "Lexer" }
+        end,
+        configure = function(plat, conf)
+            if os.is("windows") then
+                postbuildcommands ({ "$(TargetPath)" })
+            else
+                postbuildcommands ({ "LexerTest" })
+            end
+        end,
+    },
 }
 
 local SupportedConfigurations = { "Debug", "Release" }
@@ -257,7 +268,7 @@ language("C++")
 configurations(SupportedConfigurations)
 platforms(SupportedPlatforms)
 kind("StaticLib")
-if (!os.is("Windows")) then
+if not os.is("Windows") then
     buildoptions  {"-std=c++11", "-D __STDC_CONSTANT_MACROS"}
 end
 includedirs("./")

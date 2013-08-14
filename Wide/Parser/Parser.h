@@ -833,8 +833,7 @@ namespace Wide {
                     // If the user is entering a new function above valid content, the tokens here will be identifier, using, module, type, operator.
                     if (ModuleGrammarIntroducers.find(t.GetType()) == ModuleGrammarIntroducers.end())
                         throw UnrecoverableError(t.GetLocation(), Error::ModuleScopeFunctionNoOpenBracket);
-                    else
-                        sema.Error(token.GetLocation(), Error::ModuleScopeFunctionNoOpenBracket);
+					sema.Error(token.GetLocation(), Error::ModuleScopeFunctionNoOpenBracket);
                     // Else, skip over this apparently partly-written declaration.
                     lex(t);
                     return;
@@ -918,6 +917,7 @@ namespace Wide {
                     putbacks.push_back(std::move(arg));
                 }
                 explicit operator bool() const {
+					if (!putbacks.empty()) return true;
                     auto val = (*lex)();
                     if (!val)
                         return false;

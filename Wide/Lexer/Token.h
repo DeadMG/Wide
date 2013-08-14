@@ -50,7 +50,20 @@ namespace Wide {
             GTE,
             Or,
             And,
-            Xor
+            Xor,
+			RightShiftAssign,
+			LeftShiftAssign,
+			MinusAssign,
+			PlusAssign,
+			AndAssign,
+			OrAssign,
+			MulAssign,
+			Modulo,
+			ModAssign,
+			Divide,
+			DivAssign,
+			XorAssign,
+			Ellipsis
         };    
         struct Position {
             Position()

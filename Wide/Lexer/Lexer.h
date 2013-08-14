@@ -30,6 +30,7 @@ namespace Wide {
             };
             static const std::unordered_map<char, TokenType> singles;
             static const std::unordered_map<char, std::unordered_map<char, TokenType>> doubles;
+			static const std::unordered_map<char, std::unordered_map<char, std::unordered_map<char, TokenType>>> triples;
             static const std::unordered_set<char> whitespace;
             static const std::unordered_map<std::string, TokenType> keywords;
             static const std::unordered_set<TokenType> KeywordTypes;
@@ -45,7 +46,7 @@ namespace Wide {
             const Arguments* args;
             Position current_position;
             std::deque<Token> token_putbacks;
-            Wide::Util::optional<std::pair<char, Position>> putback;
+            std::deque<std::pair<char, Position>> putback;
             Lexer::Range lastpos;
 
             std::string escape(std::string val) {
@@ -73,9 +74,9 @@ namespace Wide {
             }
 
             Wide::Util::optional<char> get() {
-                if (putback) {
-                    auto out = *putback;
-                    putback = Wide::Util::none;
+                if (!putback.empty()) {
+                    auto out = putback.back();
+					putback.pop_back();
                     current_position = out.second;
                     return out.first;
                 }
@@ -174,12 +175,45 @@ namespace Wide {
                         }
                     } else {
                         if (next) {
-                           putback = std::make_pair(*next, current_position);
-                           current_position = old_pos;
+							putback.push_back(std::make_pair(*next, current_position));
+                            current_position = old_pos;
                         }
                     }
                 }
 
+				{
+				    auto firstpos = current_position;
+				    auto second = get();
+				    if (second) {
+				    	auto secpos = current_position;
+				    	auto third = get();
+				    	if (third) {
+				    		if (args->triples.find(*val) != args->triples.end()) {
+				    			if (args->triples.at(*val).find(*second) != args->triples.at(*val).end()) {
+				    				if (args->triples.at(*val).at(*second).find(*third) != args->triples.at(*val).at(*second).end()) {
+				    					lastpos = begin_pos;
+				    					return Wide::Lexer::Token(begin_pos + current_position, args->triples.at(*val).at(*second).at(*third), std::string(1, *val) + std::string(1, *second) + std::string(1, *third));
+				    				}
+				    			}
+				    		}
+				    		putback.push_back(std::make_pair(*third, current_position));
+				    		current_position = secpos;
+				    	}
+				    	if (args->doubles.find(*val) != args->doubles.end()) {
+				    		if (args->doubles.at(*val).find(*second) != args->doubles.at(*val).end()) {
+				    			lastpos = begin_pos;
+				    			return Wide::Lexer::Token(begin_pos + current_position, args->doubles.at(*val).at(*second), std::string(1, *val) + std::string(1, *second));
+				    		}
+				    	}
+				    	putback.push_back(std::make_pair(*second, current_position));
+				    	current_position = firstpos;
+				    }
+				    if (args->singles.find(*val) != args->singles.end()) {
+				    	lastpos = begin_pos;
+				    	return Wide::Lexer::Token(begin_pos, args->singles.at(*val), std::string(1, *val));
+				    }
+				}
+				/*
                 // Aassumes that all doubles lead with a character that is a valid single.
                 if (args->singles.find(*val) != args->singles.end()) {
                     auto this_token = [&] {
@@ -198,7 +232,7 @@ namespace Wide {
                     putback = std::make_pair(*second, current_position);
                     current_position = old_pos;
                     return this_token();
-                }
+                }*/
 
                 // Variable-length tokens.
                 std::string variable_length_value;
@@ -225,7 +259,7 @@ namespace Wide {
                         if ((*val >= 'a' && *val <= 'z') || (*val >= 'A' && *val <= 'Z') || *val == '_')
                             result = TokenType::Identifier;
                         else {
-                            putback = std::make_pair(*val, current_position);
+							putback.push_back(std::make_pair(*val, current_position));
                             current_position = old_pos;
                             break;
                         }
@@ -235,9 +269,9 @@ namespace Wide {
                 }
                 lastpos = begin_pos + current_position;
                 if (args->keywords.find(variable_length_value) != args->keywords.end()) {
-                    return Wide::Lexer::Token(begin_pos + current_position, args->keywords.at(variable_length_value), variable_length_value);
+                    return Wide::Lexer::Token(lastpos, args->keywords.at(variable_length_value), variable_length_value);
                 }
-                return Wide::Lexer::Token(begin_pos + current_position, result, variable_length_value);
+                return Wide::Lexer::Token(lastpos, result, variable_length_value);
             }
         };
     }
