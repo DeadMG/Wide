@@ -17,7 +17,7 @@ using namespace Wide;
 using namespace Semantic;
 
 std::function<llvm::Type*(llvm::Module*)> Reference::GetLLVMType(Analyzer& a) {
-    auto f = IsReference()->GetLLVMType(a);
+    auto f = Decay()->GetLLVMType(a);
     return [=](llvm::Module* m) {
         return f(m)->getPointerTo();
     };
@@ -31,7 +31,7 @@ Expression Reference::BuildAssignment(Expression lhs, Expression rhs, Analyzer& 
 
 Expression Reference::BuildValue(Expression lhs, Analyzer& analyzer) {
     Expression out;
-    out.t = IsReference();
+    out.t = Decay();
     if (analyzer.gen)
         out.Expr = analyzer.gen->CreateLoad(lhs.Expr);
     return out;

@@ -503,7 +503,7 @@ LvalueType* Analyzer::GetLvalueType(Type* t) {
     // This implements "named rvalue ref is an lvalue", and static_cast<T&&>(T&).
     // by permitting T&& & to become T&.
     if (auto rval = dynamic_cast<RvalueType*>(t)) {
-        return LvalueTypes[t] = GetLvalueType(rval->IsReference());
+        return LvalueTypes[t] = GetLvalueType(rval->Decay());
     }
 
     return LvalueTypes[t] = arena.Allocate<LvalueType>(t);
@@ -585,7 +585,7 @@ ConversionRank Analyzer::RankConversion(Type* from, Type* to) {
     //    from
 
     if (auto rval = dynamic_cast<RvalueType*>(to)) {
-        if (rval->IsReference() == from) {
+        if (rval->Decay() == from) {
             return ConversionRank::Zero;
         }
     }

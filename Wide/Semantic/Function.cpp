@@ -202,7 +202,7 @@ void Function::ComputeBody(Analyzer& a) {
                 if (result.t->IsReference()) {
                     if (!result.steal) {
                         result.t = a.AsLvalueType(result.t);
-                        variables.back()[var->name] = result.t->IsReference()->BuildLvalueConstruction(args, a);         
+                        variables.back()[var->name] = result.t->Decay()->BuildLvalueConstruction(args, a);         
                     } else {
                         result.steal = false;
                         // If I've been asked to steal an lvalue, it's because I rvalue constructed an lvalue reference

@@ -24,8 +24,8 @@ namespace Wide {
             }
             Expression BuildAssignment(Expression lhs, Expression rhs, Analyzer& analyzer);
             Expression BuildValue(Expression lhs, Analyzer& analyzer);
-            Type* IsReference() {
-                return Pointee;
+            bool IsReference() {
+                return true;
             }
             bool IsReference(Type* t) {
                 return Pointee == t;

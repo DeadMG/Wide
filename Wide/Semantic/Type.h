@@ -94,8 +94,8 @@ namespace Wide {
             virtual bool IsReference(Type*) {
                 return false;
             }
-            virtual Type* IsReference() {
-                return nullptr;
+            virtual bool IsReference() {
+                return false;
             }
             virtual AST::DeclContext* GetDeclContext() {
                 return nullptr;
@@ -107,7 +107,7 @@ namespace Wide {
             }
             Type* Decay() {
                 if (IsReference())
-                    return IsReference();
+                    return Decay();
                 return this;
             }
             virtual Expression BuildValueConstruction(std::vector<Expression> args, Analyzer& a);
@@ -170,28 +170,28 @@ namespace Wide {
             }
             virtual Expression BuildOr(Expression lhs, Expression rhs, Analyzer& a) {
                 if (IsReference())
-                    return IsReference()->BuildOr(lhs, rhs, a);
+                    return Decay()->BuildOr(lhs, rhs, a);
                 throw std::runtime_error("Attempted to use operator| on a type that did not support it.");
             }
             virtual Expression BuildAnd(Expression lhs, Expression rhs, Analyzer& a) {
                 if (IsReference())
-                    return IsReference()->BuildAnd(lhs, rhs, a);
+                    return Decay()->BuildAnd(lhs, rhs, a);
                 throw std::runtime_error("Attempted to use operator| on a type that did not support it.");
             }
             
             virtual Expression BuildMultiply(Expression lhs, Expression rhs, Analyzer& a) {
                 if (IsReference())
-                    return IsReference()->BuildMultiply(lhs, rhs, a);
+                    return Decay()->BuildMultiply(lhs, rhs, a);
                 throw std::runtime_error("Attempted to multiply a type that did not support it.");
             }
             virtual Expression BuildPlus(Expression lhs, Expression rhs, Analyzer& a) {
                 if (IsReference())
-                    return IsReference()->BuildPlus(lhs, rhs, a);
+                    return Decay()->BuildPlus(lhs, rhs, a);
                 throw std::runtime_error("Attempted to add a type that did not support it.");
             }
             virtual Expression BuildIncrement(Expression obj, bool postfix, Analyzer& a) {
                 if (IsReference())
-                    return IsReference()->BuildIncrement(obj, postfix, a);
+                    return Decay()->BuildIncrement(obj, postfix, a);
                 throw std::runtime_error("Attempted to increment a type that did not support it.");
             }
 
