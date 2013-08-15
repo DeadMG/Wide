@@ -2,7 +2,6 @@
 #include <Wide/Semantic/ClangTU.h>
 #include <Wide/Semantic/FunctionType.h>
 #include <Wide/Semantic/Analyzer.h>
-#include <Wide/Semantic/Reference.h>
 #include <Wide/Semantic/ClangOverloadSet.h>
 #include <Wide/Semantic/ConstructorType.h>
 #include <Wide/Semantic/ClangTemplateClass.h>
@@ -44,7 +43,7 @@ Expression ClangNamespace::AccessMember(Expression val, std::string name, Analyz
             return Expression(a.GetFunctionType(a.GetClangType(*from, fundecl->getResultType()), args), a.gen->CreateFunctionValue(from->MangleName(fundecl)));
         }
         if (auto vardecl = llvm::dyn_cast<clang::VarDecl>(result)) {
-            return Expression(a.GetLvalueType(a.GetClangType(*from, vardecl->getType())), a.gen->CreateGlobalVariable(from->MangleName(vardecl)));
+            return Expression(a.AsLvalueType(a.GetClangType(*from, vardecl->getType())), a.gen->CreateGlobalVariable(from->MangleName(vardecl)));
         }
         if (auto namedecl = llvm::dyn_cast<clang::NamespaceDecl>(result)) {
             return a.GetConstructorType(a.GetClangNamespace(*from, namedecl))->BuildValueConstruction(a);

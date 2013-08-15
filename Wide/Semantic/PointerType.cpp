@@ -3,10 +3,10 @@
 #include <Wide/Codegen/Generator.h>
 #include <Wide/Semantic/Analyzer.h>
 #include <Wide/Semantic/NullType.h>
-#include <Wide/Semantic/Reference.h>
 
 #pragma warning(push, 0)
 #include <clang/AST/ASTContext.h>
+#include <llvm/IR/DataLayout.h>
 #include <llvm/IR/DerivedTypes.h>
 #pragma warning(pop)
 
@@ -31,7 +31,7 @@ std::function<llvm::Type*(llvm::Module*)> PointerType::GetLLVMType(Analyzer& a) 
 }
 
 Expression PointerType::BuildDereference(Expression val, Analyzer& a) {
-    return Expression(a.GetLvalueType(pointee), val.BuildValue(a).Expr);
+	return Expression(a.AsLvalueType(pointee), val.BuildValue(a).Expr);
 }
 
 Codegen::Expression* PointerType::BuildInplaceConstruction(Codegen::Expression* mem, std::vector<Expression> args, Analyzer& a) {

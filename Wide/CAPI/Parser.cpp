@@ -52,13 +52,11 @@ namespace CEquivalents {
         Wide::Lexer::Range CreateReturn(Wide::Lexer::Range r) { return r; }
         Wide::Lexer::Range CreateVariableStatement(std::string name, Wide::Lexer::Range value, Wide::Lexer::Range r) { return r; }
         Wide::Lexer::Range CreateVariableStatement(std::string name, Wide::Lexer::Range r) { return r; }
-        Wide::Lexer::Range CreateAssignmentExpression(Wide::Lexer::Range lhs, Wide::Lexer::Range rhs) { return lhs + rhs; }
+		Wide::Lexer::Range CreateAssignmentExpression(Wide::Lexer::Range lhs, Wide::Lexer::Range rhs, Wide::Lexer::TokenType) { return lhs + rhs; }
         Wide::Lexer::Range CreateIntegerExpression(std::string val, Wide::Lexer::Range r) { return r; }
         Wide::Lexer::Range CreateRightShiftExpression(Wide::Lexer::Range lhs, Wide::Lexer::Range rhs) { return lhs + rhs; }
-        Wide::Lexer::Range CreateIfStatement(Wide::Lexer::Range cond, Wide::Lexer::Range true_br, Wide::Lexer::Range false_br, Wide::Lexer::Range loc) 
-        { return loc; }
-        Wide::Lexer::Range CreateIfStatement(Wide::Lexer::Range cond, Wide::Lexer::Range true_br, Wide::Lexer::Range loc) 
-        { return loc; }
+        Wide::Lexer::Range CreateIfStatement(Wide::Lexer::Range cond, Wide::Lexer::Range true_br, Wide::Lexer::Range false_br, Wide::Lexer::Range loc) { return loc; }
+        Wide::Lexer::Range CreateIfStatement(Wide::Lexer::Range cond, Wide::Lexer::Range true_br, Wide::Lexer::Range loc) { return loc; }
         Wide::Lexer::Range CreateCompoundStatement(std::nullptr_t true_br, Wide::Lexer::Range loc) { return loc; }
         Wide::Lexer::Range CreateEqCmpExpression(Wide::Lexer::Range lhs, Wide::Lexer::Range rhs) { return lhs + rhs; }
         Wide::Lexer::Range CreateNotEqCmpExpression(Wide::Lexer::Range lhs, Wide::Lexer::Range rhs) { return lhs + rhs; }
@@ -69,6 +67,9 @@ namespace CEquivalents {
         Wide::Lexer::Range CreateNegateExpression(Wide::Lexer::Range e, Wide::Lexer::Range loc) { return e + loc; }
         Wide::Lexer::Range CreateDereferenceExpression(Wide::Lexer::Range e, Wide::Lexer::Range loc) { return e + loc; }
         Wide::Lexer::Range CreatePointerAccessExpression(std::string mem, Wide::Lexer::Range e, Wide::Lexer::Range r) { return e + r; }
+		Wide::Lexer::Range CreateModulusExpression(Wide::Lexer::Range l, Wide::Lexer::Range r) { return l + r; }
+		Wide::Lexer::Range CreateSubtractionExpression(Wide::Lexer::Range l, Wide::Lexer::Range r) { return l + r; }
+		Wide::Lexer::Range CreateDivisionExpression(Wide::Lexer::Range l, Wide::Lexer::Range r) { return l + r; }
 
         Wide::Lexer::Range CreateOrExpression(Wide::Lexer::Range lhs, Wide::Lexer::Range rhs) { return lhs + rhs; }
         Wide::Lexer::Range CreateXorExpression(Wide::Lexer::Range lhs, Wide::Lexer::Range rhs) { return lhs + rhs; }

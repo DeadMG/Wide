@@ -1,6 +1,5 @@
 #include <Wide/Semantic/ConstructorType.h>
 #include <Wide/Semantic/Analyzer.h>
-#include <Wide/Semantic/Reference.h>
 #include <Wide/Semantic/IntegralType.h>
 #include <Wide/Codegen/Generator.h>
 #include <Wide/Semantic/PointerType.h>
@@ -30,7 +29,6 @@ struct EmplaceType : public MetaType {
         args.erase(args.begin());
         return Expression(a.GetRvalueType(t), a.gen->CreateChainExpression(t->BuildInplaceConstruction(expr.Expr, args, a), expr.Expr));
     }
-
 };
 
 Expression ConstructorType::BuildCall(Expression, std::vector<Expression> args, Analyzer& a) {
@@ -47,9 +45,9 @@ Expression ConstructorType::PointerAccessMember(Expression obj, std::string name
     if (name == "decay")
         return a.GetConstructorType(t->Decay())->BuildValueConstruction(std::vector<Expression>(), a);
     if (name == "lvalue")
-        return a.GetConstructorType(a.GetLvalueType(t))->BuildValueConstruction(std::vector<Expression>(), a);
+		return a.GetConstructorType(a.AsLvalueType(t))->BuildValueConstruction(std::vector<Expression>(), a);
     if (name == "rvalue")
-        return a.GetConstructorType(a.GetRvalueType(t))->BuildValueConstruction(std::vector<Expression>(), a);
+        return a.GetConstructorType(a.AsRvalueType(t))->BuildValueConstruction(std::vector<Expression>(), a);
     if (name == "pointer")
         return a.GetConstructorType(a.GetPointerType(t))->BuildValueConstruction(std::vector<Expression>(), a);
     if (name == "size")

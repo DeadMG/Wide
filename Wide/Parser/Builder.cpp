@@ -126,8 +126,8 @@ VariableStatement* ThreadLocalBuilder::CreateVariableStatement(std::string name,
 VariableStatement* ThreadLocalBuilder::CreateVariableStatement(std::string name, Lexer::Range r) 
 { return CreateVariableStatement(std::move(name), nullptr, r); }
 
-AssignmentExpr* ThreadLocalBuilder::CreateAssignmentExpression(Expression* lhs, Expression* rhs) 
-{ return arena.Allocate<AssignmentExpr>(lhs, rhs); }
+AssignmentExpr* ThreadLocalBuilder::CreateAssignmentExpression(Expression* lhs, Expression* rhs, Lexer::TokenType type) 
+{ return arena.Allocate<AssignmentExpr>(lhs, rhs, type); }
 
 IntegerExpression* ThreadLocalBuilder::CreateIntegerExpression(std::string val, Lexer::Range r) 
 { return arena.Allocate<IntegerExpression>(std::move(val), r); }
@@ -254,3 +254,10 @@ Lexer::Range ThreadLocalBuilder::GetLocation(Statement* s) {
 void ThreadLocalBuilder::Error(Wide::Lexer::Range r, Parser::Error e) {
     error(r, e);
 }
+
+Division* ThreadLocalBuilder::CreateDivisionExpression(Expression* lhs, Expression* rhs) 
+{ return arena.Allocate<Division>(lhs, rhs); }
+Modulus* ThreadLocalBuilder::CreateModulusExpression(Expression* lhs, Expression* rhs) 
+{ return arena.Allocate<Modulus>(lhs, rhs); }
+Subtraction* ThreadLocalBuilder::CreateSubtractionExpression(Expression* lhs, Expression* rhs) 
+{ return arena.Allocate<Subtraction>(lhs, rhs); }

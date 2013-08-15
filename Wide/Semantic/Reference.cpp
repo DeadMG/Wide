@@ -9,6 +9,7 @@
 #include <llvm/IR/DerivedTypes.h>
 #include <clang/AST/Type.h>
 #include <clang/AST/ASTContext.h>
+#include <llvm/IR/DataLayout.h>
 
 #pragma warning(pop)
 

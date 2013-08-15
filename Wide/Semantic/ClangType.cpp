@@ -6,7 +6,6 @@
 #include <Wide/Semantic/ClangOverloadSet.h>
 #include <Wide/Semantic/ClangTU.h>
 #include <Wide/Codegen/Generator.h>
-#include <Wide/Semantic/Reference.h>
 #include <Wide/Semantic/ClangTemplateClass.h>
 #include <Wide/Semantic/ConstructorType.h>
 
@@ -165,11 +164,11 @@ Expression ClangType::AccessMember(Expression val, std::string name, Analyzer& a
             // Check for members first.
             if (auto field = llvm::dyn_cast<clang::FieldDecl>(lr.getFoundDecl())) {
                 Expression out;
-                if (dynamic_cast<LvalueType*>(val.t)) {
+				if (a.IsLvalueType(val.t)) {
                     // The result is an lvalue of that type.
-                    out.t = a.GetLvalueType(a.GetClangType(*from, field->getType()));
+                    out.t = a.AsLvalueType(a.GetClangType(*from, field->getType()));
                 } else {
-                    out.t = a.GetRvalueType(a.GetClangType(*from, field->getType()));
+                    out.t = a.AsRvalueType(a.GetClangType(*from, field->getType()));
                 }
                 out.Expr = a.gen->CreateFieldExpression(val.Expr, from->GetFieldNumber(field));
                 return out;
@@ -186,7 +185,7 @@ Expression ClangType::AccessMember(Expression val, std::string name, Analyzer& a
         }
         if (auto vardecl = llvm::dyn_cast<clang::VarDecl>(lr.getFoundDecl())) {    
             Expression out;
-            out.t = a.GetLvalueType(a.GetClangType(*from, vardecl->getType()));
+            out.t = a.AsLvalueType(a.GetClangType(*from, vardecl->getType()));
             if (a.gen)
                 out.Expr = a.gen->CreateGlobalVariable(from->MangleName(vardecl));
             return out;
@@ -344,7 +343,7 @@ Codegen::Expression* ClangType::BuildInplaceConstruction(Codegen::Expression* me
     // Constructor signatures don't seem to include the need for "this", so just lie.
     // It all turns out alright.
     Expression self;
-    self.t = a.GetLvalueType(this);
+    self.t = a.AsLvalueType(this);
     self.Expr = mem;
     types.push_back(self.t);
 
@@ -358,10 +357,10 @@ Codegen::Expression* ClangType::BuildInplaceConstruction(Codegen::Expression* me
                 std::vector<Expression> conargs;
                 auto ty = a.GetClangType(*from, paramdecl->getType());
                 // If ty is T&, construct lvalue construction.
-                if (auto lval = dynamic_cast<LvalueType*>(ty)) {
-                    args.push_back(lval->IsReference()->BuildLvalueConstruction(conargs, a));
-                } else if (auto rval = dynamic_cast<RvalueType*>(ty)) {
-                    args.push_back(rval->IsReference()->BuildRvalueConstruction(conargs, a));
+				if (a.IsLvalueType(ty)) {
+					args.push_back(ty->Decay()->BuildLvalueConstruction(conargs, a));
+				} else if (a.IsRvalueType(ty)) {
+					args.push_back(ty->Decay()->BuildRvalueConstruction(conargs, a));
                 } else 
                     args.push_back(ty->BuildValueConstruction(conargs, a));
             }

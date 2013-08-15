@@ -28,7 +28,7 @@ namespace Wide {
             Return* CreateReturn(Lexer::Range r);
             VariableStatement* CreateVariableStatement(std::string name, Expression* value, Lexer::Range r);
             VariableStatement* CreateVariableStatement(std::string name, Lexer::Range r);
-            AssignmentExpr* CreateAssignmentExpression(Expression* lhs, Expression* rhs);
+			AssignmentExpr* CreateAssignmentExpression(Expression* lhs, Expression* rhs, Lexer::TokenType type);
             IntegerExpression* CreateIntegerExpression(std::string val, Lexer::Range r);
             RightShiftExpr* CreateRightShiftExpression(Expression* lhs, Expression* rhs);
             IfStatement* CreateIfStatement(Expression* cond, Statement* true_br, Statement* false_br, Lexer::Range loc);
@@ -53,7 +53,10 @@ namespace Wide {
             Increment* CreatePrefixIncrement(Expression* ex, Lexer::Range r);
             Increment* CreatePostfixIncrement(Expression* ex, Lexer::Range r);
             Addition* CreateAdditionExpression(Expression* lhs, Expression* rhs);
+            Subtraction* CreateSubtractionExpression(Expression* lhs, Expression* rhs);
             Multiply* CreateMultiplyExpression(Expression* lhs, Expression* rhs);
+			Modulus* CreateModulusExpression(Expression* lhs, Expression* rhs);
+			Division* CreateDivisionExpression(Expression* lhs, Expression* rhs);
             AutoExpression* CreateAutoExpression(Lexer::Range loc);
             Decrement* CreatePrefixDecrement(Expression* ex, Lexer::Range r);
             Decrement* CreatePostfixDecrement(Expression* ex, Lexer::Range r);

@@ -6,6 +6,7 @@
 #pragma warning(push, 0)
 #include <llvm/IR/Module.h>
 #include <llvm/IR/DerivedTypes.h>
+#include <llvm/IR/DataLayout.h>
 #pragma warning(pop)
 
 using namespace Wide;

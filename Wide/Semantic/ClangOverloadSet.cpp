@@ -15,6 +15,7 @@
 #include <clang/AST/ASTContext.h>
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Module.h>
+#include <llvm/IR/DataLayout.h>
 #include <llvm/IR/DerivedTypes.h>
 
 #pragma warning(pop)

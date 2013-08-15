@@ -3,12 +3,12 @@
 #include <Wide/Semantic/ClangTU.h>
 #include <Wide/Codegen/Generator.h>
 #include <Wide/Codegen/Expression.h>
-#include <Wide/Semantic/Reference.h>
 
 #pragma warning(push, 0)
 
 #include <clang/AST/ASTContext.h>
 #include <llvm/IR/DerivedTypes.h>
+#include <llvm/IR/DataLayout.h>
 
 #pragma warning(pop)
 
@@ -118,7 +118,7 @@ Expression IntegralType::BuildPlus(Expression lhs, Expression rhs, Analyzer& a) 
 }
 Expression IntegralType::BuildIncrement(Expression obj, bool postfix, Analyzer& a) {    
     if (postfix) {
-        if (auto lval = dynamic_cast<LvalueType*>(obj.t)) {
+		if (a.IsLvalueType(obj.t)) {
             auto curr = a.gen->CreateLoad(obj.Expr);
             auto next = a.gen->CreatePlusExpression(curr, a.gen->CreateIntegralExpression(1, false, GetLLVMType(a)));
             return Expression(this, a.gen->CreateChainExpression(a.gen->CreateChainExpression(curr, a.gen->CreateStore(obj.Expr, next)), curr));

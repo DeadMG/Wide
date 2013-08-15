@@ -10,18 +10,6 @@
 #include <unordered_map>
 #include <vector>
 
-#pragma warning(push, 0)
-
-#include <clang/Basic/FileManager.h>
-#include <clang/Basic/Diagnostic.h>
-#include <clang/Frontend/TextDiagnosticPrinter.h>
-#include <clang/Lex/HeaderSearch.h>
-#include <clang/Frontend/CompilerInstance.h>
-#include <clang/Basic/TargetInfo.h>
-#include <llvm/IR/DataLayout.h>
-
-#pragma warning(pop)
-
 #ifndef _MSC_VER
 #include <Wide/Semantic/ClangTU.h>
 #include <clang/AST/Type.h>
@@ -149,7 +137,12 @@ namespace Wide {
 
             Analyzer(const Options::Clang&, Codegen::Generator*);     
 
-            ClangUtil::ClangTU* LoadCPPHeader(std::string file);  
+            ClangUtil::ClangTU* LoadCPPHeader(std::string file);
+
+			bool IsLvalueType(Type*);
+			bool IsRvalueType(Type*);
+			Type* AsLvalueType(Type*);
+			Type* AsRvalueType(Type*);
 
             void operator()(AST::Module*);
             ~Analyzer();

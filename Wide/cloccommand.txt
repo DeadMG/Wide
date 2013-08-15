@@ -1,0 +1,1 @@
+cloc-1.58.exe Wide premake4.lua --exclude-dir="Deployment" --force-lang=C++,wide

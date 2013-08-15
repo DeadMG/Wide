@@ -1,7 +1,6 @@
 #include <Wide/Semantic/PrimitiveType.h>
 #include <Wide/Codegen/Expression.h>
 #include <Wide/Semantic/Analyzer.h>
-#include <Wide/Semantic/Reference.h>
 #include <Wide/Codegen/Generator.h>
 
 using namespace Wide;

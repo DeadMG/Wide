@@ -2,7 +2,6 @@
 #include <Wide/Semantic/Analyzer.h>
 #include <Wide/Codegen/Expression.h>
 #include <Wide/Codegen/Generator.h>
-#include <Wide/Semantic/Reference.h>
 #include <Wide/Semantic/ClangTU.h>
 
 #pragma warning(push, 0)
@@ -85,26 +84,26 @@ Expression FunctionType::BuildCall(Expression val, std::vector<Expression> args,
             }
 
             // If we take T&&, the only acceptable argument is T, in which case we need a copy, or U.
-            if (auto rval = dynamic_cast<RvalueType*>(Args[i])) {
+			if (a.IsRvalueType(Args[i])) {
                 // Since the types did not match, we know it can only be T, T&, or U. If T& error, else call BuildRvalueConstruction to construct a T&& from value T or U.
-                if (auto lval = dynamic_cast<LvalueType*>(args[i].t)) {
+				if (a.IsLvalueType(args[i].t)) {
                     // If T is the same, forbid.
-                    if (rval->IsReference() == lval->IsReference()) {
+                    if (Args[i]->Decay() == args[i].t->Decay()) {
                         throw std::runtime_error("Could not convert a T& to a T&&.");
                     }
                 }
 
                 // Try a copy. The user knows that unless inheritance is involved, we'll need a new value here anyway.
                 // T::BuildRvalueConstruction called to construct a T in memory from T or some U, which may be reference.
-                e.push_back(rval->IsReference()->BuildRvalueConstruction(args[i], a).Expr);
+                e.push_back(Args[i]->Decay()->BuildRvalueConstruction(args[i], a).Expr);
                 continue;
             }
 
             // If we take T&, then the only acceptable target is T& or U. We already discarded T&, so go for U.
             // The only way this can work is if U inherits from T, or offers a UDC to T&, neither of which we support right now.
             // Except where Clang takes as const T& an rvalue, in which case we need to create an rvalue of U but pretend it's an lvalue.
-            if (auto lval = dynamic_cast<LvalueType*>(Args[i])) {
-                e.push_back(lval->IsReference()->BuildLvalueConstruction(args[i], a).Expr);
+			if (a.IsLvalueType(Args[i])) {
+				e.push_back(Args[i]->Decay()->BuildLvalueConstruction(args[i], a).Expr);
                 continue;
             }
 

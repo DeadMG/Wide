@@ -9,7 +9,7 @@ namespace Wide {
         public:
             Reference(Type* p)
                 : Pointee(p) {}
-
+			
             std::function<llvm::Type*(llvm::Module*)> GetLLVMType(Analyzer& a);
             clang::QualType GetClangType(ClangUtil::ClangTU& tu, Analyzer& a);
 

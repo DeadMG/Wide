@@ -7,7 +7,6 @@
 #include <Wide/Semantic/ClangTU.h>
 #include <array>
 #include <sstream>
-#include <Wide/Semantic/Reference.h>
 #include <Wide/Semantic/Analyzer.h>
 #include <Wide/Codegen/Generator.h>
 #include <Wide/Codegen/Function.h>
@@ -22,6 +21,7 @@
 #include <clang/AST/Type.h>
 #include <clang/AST/DeclCXX.h>
 #include <clang/AST/ASTContext.h>
+#include <llvm/IR/DataLayout.h>
 #include <clang/Sema/Sema.h>
 
 #pragma warning(pop)
@@ -177,7 +177,7 @@ ConversionRank OverloadSet::ResolveOverloadRank(std::vector<Type*> args, Analyze
     std::vector<AST::Function*> ViableCandidates;
 
     if (nonstatic) {
-        args.insert(args.begin(), a.GetLvalueType(nonstatic));
+        args.insert(args.begin(), a.AsLvalueType(nonstatic));
     }
 
     for(auto x : overset->functions) {

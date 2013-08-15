@@ -7,7 +7,6 @@
 #include <Wide/Codegen/Generator.h>
 #include <Wide/Semantic/ClangTU.h>
 #include <Wide/Semantic/Module.h>
-#include <Wide/Semantic/Reference.h>
 #include <Wide/Semantic/ConstructorType.h>
 #include <Wide/Semantic/UserDefinedType.h>
 
@@ -40,12 +39,12 @@ Function::Function(std::vector<Type*> args, AST::Function* astfun, Analyzer& a, 
     unsigned num = 0;
     unsigned metaargs = 0;
     if (mem && (astfun->args.size() < 1 || astfun->args.front().name != "this"))
-        Args.push_back(a.GetLvalueType(mem));
+        Args.push_back(a.AsLvalueType(mem));
     for(auto&& arg : astfun->args) {
         auto param = [this, num] { return num + ReturnType->IsComplexType() + (member != nullptr); };
         Type* ty = args[num];
         Expression var;
-        var.t = a.GetLvalueType(ty);
+        var.t = a.AsLvalueType(ty);
         if (ty->IsComplexType()) {
             var.Expr = a.gen->CreateParameterExpression(param);
         } else {
@@ -202,7 +201,7 @@ void Function::ComputeBody(Analyzer& a) {
         
                 if (result.t->IsReference()) {
                     if (!result.steal) {
-                        result.t = a.GetLvalueType(result.t);
+                        result.t = a.AsLvalueType(result.t);
                         variables.back()[var->name] = result.t->IsReference()->BuildLvalueConstruction(args, a);         
                     } else {
                         result.steal = false;
@@ -210,7 +209,7 @@ void Function::ComputeBody(Analyzer& a) {
                         // So the expr will be T** whereas I want just T*
                         //if (dynamic_cast<LvalueType*>(result.t))
                         //    result.Expr = a.gen->CreateLoad(result.Expr);
-                        result.t = a.GetLvalueType(result.t);
+                        result.t = a.AsLvalueType(result.t);
                         variables.back()[var->name] = result;
                     }
                 } else {
@@ -278,7 +277,7 @@ Expression Function::AccessMember(Expression e, std::string name, Analyzer& a) {
         }
     }
     if (member) {
-        Expression self(a.GetLvalueType(member), a.gen->CreateParameterExpression([this] { return ReturnType->IsComplexType(); }));
+        Expression self(a.AsLvalueType(member), a.gen->CreateParameterExpression([this] { return ReturnType->IsComplexType(); }));
         if (name == "this")
             return self;
         if (member->HasMember(name))

@@ -4,7 +4,6 @@
 
 #include <functional>
 #include <string>
-#include <memory>
 #include <iostream>
 
 #pragma warning(push, 0)

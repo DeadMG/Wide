@@ -1,7 +1,10 @@
 #pragma once
 
 #include <Wide/Semantic/Type.h>
-#include <Wide/Parser/AST.h>
+#include <unordered_map>
+#include <functional>
+#include <string>
+#include <vector>
 
 #ifndef _MSC_VER
 #pragma warning(push, 0)
@@ -10,6 +13,10 @@
 #endif
 
 namespace Wide {
+	namespace AST {
+		struct Type;
+		struct Expression;
+	}
     namespace Semantic {
         class Function;
         class UserDefinedType : public Type {

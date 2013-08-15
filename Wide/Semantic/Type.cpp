@@ -1,6 +1,5 @@
 #include <Wide/Semantic/Type.h>
 #include <Wide/Semantic/Analyzer.h>
-#include <Wide/Semantic/Reference.h>
 #include <Wide/Semantic/PointerType.h>
 #include <Wide/Codegen/Generator.h>
 #include <Wide/Codegen/Expression.h>
@@ -33,7 +32,7 @@ Expression Type::BuildRvalueConstruction(std::vector<Expression> args, Analyzer&
 
 Expression Type::BuildLvalueConstruction(std::vector<Expression> args, Analyzer& a) {
     Expression out;
-    out.t = a.GetLvalueType(this);
+    out.t = a.AsLvalueType(this);
     auto mem = a.gen->CreateVariable(GetLLVMType(a), alignment(a));
     if (!IsComplexType() && args.size() == 1 && args[0].t->Decay() == this) {
         args[0] = args[0].t->BuildValue(args[0], a);
@@ -73,7 +72,7 @@ Expression Type::BuildNEComparison(Expression lhs, Expression rhs, Analyzer& a) 
 }
 Expression Type::AddressOf(Expression obj, Analyzer& a) {
     // TODO: Remove this restriction, it is not very Wide.
-    if (!dynamic_cast<LvalueType*>(obj.t))
+	if (!a.IsLvalueType(obj.t))
         throw std::runtime_error("Attempted to take the address of something that was not an lvalue.");
     return Expression(a.GetPointerType(obj.t->Decay()), obj.Expr);
 }

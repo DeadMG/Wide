@@ -277,6 +277,16 @@ namespace Wide {
                     lhs = sema.CreateMultiplyExpression(std::move(lhs), std::move(rhs));
                     continue;
                 }
+				if (t.GetType() == Lexer::TokenType::Divide) {
+                    auto rhs = ParseUnaryExpression(lex, sema, context);
+                    lhs = sema.CreateDivisionExpression(std::move(lhs), std::move(rhs));
+                    continue;
+				}
+				if (t.GetType() == Lexer::TokenType::Modulo) {
+                    auto rhs = ParseUnaryExpression(lex, sema, context);
+                    lhs = sema.CreateModulusExpression(std::move(lhs), std::move(rhs));
+                    continue;
+				}
                 lex(t);
                 return std::move(lhs);
             }
@@ -294,6 +304,11 @@ namespace Wide {
                     lhs = sema.CreateAdditionExpression(std::move(lhs), std::move(rhs));
                     continue;
                 }
+				if (t.GetType() == Lexer::TokenType::Minus) {
+					auto rhs = ParseMultiplicativeExpression(lex, sema, context);
+					lhs = sema.CreateSubtractionExpression(std::move(lhs), std::move(rhs));
+					continue;
+				}
                 lex(t);
                 return std::move(lhs);
             }
@@ -381,30 +396,12 @@ namespace Wide {
             return ParseEqualityExpression(ParseUnaryExpression(lex, sema, context), lex, sema, context);
         }
         
-        template<typename Lex, typename Sema, typename Postfix> typename ExprType<Sema>::type ParseXorExpression(Postfix&& fix, Lex&& lex, Sema&& sema, ExpressionContext context) {
+        template<typename Lex, typename Sema, typename Postfix> typename ExprType<Sema>::type ParseAndExpression(Postfix&& fix, Lex&& lex, Sema&& sema, ExpressionContext context) {
             auto lhs = ParseEqualityExpression(std::forward<Postfix>(fix), lex, sema, context);
             while(true) {
                 auto t = lex();
-                if (t.GetType() == Lexer::TokenType::Xor) {
-                    auto rhs = ParseEqualityExpression(lex, sema, context);
-                    lhs = sema.CreateXorExpression(std::move(lhs), std::move(rhs));
-                    continue;
-                }
-                lex(t);
-                return std::move(lhs);
-            }
-        }
-        
-        template<typename Lex, typename Sema> typename ExprType<Sema>::type ParseXorExpression(Lex&& lex, Sema&& sema, ExpressionContext context) {
-            return ParseXorExpression(ParseUnaryExpression(lex, sema, context), lex, sema, context);
-        }
-        
-        template<typename Lex, typename Sema, typename Postfix> typename ExprType<Sema>::type ParseAndExpression(Postfix&& fix, Lex&& lex, Sema&& sema, ExpressionContext context) {
-            auto lhs = ParseXorExpression(std::forward<Postfix>(fix), lex, sema, context);
-            while(true) {
-                auto t = lex();
                 if (t.GetType() == Lexer::TokenType::And) {
-                    auto rhs = ParseXorExpression(lex, sema, context);
+                    auto rhs = ParseEqualityExpression(lex, sema, context);
                     lhs = sema.CreateAndExpression(std::move(lhs), std::move(rhs));
                     continue;
                 }
@@ -417,12 +414,30 @@ namespace Wide {
             return ParseAndExpression(ParseUnaryExpression(lex, sema, context), lex, sema, context);
         }
         
-        template<typename Lex, typename Sema, typename Postfix> typename ExprType<Sema>::type ParseOrExpression(Postfix&& fix, Lex&& lex, Sema&& sema, ExpressionContext context) {
+        template<typename Lex, typename Sema, typename Postfix> typename ExprType<Sema>::type ParseXorExpression(Postfix&& fix, Lex&& lex, Sema&& sema, ExpressionContext context) {
             auto lhs = ParseAndExpression(std::forward<Postfix>(fix), lex, sema, context);
             while(true) {
                 auto t = lex();
-                if (t.GetType() == Lexer::TokenType::Or) {
+                if (t.GetType() == Lexer::TokenType::Xor) {
                     auto rhs = ParseAndExpression(lex, sema, context);
+                    lhs = sema.CreateXorExpression(std::move(lhs), std::move(rhs));
+                    continue;
+                }
+                lex(t);
+                return std::move(lhs);
+            }
+        }
+        
+        template<typename Lex, typename Sema> typename ExprType<Sema>::type ParseXorExpression(Lex&& lex, Sema&& sema, ExpressionContext context) {
+            return ParseXorExpression(ParseUnaryExpression(lex, sema, context), lex, sema, context);
+        }
+        
+        template<typename Lex, typename Sema, typename Postfix> typename ExprType<Sema>::type ParseOrExpression(Postfix&& fix, Lex&& lex, Sema&& sema, ExpressionContext context) {
+            auto lhs = ParseXorExpression(std::forward<Postfix>(fix), lex, sema, context);
+            while(true) {
+                auto t = lex();
+                if (t.GetType() == Lexer::TokenType::Or) {
+                    auto rhs = ParseXorExpression(lex, sema, context);
                     lhs = sema.CreateOrExpression(std::move(lhs), std::move(rhs));
                     continue;
                 }
@@ -431,13 +446,28 @@ namespace Wide {
             }
         }
         
-        template<typename Lex, typename Sema> typename ExprType<Sema>::type ParseAssignmentExpression(Lex&& lex, Sema&& sema, ExpressionContext context) {
+		const std::unordered_set<Lexer::TokenType> AssignmentOperators = []() -> std::unordered_set<Lexer::TokenType> {
+			std::unordered_set<Lexer::TokenType> ret;
+			ret.insert(Lexer::TokenType::Assignment);
+	        ret.insert(Lexer::TokenType::MinusAssign);
+	        ret.insert(Lexer::TokenType::PlusAssign);
+	        ret.insert(Lexer::TokenType::AndAssign);
+	        ret.insert(Lexer::TokenType::OrAssign);
+	        ret.insert(Lexer::TokenType::MulAssign);
+	        ret.insert(Lexer::TokenType::ModAssign);
+			ret.insert(Lexer::TokenType::DivAssign);
+	        ret.insert(Lexer::TokenType::XorAssign);
+			ret.insert(Lexer::TokenType::RightShiftAssign);
+			ret.insert(Lexer::TokenType::LeftShiftAssign);
+			return ret;
+		}();
+
+		template<typename Lex, typename Sema> typename ExprType<Sema>::type ParseAssignmentExpression(Lex&& lex, Sema&& sema, ExpressionContext context) {
             auto lhs = ParseUnaryExpression(lex, sema, context);
             auto t = lex();
-            if (t.GetType() == Lexer::TokenType::Assignment) {
-                auto rhs = ParseAssignmentExpression(lex, sema, context);
-                return sema.CreateAssignmentExpression(std::move(lhs), std::move(rhs));
-            }
+			if (AssignmentOperators.find(t.GetType()) != AssignmentOperators.end()) {
+                return sema.CreateAssignmentExpression(std::move(lhs), ParseAssignmentExpression(lex, sema, context), t.GetType());
+			}
             lex(t);
             return ParseOrExpression(std::move(lhs), lex, sema, context);
         }

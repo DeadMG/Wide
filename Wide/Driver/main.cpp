@@ -13,6 +13,7 @@
 #include <mutex>
 #include <atomic>
 #include <sstream>
+#include <fstream>
 #include <iostream>
 
 #ifndef _MSC_VER

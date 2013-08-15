@@ -1,6 +1,5 @@
 #include <Wide/Semantic/Module.h>
 #include <Wide/Parser/AST.h>
-#include <Wide/Semantic/Reference.h>
 #include <Wide/Semantic/Analyzer.h>
 #include <Wide/Semantic/Function.h>
 #include <Wide/Semantic/ClangNamespace.h>
@@ -38,13 +37,13 @@ Expression Module::AccessMember(Expression val, std::string name, Analyzer& a) {
             }
             if (auto fun = dynamic_cast<OverloadSet*>(expr.t->Decay()))
                 return expr;
-            if (auto temp = dynamic_cast<ClangTemplateClass*>(expr.t))
+			if (auto temp = dynamic_cast<ClangTemplateClass*>(expr.t->Decay()))
                 return expr;
-            if (auto lval = dynamic_cast<LvalueType*>(expr.t))
+			if (a.IsLvalueType(expr.t))
                 return expr;
-            if (auto nam = dynamic_cast<ClangNamespace*>(expr.t))
+			if (auto nam = dynamic_cast<ClangNamespace*>(expr.t->Decay()))
                 return expr;
-            if (auto mod = dynamic_cast<Module*>(expr.t))
+			if (auto mod = dynamic_cast<Module*>(expr.t->Decay()))
                 return expr;
             throw std::runtime_error("Attempted to using something that was not a type, template, module, or function");
         }

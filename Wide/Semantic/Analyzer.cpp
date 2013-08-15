@@ -731,3 +731,16 @@ Type* Analyzer::GetNothingFunctorType() {
 Type* Analyzer::GetLiteralStringType() {
     return LiteralStringType;
 }
+
+Type* Analyzer::AsRvalueType(Type* t) {
+	return GetRvalueType(t);
+}
+Type* Analyzer::AsLvalueType(Type* t) {
+	return GetLvalueType(t);
+}
+bool Analyzer::IsLvalueType(Type* t) {
+	return dynamic_cast<LvalueType*>(t);
+}
+bool Analyzer::IsRvalueType(Type* t) {
+	return dynamic_cast<RvalueType*>(t);
+}

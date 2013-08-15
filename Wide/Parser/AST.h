@@ -79,7 +79,8 @@ namespace Wide {
             RightShiftExpr(Expression* l, Expression* r) : BinaryExpression(l, r) {}
         };
         struct AssignmentExpr : BinaryExpression {
-            AssignmentExpr(Expression* l, Expression* r) : BinaryExpression(l, r) {}
+			Lexer::TokenType type;
+            AssignmentExpr(Expression* l, Expression* r, Lexer::TokenType ty) : type(ty), BinaryExpression(l, r) {}
         };
         struct FunctionArgument {
              // May be null
@@ -216,6 +217,7 @@ namespace Wide {
             Statement* body;
             Expression* condition;
         };
+
         struct Increment : public UnaryExpression {
             bool postfix;
             Increment(Expression* ex, Lexer::Range r, bool post)
@@ -232,5 +234,14 @@ namespace Wide {
         struct Multiply : public BinaryExpression {
             Multiply(Expression* l, Expression* r) : BinaryExpression(l, r) {}
         };
+		struct Subtraction : public BinaryExpression {
+			Subtraction(Expression* l, Expression* r) : BinaryExpression(l, r) {}
+		};
+		struct Modulus : public BinaryExpression {
+			Modulus(Expression* l, Expression* r) : BinaryExpression(l, r) {}
+		};
+		struct Division : public BinaryExpression {
+			Division(Expression* l, Expression* r) : BinaryExpression(l, r) {}
+		};
     }
 }
