@@ -20,14 +20,14 @@ namespace Wide {
         public:
             ClangOverloadSet(std::unique_ptr<clang::UnresolvedSet<8>> s, ClangUtil::ClangTU* from, Type* t = nullptr);
             
-            Expression BuildCall(Expression val, std::vector<Expression> args, Analyzer& a);
-            Expression BuildMetaCall(Expression val, std::vector<Expression> args, Analyzer& a);
+            Expression BuildCall(Expression val, std::vector<Expression> args, Analyzer& a) override;
+            Expression BuildMetaCall(Expression val, std::vector<Expression> args, Analyzer& a) override;
 
-            std::function<llvm::Type*(llvm::Module*)> GetLLVMType(Analyzer& a);
+            std::function<llvm::Type*(llvm::Module*)> GetLLVMType(Analyzer& a) override;
 
-            Expression BuildValueConstruction(std::vector<Expression> args, Analyzer& a);
-            std::size_t size(Analyzer& a);
-            std::size_t alignment(Analyzer& a);
+            Expression BuildValueConstruction(std::vector<Expression> args, Analyzer& a) override;
+            std::size_t size(Analyzer& a) override;
+            std::size_t alignment(Analyzer& a) override;
 
             using Type::BuildValueConstruction;
         };

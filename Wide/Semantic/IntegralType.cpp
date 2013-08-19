@@ -1,15 +1,14 @@
 #include <Wide/Semantic/IntegralType.h>
 #include <Wide/Semantic/Analyzer.h>
+#include <Wide/Lexer/Token.h>
 #include <Wide/Semantic/ClangTU.h>
 #include <Wide/Codegen/Generator.h>
 #include <Wide/Codegen/Expression.h>
 
 #pragma warning(push, 0)
-
 #include <clang/AST/ASTContext.h>
 #include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/DataLayout.h>
-
 #pragma warning(pop)
 
 using namespace Wide;
@@ -45,76 +44,50 @@ std::function<llvm::Type*(llvm::Module*)> IntegralType::GetLLVMType(Analyzer& a)
         return llvm::IntegerType::get(m->getContext(), bits);
     };
 }
-Expression IntegralType::BuildRightShift(Expression lhs, Expression rhs, Analyzer& a) {
-    lhs = lhs.BuildValue(a);
-    rhs = rhs.BuildValue(a);
-    if (!dynamic_cast<IntegralType*>(rhs.t)) throw std::runtime_error("Attempted to compare an integer with something that was not an integer.");
-    Extend(lhs, rhs, a);
-    return Expression(lhs.t, a.gen->CreateRightShift(lhs.Expr, rhs.Expr, is_signed));
-}
-Expression IntegralType::BuildLeftShift(Expression lhs, Expression rhs, Analyzer& a) {
-    lhs = lhs.BuildValue(a);
-    rhs = rhs.BuildValue(a);
-    if (!dynamic_cast<IntegralType*>(rhs.t)) throw std::runtime_error("Attempted to compare an integer with something that was not an integer.");
-    Extend(lhs, rhs, a);
-    return Expression(lhs.t, a.gen->CreateLeftShift(lhs.Expr, rhs.Expr));
-}
+Expression IntegralType::BuildBinaryExpression(Expression lhs, Expression rhs, Lexer::TokenType type, Analyzer& a) {
+    auto lhsval = lhs.BuildValue(a);
+    auto rhsval = rhs.BuildValue(a);
 
-void IntegralType::Extend(Expression& lhs, Expression& rhs, Analyzer& a) {
-    assert(dynamic_cast<IntegralType*>(lhs.t) && dynamic_cast<IntegralType*>(rhs.t));
-    auto lhsty = static_cast<IntegralType*>(lhs.t);
-    auto rhsty = static_cast<IntegralType*>(rhs.t);
+	// Check that these types are valid for primitive integral operations. If not, go to ADL.
+	if (lhsval.t != rhsval.t)
+		return Type::BuildBinaryExpression(lhs, rhs, type, a);
+	
+	switch(type) {
+	case Lexer::TokenType::LT:
+		return Expression(a.GetBooleanType(), a.gen->CreateLT(lhsval.Expr, rhsval.Expr, is_signed));
+	case Lexer::TokenType::EqCmp:
+		return Expression(a.GetBooleanType(), a.gen->CreateEqualityExpression(lhsval.Expr, rhsval.Expr));
+	}
 
-    auto max_bits = std::max(lhsty->bits, rhsty->bits);
-    if (lhsty->bits != max_bits) {
-        if (lhsty->is_signed)
-            lhs = Expression(rhs.t, a.gen->CreateSignedExtension(lhs.Expr, rhsty->GetLLVMType(a)));
-        else
-            lhs = Expression(rhs.t, a.gen->CreateZeroExtension(lhs.Expr, rhsty->GetLLVMType(a)));
-    }
-    if (rhsty->bits != max_bits) {
-        if (rhsty->is_signed)
-            rhs = Expression(lhs.t, a.gen->CreateSignedExtension(rhs.Expr, GetLLVMType(a)));
-        else
-            rhs = Expression(lhs.t, a.gen->CreateZeroExtension(rhs.Expr, GetLLVMType(a)));
-    }
-}
+	// If the LHS is not an lvalue, the assign ops are invalid, so go to ADL or default implementation.
+	if (!a.IsLvalueType(lhs.t))
+		return Type::BuildBinaryExpression(lhs, rhs, type, a);
 
-Expression IntegralType::BuildLTComparison(Expression lhs, Expression rhs, Analyzer& a) {
-    lhs = lhs.BuildValue(a);
-    rhs = rhs.BuildValue(a);
-    auto int_type = dynamic_cast<IntegralType*>(rhs.t);
-    if (!int_type) throw std::runtime_error("Attempted to compare an integer type with something that was not another integer.");
-    if (is_signed != int_type->is_signed) throw std::runtime_error("Attempted to compare an integer type with a value of another integer type of different signedness.");
+	switch(type) {
+	case Lexer::TokenType::RightShiftAssign:
+		return Expression(lhs.t, a.gen->CreateStore(lhs.Expr, a.gen->CreateRightShift(lhsval.Expr, rhsval.Expr, is_signed)));
+	case Lexer::TokenType::LeftShiftAssign:
+		return Expression(lhs.t, a.gen->CreateStore(lhs.Expr, a.gen->CreateLeftShift(lhsval.Expr, rhsval.Expr)));
+	case Lexer::TokenType::MulAssign:
+		return Expression(lhs.t, a.gen->CreateStore(lhs.Expr, a.gen->CreateMultiplyExpression(lhsval.Expr, rhsval.Expr)));
+	case Lexer::TokenType::PlusAssign:
+		return Expression(lhs.t, a.gen->CreateStore(lhs.Expr, a.gen->CreatePlusExpression(lhsval.Expr, rhsval.Expr)));
+	case Lexer::TokenType::OrAssign:
+		return Expression(lhs.t, a.gen->CreateStore(lhs.Expr, a.gen->CreateOrExpression(lhsval.Expr, rhsval.Expr)));
+	case Lexer::TokenType::AndAssign:
+		return Expression(lhs.t, a.gen->CreateStore(lhs.Expr, a.gen->CreateAndExpression(lhsval.Expr, rhsval.Expr)));
+	case Lexer::TokenType::XorAssign:
+		return Expression(lhs.t, a.gen->CreateStore(lhs.Expr, a.gen->CreateXorExpression(lhsval.Expr, rhsval.Expr)));
+	case Lexer::TokenType::MinusAssign:
+		return Expression(lhs.t, a.gen->CreateStore(lhs.Expr, a.gen->CreateSubExpression(lhsval.Expr, rhsval.Expr)));
+	case Lexer::TokenType::ModAssign:
+		return Expression(lhs.t, a.gen->CreateStore(lhs.Expr, a.gen->CreateModExpression(lhsval.Expr, rhsval.Expr, is_signed)));
+	case Lexer::TokenType::DivAssign:
+		return Expression(lhs.t, a.gen->CreateStore(lhs.Expr, a.gen->CreateDivExpression(lhsval.Expr, rhsval.Expr, is_signed)));
+	}
 
-    Extend(lhs, rhs, a);
-
-    if (is_signed)
-        return Expression(a.GetBooleanType(), a.gen->CreateSLT(lhs.Expr, rhs.Expr));
-    else
-        return Expression(a.GetBooleanType(), a.gen->CreateULT(lhs.Expr, rhs.Expr));
-}
-Expression IntegralType::BuildEQComparison(Expression lhs, Expression rhs, Analyzer& a) {
-    lhs = lhs.BuildValue(a);
-    rhs = rhs.BuildValue(a);
-    if (!dynamic_cast<IntegralType*>(rhs.t)) throw std::runtime_error("Attempted to compare an integer with something that was not an integer.");
-    Extend(lhs, rhs, a);
-    return Expression(a.GetBooleanType(), a.gen->CreateEqualityExpression(lhs.Expr, rhs.Expr));
-}
-
-Expression IntegralType::BuildMultiply(Expression lhs, Expression rhs, Analyzer& a) {
-    lhs = lhs.BuildValue(a);
-    rhs = rhs.BuildValue(a);
-    if (!dynamic_cast<IntegralType*>(rhs.t)) throw std::runtime_error("Attempted to multiply an integer with something that was not an integer.");
-    Extend(lhs, rhs, a);
-    return Expression(this, a.gen->CreateMultiplyExpression(lhs.Expr, rhs.Expr));
-}
-Expression IntegralType::BuildPlus(Expression lhs, Expression rhs, Analyzer& a) {   
-    lhs = lhs.BuildValue(a);
-    rhs = rhs.BuildValue(a);
-    if (!dynamic_cast<IntegralType*>(rhs.t)) throw std::runtime_error("Attempted to add an integer with something that was not an integer.");
-    Extend(lhs, rhs, a);
-    return Expression(lhs.t, a.gen->CreatePlusExpression(lhs.Expr, rhs.Expr));
+	// Not a primitive operator- report to ADL.
+	return Type::BuildBinaryExpression(lhs, rhs, type, a);
 }
 Expression IntegralType::BuildIncrement(Expression obj, bool postfix, Analyzer& a) {    
     if (postfix) {
@@ -134,7 +107,7 @@ Expression IntegralType::BuildIncrement(Expression obj, bool postfix, Analyzer& 
 
 Codegen::Expression* IntegralType::BuildInplaceConstruction(Codegen::Expression* mem, std::vector<Expression> args, Analyzer& a) {
     if (args.size() == 1) {
-        args[0] = args[0].t->BuildValue(args[0], a);
+		args[0] = args[0].BuildValue(a);
         if (args[0].t == this)
             return a.gen->CreateStore(mem, args[0].Expr);
         auto inttype = dynamic_cast<IntegralType*>(args[0].t);
@@ -148,8 +121,10 @@ Codegen::Expression* IntegralType::BuildInplaceConstruction(Codegen::Expression*
             return a.gen->CreateStore(mem, a.gen->CreateZeroExtension(args[0].Expr, GetLLVMType(a)));
         if (bits == inttype->bits)
             return a.gen->CreateStore(mem, args[0].Expr);
-        throw std::runtime_error("It is illegal to perform a signed->unsigned and widening conversion in one step.");
+        throw std::runtime_error("It is illegal to perform a signed->unsigned and widening conversion in one step, even explicitly.");
     }
+	if (args.size() != 0)
+		throw std::runtime_error("Attempt to construct an integer from more than one argument.");
     return a.gen->CreateStore(mem, a.gen->CreateIntegralExpression(0, false, GetLLVMType(a)));
 }
 std::size_t IntegralType::size(Analyzer& a) {

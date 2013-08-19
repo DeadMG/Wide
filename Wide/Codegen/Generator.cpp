@@ -195,12 +195,6 @@ Function* Generator::FromLLVMFunc(llvm::Function* f) {
 }
 
 // Domagoj, you cockface.
-IntegralLessThan* Generator::CreateSLT(Expression* lhs, Expression* rhs) {
-    return arena.Allocate<IntegralLessThan>(lhs, rhs, true);
-}
-IntegralLessThan* Generator::CreateULT(Expression* lhs, Expression* rhs) {
-    return arena.Allocate<IntegralLessThan>(lhs, rhs, false);
-}
 
 OrExpression* Generator::CreateOrExpression(Expression* lhs, Expression* rhs) {
     return arena.Allocate<OrExpression>(lhs, rhs);
@@ -226,5 +220,20 @@ SExt* Generator::CreateSignedExtension(Expression* e, std::function<llvm::Type*(
 }
 IsNullExpression* Generator::CreateIsNullExpression(Expression* e) {
     return arena.Allocate<IsNullExpression>(e);
+}
+IntegralLessThan* Generator::CreateLT(Expression* l, Expression* r, bool is_signed) {
+	return arena.Allocate<IntegralLessThan>(l, r, is_signed);
+}
+SubExpression* Generator::CreateSubExpression(Expression* l, Expression* r) {
+	return arena.Allocate<SubExpression>(l, r);
+}
+XorExpression* Generator::CreateXorExpression(Expression* l, Expression* r) {
+	return arena.Allocate<XorExpression>(l, r);
+}
+ModExpression* Generator::CreateModExpression(Expression* l, Expression* r, bool is_signed) {
+	return arena.Allocate<ModExpression>(l, r, is_signed);
+}
+DivExpression* Generator::CreateDivExpression(Expression* l, Expression* r, bool is_signed) {
+	return arena.Allocate<DivExpression>(l, r, is_signed);
 }
 

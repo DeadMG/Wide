@@ -22,14 +22,14 @@
 using namespace Wide;
 using namespace Semantic;
 
-Expression ClangNamespace::AccessMember(Expression val, std::string name, Analyzer& a) {        
+Wide::Util::optional<Expression> ClangNamespace::AccessMember(Expression val, std::string name, Analyzer& a) {        
     clang::LookupResult lr(
         from->GetSema(), 
         clang::DeclarationNameInfo(clang::DeclarationName(from->GetIdentifierInfo(name)), clang::SourceLocation()),
         clang::Sema::LookupNameKind::LookupOrdinaryName);
 
     if (!from->GetSema().LookupQualifiedName(lr, con))
-        throw std::runtime_error("Attempted to access a member of a Clang namespace, but Clang could not find the name.");
+		return Wide::Util::none;
     if (lr.isAmbiguous())
         throw std::runtime_error("Attempted to access a member of a Clang namespace, but Clang said the lookup was ambiguous.");
     if (lr.isSingleResult()) {

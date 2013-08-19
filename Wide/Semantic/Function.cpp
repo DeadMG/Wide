@@ -70,8 +70,8 @@ Function::Function(std::vector<Type*> args, AST::Function* astfun, Analyzer& a, 
 
     // Deal with the prolog first.
     for(auto&& prolog : astfun->prolog) {
-        auto ass = dynamic_cast<AST::AssignmentExpr*>(prolog);
-        if (!ass)            
+		auto ass = dynamic_cast<AST::BinaryExpression*>(prolog);
+		if (!ass || ass->type != Lexer::TokenType::Assignment)            
             throw std::runtime_error("Prologs can only be composed of assignment expressions right now!");
         auto ident = dynamic_cast<AST::IdentifierExpr*>(ass->lhs);
         if (!ident)
@@ -107,11 +107,17 @@ clang::QualType Function::GetClangType(ClangUtil::ClangTU& where, Analyzer& a) {
 std::function<llvm::Type*(llvm::Module*)> Function::GetLLVMType(Analyzer& a) {    
     return GetSignature(a)->GetLLVMType(a);
 }
+
+Expression check(Wide::Util::optional<Expression> e) {
+	if (!e)
+		assert(false && "Expected to find this thing for sure, but it didn't exist! Check call stack for trigger.");
+	return *e;
+}
 void Function::ComputeBody(Analyzer& a) {    
     if (!ReturnType) {        
         // Initializers first, if we are a constructor
         if (member && fun->name == "type") {
-            auto self = AccessMember(Expression(), "this", a);
+            auto self = check(AccessMember(Expression(), "this", a)); // We're a constructor so "this" guaranteed.
             auto members = member->GetMembers();
             for(auto&& x : members) {
                 auto has_initializer = [&](std::string name) -> AST::VariableStatement* {
@@ -133,7 +139,7 @@ void Function::ComputeBody(Analyzer& a) {
                     if (x.InClassInitializer)
                     {
                         auto expr = a.AnalyzeExpression(this, x.InClassInitializer);
-                        auto mem = self.t->AccessMember(self, x.name, a);                   
+                        auto mem = check(self.t->AccessMember(self, x.name, a));           
                         std::vector<Expression> args;
                         args.push_back(expr);
                         exprs.push_back(x.t->BuildInplaceConstruction(mem.Expr, std::move(args), a));
@@ -141,7 +147,7 @@ void Function::ComputeBody(Analyzer& a) {
                     }
                     if (x.t->IsReference())
                         throw std::runtime_error("Failed to initialize a reference member.");
-                    auto mem = self.t->AccessMember(self, x.name, a);                   
+                    auto mem = check(self.t->AccessMember(self, x.name, a));                   
                     std::vector<Expression> args;
                     exprs.push_back(x.t->BuildInplaceConstruction(mem.Expr, std::move(args), a));
                 }
@@ -269,7 +275,7 @@ Expression Function::BuildCall(Expression, std::vector<Expression> args, Analyze
     val.Expr = a.gen->CreateFunctionValue(name);
     return GetSignature(a)->BuildCall(val, std::move(args), a);
 }
-Expression Function::AccessMember(Expression e, std::string name, Analyzer& a) {
+Wide::Util::optional<Expression> Function::AccessMember(Expression e, std::string name, Analyzer& a) {
     for(auto it = variables.rbegin(); it != variables.rend(); ++it) {
         auto&& map = *it;
         if (map.find(name) != map.end()) {

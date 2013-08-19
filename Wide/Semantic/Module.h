@@ -17,9 +17,9 @@ namespace Wide {
             using Type::BuildValueConstruction;
 
             Module(AST::Module* p);
-            AST::DeclContext* GetDeclContext();
+            AST::DeclContext* GetDeclContext() override;
             void AddSpecialMember(std::string name, Expression t);            
-            Expression AccessMember(Expression val, std::string name, Analyzer& a);
+            Wide::Util::optional<Expression> AccessMember(Expression val, std::string name, Analyzer& a) override;
         };
     }
 }

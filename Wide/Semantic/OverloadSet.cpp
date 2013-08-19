@@ -34,8 +34,9 @@ template<typename T, typename U> T* debug_cast(U* other) {
     return static_cast<T*>(other);
 }
 
-OverloadSet::OverloadSet(AST::FunctionOverloadSet* s, Analyzer& a, Type* mem) {
-    overset = s;
+OverloadSet::OverloadSet(AST::FunctionOverloadSet* s, Type* mem) {
+	for(auto x : s->functions)
+		functions.insert(x);
     nonstatic = mem;
 }
 std::function<llvm::Type*(llvm::Module*)> OverloadSet::GetLLVMType(Analyzer& a) {
@@ -83,7 +84,7 @@ Expression OverloadSet::BuildCall(Expression e, std::vector<Expression> args, An
     auto skipfirst = [&](AST::Function* x) {
         return nonstatic && (x->args.size() < 1 || x->args.front().name != "this");
     };
-    for(auto x : overset->functions) {
+    for(auto x : functions) {
         if (nonstatic && skipfirst(x)) {
             if (x->args.size() + 1 == args.size())
                 ViableCandidates.push_back(x);
@@ -105,14 +106,14 @@ Expression OverloadSet::BuildCall(Expression e, std::vector<Expression> args, An
             if (skipfirst(f) && i == 0) continue;
             auto fi = skipfirst(f) ? i - 1 : i;
             if (f->args[fi].type) {
-                auto con = overset->higher;
+                auto con = f->higher;
                 while(!dynamic_cast<AST::Module*>(con))
                     con = con->higher;
                 struct LookupType : Type {
                     AST::DeclContext* con;
                     Type* autotype;
                     Type* nonstatic;
-                    Expression AccessMember(Expression self, std::string name, Analyzer& a) {
+					Wide::Util::optional<Expression> AccessMember(Expression self, std::string name, Analyzer& a) {
                         if (name == "this")
                             return a.GetConstructorType(nonstatic)->BuildValueConstruction(std::vector<Expression>(), a);
                         if (name == "auto")
@@ -133,7 +134,7 @@ Expression OverloadSet::BuildCall(Expression e, std::vector<Expression> args, An
                 // Prevent move constructors matching- so if T(T&&), T(U), T(T(U)) should not match as well as T(U)
                 // Also, if the argument is T&& or T&, prevent others matching.
                 if (nonstatic 
-                    && overset->name == "type"
+                    && f->name == "type"
                     && args.size() == 2
                     && (argty->IsReference(nonstatic->Decay()) || args[i].t->IsReference(nonstatic->Decay()))) 
                 {
@@ -180,7 +181,7 @@ ConversionRank OverloadSet::ResolveOverloadRank(std::vector<Type*> args, Analyze
         args.insert(args.begin(), a.AsLvalueType(nonstatic));
     }
 
-    for(auto x : overset->functions) {
+    for(auto x : functions) {
         if (nonstatic) {
             if (x->args.size() + 1 == args.size())
                 ViableCandidates.push_back(x);
@@ -203,13 +204,13 @@ ConversionRank OverloadSet::ResolveOverloadRank(std::vector<Type*> args, Analyze
             if (nonstatic && i == 0) continue;
             auto fi = nonstatic ? i - 1 : i;
             if (f->args[fi].type) {
-                auto con = overset->higher;
+                auto con = f->higher;
                 while(!dynamic_cast<AST::Module*>(con))
                     con = con->higher;
                 struct LookupType : Type {
                     AST::DeclContext* con;
                     Type* nonstatic;
-                    Expression AccessMember(Expression self, std::string name, Analyzer& a) {
+					Wide::Util::optional<Expression> AccessMember(Expression self, std::string name, Analyzer& a) {
                         if (name == "this") {
                             return a.GetConstructorType(nonstatic)->BuildValueConstruction(std::vector<Expression>(), a);
                         }
@@ -230,7 +231,7 @@ ConversionRank OverloadSet::ResolveOverloadRank(std::vector<Type*> args, Analyze
 
                 // Prevent infinite recursion by disabling conversion checks on copy/move constructors
                 if (nonstatic 
-                    && overset->name == "type"
+                    && f->name == "type"
                     && args.size() == 2) {
                     if (argty->IsReference(nonstatic->Decay())) {
                         curr_rank = argty == args[i] ? ConversionRank::Zero : ConversionRank::None;
@@ -317,7 +318,7 @@ clang::QualType OverloadSet::GetClangType(ClangUtil::ClangTU& TU, Analyzer& a) {
         var->setAccess(clang::AccessSpecifier::AS_public);
         recdecl->addDecl(var);
     }
-    for(auto&& x : overset->functions) {
+    for(auto&& x : functions) {
         // Instead of this, they will take a pointer to the recdecl here.
         // Wide member function types take "this" into account, whereas Clang ones do not.
         for(auto arg : x->args) if (!arg.type) continue;
@@ -411,4 +412,11 @@ std::size_t OverloadSet::size(Analyzer& a) {
 std::size_t OverloadSet::alignment(Analyzer& a) {
     if (!nonstatic) return llvm::DataLayout(a.gen->main.getDataLayout()).getABIIntegerTypeAlignment(8);
     return llvm::DataLayout(a.gen->main.getDataLayout()).getPointerABIAlignment();
+}
+OverloadSet::OverloadSet(OverloadSet* s, OverloadSet* other) {
+	for(auto x : s->functions)
+		functions.insert(x);
+	for(auto x : other->functions)
+		functions.insert(x);
+	nonstatic = nullptr;
 }

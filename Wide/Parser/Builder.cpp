@@ -108,8 +108,8 @@ StringExpr* ThreadLocalBuilder::CreateStringExpression(std::string val, Lexer::R
 MemAccessExpr* ThreadLocalBuilder::CreateMemberAccessExpression(std::string mem, Expression* e, Lexer::Range r) 
 { return arena.Allocate<MemAccessExpr>(std::move(mem), e, r); }
 
-LeftShiftExpr* ThreadLocalBuilder::CreateLeftShiftExpression(Expression* lhs, Expression* rhs) 
-{ return arena.Allocate<LeftShiftExpr>(lhs, rhs); }
+BinaryExpression* ThreadLocalBuilder::CreateLeftShiftExpression(Expression* lhs, Expression* rhs) 
+{ return arena.Allocate<BinaryExpression>(lhs, rhs, Lexer::TokenType::LeftShift); }
 
 FunctionCallExpr* ThreadLocalBuilder::CreateFunctionCallExpression(Expression* e, std::vector<Expression*> args, Lexer::Range r) 
 { return arena.Allocate<FunctionCallExpr>(e, std::move(args), r); }
@@ -126,14 +126,14 @@ VariableStatement* ThreadLocalBuilder::CreateVariableStatement(std::string name,
 VariableStatement* ThreadLocalBuilder::CreateVariableStatement(std::string name, Lexer::Range r) 
 { return CreateVariableStatement(std::move(name), nullptr, r); }
 
-AssignmentExpr* ThreadLocalBuilder::CreateAssignmentExpression(Expression* lhs, Expression* rhs, Lexer::TokenType type) 
-{ return arena.Allocate<AssignmentExpr>(lhs, rhs, type); }
+BinaryExpression* ThreadLocalBuilder::CreateAssignmentExpression(Expression* lhs, Expression* rhs, Lexer::TokenType type) 
+{ return arena.Allocate<BinaryExpression>(lhs, rhs, type); }
 
 IntegerExpression* ThreadLocalBuilder::CreateIntegerExpression(std::string val, Lexer::Range r) 
 { return arena.Allocate<IntegerExpression>(std::move(val), r); }
 
-RightShiftExpr* ThreadLocalBuilder::CreateRightShiftExpression(Expression* lhs, Expression* rhs) 
-{ return arena.Allocate<RightShiftExpr>(lhs, rhs); }
+BinaryExpression* ThreadLocalBuilder::CreateRightShiftExpression(Expression* lhs, Expression* rhs) 
+{ return arena.Allocate<BinaryExpression>(lhs, rhs, Lexer::TokenType::RightShift); }
 
 IfStatement* ThreadLocalBuilder::CreateIfStatement(Expression* cond, Statement* true_br, Statement* false_br, Lexer::Range loc) 
 { return arena.Allocate<IfStatement>(cond, true_br, false_br, loc); }
@@ -144,11 +144,11 @@ IfStatement* ThreadLocalBuilder::CreateIfStatement(Expression* cond, Statement* 
 CompoundStatement* ThreadLocalBuilder::CreateCompoundStatement(std::vector<Statement*> true_br, Lexer::Range loc) 
 { return arena.Allocate<CompoundStatement>(std::move(true_br), loc); }
 
-EqCmpExpression* ThreadLocalBuilder::CreateEqCmpExpression(Expression* lhs, Expression* rhs) 
-{ return arena.Allocate<EqCmpExpression>(lhs, rhs); }
+BinaryExpression* ThreadLocalBuilder::CreateEqCmpExpression(Expression* lhs, Expression* rhs) 
+{ return arena.Allocate<BinaryExpression>(lhs, rhs, Lexer::TokenType::EqCmp); }
 
-NotEqCmpExpression* ThreadLocalBuilder::CreateNotEqCmpExpression(Expression* lhs, Expression* rhs) 
-{ return arena.Allocate<NotEqCmpExpression>(lhs, rhs); }
+BinaryExpression* ThreadLocalBuilder::CreateNotEqCmpExpression(Expression* lhs, Expression* rhs) 
+{ return arena.Allocate<BinaryExpression>(lhs, rhs, Lexer::TokenType::NotEqCmp); }
 
 MetaCallExpr* ThreadLocalBuilder::CreateMetaFunctionCallExpression(Expression* e, std::vector<Expression*> args, Lexer::Range r) 
 { return arena.Allocate<MetaCallExpr>(e, std::move(args), r); }
@@ -171,26 +171,26 @@ DereferenceExpression* ThreadLocalBuilder::CreateDereferenceExpression(Expressio
 PointerAccess* ThreadLocalBuilder::CreatePointerAccessExpression(std::string mem, Expression* e, Lexer::Range r) 
 { return arena.Allocate<PointerAccess>(std::move(mem), e, r); }
 
-OrExpression* ThreadLocalBuilder::CreateOrExpression(Expression* lhs, Expression* rhs) 
-{ return arena.Allocate<OrExpression>(lhs, rhs); }
+BinaryExpression* ThreadLocalBuilder::CreateOrExpression(Expression* lhs, Expression* rhs) 
+{ return arena.Allocate<BinaryExpression>(lhs, rhs, Lexer::TokenType::Or); }
 
-XorExpression* ThreadLocalBuilder::CreateXorExpression(Expression* lhs, Expression* rhs)
-{ return arena.Allocate<XorExpression>(lhs, rhs); }
+BinaryExpression* ThreadLocalBuilder::CreateXorExpression(Expression* lhs, Expression* rhs)
+{ return arena.Allocate<BinaryExpression>(lhs, rhs, Lexer::TokenType::Xor); }
 
-AndExpression* ThreadLocalBuilder::CreateAndExpression(Expression* lhs, Expression* rhs)
-{ return arena.Allocate<AndExpression>(lhs, rhs); }
+BinaryExpression* ThreadLocalBuilder::CreateAndExpression(Expression* lhs, Expression* rhs)
+{ return arena.Allocate<BinaryExpression>(lhs, rhs, Lexer::TokenType::And); }
 
-LTExpression* ThreadLocalBuilder::CreateLTExpression(Expression* lhs, Expression* rhs)
-{ return arena.Allocate<LTExpression>(lhs, rhs); }
+BinaryExpression* ThreadLocalBuilder::CreateLTExpression(Expression* lhs, Expression* rhs)
+{ return arena.Allocate<BinaryExpression>(lhs, rhs, Lexer::TokenType::LT); }
 
-LTEExpression* ThreadLocalBuilder::CreateLTEExpression(Expression* lhs, Expression* rhs)
-{ return arena.Allocate<LTEExpression>(lhs, rhs); }
+BinaryExpression* ThreadLocalBuilder::CreateLTEExpression(Expression* lhs, Expression* rhs)
+{ return arena.Allocate<BinaryExpression>(lhs, rhs, Lexer::TokenType::LTE); }
 
-GTExpression* ThreadLocalBuilder::CreateGTExpression(Expression* lhs, Expression* rhs)
-{ return arena.Allocate<GTExpression>(lhs, rhs); }
+BinaryExpression* ThreadLocalBuilder::CreateGTExpression(Expression* lhs, Expression* rhs)
+{ return arena.Allocate<BinaryExpression>(lhs, rhs, Lexer::TokenType::GT); }
 
-GTEExpression* ThreadLocalBuilder::CreateGTEExpression(Expression* lhs, Expression* rhs) 
-{ return arena.Allocate<GTEExpression>(lhs, rhs); }
+BinaryExpression* ThreadLocalBuilder::CreateGTEExpression(Expression* lhs, Expression* rhs) 
+{ return arena.Allocate<BinaryExpression>(lhs, rhs, Lexer::TokenType::GTE); }
 
 Increment* ThreadLocalBuilder::CreatePrefixIncrement(Expression* ex, Lexer::Range r)
 { return arena.Allocate<Increment>(ex, r, false); }
@@ -198,11 +198,11 @@ Increment* ThreadLocalBuilder::CreatePrefixIncrement(Expression* ex, Lexer::Rang
 Increment* ThreadLocalBuilder::CreatePostfixIncrement(Expression* ex, Lexer::Range r)
 { return arena.Allocate<Increment>(ex, r, true); }
 
-Addition* ThreadLocalBuilder::CreateAdditionExpression(Expression* lhs, Expression* rhs) 
-{ return arena.Allocate<Addition>(lhs, rhs); }
+BinaryExpression* ThreadLocalBuilder::CreateAdditionExpression(Expression* lhs, Expression* rhs) 
+{ return arena.Allocate<BinaryExpression>(lhs, rhs, Lexer::TokenType::Plus); }
 
-Multiply* ThreadLocalBuilder::CreateMultiplyExpression(Expression* lhs, Expression* rhs) 
-{ return arena.Allocate<Multiply>(lhs, rhs); }
+BinaryExpression* ThreadLocalBuilder::CreateMultiplyExpression(Expression* lhs, Expression* rhs) 
+{ return arena.Allocate<BinaryExpression>(lhs, rhs, Lexer::TokenType::Dereference); }
 
 AutoExpression* ThreadLocalBuilder::CreateAutoExpression(Lexer::Range loc)
 { return arena.Allocate<AutoExpression>(loc); }
@@ -255,9 +255,9 @@ void ThreadLocalBuilder::Error(Wide::Lexer::Range r, Parser::Error e) {
     error(r, e);
 }
 
-Division* ThreadLocalBuilder::CreateDivisionExpression(Expression* lhs, Expression* rhs) 
-{ return arena.Allocate<Division>(lhs, rhs); }
-Modulus* ThreadLocalBuilder::CreateModulusExpression(Expression* lhs, Expression* rhs) 
-{ return arena.Allocate<Modulus>(lhs, rhs); }
-Subtraction* ThreadLocalBuilder::CreateSubtractionExpression(Expression* lhs, Expression* rhs) 
-{ return arena.Allocate<Subtraction>(lhs, rhs); }
+BinaryExpression* ThreadLocalBuilder::CreateDivisionExpression(Expression* lhs, Expression* rhs) 
+{ return arena.Allocate<BinaryExpression>(lhs, rhs, Lexer::TokenType::Divide); }
+BinaryExpression* ThreadLocalBuilder::CreateModulusExpression(Expression* lhs, Expression* rhs) 
+{ return arena.Allocate<BinaryExpression>(lhs, rhs, Lexer::TokenType::Modulo); }
+BinaryExpression* ThreadLocalBuilder::CreateSubtractionExpression(Expression* lhs, Expression* rhs) 
+{ return arena.Allocate<BinaryExpression>(lhs, rhs, Lexer::TokenType::Minus); }

@@ -6,7 +6,7 @@ namespace Wide {
     namespace Semantic {
         struct NullType : public MetaType {    
             NullType() {}
-            clang::QualType GetClangType(ClangUtil::ClangTU& TU, Analyzer& a);
+            clang::QualType GetClangType(ClangUtil::ClangTU& TU, Analyzer& a) override;
         };
     }
 }

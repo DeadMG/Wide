@@ -3,6 +3,8 @@
 #include <Wide/Semantic/PointerType.h>
 #include <Wide/Codegen/Generator.h>
 #include <Wide/Codegen/Expression.h>
+#include <Wide/Lexer/Token.h>
+#include <Wide/Semantic/OverloadSet.h>
 
 using namespace Wide;
 using namespace Semantic;
@@ -63,13 +65,6 @@ ConversionRank Type::RankConversionFrom(Type* from, Analyzer& a) {
         return ConversionRank::Zero;
     return ConversionRank::None;
 }
-Expression Type::BuildNEComparison(Expression lhs, Expression rhs, Analyzer& a) {
-    auto expr = lhs.t->BuildEQComparison(lhs, rhs, a);
-    if (expr.t != a.GetBooleanType())
-        throw std::runtime_error("Cannot automatically implement ~= on top of an == that does not return a boolean.");
-    expr.Expr = a.gen->CreateNegateExpression(expr.Expr);
-    return expr;
-}
 Expression Type::AddressOf(Expression obj, Analyzer& a) {
     // TODO: Remove this restriction, it is not very Wide.
 	if (!a.IsLvalueType(obj.t))
@@ -80,16 +75,10 @@ Expression Type::AddressOf(Expression obj, Analyzer& a) {
 Expression Expression::BuildValue(Analyzer& a) {
     return t->BuildValue(*this, a);
 }
-Expression Expression::BuildRightShift(Expression rhs, Analyzer& a) {
-    return t->BuildRightShift(*this, rhs, a);
-}
-Expression Expression::BuildLeftShift(Expression rhs, Analyzer& a) {
-    return t->BuildLeftShift(*this, rhs, a);
-}
 Expression Expression::BuildAssignment(Expression rhs, Analyzer& a){
     return t->BuildAssignment(*this, rhs, a);
 }
-Expression Expression::AccessMember(std::string name, Analyzer& a){
+Wide::Util::optional<Expression> Expression::AccessMember(std::string name, Analyzer& a){
     return t->AccessMember(*this, std::move(name), a);
 }
 Expression Expression::BuildCall(std::vector<Expression> args, Analyzer& a) {
@@ -98,43 +87,13 @@ Expression Expression::BuildCall(std::vector<Expression> args, Analyzer& a) {
 Expression Expression::BuildMetaCall(std::vector<Expression> args, Analyzer& a) {
     return t->BuildMetaCall(*this, std::move(args), a);
 }
-Expression Expression::BuildEQComparison(Expression rhs, Analyzer& a) {
-    return t->BuildEQComparison(*this, rhs, a);
-}
-Expression Expression::BuildNEComparison(Expression rhs, Analyzer& a) {
-    return t->BuildNEComparison(*this, rhs, a);
-}
-Expression Expression::BuildLTComparison(Expression rhs, Analyzer& a) {
-    return t->BuildLTComparison(*this, rhs, a);
-}
-Expression Expression::BuildLTEComparison(Expression rhs, Analyzer& a) {
-    return t->BuildLTEComparison(*this, rhs, a);
-}
-Expression Expression::BuildGTComparison(Expression rhs, Analyzer& a) {
-    return t->BuildGTComparison(*this, rhs, a);
-}
-Expression Expression::BuildGTEComparison(Expression rhs, Analyzer& a) {
-    return t->BuildGTEComparison(*this, rhs, a);
-}
 Expression Expression::BuildDereference(Analyzer& a)  {
     return t->BuildDereference(*this, a);
 }
-Expression Expression::BuildOr(Expression rhs, Analyzer& a) {
-    return t->BuildOr(*this, rhs, a);
-}
-Expression Expression::BuildAnd(Expression rhs, Analyzer& a) {
-    return t->BuildAnd(*this, rhs, a);
-}          
-Expression Expression::BuildMultiply(Expression rhs, Analyzer& a) {
-    return t->BuildMultiply(*this, rhs, a);
-}          
-Expression Expression::BuildPlus(Expression rhs, Analyzer& a) {
-    return t->BuildPlus(*this, rhs, a);
-}          
 Expression Expression::BuildIncrement(bool postfix, Analyzer& a) {
     return t->BuildIncrement(*this, postfix, a);
 }          
-Expression Expression::PointerAccessMember(std::string name, Analyzer& a) {
+Wide::Util::optional<Expression> Expression::PointerAccessMember(std::string name, Analyzer& a) {
     return t->PointerAccessMember(*this, std::move(name), a);
 }
 Expression Expression::AddressOf(Analyzer& a) {
@@ -142,6 +101,18 @@ Expression Expression::AddressOf(Analyzer& a) {
 }
 Codegen::Expression* Expression::BuildBooleanConversion(Analyzer& a) {
     return t->BuildBooleanConversion(*this, a);
+}
+Expression Expression::BuildBinaryExpression(Expression rhs, Lexer::TokenType type, Analyzer& a) {
+	return t->BuildBinaryExpression(*this, rhs, type, a);
+}
+Expression Expression::BuildNegate(Analyzer& a) {
+	return t->BuildNegate(*this, a);
+}
+Expression Expression::BuildCall(Expression lhs, Expression rhs, Analyzer& a) {
+	std::vector<Expression> args;
+	args.push_back(lhs);
+	args.push_back(rhs);
+	return t->BuildCall(*this, std::move(args), a);
 }
 
 Expression Type::BuildValueConstruction(Expression arg, Analyzer& a) {
@@ -189,121 +160,77 @@ Expression Expression::BuildCall(Analyzer& a) {
     std::vector<Expression> args;
     return BuildCall(args, a);
 }
-Expression Type::AccessMember(Expression, std::string name, Analyzer& a) {
+Wide::Util::optional<Expression> Type::AccessMember(Expression e, std::string name, Analyzer& a) {
+	if (IsReference())
+		return Decay()->AccessMember(e, std::move(name), a);
     if (name == "~type")
         return a.GetNothingFunctorType()->BuildValueConstruction(a);
     throw std::runtime_error("Attempted to access the member of a type that did not support it.");
 }
-/*
-Expression Expression::BuildValue(Analyzer& a) {
-    return t->BuildValue(*this, a);
-}
-Expression Expression::BuildRightShift(Expression rhs, Analyzer& a) {
-    return t->BuildRightShift(*this, rhs, a);
-}
-Expression Expression::BuildLeftShift(Expression rhs, Analyzer& a) {
-    return t->BuildLeftShift(*this, rhs, a);
-}
-Expression Expression::BuildAssignment(Expression rhs, Analyzer& a){
-    return t->BuildAssignment(*this, rhs, a);
-}
-Expression Expression::AccessMember(std::string name, Analyzer& a){
-    return t->AccessMember(*this, std::move(name), a);
-}
-Expression Expression::BuildCall(std::vector<Expression> args, Analyzer& a) {
-    return t->BuildCall(*this, std::move(args), a);
-}
-Expression Expression::BuildMetaCall(std::vector<Expression> args, Analyzer& a) {
-    return t->BuildMetaCall(*this, std::move(args), a);
-}
-Expression Expression::BuildEQComparison(Expression rhs, Analyzer& a) {
-    return t->BuildEQComparison(*this, rhs, a);
-}
-Expression Expression::BuildNEComparison(Expression rhs, Analyzer& a) {
-    return t->BuildNEComparison(*this, rhs, a);
-}
-Expression Expression::BuildLTComparison(Expression rhs, Analyzer& a) {
-    return t->BuildLTComparison(*this, rhs, a);
-}
-Expression Expression::BuildLTEComparison(Expression rhs, Analyzer& a) {
-    return t->BuildLTEComparison(*this, rhs, a);
-}
-Expression Expression::BuildGTComparison(Expression rhs, Analyzer& a) {
-    return t->BuildGTComparison(*this, rhs, a);
-}
-Expression Expression::BuildGTEComparison(Expression rhs, Analyzer& a) {
-    return t->BuildGTEComparison(*this, rhs, a);
-}
-Expression Expression::BuildDereference(Analyzer& a)  {
-    return t->BuildDereference(*this, a);
-}
-Expression Expression::BuildOr(Expression rhs, Analyzer& a) {
-    return t->BuildOr(*this, rhs, a);
-}
-Expression Expression::BuildAnd(Expression rhs, Analyzer& a) {
-    return t->BuildAnd(*this, rhs, a);
-}          
-Expression Expression::BuildMultiply(Expression rhs, Analyzer& a) {
-    return t->BuildMultiply(*this, rhs, a);
-}          
-Expression Expression::BuildPlus(Expression rhs, Analyzer& a) {
-    return t->BuildPlus(*this, rhs, a);
-}          
-Expression Expression::BuildIncrement(bool postfix, Analyzer& a) {
-    return t->BuildIncrement(*this, postfix, a);
-}          
-Expression Expression::PointerAccessMember(std::string name, Analyzer& a) {
-    return t->PointerAccessMember(*this, std::move(name), a);
-}
-Expression Expression::AddressOf(Analyzer& a) {
-    return t->AddressOf(*this, a);
-}
-Codegen::Expression* Expression::BuildBooleanConversion(Analyzer& a) {
-    return t->BuildBooleanConversion(*this, a);
+Expression Type::BuildValue(Expression lhs, Analyzer& a) {
+    if (IsComplexType())
+        throw std::runtime_error("Internal Compiler Error: Attempted to build a complex type into a register.");
+	if (lhs.t->IsReference())
+		return Expression(lhs.t->Decay(), a.gen->CreateLoad(lhs.Expr));
+    return lhs;
+}            
+Expression Type::BuildNegate(Expression val, Analyzer& a) {
+	if (IsReference())
+		return Decay()->BuildNegate(val, a);
+	return Expression(a.GetBooleanType(), a.gen->CreateNegateExpression(val.BuildBooleanConversion(a)));
 }
 
-Expression Type::BuildValueConstruction(Expression arg, Analyzer& a) {
-    std::vector<Expression> args;
-    args.push_back(arg);
-    return BuildValueConstruction(std::move(args), a);
+static const std::unordered_map<Lexer::TokenType, Lexer::TokenType> Assign = []() -> std::unordered_map<Lexer::TokenType, Lexer::TokenType> {
+	std::unordered_map<Lexer::TokenType, Lexer::TokenType> assign;
+	assign[Lexer::TokenType::LeftShift] = assign[Lexer::TokenType::LeftShiftAssign];
+	assign[Lexer::TokenType::RightShift] = assign[Lexer::TokenType::RightShiftAssign];
+	assign[Lexer::TokenType::Minus] = assign[Lexer::TokenType::MinusAssign];
+	assign[Lexer::TokenType::Plus] = assign[Lexer::TokenType::PlusAssign];
+	assign[Lexer::TokenType::Or] = assign[Lexer::TokenType::OrAssign];
+	assign[Lexer::TokenType::And] = assign[Lexer::TokenType::AndAssign];
+	assign[Lexer::TokenType::Xor] = assign[Lexer::TokenType::Xor];
+	assign[Lexer::TokenType::Dereference] = assign[Lexer::TokenType::MulAssign];
+	assign[Lexer::TokenType::Modulo] = assign[Lexer::TokenType::ModAssign];
+	assign[Lexer::TokenType::Divide] = assign[Lexer::TokenType::DivAssign];
+	return assign;
+}();
+
+Expression Type::BuildBinaryExpression(Expression lhs, Expression rhs, Lexer::TokenType type, Analyzer& a) {
+	if (IsReference())
+		return Decay()->BuildBinaryExpression(lhs, rhs, type, a);
+
+	// If this function is entered, it's because the type-specific logic could not resolve the operator.
+	// So let us attempt ADL.
+	auto ldecls = a.GetDeclContext(lhs.t->Decay()->GetDeclContext())->AccessMember(Expression(), type, a);
+	auto rdecls = a.GetDeclContext(rhs.t->Decay()->GetDeclContext())->AccessMember(Expression(), type, a);
+	if (ldecls) {
+		if (auto loverset = dynamic_cast<OverloadSet*>(ldecls->t->Decay()))
+			if (rdecls) {
+				if (auto roverset = dynamic_cast<OverloadSet*>(rdecls->t->Decay()))
+					return a.GetOverloadSet(loverset, roverset)->BuildValueConstruction(a).BuildCall(lhs, rhs, a);
+			} else {
+				return loverset->BuildValueConstruction(a).BuildCall(lhs, rhs, a);
+			}
+	} else
+		if (rdecls)
+			if (auto roverset = dynamic_cast<OverloadSet*>(rdecls->t->Decay()))
+				return roverset->BuildValueConstruction(a).BuildCall(lhs, rhs, a);
+
+	// At this point, ADL has failed to find an operator.
+	// So let us attempt a default implementation for some operators.
+	switch(type) {
+	case Lexer::TokenType::NotEqCmp:
+		return lhs.BuildBinaryExpression(rhs, Lexer::TokenType::EqCmp, a).BuildNegate(a);
+	case Lexer::TokenType::EqCmp:
+		return lhs.BuildBinaryExpression(rhs, Lexer::TokenType::LT, a).BuildNegate(a).BuildBinaryExpression(rhs.BuildBinaryExpression(lhs, Lexer::TokenType::LT, a).BuildNegate(a), Lexer::TokenType::And, a);
+	case Lexer::TokenType::LTE:
+		return rhs.BuildBinaryExpression(lhs, Lexer::TokenType::LT, a).BuildNegate(a);
+	case Lexer::TokenType::GT:
+		return rhs.BuildBinaryExpression(lhs, Lexer::TokenType::LT, a);
+	case Lexer::TokenType::GTE:
+		return lhs.BuildBinaryExpression(rhs, Lexer::TokenType::LT, a).BuildNegate(a);
+	}
+	if (Assign.find(type) != Assign.end())
+		return BuildLvalueConstruction(lhs, a).BuildBinaryExpression(rhs, Assign.at(type), a);
+	throw std::runtime_error("Attempted to build a binary expression; but it could not be found by the type, and a default could not be applied.");
 }
-Expression Type::BuildRvalueConstruction(Expression arg, Analyzer& a) {
-    std::vector<Expression> args;
-    args.push_back(arg);
-    return BuildRvalueConstruction(std::move(args), a);
-}
-Expression Type::BuildLvalueConstruction(Expression arg, Analyzer& a) {
-    std::vector<Expression> args;
-    args.push_back(arg);
-    return BuildLvalueConstruction(std::move(args), a);
-}
-Codegen::Expression* Type::BuildInplaceConstruction(Codegen::Expression* mem, Expression arg, Analyzer& a){
-    std::vector<Expression> args;
-    args.push_back(arg);
-    return BuildInplaceConstruction(mem, std::move(args), a);
-}
-Expression Expression::BuildCall(Expression arg, Analyzer& a) {
-    std::vector<Expression> args;
-    args.push_back(arg);
-    return BuildCall(std::move(args), a);
-}
-Expression Type::BuildValueConstruction(Analyzer& a) {
-    std::vector<Expression> args;
-    return BuildValueConstruction(args, a);
-}
-Expression Type::BuildRvalueConstruction(Analyzer& a) {
-    std::vector<Expression> args;
-    return BuildRvalueConstruction(args, a);
-}
-Expression Type::BuildLvalueConstruction(Analyzer& a) {
-    std::vector<Expression> args;
-    return BuildLvalueConstruction(args, a);
-}
-Codegen::Expression* Type::BuildInplaceConstruction(Codegen::Expression* mem, Analyzer& a) {
-    std::vector<Expression> args;
-    return BuildInplaceConstruction(mem, args, a);
-}
-Expression Expression::BuildCall(Analyzer& a) {
-    std::vector<Expression> args;
-    return BuildCall(args, a);
-}*/

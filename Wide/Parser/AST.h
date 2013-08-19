@@ -42,6 +42,7 @@ namespace Wide {
             Module(std::string nam, Module* parent)
                 : DeclContext(parent, std::move(nam)) {}
             Concurrency::UnorderedMap<std::string, ModuleLevelDeclaration*> decls;
+			Concurrency::UnorderedMap<Lexer::TokenType, ModuleLevelDeclaration*> opcondecls;
         };
         struct FunctionOverloadSet;
         struct VariableStatement;
@@ -49,6 +50,7 @@ namespace Wide {
             Type(DeclContext* above, std::string name, Lexer::Range loc) : DeclContext(above, name), Expression(loc) {}
             std::vector<VariableStatement*> variables;
             std::unordered_map<std::string, FunctionOverloadSet*> Functions;
+			Concurrency::UnorderedMap<Lexer::TokenType, FunctionOverloadSet*> opcondecls;
         };
         struct IdentifierExpr : Expression {
             IdentifierExpr(std::string nam, Lexer::Range loc)
@@ -67,20 +69,11 @@ namespace Wide {
             Expression* expr;
         };
         struct BinaryExpression : public Expression {
-            BinaryExpression(Expression* l, Expression* r)
-                : lhs(l), rhs(r), Expression(l->location + r->location) {}
+            BinaryExpression(Expression* l, Expression* r, Lexer::TokenType t)
+                : lhs(l), rhs(r), Expression(l->location + r->location), type(t) {}
             Expression* lhs;
             Expression* rhs;
-        };
-        struct LeftShiftExpr : BinaryExpression {
-            LeftShiftExpr(Expression* l, Expression* r) : BinaryExpression(l, r) {}
-        };
-        struct RightShiftExpr : BinaryExpression {
-            RightShiftExpr(Expression* l, Expression* r) : BinaryExpression(l, r) {}
-        };
-        struct AssignmentExpr : BinaryExpression {
 			Lexer::TokenType type;
-            AssignmentExpr(Expression* l, Expression* r, Lexer::TokenType ty) : type(ty), BinaryExpression(l, r) {}
         };
         struct FunctionArgument {
              // May be null
@@ -151,12 +144,6 @@ namespace Wide {
             Statement* false_statement;
             Expression* condition;
         };
-        struct EqCmpExpression : public BinaryExpression {
-            EqCmpExpression(Expression* l, Expression* r) : BinaryExpression(l, r) {}
-        };
-        struct NotEqCmpExpression : public BinaryExpression {
-            NotEqCmpExpression(Expression* l, Expression* r) : BinaryExpression(l, r) {}
-        };
         struct AutoExpression : public Expression {
             AutoExpression(Lexer::Range loc)
                 : Expression(loc) {}
@@ -183,27 +170,6 @@ namespace Wide {
             NegateExpression(Expression* e, Lexer::Range pos)
                 : UnaryExpression(e, pos) {}
         };
-        struct OrExpression : public BinaryExpression {
-            OrExpression(Expression* l, Expression* r) : BinaryExpression(l, r) {}
-        };
-        struct XorExpression : public BinaryExpression {
-            XorExpression(Expression* l, Expression* r) : BinaryExpression(l, r) {}
-        };
-        struct AndExpression : public BinaryExpression {
-            AndExpression(Expression* l, Expression* r) : BinaryExpression(l, r) {}
-        };
-        struct LTExpression : public BinaryExpression {
-            LTExpression(Expression* l, Expression* r) : BinaryExpression(l, r) {}
-        };
-        struct LTEExpression : public BinaryExpression {
-            LTEExpression(Expression* l, Expression* r) : BinaryExpression(l, r) {}
-        };
-        struct GTExpression : public BinaryExpression {
-            GTExpression(Expression* l, Expression* r) : BinaryExpression(l, r) {}
-        };
-        struct GTEExpression : public BinaryExpression {
-            GTEExpression(Expression* l, Expression* r) : BinaryExpression(l, r) {}
-        };
 
         struct MetaCallExpr : public Expression {        
             MetaCallExpr(Expression* obj, std::vector<Expression*> arg, Lexer::Range loc)
@@ -228,20 +194,5 @@ namespace Wide {
             Decrement(Expression* ex, Lexer::Range r, bool post)
                 : UnaryExpression(ex, r), postfix(post) {}
         };
-        struct Addition : public BinaryExpression {
-            Addition(Expression* l, Expression* r) : BinaryExpression(l, r) {}
-        };
-        struct Multiply : public BinaryExpression {
-            Multiply(Expression* l, Expression* r) : BinaryExpression(l, r) {}
-        };
-		struct Subtraction : public BinaryExpression {
-			Subtraction(Expression* l, Expression* r) : BinaryExpression(l, r) {}
-		};
-		struct Modulus : public BinaryExpression {
-			Modulus(Expression* l, Expression* r) : BinaryExpression(l, r) {}
-		};
-		struct Division : public BinaryExpression {
-			Division(Expression* l, Expression* r) : BinaryExpression(l, r) {}
-		};
     }
 }

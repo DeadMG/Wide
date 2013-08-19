@@ -33,59 +33,6 @@ void Expression::Build(llvm::IRBuilder<>& bb, Generator& g) {
     GetValue(bb, g);
 }
 
-/*namespace Wide {
-    namespace Codegen {
-        std::string debug(ChainExpression* e, std::string indent = "") {
-           std::string out = indent + "ChainExpression {\n";
-           out += "s = " + debug(e->s, indent + "    ");
-           out += "next = " + debug(e->next, indent + "    ");
-           out += indent + "}\n";
-           return out;
-        }
-        std::string debug(ChainStatement*, std::string indent = "");
-        std::string debug(FieldExpression*, std::string indent = "");
-        std::string debug(FunctionCall*, std::string indent = "");
-        std::string debug(FunctionValue*, std::string indent = "");
-        std::string debug(IfStatement*, std::string indent = "");
-        std::string debug(Int8Expression*, std::string indent = "");
-        std::string debug(IntegralLeftShiftExpression*, std::string indent = "");
-        std::string debug(IntegralLessThan*, std::string indent = "");
-        std::string debug(IntegralRightShiftExpression*, std::string indent = "");
-        std::string debug(LoadExpression*, std::string indent = "");
-        std::string debug(NamedGlobalVariable*, std::string indent = "");
-        std::string debug(ParamExpression*, std::string indent = "");
-        std::string debug(ReturnStatement*, std::string indent = "");
-        std::string debug(StoreExpression*, std::string indent = "");
-        std::string debug(StringExpression*, std::string indent = "");
-        std::string debug(TruncateExpression*, std::string indent = "");
-        std::string debug(Variable*, std::string indent = "");
-        std::string debug(WhileStatement*, std::string indent = "");
-        std::string debug(ZExt*, std::string indent = "");
-    }
-}
-void Codegen::debug(Statement* s) {
-    if (auto x = dynamic_cast<ChainExpression*>(s)) OutputDebugString(debug(x).c_str());
-    if (auto x = dynamic_cast<ChainStatement*>(s)) OutputDebugString(debug(x).c_str());
-    if (auto x = dynamic_cast<FieldExpression*>(s)) OutputDebugString(debug(x).c_str());
-    if (auto x = dynamic_cast<FunctionCall*>(s)) OutputDebugString(debug(x).c_str());
-    if (auto x = dynamic_cast<FunctionValue*>(s)) OutputDebugString(debug(x).c_str());
-    if (auto x = dynamic_cast<IfStatement*>(s)) OutputDebugString(debug(x).c_str());
-    if (auto x = dynamic_cast<Int8Expression*>(s)) OutputDebugString(debug(x).c_str());
-    if (auto x = dynamic_cast<IntegralLeftShiftExpression*>(s)) OutputDebugString(debug(x).c_str());
-    if (auto x = dynamic_cast<IntegralLessThan*>(s)) OutputDebugString(debug(x).c_str());
-    if (auto x = dynamic_cast<IntegralRightShiftExpression*>(s)) OutputDebugString(debug(x).c_str());
-    if (auto x = dynamic_cast<LoadExpression*>(s)) OutputDebugString(debug(x).c_str());
-    if (auto x = dynamic_cast<NamedGlobalVariable*>(s)) OutputDebugString(debug(x).c_str());
-    if (auto x = dynamic_cast<ParamExpression*>(s)) OutputDebugString(debug(x).c_str());
-    if (auto x = dynamic_cast<ReturnStatement*>(s)) OutputDebugString(debug(x).c_str());
-    if (auto x = dynamic_cast<StoreExpression*>(s)) OutputDebugString(debug(x).c_str());
-    if (auto x = dynamic_cast<StringExpression*>(s)) OutputDebugString(debug(x).c_str());
-    if (auto x = dynamic_cast<TruncateExpression*>(s)) OutputDebugString(debug(x).c_str());
-    if (auto x = dynamic_cast<Variable*>(s)) OutputDebugString(debug(x).c_str());
-    if (auto x = dynamic_cast<WhileStatement*>(s)) OutputDebugString(debug(x).c_str());
-    if (auto x = dynamic_cast<ZExt*>(s)) OutputDebugString(debug(x).c_str());
-}*/
-
 FunctionCall::FunctionCall(Expression* obj, std::vector<Expression*> args, std::function<llvm::Type*(llvm::Module*)> ty)
     : object(obj), arguments(std::move(args)), CastTy(std::move(ty)) {}
 
@@ -304,4 +251,24 @@ llvm::Value* AndExpression::ComputeValue(llvm::IRBuilder<>& builder, Generator& 
 
 llvm::Value* IsNullExpression::ComputeValue(llvm::IRBuilder<>& builder, Generator& g) {
     return builder.CreateZExt(builder.CreateIsNull(ptr->GetValue(builder, g)), llvm::IntegerType::getInt8Ty(builder.getContext()));
+}
+
+llvm::Value* XorExpression::ComputeValue(llvm::IRBuilder<>& builder, Generator& g) {
+	return builder.CreateXor(lhs->GetValue(builder, g), rhs->GetValue(builder, g));
+}
+
+llvm::Value* SubExpression::ComputeValue(llvm::IRBuilder<>& builder, Generator& g) {
+	return builder.CreateSub(lhs->GetValue(builder, g), rhs->GetValue(builder, g));
+}
+
+llvm::Value* DivExpression::ComputeValue(llvm::IRBuilder<>& builder, Generator& g) {
+	if (is_signed)
+		return builder.CreateSDiv(lhs->GetValue(builder, g), rhs->GetValue(builder, g));
+	return builder.CreateUDiv(lhs->GetValue(builder, g), rhs->GetValue(builder, g));
+}
+
+llvm::Value* ModExpression::ComputeValue(llvm::IRBuilder<>& builder, Generator& g) {
+	if (is_signed)
+		return builder.CreateSRem(lhs->GetValue(builder, g), rhs->GetValue(builder, g));
+	return builder.CreateURem(lhs->GetValue(builder, g), rhs->GetValue(builder, g));
 }

@@ -4,7 +4,7 @@
 
 namespace Wide {
     namespace Lexer {
-        enum TokenType {
+        enum class TokenType : int {
             OpenBracket,
             CloseBracket,
             Dot,

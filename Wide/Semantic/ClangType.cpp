@@ -8,7 +8,7 @@
 #include <Wide/Codegen/Generator.h>
 #include <Wide/Semantic/ClangTemplateClass.h>
 #include <Wide/Semantic/ConstructorType.h>
-
+#include <Wide/Lexer/Token.h>
 #include <iostream>
 
 #pragma warning(push, 0)
@@ -127,7 +127,7 @@ Expression ClangType::BuildOverloadSet(Expression self, std::string name, clang:
     return LookupResultCache[name]->BuildValueConstruction(self, a);
 }
 
-Expression ClangType::AccessMember(Expression val, std::string name, Analyzer& a) {
+Wide::Util::optional<Expression> ClangType::AccessMember(Expression val, std::string name, Analyzer& a) {
     if (LookupResultCache.find(name) != LookupResultCache.end()) {
         std::vector<Expression> args;
         if (val.Expr) args.push_back(val);
@@ -156,7 +156,7 @@ Expression ClangType::AccessMember(Expression val, std::string name, Analyzer& a
         clang::Sema::LookupNameKind::LookupOrdinaryName);
 
     if (!from->GetSema().LookupQualifiedName(lr, type.getCanonicalType()->getAs<clang::TagType>()->getDecl()))
-        throw std::runtime_error("Attempted to access a member of a Clang type, but Clang could not find the name.");
+		return Wide::Util::none;
     if (lr.isAmbiguous())
         throw std::runtime_error("Attempted to access a member of a Clang type, but Clang said the lookup was ambiguous.");
     if (lr.isSingleResult()) {
@@ -212,82 +212,9 @@ Expression ClangType::BuildCall(Expression self, std::vector<Expression> args, A
     return BuildOverloadSet(self, "()", lr, a).BuildCall(std::move(args), a);
 }
 
-Expression ClangType::BuildOverloadedOperator(Expression lhs, Expression rhs, Analyzer& a, clang::OverloadedOperatorKind opkind, clang::BinaryOperator::Opcode opcode) {
-    clang::ADLResult result;
-    auto declname = from->GetASTContext().DeclarationNames.getCXXOperatorName(opkind);
-    std::vector<clang::Expr*> exprs;
-       
-    // Decay the types, because for some reason expressions of type T& are bad. They need to be lvalues of type T.
-    auto lhsty = type.getNonLValueExprType(from->GetASTContext());
-    auto rhsty = rhs.t->GetClangType(*from, a).getNonLValueExprType(from->GetASTContext());
-    clang::OpaqueValueExpr first(clang::SourceLocation(), lhsty, Semantic::GetKindOfType(lhs.t));
-    exprs.push_back(&first);
-    clang::OpaqueValueExpr second(clang::SourceLocation(), rhsty, Semantic::GetKindOfType(rhs.t));
-    exprs.push_back(&second);
-    from->GetSema().ArgumentDependentLookup(declname, true, clang::SourceLocation(), exprs, result);
-    clang::UnresolvedSet<10> out;
-    for(auto x : result)
-        out.addDecl(x);
-    auto opresult = from->GetSema().CreateOverloadedBinOp(clang::SourceLocation(), opcode, out, &first, &second);
-    if (!opresult.get())
-        throw std::runtime_error("Attempted to use a binary operator on a left-hand-type which was a Clang type, but Clang could not resolve the call.");
-    auto callexpr = llvm::dyn_cast<clang::CallExpr>(opresult.get());
-       
-    auto fun = callexpr->getDirectCallee();
-    if (!fun) {
-        std::cout << "Fun was 0.\n";
-        llvm::raw_os_ostream out(std::cout);
-        callexpr->printPretty(out, 0, clang::PrintingPolicy(from->GetASTContext().getLangOpts()));
-    }
-
-    Type* ret = a.GetClangType(*from, fun->getResultType());
-    std::vector<Type*> types;
-    types.push_back(a.GetClangType(*from, fun->getParamDecl(0)->getType()));
-    if (fun->getNumParams() == 1) {
-        // Member method, and this is missing.
-        types.insert(types.begin(), lhs.t);
-    } else {
-        types.push_back(a.GetClangType(*from, fun->getParamDecl(1)->getType()));
-    }
-
-    auto funty = a.GetFunctionType(ret, types);
-    
-    Expression clangfunc;
-    clangfunc.t = funty;
-
-    if (a.gen)
-        clangfunc.Expr = a.gen->CreateFunctionValue(from->MangleName(fun));
-
-    std::vector<Expression> expressions;
-    expressions.push_back(lhs); expressions.push_back(rhs);
-    return funty->BuildCall(clangfunc, std::move(expressions), a);
-}
-Expression ClangType::BuildLeftShift(Expression lhs, Expression rhs, Analyzer& a) {
-    return BuildOverloadedOperator(lhs, rhs, a, clang::OverloadedOperatorKind::OO_LessLess, clang::BinaryOperatorKind::BO_Shl);
-}
-
-Expression ClangType::BuildRightShift(Expression lhs, Expression rhs, Analyzer& a) {
-    return BuildOverloadedOperator(lhs, rhs, a, clang::OverloadedOperatorKind::OO_GreaterGreater, clang::BinaryOperatorKind::BO_Shr);
-}
 
 std::function<llvm::Type*(llvm::Module*)> ClangType::GetLLVMType(Analyzer& a) {
     return from->GetLLVMTypeFromClangType(type, a);
-}
-
-Expression ClangType::BuildAssignment(Expression lhs, Expression rhs, Analyzer& a) {
-    return BuildOverloadedOperator(lhs, rhs, a, clang::OverloadedOperatorKind::OO_Equal, clang::BinaryOperatorKind::BO_Assign);
-}
-Expression ClangType::BuildLTComparison(Expression lhs, Expression rhs, Analyzer& a) {    
-    return BuildOverloadedOperator(lhs, rhs, a, clang::OverloadedOperatorKind::OO_Less, clang::BinaryOperatorKind::BO_LT);
-}
-Expression ClangType::BuildLTEComparison(Expression lhs, Expression rhs, Analyzer& a) {
-    return BuildOverloadedOperator(lhs, rhs, a, clang::OverloadedOperatorKind::OO_LessEqual, clang::BinaryOperatorKind::BO_LE);
-}
-Expression ClangType::BuildGTComparison(Expression lhs, Expression rhs, Analyzer& a) {
-    return BuildOverloadedOperator(lhs, rhs, a, clang::OverloadedOperatorKind::OO_Greater, clang::BinaryOperatorKind::BO_GT);
-}
-Expression ClangType::BuildGTEComparison(Expression lhs, Expression rhs, Analyzer& a) {
-    return BuildOverloadedOperator(lhs, rhs, a, clang::OverloadedOperatorKind::OO_GreaterEqual, clang::BinaryOperatorKind::BO_GE);
 }
            
 Codegen::Expression* ClangType::BuildInplaceConstruction(Codegen::Expression* mem, std::vector<Expression> args, Analyzer& a) {
@@ -384,12 +311,73 @@ bool ClangType::IsComplexType() {
 	return decl && from->IsComplexType(decl);
 }
 
-Expression ClangType::BuildEQComparison(Expression lhs, Expression rhs, Analyzer& a) {
-    return BuildOverloadedOperator(lhs, rhs, a, clang::OverloadedOperatorKind::OO_EqualEqual, clang::BinaryOperatorKind::BO_EQ);
-}
+static const std::unordered_map<Lexer::TokenType, std::pair<clang::OverloadedOperatorKind, clang::BinaryOperatorKind>> BinaryTokenMapping = []() 
+	-> std::unordered_map<Lexer::TokenType, std::pair<clang::OverloadedOperatorKind, clang::BinaryOperatorKind>> 
+{
+	std::unordered_map<Lexer::TokenType, std::pair<clang::OverloadedOperatorKind, clang::BinaryOperatorKind>> ret;
+	ret[Lexer::TokenType::NotEqCmp] = std::make_pair(clang::OverloadedOperatorKind::OO_ExclaimEqual, clang::BinaryOperatorKind::BO_NE);
+	ret[Lexer::TokenType::EqCmp] = std::make_pair(clang::OverloadedOperatorKind::OO_EqualEqual, clang::BinaryOperatorKind::BO_EQ);
+	ret[Lexer::TokenType::Assignment] = std::make_pair(clang::OverloadedOperatorKind::OO_Equal, clang::BinaryOperatorKind::BO_Assign);
+	ret[Lexer::TokenType::LT] = std::make_pair(clang::OverloadedOperatorKind::OO_Less, clang::BinaryOperatorKind::BO_LT);
+	ret[Lexer::TokenType::GT] = std::make_pair(clang::OverloadedOperatorKind::OO_Greater, clang::BinaryOperatorKind::BO_GT);
+	ret[Lexer::TokenType::LTE] = std::make_pair(clang::OverloadedOperatorKind::OO_LessEqual, clang::BinaryOperatorKind::BO_LE);
+	ret[Lexer::TokenType::GTE] = std::make_pair(clang::OverloadedOperatorKind::OO_GreaterEqual, clang::BinaryOperatorKind::BO_GE);
+	ret[Lexer::TokenType::LeftShift] = std::make_pair(clang::OverloadedOperatorKind::OO_LessLess, clang::BinaryOperatorKind::BO_Shl);
+	ret[Lexer::TokenType::RightShift] = std::make_pair(clang::OverloadedOperatorKind::OO_GreaterGreater, clang::BinaryOperatorKind::BO_Shr);
+	return ret;
+}();
+Expression ClangType::BuildBinaryExpression(Expression lhs, Expression rhs, Lexer::TokenType tok, Analyzer& a) {
+	auto opkind = BinaryTokenMapping.at(tok).first;
+	auto opcode = BinaryTokenMapping.at(tok).second;
+    clang::ADLResult result;
+    auto declname = from->GetASTContext().DeclarationNames.getCXXOperatorName(opkind);
+    std::vector<clang::Expr*> exprs;
+       
+    // Decay the types, because for some reason expressions of type T& are bad. They need to be lvalues of type T.
+    auto lhsty = type.getNonLValueExprType(from->GetASTContext());
+    auto rhsty = rhs.t->GetClangType(*from, a).getNonLValueExprType(from->GetASTContext());
+    clang::OpaqueValueExpr first(clang::SourceLocation(), lhsty, Semantic::GetKindOfType(lhs.t));
+    exprs.push_back(&first);
+    clang::OpaqueValueExpr second(clang::SourceLocation(), rhsty, Semantic::GetKindOfType(rhs.t));
+    exprs.push_back(&second);
+    from->GetSema().ArgumentDependentLookup(declname, true, clang::SourceLocation(), exprs, result);
+    clang::UnresolvedSet<10> out;
+    for(auto x : result)
+        out.addDecl(x);
+    auto opresult = from->GetSema().CreateOverloadedBinOp(clang::SourceLocation(), opcode, out, &first, &second);
+    if (!opresult.get())
+		return Type::BuildBinaryExpression(lhs, rhs, tok, a);
+    auto callexpr = llvm::dyn_cast<clang::CallExpr>(opresult.get());
+       
+    auto fun = callexpr->getDirectCallee();
+    if (!fun) {
+        std::cout << "Fun was 0.\n";
+        llvm::raw_os_ostream out(std::cout);
+        callexpr->printPretty(out, 0, clang::PrintingPolicy(from->GetASTContext().getLangOpts()));
+		throw std::runtime_error("Internal compiler error: Attempted to build an overloaded binary operator, and Clang resolved the operator, but not to a function?");
+    }
 
-Expression ClangType::BuildNEComparison(Expression lhs, Expression rhs, Analyzer& a) {
-    return BuildOverloadedOperator(lhs, rhs, a, clang::OverloadedOperatorKind::OO_ExclaimEqual, clang::BinaryOperatorKind::BO_NE);
+    Type* ret = a.GetClangType(*from, fun->getResultType());
+    std::vector<Type*> types;
+    types.push_back(a.GetClangType(*from, fun->getParamDecl(0)->getType()));
+    if (fun->getNumParams() == 1) {
+        // Member method, and this is missing.
+        types.insert(types.begin(), lhs.t);
+    } else {
+        types.push_back(a.GetClangType(*from, fun->getParamDecl(1)->getType()));
+    }
+
+    auto funty = a.GetFunctionType(ret, types);
+    
+    Expression clangfunc;
+    clangfunc.t = funty;
+
+    if (a.gen)
+        clangfunc.Expr = a.gen->CreateFunctionValue(from->MangleName(fun));
+
+    std::vector<Expression> expressions;
+    expressions.push_back(lhs); expressions.push_back(rhs);
+    return funty->BuildCall(clangfunc, std::move(expressions), a);
 }
 Wide::Codegen::Expression* ClangType::BuildBooleanConversion(Expression self, Analyzer& a) {
     clang::OpaqueValueExpr ope(clang::SourceLocation(), type.getNonLValueExprType(from->GetASTContext()), Semantic::GetKindOfType(self.t));

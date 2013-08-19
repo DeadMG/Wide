@@ -2,14 +2,13 @@
 #include <Wide/Semantic/ClangTU.h>
 #include <Wide/Semantic/Analyzer.h>
 #include <Wide/Codegen/Generator.h>
+#include <Wide/Lexer/Token.h>
 
 #pragma warning(push, 0)
-
 #include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/Module.h>
 #include <clang/AST/ASTContext.h>
 #include <llvm/IR/DataLayout.h>
-
 #pragma warning(pop)
 
 using namespace Wide;
@@ -50,17 +49,37 @@ Expression Bool::BuildValueConstruction(std::vector<Expression> args, Analyzer& 
     throw std::runtime_error("Don't support constructing a bool from another type right now.");
 }
 
-Expression Bool::BuildOr(Expression lhs, Expression rhs, Analyzer& a) {
-    return Expression(this, a.gen->CreateOrExpression(lhs.BuildBooleanConversion(a), rhs.BuildBooleanConversion(a)));
-}
-
-Expression Bool::BuildAnd(Expression lhs, Expression rhs, Analyzer& a) {
-    return Expression(this, a.gen->CreateAndExpression(lhs.BuildBooleanConversion(a), rhs.BuildBooleanConversion(a)));
-}
-
 std::size_t Bool::size(Analyzer& a) {
     return llvm::DataLayout(a.gen->main.getDataLayout()).getTypeAllocSize(llvm::IntegerType::getInt8Ty(a.gen->context));
 }
 std::size_t Bool::alignment(Analyzer& a) {
     return llvm::DataLayout(a.gen->main.getDataLayout()).getABIIntegerTypeAlignment(8);
+}
+
+Expression Bool::BuildBinaryExpression(Expression lhs, Expression rhs, Wide::Lexer::TokenType type, Analyzer& a) {
+	auto lhsval = lhs.BuildValue(a);
+	auto rhsval = rhs.BuildValue(a);
+
+	// If the types are not suitable for primitive ops, fall back to ADL.
+	if (lhs.t->Decay() != this || rhs.t->Decay() != this)
+		return Type::BuildBinaryExpression(lhs, rhs, type, a);
+
+	switch(type) {
+	case Lexer::TokenType::EqCmp:
+		return Expression(this, a.gen->CreateEqualityExpression(lhsval.Expr, rhsval.Expr));
+		// Let the default come for ~=.
+	}
+
+	if (!a.IsLvalueType(lhs.t))
+		return Type::BuildBinaryExpression(lhs, rhs, type, a);
+	
+	switch(type) {
+	case Lexer::TokenType::AndAssign:
+		return Expression(lhs.t, a.gen->CreateStore(lhs.Expr, a.gen->CreateAndExpression(lhsval.Expr, rhsval.Expr)));
+	case Lexer::TokenType::XorAssign:
+		return Expression(lhs.t, a.gen->CreateStore(lhs.Expr, a.gen->CreateXorExpression(lhsval.Expr, rhsval.Expr)));
+	case Lexer::TokenType::OrAssign:
+		return Expression(lhs.t, a.gen->CreateStore(lhs.Expr, a.gen->CreateOrExpression(lhsval.Expr, rhsval.Expr)));
+	}
+	return Type::BuildBinaryExpression(lhs, rhs, type, a);
 }

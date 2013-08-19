@@ -1,5 +1,4 @@
 #pragma once
-
 #define _SCL_SECURE_NO_WARNINGS
 
 #include <Wide/Util/MemoryArena.h>
@@ -13,11 +12,9 @@
 #include <functional>
 
 #pragma warning(push, 0)
-
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Module.h>
 #include <llvm/Target/TargetMachine.h>
-
 #pragma warning(pop)
 
 namespace llvm {
@@ -76,7 +73,7 @@ namespace Wide {
             NullExpression* CreateNull(std::function<llvm::Type*(llvm::Module*)> type);
             IntegralLeftShiftExpression* CreateLeftShift(Expression*, Expression*);
             IntegralRightShiftExpression* CreateRightShift(Expression*, Expression*, bool);
-            IntegralLessThan* CreateSLT(Expression* lhs, Expression* rhs);
+            IntegralLessThan* CreateLT(Expression* lhs, Expression* rhs, bool);
             ZExt* CreateZeroExtension(Expression* val, std::function<llvm::Type*(llvm::Module*)> to);
             NegateExpression* CreateNegateExpression(Expression* val);
             OrExpression* CreateOrExpression(Expression* lhs, Expression* rhs);
@@ -84,9 +81,12 @@ namespace Wide {
             PlusExpression* CreatePlusExpression(Expression* lhs, Expression* rhs);
             MultiplyExpression* CreateMultiplyExpression(Expression* lhs, Expression* rhs);
             AndExpression* CreateAndExpression(Expression* lhs, Expression* rhs);
-            IntegralLessThan* CreateULT(Expression* lhs, Expression* rhs);
             SExt* CreateSignedExtension(Expression* val, std::function<llvm::Type*(llvm::Module*)> to);
             IsNullExpression* CreateIsNullExpression(Expression* val);
+			SubExpression* CreateSubExpression(Expression* l, Expression* r);
+			XorExpression* CreateXorExpression(Expression* l, Expression* r);
+			ModExpression* CreateModExpression(Expression* l, Expression* r, bool is_signed);
+			DivExpression* CreateDivExpression(Expression* l, Expression* r, bool is_signed);
 
             void operator()();
         };

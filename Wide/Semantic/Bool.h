@@ -6,15 +6,14 @@ namespace Wide {
     namespace Semantic {
         class Bool : public PrimitiveType {
         public:
-            std::function<llvm::Type*(llvm::Module*)> GetLLVMType(Analyzer& a);
-            clang::QualType GetClangType(ClangUtil::ClangTU&, Analyzer& a);
+            std::function<llvm::Type*(llvm::Module*)> GetLLVMType(Analyzer& a) override;
+            clang::QualType GetClangType(ClangUtil::ClangTU&, Analyzer& a) override;
 
-            Codegen::Expression* BuildBooleanConversion(Expression, Analyzer& a);
-            Expression BuildValueConstruction(std::vector<Expression> args, Analyzer& a);
-            Expression BuildOr(Expression lhs, Expression rhs, Analyzer& a);
-            Expression BuildAnd(Expression lhs, Expression rhs, Analyzer& a);
-            std::size_t size(Analyzer& a);
-            std::size_t alignment(Analyzer& a);
+			Codegen::Expression* BuildBooleanConversion(Expression, Analyzer& a) override;
+            Expression BuildValueConstruction(std::vector<Expression> args, Analyzer& a) override;
+			Expression BuildBinaryExpression(Expression lhs, Expression rhs, Wide::Lexer::TokenType type, Analyzer& a) override;
+            std::size_t size(Analyzer& a) override;
+            std::size_t alignment(Analyzer& a) override;
         };
     }
 }

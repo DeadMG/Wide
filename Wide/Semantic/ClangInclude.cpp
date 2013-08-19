@@ -16,7 +16,7 @@
 using namespace Wide;
 using namespace Semantic;
 
-Expression ClangIncludeEntity::AccessMember(Expression, std::string name, Analyzer& a) {
+Wide::Util::optional<Expression> ClangIncludeEntity::AccessMember(Expression, std::string name, Analyzer& a) {
     if (name == "mangle") {
         struct ClangNameMangler : public MetaType {
             Expression BuildCall(Expression, std::vector<Expression> args, Analyzer& a) {
@@ -32,7 +32,7 @@ Expression ClangIncludeEntity::AccessMember(Expression, std::string name, Analyz
         };
         return a.arena.Allocate<ClangNameMangler>()->BuildValueConstruction(a);
     }
-    throw std::runtime_error("Attempted to access a member of ClangIncludeEntity that did not exist.");
+	return Wide::Util::none;
 }
 
 Expression ClangIncludeEntity::BuildCall(Expression e, std::vector<Expression> args, Analyzer& a) {

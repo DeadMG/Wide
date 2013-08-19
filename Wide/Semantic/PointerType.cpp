@@ -3,6 +3,7 @@
 #include <Wide/Codegen/Generator.h>
 #include <Wide/Semantic/Analyzer.h>
 #include <Wide/Semantic/NullType.h>
+#include <Wide/Lexer/Token.h>
 
 #pragma warning(push, 0)
 #include <clang/AST/ASTContext.h>
@@ -52,12 +53,17 @@ Expression PointerType::BuildAssignment(Expression obj, Expression arg, Analyzer
     return Expression(this, a.gen->CreateChainExpression(BuildInplaceConstruction(obj.Expr, arg, a), obj.Expr));
 }
 
-Expression PointerType::BuildEQComparison(Expression lhs, Expression rhs, Analyzer& a) {
-    lhs = lhs.t->BuildValue(lhs, a);
-    rhs = rhs.t->BuildValue(rhs, a);
-    if (lhs.t != this || rhs.t != this)
-        throw std::runtime_error("Attempted to compare a pointer with something that was not a pointer of the same type.");
-    return Expression(a.GetBooleanType(), a.gen->CreateEqualityExpression(lhs.Expr, rhs.Expr));
+Expression PointerType::BuildBinaryExpression(Expression lhs, Expression rhs, Lexer::TokenType type, Analyzer& a) {
+	if (type == Lexer::TokenType::EqCmp) {
+		// If we're not a match, permit ADL to take over. Else, generate the primitive operator.
+	    if (lhs.t->Decay() != this || rhs.t->Decay() != this)
+	 	   return Type::BuildBinaryExpression(lhs, rhs, type, a);
+        lhs = lhs.t->BuildValue(lhs, a);
+        rhs = rhs.t->BuildValue(rhs, a);
+        return Expression(a.GetBooleanType(), a.gen->CreateEqualityExpression(lhs.Expr, rhs.Expr));
+	}
+	// Permit ADL to find any funky operators the user may have defined.
+	return Type::BuildBinaryExpression(lhs, rhs, type, a);
 }
 
 Codegen::Expression* PointerType::BuildBooleanConversion(Expression obj, Analyzer& a) {

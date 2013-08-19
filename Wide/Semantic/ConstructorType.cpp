@@ -34,14 +34,14 @@ struct EmplaceType : public MetaType {
 Expression ConstructorType::BuildCall(Expression, std::vector<Expression> args, Analyzer& a) {
     return t->BuildRvalueConstruction(std::move(args), a);
 }
-Expression ConstructorType::AccessMember(Expression, std::string name, Analyzer& a) {
+Wide::Util::optional<Expression> ConstructorType::AccessMember(Expression, std::string name, Analyzer& a) {
     Expression self;
     self.t = t;
     self.Expr = nullptr;
     return t->AccessMember(self, name, a);
 }
 
-Expression ConstructorType::PointerAccessMember(Expression obj, std::string name, Analyzer& a) {
+Wide::Util::optional<Expression> ConstructorType::PointerAccessMember(Expression obj, std::string name, Analyzer& a) {
     if (name == "decay")
         return a.GetConstructorType(t->Decay())->BuildValueConstruction(std::vector<Expression>(), a);
     if (name == "lvalue")

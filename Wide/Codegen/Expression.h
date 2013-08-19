@@ -266,5 +266,39 @@ namespace Wide {
                 : ptr(p) {}
             llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g);
         };
+
+		class XorExpression : public Expression {
+			Expression* lhs;
+			Expression* rhs;
+		public:
+			XorExpression(Expression* l, Expression* r) : lhs(l), rhs(r) {}
+			llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g);
+		};
+
+		class SubExpression : public Expression {
+			Expression* lhs;
+			Expression* rhs;
+		public:
+			SubExpression(Expression* l, Expression* r) : lhs(l), rhs(r) {}
+			llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g);
+		};
+
+		class ModExpression : public Expression {
+			Expression* lhs;
+			Expression* rhs;
+			bool is_signed;
+		public:
+			ModExpression(Expression* l, Expression* r, bool is_sign) : lhs(l), rhs(r), is_signed(is_sign){}
+			llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g);
+		};
+
+		class DivExpression : public Expression {
+			Expression* lhs;
+			Expression* rhs;
+			bool is_signed;
+		public:
+			DivExpression(Expression* l, Expression* r, bool is_sign) : lhs(l), rhs(r), is_signed(is_sign) {}
+			llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g);
+		};
     }
 }

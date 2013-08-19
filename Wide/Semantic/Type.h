@@ -7,6 +7,7 @@
 #include <functional>
 #include <string>
 #include <cassert>
+#include <Wide/Util/Ranges/Optional.h>
 
 namespace llvm {
     class Type;
@@ -27,6 +28,9 @@ namespace Wide {
     namespace AST {
         struct DeclContext;
     }
+	namespace Lexer {
+		enum class TokenType : int;
+	}
     namespace Semantic {
         class Analyzer;
         struct Type;
@@ -42,34 +46,23 @@ namespace Wide {
             Codegen::Expression* Expr;
             bool steal;
             
-            /*Expression BuildValueConstruction(std::vector<Expression> args, Analyzer& a);
-            Expression BuildRvalueConstruction(std::vector<Expression> args, Analyzer& a);
-            Expression BuildLvalueConstruction(std::vector<Expression> args, Analyzer& a);
-            Codegen::Expression* BuildInplaceConstruction(Codegen::Expression* mem, std::vector<Expression> args, Analyzer& a);*/
-
             Expression BuildValue(Analyzer& a);
             Expression BuildRightShift(Expression rhs, Analyzer& a);
             Expression BuildLeftShift(Expression rhs, Analyzer& a);
             Expression BuildAssignment(Expression rhs, Analyzer& a);
-            Expression AccessMember(std::string name, Analyzer& a);
+            Wide::Util::optional<Expression> AccessMember(std::string name, Analyzer& a);
             Expression BuildCall(std::vector<Expression> args, Analyzer& a);
+			Expression BuildCall(Expression lhs, Expression rhs, Analyzer& a);
             Expression BuildCall(Expression arg, Analyzer& a);
             Expression BuildCall(Analyzer& a);
             Expression BuildMetaCall(std::vector<Expression> args, Analyzer& a);
-            Expression BuildEQComparison(Expression rhs, Analyzer& a);
-            Expression BuildNEComparison(Expression rhs, Analyzer& a);
-            Expression BuildLTComparison(Expression rhs, Analyzer& a);
-            Expression BuildLTEComparison(Expression rhs, Analyzer& a);
-            Expression BuildGTComparison(Expression rhs, Analyzer& a);
-            Expression BuildGTEComparison(Expression rhs, Analyzer& a);
             Expression BuildDereference(Analyzer& a);
-            Expression BuildOr(Expression rhs, Analyzer& a);
-            Expression BuildAnd(Expression rhs, Analyzer& a);            
-            Expression BuildMultiply(Expression rhs, Analyzer& a);
-            Expression BuildPlus(Expression rhs, Analyzer& a);
             Expression BuildIncrement(bool postfix, Analyzer& a);
+			Expression BuildNegate(Analyzer& a);
+			
+			Expression BuildBinaryExpression(Expression rhs, Lexer::TokenType type, Analyzer& a);
 
-            Expression PointerAccessMember(std::string name, Analyzer& a);
+            Wide::Util::optional<Expression> PointerAccessMember(std::string name, Analyzer& a);
 
             Expression AddressOf(Analyzer& a);
 
@@ -91,13 +84,19 @@ namespace Wide {
         };
         struct Type  {
         public:
-            virtual bool IsReference(Type*) {
-                return false;
-            }
+			virtual bool IsReference(Type* to) {
+				return false;
+			}
             virtual bool IsReference() {
                 return false;
+            } 
+			virtual Type* Decay() {
+                return this;
             }
+
             virtual AST::DeclContext* GetDeclContext() {
+				if (IsReference())
+					return Decay()->GetDeclContext();
                 return nullptr;
             }
             virtual bool IsComplexType() { return false; }
@@ -105,11 +104,11 @@ namespace Wide {
             virtual std::function<llvm::Type*(llvm::Module*)> GetLLVMType(Analyzer& a) {
                 throw std::runtime_error("This type has no LLVM counterpart.");
             }
-            Type* Decay() {
-                if (IsReference())
-                    return Decay();
-                return this;
-            }
+
+            virtual std::size_t size(Analyzer& a) { throw std::runtime_error("Attempted to size a type that does not have a run-time size."); }
+            virtual std::size_t alignment(Analyzer& a) { throw std::runtime_error("Attempted to align a type that does not have a run-time alignment."); }
+
+
             virtual Expression BuildValueConstruction(std::vector<Expression> args, Analyzer& a);
             virtual Expression BuildRvalueConstruction(std::vector<Expression> args, Analyzer& a);
             virtual Expression BuildLvalueConstruction(std::vector<Expression> args, Analyzer& a);
@@ -127,91 +126,55 @@ namespace Wide {
             virtual Expression BuildLvalueConstruction(Analyzer& a);
             virtual Codegen::Expression* BuildInplaceConstruction(Codegen::Expression* mem, Analyzer& a);
 
-            virtual Expression BuildValue(Expression lhs, Analyzer& a) {
-                if (IsComplexType())
-                    throw std::runtime_error("Internal Compiler Error: Attempted to build a complex type into a register.");
-                return lhs;
-            }            
 
-            virtual Expression BuildRightShift(Expression lhs, Expression rhs, Analyzer& a) {
-                throw std::runtime_error("Attempted to right shift with a type that did not support it.");
-            }
-            virtual Expression BuildLeftShift(Expression lhs, Expression rhs, Analyzer& a) {
-                throw std::runtime_error("Attempted to left shift with a type that did not support it.");
-            }
+            virtual Expression BuildValue(Expression lhs, Analyzer& a);
             virtual Expression BuildAssignment(Expression lhs, Expression rhs, Analyzer& a) {
-                throw std::runtime_error("Attempted to assign to a type that did not support it.");
+                if (IsReference())
+					return Decay()->BuildAssignment(lhs, rhs, a);
+				throw std::runtime_error("Attempted to use operator= on a type that did not support it.");
             }            
-            virtual Expression AccessMember(Expression, std::string name, Analyzer& a);
+			virtual Wide::Util::optional<Expression> AccessMember(Expression, std::string name, Analyzer& a);
+			virtual Wide::Util::optional<Expression> AccessMember(Expression e, Lexer::TokenType type, Analyzer& a) {
+				if (IsReference())
+					return Decay()->AccessMember(e, type, a);
+				return Wide::Util::none;
+			}
             virtual Expression BuildCall(Expression val, std::vector<Expression> args, Analyzer& a) {
+				if (IsReference())
+					return Decay()->BuildCall(val, std::move(args), a);
                 throw std::runtime_error("Attempted to call a type that did not support it.");
             }
             virtual Expression BuildMetaCall(Expression val, std::vector<Expression> args, Analyzer& a) {
                 throw std::runtime_error("Attempted to call a type that did not support it.");
             }
-            virtual Expression BuildEQComparison(Expression lhs, Expression rhs, Analyzer& a) {
-                throw std::runtime_error("This type cannot be compared.");
+			virtual ConversionRank RankConversionFrom(Type* to, Analyzer& a);
+            virtual Codegen::Expression* BuildBooleanConversion(Expression val, Analyzer& a) {
+				if (IsReference())
+					return Decay()->BuildBooleanConversion(val, a);
+                throw std::runtime_error("Could not convert a type to boolean.");
             }
-            virtual Expression BuildNEComparison(Expression lhs, Expression rhs, Analyzer& a);
-            virtual Expression BuildLTComparison(Expression lhs, Expression rhs, Analyzer& a) {
-                throw std::runtime_error("This type cannot be compared for inequality.");
-            }
-            virtual Expression BuildLTEComparison(Expression lhs, Expression rhs, Analyzer& a) {
-                throw std::runtime_error("This type cannot be compared for inequality.");
-            }
-            virtual Expression BuildGTComparison(Expression lhs, Expression rhs, Analyzer& a) {
-                throw std::runtime_error("This type cannot be compared for inequality.");
-            }
-            virtual Expression BuildGTEComparison(Expression lhs, Expression rhs, Analyzer& a) {
-                throw std::runtime_error("This type cannot be compared for inequality.");
-            }
-            virtual Expression BuildDereference(Expression obj, Analyzer& a) {
-                throw std::runtime_error("This type does not support de-referencing.");
-            }
-            virtual Expression BuildOr(Expression lhs, Expression rhs, Analyzer& a) {
-                if (IsReference())
-                    return Decay()->BuildOr(lhs, rhs, a);
-                throw std::runtime_error("Attempted to use operator| on a type that did not support it.");
-            }
-            virtual Expression BuildAnd(Expression lhs, Expression rhs, Analyzer& a) {
-                if (IsReference())
-                    return Decay()->BuildAnd(lhs, rhs, a);
-                throw std::runtime_error("Attempted to use operator| on a type that did not support it.");
-            }
-            
-            virtual Expression BuildMultiply(Expression lhs, Expression rhs, Analyzer& a) {
-                if (IsReference())
-                    return Decay()->BuildMultiply(lhs, rhs, a);
-                throw std::runtime_error("Attempted to multiply a type that did not support it.");
-            }
-            virtual Expression BuildPlus(Expression lhs, Expression rhs, Analyzer& a) {
-                if (IsReference())
-                    return Decay()->BuildPlus(lhs, rhs, a);
-                throw std::runtime_error("Attempted to add a type that did not support it.");
-            }
+			
+			virtual Expression BuildNegate(Expression val, Analyzer& a);
             virtual Expression BuildIncrement(Expression obj, bool postfix, Analyzer& a) {
                 if (IsReference())
                     return Decay()->BuildIncrement(obj, postfix, a);
                 throw std::runtime_error("Attempted to increment a type that did not support it.");
+            }	
+            virtual Expression BuildDereference(Expression obj, Analyzer& a) {
+				if (IsReference())
+					return Decay()->BuildDereference(obj, a);
+                throw std::runtime_error("This type does not support de-referencing.");
             }
-
-            virtual Expression PointerAccessMember(Expression obj, std::string name, Analyzer& a) {
+            virtual Wide::Util::optional<Expression> PointerAccessMember(Expression obj, std::string name, Analyzer& a) {
+				if (IsReference())
+					return Decay()->PointerAccessMember(obj, std::move(name), a);
                 obj = obj.t->BuildDereference(obj, a);
                 return obj.t->AccessMember(obj, std::move(name), a);
             }
-
             virtual Expression AddressOf(Expression obj, Analyzer& a);
 
-            virtual ConversionRank RankConversionFrom(Type* to, Analyzer& a);
-            //Or,
-            //And,
-            //Xor
-            virtual Codegen::Expression* BuildBooleanConversion(Expression val, Analyzer& a) {
-                throw std::runtime_error("Could not convert a type to boolean.");
-            }
-            virtual std::size_t size(Analyzer& a) { throw std::runtime_error("Attempted to size a meta-type that does not have a run-time size."); }
-            virtual std::size_t alignment(Analyzer& a) { throw std::runtime_error("Attempted to align a meta-type that does not have a run-time alignment."); }
-                        
+			virtual Expression BuildBinaryExpression(Expression lhs, Expression rhs, Lexer::TokenType type, Analyzer& a);
+						                        
             virtual ~Type() {}
         };     
     }

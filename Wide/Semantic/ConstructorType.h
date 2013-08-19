@@ -9,13 +9,13 @@ namespace Wide {
             Type* emplace;
         public:
             ConstructorType(Type* con);
-            Expression BuildCall(Expression, std::vector<Expression>, Analyzer& a);
+            Expression BuildCall(Expression, std::vector<Expression>, Analyzer& a) override;
 
             Type* GetConstructedType() {
                 return t;
             }
-            Expression AccessMember(Expression, std::string name, Analyzer& a);
-            Expression PointerAccessMember(Expression obj, std::string name, Analyzer& a);
+            Wide::Util::optional<Expression> AccessMember(Expression, std::string name, Analyzer& a) override;
+            Wide::Util::optional<Expression> PointerAccessMember(Expression obj, std::string name, Analyzer& a) override;
             using Type::BuildValueConstruction;
         };
     }

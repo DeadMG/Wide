@@ -87,6 +87,7 @@ namespace Wide {
             std::unordered_map<AST::Module*, Module*> WideModules;
             std::unordered_map<unsigned, std::unordered_map<bool, IntegralType*>> integers;
             std::unordered_map<Type*, PointerType*> Pointers;
+			std::unordered_map<OverloadSet*, std::unordered_map<OverloadSet*, OverloadSet*>> CombinedOverloadSets;
 
             const Options::Clang* clangopts;
 
@@ -127,6 +128,7 @@ namespace Wide {
             ConstructorType* GetConstructorType(Type* t);
             ClangTemplateClass* GetClangTemplateClass(ClangUtil::ClangTU& from, clang::ClassTemplateDecl*);
             OverloadSet* GetOverloadSet(AST::FunctionOverloadSet* set, Type* nonstatic = nullptr);
+			OverloadSet* GetOverloadSet(OverloadSet*, OverloadSet*);
             UserDefinedType* GetUDT(AST::Type*, Type* context);
             Type* GetDeclContext(AST::DeclContext* con);
             IntegralType* GetIntegralType(unsigned, bool);
