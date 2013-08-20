@@ -12,13 +12,11 @@
 #include <iostream>
 
 #pragma warning(push, 0)
-
 #include <clang/AST/ASTContext.h>
 #include <clang/Sema/Sema.h>
 #include <clang/Sema/Lookup.h>
 #include <llvm/Support/raw_os_ostream.h>
 #include <llvm/IR/DerivedTypes.h>
-
 #pragma warning(pop)
 
 using namespace Wide;

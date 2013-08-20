@@ -3,7 +3,7 @@
 #include <initializer_list>
 
 #define CATCH_CONFIG_MAIN
-#include "Catch.h"
+#include <Wide/Util/Catch.h>
 
 using namespace Wide;
 

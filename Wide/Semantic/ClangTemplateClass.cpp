@@ -9,12 +9,10 @@ using namespace Wide;
 using namespace Semantic;
 
 #pragma warning(push, 0)
-
 #include <clang/AST/DeclTemplate.h>
 #include <clang/AST/ASTContext.h>
 #include <clang/AST/Type.h>
 #include <clang/Sema/Sema.h>
-
 #pragma warning(pop)
 
 Expression ClangTemplateClass::BuildCall(Expression, std::vector<Expression> args, Analyzer& a) {
@@ -30,7 +28,7 @@ Expression ClangTemplateClass::BuildCall(Expression, std::vector<Expression> arg
         }
         if (auto in = dynamic_cast<IntegralType*>(x.t)) {
             if (auto integral = dynamic_cast<Codegen::IntegralExpression*>(x.Expr)) {
-                clang::IntegerLiteral lit(from->GetASTContext(), llvm::APInt(64, integral->value, integral->sign), from->GetASTContext().LongLongTy, clang::SourceLocation());
+                clang::IntegerLiteral lit(from->GetASTContext(), llvm::APInt(64, integral->GetValue(), integral->GetSign()), from->GetASTContext().LongLongTy, clang::SourceLocation());
                 tl.addArgument(clang::TemplateArgumentLoc(clang::TemplateArgument(&lit), clang::TemplateArgumentLocInfo()));
                 continue;
             } else {

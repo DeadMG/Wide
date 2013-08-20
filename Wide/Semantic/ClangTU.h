@@ -1,7 +1,5 @@
 #pragma once
 
-#define _SCL_SECURE_NO_WARNINGS 
-
 #include <Wide/Semantic/Util.h>
 #include <Wide/Semantic/ClangOptions.h>
 #include <memory>
@@ -11,7 +9,9 @@
 #include <unordered_map>
 
 #ifndef _MSC_VER
+#pragma warning(push, 0)
 #include <clang/AST/Type.h>
+#pragma warning(pop)
 #endif
 
 namespace llvm {

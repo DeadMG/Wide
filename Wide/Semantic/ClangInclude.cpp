@@ -7,11 +7,8 @@
 #include <Wide/Codegen/Generator.h>
 
 #pragma warning(push, 0)
-
 #include <clang/AST/Type.h>
-
 #pragma warning(pop)
-
 
 using namespace Wide;
 using namespace Semantic;

@@ -1,13 +1,10 @@
 #pragma once
 
-#define _SCL_SECURE_NO_WARNINGS
-
 #include <functional>
 #include <string>
 #include <iostream>
 
 #pragma warning(push, 0)
-
 #include <clang/Basic/FileSystemOptions.h>
 #include <clang/Basic/DiagnosticIDs.h>
 #include <clang/Basic/DiagnosticOptions.h>
@@ -17,7 +14,6 @@
 #include <clang/Lex/PreprocessorOptions.h>
 #include <clang/Frontend/FrontendOptions.h>
 #include <clang/Frontend/CodeGenOptions.h>
-
 #pragma warning(pop)
 
 namespace Wide {    

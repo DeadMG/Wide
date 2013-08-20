@@ -4,10 +4,8 @@
 #include <unordered_map>
 
 #pragma warning(push, 0)
-
 #include <clang/AST/Type.h>
 #include <clang/AST/Expr.h>
-
 #pragma warning(pop)
 
 namespace clang {

@@ -1,11 +1,8 @@
 #pragma once
 
-#define _SCL_SECURE_NO_WARNINGS
-
 #include <Wide/Util/MemoryArena.h>
 #include <Wide/Semantic/Util.h>
 #include <Wide/Semantic/ClangOptions.h>
-
 #include <string>
 #include <unordered_map>
 #include <vector>

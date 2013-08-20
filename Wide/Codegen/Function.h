@@ -1,11 +1,9 @@
 #pragma once
-
-#define _SCL_SECURE_NO_WARNINGS
-
 #include <vector>
 #include <functional>
 #include <unordered_map>
 #include <string>
+#include <Wide/Codegen/Generator.h>
 
 namespace llvm {
     class Type;
@@ -18,10 +16,10 @@ namespace Wide {
     namespace Semantic {
         class Function;
     }
-    namespace Codegen {
+    namespace LLVMCodegen {
         class Statement;
 		class Generator;
-        class Function {
+		class Function : public Codegen::Function {
             std::vector<Statement*> statements;
             std::function<llvm::Type*(llvm::Module*)> Type;
             std::string name;
@@ -30,9 +28,7 @@ namespace Wide {
             Semantic::Function* debug;
         public:
             llvm::Value* GetParameter(unsigned i);
-            void AddStatement(Statement* s) {
-                statements.push_back(s);
-            }
+            void AddStatement(Codegen::Statement* s);
             void Clear() { statements.clear(); }
             
             void EmitCode(llvm::Module*, llvm::LLVMContext& con, Generator&);

@@ -121,7 +121,7 @@ void Analyzer::operator()(AST::Module* GlobalModule) {
       
     GetWideModule(GlobalModule)->AccessMember(Expression(), "Standard", *this)->t->AccessMember(Expression(), "Main", *this)->t->BuildCall(Expression(), std::vector<Expression>(), *this);
     for(auto&& x : this->headers)
-        x.second.GenerateCodeAndLinkModule(&gen->main);
+		gen->AddClangTU([&](llvm::Module* main) { x.second.GenerateCodeAndLinkModule(main); });
 }
 
 Expression Analyzer::AnalyzeExpression(Type* t, AST::Expression* e) {
@@ -354,7 +354,7 @@ Expression Analyzer::AnalyzeExpression(Type* t, AST::Expression* e) {
 ClangUtil::ClangTU* Analyzer::LoadCPPHeader(std::string file) {
     if (headers.find(file) != headers.end())
         return &headers.find(file)->second;
-    headers.insert(std::make_pair(file, ClangUtil::ClangTU(gen->context, file, *clangopts)));
+	headers.insert(std::make_pair(file, ClangUtil::ClangTU(gen->GetContext(), file, *clangopts)));
     auto ptr = &headers.find(file)->second;
     return ptr;
 }

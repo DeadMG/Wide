@@ -30,8 +30,8 @@ Codegen::Expression* MetaType::BuildInplaceConstruction(Codegen::Expression* mem
     return args.size() == 0 ? mem : a.gen->CreateChainExpression(args[0].Expr, mem);
 }
 
-std::size_t MetaType::size(Analyzer& a) { return llvm::DataLayout(a.gen->main.getDataLayout()).getTypeAllocSize(llvm::IntegerType::getInt8Ty(a.gen->context));}
-std::size_t MetaType::alignment(Analyzer& a) { return llvm::DataLayout(a.gen->main.getDataLayout()).getABIIntegerTypeAlignment(8); }
+std::size_t MetaType::size(Analyzer& a) { return a.gen->GetInt8AllocSize(); }
+std::size_t MetaType::alignment(Analyzer& a) { return a.gen->GetDataLayout().getABIIntegerTypeAlignment(8); }
 
 Expression MetaType::BuildValueConstruction(std::vector<Expression> args, Analyzer& a) {
     if (args.size() > 1)

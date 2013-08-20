@@ -10,14 +10,12 @@
 #include <sstream>
 
 #pragma warning(push, 0)
-
 #include <clang/Sema/Sema.h>
 #include <clang/AST/ASTContext.h>
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Module.h>
 #include <llvm/IR/DataLayout.h>
 #include <llvm/IR/DerivedTypes.h>
-
 #pragma warning(pop)
 
 using namespace Wide;
@@ -124,12 +122,12 @@ std::function<llvm::Type*(llvm::Module*)> ClangOverloadSet::GetLLVMType(Analyzer
 }
 
 std::size_t ClangOverloadSet::size(Analyzer& a) {
-    if (!nonstatic) return llvm::DataLayout(a.gen->main.getDataLayout()).getTypeAllocSize(llvm::IntegerType::getInt8Ty(a.gen->context));
-    return llvm::DataLayout(a.gen->main.getDataLayout()).getPointerSize();
+	if (!nonstatic) a.gen->GetInt8AllocSize();
+	return a.gen->GetDataLayout().getPointerSize();
 }
 std::size_t ClangOverloadSet::alignment(Analyzer& a) {
-    if (!nonstatic) return llvm::DataLayout(a.gen->main.getDataLayout()).getABIIntegerTypeAlignment(8);
-    return llvm::DataLayout(a.gen->main.getDataLayout()).getPointerABIAlignment();
+    if (!nonstatic) return llvm::DataLayout(a.gen->GetDataLayout()).getABIIntegerTypeAlignment(8);
+	return a.gen->GetDataLayout().getPointerABIAlignment();
 }
 Expression ClangOverloadSet::BuildValueConstruction(std::vector<Expression> args, Analyzer& a) {
     if (args.size() > 1)

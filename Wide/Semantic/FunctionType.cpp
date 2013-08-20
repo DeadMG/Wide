@@ -5,11 +5,9 @@
 #include <Wide/Semantic/ClangTU.h>
 
 #pragma warning(push, 0)
-
 #include <clang/AST/Type.h>
 #include <clang/AST/ASTContext.h>
 #include <llvm/IR/DerivedTypes.h>
-
 #pragma warning(pop)
 
 using namespace Wide;

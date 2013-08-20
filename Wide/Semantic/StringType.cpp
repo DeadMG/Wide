@@ -4,13 +4,11 @@
 #include <Wide/Codegen/Generator.h>
 
 #pragma warning(push, 0)
-
 #include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/Module.h>
 #include <clang/AST/Type.h>
 #include <clang/AST/ASTContext.h>
 #include <llvm/IR/DataLayout.h>
-
 #pragma warning(pop)
 
 using namespace Wide;
@@ -26,8 +24,8 @@ clang::QualType StringType::GetClangType(Wide::ClangUtil::ClangTU& TU, Analyzer&
 }
 
 std::size_t StringType::size(Analyzer& a) {
-    return llvm::DataLayout(a.gen->main.getDataLayout()).getPointerSize();
+    return llvm::DataLayout(a.gen->GetDataLayout()).getPointerSize();
 }
 std::size_t StringType::alignment(Analyzer& a) {
-    return llvm::DataLayout(a.gen->main.getDataLayout()).getPointerABIAlignment();
+    return llvm::DataLayout(a.gen->GetDataLayout()).getPointerABIAlignment();
 }

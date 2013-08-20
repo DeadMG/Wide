@@ -4,7 +4,7 @@
 #include <Wide/Codegen/LLVMOptions.h>
 #include <Wide/Semantic/Analyzer.h>
 #include <Wide/Parser/Parser.h>
-#include <Wide/Codegen/Generator.h>
+#include <Wide/Codegen/LLVMGenerator.h>
 #include <Wide/Lexer/Lexer.h>
 #include <Wide/Util/ParallelForEach.h>
 #include <Wide/Parser/Builder.h>
@@ -21,7 +21,7 @@
 #endif
 
 void Compile(const Wide::Options::Clang& copts, const Wide::Options::LLVM& lopts, const std::vector<std::string>& files) {    
-    Wide::Codegen::Generator Generator(lopts, copts.FrontendOptions.OutputFile, copts.TargetOptions.Triple);
+    Wide::LLVMCodegen::Generator Generator(lopts, copts.FrontendOptions.OutputFile, copts.TargetOptions.Triple);
     Wide::AST::Builder ASTBuilder;
     Wide::Semantic::Analyzer Sema(copts, &Generator);
     

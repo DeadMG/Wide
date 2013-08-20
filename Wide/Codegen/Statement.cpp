@@ -3,7 +3,7 @@
 #include <stdexcept>
 
 using namespace Wide;
-using namespace Codegen;
+using namespace LLVMCodegen;
 
 #pragma warning(push, 0)
 
@@ -39,7 +39,9 @@ void ReturnStatement::Build(llvm::IRBuilder<>& bb, Generator& g) {
 }
 
 Codegen::Expression* ReturnStatement::GetReturnExpression() {
-    return val;
+	auto p = dynamic_cast<Codegen::Expression*>(val);
+	assert(p);
+    return p;
 }
 
 void IfStatement::Build(llvm::IRBuilder<>& bb, Generator& g) {

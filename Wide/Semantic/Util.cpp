@@ -3,7 +3,6 @@
 #include <unordered_map>
 
 #pragma warning(push, 0)
-
 #include <CodeGen/CodeGenModule.h>
 #include <clang/Frontend/CodeGenOptions.h>
 #include <clang/Basic/TargetOptions.h>
@@ -11,7 +10,6 @@
 #include <clang/AST/RecursiveASTVisitor.h>
 #include <clang/AST/DeclGroup.h>
 #include <clang/Lex/HeaderSearchOptions.h>
-
 #pragma warning(pop)
 
 namespace Wide {

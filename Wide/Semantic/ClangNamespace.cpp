@@ -10,13 +10,11 @@
 #include <Wide/Util/MakeUnique.h>
 
 #pragma warning(push, 0)
-
 #include <clang/AST/Type.h>
 #include <clang/AST/ASTContext.h>
 #include <clang/Sema/Lookup.h>
 #include <clang/Sema/Sema.h>
 #include <clang/AST/UnresolvedSet.h>
-
 #pragma warning(pop)
 
 using namespace Wide;

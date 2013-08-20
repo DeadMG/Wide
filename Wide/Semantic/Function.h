@@ -2,16 +2,11 @@
 
 #include <Wide/Semantic/Type.h>
 #include <Wide/Codegen/Expression.h>
-
-#define _SCL_SECURE_NO_WARNINGS
-
 #include <vector>
 #include <unordered_map>
 
 #pragma warning(push, 0)
-
 #include <llvm/IR/DerivedTypes.h>
-
 #pragma warning(pop)
 
 namespace llvm {

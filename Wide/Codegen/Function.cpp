@@ -2,10 +2,10 @@
 
 #include <Wide/Codegen/Function.h>
 #include <Wide/Codegen/Statement.h>
-#include <Wide/Codegen/Generator.h>
+#include <Wide/Codegen/LLVMGenerator.h>
 
 using namespace Wide;
-using namespace Codegen;
+using namespace LLVMCodegen;
 
 #pragma warning(push, 0)
 
@@ -33,7 +33,7 @@ void Function::EmitCode(llvm::Module* mod, llvm::LLVMContext& con, Generator& g)
 			if (tramp && fty->getReturnType() == llvm::IntegerType::getInt1Ty(con) && ty->getReturnType() == llvm::IntegerType::getInt8Ty(con)) {
 			    // Expect one return statement in a trampoline. Might modify if cause to later.
 			    assert(statements.size() == 1 && "A trampoline must have only one return statement so that the codegen can fix up i8/i1 issues.");
-			    auto ret = dynamic_cast<Codegen::ReturnStatement*>(statements[0]);
+			    auto ret = dynamic_cast<LLVMCodegen::ReturnStatement*>(statements[0]);
 			    assert(ret && "A trampoline's single statement must be a return statement.");
 			    statements[0] = g.CreateReturn(g.CreateTruncate(ret->GetReturnExpression(), [&](llvm::Module*) { return llvm::IntegerType::getInt1Ty(con); }));
             } else {
@@ -93,3 +93,8 @@ Function::Function(std::function<llvm::Type*(llvm::Module*)> ret, std::string na
 	, tramp(trampoline)
     , debug(de)
 {}
+void Function::AddStatement(Codegen::Statement* s) {
+	auto p = dynamic_cast<LLVMCodegen::Statement*>(s);
+	assert(p);
+    statements.push_back(p);
+}

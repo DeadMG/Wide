@@ -14,7 +14,6 @@
 #include <Wide/Semantic/UserDefinedType.h>
 
 #pragma warning(push, 0)
-
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Module.h>
 #include <llvm/IR/DerivedTypes.h>
@@ -23,7 +22,6 @@
 #include <clang/AST/ASTContext.h>
 #include <llvm/IR/DataLayout.h>
 #include <clang/Sema/Sema.h>
-
 #pragma warning(pop)
 
 using namespace Wide;
@@ -406,12 +404,12 @@ clang::QualType OverloadSet::GetClangType(ClangUtil::ClangTU& TU, Analyzer& a) {
     return clangtypes[&TU] = TU.GetASTContext().getTypeDeclType(recdecl);
 }
 std::size_t OverloadSet::size(Analyzer& a) {
-    if (!nonstatic) return llvm::DataLayout(a.gen->main.getDataLayout()).getTypeAllocSize(llvm::IntegerType::getInt8Ty(a.gen->context));
-    return llvm::DataLayout(a.gen->main.getDataLayout()).getPointerSize();
+	if (!nonstatic) return a.gen->GetInt8AllocSize();
+    return llvm::DataLayout(a.gen->GetDataLayout()).getPointerSize();
 }
 std::size_t OverloadSet::alignment(Analyzer& a) {
-    if (!nonstatic) return llvm::DataLayout(a.gen->main.getDataLayout()).getABIIntegerTypeAlignment(8);
-    return llvm::DataLayout(a.gen->main.getDataLayout()).getPointerABIAlignment();
+	if (!nonstatic) return a.gen->GetDataLayout().getABIIntegerTypeAlignment(8);
+	return llvm::DataLayout(a.gen->GetDataLayout()).getPointerABIAlignment();
 }
 OverloadSet::OverloadSet(OverloadSet* s, OverloadSet* other) {
 	for(auto x : s->functions)

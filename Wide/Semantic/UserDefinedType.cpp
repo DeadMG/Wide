@@ -9,11 +9,9 @@
 #include <Wide/Codegen/Function.h>
 #include <Wide/Semantic/ConstructorType.h>
 #include <Wide/Parser/AST.h>
-
 #include <sstream>
 
 #pragma warning(push, 0)
-
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Module.h>
 #include <llvm/IR/DerivedTypes.h>
@@ -23,7 +21,6 @@
 #include <clang/AST/ASTContext.h>
 #include <clang/Sema/Sema.h>
 #include <llvm/IR/DerivedTypes.h>
-
 #pragma warning(pop)
 
 using namespace Wide;
@@ -120,8 +117,8 @@ UserDefinedType::UserDefinedType(AST::Type* t, Analyzer& a, Type* context)
         });
 	}
     if (t->variables.empty()) {
-        allocsize = llvm::DataLayout(a.gen->main.getDataLayout()).getTypeAllocSize(llvm::IntegerType::getInt8Ty(a.gen->context));
-        align = llvm::DataLayout(a.gen->main.getDataLayout()).getABIIntegerTypeAlignment(8);
+		allocsize = a.gen->GetInt8AllocSize();
+        align = llvm::DataLayout(a.gen->GetDataLayout()).getABIIntegerTypeAlignment(8);
     }
     
     ty = [&](llvm::Module* m) -> llvm::Type* {

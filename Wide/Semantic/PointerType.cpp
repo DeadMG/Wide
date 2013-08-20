@@ -6,6 +6,7 @@
 #include <Wide/Lexer/Token.h>
 
 #pragma warning(push, 0)
+#include <llvm/IR/Module.h>
 #include <clang/AST/ASTContext.h>
 #include <llvm/IR/DataLayout.h>
 #include <llvm/IR/DerivedTypes.h>
@@ -72,8 +73,8 @@ Codegen::Expression* PointerType::BuildBooleanConversion(Expression obj, Analyze
 }
 
 std::size_t PointerType::size(Analyzer& a) {
-    return llvm::DataLayout(a.gen->main.getDataLayout()).getPointerSize();
+    return llvm::DataLayout(a.gen->GetDataLayout()).getPointerSize();
 }
 std::size_t PointerType::alignment(Analyzer& a) {
-    return llvm::DataLayout(a.gen->main.getDataLayout()).getPointerABIAlignment();
+    return llvm::DataLayout(a.gen->GetDataLayout()).getPointerABIAlignment();
 }

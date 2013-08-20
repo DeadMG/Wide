@@ -3,9 +3,7 @@
 #include <Wide/Semantic/Type.h>
 
 #pragma warning(push, 0)
-
 #include <clang/Sema/Overload.h>
-
 #pragma warning(pop)
 
 namespace Wide {

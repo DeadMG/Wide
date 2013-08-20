@@ -50,10 +50,10 @@ Expression Bool::BuildValueConstruction(std::vector<Expression> args, Analyzer& 
 }
 
 std::size_t Bool::size(Analyzer& a) {
-    return llvm::DataLayout(a.gen->main.getDataLayout()).getTypeAllocSize(llvm::IntegerType::getInt8Ty(a.gen->context));
+	return a.gen->GetInt8AllocSize();
 }
 std::size_t Bool::alignment(Analyzer& a) {
-    return llvm::DataLayout(a.gen->main.getDataLayout()).getABIIntegerTypeAlignment(8);
+    return llvm::DataLayout(a.gen->GetDataLayout()).getABIIntegerTypeAlignment(8);
 }
 
 Expression Bool::BuildBinaryExpression(Expression lhs, Expression rhs, Wide::Lexer::TokenType type, Analyzer& a) {

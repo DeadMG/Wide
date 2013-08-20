@@ -1,7 +1,6 @@
 #pragma once
 
 #include <Wide/Semantic/MetaType.h>
-
 #include <unordered_map>
 #include <string>
 

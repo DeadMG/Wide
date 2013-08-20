@@ -1,5 +1,5 @@
 #include <Wide/Codegen/Expression.h>
-#include <Wide/Codegen/Generator.h>
+#include <Wide/Codegen/LLVMGenerator.h>
 #include <Wide/Codegen/Function.h>
 #include <set>
 #include <array>
@@ -22,7 +22,7 @@
 #endif
 
 using namespace Wide;
-using namespace Codegen;
+using namespace LLVMCodegen;
 
 llvm::Value* Expression::GetValue(llvm::IRBuilder<>& bb, Generator& g){
     if (!val) 
@@ -33,7 +33,7 @@ void Expression::Build(llvm::IRBuilder<>& bb, Generator& g) {
     GetValue(bb, g);
 }
 
-FunctionCall::FunctionCall(Expression* obj, std::vector<Expression*> args, std::function<llvm::Type*(llvm::Module*)> ty)
+FunctionCall::FunctionCall(LLVMCodegen::Expression* obj, std::vector<LLVMCodegen::Expression*> args, std::function<llvm::Type*(llvm::Module*)> ty)
     : object(obj), arguments(std::move(args)), CastTy(std::move(ty)) {}
 
 llvm::Value* FunctionCall::ComputeValue(llvm::IRBuilder<>& builder, Generator& g) {

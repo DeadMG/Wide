@@ -9,20 +9,17 @@
 #include <Wide/Semantic/Module.h>
 #include <Wide/Semantic/ConstructorType.h>
 #include <Wide/Semantic/UserDefinedType.h>
-
 #include <unordered_set>
 #include <sstream>
 #include <iostream>
 
 #pragma warning(push, 0)
-
 #include <llvm/IR/Function.h>
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/Analysis/Verifier.h>
 #include <llvm/Support/raw_os_ostream.h>
 #include <clang/AST/Type.h>
 #include <clang/AST/ASTContext.h>
-
 #pragma warning(pop)
 
 using namespace Wide;

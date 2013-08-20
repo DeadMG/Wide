@@ -259,6 +259,24 @@ local WideProjects = {
             end
         end,
     },
+    {
+        name = "SemanticTest",
+        action = function()
+            kind("ConsoleApp")
+            links { "Lexer", "Parser", "Semantic" }
+        end,
+        dependencies = function(proj)
+            return CheckLLVM(proj)
+        end, 
+        configure = function(plat, conf)
+            AddClangDependencies(conf)
+            if os.is("windows") then
+                postbuildcommands ({ "$(TargetPath)" })
+            else
+                postbuildcommands ({ "SemanticTest" })
+            end
+        end,
+    }        
 }
 
 local SupportedConfigurations = { "Debug", "Release" }
@@ -270,6 +288,8 @@ platforms(SupportedPlatforms)
 kind("StaticLib")
 if not os.is("Windows") then
     buildoptions  {"-std=c++11", "-D __STDC_CONSTANT_MACROS"}
+else
+    defines { "_SCL_SECURE_NO_WARNINGS" }
 end
 includedirs("./")
 location("Wide")

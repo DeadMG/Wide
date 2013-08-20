@@ -1,7 +1,6 @@
 #include <Wide/Semantic/ClangTU.h>
 #include <Wide/Semantic/Util.h>
 #include <Wide/Util/MakeUnique.h>
-
 #include <functional>
 #include <string>
 #include <fstream>
@@ -12,7 +11,6 @@
 #include <Wide/Codegen/Generator.h>
 
 #pragma warning(push, 0)
-
 #include <llvm/IR/Module.h>
 #include <clang/Frontend/CompilerInstance.h>
 #include <clang/Lex/HeaderSearch.h>
@@ -31,7 +29,6 @@
 #include <clang/AST/RecursiveASTVisitor.h>
 #include <clang/AST/ASTConsumer.h>
 #include <llvm/Support/raw_ostream.h>
-
 #pragma warning(pop)
 
 using namespace Wide;

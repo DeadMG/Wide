@@ -1,8 +1,6 @@
 #pragma once
-
-#define _SCL_SECURE_NO_WARNINGS
-
 #include <vector>
+#include <Wide/Codegen/Generator.h>
 
 namespace llvm {
     class Value;
@@ -22,7 +20,7 @@ namespace llvm {
 }
 
 namespace Wide {
-    namespace Codegen {
+    namespace LLVMCodegen {
         class Generator;
         struct Expression;
         class Statement {
@@ -30,41 +28,41 @@ namespace Wide {
             virtual ~Statement() {}
             virtual void Build(llvm::IRBuilder<>& bb, Generator& g) = 0;
         };
-        class ReturnStatement : public Statement {
-            Expression* val;
+		class ReturnStatement : public Statement, public Codegen::ReturnStatement {
+            LLVMCodegen::Expression* val;
         public:
-            Expression* GetReturnExpression();
+            Codegen::Expression* GetReturnExpression();
             ReturnStatement();
-            ReturnStatement(Expression* e);
+            ReturnStatement(LLVMCodegen::Expression* e);
             void Build(llvm::IRBuilder<>& bb, Generator& g);
         };
 
-        class IfStatement : public Statement {
-            Statement* true_br;
-            Statement* false_br;
-            Expression* condition;
+        class IfStatement : public Statement, public Codegen::IfStatement {
+            LLVMCodegen::Statement* true_br;
+            LLVMCodegen::Statement* false_br;
+            LLVMCodegen::Expression* condition;
         public:
-            IfStatement(Expression* cond, Statement* tbr, Statement* fbr)
+            IfStatement(LLVMCodegen::Expression* cond, LLVMCodegen::Statement* tbr, LLVMCodegen::Statement* fbr)
                 : condition(cond), true_br(std::move(tbr)), false_br(std::move(fbr)) {}
             void Build(llvm::IRBuilder<>& bb, Generator& g);
         };
 
-        class ChainStatement : public Statement {
-            Statement* lhs;
-            Statement* rhs;
+        class ChainStatement : public Statement, public Codegen::ChainStatement {
+            LLVMCodegen::Statement* lhs;
+            LLVMCodegen::Statement* rhs;
         public:
-            ChainStatement(Statement* l, Statement* r)
+            ChainStatement(LLVMCodegen::Statement* l, LLVMCodegen::Statement* r)
                 : lhs(l), rhs(r) {}
             void Build(llvm::IRBuilder<>& bb, Generator& g) {
                 lhs->Build(bb, g);
                 rhs->Build(bb, g);
             }
         };
-        class WhileStatement : public Statement {
-            Expression* cond;
-            Statement* body;
+        class WhileStatement : public Statement, public Codegen::WhileStatement {
+            LLVMCodegen::Expression* cond;
+            LLVMCodegen::Statement* body;
         public:
-            WhileStatement(Expression* c, Statement* b)
+            WhileStatement(LLVMCodegen::Expression* c, LLVMCodegen::Statement* b)
                 : cond(c), body(b) {}
             void Build(llvm::IRBuilder<>& b, Generator& g);
         };

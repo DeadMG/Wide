@@ -1,5 +1,4 @@
 #pragma once
-
 #include <Wide/Semantic/PrimitiveType.h>
 
 namespace Wide {

@@ -1,9 +1,6 @@
 #pragma once
 
 #include <Wide/Codegen/Statement.h>
-
-#define _SCL_SECURE_NO_WARNINGS
-
 #include <vector>
 #include <functional>
 #include <string>
@@ -22,7 +19,7 @@ namespace Wide {
         struct Type;
         struct Variable;
     }
-    namespace Codegen {
+    namespace LLVMCodegen {
         struct Expression : Statement {
         public:
             Expression() : val(nullptr) {}
@@ -34,7 +31,7 @@ namespace Wide {
             virtual llvm::Value* ComputeValue(llvm::IRBuilder<>&, Generator& g) = 0;
         };
 
-        class Variable : public Expression {
+		class Variable : public Expression, public Codegen::Variable {
             std::function<llvm::Type*(llvm::Module*)> t;
             unsigned align;
         public:
@@ -43,17 +40,17 @@ namespace Wide {
             llvm::Value* ComputeValue(llvm::IRBuilder<>&, Generator& g);
         };
 
-        class FunctionCall : public Expression {
-            std::vector<Expression*> arguments;
-            Expression* object;
+		class FunctionCall : public Expression, public Codegen::FunctionCall {
+            std::vector<LLVMCodegen::Expression*> arguments;
+            LLVMCodegen::Expression* object;
             std::function<llvm::Type*(llvm::Module*)> CastTy;
         public:
-            Expression* GetCallee() { return object; }
-            FunctionCall(Expression* obj, std::vector<Expression*> args, std::function<llvm::Type*(llvm::Module*)>);
+            LLVMCodegen::Expression* GetCallee() { return object; }
+            FunctionCall(LLVMCodegen::Expression* obj, std::vector<LLVMCodegen::Expression*> args, std::function<llvm::Type*(llvm::Module*)>);
             llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g);
         };
         
-        class FunctionValue : public Expression {
+		class FunctionValue : public Expression, public Codegen::FunctionValue {
             std::string mangled_name;
         public:
             std::string GetMangledName() {
@@ -63,26 +60,26 @@ namespace Wide {
             llvm::Value* ComputeValue(llvm::IRBuilder<>&, Generator& g);
         };
 
-        class LoadExpression : public Expression {
-            Expression* obj;
+		class LoadExpression : public Expression, public Codegen::LoadExpression {
+            LLVMCodegen::Expression* obj;
         public:
-            LoadExpression(Expression* o)
+            LoadExpression(LLVMCodegen::Expression* o)
                 : obj(o) {}
 
             llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g);
         };
         
-        class ChainExpression : public Expression {
-            Statement* s;
-            Expression* next;
+		class ChainExpression : public Expression, public Codegen::ChainExpression {
+            LLVMCodegen::Statement* s;
+            LLVMCodegen::Expression* next;
         public:
-            ChainExpression(Statement* stat, Expression* e)
+            ChainExpression(LLVMCodegen::Statement* stat, LLVMCodegen::Expression* e)
                 : s(stat), next(e) {}
 
             llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g);
         };
         
-        class StringExpression : public Expression {
+		class StringExpression : public Expression, public Codegen::StringExpression {
             std::string value;
         public:
             StringExpression(std::string expr)
@@ -96,7 +93,7 @@ namespace Wide {
             }
         };
 
-        class NamedGlobalVariable : public Expression {
+		class NamedGlobalVariable : public Expression, public Codegen::NamedGlobalVariable {
             std::string mangled;
         public:
             NamedGlobalVariable(std::string mangledname)
@@ -105,21 +102,24 @@ namespace Wide {
             llvm::Value* ComputeValue(llvm::IRBuilder<>&, Generator& g);
         };              
 
-        class StoreExpression : public Expression {
-            Expression* obj;
-            Expression* val;
+		class StoreExpression : public Expression, public Codegen::StoreExpression {
+            LLVMCodegen::Expression* obj;
+            LLVMCodegen::Expression* val;
         public:
-            StoreExpression(Expression* l, Expression* r)
+            StoreExpression(LLVMCodegen::Expression* l, LLVMCodegen::Expression* r)
                 : obj(l), val(r) {}
             
             llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g);
         };
 
-        class IntegralExpression : public Expression {
+		class IntegralExpression : public Expression, public Codegen::IntegralExpression {
             std::function<llvm::Type*(llvm::Module*)> type;
         public:
             IntegralExpression(unsigned long long val, bool s, std::function<llvm::Type*(llvm::Module*)> t)
                 : value(val), sign(s), type(std::move(t)) {}
+
+			unsigned long long GetValue() { return value; }
+			bool GetSign() { return sign; }
 
             unsigned long long value;
             bool sign;
@@ -128,16 +128,16 @@ namespace Wide {
         };
 
 
-        class FieldExpression : public Expression {
+		class FieldExpression : public Expression, public Codegen::FieldExpression {
             std::function<unsigned()> fieldnum;
-            Expression* obj;
+            LLVMCodegen::Expression* obj;
         public:
-            FieldExpression(std::function<unsigned()> f, Expression* o)
+            FieldExpression(std::function<unsigned()> f, LLVMCodegen::Expression* o)
                 : fieldnum(f), obj(o) {}
             llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g);
         };
 
-        class ParamExpression : public Expression {
+		class ParamExpression : public Expression, public Codegen::ParamExpression {
             std::function<unsigned()> param;
         public:
             ParamExpression(std::function<unsigned()> p)
@@ -145,16 +145,16 @@ namespace Wide {
             llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g);
         };
 
-        class TruncateExpression : public Expression {
-            Expression* val;
+        class TruncateExpression : public Expression, public Codegen::TruncateExpression {
+            LLVMCodegen::Expression* val;
             std::function<llvm::Type*(llvm::Module*)> ty;
         public:
-            TruncateExpression(Expression* e, std::function<llvm::Type*(llvm::Module*)> type)
+            TruncateExpression(LLVMCodegen::Expression* e, std::function<llvm::Type*(llvm::Module*)> type)
                 : val(e), ty(std::move(type)) {}
             llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g);
         };
 
-        class NullExpression : public Expression {
+        class NullExpression : public Expression, public Codegen::NullExpression {
             std::function<llvm::Type*(llvm::Module*)> ty;
         public:
             NullExpression(std::function<llvm::Type*(llvm::Module*)> type)
@@ -162,142 +162,142 @@ namespace Wide {
             llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g);
         };
 
-        class IntegralLeftShiftExpression : public Expression {
-            Expression* lhs;
-            Expression* rhs;
+        class IntegralLeftShiftExpression : public Expression, public Codegen::IntegralLeftShiftExpression {
+            LLVMCodegen::Expression* lhs;
+            LLVMCodegen::Expression* rhs;
         public:
-            IntegralLeftShiftExpression(Expression* l, Expression* r)
+            IntegralLeftShiftExpression(LLVMCodegen::Expression* l, LLVMCodegen::Expression* r)
                 : lhs(l), rhs(r) {}
             llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g);
         };
 
-        class IntegralRightShiftExpression : public Expression {
-            Expression* lhs;
-            Expression* rhs;
+        class IntegralRightShiftExpression : public Expression, public Codegen::IntegralRightShiftExpression {
+            LLVMCodegen::Expression* lhs;
+            LLVMCodegen::Expression* rhs;
             bool is_signed;
         public:
-            IntegralRightShiftExpression(Expression* l, Expression* r, bool s)
+            IntegralRightShiftExpression(LLVMCodegen::Expression* l, LLVMCodegen::Expression* r, bool s)
                 : lhs(l), rhs(r), is_signed(s) {}
             llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g);
         };
 
-        class IntegralLessThan : public Expression {
-            Expression* lhs;
-            Expression* rhs;
+        class IntegralLessThan : public Expression, public Codegen::IntegralLessThan {
+            LLVMCodegen::Expression* lhs;
+            LLVMCodegen::Expression* rhs;
             bool sign;
         public:
-            IntegralLessThan(Expression* l, Expression* r, bool sign)
+            IntegralLessThan(LLVMCodegen::Expression* l, LLVMCodegen::Expression* r, bool sign)
                 : lhs(l), rhs(r), sign(sign) {}
             llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g);
         };
 
-        class ZExt : public Expression {
-            Expression* from;
+        class ZExt : public Expression, public Codegen::ZExt {
+            LLVMCodegen::Expression* from;
             std::function<llvm::Type*(llvm::Module*)> to;
         public:
-            ZExt(Expression* f, std::function<llvm::Type*(llvm::Module*)> ty)
+            ZExt(LLVMCodegen::Expression* f, std::function<llvm::Type*(llvm::Module*)> ty)
                 : from(f), to(std::move(ty)) {}
             llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g);
         };
 
-        class SExt : public Expression {
-            Expression* from;
+        class SExt : public Expression, public Codegen:: SExt {
+            LLVMCodegen::Expression* from;
             std::function<llvm::Type*(llvm::Module*)> to;
         public:
-            SExt(Expression* f, std::function<llvm::Type*(llvm::Module*)> ty)
+            SExt(LLVMCodegen::Expression* f, std::function<llvm::Type*(llvm::Module*)> ty)
                 : from(f), to(std::move(ty)) {}
             llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g);
         };
 
-        class NegateExpression : public Expression {
-            Expression* expr;
+        class NegateExpression : public Expression, public Codegen::NegateExpression {
+            LLVMCodegen::Expression* expr;
         public:
-            NegateExpression(Expression* ex)
+            NegateExpression(LLVMCodegen::Expression* ex)
                 : expr(ex) {}
             llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g);
         };
 
-        class OrExpression : public Expression {
-            Expression* lhs;
-            Expression* rhs;
+        class OrExpression : public Expression, public Codegen::OrExpression {
+            LLVMCodegen::Expression* lhs;
+            LLVMCodegen::Expression* rhs;
         public:
-            OrExpression(Expression* l, Expression* r)
+            OrExpression(LLVMCodegen::Expression* l, LLVMCodegen::Expression* r)
                 : lhs(l), rhs(r) {}
             llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g);
         };
-        class AndExpression : public Expression {
-            Expression* lhs;
-            Expression* rhs;
+        class AndExpression : public Expression, public Codegen::AndExpression {
+            LLVMCodegen::Expression* lhs;
+            LLVMCodegen::Expression* rhs;
         public:
-            AndExpression(Expression* l, Expression* r)
-                : lhs(l), rhs(r) {}
-            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g);
-        };
-
-        class EqualityExpression : public Expression {
-            Expression* lhs;
-            Expression* rhs;
-        public:
-            EqualityExpression(Expression* l, Expression* r)
-                : lhs(l), rhs(r) {}
-            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g);
-        };
-        class PlusExpression : public Expression  {
-            Expression* lhs;
-            Expression* rhs;
-        public:
-            PlusExpression(Expression* l, Expression* r)
-                : lhs(l), rhs(r) {}
-            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g);
-        };
-        class MultiplyExpression : public Expression  {
-            Expression* lhs;
-            Expression* rhs;
-        public:
-            MultiplyExpression(Expression* l, Expression* r)
+            AndExpression(LLVMCodegen::Expression* l, LLVMCodegen::Expression* r)
                 : lhs(l), rhs(r) {}
             llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g);
         };
 
-        class IsNullExpression : public Expression {
-            Expression* ptr;
+        class EqualityExpression : public Expression, public Codegen::EqualityExpression {
+            LLVMCodegen::Expression* lhs;
+            LLVMCodegen::Expression* rhs;
         public:
-            IsNullExpression(Expression* p)
+            EqualityExpression(LLVMCodegen::Expression* l, LLVMCodegen::Expression* r)
+                : lhs(l), rhs(r) {}
+            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g);
+        };
+        class PlusExpression : public Expression, public Codegen::PlusExpression  {
+            LLVMCodegen::Expression* lhs;
+            LLVMCodegen::Expression* rhs;
+        public:
+            PlusExpression(LLVMCodegen::Expression* l, LLVMCodegen::Expression* r)
+                : lhs(l), rhs(r) {}
+            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g);
+        };
+        class MultiplyExpression : public Expression, public Codegen::MultiplyExpression  {
+            LLVMCodegen::Expression* lhs;
+            LLVMCodegen::Expression* rhs;
+        public:
+            MultiplyExpression(LLVMCodegen::Expression* l, LLVMCodegen::Expression* r)
+                : lhs(l), rhs(r) {}
+            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g);
+        };
+
+        class IsNullExpression : public Expression, public Codegen::IsNullExpression {
+            LLVMCodegen::Expression* ptr;
+        public:
+            IsNullExpression(LLVMCodegen::Expression* p)
                 : ptr(p) {}
             llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g);
         };
 
-		class XorExpression : public Expression {
-			Expression* lhs;
-			Expression* rhs;
+		class XorExpression : public Expression, public Codegen::XorExpression {
+			LLVMCodegen::Expression* lhs;
+			LLVMCodegen::Expression* rhs;
 		public:
-			XorExpression(Expression* l, Expression* r) : lhs(l), rhs(r) {}
+			XorExpression(LLVMCodegen::Expression* l, LLVMCodegen::Expression* r) : lhs(l), rhs(r) {}
 			llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g);
 		};
 
-		class SubExpression : public Expression {
-			Expression* lhs;
-			Expression* rhs;
+		class SubExpression : public Expression, public Codegen::SubExpression {
+			LLVMCodegen::Expression* lhs;
+			LLVMCodegen::Expression* rhs;
 		public:
-			SubExpression(Expression* l, Expression* r) : lhs(l), rhs(r) {}
+			SubExpression(LLVMCodegen::Expression* l, LLVMCodegen::Expression* r) : lhs(l), rhs(r) {}
 			llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g);
 		};
 
-		class ModExpression : public Expression {
-			Expression* lhs;
-			Expression* rhs;
+		class ModExpression : public Expression, public Codegen::ModExpression {
+			LLVMCodegen::Expression* lhs;
+			LLVMCodegen::Expression* rhs;
 			bool is_signed;
 		public:
-			ModExpression(Expression* l, Expression* r, bool is_sign) : lhs(l), rhs(r), is_signed(is_sign){}
+			ModExpression(LLVMCodegen::Expression* l, LLVMCodegen::Expression* r, bool is_sign) : lhs(l), rhs(r), is_signed(is_sign){}
 			llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g);
 		};
 
-		class DivExpression : public Expression {
-			Expression* lhs;
-			Expression* rhs;
+		class DivExpression : public Expression, public Codegen::DivExpression {
+			LLVMCodegen::Expression* lhs;
+			LLVMCodegen::Expression* rhs;
 			bool is_signed;
 		public:
-			DivExpression(Expression* l, Expression* r, bool is_sign) : lhs(l), rhs(r), is_signed(is_sign) {}
+			DivExpression(LLVMCodegen::Expression* l, LLVMCodegen::Expression* r, bool is_sign) : lhs(l), rhs(r), is_signed(is_sign) {}
 			llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g);
 		};
     }

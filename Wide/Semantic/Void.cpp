@@ -2,11 +2,9 @@
 #include <Wide/Semantic/ClangTU.h>
 
 #pragma warning(push, 0)
-
 #include <clang/AST/ASTContext.h>
 #include <llvm/IR/Type.h>
 #include <llvm/IR/Module.h>
-
 #pragma warning(pop)
 
 using namespace Wide;

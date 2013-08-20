@@ -10,9 +10,7 @@ using namespace Wide;
 using namespace Semantic;
 
 #pragma warning(push, 0)
-
 #include <clang/AST/AST.h>
-
 #pragma warning(pop)
 
 clang::QualType Type::GetClangType(ClangUtil::ClangTU& TU, Analyzer& a) {

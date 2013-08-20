@@ -1,13 +1,11 @@
 #pragma once
 
-#define _SCL_SECURE_NO_WARNINGS
-
+#include <Wide/Util/Ranges/Optional.h>
 #include <vector>
 #include <stdexcept>
 #include <functional>
 #include <string>
 #include <cassert>
-#include <Wide/Util/Ranges/Optional.h>
 
 namespace llvm {
     class Type;
@@ -22,7 +20,7 @@ namespace Wide {
         class ClangTU;
     }
     namespace Codegen {
-        struct Expression;
+        class Expression;
         class Generator;
     }
     namespace AST {

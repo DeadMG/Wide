@@ -9,6 +9,7 @@
 #include <clang/AST/ASTContext.h>
 #include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/DataLayout.h>
+#include <llvm/IR/Module.h>
 #pragma warning(pop)
 
 using namespace Wide;
@@ -128,8 +129,8 @@ Codegen::Expression* IntegralType::BuildInplaceConstruction(Codegen::Expression*
     return a.gen->CreateStore(mem, a.gen->CreateIntegralExpression(0, false, GetLLVMType(a)));
 }
 std::size_t IntegralType::size(Analyzer& a) {
-    return llvm::DataLayout(a.gen->main.getDataLayout()).getTypeAllocSize(GetLLVMType(a)(&a.gen->main));
+	return a.gen->GetInt8AllocSize() * (bits / 8);
 }
 std::size_t IntegralType::alignment(Analyzer& a) {
-    return llvm::DataLayout(a.gen->main.getDataLayout()).getABIIntegerTypeAlignment(bits);
+    return size(a);
 }
