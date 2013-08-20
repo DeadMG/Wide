@@ -47,7 +47,6 @@ namespace Wide {
             Expression BuildValue(Analyzer& a);
             Expression BuildRightShift(Expression rhs, Analyzer& a);
             Expression BuildLeftShift(Expression rhs, Analyzer& a);
-            Expression BuildAssignment(Expression rhs, Analyzer& a);
             Wide::Util::optional<Expression> AccessMember(std::string name, Analyzer& a);
             Expression BuildCall(std::vector<Expression> args, Analyzer& a);
 			Expression BuildCall(Expression lhs, Expression rhs, Analyzer& a);
@@ -110,9 +109,7 @@ namespace Wide {
             virtual Expression BuildValueConstruction(std::vector<Expression> args, Analyzer& a);
             virtual Expression BuildRvalueConstruction(std::vector<Expression> args, Analyzer& a);
             virtual Expression BuildLvalueConstruction(std::vector<Expression> args, Analyzer& a);
-            virtual Codegen::Expression* BuildInplaceConstruction(Codegen::Expression* mem, std::vector<Expression> args, Analyzer& a) {
-                throw std::runtime_error("Could not inplace construct this type.");
-            }
+            virtual Codegen::Expression* BuildInplaceConstruction(Codegen::Expression* mem, std::vector<Expression> args, Analyzer& a);
             
             virtual Expression BuildValueConstruction(Expression arg, Analyzer& a);
             virtual Expression BuildRvalueConstruction(Expression arg, Analyzer& a);
@@ -126,11 +123,6 @@ namespace Wide {
 
 
             virtual Expression BuildValue(Expression lhs, Analyzer& a);
-            virtual Expression BuildAssignment(Expression lhs, Expression rhs, Analyzer& a) {
-                if (IsReference())
-					return Decay()->BuildAssignment(lhs, rhs, a);
-				throw std::runtime_error("Attempted to use operator= on a type that did not support it.");
-            }            
 			virtual Wide::Util::optional<Expression> AccessMember(Expression, std::string name, Analyzer& a);
 			virtual Wide::Util::optional<Expression> AccessMember(Expression e, Lexer::TokenType type, Analyzer& a) {
 				if (IsReference())

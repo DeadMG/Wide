@@ -1,0 +1,11 @@
+module Funcakes {
+    type t {}
+	operator+(lhs, rhs) {}
+}
+module Standard {
+    Main() {
+	    x := 5;
+		y := Funcakes.t();
+		x + y;
+	}
+}

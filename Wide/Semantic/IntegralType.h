@@ -1,8 +1,8 @@
-#include <Wide/Semantic/PrimitiveType.h>
+#include <Wide/Semantic/Type.h>
 
 namespace Wide {
     namespace Semantic {
-        class IntegralType : public PrimitiveType {
+        class IntegralType : public Type {
             unsigned bits;
             bool is_signed;
 

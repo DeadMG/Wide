@@ -49,21 +49,27 @@ Codegen::Expression* PointerType::BuildInplaceConstruction(Codegen::Expression* 
     throw std::runtime_error("Attempted to construct a pointer from something that was not a pointer of the same type or null.");
 }
 
-Expression PointerType::BuildAssignment(Expression obj, Expression arg, Analyzer& a) {
-    if (!obj.t->IsReference(this)) throw std::runtime_error("Attempted to assign to an rvalue pointer.");
-    return Expression(this, a.gen->CreateChainExpression(BuildInplaceConstruction(obj.Expr, arg, a), obj.Expr));
-}
-
 Expression PointerType::BuildBinaryExpression(Expression lhs, Expression rhs, Lexer::TokenType type, Analyzer& a) {
+	auto lhsval = lhs.BuildValue(a);
+	auto rhsval = rhs.BuildValue(a);
+
+	// If we're not a match, permit ADL to take over. Else, generate the primitive operator.
+	if (lhs.t->Decay() != this || rhs.t->Decay() != this)
+	   return Type::BuildBinaryExpression(lhs, rhs, type, a);
+
 	if (type == Lexer::TokenType::EqCmp) {
-		// If we're not a match, permit ADL to take over. Else, generate the primitive operator.
-	    if (lhs.t->Decay() != this || rhs.t->Decay() != this)
-	 	   return Type::BuildBinaryExpression(lhs, rhs, type, a);
-        lhs = lhs.t->BuildValue(lhs, a);
-        rhs = rhs.t->BuildValue(rhs, a);
-        return Expression(a.GetBooleanType(), a.gen->CreateEqualityExpression(lhs.Expr, rhs.Expr));
+        return Expression(a.GetBooleanType(), a.gen->CreateEqualityExpression(lhsval.Expr, rhsval.Expr));
 	}
-	// Permit ADL to find any funky operators the user may have defined.
+
+	// Let ADL take over if we are not an lvalue.
+	if (!a.IsLvalueType(lhs.t))
+		return Type::BuildBinaryExpression(lhs, rhs, type, a);
+
+	/*switch(type) {
+	case Lexer::TokenType::Assignment:
+		return Expression(lhs.t, a.gen->CreateStore(lhs.Expr, rhsval.Expr));
+	}*/
+	// Permit ADL to find any funky operators the user may have defined or defaults.
 	return Type::BuildBinaryExpression(lhs, rhs, type, a);
 }
 

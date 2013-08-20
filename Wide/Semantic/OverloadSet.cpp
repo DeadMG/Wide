@@ -263,32 +263,23 @@ ConversionRank OverloadSet::ResolveOverloadRank(std::vector<Type*> args, Analyze
     return ConversionRank::None;
 }
 
-Expression OverloadSet::BuildValueConstruction(std::vector<Expression> args, Analyzer& a) {
+Codegen::Expression* OverloadSet::BuildInplaceConstruction(Codegen::Expression* mem, std::vector<Expression> args, Analyzer& a) {
     if (args.size() > 1)
         throw std::runtime_error("Cannot construct an overload set from more than one argument.");
     if (args.size() == 1) {
-        if (args[0].t->IsReference(this))
-            return args[0].t->BuildValue(args[0], a);
-        if (args[0].t == this)
-            return args[0];
+		if (args[0].BuildValue(a).t == this)
+			return a.gen->CreateStore(mem, args[0].BuildValue(a).Expr);
         if (nonstatic) {
-            if (args[0].t->IsReference(nonstatic) || (nonstatic->IsReference() && (nonstatic->IsReference() == args[0].t->IsReference()))) {
-                auto var = a.gen->CreateVariable(GetLLVMType(a), alignment(a));
-                auto store = a.gen->CreateStore(a.gen->CreateFieldExpression(var, 0), args[0].Expr);
-                return Expression(this, a.gen->CreateChainExpression(store, a.gen->CreateLoad(var)));
-            } 
-            if (args[0].t == nonstatic) {
+            if (args[0].t->IsReference(nonstatic) || (nonstatic->IsReference() && nonstatic == args[0].t))
+                return a.gen->CreateStore(a.gen->CreateFieldExpression(mem, 0), args[0].Expr);
+            if (args[0].t == nonstatic)
                 assert("Internal compiler error: Attempt to call a member function of a value.");
-            }
         }
         throw std::runtime_error("Can only construct overload set from another overload set of the same type, or a reference to T.");
     }
     if (nonstatic)
         throw std::runtime_error("Cannot default-construct a non-static overload set.");
-    Expression out;
-    out.t = this;
-    out.Expr = a.gen->CreateNull(GetLLVMType(a));
-    return out;
+    return a.gen->CreateNull(GetLLVMType(a));
 }
 clang::QualType OverloadSet::GetClangType(ClangUtil::ClangTU& TU, Analyzer& a) {
     //if (nonstatic) throw std::runtime_error("Currently don't support Clang codegen for non-static overload sets.");

@@ -1,6 +1,4 @@
 #pragma once
-#define _SCL_SECURE_NO_WARNINGS
-
 #include <Wide/Util/MemoryArena.h>
 #include <Wide/Codegen/Expression.h>
 #include <Wide/Codegen/LLVMOptions.h>

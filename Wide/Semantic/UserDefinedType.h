@@ -56,7 +56,6 @@ namespace Wide {
             clang::QualType GetClangType(ClangUtil::ClangTU& TU, Analyzer& a) override;  
             Codegen::Expression* BuildInplaceConstruction(Codegen::Expression* mem, std::vector<Expression> args, Analyzer& a) override;
             Wide::Util::optional<Expression> AccessMember(Expression, std::string name, Analyzer& a) override;
-            Expression BuildAssignment(Expression lhs, Expression rhs, Analyzer& a) override;
             ConversionRank RankConversionFrom(Type* from, Analyzer& a) override;
             Expression BuildCall(Expression val, std::vector<Expression> args, Analyzer& a) override;
             std::size_t size(Analyzer& a) override;

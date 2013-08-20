@@ -38,13 +38,13 @@ namespace Wide {
             DeclContext(DeclContext* nested, std::string name)
                 : ModuleLevelDeclaration(nested, std::move(name)) {}
         };
+        struct FunctionOverloadSet;
         struct Module : public DeclContext {
             Module(std::string nam, Module* parent)
                 : DeclContext(parent, std::move(nam)) {}
             Concurrency::UnorderedMap<std::string, ModuleLevelDeclaration*> decls;
-			Concurrency::UnorderedMap<Lexer::TokenType, ModuleLevelDeclaration*> opcondecls;
+			Concurrency::UnorderedMap<Lexer::TokenType, FunctionOverloadSet*> opcondecls;
         };
-        struct FunctionOverloadSet;
         struct VariableStatement;
         struct Type : public DeclContext, Expression {
             Type(DeclContext* above, std::string name, Lexer::Range loc) : DeclContext(above, name), Expression(loc) {}

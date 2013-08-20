@@ -109,6 +109,10 @@ UserDefinedType::UserDefinedType(AST::Type* t, Analyzer& a, Type* context)
         llvmtypes.push_back(m);
         iscomplex = iscomplex || expr.t->IsComplexType();
     }
+    if (t->variables.empty()) {
+		allocsize = a.gen->GetInt8AllocSize();
+        align = llvm::DataLayout(a.gen->GetDataLayout()).getABIIntegerTypeAlignment(8);
+    }
 	if (allocsize % align != 0) {
 		auto adjustment = align - (allocsize % align);
 		allocsize += adjustment;
@@ -116,10 +120,6 @@ UserDefinedType::UserDefinedType(AST::Type* t, Analyzer& a, Type* context)
             return llvm::ArrayType::get(llvm::IntegerType::getInt8Ty(mod->getContext()), adjustment);
         });
 	}
-    if (t->variables.empty()) {
-		allocsize = a.gen->GetInt8AllocSize();
-        align = llvm::DataLayout(a.gen->GetDataLayout()).getABIIntegerTypeAlignment(8);
-    }
     
     ty = [&](llvm::Module* m) -> llvm::Type* {
         if (m->getTypeByName(llvmname)) {
@@ -219,7 +219,7 @@ AST::DeclContext* UserDefinedType::GetDeclContext() {
     return type;
 }
 
-Expression UserDefinedType::BuildAssignment(Expression lhs, Expression rhs, Analyzer& a) {
+/*Expression UserDefinedType::BuildAssignment(Expression lhs, Expression rhs, Analyzer& a) {
 	if (a.IsLvalueType(lhs.t)) {
         // If we have an overloaded operator, call that.
         if (type->Functions.find("=") != type->Functions.end()) {
@@ -253,7 +253,16 @@ Expression UserDefinedType::BuildAssignment(Expression lhs, Expression rhs, Anal
         return out;
     }
     throw std::runtime_error("Attempt to assign to an rvalue of user-defined type.");
+}*/
+
+Expression UserDefinedType::BuildBinaryExpression(Expression lhs, Expression rhs, Lexer::TokenType t, Analyzer& a) {
+	if (type->opcondecls.find(t) != type->opcondecls.end()) {
+		lhs = lhs.t == this ? BuildRvalueConstruction(lhs, a) : lhs;
+		return a.GetOverloadSet(type->opcondecls[t], lhs.t)->BuildValueConstruction(lhs, a).BuildCall(rhs, a);
+    }
+	return Type::BuildBinaryExpression(lhs, rhs, t, a);
 }
+
 clang::QualType UserDefinedType::GetClangType(ClangUtil::ClangTU& TU, Analyzer& a) {
     if (clangtypes.find(&TU) != clangtypes.end())
         return clangtypes[&TU];
@@ -369,14 +378,6 @@ clang::QualType UserDefinedType::GetClangType(ClangUtil::ClangTU& TU, Analyzer& 
 
 bool UserDefinedType::HasMember(std::string name) {
     return type->Functions.find(name) != type->Functions.end() || members.find(name) != members.end();
-}
-
-Expression UserDefinedType::BuildBinaryExpression(Expression lhs, Expression rhs, Lexer::TokenType t, Analyzer& a) {
-	if (type->opcondecls.find(t) != type->opcondecls.end()) {
-		lhs = lhs.t == this ? BuildRvalueConstruction(lhs, a) : lhs;
-		return a.GetOverloadSet(type->opcondecls[t], lhs.t)->BuildValueConstruction(lhs, a).BuildCall(rhs, a);
-    }
-	return Type::BuildBinaryExpression(lhs, rhs, t, a);
 }
 
 ConversionRank UserDefinedType::RankConversionFrom(Type* from, Analyzer& a) {

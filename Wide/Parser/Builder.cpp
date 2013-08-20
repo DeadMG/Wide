@@ -89,6 +89,23 @@ void ThreadLocalBuilder::CreateFunction(std::string name, std::vector<Statement*
     return;
 }
 
+void ThreadLocalBuilder::CreateOverloadedOperator(Wide::Lexer::TokenType name, std::vector<Statement*> body, std::vector<Statement*> prolog, Lexer::Range r, Module* m, std::vector<FunctionArgument> args) {
+	auto p = std::make_pair(
+		arena.Allocate<Function>("operator", std::move(body), std::move(prolog), r, std::move(args), m, std::vector<VariableStatement*>()),
+		arena.Allocate<FunctionOverloadSet>("operator", m)
+	);
+	auto ret = m->opcondecls.insert(std::make_pair(name, p.second));
+    if (!ret.second) {
+        if (auto ovrset = dynamic_cast<AST::FunctionOverloadSet*>(ret.first->second)) {
+            ovrset->functions.push_back(p.first);
+            return;
+        } else
+            throw std::runtime_error("Attempted to insert a function, but there was already another declaration in that slot that was not a function overload set.");
+    }
+    p.second->functions.push_back(p.first);
+    return;
+}
+
 Type* ThreadLocalBuilder::CreateType(std::string name, DeclContext* higher, Lexer::Range loc) {
     auto ty = arena.Allocate<Type>(higher, name, loc);
     if (auto mod = dynamic_cast<AST::Module*>(higher)) {

@@ -24,7 +24,8 @@ namespace Wide {
                 Lexer::TokenType::LeftShift,
                 Lexer::TokenType::RightShift,
                 Lexer::TokenType::Xor,
-                Lexer::TokenType::OpenBracket
+                Lexer::TokenType::OpenBracket,
+				Lexer::TokenType::Plus
             };
             return std::unordered_set<Lexer::TokenType>(std::begin(tokens), std::end(tokens));
         }());
@@ -600,22 +601,16 @@ namespace Wide {
             return ret;
         }
         
-        template<typename Lex, typename Sema, typename Token, typename Module, typename Loc> void ParseFunction(Lex&& lex, Sema&& sema, Token&& first, Module&& m, Loc&& open) 
-        {
-            // Identifier ( consumed
-            // The first two must be () but we can find either prolog then body, or body.
-            // Expect ParseFunctionArguments to have consumed the ).
-            auto group = ParseFunctionArguments(lex, sema, std::forward<Loc>(open));
+		template<typename Lex, typename Sema, typename Group> auto ParseProlog(Lex&& lex, Sema&& sema, Group&& prolog) -> decltype(lex().GetLocation()) {
             auto t = lex();
             auto loc = t.GetLocation();
-            auto prolog = sema.CreateStatementGroup();
             if (t.GetType() == Lexer::TokenType::Prolog) {
                 t = lex();
                 if (t.GetType() != Lexer::TokenType::OpenCurlyBracket)
                     throw std::runtime_error("Expected { after prolog.");            
                 while(true) {
                     sema.AddStatementToGroup(prolog, ParseStatement(lex, sema));
-                    auto t = lex();
+                    t = lex();
                     if (t.GetType() == Lexer::TokenType::CloseCurlyBracket) {
                         break;
                     }
@@ -623,8 +618,48 @@ namespace Wide {
                 }
                 // Consume the close curly of the end of the prolog, leaving { for the next section to find.
                 t = lex();
+            } else
+				lex(t);
+			return loc;
+		}
+		template<typename Lex, typename Sema, typename Token, typename Module, typename Loc> void ParseOverloadedOperator(Lex&& lex, Sema&& sema, Token&& first, Module&& m, Loc&& open) {
+            auto group = ParseFunctionArguments(lex, sema, std::forward<Loc>(open));
+            auto prolog = sema.CreateStatementGroup();
+			auto loc = ParseProlog(lex, sema, prolog);
+			auto t = lex();
+			auto pos = t.GetLocation();
+            if (t.GetType() != Lexer::TokenType::OpenCurlyBracket) {
+                throw std::runtime_error("Expected { after function arguments or prolog");
             }
+            auto stmts = sema.CreateStatementGroup();
+            t = lex();
+            if (t.GetType() == Lexer::TokenType::CloseCurlyBracket) {
+                sema.CreateOverloadedOperator(first.GetType(), std::move(stmts), std::move(prolog), loc + t.GetLocation(), m, std::move(group));
+                return;
+            }
+            lex(t);
+            while(true) {
+                sema.AddStatementToGroup(stmts, ParseStatement(lex, sema));
+                t = lex();
+                if (t.GetType() == Lexer::TokenType::CloseCurlyBracket) {
+                    pos = pos + t.GetLocation();
+                    break;
+                }
+                lex(t);
+            }
+            sema.CreateOverloadedOperator(first.GetType(), std::move(stmts), std::move(prolog), loc + t.GetLocation(), m, std::move(group));
+        }
+
+        template<typename Lex, typename Sema, typename Token, typename Module, typename Loc> void ParseFunction(Lex&& lex, Sema&& sema, Token&& first, Module&& m, Loc&& open) 
+        {
+            // Identifier ( consumed
+            // The first two must be () but we can find either prolog then body, or body.
+            // Expect ParseFunctionArguments to have consumed the ).
+            auto group = ParseFunctionArguments(lex, sema, std::forward<Loc>(open));
+            auto prolog = sema.CreateStatementGroup();
+			auto loc = ParseProlog(lex, sema, prolog);
             auto initializers = sema.CreateInitializerGroup();
+			auto t = lex();
             if (first.GetType() == Lexer::TokenType::Type) {
                 // Constructor- check for initializer list
                 while(t.GetType() == Lexer::TokenType::Colon) {
@@ -918,7 +953,7 @@ namespace Wide {
                     lex(bracket);
                     return;
                 }
-                ParseFunction(lex, sema, op, std::forward<Module>(m), bracket.GetLocation());
+                ParseOverloadedOperator(lex, sema, op, std::forward<Module>(m), bracket.GetLocation());
                 return;
             }
             sema.Error(token.GetLocation(), Error::UnrecognizedTokenModuleScope);

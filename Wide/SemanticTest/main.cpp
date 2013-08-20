@@ -41,9 +41,9 @@ namespace Wide {
 				: val(std::move(value)) {}
 			std::string GetContents() { return val; }
 		};
-        class MockCodeGenerator : public Generator {
+        class MockGenerator : public Generator {
         public:
-			MockCodeGenerator(llvm::DataLayout data)
+			MockGenerator(llvm::DataLayout data)
 				: layout(data) {}
 			llvm::LLVMContext con;
 			llvm::DataLayout layout;
@@ -95,6 +95,67 @@ namespace Wide {
 	}
 }
 
+
+#include <Wide/Semantic/ClangOptions.h>
+#include <Wide/Codegen/LLVMOptions.h>
+#include <Wide/Semantic/Analyzer.h>
+#include <Wide/Parser/Parser.h>
+#include <Wide/Lexer/Lexer.h>
+#include <Wide/Util/ParallelForEach.h>
+#include <Wide/Parser/Builder.h>
+#include <Wide/Util/Ranges/IStreamRange.h>
+#include <mutex>
+#include <atomic>
+#include <sstream>
+#include <fstream>
+#include <initializer_list>
+#include <iostream>
+
+#ifndef _MSC_VER
+#include <llvm/Support/Host.h>
+#endif
+
+void Compile(const Wide::Options::Clang& copts, llvm::DataLayout lopts, std::initializer_list<std::string> files) {    
+    Wide::Codegen::MockGenerator Generator(lopts);
+    Wide::AST::Builder ASTBuilder;
+    Wide::Semantic::Analyzer Sema(copts, &Generator);
+    
+    Wide::Concurrency::Vector<std::string> excepts;
+    Wide::Concurrency::ParallelForEach(files.begin(), files.end(), [&](const std::string& filename) {
+        std::ifstream inputfile(filename, std::ios::binary | std::ios::in);
+        if (!inputfile)
+            throw std::runtime_error("Could not open this input file.");
+        std::noskipws(inputfile);
+        Wide::Lexer::Arguments largs;
+        auto contents = Wide::Range::IStreamRange(inputfile);
+        Wide::Lexer::Invocation<decltype(contents)> lex(largs, contents);
+        auto parsererrorhandler = [&](Wide::Lexer::Range where, Wide::Parser::Error what) {
+            std::stringstream str;
+            str << "Error in file " << filename << ", line " << where.begin.line << " column " << where.begin.column << ":\n";
+            str << Wide::Parser::ErrorStrings.at(what);
+            excepts.push_back(str.str());
+        };
+        try {
+            Wide::Parser::ParseGlobalModuleContents(lex, Wide::AST::ThreadLocalBuilder(ASTBuilder, parsererrorhandler), ASTBuilder.GetGlobalModule());
+        } catch(Wide::Parser::UnrecoverableError& e) {
+            parsererrorhandler(e.where(), e.error());
+        } catch(std::exception& e) {
+            excepts.push_back(e.what());
+        } catch(...) {
+            excepts.push_back("Internal Compiler Error");
+        }
+    });
+
+    if (excepts.empty()) {
+        Sema(ASTBuilder.GetGlobalModule());
+    } else {
+        for(auto&& msg : excepts) {
+            std::cout << msg << "\n";
+        }
+		throw std::runtime_error("Test failed.");
+    }
+}
+
 TEST_CASE("", "") {
     llvm::InitializeAllTargets();
     llvm::InitializeAllTargetMCs();
@@ -106,6 +167,7 @@ TEST_CASE("", "") {
     const llvm::Target& target = *llvm::TargetRegistry::lookupTarget(triple, err);
     llvm::TargetOptions targetopts;
     targetmachine = std::unique_ptr<llvm::TargetMachine>(target.createTargetMachine(triple, llvm::Triple(triple).getArchName(), "", targetopts));
-	Wide::Codegen::MockCodeGenerator mockcodegen(*targetmachine->getDataLayout());
-	REQUIRE(true);
+	Wide::Options::Clang clangopts;
+	CHECK_NOTHROW(Compile(clangopts, *targetmachine->getDataLayout(), {"IntegerOperations.wide"}));
+	CHECK_NOTHROW(Compile(clangopts, *targetmachine->getDataLayout(), {"PrimitiveADL.wide"}));
 }

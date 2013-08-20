@@ -22,6 +22,19 @@ Module::Module(AST::Module* p)
 void Module::AddSpecialMember(std::string name, Expression t){
     SpecialMembers[std::move(name)] = t;
 }
+Wide::Util::optional<Expression> Module::AccessMember(Expression val, Wide::Lexer::TokenType ty, Analyzer& a) {
+	if (m->opcondecls.find(ty) != m->opcondecls.end()) {
+		if (m->higher) {
+			auto result = a.GetDeclContext(m->higher)->AccessMember(val, ty, a);
+			if (result)
+				return a.GetOverloadSet(dynamic_cast<OverloadSet*>(result->t), a.GetOverloadSet(m->opcondecls.find(ty)->second))->BuildValueConstruction(a);
+		}
+		return a.GetOverloadSet(m->opcondecls.find(ty)->second)->BuildValueConstruction(a);
+	}
+    if (m->higher)
+        return a.GetDeclContext(m->higher)->AccessMember(val, ty, a);
+	return Wide::Util::none;
+}
 Wide::Util::optional<Expression> Module::AccessMember(Expression val, std::string name, Analyzer& a) {
     if (m->decls.find(name) != m->decls.end()) {
         auto decl = m->decls[name];

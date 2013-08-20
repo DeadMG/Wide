@@ -26,26 +26,26 @@ bool LexSingleToken(std::string contents, Lexer::TokenType type) {
 
 TEST_CASE("Lexer lexes each token individually", "Lexer") {
 	for(auto x : Lexer::Arguments::singles) {
-		REQUIRE(LexSingleToken(std::string(1, x.first), x.second ));
+		CHECK(LexSingleToken(std::string(1, x.first), x.second ));
 	}
 
 	for(auto first : Lexer::Arguments::doubles) {
 		for(auto second : first.second) {
-			REQUIRE(LexSingleToken(std::string(1, first.first) + std::string(1, second.first), second.second));
+			CHECK(LexSingleToken(std::string(1, first.first) + std::string(1, second.first), second.second));
 		}
 	}
 
 	for(auto first : Lexer::Arguments::triples) {
 		for(auto second : first.second) {
 			for(auto third : second.second) {
-				REQUIRE(LexSingleToken(std::string(1, first.first) + std::string(1, second.first) + std::string(1, third.first), third.second));
+				CHECK(LexSingleToken(std::string(1, first.first) + std::string(1, second.first) + std::string(1, third.first), third.second));
 			}
 		}
 	}
 }
 
 TEST_CASE("Lexer lexes multiple tokens", "Lexer") {
-	REQUIRE(LexTokens(">> >>= <<= <<", { Lexer::TokenType::RightShift, Lexer::TokenType::RightShiftAssign, Lexer::TokenType::LeftShiftAssign, Lexer::TokenType::LeftShift }));
-	REQUIRE(LexTokens("> >> >>=", { Lexer::TokenType::GT, Lexer::TokenType::RightShift, Lexer::TokenType::RightShiftAssign }));
-	REQUIRE(LexTokens("> >> ...", { Lexer::TokenType::GT, Lexer::TokenType::RightShift, Lexer::TokenType::Ellipsis }));
+	CHECK(LexTokens(">> >>= <<= <<", { Lexer::TokenType::RightShift, Lexer::TokenType::RightShiftAssign, Lexer::TokenType::LeftShiftAssign, Lexer::TokenType::LeftShift }));
+	CHECK(LexTokens("> >> >>=", { Lexer::TokenType::GT, Lexer::TokenType::RightShift, Lexer::TokenType::RightShiftAssign }));
+	CHECK(LexTokens("> >> ...", { Lexer::TokenType::GT, Lexer::TokenType::RightShift, Lexer::TokenType::Ellipsis }));
 }

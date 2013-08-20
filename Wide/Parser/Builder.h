@@ -69,6 +69,8 @@ namespace Wide {
             Using* CreateUsingDefinition(std::string val, Expression* expr, Module* p);
             void CreateFunction(std::string name, std::vector<Statement*> body, std::vector<Statement*> prolog, Lexer::Range r, Module* p, std::vector<FunctionArgument>, std::vector<VariableStatement*> caps);
             void CreateFunction(std::string name, std::vector<Statement*> body, std::vector<Statement*> prolog, Lexer::Range r, Type* p, std::vector<FunctionArgument>, std::vector<VariableStatement*> caps);
+			void CreateOverloadedOperator(Wide::Lexer::TokenType name, std::vector<Statement*> body, std::vector<Statement*> prolog, Lexer::Range r, Module* p, std::vector<FunctionArgument>);
+			void CreateOverloadedOperator(Wide::Lexer::TokenType name, std::vector<Statement*> body, std::vector<Statement*> prolog, Lexer::Range r, Type* p, std::vector<FunctionArgument>);
             Type* CreateType(std::string name, DeclContext* p, Lexer::Range loc);
             Type* CreateType(std::string name, Lexer::Range loc);
             void SetTypeEndLocation(Lexer::Range loc, Type* t);

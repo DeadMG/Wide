@@ -132,5 +132,5 @@ std::size_t IntegralType::size(Analyzer& a) {
 	return a.gen->GetInt8AllocSize() * (bits / 8);
 }
 std::size_t IntegralType::alignment(Analyzer& a) {
-    return size(a);
+	return a.gen->GetDataLayout().getABIIntegerTypeAlignment(bits);
 }

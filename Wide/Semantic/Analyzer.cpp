@@ -131,7 +131,6 @@ Expression Analyzer::AnalyzeExpression(Type* t, AST::Expression* e) {
 
 	struct AnalyzerVisitor : public AST::Visitor<AnalyzerVisitor> {
 		Type* t;
-		AST::Expression* e;
 		Analyzer* self;
 		Expression out;
 
@@ -159,6 +158,7 @@ Expression Analyzer::AnalyzeExpression(Type* t, AST::Expression* e) {
                 t = self->GetDeclContext(udt->GetDeclContext()->higher);
 			auto mem = t->AccessMember(Expression(), ident->val, *self);
 			if (!mem) throw std::runtime_error("Attempted to access a member that did not exist.");
+			out = *mem;
 		}
 		void VisitBinaryExpression(AST::BinaryExpression* bin) {
 			auto lhs = self->AnalyzeExpression(t, bin->lhs);
@@ -347,6 +347,8 @@ Expression Analyzer::AnalyzeExpression(Type* t, AST::Expression* e) {
 	};
 
 	AnalyzerVisitor v;
+	v.self = this;
+	v.t = t;
 	v.VisitExpression(e);
 	return v.out;
 }
@@ -503,7 +505,7 @@ Type* Analyzer::GetDeclContext(AST::DeclContext* con) {
         return DeclContexts[con];
     if (auto mod = dynamic_cast<AST::Module*>(con))
         return DeclContexts[con] = GetWideModule(mod);
-    throw std::runtime_error("Encountered a DeclContext that was not a module.");
+	return GetDeclContext(con->higher);
 }
 
 ConversionRank Analyzer::RankConversion(Type* from, Type* to) {

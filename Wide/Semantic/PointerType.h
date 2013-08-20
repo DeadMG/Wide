@@ -16,7 +16,6 @@ namespace Wide {
             Codegen::Expression* BuildBooleanConversion(Expression val, Analyzer& a) override;
             clang::QualType GetClangType(ClangUtil::ClangTU& TU, Analyzer& a) override;
             std::function<llvm::Type*(llvm::Module*)> GetLLVMType(Analyzer& a) override;
-            Expression BuildAssignment(Expression lhs, Expression rhs, Analyzer& a) override;
             std::size_t size(Analyzer& a) override;
             std::size_t alignment(Analyzer& a) override;
         };
