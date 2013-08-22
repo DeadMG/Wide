@@ -88,6 +88,10 @@ namespace Wide {
 			XorExpression* CreateXorExpression(Codegen::Expression* l, Codegen::Expression* r);
 			ModExpression* CreateModExpression(Codegen::Expression* l, Codegen::Expression* r, bool is_signed);
 			DivExpression* CreateDivExpression(Codegen::Expression* l, Codegen::Expression* r, bool is_signed);
+			FPExtension* CreateFPExtension(Codegen::Expression* l, std::function<llvm::Type*(llvm::Module*)> r);
+			FPMod* CreateFPMod(Codegen::Expression* r, Codegen::Expression* l);
+			FPDiv* CreateFPDiv(Codegen::Expression* r, Codegen::Expression* l);
+			FPLT* CreateFPLT(Codegen::Expression* r, Codegen::Expression* l);
 			
 			llvm::DataLayout GetDataLayout();
 			void AddClangTU(std::function<void(llvm::Module* m)>);

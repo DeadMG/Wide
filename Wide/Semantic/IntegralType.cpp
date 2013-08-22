@@ -86,7 +86,7 @@ Expression IntegralType::BuildBinaryExpression(Expression lhs, Expression rhs, L
 	case Lexer::TokenType::DivAssign:
 		return Expression(lhs.t, a.gen->CreateStore(lhs.Expr, a.gen->CreateDivExpression(lhsval.Expr, rhsval.Expr, is_signed)));
 	}
-
+	
 	// Not a primitive operator- report to ADL.
 	return Type::BuildBinaryExpression(lhs, rhs, type, a);
 }
@@ -125,7 +125,7 @@ Codegen::Expression* IntegralType::BuildInplaceConstruction(Codegen::Expression*
         throw std::runtime_error("It is illegal to perform a signed->unsigned and widening conversion in one step, even explicitly.");
     }
 	if (args.size() != 0)
-		throw std::runtime_error("Attempt to construct an integer from more than one argument.");
+		throw std::runtime_error("Attempt to construct an integer from more than one argument or zero.");
     return a.gen->CreateStore(mem, a.gen->CreateIntegralExpression(0, false, GetLLVMType(a)));
 }
 std::size_t IntegralType::size(Analyzer& a) {

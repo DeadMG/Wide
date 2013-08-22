@@ -14,8 +14,8 @@ Builder::Builder()
     arenas.push(std::move(arena));
 }
 
-ThreadLocalBuilder::ThreadLocalBuilder(Builder& build, std::function<void(Lexer::Range, Parser::Error)> err)
-    : b(&build), error(std::move(err)) 
+ThreadLocalBuilder::ThreadLocalBuilder(Builder& build, std::function<void(Lexer::Range, Parser::Error)> err, std::function<void(Lexer::Range, Parser::Warning)> warn)
+    : b(&build), error(std::move(err)), warning(std::move(warn))
 {
     // Re-use arena if possible; else stick with our new arena.
     build.arenas.try_pop(arena);
@@ -278,3 +278,7 @@ BinaryExpression* ThreadLocalBuilder::CreateModulusExpression(Expression* lhs, E
 { return arena.Allocate<BinaryExpression>(lhs, rhs, Lexer::TokenType::Modulo); }
 BinaryExpression* ThreadLocalBuilder::CreateSubtractionExpression(Expression* lhs, Expression* rhs) 
 { return arena.Allocate<BinaryExpression>(lhs, rhs, Lexer::TokenType::Minus); }
+
+void ThreadLocalBuilder::Warning(Wide::Lexer::Range where, Parser::Warning what) {
+	return warning(where, what);
+}

@@ -96,6 +96,7 @@ namespace CEquivalents {
         Wide::Lexer::Range CreateModule(std::string val, Wide::Lexer::Range p, Wide::Lexer::Range r) { return r; }
         std::nullptr_t CreateUsingDefinition(std::string val, Wide::Lexer::Range expr, Wide::Lexer::Range p) { return nullptr; }
         void CreateFunction(std::string name, std::nullptr_t, std::nullptr_t, Wide::Lexer::Range r, Wide::Lexer::Range p, std::nullptr_t, std::nullptr_t) { OutliningCallback(r, OutliningType::Function); }
+		void CreateOverloadedOperator(Wide::Lexer::TokenType name, std::nullptr_t, std::nullptr_t, Wide::Lexer::Range r, Wide::Lexer::Range p, std::nullptr_t) { OutliningCallback(r, OutliningType::Function); }
         Wide::Lexer::Range CreateType(std::string name, Wide::Lexer::Range p, Wide::Lexer::Range r) { return r; }       
         Wide::Lexer::Range CreateType(std::string name, Wide::Lexer::Range r) { return r; }
 
@@ -145,7 +146,7 @@ extern "C" __declspec(dllexport) void ParseWide(
     pl.TokenCallback = TokenCallback;
     try {
         Wide::Parser::ParseGlobalModuleContents(pl, builder, Wide::Lexer::Range());
-    } catch(Wide::Parser::UnrecoverableError e) {
+    } catch(Wide::Parser::ParserError& e) {
         ErrorCallback(e.where(), e.error(), context);
     } catch(...) {
     }
@@ -155,4 +156,10 @@ extern "C" __declspec(dllexport) const char* GetParserErrorString(Wide::Parser::
     if (Wide::Parser::ErrorStrings.find(err) == Wide::Parser::ErrorStrings.end())
         return nullptr;
     return Wide::Parser::ErrorStrings.at(err).c_str();
+}
+
+extern "C" __declspec(dllexport) const char* GetParserWarningString(Wide::Parser::Warning err) {
+    if (Wide::Parser::WarningStrings.find(err) == Wide::Parser::WarningStrings.end())
+        return nullptr;
+    return Wide::Parser::WarningStrings.at(err).c_str();
 }

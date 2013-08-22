@@ -60,6 +60,10 @@ namespace Wide {
 		class XorExpression : public Expression {};
 		class ModExpression : public Expression {};
 		class DivExpression : public Expression {};
+		class FPExtension : public Expression {};
+		class FPLessThan : public Expression {};
+		class FPMod : public Expression {};
+		class FPDiv : public Expression {};
 		class Function {
 		public:
 			virtual ~Function() {}
@@ -104,6 +108,10 @@ namespace Wide {
 			virtual XorExpression* CreateXorExpression(Expression* l, Expression* r) = 0;
 			virtual ModExpression* CreateModExpression(Expression* l, Expression* r, bool is_signed) = 0;
 			virtual DivExpression* CreateDivExpression(Expression* l, Expression* r, bool is_signed) = 0;
+			virtual FPExtension* CreateFPExtension(Expression*, std::function<llvm::Type*(llvm::Module*)> to) = 0;
+			virtual FPLessThan* CreateFPLT(Codegen::Expression* lhs, Codegen::Expression* rhs) = 0;
+			virtual FPMod* CreateFPMod(Expression* lhs, Expression* rhs) = 0;
+			virtual FPDiv* CreateFPDiv(Expression* lhs, Expression* rhs) = 0;
 
 			virtual llvm::DataLayout GetDataLayout() = 0;
 			virtual std::size_t GetInt8AllocSize() = 0;

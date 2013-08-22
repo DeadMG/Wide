@@ -26,6 +26,7 @@ void Compile(const Wide::Options::Clang& copts, const Wide::Options::LLVM& lopts
     Wide::Semantic::Analyzer Sema(copts, &Generator);
     
     Wide::Concurrency::Vector<std::string> excepts;
+    Wide::Concurrency::Vector<std::string> warnings;
     Wide::Concurrency::ParallelForEach(files.begin(), files.end(), [&](const std::string& filename) {
         std::ifstream inputfile(filename, std::ios::binary | std::ios::in);
         if (!inputfile)
@@ -40,9 +41,15 @@ void Compile(const Wide::Options::Clang& copts, const Wide::Options::LLVM& lopts
             str << Wide::Parser::ErrorStrings.at(what);
             excepts.push_back(str.str());
         };
+		auto parserwarninghandler = [&](Wide::Lexer::Range where, Wide::Parser::Warning what) {
+            std::stringstream str;
+            str << "Warning in file " << filename << ", line " << where.begin.line << " column " << where.begin.column << ":\n";
+            str << Wide::Parser::WarningStrings.at(what);
+            warnings.push_back(str.str());
+		};
         try {
-            Wide::Parser::ParseGlobalModuleContents(lex, Wide::AST::ThreadLocalBuilder(ASTBuilder, parsererrorhandler), ASTBuilder.GetGlobalModule());
-        } catch(Wide::Parser::UnrecoverableError& e) {
+            Wide::Parser::ParseGlobalModuleContents(lex, Wide::AST::ThreadLocalBuilder(ASTBuilder, parsererrorhandler, parserwarninghandler), ASTBuilder.GetGlobalModule());
+        } catch(Wide::Parser::ParserError& e) {
             parsererrorhandler(e.where(), e.error());
         } catch(std::exception& e) {
             excepts.push_back(e.what());
@@ -50,6 +57,9 @@ void Compile(const Wide::Options::Clang& copts, const Wide::Options::LLVM& lopts
             excepts.push_back("Internal Compiler Error");
         }
     });
+
+	for(auto&& x : warnings)
+		std::cout << x << "\n";
 
     if (excepts.empty()) {
         try {

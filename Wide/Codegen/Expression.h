@@ -300,5 +300,38 @@ namespace Wide {
 			DivExpression(LLVMCodegen::Expression* l, LLVMCodegen::Expression* r, bool is_sign) : lhs(l), rhs(r), is_signed(is_sign) {}
 			llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g);
 		};
+		
+		class FPExtension : public Expression, public Codegen::FPExtension {
+            LLVMCodegen::Expression* from;
+            std::function<llvm::Type*(llvm::Module*)> to;
+        public:
+			FPExtension(LLVMCodegen::Expression* f, std::function<llvm::Type*(llvm::Module*)> ty)
+                : from(f), to(std::move(ty)) {}
+            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g);
+        };
+
+		class FPDiv : public Expression, public Codegen::FPDiv {
+			LLVMCodegen::Expression* lhs;
+			LLVMCodegen::Expression* rhs;
+		public:
+			FPDiv(LLVMCodegen::Expression* l, LLVMCodegen::Expression* r) : lhs(l), rhs(r) {}
+			llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g);
+		};
+
+		class FPMod : public Expression, public Codegen::FPMod {
+			LLVMCodegen::Expression* lhs;
+			LLVMCodegen::Expression* rhs;
+		public:
+			FPMod(LLVMCodegen::Expression* l, LLVMCodegen::Expression* r) : lhs(l), rhs(r) {}
+			llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g);
+		};
+
+		class FPLT : public Expression, public Codegen::FPLessThan {
+			LLVMCodegen::Expression* lhs;
+			LLVMCodegen::Expression* rhs;
+		public:
+			FPLT(LLVMCodegen::Expression* l, LLVMCodegen::Expression* r) : lhs(l), rhs(r) {}
+			llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g);
+		};
     }
 }

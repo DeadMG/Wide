@@ -265,3 +265,19 @@ llvm::LLVMContext& Generator::GetContext() {
 void Generator::AddClangTU(std::function<void(llvm::Module*)> tu) {
 	tus.push_back(tu);
 }
+
+FPExtension* Generator::CreateFPExtension(Codegen::Expression* l, std::function<llvm::Type*(llvm::Module*)> ty) {
+	return arena.Allocate<FPExtension>(AssertExpression(l), std::move(ty));
+}
+
+FPMod* Generator::CreateFPMod(Codegen::Expression* l, Codegen::Expression* r) {
+	return arena.Allocate<FPMod>(AssertExpression(l), AssertExpression(r));
+}
+
+FPDiv* Generator::CreateFPDiv(Codegen::Expression* l, Codegen::Expression* r) {
+	return arena.Allocate<FPDiv>(AssertExpression(l), AssertExpression(r));
+}
+
+FPLT* Generator::CreateFPLT(Codegen::Expression* l, Codegen::Expression* r) {
+	return arena.Allocate<FPLT>(AssertExpression(l), AssertExpression(r));
+}

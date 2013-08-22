@@ -7,7 +7,8 @@
 
 namespace Wide {
     namespace Parser {
-        enum Error : int;
+        enum class Error : int;
+		enum class Warning : int;
     }
     namespace AST {
         class Builder;
@@ -15,8 +16,9 @@ namespace Wide {
             Wide::Memory::Arena arena;
             Builder* b;
             std::function<void(Lexer::Range, Parser::Error)> error;
+			std::function<void(Lexer::Range, Parser::Warning)> warning;
         public:
-            ThreadLocalBuilder(Builder&, std::function<void(Lexer::Range, Parser::Error)>);
+            ThreadLocalBuilder(Builder&, std::function<void(Lexer::Range, Parser::Error)>, std::function<void(Lexer::Range, Parser::Warning)>);
             ~ThreadLocalBuilder();
 
             IdentifierExpr* CreateIdentExpression(std::string name, Lexer::Range r);
@@ -84,7 +86,9 @@ namespace Wide {
             void AddStatementToGroup(std::vector<Statement*>& grp, Statement* stmt);
             void AddExpressionToGroup(std::vector<Expression*>& grp, Expression* expr);
             Lexer::Range GetLocation(Statement* s);
+
             void Error(Wide::Lexer::Range, Parser::Error);
+			void Warning(Wide::Lexer::Range, Parser::Warning);
 
             typedef Statement* StatementType;
             typedef Expression* ExpressionType;

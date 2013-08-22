@@ -1,3 +1,5 @@
+#pragma once
+
 #include <Wide/Lexer/Lexer.h>
 
 namespace CEquivalents {
