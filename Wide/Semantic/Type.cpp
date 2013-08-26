@@ -41,8 +41,8 @@ Expression Type::BuildLvalueConstruction(std::vector<Expression> args, Analyzer&
         out.Expr = a.gen->CreateChainExpression(BuildInplaceConstruction(mem, args, a), mem);    return out;
 }            
 Codegen::Expression* Type::BuildInplaceConstruction(Codegen::Expression* mem, std::vector<Expression> args, Analyzer& a) {
-	if (!IsReference() && !IsComplexType() && args.size() == 1 && args[0].t->Decay() == this)
-		return a.gen->CreateStore(mem, args[0].BuildValue(a).Expr);
+    if (!IsReference() && !IsComplexType() && args.size() == 1 && args[0].t->Decay() == this)
+        return a.gen->CreateStore(mem, args[0].BuildValue(a).Expr);
     throw std::runtime_error("Could not inplace construct this type.");
 }
 
@@ -70,7 +70,7 @@ ConversionRank Type::RankConversionFrom(Type* from, Analyzer& a) {
 }
 Expression Type::AddressOf(Expression obj, Analyzer& a) {
     // TODO: Remove this restriction, it is not very Wide.
-	if (!a.IsLvalueType(obj.t))
+    if (!a.IsLvalueType(obj.t))
         throw std::runtime_error("Attempted to take the address of something that was not an lvalue.");
     return Expression(a.GetPointerType(obj.t->Decay()), obj.Expr);
 }
@@ -103,16 +103,16 @@ Codegen::Expression* Expression::BuildBooleanConversion(Analyzer& a) {
     return t->BuildBooleanConversion(*this, a);
 }
 Expression Expression::BuildBinaryExpression(Expression rhs, Lexer::TokenType type, Analyzer& a) {
-	return t->BuildBinaryExpression(*this, rhs, type, a);
+    return t->BuildBinaryExpression(*this, rhs, type, a);
 }
 Expression Expression::BuildNegate(Analyzer& a) {
-	return t->BuildNegate(*this, a);
+    return t->BuildNegate(*this, a);
 }
 Expression Expression::BuildCall(Expression lhs, Expression rhs, Analyzer& a) {
-	std::vector<Expression> args;
-	args.push_back(lhs);
-	args.push_back(rhs);
-	return t->BuildCall(*this, std::move(args), a);
+    std::vector<Expression> args;
+    args.push_back(lhs);
+    args.push_back(rhs);
+    return t->BuildCall(*this, std::move(args), a);
 }
 
 Expression Type::BuildValueConstruction(Expression arg, Analyzer& a) {
@@ -161,8 +161,8 @@ Expression Expression::BuildCall(Analyzer& a) {
     return BuildCall(args, a);
 }
 Wide::Util::optional<Expression> Type::AccessMember(Expression e, std::string name, Analyzer& a) {
-	if (IsReference())
-		return Decay()->AccessMember(e, std::move(name), a);
+    if (IsReference())
+        return Decay()->AccessMember(e, std::move(name), a);
     if (name == "~type")
         return a.GetNothingFunctorType()->BuildValueConstruction(a);
     throw std::runtime_error("Attempted to access the member of a type that did not support it.");
@@ -170,74 +170,74 @@ Wide::Util::optional<Expression> Type::AccessMember(Expression e, std::string na
 Expression Type::BuildValue(Expression lhs, Analyzer& a) {
     if (IsComplexType())
         throw std::runtime_error("Internal Compiler Error: Attempted to build a complex type into a register.");
-	if (lhs.t->IsReference())
-		return Expression(lhs.t->Decay(), a.gen->CreateLoad(lhs.Expr));
+    if (lhs.t->IsReference())
+        return Expression(lhs.t->Decay(), a.gen->CreateLoad(lhs.Expr));
     return lhs;
 }            
 Expression Type::BuildNegate(Expression val, Analyzer& a) {
-	if (IsReference())
-		return Decay()->BuildNegate(val, a);
-	return Expression(a.GetBooleanType(), a.gen->CreateNegateExpression(val.BuildBooleanConversion(a)));
+    if (IsReference())
+        return Decay()->BuildNegate(val, a);
+    return Expression(a.GetBooleanType(), a.gen->CreateNegateExpression(val.BuildBooleanConversion(a)));
 }
 
 static const std::unordered_map<Lexer::TokenType, Lexer::TokenType> Assign = []() -> std::unordered_map<Lexer::TokenType, Lexer::TokenType> {
-	std::unordered_map<Lexer::TokenType, Lexer::TokenType> assign;
-	assign[Lexer::TokenType::LeftShift] = Lexer::TokenType::LeftShiftAssign;
-	assign[Lexer::TokenType::RightShift] = Lexer::TokenType::RightShiftAssign;
-	assign[Lexer::TokenType::Minus] = Lexer::TokenType::MinusAssign;
-	assign[Lexer::TokenType::Plus] = Lexer::TokenType::PlusAssign;
-	assign[Lexer::TokenType::Or] = Lexer::TokenType::OrAssign;
-	assign[Lexer::TokenType::And] = Lexer::TokenType::AndAssign;
-	assign[Lexer::TokenType::Xor] = Lexer::TokenType::XorAssign;
-	assign[Lexer::TokenType::Dereference] = Lexer::TokenType::MulAssign;
-	assign[Lexer::TokenType::Modulo] = Lexer::TokenType::ModAssign;
-	assign[Lexer::TokenType::Divide] = Lexer::TokenType::DivAssign;
-	return assign;
+    std::unordered_map<Lexer::TokenType, Lexer::TokenType> assign;
+    assign[Lexer::TokenType::LeftShift] = Lexer::TokenType::LeftShiftAssign;
+    assign[Lexer::TokenType::RightShift] = Lexer::TokenType::RightShiftAssign;
+    assign[Lexer::TokenType::Minus] = Lexer::TokenType::MinusAssign;
+    assign[Lexer::TokenType::Plus] = Lexer::TokenType::PlusAssign;
+    assign[Lexer::TokenType::Or] = Lexer::TokenType::OrAssign;
+    assign[Lexer::TokenType::And] = Lexer::TokenType::AndAssign;
+    assign[Lexer::TokenType::Xor] = Lexer::TokenType::XorAssign;
+    assign[Lexer::TokenType::Dereference] = Lexer::TokenType::MulAssign;
+    assign[Lexer::TokenType::Modulo] = Lexer::TokenType::ModAssign;
+    assign[Lexer::TokenType::Divide] = Lexer::TokenType::DivAssign;
+    return assign;
 }();
 
 Expression Type::BuildBinaryExpression(Expression lhs, Expression rhs, Lexer::TokenType type, Analyzer& a) {
-	if (IsReference())
-		return Decay()->BuildBinaryExpression(lhs, rhs, type, a);
+    if (IsReference())
+        return Decay()->BuildBinaryExpression(lhs, rhs, type, a);
 
-	// If this function is entered, it's because the type-specific logic could not resolve the operator.
-	// So let us attempt ADL.
-	auto ldecls = lhs.t->Decay()->GetDeclContext() ? a.GetDeclContext(lhs.t->Decay()->GetDeclContext())->AccessMember(Expression(), type, a) : Wide::Util::none;
-	auto rdecls = rhs.t->Decay()->GetDeclContext() ? a.GetDeclContext(rhs.t->Decay()->GetDeclContext())->AccessMember(Expression(), type, a) : Wide::Util::none;
-	if (ldecls) {
-		if (auto loverset = dynamic_cast<OverloadSet*>(ldecls->t->Decay()))
-			if (rdecls) {
-				if (auto roverset = dynamic_cast<OverloadSet*>(rdecls->t->Decay()))
-					return a.GetOverloadSet(loverset, roverset)->BuildValueConstruction(a).BuildCall(lhs, rhs, a);
-			} else {
-				return loverset->BuildValueConstruction(a).BuildCall(lhs, rhs, a);
-			}
-	} else
-		if (rdecls)
-			if (auto roverset = dynamic_cast<OverloadSet*>(rdecls->t->Decay()))
-				return roverset->BuildValueConstruction(a).BuildCall(lhs, rhs, a);
+    // If this function is entered, it's because the type-specific logic could not resolve the operator.
+    // So let us attempt ADL.
+    auto ldecls = lhs.t->Decay()->GetDeclContext() ? a.GetDeclContext(lhs.t->Decay()->GetDeclContext())->AccessMember(Expression(), type, a) : Wide::Util::none;
+    auto rdecls = rhs.t->Decay()->GetDeclContext() ? a.GetDeclContext(rhs.t->Decay()->GetDeclContext())->AccessMember(Expression(), type, a) : Wide::Util::none;
+    if (ldecls) {
+        if (auto loverset = dynamic_cast<OverloadSet*>(ldecls->t->Decay()))
+            if (rdecls) {
+                if (auto roverset = dynamic_cast<OverloadSet*>(rdecls->t->Decay()))
+                    return a.GetOverloadSet(loverset, roverset)->BuildValueConstruction(a).BuildCall(lhs, rhs, a);
+            } else {
+                return loverset->BuildValueConstruction(a).BuildCall(lhs, rhs, a);
+            }
+    } else
+        if (rdecls)
+            if (auto roverset = dynamic_cast<OverloadSet*>(rdecls->t->Decay()))
+                return roverset->BuildValueConstruction(a).BuildCall(lhs, rhs, a);
 
-	// At this point, ADL has failed to find an operator and the type also failed to post one.
-	// So let us attempt a default implementation for some operators.
-	if (Assign.find(type) != Assign.end())
-		return BuildLvalueConstruction(lhs, a).BuildBinaryExpression(rhs, Assign.at(type), a);
-	switch(type) {
-	case Lexer::TokenType::NotEqCmp:
-		return lhs.BuildBinaryExpression(rhs, Lexer::TokenType::EqCmp, a).BuildNegate(a);
-	case Lexer::TokenType::EqCmp:
-		return lhs.BuildBinaryExpression(rhs, Lexer::TokenType::LT, a).BuildNegate(a).BuildBinaryExpression(rhs.BuildBinaryExpression(lhs, Lexer::TokenType::LT, a).BuildNegate(a), Lexer::TokenType::And, a);
-	case Lexer::TokenType::LTE:
-		return rhs.BuildBinaryExpression(lhs, Lexer::TokenType::LT, a).BuildNegate(a);
-	case Lexer::TokenType::GT:
-		return rhs.BuildBinaryExpression(lhs, Lexer::TokenType::LT, a);
-	case Lexer::TokenType::GTE:
-		return lhs.BuildBinaryExpression(rhs, Lexer::TokenType::LT, a).BuildNegate(a);
-	case Lexer::TokenType::Assignment:
-		if (!IsComplexType() && lhs.t->Decay() == rhs.t->Decay() && a.IsLvalueType(lhs.t))
-			return Expression(lhs.t, a.gen->CreateStore(lhs.Expr, rhs.BuildValue(a).Expr));
-	case Lexer::TokenType::Or:
-		return Expression(a.GetBooleanType(), lhs.BuildBooleanConversion(a)).BuildBinaryExpression(Expression(a.GetBooleanType(), rhs.BuildBooleanConversion(a)), Wide::Lexer::TokenType::Or, a);
-	case Lexer::TokenType::And:
-		return Expression(a.GetBooleanType(), lhs.BuildBooleanConversion(a)).BuildBinaryExpression(Expression(a.GetBooleanType(), rhs.BuildBooleanConversion(a)), Wide::Lexer::TokenType::And, a);
-	}
-	throw std::runtime_error("Attempted to build a binary expression; but it could not be found by the type, and a default could not be applied.");
+    // At this point, ADL has failed to find an operator and the type also failed to post one.
+    // So let us attempt a default implementation for some operators.
+    if (Assign.find(type) != Assign.end())
+        return BuildLvalueConstruction(lhs, a).BuildBinaryExpression(rhs, Assign.at(type), a);
+    switch(type) {
+    case Lexer::TokenType::NotEqCmp:
+        return lhs.BuildBinaryExpression(rhs, Lexer::TokenType::EqCmp, a).BuildNegate(a);
+    case Lexer::TokenType::EqCmp:
+        return lhs.BuildBinaryExpression(rhs, Lexer::TokenType::LT, a).BuildNegate(a).BuildBinaryExpression(rhs.BuildBinaryExpression(lhs, Lexer::TokenType::LT, a).BuildNegate(a), Lexer::TokenType::And, a);
+    case Lexer::TokenType::LTE:
+        return rhs.BuildBinaryExpression(lhs, Lexer::TokenType::LT, a).BuildNegate(a);
+    case Lexer::TokenType::GT:
+        return rhs.BuildBinaryExpression(lhs, Lexer::TokenType::LT, a);
+    case Lexer::TokenType::GTE:
+        return lhs.BuildBinaryExpression(rhs, Lexer::TokenType::LT, a).BuildNegate(a);
+    case Lexer::TokenType::Assignment:
+        if (!IsComplexType() && lhs.t->Decay() == rhs.t->Decay() && a.IsLvalueType(lhs.t))
+            return Expression(lhs.t, a.gen->CreateStore(lhs.Expr, rhs.BuildValue(a).Expr));
+    case Lexer::TokenType::Or:
+        return Expression(a.GetBooleanType(), lhs.BuildBooleanConversion(a)).BuildBinaryExpression(Expression(a.GetBooleanType(), rhs.BuildBooleanConversion(a)), Wide::Lexer::TokenType::Or, a);
+    case Lexer::TokenType::And:
+        return Expression(a.GetBooleanType(), lhs.BuildBooleanConversion(a)).BuildBinaryExpression(Expression(a.GetBooleanType(), rhs.BuildBooleanConversion(a)), Wide::Lexer::TokenType::And, a);
+    }
+    throw std::runtime_error("Attempted to build a binary expression; but it could not be found by the type, and a default could not be applied.");
 }

@@ -122,12 +122,12 @@ std::function<llvm::Type*(llvm::Module*)> ClangOverloadSet::GetLLVMType(Analyzer
 }
 
 std::size_t ClangOverloadSet::size(Analyzer& a) {
-	if (!nonstatic) a.gen->GetInt8AllocSize();
-	return a.gen->GetDataLayout().getPointerSize();
+    if (!nonstatic) a.gen->GetInt8AllocSize();
+    return a.gen->GetDataLayout().getPointerSize();
 }
 std::size_t ClangOverloadSet::alignment(Analyzer& a) {
     if (!nonstatic) return llvm::DataLayout(a.gen->GetDataLayout()).getABIIntegerTypeAlignment(8);
-	return a.gen->GetDataLayout().getPointerABIAlignment();
+    return a.gen->GetDataLayout().getPointerABIAlignment();
 }
 Expression ClangOverloadSet::BuildValueConstruction(std::vector<Expression> args, Analyzer& a) {
     if (args.size() > 1)

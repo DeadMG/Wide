@@ -25,7 +25,7 @@ namespace Wide {
 
             Wide::Util::optional<Expression> AccessMember(Expression val, std::string name, Analyzer& a) override;        
             Expression BuildCall(Expression val, std::vector<Expression> args, Analyzer& a) override;        
-			Expression BuildBinaryExpression(Expression lhs, Expression rhs, Lexer::TokenType type, Analyzer& a) override;
+            Expression BuildBinaryExpression(Expression lhs, Expression rhs, Lexer::TokenType type, Analyzer& a) override;
             
             Wide::Codegen::Expression* BuildBooleanConversion(Expression self, Analyzer& a) override;
 

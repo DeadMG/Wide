@@ -28,7 +28,7 @@ namespace Wide {
             virtual ~Statement() {}
             virtual void Build(llvm::IRBuilder<>& bb, Generator& g) = 0;
         };
-		class ReturnStatement : public Statement, public Codegen::ReturnStatement {
+        class ReturnStatement : public Statement, public Codegen::ReturnStatement {
             LLVMCodegen::Expression* val;
         public:
             Codegen::Expression* GetReturnExpression();

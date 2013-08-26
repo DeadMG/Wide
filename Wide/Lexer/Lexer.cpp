@@ -22,10 +22,10 @@ const std::unordered_map<char, TokenType> Arguments::singles = []() -> std::unor
     singles['&'] = TokenType::And;
     singles['|'] = TokenType::Or;
     singles['*'] = TokenType::Dereference;
-	singles['%'] = TokenType::Modulo;
+    singles['%'] = TokenType::Modulo;
     singles['='] = TokenType::Assignment;
     singles['!'] = TokenType::Exclaim;
-	singles['/'] = TokenType::Divide;
+    singles['/'] = TokenType::Divide;
     singles['^'] = TokenType::Xor;
     singles[':'] = TokenType::Colon;    
     return singles;
@@ -40,17 +40,17 @@ const std::unordered_map<char, std::unordered_map<char, TokenType>> Arguments::d
     doubles['-']['-'] = TokenType::Decrement;    
     doubles['>']['>'] = TokenType::RightShift; 
     doubles['<']['<'] = TokenType::LeftShift;
-	doubles['-']['='] = TokenType::MinusAssign;
-	doubles['+']['='] = TokenType::PlusAssign;
+    doubles['-']['='] = TokenType::MinusAssign;
+    doubles['+']['='] = TokenType::PlusAssign;
     doubles['-']['>'] = TokenType::PointerAccess;
-	doubles['&']['='] = TokenType::AndAssign;
-	doubles['|']['='] = TokenType::OrAssign;
-	doubles['*']['='] = TokenType::MulAssign;
-	doubles['%']['='] = TokenType::ModAssign;
+    doubles['&']['='] = TokenType::AndAssign;
+    doubles['|']['='] = TokenType::OrAssign;
+    doubles['*']['='] = TokenType::MulAssign;
+    doubles['%']['='] = TokenType::ModAssign;
     doubles['=']['='] = TokenType::EqCmp;    
     doubles['~']['='] = TokenType::NotEqCmp;    
-	doubles['/']['='] = TokenType::DivAssign;
-	doubles['^']['='] = TokenType::XorAssign;
+    doubles['/']['='] = TokenType::DivAssign;
+    doubles['^']['='] = TokenType::XorAssign;
     doubles['<']['='] = TokenType::LTE;    
     doubles['>']['='] = TokenType::GTE;    
     doubles[':']['='] = TokenType::VarCreate;    
@@ -58,11 +58,11 @@ const std::unordered_map<char, std::unordered_map<char, TokenType>> Arguments::d
 }();
 
 const std::unordered_map<char, std::unordered_map<char, std::unordered_map<char, TokenType>>> Arguments::triples = []() -> std::unordered_map<char, std::unordered_map<char, std::unordered_map<char, TokenType>>> {
-	std::unordered_map<char, std::unordered_map<char, std::unordered_map<char, TokenType>>> triples;
-	triples['>']['>']['='] = TokenType::RightShiftAssign;
-	triples['<']['<']['='] = TokenType::LeftShiftAssign;
-	triples['.']['.']['.'] = TokenType::Ellipsis;
-	return triples;
+    std::unordered_map<char, std::unordered_map<char, std::unordered_map<char, TokenType>>> triples;
+    triples['>']['>']['='] = TokenType::RightShiftAssign;
+    triples['<']['<']['='] = TokenType::LeftShiftAssign;
+    triples['.']['.']['.'] = TokenType::Ellipsis;
+    return triples;
 }();
 
 const std::unordered_set<char> Arguments::whitespace = []() -> std::unordered_set<char> {

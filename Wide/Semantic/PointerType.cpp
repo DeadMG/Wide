@@ -33,7 +33,7 @@ std::function<llvm::Type*(llvm::Module*)> PointerType::GetLLVMType(Analyzer& a) 
 }
 
 Expression PointerType::BuildDereference(Expression val, Analyzer& a) {
-	return Expression(a.AsLvalueType(pointee), val.BuildValue(a).Expr);
+    return Expression(a.AsLvalueType(pointee), val.BuildValue(a).Expr);
 }
 
 Codegen::Expression* PointerType::BuildInplaceConstruction(Codegen::Expression* mem, std::vector<Expression> args, Analyzer& a) {
@@ -50,27 +50,27 @@ Codegen::Expression* PointerType::BuildInplaceConstruction(Codegen::Expression* 
 }
 
 Expression PointerType::BuildBinaryExpression(Expression lhs, Expression rhs, Lexer::TokenType type, Analyzer& a) {
-	auto lhsval = lhs.BuildValue(a);
-	auto rhsval = rhs.BuildValue(a);
+    auto lhsval = lhs.BuildValue(a);
+    auto rhsval = rhs.BuildValue(a);
 
-	// If we're not a match, permit ADL to take over. Else, generate the primitive operator.
-	if (lhs.t->Decay() != this || rhs.t->Decay() != this)
-	   return Type::BuildBinaryExpression(lhs, rhs, type, a);
+    // If we're not a match, permit ADL to take over. Else, generate the primitive operator.
+    if (lhs.t->Decay() != this || rhs.t->Decay() != this)
+       return Type::BuildBinaryExpression(lhs, rhs, type, a);
 
-	if (type == Lexer::TokenType::EqCmp) {
+    if (type == Lexer::TokenType::EqCmp) {
         return Expression(a.GetBooleanType(), a.gen->CreateEqualityExpression(lhsval.Expr, rhsval.Expr));
-	}
+    }
 
-	// Let ADL take over if we are not an lvalue.
-	if (!a.IsLvalueType(lhs.t))
-		return Type::BuildBinaryExpression(lhs, rhs, type, a);
+    // Let ADL take over if we are not an lvalue.
+    if (!a.IsLvalueType(lhs.t))
+        return Type::BuildBinaryExpression(lhs, rhs, type, a);
 
-	/*switch(type) {
-	case Lexer::TokenType::Assignment:
-		return Expression(lhs.t, a.gen->CreateStore(lhs.Expr, rhsval.Expr));
-	}*/
-	// Permit ADL to find any funky operators the user may have defined or defaults.
-	return Type::BuildBinaryExpression(lhs, rhs, type, a);
+    /*switch(type) {
+    case Lexer::TokenType::Assignment:
+        return Expression(lhs.t, a.gen->CreateStore(lhs.Expr, rhsval.Expr));
+    }*/
+    // Permit ADL to find any funky operators the user may have defined or defaults.
+    return Type::BuildBinaryExpression(lhs, rhs, type, a);
 }
 
 Codegen::Expression* PointerType::BuildBooleanConversion(Expression obj, Analyzer& a) {

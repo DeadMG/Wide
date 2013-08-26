@@ -76,20 +76,20 @@ Variable* Generator::CreateVariable(std::function<llvm::Type*(llvm::Module*)> t,
 }
 
 LLVMCodegen::Expression* AssertExpression(Codegen::Expression* e) {
-	auto p = dynamic_cast<LLVMCodegen::Expression*>(e);
-	assert(p);
-	return p;
+    auto p = dynamic_cast<LLVMCodegen::Expression*>(e);
+    assert(p);
+    return p;
 }
 LLVMCodegen::Statement* AssertStatement(Codegen::Statement* e) {
-	auto p = dynamic_cast<LLVMCodegen::Statement*>(e);
-	assert(p);
-	return p;
+    auto p = dynamic_cast<LLVMCodegen::Statement*>(e);
+    assert(p);
+    return p;
 }
 
 FunctionCall* Generator::CreateFunctionCall(Codegen::Expression* obj, std::vector<Codegen::Expression*> args, std::function<llvm::Type*(llvm::Module*)> ty) {
-	std::vector<LLVMCodegen::Expression*> exprs;
+    std::vector<LLVMCodegen::Expression*> exprs;
     for(auto ex : args)
-		exprs.push_back(AssertExpression(ex));
+        exprs.push_back(AssertExpression(ex));
     return arena.Allocate<FunctionCall>(AssertExpression(obj), std::move(exprs), std::move(ty));
 }
 
@@ -117,8 +117,8 @@ FunctionValue* Generator::CreateFunctionValue(std::string name) {
 }
 
 void Generator::EmitCode() {    
-	for(auto&& x : tus)
-		x(&main);
+    for(auto&& x : tus)
+        x(&main);
     std::string err;
     if (llvm::verifyModule(main, llvm::VerifierFailureAction::PrintMessageAction, &err))
         throw std::runtime_error("Internal Compiler Error: An LLVM module failed verification.");
@@ -128,7 +128,7 @@ void Generator::EmitCode() {
     for(auto&& x : functions) {
         x->EmitCode(&main, context, *this);
     }    
-	s.clear();
+    s.clear();
     main.print(stream, nullptr);    
     if (llvm::verifyModule(main, llvm::VerifierFailureAction::PrintMessageAction, &err))
         throw std::runtime_error("Internal Compiler Error: An LLVM module failed verification.");
@@ -235,49 +235,49 @@ IsNullExpression* Generator::CreateIsNullExpression(Codegen::Expression* e) {
     return arena.Allocate<IsNullExpression>(AssertExpression(e));
 }
 IntegralLessThan* Generator::CreateLT(Codegen::Expression* l, Codegen::Expression* r, bool is_signed) {
-	return arena.Allocate<IntegralLessThan>(AssertExpression(l), AssertExpression(r), is_signed);
+    return arena.Allocate<IntegralLessThan>(AssertExpression(l), AssertExpression(r), is_signed);
 }
 SubExpression* Generator::CreateSubExpression(Codegen::Expression* l, Codegen::Expression* r) {
-	return arena.Allocate<SubExpression>(AssertExpression(l), AssertExpression(r));
+    return arena.Allocate<SubExpression>(AssertExpression(l), AssertExpression(r));
 }
 XorExpression* Generator::CreateXorExpression(Codegen::Expression* l, Codegen::Expression* r) {
-	return arena.Allocate<XorExpression>(AssertExpression(l), AssertExpression(r));
+    return arena.Allocate<XorExpression>(AssertExpression(l), AssertExpression(r));
 }
 ModExpression* Generator::CreateModExpression(Codegen::Expression* l, Codegen::Expression* r, bool is_signed) {
-	return arena.Allocate<ModExpression>(AssertExpression(l), AssertExpression(r), is_signed);
+    return arena.Allocate<ModExpression>(AssertExpression(l), AssertExpression(r), is_signed);
 }
 DivExpression* Generator::CreateDivExpression(Codegen::Expression* l, Codegen::Expression* r, bool is_signed) {
-	return arena.Allocate<DivExpression>(AssertExpression(l), AssertExpression(r), is_signed);
+    return arena.Allocate<DivExpression>(AssertExpression(l), AssertExpression(r), is_signed);
 }
 
 llvm::DataLayout Generator::GetDataLayout() {
-	return llvm::DataLayout(main.getDataLayout());
+    return llvm::DataLayout(main.getDataLayout());
 }
 
 std::size_t Generator::GetInt8AllocSize() {
-	return GetDataLayout().getTypeAllocSize(llvm::IntegerType::getInt8Ty(context));
+    return GetDataLayout().getTypeAllocSize(llvm::IntegerType::getInt8Ty(context));
 }
 
 llvm::LLVMContext& Generator::GetContext() {
-	return context;
+    return context;
 }
 
 void Generator::AddClangTU(std::function<void(llvm::Module*)> tu) {
-	tus.push_back(tu);
+    tus.push_back(tu);
 }
 
 FPExtension* Generator::CreateFPExtension(Codegen::Expression* l, std::function<llvm::Type*(llvm::Module*)> ty) {
-	return arena.Allocate<FPExtension>(AssertExpression(l), std::move(ty));
+    return arena.Allocate<FPExtension>(AssertExpression(l), std::move(ty));
 }
 
 FPMod* Generator::CreateFPMod(Codegen::Expression* l, Codegen::Expression* r) {
-	return arena.Allocate<FPMod>(AssertExpression(l), AssertExpression(r));
+    return arena.Allocate<FPMod>(AssertExpression(l), AssertExpression(r));
 }
 
 FPDiv* Generator::CreateFPDiv(Codegen::Expression* l, Codegen::Expression* r) {
-	return arena.Allocate<FPDiv>(AssertExpression(l), AssertExpression(r));
+    return arena.Allocate<FPDiv>(AssertExpression(l), AssertExpression(r));
 }
 
 FPLT* Generator::CreateFPLT(Codegen::Expression* l, Codegen::Expression* r) {
-	return arena.Allocate<FPLT>(AssertExpression(l), AssertExpression(r));
+    return arena.Allocate<FPLT>(AssertExpression(l), AssertExpression(r));
 }

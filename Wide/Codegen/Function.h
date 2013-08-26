@@ -18,12 +18,12 @@ namespace Wide {
     }
     namespace LLVMCodegen {
         class Statement;
-		class Generator;
-		class Function : public Codegen::Function {
+        class Generator;
+        class Function : public Codegen::Function {
             std::vector<Statement*> statements;
             std::function<llvm::Type*(llvm::Module*)> Type;
             std::string name;
-			bool tramp;
+            bool tramp;
             std::unordered_map<unsigned, llvm::Value*> ParameterValues;
             Semantic::Function* debug;
         public:

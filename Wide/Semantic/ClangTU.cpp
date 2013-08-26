@@ -179,7 +179,7 @@ std::function<llvm::Type*(llvm::Module*)> ClangTU::GetLLVMTypeFromClangType(clan
             return a.GetClangType(*this, t)->GetLLVMType(a)(mod);
         }
         
-		auto RD = t.getCanonicalType()->getAsCXXRecordDecl();
+        auto RD = t.getCanonicalType()->getAsCXXRecordDecl();
         /*if (!RD->field_empty()) {
             // If we are non-empty, we can't be an eliminate type
 
@@ -209,9 +209,9 @@ std::function<llvm::Type*(llvm::Module*)> ClangTU::GetLLVMTypeFromClangType(clan
         if (prebaked_types.find(t) != prebaked_types.end())
             return prebaked_types[t](mod);
 
-		// Below logic copy pastad from CodeGenModule::addRecordTypeName
-		std::string TypeName;
-		llvm::raw_string_ostream OS(TypeName);
+        // Below logic copy pastad from CodeGenModule::addRecordTypeName
+        std::string TypeName;
+        llvm::raw_string_ostream OS(TypeName);
         OS << RD->getKindName() << '.';
         if (RD->getIdentifier()) {
           if (RD->getDeclContext())
@@ -226,32 +226,32 @@ std::function<llvm::Type*(llvm::Module*)> ClangTU::GetLLVMTypeFromClangType(clan
         } else
           OS << "anon";
         
-		OS.flush();
-		auto ty = mod->getTypeByName(TypeName);      
+        OS.flush();
+        auto ty = mod->getTypeByName(TypeName);      
         if (ty) {
             if (t->getAsCXXRecordDecl()->field_empty())
                 a.gen->AddEliminateType(ty);
             return ty;
         }
-		
+        
         std::string s;
         llvm::raw_string_ostream stream(s);
         mod->print(stream, nullptr);
-		assert(false && "Attempted to look up a Clang type, but it did not exist in the module. You need to find out where this type came from- is it some unconverted primitive type?");
+        assert(false && "Attempted to look up a Clang type, but it did not exist in the module. You need to find out where this type came from- is it some unconverted primitive type?");
         return nullptr; // Shut up control path warning
     };
 }
 
 bool ClangTU::IsComplexType(clang::CXXRecordDecl* decl) {
     if (!decl) return false;
-	auto indirect = impl->codegenmod.getCXXABI().isReturnTypeIndirect(decl);
-	auto arg = impl->codegenmod.getCXXABI().getRecordArgABI(decl);
-	auto t = impl->astcon.getTypeDeclType(decl);
-	if (!indirect && arg != clang::CodeGen::CGCXXABI::RecordArgABI::RAA_Default)
-		assert(false);
-	if (indirect && arg != clang::CodeGen::CGCXXABI::RecordArgABI::RAA_Indirect)
-		assert(false);
-	return indirect;
+    auto indirect = impl->codegenmod.getCXXABI().isReturnTypeIndirect(decl);
+    auto arg = impl->codegenmod.getCXXABI().getRecordArgABI(decl);
+    auto t = impl->astcon.getTypeDeclType(decl);
+    if (!indirect && arg != clang::CodeGen::CGCXXABI::RecordArgABI::RAA_Default)
+        assert(false);
+    if (indirect && arg != clang::CodeGen::CGCXXABI::RecordArgABI::RAA_Indirect)
+        assert(false);
+    return indirect;
 }
 
 std::string ClangTU::MangleName(clang::NamedDecl* D) {    

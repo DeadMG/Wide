@@ -26,9 +26,9 @@ namespace Wide {
     namespace AST {
         struct DeclContext;
     }
-	namespace Lexer {
-		enum class TokenType : int;
-	}
+    namespace Lexer {
+        enum class TokenType : int;
+    }
     namespace Semantic {
         class Analyzer;
         struct Type;
@@ -49,15 +49,15 @@ namespace Wide {
             Expression BuildLeftShift(Expression rhs, Analyzer& a);
             Wide::Util::optional<Expression> AccessMember(std::string name, Analyzer& a);
             Expression BuildCall(std::vector<Expression> args, Analyzer& a);
-			Expression BuildCall(Expression lhs, Expression rhs, Analyzer& a);
+            Expression BuildCall(Expression lhs, Expression rhs, Analyzer& a);
             Expression BuildCall(Expression arg, Analyzer& a);
             Expression BuildCall(Analyzer& a);
             Expression BuildMetaCall(std::vector<Expression> args, Analyzer& a);
             Expression BuildDereference(Analyzer& a);
             Expression BuildIncrement(bool postfix, Analyzer& a);
-			Expression BuildNegate(Analyzer& a);
-			
-			Expression BuildBinaryExpression(Expression rhs, Lexer::TokenType type, Analyzer& a);
+            Expression BuildNegate(Analyzer& a);
+            
+            Expression BuildBinaryExpression(Expression rhs, Lexer::TokenType type, Analyzer& a);
 
             Wide::Util::optional<Expression> PointerAccessMember(std::string name, Analyzer& a);
 
@@ -81,19 +81,19 @@ namespace Wide {
         };
         struct Type  {
         public:
-			virtual bool IsReference(Type* to) {
-				return false;
-			}
+            virtual bool IsReference(Type* to) {
+                return false;
+            }
             virtual bool IsReference() {
                 return false;
             } 
-			virtual Type* Decay() {
+            virtual Type* Decay() {
                 return this;
             }
 
             virtual AST::DeclContext* GetDeclContext() {
-				if (IsReference())
-					return Decay()->GetDeclContext();
+                if (IsReference())
+                    return Decay()->GetDeclContext();
                 return nullptr;
             }
             virtual bool IsComplexType() { return false; }
@@ -123,48 +123,48 @@ namespace Wide {
 
 
             virtual Expression BuildValue(Expression lhs, Analyzer& a);
-			virtual Wide::Util::optional<Expression> AccessMember(Expression, std::string name, Analyzer& a);
-			virtual Wide::Util::optional<Expression> AccessMember(Expression e, Lexer::TokenType type, Analyzer& a) {
-				if (IsReference())
-					return Decay()->AccessMember(e, type, a);
-				return Wide::Util::none;
-			}
+            virtual Wide::Util::optional<Expression> AccessMember(Expression, std::string name, Analyzer& a);
+            virtual Wide::Util::optional<Expression> AccessMember(Expression e, Lexer::TokenType type, Analyzer& a) {
+                if (IsReference())
+                    return Decay()->AccessMember(e, type, a);
+                return Wide::Util::none;
+            }
             virtual Expression BuildCall(Expression val, std::vector<Expression> args, Analyzer& a) {
-				if (IsReference())
-					return Decay()->BuildCall(val, std::move(args), a);
+                if (IsReference())
+                    return Decay()->BuildCall(val, std::move(args), a);
                 throw std::runtime_error("Attempted to call a type that did not support it.");
             }
             virtual Expression BuildMetaCall(Expression val, std::vector<Expression> args, Analyzer& a) {
                 throw std::runtime_error("Attempted to call a type that did not support it.");
             }
-			virtual ConversionRank RankConversionFrom(Type* to, Analyzer& a);
+            virtual ConversionRank RankConversionFrom(Type* to, Analyzer& a);
             virtual Codegen::Expression* BuildBooleanConversion(Expression val, Analyzer& a) {
-				if (IsReference())
-					return Decay()->BuildBooleanConversion(val, a);
+                if (IsReference())
+                    return Decay()->BuildBooleanConversion(val, a);
                 throw std::runtime_error("Could not convert a type to boolean.");
             }
-			
-			virtual Expression BuildNegate(Expression val, Analyzer& a);
+            
+            virtual Expression BuildNegate(Expression val, Analyzer& a);
             virtual Expression BuildIncrement(Expression obj, bool postfix, Analyzer& a) {
                 if (IsReference())
                     return Decay()->BuildIncrement(obj, postfix, a);
                 throw std::runtime_error("Attempted to increment a type that did not support it.");
-            }	
+            }    
             virtual Expression BuildDereference(Expression obj, Analyzer& a) {
-				if (IsReference())
-					return Decay()->BuildDereference(obj, a);
+                if (IsReference())
+                    return Decay()->BuildDereference(obj, a);
                 throw std::runtime_error("This type does not support de-referencing.");
             }
             virtual Wide::Util::optional<Expression> PointerAccessMember(Expression obj, std::string name, Analyzer& a) {
-				if (IsReference())
-					return Decay()->PointerAccessMember(obj, std::move(name), a);
+                if (IsReference())
+                    return Decay()->PointerAccessMember(obj, std::move(name), a);
                 obj = obj.t->BuildDereference(obj, a);
                 return obj.t->AccessMember(obj, std::move(name), a);
             }
             virtual Expression AddressOf(Expression obj, Analyzer& a);
 
-			virtual Expression BuildBinaryExpression(Expression lhs, Expression rhs, Lexer::TokenType type, Analyzer& a);
-						                        
+            virtual Expression BuildBinaryExpression(Expression lhs, Expression rhs, Lexer::TokenType type, Analyzer& a);
+                                                
             virtual ~Type() {}
         };     
     }

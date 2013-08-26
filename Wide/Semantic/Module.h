@@ -19,7 +19,7 @@ namespace Wide {
             AST::DeclContext* GetDeclContext() override;
             void AddSpecialMember(std::string name, Expression t);            
             Wide::Util::optional<Expression> AccessMember(Expression val, std::string name, Analyzer& a) override;
-			Wide::Util::optional<Expression> AccessMember(Expression val, Wide::Lexer::TokenType, Analyzer& a) override;
+            Wide::Util::optional<Expression> AccessMember(Expression val, Wide::Lexer::TokenType, Analyzer& a) override;
         };
     }
 }

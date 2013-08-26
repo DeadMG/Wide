@@ -31,7 +31,7 @@ namespace clang {
     class GlobalDecl;
     class FieldDecl;
     class SourceLocation;
-	class CXXRecordDecl;
+    class CXXRecordDecl;
     class FunctionDecl;
 }
 
@@ -59,7 +59,7 @@ namespace Wide {
             std::function<llvm::Type*(llvm::Module*)> GetLLVMTypeFromClangType(clang::QualType t, Semantic::Analyzer& a);
             std::string MangleName(clang::NamedDecl* D);
 
-			bool IsComplexType(clang::CXXRecordDecl* decl);
+            bool IsComplexType(clang::CXXRecordDecl* decl);
             clang::ASTContext& GetASTContext();
             clang::Sema& GetSema();
             clang::IdentifierInfo* GetIdentifierInfo(std::string ident);

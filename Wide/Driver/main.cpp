@@ -41,12 +41,12 @@ void Compile(const Wide::Options::Clang& copts, const Wide::Options::LLVM& lopts
             str << Wide::Parser::ErrorStrings.at(what);
             excepts.push_back(str.str());
         };
-		auto parserwarninghandler = [&](Wide::Lexer::Range where, Wide::Parser::Warning what) {
+        auto parserwarninghandler = [&](Wide::Lexer::Range where, Wide::Parser::Warning what) {
             std::stringstream str;
             str << "Warning in file " << filename << ", line " << where.begin.line << " column " << where.begin.column << ":\n";
             str << Wide::Parser::WarningStrings.at(what);
             warnings.push_back(str.str());
-		};
+        };
         try {
             Wide::Parser::ParseGlobalModuleContents(lex, Wide::AST::ThreadLocalBuilder(ASTBuilder, parsererrorhandler, parserwarninghandler), ASTBuilder.GetGlobalModule());
         } catch(Wide::Parser::ParserError& e) {
@@ -58,8 +58,8 @@ void Compile(const Wide::Options::Clang& copts, const Wide::Options::LLVM& lopts
         }
     });
 
-	for(auto&& x : warnings)
-		std::cout << x << "\n";
+    for(auto&& x : warnings)
+        std::cout << x << "\n";
 
     if (excepts.empty()) {
         try {
@@ -170,5 +170,5 @@ int main(int argc, char** argv)
     files.push_back(stdlib + "stdlib.wide");
     Compile(ClangOpts, LLVMOpts, files);
 
-	return 0;
+    return 0;
 }

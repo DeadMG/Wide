@@ -33,8 +33,8 @@ template<typename T, typename U> T* debug_cast(U* other) {
 }
 
 OverloadSet::OverloadSet(AST::FunctionOverloadSet* s, Type* mem) {
-	for(auto x : s->functions)
-		functions.insert(x);
+    for(auto x : s->functions)
+        functions.insert(x);
     nonstatic = mem;
 }
 std::function<llvm::Type*(llvm::Module*)> OverloadSet::GetLLVMType(Analyzer& a) {
@@ -111,7 +111,7 @@ Expression OverloadSet::BuildCall(Expression e, std::vector<Expression> args, An
                     AST::DeclContext* con;
                     Type* autotype;
                     Type* nonstatic;
-					Wide::Util::optional<Expression> AccessMember(Expression self, std::string name, Analyzer& a) {
+                    Wide::Util::optional<Expression> AccessMember(Expression self, std::string name, Analyzer& a) {
                         if (name == "this")
                             return a.GetConstructorType(nonstatic)->BuildValueConstruction(std::vector<Expression>(), a);
                         if (name == "auto")
@@ -208,7 +208,7 @@ ConversionRank OverloadSet::ResolveOverloadRank(std::vector<Type*> args, Analyze
                 struct LookupType : Type {
                     AST::DeclContext* con;
                     Type* nonstatic;
-					Wide::Util::optional<Expression> AccessMember(Expression self, std::string name, Analyzer& a) {
+                    Wide::Util::optional<Expression> AccessMember(Expression self, std::string name, Analyzer& a) {
                         if (name == "this") {
                             return a.GetConstructorType(nonstatic)->BuildValueConstruction(std::vector<Expression>(), a);
                         }
@@ -267,8 +267,8 @@ Codegen::Expression* OverloadSet::BuildInplaceConstruction(Codegen::Expression* 
     if (args.size() > 1)
         throw std::runtime_error("Cannot construct an overload set from more than one argument.");
     if (args.size() == 1) {
-		if (args[0].BuildValue(a).t == this)
-			return a.gen->CreateStore(mem, args[0].BuildValue(a).Expr);
+        if (args[0].BuildValue(a).t == this)
+            return a.gen->CreateStore(mem, args[0].BuildValue(a).Expr);
         if (nonstatic) {
             if (args[0].t->IsReference(nonstatic) || (nonstatic->IsReference() && nonstatic == args[0].t))
                 return a.gen->CreateStore(a.gen->CreateFieldExpression(mem, 0), args[0].Expr);
@@ -356,13 +356,13 @@ clang::QualType OverloadSet::GetClangType(ClangUtil::ClangTU& TU, Analyzer& a) {
                 for(auto it = fty->param_begin(); it != fty->param_end(); ++it) {
                     args.push_back(*it);
                 }
-				// If T is complex, then "this" is the second argument. Else it is the first.
+                // If T is complex, then "this" is the second argument. Else it is the first.
                 auto self = TU.GetLLVMTypeFromClangType(TU.GetASTContext().getTypeDeclType(recdecl), a)(m)->getPointerTo();
-				if (sig->GetReturnType()->IsComplexType()) {
-					args.insert(args.begin() + 1, self);
-				} else {
-					args.insert(args.begin(), self);
-				}
+                if (sig->GetReturnType()->IsComplexType()) {
+                    args.insert(args.begin() + 1, self);
+                } else {
+                    args.insert(args.begin(), self);
+                }
                 return llvm::FunctionType::get(fty->getReturnType(), args, false)->getPointerTo();
             }, TU.MangleName(meth), nullptr, true);// If an i8/i1 mismatch, fix it up for us.
             // The only statement is return f().
@@ -395,17 +395,17 @@ clang::QualType OverloadSet::GetClangType(ClangUtil::ClangTU& TU, Analyzer& a) {
     return clangtypes[&TU] = TU.GetASTContext().getTypeDeclType(recdecl);
 }
 std::size_t OverloadSet::size(Analyzer& a) {
-	if (!nonstatic) return a.gen->GetInt8AllocSize();
+    if (!nonstatic) return a.gen->GetInt8AllocSize();
     return llvm::DataLayout(a.gen->GetDataLayout()).getPointerSize();
 }
 std::size_t OverloadSet::alignment(Analyzer& a) {
-	if (!nonstatic) return a.gen->GetDataLayout().getABIIntegerTypeAlignment(8);
-	return llvm::DataLayout(a.gen->GetDataLayout()).getPointerABIAlignment();
+    if (!nonstatic) return a.gen->GetDataLayout().getABIIntegerTypeAlignment(8);
+    return llvm::DataLayout(a.gen->GetDataLayout()).getPointerABIAlignment();
 }
 OverloadSet::OverloadSet(OverloadSet* s, OverloadSet* other) {
-	for(auto x : s->functions)
-		functions.insert(x);
-	for(auto x : other->functions)
-		functions.insert(x);
-	nonstatic = nullptr;
+    for(auto x : s->functions)
+        functions.insert(x);
+    for(auto x : other->functions)
+        functions.insert(x);
+    nonstatic = nullptr;
 }

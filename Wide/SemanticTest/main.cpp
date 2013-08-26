@@ -13,58 +13,58 @@
 #include <Wide/Util/Catch.h>
 
 namespace Wide {
-	namespace Codegen {
-		class MockFunction : public Function {
-		public:
-			void AddStatement(Codegen::Statement*) {}
-		};
-		class MockIntegralExpression : public IntegralExpression {
-			unsigned long long value;
-			bool sign;
-		public:
-			MockIntegralExpression(unsigned long long val, bool s)
-				: value(val), sign(s) {}
-			unsigned long long GetValue() { return value; }
-			bool GetSign() { return sign; }
-		};
-		class MockFunctionValue : public FunctionValue {
-			std::string name;
-		public:
-			MockFunctionValue(std::string nam)
-				: name(std::move(nam)) {}
-			std::string GetMangledName() { return name; }
-		};
-		class MockStringExpression : public StringExpression {
-			std::string val;
-		public:
-			MockStringExpression(std::string value)
-				: val(std::move(value)) {}
-			std::string GetContents() { return val; }
-		};
+    namespace Codegen {
+        class MockFunction : public Function {
+        public:
+            void AddStatement(Codegen::Statement*) {}
+        };
+        class MockIntegralExpression : public IntegralExpression {
+            unsigned long long value;
+            bool sign;
+        public:
+            MockIntegralExpression(unsigned long long val, bool s)
+                : value(val), sign(s) {}
+            unsigned long long GetValue() { return value; }
+            bool GetSign() { return sign; }
+        };
+        class MockFunctionValue : public FunctionValue {
+            std::string name;
+        public:
+            MockFunctionValue(std::string nam)
+                : name(std::move(nam)) {}
+            std::string GetMangledName() { return name; }
+        };
+        class MockStringExpression : public StringExpression {
+            std::string val;
+        public:
+            MockStringExpression(std::string value)
+                : val(std::move(value)) {}
+            std::string GetContents() { return val; }
+        };
         class MockGenerator : public Generator {
         public:
-			MockGenerator(llvm::DataLayout data)
-				: layout(data) {}
-			llvm::LLVMContext con;
-			llvm::DataLayout layout;
+            MockGenerator(llvm::DataLayout data)
+                : layout(data) {}
+            llvm::LLVMContext con;
+            llvm::DataLayout layout;
 
-			virtual llvm::LLVMContext& GetContext() { return con; }
-			virtual llvm::DataLayout GetDataLayout() { return layout; }
-			virtual void AddEliminateType(llvm::Type* t) {}
-			virtual void AddClangTU(std::function<void(llvm::Module*)>) {}
-			virtual std::size_t GetInt8AllocSize() { return 1; }
+            virtual llvm::LLVMContext& GetContext() { return con; }
+            virtual llvm::DataLayout GetDataLayout() { return layout; }
+            virtual void AddEliminateType(llvm::Type* t) {}
+            virtual void AddClangTU(std::function<void(llvm::Module*)>) {}
+            virtual std::size_t GetInt8AllocSize() { return 1; }
 
-			virtual Function* CreateFunction(std::function<llvm::Type*(llvm::Module*)>, std::string, Semantic::Function* debug, bool trampoline = false) { return new MockFunction; }
-        	virtual Variable* CreateVariable(std::function<llvm::Type*(llvm::Module*)>, unsigned alignment) { return nullptr; }
+            virtual Function* CreateFunction(std::function<llvm::Type*(llvm::Module*)>, std::string, Semantic::Function* debug, bool trampoline = false) { return new MockFunction; }
+            virtual Variable* CreateVariable(std::function<llvm::Type*(llvm::Module*)>, unsigned alignment) { return nullptr; }
             virtual FunctionCall* CreateFunctionCall(Expression*, std::vector<Expression*>, std::function<llvm::Type*(llvm::Module*)> = std::function<llvm::Type*(llvm::Module*)>()) { return nullptr; }
-			virtual StringExpression* CreateStringExpression(std::string val) { return new MockStringExpression(std::move(val)); }
-			virtual NamedGlobalVariable* CreateGlobalVariable(std::string) { return nullptr; }
+            virtual StringExpression* CreateStringExpression(std::string val) { return new MockStringExpression(std::move(val)); }
+            virtual NamedGlobalVariable* CreateGlobalVariable(std::string) { return nullptr; }
             virtual StoreExpression* CreateStore(Expression*, Expression*) { return nullptr; }
             virtual LoadExpression* CreateLoad(Expression*) { return nullptr; }
             virtual ReturnStatement* CreateReturn() { return nullptr; }
             virtual ReturnStatement* CreateReturn(Expression*) { return nullptr; }
-			virtual FunctionValue* CreateFunctionValue(std::string name) { return new MockFunctionValue(std::move(name)); }
-			virtual IntegralExpression* CreateIntegralExpression(unsigned long long val, bool is_signed, std::function<llvm::Type*(llvm::Module*)> ty) { return new MockIntegralExpression(val, is_signed); }
+            virtual FunctionValue* CreateFunctionValue(std::string name) { return new MockFunctionValue(std::move(name)); }
+            virtual IntegralExpression* CreateIntegralExpression(unsigned long long val, bool is_signed, std::function<llvm::Type*(llvm::Module*)> ty) { return new MockIntegralExpression(val, is_signed); }
             virtual ChainExpression* CreateChainExpression(Statement*, Expression*) { return nullptr; }
             virtual FieldExpression* CreateFieldExpression(Expression*, unsigned) { return nullptr; }
             virtual FieldExpression* CreateFieldExpression(Expression*, std::function<unsigned()>) { return nullptr; }
@@ -87,12 +87,12 @@ namespace Wide {
             virtual AndExpression* CreateAndExpression(Expression* lhs, Expression* rhs) { return nullptr; }
             virtual SExt* CreateSignedExtension(Expression* val, std::function<llvm::Type*(llvm::Module*)> to) { return nullptr; }
             virtual IsNullExpression* CreateIsNullExpression(Expression* val) { return nullptr; }
-        	virtual SubExpression* CreateSubExpression(Expression* l, Expression* r) { return nullptr; }
-        	virtual XorExpression* CreateXorExpression(Expression* l, Expression* r) { return nullptr; }
-        	virtual ModExpression* CreateModExpression(Expression* l, Expression* r, bool is_signed) { return nullptr; }
-        	virtual DivExpression* CreateDivExpression(Expression* l, Expression* r, bool is_signed) { return nullptr; }        
+            virtual SubExpression* CreateSubExpression(Expression* l, Expression* r) { return nullptr; }
+            virtual XorExpression* CreateXorExpression(Expression* l, Expression* r) { return nullptr; }
+            virtual ModExpression* CreateModExpression(Expression* l, Expression* r, bool is_signed) { return nullptr; }
+            virtual DivExpression* CreateDivExpression(Expression* l, Expression* r, bool is_signed) { return nullptr; }        
         };
-	}
+    }
 }
 
 
@@ -152,7 +152,7 @@ void Compile(const Wide::Options::Clang& copts, llvm::DataLayout lopts, std::ini
         for(auto&& msg : excepts) {
             std::cout << msg << "\n";
         }
-		throw std::runtime_error("Test failed.");
+        throw std::runtime_error("Test failed.");
     }
 }
 
@@ -161,13 +161,13 @@ TEST_CASE("", "") {
     llvm::InitializeAllTargetMCs();
     llvm::InitializeAllAsmPrinters();
     llvm::InitializeAllAsmParsers();
-	std::string triple = "i686-pc-mingw32";
+    std::string triple = "i686-pc-mingw32";
     std::unique_ptr<llvm::TargetMachine> targetmachine;
     std::string err;
     const llvm::Target& target = *llvm::TargetRegistry::lookupTarget(triple, err);
     llvm::TargetOptions targetopts;
     targetmachine = std::unique_ptr<llvm::TargetMachine>(target.createTargetMachine(triple, llvm::Triple(triple).getArchName(), "", targetopts));
-	Wide::Options::Clang clangopts;
-	CHECK_NOTHROW(Compile(clangopts, *targetmachine->getDataLayout(), {"IntegerOperations.wide"}));
-	CHECK_NOTHROW(Compile(clangopts, *targetmachine->getDataLayout(), {"PrimitiveADL.wide"}));
+    Wide::Options::Clang clangopts;
+    CHECK_NOTHROW(Compile(clangopts, *targetmachine->getDataLayout(), {"IntegerOperations.wide"}));
+    CHECK_NOTHROW(Compile(clangopts, *targetmachine->getDataLayout(), {"PrimitiveADL.wide"}));
 }

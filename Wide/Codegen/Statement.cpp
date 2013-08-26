@@ -39,8 +39,8 @@ void ReturnStatement::Build(llvm::IRBuilder<>& bb, Generator& g) {
 }
 
 Codegen::Expression* ReturnStatement::GetReturnExpression() {
-	auto p = dynamic_cast<Codegen::Expression*>(val);
-	assert(p);
+    auto p = dynamic_cast<Codegen::Expression*>(val);
+    assert(p);
     return p;
 }
 

@@ -43,7 +43,7 @@ Wide::Util::optional<Expression> ConstructorType::PointerAccessMember(Expression
     if (name == "decay")
         return a.GetConstructorType(t->Decay())->BuildValueConstruction(std::vector<Expression>(), a);
     if (name == "lvalue")
-		return a.GetConstructorType(a.AsLvalueType(t))->BuildValueConstruction(std::vector<Expression>(), a);
+        return a.GetConstructorType(a.AsLvalueType(t))->BuildValueConstruction(std::vector<Expression>(), a);
     if (name == "rvalue")
         return a.GetConstructorType(a.AsRvalueType(t))->BuildValueConstruction(std::vector<Expression>(), a);
     if (name == "pointer")

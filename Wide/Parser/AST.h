@@ -43,14 +43,14 @@ namespace Wide {
             Module(std::string nam, Module* parent)
                 : DeclContext(parent, std::move(nam)) {}
             Concurrency::UnorderedMap<std::string, ModuleLevelDeclaration*> decls;
-			Concurrency::UnorderedMap<Lexer::TokenType, FunctionOverloadSet*> opcondecls;
+            Concurrency::UnorderedMap<Lexer::TokenType, FunctionOverloadSet*> opcondecls;
         };
         struct VariableStatement;
         struct Type : public DeclContext, Expression {
             Type(DeclContext* above, std::string name, Lexer::Range loc) : DeclContext(above, name), Expression(loc) {}
             std::vector<VariableStatement*> variables;
             std::unordered_map<std::string, FunctionOverloadSet*> Functions;
-			Concurrency::UnorderedMap<Lexer::TokenType, FunctionOverloadSet*> opcondecls;
+            Concurrency::UnorderedMap<Lexer::TokenType, FunctionOverloadSet*> opcondecls;
         };
         struct IdentifierExpr : Expression {
             IdentifierExpr(std::string nam, Lexer::Range loc)
@@ -73,7 +73,7 @@ namespace Wide {
                 : lhs(l), rhs(r), Expression(l->location + r->location), type(t) {}
             Expression* lhs;
             Expression* rhs;
-			Lexer::TokenType type;
+            Lexer::TokenType type;
         };
         struct FunctionArgument {
              // May be null
@@ -170,7 +170,10 @@ namespace Wide {
             NegateExpression(Expression* e, Lexer::Range pos)
                 : UnaryExpression(e, pos) {}
         };
-
+        struct ErrorExpression : public Expression {
+            ErrorExpression(Lexer::Range pos)
+                : Expression(pos) {}
+        };
         struct MetaCallExpr : public Expression {        
             MetaCallExpr(Expression* obj, std::vector<Expression*> arg, Lexer::Range loc)
                 : callee(obj), args(std::move(arg)), Expression(loc) {}    

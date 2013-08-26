@@ -13,10 +13,10 @@
 #endif
 
 namespace Wide {
-	namespace AST {
-		struct Type;
-		struct Expression;
-	}
+    namespace AST {
+        struct Type;
+        struct Expression;
+    }
     namespace Semantic {
         class Function;
         class UserDefinedType : public Type {
@@ -60,7 +60,7 @@ namespace Wide {
             Expression BuildCall(Expression val, std::vector<Expression> args, Analyzer& a) override;
             std::size_t size(Analyzer& a) override;
             std::size_t alignment(Analyzer& a) override;
-			Expression BuildBinaryExpression(Expression lhs, Expression rhs, Lexer::TokenType ty, Analyzer& a) override;
+            Expression BuildBinaryExpression(Expression lhs, Expression rhs, Lexer::TokenType ty, Analyzer& a) override;
         };
     }
 }

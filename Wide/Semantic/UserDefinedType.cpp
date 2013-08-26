@@ -110,16 +110,16 @@ UserDefinedType::UserDefinedType(AST::Type* t, Analyzer& a, Type* context)
         iscomplex = iscomplex || expr.t->IsComplexType();
     }
     if (t->variables.empty()) {
-		allocsize = a.gen->GetInt8AllocSize();
+        allocsize = a.gen->GetInt8AllocSize();
         align = llvm::DataLayout(a.gen->GetDataLayout()).getABIIntegerTypeAlignment(8);
     }
-	if (allocsize % align != 0) {
-		auto adjustment = align - (allocsize % align);
-		allocsize += adjustment;
+    if (allocsize % align != 0) {
+        auto adjustment = align - (allocsize % align);
+        allocsize += adjustment;
         types.push_back([&a, adjustment](llvm::Module* mod) {
             return llvm::ArrayType::get(llvm::IntegerType::getInt8Ty(mod->getContext()), adjustment);
         });
-	}
+    }
     
     ty = [&](llvm::Module* m) -> llvm::Type* {
         if (m->getTypeByName(llvmname)) {
@@ -194,7 +194,7 @@ Wide::Util::optional<Expression> UserDefinedType::AccessMember(Expression expr, 
         Expression out;
         if (expr.t->IsReference()) {
             out.Expr = a.gen->CreateFieldExpression(expr.Expr, member.num);
-			if (a.IsLvalueType(expr.t)) {
+            if (a.IsLvalueType(expr.t)) {
                 out.t = a.AsLvalueType(member.t);
             } else {
                 out.t = a.AsRvalueType(member.t);
@@ -212,7 +212,7 @@ Wide::Util::optional<Expression> UserDefinedType::AccessMember(Expression expr, 
         auto self = expr.t == this ? BuildRvalueConstruction(expr, a) : expr;
         return a.GetOverloadSet(type->Functions[name], self.t)->BuildValueConstruction(self, a);
     }
-	return Wide::Util::none;
+    return Wide::Util::none;
 }
 
 AST::DeclContext* UserDefinedType::GetDeclContext() {
@@ -220,7 +220,7 @@ AST::DeclContext* UserDefinedType::GetDeclContext() {
 }
 
 /*Expression UserDefinedType::BuildAssignment(Expression lhs, Expression rhs, Analyzer& a) {
-	if (a.IsLvalueType(lhs.t)) {
+    if (a.IsLvalueType(lhs.t)) {
         // If we have an overloaded operator, call that.
         if (type->Functions.find("=") != type->Functions.end()) {
             return a.GetOverloadSet(type->Functions["="], lhs.t)->BuildValueConstruction(lhs, a).BuildCall(rhs, a);
@@ -235,7 +235,7 @@ AST::DeclContext* UserDefinedType::GetDeclContext() {
             if (x.t->IsReference())
                 throw std::runtime_error("Attempted to assign to a user-defined type which had a member reference but no user-defined assignment operator.");
             Type* t;
-			if (a.IsLvalueType(rhs.t)) {
+            if (a.IsLvalueType(rhs.t)) {
                 t = a.AsLvalueType(x.t);
             } else {
                 t = a.AsRvalueType(x.t);
@@ -256,11 +256,11 @@ AST::DeclContext* UserDefinedType::GetDeclContext() {
 }*/
 
 Expression UserDefinedType::BuildBinaryExpression(Expression lhs, Expression rhs, Lexer::TokenType t, Analyzer& a) {
-	if (type->opcondecls.find(t) != type->opcondecls.end()) {
-		lhs = lhs.t == this ? BuildRvalueConstruction(lhs, a) : lhs;
-		return a.GetOverloadSet(type->opcondecls[t], lhs.t)->BuildValueConstruction(lhs, a).BuildCall(rhs, a);
+    if (type->opcondecls.find(t) != type->opcondecls.end()) {
+        lhs = lhs.t == this ? BuildRvalueConstruction(lhs, a) : lhs;
+        return a.GetOverloadSet(type->opcondecls[t], lhs.t)->BuildValueConstruction(lhs, a).BuildCall(rhs, a);
     }
-	return Type::BuildBinaryExpression(lhs, rhs, t, a);
+    return Type::BuildBinaryExpression(lhs, rhs, t, a);
 }
 
 clang::QualType UserDefinedType::GetClangType(ClangUtil::ClangTU& TU, Analyzer& a) {
@@ -341,13 +341,13 @@ clang::QualType UserDefinedType::GetClangType(ClangUtil::ClangTU& TU, Analyzer& 
                     for(auto it = fty->param_begin(); it != fty->param_end(); ++it) {
                         args.push_back(*it);
                     }
-		    		// If T is complex, then "this" is the second argument. Else it is the first.
+                    // If T is complex, then "this" is the second argument. Else it is the first.
                     auto self = TU.GetLLVMTypeFromClangType(TU.GetASTContext().getTypeDeclType(recdecl), a)(m)->getPointerTo();
-		    		if (sig->GetReturnType()->IsComplexType()) {
-		    			args.insert(args.begin() + 1, self);
-		    		} else {
-		    			args.insert(args.begin(), self);
-		    		}
+                    if (sig->GetReturnType()->IsComplexType()) {
+                        args.insert(args.begin() + 1, self);
+                    } else {
+                        args.insert(args.begin(), self);
+                    }
                     return llvm::FunctionType::get(fty->getReturnType(), args, false)->getPointerTo();
                 }, TU.MangleName(meth), nullptr, true);// If an i8/i1 mismatch, fix it up for us amongst other things.
                 // The only statement is return f().
@@ -388,10 +388,10 @@ ConversionRank UserDefinedType::RankConversionFrom(Type* from, Analyzer& a) {
 }
 
 Expression UserDefinedType::BuildCall(Expression val, std::vector<Expression> args, Analyzer& a) {
-	auto self = val.t == this ? BuildRvalueConstruction(val, a) : val;
-	if (type->opcondecls.find(Lexer::TokenType::OpenBracket) != type->opcondecls.end())
-		return a.GetOverloadSet(type->opcondecls[Lexer::TokenType::OpenBracket], self.t)->BuildValueConstruction(self, a).BuildCall(std::move(args), a);
-	throw std::runtime_error("Attempt to call a user-defined type with no operator() defined.");
+    auto self = val.t == this ? BuildRvalueConstruction(val, a) : val;
+    if (type->opcondecls.find(Lexer::TokenType::OpenBracket) != type->opcondecls.end())
+        return a.GetOverloadSet(type->opcondecls[Lexer::TokenType::OpenBracket], self.t)->BuildValueConstruction(self, a).BuildCall(std::move(args), a);
+    throw std::runtime_error("Attempt to call a user-defined type with no operator() defined.");
 }
 
 std::size_t UserDefinedType::size(Analyzer& a) {

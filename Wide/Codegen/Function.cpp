@@ -29,20 +29,20 @@ void Function::EmitCode(llvm::Module* mod, llvm::LLVMContext& con, Generator& g)
             auto ty = llvm::dyn_cast<llvm::FunctionType>(llvm::dyn_cast<llvm::PointerType>(Type(mod))->getElementType());
             
             // Currently do not deal with byval, return coercion.
-			// If an i8/i1 mismatch, and we are a trampoline, just fix up the return statement and change the type.
-			if (tramp && fty->getReturnType() == llvm::IntegerType::getInt1Ty(con) && ty->getReturnType() == llvm::IntegerType::getInt8Ty(con)) {
-			    // Expect one return statement in a trampoline. Might modify if cause to later.
-			    assert(statements.size() == 1 && "A trampoline must have only one return statement so that the codegen can fix up i8/i1 issues.");
-			    auto ret = dynamic_cast<LLVMCodegen::ReturnStatement*>(statements[0]);
-			    assert(ret && "A trampoline's single statement must be a return statement.");
-			    statements[0] = g.CreateReturn(g.CreateTruncate(ret->GetReturnExpression(), [&](llvm::Module*) { return llvm::IntegerType::getInt1Ty(con); }));
+            // If an i8/i1 mismatch, and we are a trampoline, just fix up the return statement and change the type.
+            if (tramp && fty->getReturnType() == llvm::IntegerType::getInt1Ty(con) && ty->getReturnType() == llvm::IntegerType::getInt8Ty(con)) {
+                // Expect one return statement in a trampoline. Might modify if cause to later.
+                assert(statements.size() == 1 && "A trampoline must have only one return statement so that the codegen can fix up i8/i1 issues.");
+                auto ret = dynamic_cast<LLVMCodegen::ReturnStatement*>(statements[0]);
+                assert(ret && "A trampoline's single statement must be a return statement.");
+                statements[0] = g.CreateReturn(g.CreateTruncate(ret->GetReturnExpression(), [&](llvm::Module*) { return llvm::IntegerType::getInt1Ty(con); }));
             } else {
-			    throw std::runtime_error("Found a function of the same name in the module but it had the wrong LLVM type.");
+                throw std::runtime_error("Found a function of the same name in the module but it had the wrong LLVM type.");
             }
 
-			f = mod->getFunction(name);
+            f = mod->getFunction(name);
             
-		}
+        }
     } else {
         auto linkage = tramp ? llvm::GlobalValue::LinkageTypes::ExternalLinkage : llvm::GlobalValue::LinkageTypes::InternalLinkage;
         auto t = llvm::dyn_cast<llvm::FunctionType>(llvm::dyn_cast<llvm::PointerType>(Type(mod))->getElementType());
@@ -90,11 +90,11 @@ void Function::EmitCode(llvm::Module* mod, llvm::LLVMContext& con, Generator& g)
 Function::Function(std::function<llvm::Type*(llvm::Module*)> ret, std::string name, Semantic::Function* de,  bool trampoline)
     : Type(ret)
     , name(std::move(name))
-	, tramp(trampoline)
+    , tramp(trampoline)
     , debug(de)
 {}
 void Function::AddStatement(Codegen::Statement* s) {
-	auto p = dynamic_cast<LLVMCodegen::Statement*>(s);
-	assert(p);
+    auto p = dynamic_cast<LLVMCodegen::Statement*>(s);
+    assert(p);
     statements.push_back(p);
 }

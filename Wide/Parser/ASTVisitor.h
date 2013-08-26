@@ -32,7 +32,7 @@ namespace Wide {
                 if (auto ptr = dynamic_cast<PointerAccess*>(e)) { crtp_cast().VisitPointerAccess(ptr); return; }
                 if (auto self = dynamic_cast<ThisExpression*>(e)) { crtp_cast().VisitThisExpression(self); return; }
                 if (auto dec = dynamic_cast<Decrement*>(e)) { return crtp_cast().VisitDecrement(dec); }
-				if (auto bin = dynamic_cast<BinaryExpression*>(e)) { return crtp_cast().VisitBinaryExpression(bin); }
+                if (auto bin = dynamic_cast<BinaryExpression*>(e)) { return crtp_cast().VisitBinaryExpression(bin); }
                 assert(false && "Internal Compiler Error: Encountered unknown expression node in AST::Visitor.");
             }            
 

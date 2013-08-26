@@ -29,7 +29,7 @@ Wide::Util::optional<Expression> ClangIncludeEntity::AccessMember(Expression, st
         };
         return a.arena.Allocate<ClangNameMangler>()->BuildValueConstruction(a);
     }
-	return Wide::Util::none;
+    return Wide::Util::none;
 }
 
 Expression ClangIncludeEntity::BuildCall(Expression e, std::vector<Expression> args, Analyzer& a) {

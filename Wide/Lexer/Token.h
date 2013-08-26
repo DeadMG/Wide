@@ -51,19 +51,19 @@ namespace Wide {
             Or,
             And,
             Xor,
-			RightShiftAssign,
-			LeftShiftAssign,
-			MinusAssign,
-			PlusAssign,
-			AndAssign,
-			OrAssign,
-			MulAssign,
-			Modulo,
-			ModAssign,
-			Divide,
-			DivAssign,
-			XorAssign,
-			Ellipsis
+            RightShiftAssign,
+            LeftShiftAssign,
+            MinusAssign,
+            PlusAssign,
+            AndAssign,
+            OrAssign,
+            MulAssign,
+            Modulo,
+            ModAssign,
+            Divide,
+            DivAssign,
+            XorAssign,
+            Ellipsis
         };    
         struct Position {
             Position()

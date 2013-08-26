@@ -186,7 +186,7 @@ end
 
 local WideProjects = {
     { 
-        name = "Driver", 
+        name = "CLI", 
         dependencies = function(proj) 
             return CheckLLVM(proj) and CheckBoost(proj)
         end, 
@@ -200,7 +200,7 @@ local WideProjects = {
             if os.is("windows") then
                 postbuildcommands ({ "copy /Y \"$(TargetDir)$(TargetName).exe\" \"$(SolutionDir)Deployment/Wide.exe\"" })
             else
-                postbuildcommands ({ "cp /Y \"../Build/" .. plat .. "/" .. conf .. "/Driver\" \"../Deployment/Wide\"" })
+                postbuildcommands ({ "cp /Y \"../Build/" .. plat .. "/" .. conf .. "/CLI\" \"../Deployment/Wide\"" })
             end
         end,
     },
@@ -217,7 +217,7 @@ local WideProjects = {
         end
     },
     { 
-        name = "Parser", 
+        name = "Parser"
     },
     { 
         name = "Lexer", 
@@ -232,7 +232,7 @@ local WideProjects = {
         end 
     },
     { 
-        name = "CAPI", 
+        name = "CAPI",
         action = function()
             kind "SharedLib"
             links { "Lexer", "Parser" }

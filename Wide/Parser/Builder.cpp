@@ -90,11 +90,11 @@ void ThreadLocalBuilder::CreateFunction(std::string name, std::vector<Statement*
 }
 
 void ThreadLocalBuilder::CreateOverloadedOperator(Wide::Lexer::TokenType name, std::vector<Statement*> body, std::vector<Statement*> prolog, Lexer::Range r, Module* m, std::vector<FunctionArgument> args) {
-	auto p = std::make_pair(
-		arena.Allocate<Function>("operator", std::move(body), std::move(prolog), r, std::move(args), m, std::vector<VariableStatement*>()),
-		arena.Allocate<FunctionOverloadSet>("operator", m)
-	);
-	auto ret = m->opcondecls.insert(std::make_pair(name, p.second));
+    auto p = std::make_pair(
+        arena.Allocate<Function>("operator", std::move(body), std::move(prolog), r, std::move(args), m, std::vector<VariableStatement*>()),
+        arena.Allocate<FunctionOverloadSet>("operator", m)
+    );
+    auto ret = m->opcondecls.insert(std::make_pair(name, p.second));
     if (!ret.second) {
         if (auto ovrset = dynamic_cast<AST::FunctionOverloadSet*>(ret.first->second)) {
             ovrset->functions.push_back(p.first);
@@ -280,5 +280,9 @@ BinaryExpression* ThreadLocalBuilder::CreateSubtractionExpression(Expression* lh
 { return arena.Allocate<BinaryExpression>(lhs, rhs, Lexer::TokenType::Minus); }
 
 void ThreadLocalBuilder::Warning(Wide::Lexer::Range where, Parser::Warning what) {
-	return warning(where, what);
+    return warning(where, what);
+}
+
+ErrorExpression* ThreadLocalBuilder::CreateErrorExpression(Wide::Lexer::Range where) {
+    return arena.Allocate<ErrorExpression>(where);
 }

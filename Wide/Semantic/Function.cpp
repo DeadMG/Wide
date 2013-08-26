@@ -67,8 +67,8 @@ Function::Function(std::vector<Type*> args, AST::Function* astfun, Analyzer& a, 
 
     // Deal with the prolog first.
     for(auto&& prolog : astfun->prolog) {
-		auto ass = dynamic_cast<AST::BinaryExpression*>(prolog);
-		if (!ass || ass->type != Lexer::TokenType::Assignment)            
+        auto ass = dynamic_cast<AST::BinaryExpression*>(prolog);
+        if (!ass || ass->type != Lexer::TokenType::Assignment)            
             throw std::runtime_error("Prologs can only be composed of assignment expressions right now!");
         auto ident = dynamic_cast<AST::IdentifierExpr*>(ass->lhs);
         if (!ident)
@@ -106,9 +106,9 @@ std::function<llvm::Type*(llvm::Module*)> Function::GetLLVMType(Analyzer& a) {
 }
 
 Expression check(Wide::Util::optional<Expression> e) {
-	if (!e)
-		assert(false && "Expected to find this thing for sure, but it didn't exist! Check call stack for trigger.");
-	return *e;
+    if (!e)
+        assert(false && "Expected to find this thing for sure, but it didn't exist! Check call stack for trigger.");
+    return *e;
 }
 void Function::ComputeBody(Analyzer& a) {    
     if (!ReturnType) {        

@@ -8,7 +8,7 @@
 namespace Wide {
     namespace Parser {
         enum class Error : int;
-		enum class Warning : int;
+        enum class Warning : int;
     }
     namespace AST {
         class Builder;
@@ -16,7 +16,7 @@ namespace Wide {
             Wide::Memory::Arena arena;
             Builder* b;
             std::function<void(Lexer::Range, Parser::Error)> error;
-			std::function<void(Lexer::Range, Parser::Warning)> warning;
+            std::function<void(Lexer::Range, Parser::Warning)> warning;
         public:
             ThreadLocalBuilder(Builder&, std::function<void(Lexer::Range, Parser::Error)>, std::function<void(Lexer::Range, Parser::Warning)>);
             ~ThreadLocalBuilder();
@@ -30,7 +30,7 @@ namespace Wide {
             Return* CreateReturn(Lexer::Range r);
             VariableStatement* CreateVariableStatement(std::string name, Expression* value, Lexer::Range r);
             VariableStatement* CreateVariableStatement(std::string name, Lexer::Range r);
-			BinaryExpression* CreateAssignmentExpression(Expression* lhs, Expression* rhs, Lexer::TokenType type);
+            BinaryExpression* CreateAssignmentExpression(Expression* lhs, Expression* rhs, Lexer::TokenType type);
             IntegerExpression* CreateIntegerExpression(std::string val, Lexer::Range r);
             BinaryExpression* CreateRightShiftExpression(Expression* lhs, Expression* rhs);
             IfStatement* CreateIfStatement(Expression* cond, Statement* true_br, Statement* false_br, Lexer::Range loc);
@@ -57,9 +57,10 @@ namespace Wide {
             BinaryExpression* CreateAdditionExpression(Expression* lhs, Expression* rhs);
             BinaryExpression* CreateSubtractionExpression(Expression* lhs, Expression* rhs);
             BinaryExpression* CreateMultiplyExpression(Expression* lhs, Expression* rhs);
-			BinaryExpression* CreateModulusExpression(Expression* lhs, Expression* rhs);
-			BinaryExpression* CreateDivisionExpression(Expression* lhs, Expression* rhs);
+            BinaryExpression* CreateModulusExpression(Expression* lhs, Expression* rhs);
+            BinaryExpression* CreateDivisionExpression(Expression* lhs, Expression* rhs);
             AutoExpression* CreateAutoExpression(Lexer::Range loc);
+            ErrorExpression* CreateErrorExpression(Lexer::Range loc);
             Decrement* CreatePrefixDecrement(Expression* ex, Lexer::Range r);
             Decrement* CreatePostfixDecrement(Expression* ex, Lexer::Range r);
             AddressOfExpression* CreateAddressOf(Expression* ex, Lexer::Range r);
@@ -71,12 +72,12 @@ namespace Wide {
             Using* CreateUsingDefinition(std::string val, Expression* expr, Module* p);
             void CreateFunction(std::string name, std::vector<Statement*> body, std::vector<Statement*> prolog, Lexer::Range r, Module* p, std::vector<FunctionArgument>, std::vector<VariableStatement*> caps);
             void CreateFunction(std::string name, std::vector<Statement*> body, std::vector<Statement*> prolog, Lexer::Range r, Type* p, std::vector<FunctionArgument>, std::vector<VariableStatement*> caps);
-			void CreateOverloadedOperator(Wide::Lexer::TokenType name, std::vector<Statement*> body, std::vector<Statement*> prolog, Lexer::Range r, Module* p, std::vector<FunctionArgument>);
-			void CreateOverloadedOperator(Wide::Lexer::TokenType name, std::vector<Statement*> body, std::vector<Statement*> prolog, Lexer::Range r, Type* p, std::vector<FunctionArgument>);
+            void CreateOverloadedOperator(Wide::Lexer::TokenType name, std::vector<Statement*> body, std::vector<Statement*> prolog, Lexer::Range r, Module* p, std::vector<FunctionArgument>);
+            void CreateOverloadedOperator(Wide::Lexer::TokenType name, std::vector<Statement*> body, std::vector<Statement*> prolog, Lexer::Range r, Type* p, std::vector<FunctionArgument>);
             Type* CreateType(std::string name, DeclContext* p, Lexer::Range loc);
             Type* CreateType(std::string name, Lexer::Range loc);
             void SetTypeEndLocation(Lexer::Range loc, Type* t);
-			void SetModuleEndLocation(Module* m, Lexer::Range loc);            
+            void SetModuleEndLocation(Module* m, Lexer::Range loc);            
             std::vector<FunctionArgument> CreateFunctionArgumentGroup();
             void AddTypeField(Type* t, VariableStatement* decl);
             void AddArgumentToFunctionGroup(std::vector<FunctionArgument>& args, std::string name, Expression* expr);
@@ -88,7 +89,7 @@ namespace Wide {
             Lexer::Range GetLocation(Statement* s);
 
             void Error(Wide::Lexer::Range, Parser::Error);
-			void Warning(Wide::Lexer::Range, Parser::Warning);
+            void Warning(Wide::Lexer::Range, Parser::Warning);
 
             typedef Statement* StatementType;
             typedef Expression* ExpressionType;

@@ -193,11 +193,11 @@ llvm::Value* ParamExpression::ComputeValue(llvm::IRBuilder<>& builder, Generator
 }
 
 llvm::Value* TruncateExpression::ComputeValue(llvm::IRBuilder<>& builder, Generator& g) {
-	auto truncty = ty(builder.GetInsertBlock()->getParent()->getParent());
-	if (truncty->isFloatingPointTy())
-		return builder.CreateFPTrunc(val->GetValue(builder, g), truncty);
-	else
-	    return builder.CreateTrunc(val->GetValue(builder, g), truncty);
+    auto truncty = ty(builder.GetInsertBlock()->getParent()->getParent());
+    if (truncty->isFloatingPointTy())
+        return builder.CreateFPTrunc(val->GetValue(builder, g), truncty);
+    else
+        return builder.CreateTrunc(val->GetValue(builder, g), truncty);
 }
 
 llvm::Value* NullExpression::ComputeValue(llvm::IRBuilder<>& builder, Generator& g) {
@@ -238,30 +238,30 @@ llvm::Value* OrExpression::ComputeValue(llvm::IRBuilder<>& builder, Generator& g
 }
 
 llvm::Value* EqualityExpression::ComputeValue(llvm::IRBuilder<>& builder, Generator& g) {
-	auto lhsval = lhs->GetValue(builder, g);
-	auto rhsval = rhs->GetValue(builder, g);
-	if (lhsval->getType()->isFloatingPointTy())
-	    return builder.CreateFCmpOEQ(lhsval, rhsval);
-	else
-		return builder.CreateICmpEQ(lhsval, rhsval);
+    auto lhsval = lhs->GetValue(builder, g);
+    auto rhsval = rhs->GetValue(builder, g);
+    if (lhsval->getType()->isFloatingPointTy())
+        return builder.CreateFCmpOEQ(lhsval, rhsval);
+    else
+        return builder.CreateICmpEQ(lhsval, rhsval);
 }
 
 llvm::Value* PlusExpression::ComputeValue(llvm::IRBuilder<>& builder, Generator& g) {
-	auto lhsval = lhs->GetValue(builder, g);
-	auto rhsval = rhs->GetValue(builder, g);
-	if (lhsval->getType()->isFloatingPointTy())
-	    return builder.CreateFAdd(lhsval, rhsval);
-	else
-		return builder.CreateAdd(lhsval, rhsval);
+    auto lhsval = lhs->GetValue(builder, g);
+    auto rhsval = rhs->GetValue(builder, g);
+    if (lhsval->getType()->isFloatingPointTy())
+        return builder.CreateFAdd(lhsval, rhsval);
+    else
+        return builder.CreateAdd(lhsval, rhsval);
 }
 
 llvm::Value* MultiplyExpression::ComputeValue(llvm::IRBuilder<>& builder, Generator& g) {
-	auto lhsval = lhs->GetValue(builder, g);
-	auto rhsval = rhs->GetValue(builder, g);
-	if (lhsval->getType()->isFloatingPointTy())
-	    return builder.CreateFMul(lhsval, rhsval);
-	else
-		return builder.CreateMul(lhsval, rhsval);
+    auto lhsval = lhs->GetValue(builder, g);
+    auto rhsval = rhs->GetValue(builder, g);
+    if (lhsval->getType()->isFloatingPointTy())
+        return builder.CreateFMul(lhsval, rhsval);
+    else
+        return builder.CreateMul(lhsval, rhsval);
 }
 
 llvm::Value* AndExpression::ComputeValue(llvm::IRBuilder<>& builder, Generator& g) {
@@ -273,44 +273,44 @@ llvm::Value* IsNullExpression::ComputeValue(llvm::IRBuilder<>& builder, Generato
 }
 
 llvm::Value* XorExpression::ComputeValue(llvm::IRBuilder<>& builder, Generator& g) {
-	return builder.CreateXor(lhs->GetValue(builder, g), rhs->GetValue(builder, g));
+    return builder.CreateXor(lhs->GetValue(builder, g), rhs->GetValue(builder, g));
 }
 
 llvm::Value* SubExpression::ComputeValue(llvm::IRBuilder<>& builder, Generator& g) {
-	auto lhsval = lhs->GetValue(builder, g);
-	auto rhsval = rhs->GetValue(builder, g);
-	if (lhsval->getType()->isFloatingPointTy())
-	    return builder.CreateFSub(lhsval, rhsval);
-	else
-		return builder.CreateSub(lhsval, rhsval);
+    auto lhsval = lhs->GetValue(builder, g);
+    auto rhsval = rhs->GetValue(builder, g);
+    if (lhsval->getType()->isFloatingPointTy())
+        return builder.CreateFSub(lhsval, rhsval);
+    else
+        return builder.CreateSub(lhsval, rhsval);
 }
 
 llvm::Value* DivExpression::ComputeValue(llvm::IRBuilder<>& builder, Generator& g) {
-	if (is_signed)
-		return builder.CreateSDiv(lhs->GetValue(builder, g), rhs->GetValue(builder, g));
-	return builder.CreateUDiv(lhs->GetValue(builder, g), rhs->GetValue(builder, g));
+    if (is_signed)
+        return builder.CreateSDiv(lhs->GetValue(builder, g), rhs->GetValue(builder, g));
+    return builder.CreateUDiv(lhs->GetValue(builder, g), rhs->GetValue(builder, g));
 }
 
 llvm::Value* ModExpression::ComputeValue(llvm::IRBuilder<>& builder, Generator& g) {
-	if (is_signed)
-		return builder.CreateSRem(lhs->GetValue(builder, g), rhs->GetValue(builder, g));
-	return builder.CreateURem(lhs->GetValue(builder, g), rhs->GetValue(builder, g));
+    if (is_signed)
+        return builder.CreateSRem(lhs->GetValue(builder, g), rhs->GetValue(builder, g));
+    return builder.CreateURem(lhs->GetValue(builder, g), rhs->GetValue(builder, g));
 }
 
 llvm::Value* FPExtension::ComputeValue(llvm::IRBuilder<>& builder, Generator& g) {
-	return builder.CreateFPExt(from->GetValue(builder, g), to(builder.GetInsertBlock()->getParent()->getParent()));
+    return builder.CreateFPExt(from->GetValue(builder, g), to(builder.GetInsertBlock()->getParent()->getParent()));
 }
 
 llvm::Value* FPDiv::ComputeValue(llvm::IRBuilder<>& builder, Generator& g) {
-	return builder.CreateFDiv(lhs->GetValue(builder, g), rhs->GetValue(builder, g));
+    return builder.CreateFDiv(lhs->GetValue(builder, g), rhs->GetValue(builder, g));
 }
 
 llvm::Value* FPMod::ComputeValue(llvm::IRBuilder<>& builder, Generator& g) {
-	return builder.CreateFRem(lhs->GetValue(builder, g), rhs->GetValue(builder, g));
+    return builder.CreateFRem(lhs->GetValue(builder, g), rhs->GetValue(builder, g));
 }
 
 llvm::Value* FPLT::ComputeValue(llvm::IRBuilder<>& builder, Generator& g) {
-	auto lhsval = lhs->GetValue(builder, g);
-	auto rhsval = rhs->GetValue(builder, g);
-	return builder.CreateFCmpOLT(lhsval, rhsval);
+    auto lhsval = lhs->GetValue(builder, g);
+    auto rhsval = rhs->GetValue(builder, g);
+    return builder.CreateFCmpOLT(lhsval, rhsval);
 }

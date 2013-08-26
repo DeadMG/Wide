@@ -27,7 +27,7 @@ Wide::Util::optional<Expression> ClangNamespace::AccessMember(Expression val, st
         clang::Sema::LookupNameKind::LookupOrdinaryName);
 
     if (!from->GetSema().LookupQualifiedName(lr, con))
-		return Wide::Util::none;
+        return Wide::Util::none;
     if (lr.isAmbiguous())
         throw std::runtime_error("Attempted to access a member of a Clang namespace, but Clang said the lookup was ambiguous.");
     if (lr.isSingleResult()) {

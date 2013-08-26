@@ -9,7 +9,7 @@ namespace Wide {
         public:
             Reference(Type* p)
                 : Pointee(p) {}
-			
+            
             std::function<llvm::Type*(llvm::Module*)> GetLLVMType(Analyzer& a) override;
             clang::QualType GetClangType(ClangUtil::ClangTU& tu, Analyzer& a) override;
 
@@ -18,9 +18,9 @@ namespace Wide {
             bool IsReference() override {
                 return true;
             }
-			bool IsReference(Type* to) override {
-				return to == Pointee;
-			}
+            bool IsReference(Type* to) override {
+                return to == Pointee;
+            }
             Expression BuildRvalueConstruction(std::vector<Expression> args, Analyzer& a) override;
             Expression BuildLvalueConstruction(std::vector<Expression> args, Analyzer& a) override;
 
@@ -30,9 +30,9 @@ namespace Wide {
                 return ConversionRank::None;
             }
 
-			virtual Type* Decay() override {
-				return Pointee;
-			}
+            virtual Type* Decay() override {
+                return Pointee;
+            }
 
             std::size_t size(Analyzer& a) override;
             std::size_t alignment(Analyzer& a) override;

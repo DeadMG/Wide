@@ -26,7 +26,7 @@ namespace Wide {
     }
     namespace LLVMCodegen {
         class Function;
-		class Generator : public Codegen::Generator {
+        class Generator : public Codegen::Generator {
             std::deque<Function*> functions;
             Wide::Memory::Arena arena;
 
@@ -37,7 +37,7 @@ namespace Wide {
             const Options::LLVM& llvmopts;
             std::unordered_map<llvm::Function*, Function*> funcs;
             std::unordered_set<llvm::Type*> eliminate_types;
-			std::vector<std::function<void(llvm::Module*)>> tus;
+            std::vector<std::function<void(llvm::Module*)>> tus;
 
         public:            
             bool IsEliminateType(llvm::Type*);
@@ -84,19 +84,19 @@ namespace Wide {
             AndExpression* CreateAndExpression(Codegen::Expression* lhs, Codegen::Expression* rhs);
             SExt* CreateSignedExtension(Codegen::Expression* val, std::function<llvm::Type*(llvm::Module*)> to);
             IsNullExpression* CreateIsNullExpression(Codegen::Expression* val);
-			SubExpression* CreateSubExpression(Codegen::Expression* l, Codegen::Expression* r);
-			XorExpression* CreateXorExpression(Codegen::Expression* l, Codegen::Expression* r);
-			ModExpression* CreateModExpression(Codegen::Expression* l, Codegen::Expression* r, bool is_signed);
-			DivExpression* CreateDivExpression(Codegen::Expression* l, Codegen::Expression* r, bool is_signed);
-			FPExtension* CreateFPExtension(Codegen::Expression* l, std::function<llvm::Type*(llvm::Module*)> r);
-			FPMod* CreateFPMod(Codegen::Expression* r, Codegen::Expression* l);
-			FPDiv* CreateFPDiv(Codegen::Expression* r, Codegen::Expression* l);
-			FPLT* CreateFPLT(Codegen::Expression* r, Codegen::Expression* l);
-			
-			llvm::DataLayout GetDataLayout();
-			void AddClangTU(std::function<void(llvm::Module* m)>);
-			llvm::LLVMContext& GetContext();
-			std::size_t Wide::Codegen::Generator::GetInt8AllocSize();
+            SubExpression* CreateSubExpression(Codegen::Expression* l, Codegen::Expression* r);
+            XorExpression* CreateXorExpression(Codegen::Expression* l, Codegen::Expression* r);
+            ModExpression* CreateModExpression(Codegen::Expression* l, Codegen::Expression* r, bool is_signed);
+            DivExpression* CreateDivExpression(Codegen::Expression* l, Codegen::Expression* r, bool is_signed);
+            FPExtension* CreateFPExtension(Codegen::Expression* l, std::function<llvm::Type*(llvm::Module*)> r);
+            FPMod* CreateFPMod(Codegen::Expression* r, Codegen::Expression* l);
+            FPDiv* CreateFPDiv(Codegen::Expression* r, Codegen::Expression* l);
+            FPLT* CreateFPLT(Codegen::Expression* r, Codegen::Expression* l);
+            
+            llvm::DataLayout GetDataLayout();
+            void AddClangTU(std::function<void(llvm::Module* m)>);
+            llvm::LLVMContext& GetContext();
+            std::size_t Wide::Codegen::Generator::GetInt8AllocSize();
 
             void operator()();
         };

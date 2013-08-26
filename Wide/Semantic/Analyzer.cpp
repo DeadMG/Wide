@@ -121,7 +121,7 @@ void Analyzer::operator()(AST::Module* GlobalModule) {
       
     GetWideModule(GlobalModule)->AccessMember(Expression(), "Standard", *this)->t->AccessMember(Expression(), "Main", *this)->t->BuildCall(Expression(), std::vector<Expression>(), *this);
     for(auto&& x : this->headers)
-		gen->AddClangTU([&](llvm::Module* main) { x.second.GenerateCodeAndLinkModule(main); });
+        gen->AddClangTU([&](llvm::Module* main) { x.second.GenerateCodeAndLinkModule(main); });
 }
 
 Expression Analyzer::AnalyzeExpression(Type* t, AST::Expression* e) {
@@ -129,67 +129,67 @@ Expression Analyzer::AnalyzeExpression(Type* t, AST::Expression* e) {
         return semexpr->e;
     }
 
-	struct AnalyzerVisitor : public AST::Visitor<AnalyzerVisitor> {
-		Type* t;
-		Analyzer* self;
-		Expression out;
+    struct AnalyzerVisitor : public AST::Visitor<AnalyzerVisitor> {
+        Type* t;
+        Analyzer* self;
+        Expression out;
 
-		void VisitString(AST::StringExpr* str) {
-			out.t = self->LiteralStringType;
-			out.Expr = self->gen->CreateStringExpression(str->val);
-		}
-		void VisitMemberAccess(AST::MemAccessExpr* access) {
+        void VisitString(AST::StringExpr* str) {
+            out.t = self->LiteralStringType;
+            out.Expr = self->gen->CreateStringExpression(str->val);
+        }
+        void VisitMemberAccess(AST::MemAccessExpr* access) {
             auto val = self->AnalyzeExpression(t, access->expr);
-			auto mem = val.AccessMember(access->mem, *self);
-			if (!mem) throw std::runtime_error("Attempted to access a member that did not exist.");
-			out = *mem;
-		}
-		void VisitCall(AST::FunctionCallExpr* funccall) {
+            auto mem = val.AccessMember(access->mem, *self);
+            if (!mem) throw std::runtime_error("Attempted to access a member that did not exist.");
+            out = *mem;
+        }
+        void VisitCall(AST::FunctionCallExpr* funccall) {
             auto fun = self->AnalyzeExpression(t, funccall->callee);
             std::vector<Expression> args;
             for(auto&& arg : funccall->args) {
                 args.push_back(self->AnalyzeExpression(t, arg));
             }
-		    
+            
             out = fun.BuildCall(std::move(args), *self);
-		}
-		void VisitIdentifier(AST::IdentifierExpr* ident) {
+        }
+        void VisitIdentifier(AST::IdentifierExpr* ident) {
             while (auto udt = dynamic_cast<UserDefinedType*>(t))
                 t = self->GetDeclContext(udt->GetDeclContext()->higher);
-			auto mem = t->AccessMember(Expression(), ident->val, *self);
-			if (!mem) throw std::runtime_error("Attempted to access a member that did not exist.");
-			out = *mem;
-		}
-		void VisitBinaryExpression(AST::BinaryExpression* bin) {
-			auto lhs = self->AnalyzeExpression(t, bin->lhs);
-			auto rhs = self->AnalyzeExpression(t, bin->rhs);
-			out = lhs.BuildBinaryExpression(rhs, bin->type, *self);
-		}
-		void VisitMetaCall(AST::MetaCallExpr* mcall) {
+            auto mem = t->AccessMember(Expression(), ident->val, *self);
+            if (!mem) throw std::runtime_error("Attempted to access a member that did not exist.");
+            out = *mem;
+        }
+        void VisitBinaryExpression(AST::BinaryExpression* bin) {
+            auto lhs = self->AnalyzeExpression(t, bin->lhs);
+            auto rhs = self->AnalyzeExpression(t, bin->rhs);
+            out = lhs.BuildBinaryExpression(rhs, bin->type, *self);
+        }
+        void VisitMetaCall(AST::MetaCallExpr* mcall) {
             auto fun = self->AnalyzeExpression(t, mcall->callee);
             std::vector<Expression> args;
             for(auto&& arg : mcall->args)
                 args.push_back(self->AnalyzeExpression(t, arg));
-		    
+            
             out = fun.BuildMetaCall(std::move(args), *self);
-		}
-		void VisitInteger(AST::IntegerExpression* integer) {
+        }
+        void VisitInteger(AST::IntegerExpression* integer) {
             out = Expression( self->GetIntegralType(64, true), self->gen->CreateIntegralExpression(std::stoll(integer->integral_value), true, self->GetIntegralType(64, true)->GetLLVMType(*self)));
-		}
-		void VisitThisExpression(AST::ThisExpression*) {
-			auto mem = t->AccessMember(Expression(), "this", *self);
-			if (!mem) throw std::runtime_error("Attempted to access \"this\", but it was not found, probably because you were not in a member function.");
-			out = *mem;
-		}
-		void VisitNegate(AST::NegateExpression* ne) {
+        }
+        void VisitThisExpression(AST::ThisExpression*) {
+            auto mem = t->AccessMember(Expression(), "this", *self);
+            if (!mem) throw std::runtime_error("Attempted to access \"this\", but it was not found, probably because you were not in a member function.");
+            out = *mem;
+        }
+        void VisitNegate(AST::NegateExpression* ne) {
             auto expr = self->AnalyzeExpression(t, ne->ex);
             expr.Expr = self->gen->CreateNegateExpression(expr.BuildBooleanConversion(*self));
             expr.t = self->Boolean;
             out = expr;
-		}
+        }
         // Ugly to perform an AST-level transformation in the analyzer
         // But hey- the AST exists to represent the exact source.
-		void VisitLambda(AST::Lambda* lam) {
+        void VisitLambda(AST::Lambda* lam) {
             auto context = t->GetDeclContext()->higher;
             while(auto udt = dynamic_cast<AST::Type*>(context))
                 context = udt->higher;
@@ -199,7 +199,7 @@ Expression Analyzer::AnalyzeExpression(Type* t, AST::Expression* e) {
             auto fun = self->arena.Allocate<AST::Function>("()", lam->statements, std::vector<AST::Statement*>(), lam->location, std::move(fargs), ty, std::vector<AST::VariableStatement*>());
             ovr->functions.push_back(fun);
             ty->Functions["()"] = ovr;
-		    
+            
             // Need to not-capture things that would be available anyway.
             
             std::vector<std::unordered_set<std::string>> lambda_locals;
@@ -277,7 +277,7 @@ Expression Analyzer::AnalyzeExpression(Type* t, AST::Expression* e) {
                     }
                 }
             }
-		    
+            
             // Just as a double-check, eliminate all explicit captures from the list. This should never have any effect
             // but I'll hunt down any bugs caused by eliminating it later.
             for(auto&& arg : lam->Captures)
@@ -322,41 +322,41 @@ Expression Analyzer::AnalyzeExpression(Type* t, AST::Expression* e) {
             self->AddMoveConstructor(ty, lamty);
             auto obj = lamty->BuildRvalueConstruction(std::move(args), *self);
             out = obj;
-		}
-		void VisitDereference(AST::DereferenceExpression* deref) {
+        }
+        void VisitDereference(AST::DereferenceExpression* deref) {
             out = self->AnalyzeExpression(t, deref->ex).BuildDereference(*self);
-		}
-		void VisitIncrement(AST::Increment* inc) {
+        }
+        void VisitIncrement(AST::Increment* inc) {
             auto lhs = self->AnalyzeExpression(t, inc->ex);
-			out = lhs.BuildIncrement(inc->postfix, *self);
-		}
-		void VisitType(AST::Type* ty) {
+            out = lhs.BuildIncrement(inc->postfix, *self);
+        }
+        void VisitType(AST::Type* ty) {
             ty->higher = t->GetDeclContext();
             auto udt = self->GetUDT(ty, t);
             out = self->GetConstructorType(udt)->BuildValueConstruction(*self);
-		}
-		void VisitPointerAccess(AST::PointerAccess* ptr) {
-			auto mem = self->AnalyzeExpression(t, ptr->ex).PointerAccessMember(ptr->member, *self);
+        }
+        void VisitPointerAccess(AST::PointerAccess* ptr) {
+            auto mem = self->AnalyzeExpression(t, ptr->ex).PointerAccessMember(ptr->member, *self);
             if (!mem)
-				throw std::runtime_error("Attempted to access a member of a pointer, but it contained no such member.");
-			out = *mem;
-		}
-		void VisitAddressOf(AST::AddressOfExpression* add) {
-			out = self->AnalyzeExpression(t, add->ex).AddressOf(*self);
-		}
-	};
+                throw std::runtime_error("Attempted to access a member of a pointer, but it contained no such member.");
+            out = *mem;
+        }
+        void VisitAddressOf(AST::AddressOfExpression* add) {
+            out = self->AnalyzeExpression(t, add->ex).AddressOf(*self);
+        }
+    };
 
-	AnalyzerVisitor v;
-	v.self = this;
-	v.t = t;
-	v.VisitExpression(e);
-	return v.out;
+    AnalyzerVisitor v;
+    v.self = this;
+    v.t = t;
+    v.VisitExpression(e);
+    return v.out;
 }
 
 ClangUtil::ClangTU* Analyzer::LoadCPPHeader(std::string file) {
     if (headers.find(file) != headers.end())
         return &headers.find(file)->second;
-	headers.insert(std::make_pair(file, ClangUtil::ClangTU(gen->GetContext(), file, *clangopts)));
+    headers.insert(std::make_pair(file, ClangUtil::ClangTU(gen->GetContext(), file, *clangopts)));
     auto ptr = &headers.find(file)->second;
     return ptr;
 }
@@ -505,7 +505,7 @@ Type* Analyzer::GetDeclContext(AST::DeclContext* con) {
         return DeclContexts[con];
     if (auto mod = dynamic_cast<AST::Module*>(con))
         return DeclContexts[con] = GetWideModule(mod);
-	return GetDeclContext(con->higher);
+    return GetDeclContext(con->higher);
 }
 
 ConversionRank Analyzer::RankConversion(Type* from, Type* to) {
@@ -673,19 +673,19 @@ Type* Analyzer::GetLiteralStringType() {
 }
 
 Type* Analyzer::AsRvalueType(Type* t) {
-	return GetRvalueType(t);
+    return GetRvalueType(t);
 }
 Type* Analyzer::AsLvalueType(Type* t) {
-	return GetLvalueType(t);
+    return GetLvalueType(t);
 }
 bool Analyzer::IsLvalueType(Type* t) {
-	return dynamic_cast<LvalueType*>(t);
+    return dynamic_cast<LvalueType*>(t);
 }
 bool Analyzer::IsRvalueType(Type* t) {
-	return dynamic_cast<RvalueType*>(t);
+    return dynamic_cast<RvalueType*>(t);
 }
 OverloadSet* Analyzer::GetOverloadSet(OverloadSet* f, OverloadSet* s) {
-	if (CombinedOverloadSets[f].find(s) != CombinedOverloadSets[f].end())
-		return CombinedOverloadSets[f][s];
-	return CombinedOverloadSets[f][s] = arena.Allocate<OverloadSet>(f, s);
+    if (CombinedOverloadSets[f].find(s) != CombinedOverloadSets[f].end())
+        return CombinedOverloadSets[f][s];
+    return CombinedOverloadSets[f][s] = arena.Allocate<OverloadSet>(f, s);
 }

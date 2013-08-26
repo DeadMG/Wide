@@ -23,17 +23,17 @@ void Module::AddSpecialMember(std::string name, Expression t){
     SpecialMembers[std::move(name)] = t;
 }
 Wide::Util::optional<Expression> Module::AccessMember(Expression val, Wide::Lexer::TokenType ty, Analyzer& a) {
-	if (m->opcondecls.find(ty) != m->opcondecls.end()) {
-		if (m->higher) {
-			auto result = a.GetDeclContext(m->higher)->AccessMember(val, ty, a);
-			if (result)
-				return a.GetOverloadSet(dynamic_cast<OverloadSet*>(result->t), a.GetOverloadSet(m->opcondecls.find(ty)->second))->BuildValueConstruction(a);
-		}
-		return a.GetOverloadSet(m->opcondecls.find(ty)->second)->BuildValueConstruction(a);
-	}
+    if (m->opcondecls.find(ty) != m->opcondecls.end()) {
+        if (m->higher) {
+            auto result = a.GetDeclContext(m->higher)->AccessMember(val, ty, a);
+            if (result)
+                return a.GetOverloadSet(dynamic_cast<OverloadSet*>(result->t), a.GetOverloadSet(m->opcondecls.find(ty)->second))->BuildValueConstruction(a);
+        }
+        return a.GetOverloadSet(m->opcondecls.find(ty)->second)->BuildValueConstruction(a);
+    }
     if (m->higher)
         return a.GetDeclContext(m->higher)->AccessMember(val, ty, a);
-	return Wide::Util::none;
+    return Wide::Util::none;
 }
 Wide::Util::optional<Expression> Module::AccessMember(Expression val, std::string name, Analyzer& a) {
     if (m->decls.find(name) != m->decls.end()) {
@@ -47,30 +47,30 @@ Wide::Util::optional<Expression> Module::AccessMember(Expression val, std::strin
                 return conty->BuildValueConstruction(a);
             }
             if (auto fun = dynamic_cast<OverloadSet*>(expr.t->Decay())) {
-				if (m->higher) {
-					auto decl = a.GetDeclContext(m->higher)->AccessMember(val, name, a);
-					if (!decl) return expr;
-					if (auto overset = dynamic_cast<OverloadSet*>(decl->t->Decay())) {
-						return a.GetOverloadSet(fun, overset)->BuildValueConstruction(a);
-					}
-				}
+                if (m->higher) {
+                    auto decl = a.GetDeclContext(m->higher)->AccessMember(val, name, a);
+                    if (!decl) return expr;
+                    if (auto overset = dynamic_cast<OverloadSet*>(decl->t->Decay())) {
+                        return a.GetOverloadSet(fun, overset)->BuildValueConstruction(a);
+                    }
+                }
                 return expr;
-			}
-			if (auto temp = dynamic_cast<ClangTemplateClass*>(expr.t->Decay()))
+            }
+            if (auto temp = dynamic_cast<ClangTemplateClass*>(expr.t->Decay()))
                 return expr;
-			if (a.IsLvalueType(expr.t))
+            if (a.IsLvalueType(expr.t))
                 return expr;
-			if (auto nam = dynamic_cast<ClangNamespace*>(expr.t->Decay()))
+            if (auto nam = dynamic_cast<ClangNamespace*>(expr.t->Decay()))
                 return expr;
-			if (auto mod = dynamic_cast<Module*>(expr.t->Decay()))
+            if (auto mod = dynamic_cast<Module*>(expr.t->Decay()))
                 return expr;
             throw std::runtime_error("Attempted to using something that was not a type, template, module, or function");
         }
         if (auto overdecl = dynamic_cast<AST::FunctionOverloadSet*>(decl)) {
-			if (m->higher)
-				if (auto decl = a.GetDeclContext(m->higher)->AccessMember(val, name, a))
-					if (auto overset = dynamic_cast<OverloadSet*>(decl->t->Decay()))
-						return a.GetOverloadSet(a.GetOverloadSet(overdecl), overset)->BuildValueConstruction(a);
+            if (m->higher)
+                if (auto decl = a.GetDeclContext(m->higher)->AccessMember(val, name, a))
+                    if (auto overset = dynamic_cast<OverloadSet*>(decl->t->Decay()))
+                        return a.GetOverloadSet(a.GetOverloadSet(overdecl), overset)->BuildValueConstruction(a);
             return a.GetOverloadSet(overdecl)->BuildValueConstruction(a);          
         }
         if (auto tydecl = dynamic_cast<AST::Type*>(decl)) {
@@ -83,7 +83,7 @@ Wide::Util::optional<Expression> Module::AccessMember(Expression val, std::strin
     }
     if (m->higher)
         return a.GetDeclContext(m->higher)->AccessMember(val, name, a);
-	return Wide::Util::none;
+    return Wide::Util::none;
 }
 
 AST::DeclContext* Module::GetDeclContext() {

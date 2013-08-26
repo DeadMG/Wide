@@ -29,36 +29,36 @@ Codegen::Expression* Bool::BuildBooleanConversion(Expression e, Analyzer& a) {
 }
 
 std::size_t Bool::size(Analyzer& a) {
-	return a.gen->GetInt8AllocSize();
+    return a.gen->GetInt8AllocSize();
 }
 std::size_t Bool::alignment(Analyzer& a) {
     return llvm::DataLayout(a.gen->GetDataLayout()).getABIIntegerTypeAlignment(8);
 }
 
 Expression Bool::BuildBinaryExpression(Expression lhs, Expression rhs, Wide::Lexer::TokenType type, Analyzer& a) {
-	auto lhsval = lhs.BuildValue(a);
-	auto rhsval = rhs.BuildValue(a);
+    auto lhsval = lhs.BuildValue(a);
+    auto rhsval = rhs.BuildValue(a);
 
-	// If the types are not suitable for primitive ops, fall back to ADL.
-	if (lhs.t->Decay() != this || rhs.t->Decay() != this)
-		return Type::BuildBinaryExpression(lhs, rhs, type, a);
+    // If the types are not suitable for primitive ops, fall back to ADL.
+    if (lhs.t->Decay() != this || rhs.t->Decay() != this)
+        return Type::BuildBinaryExpression(lhs, rhs, type, a);
 
-	switch(type) {
-	case Lexer::TokenType::EqCmp:
-		return Expression(this, a.gen->CreateEqualityExpression(lhsval.Expr, rhsval.Expr));
-		// Let the default come for ~=.
-	}
+    switch(type) {
+    case Lexer::TokenType::EqCmp:
+        return Expression(this, a.gen->CreateEqualityExpression(lhsval.Expr, rhsval.Expr));
+        // Let the default come for ~=.
+    }
 
-	if (!a.IsLvalueType(lhs.t))
-		return Type::BuildBinaryExpression(lhs, rhs, type, a);
-	
-	switch(type) {
-	case Lexer::TokenType::AndAssign:
-		return Expression(lhs.t, a.gen->CreateStore(lhs.Expr, a.gen->CreateAndExpression(lhsval.Expr, rhsval.Expr)));
-	case Lexer::TokenType::XorAssign:
-		return Expression(lhs.t, a.gen->CreateStore(lhs.Expr, a.gen->CreateXorExpression(lhsval.Expr, rhsval.Expr)));
-	case Lexer::TokenType::OrAssign:
-		return Expression(lhs.t, a.gen->CreateStore(lhs.Expr, a.gen->CreateOrExpression(lhsval.Expr, rhsval.Expr)));
-	}
-	return Type::BuildBinaryExpression(lhs, rhs, type, a);
+    if (!a.IsLvalueType(lhs.t))
+        return Type::BuildBinaryExpression(lhs, rhs, type, a);
+    
+    switch(type) {
+    case Lexer::TokenType::AndAssign:
+        return Expression(lhs.t, a.gen->CreateStore(lhs.Expr, a.gen->CreateAndExpression(lhsval.Expr, rhsval.Expr)));
+    case Lexer::TokenType::XorAssign:
+        return Expression(lhs.t, a.gen->CreateStore(lhs.Expr, a.gen->CreateXorExpression(lhsval.Expr, rhsval.Expr)));
+    case Lexer::TokenType::OrAssign:
+        return Expression(lhs.t, a.gen->CreateStore(lhs.Expr, a.gen->CreateOrExpression(lhsval.Expr, rhsval.Expr)));
+    }
+    return Type::BuildBinaryExpression(lhs, rhs, type, a);
 }

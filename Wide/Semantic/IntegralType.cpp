@@ -49,50 +49,50 @@ Expression IntegralType::BuildBinaryExpression(Expression lhs, Expression rhs, L
     auto lhsval = lhs.BuildValue(a);
     auto rhsval = rhs.BuildValue(a);
 
-	// Check that these types are valid for primitive integral operations. If not, go to ADL.
-	if (lhsval.t != rhsval.t)
-		return Type::BuildBinaryExpression(lhs, rhs, type, a);
-	
-	switch(type) {
-	case Lexer::TokenType::LT:
-		return Expression(a.GetBooleanType(), a.gen->CreateLT(lhsval.Expr, rhsval.Expr, is_signed));
-	case Lexer::TokenType::EqCmp:
-		return Expression(a.GetBooleanType(), a.gen->CreateEqualityExpression(lhsval.Expr, rhsval.Expr));
-	}
+    // Check that these types are valid for primitive integral operations. If not, go to ADL.
+    if (lhsval.t != rhsval.t)
+        return Type::BuildBinaryExpression(lhs, rhs, type, a);
+    
+    switch(type) {
+    case Lexer::TokenType::LT:
+        return Expression(a.GetBooleanType(), a.gen->CreateLT(lhsval.Expr, rhsval.Expr, is_signed));
+    case Lexer::TokenType::EqCmp:
+        return Expression(a.GetBooleanType(), a.gen->CreateEqualityExpression(lhsval.Expr, rhsval.Expr));
+    }
 
-	// If the LHS is not an lvalue, the assign ops are invalid, so go to ADL or default implementation.
-	if (!a.IsLvalueType(lhs.t))
-		return Type::BuildBinaryExpression(lhs, rhs, type, a);
+    // If the LHS is not an lvalue, the assign ops are invalid, so go to ADL or default implementation.
+    if (!a.IsLvalueType(lhs.t))
+        return Type::BuildBinaryExpression(lhs, rhs, type, a);
 
-	switch(type) {
-	case Lexer::TokenType::RightShiftAssign:
-		return Expression(lhs.t, a.gen->CreateStore(lhs.Expr, a.gen->CreateRightShift(lhsval.Expr, rhsval.Expr, is_signed)));
-	case Lexer::TokenType::LeftShiftAssign:
-		return Expression(lhs.t, a.gen->CreateStore(lhs.Expr, a.gen->CreateLeftShift(lhsval.Expr, rhsval.Expr)));
-	case Lexer::TokenType::MulAssign:
-		return Expression(lhs.t, a.gen->CreateStore(lhs.Expr, a.gen->CreateMultiplyExpression(lhsval.Expr, rhsval.Expr)));
-	case Lexer::TokenType::PlusAssign:
-		return Expression(lhs.t, a.gen->CreateStore(lhs.Expr, a.gen->CreatePlusExpression(lhsval.Expr, rhsval.Expr)));
-	case Lexer::TokenType::OrAssign:
-		return Expression(lhs.t, a.gen->CreateStore(lhs.Expr, a.gen->CreateOrExpression(lhsval.Expr, rhsval.Expr)));
-	case Lexer::TokenType::AndAssign:
-		return Expression(lhs.t, a.gen->CreateStore(lhs.Expr, a.gen->CreateAndExpression(lhsval.Expr, rhsval.Expr)));
-	case Lexer::TokenType::XorAssign:
-		return Expression(lhs.t, a.gen->CreateStore(lhs.Expr, a.gen->CreateXorExpression(lhsval.Expr, rhsval.Expr)));
-	case Lexer::TokenType::MinusAssign:
-		return Expression(lhs.t, a.gen->CreateStore(lhs.Expr, a.gen->CreateSubExpression(lhsval.Expr, rhsval.Expr)));
-	case Lexer::TokenType::ModAssign:
-		return Expression(lhs.t, a.gen->CreateStore(lhs.Expr, a.gen->CreateModExpression(lhsval.Expr, rhsval.Expr, is_signed)));
-	case Lexer::TokenType::DivAssign:
-		return Expression(lhs.t, a.gen->CreateStore(lhs.Expr, a.gen->CreateDivExpression(lhsval.Expr, rhsval.Expr, is_signed)));
-	}
-	
-	// Not a primitive operator- report to ADL.
-	return Type::BuildBinaryExpression(lhs, rhs, type, a);
+    switch(type) {
+    case Lexer::TokenType::RightShiftAssign:
+        return Expression(lhs.t, a.gen->CreateStore(lhs.Expr, a.gen->CreateRightShift(lhsval.Expr, rhsval.Expr, is_signed)));
+    case Lexer::TokenType::LeftShiftAssign:
+        return Expression(lhs.t, a.gen->CreateStore(lhs.Expr, a.gen->CreateLeftShift(lhsval.Expr, rhsval.Expr)));
+    case Lexer::TokenType::MulAssign:
+        return Expression(lhs.t, a.gen->CreateStore(lhs.Expr, a.gen->CreateMultiplyExpression(lhsval.Expr, rhsval.Expr)));
+    case Lexer::TokenType::PlusAssign:
+        return Expression(lhs.t, a.gen->CreateStore(lhs.Expr, a.gen->CreatePlusExpression(lhsval.Expr, rhsval.Expr)));
+    case Lexer::TokenType::OrAssign:
+        return Expression(lhs.t, a.gen->CreateStore(lhs.Expr, a.gen->CreateOrExpression(lhsval.Expr, rhsval.Expr)));
+    case Lexer::TokenType::AndAssign:
+        return Expression(lhs.t, a.gen->CreateStore(lhs.Expr, a.gen->CreateAndExpression(lhsval.Expr, rhsval.Expr)));
+    case Lexer::TokenType::XorAssign:
+        return Expression(lhs.t, a.gen->CreateStore(lhs.Expr, a.gen->CreateXorExpression(lhsval.Expr, rhsval.Expr)));
+    case Lexer::TokenType::MinusAssign:
+        return Expression(lhs.t, a.gen->CreateStore(lhs.Expr, a.gen->CreateSubExpression(lhsval.Expr, rhsval.Expr)));
+    case Lexer::TokenType::ModAssign:
+        return Expression(lhs.t, a.gen->CreateStore(lhs.Expr, a.gen->CreateModExpression(lhsval.Expr, rhsval.Expr, is_signed)));
+    case Lexer::TokenType::DivAssign:
+        return Expression(lhs.t, a.gen->CreateStore(lhs.Expr, a.gen->CreateDivExpression(lhsval.Expr, rhsval.Expr, is_signed)));
+    }
+    
+    // Not a primitive operator- report to ADL.
+    return Type::BuildBinaryExpression(lhs, rhs, type, a);
 }
 Expression IntegralType::BuildIncrement(Expression obj, bool postfix, Analyzer& a) {    
     if (postfix) {
-		if (a.IsLvalueType(obj.t)) {
+        if (a.IsLvalueType(obj.t)) {
             auto curr = a.gen->CreateLoad(obj.Expr);
             auto next = a.gen->CreatePlusExpression(curr, a.gen->CreateIntegralExpression(1, false, GetLLVMType(a)));
             return Expression(this, a.gen->CreateChainExpression(a.gen->CreateChainExpression(curr, a.gen->CreateStore(obj.Expr, next)), curr));
@@ -108,7 +108,7 @@ Expression IntegralType::BuildIncrement(Expression obj, bool postfix, Analyzer& 
 
 Codegen::Expression* IntegralType::BuildInplaceConstruction(Codegen::Expression* mem, std::vector<Expression> args, Analyzer& a) {
     if (args.size() == 1) {
-		args[0] = args[0].BuildValue(a);
+        args[0] = args[0].BuildValue(a);
         if (args[0].t == this)
             return a.gen->CreateStore(mem, args[0].Expr);
         auto inttype = dynamic_cast<IntegralType*>(args[0].t);
@@ -124,13 +124,13 @@ Codegen::Expression* IntegralType::BuildInplaceConstruction(Codegen::Expression*
             return a.gen->CreateStore(mem, args[0].Expr);
         throw std::runtime_error("It is illegal to perform a signed->unsigned and widening conversion in one step, even explicitly.");
     }
-	if (args.size() != 0)
-		throw std::runtime_error("Attempt to construct an integer from more than one argument or zero.");
+    if (args.size() != 0)
+        throw std::runtime_error("Attempt to construct an integer from more than one argument or zero.");
     return a.gen->CreateStore(mem, a.gen->CreateIntegralExpression(0, false, GetLLVMType(a)));
 }
 std::size_t IntegralType::size(Analyzer& a) {
-	return a.gen->GetInt8AllocSize() * (bits / 8);
+    return a.gen->GetInt8AllocSize() * (bits / 8);
 }
 std::size_t IntegralType::alignment(Analyzer& a) {
-	return a.gen->GetDataLayout().getABIIntegerTypeAlignment(bits);
+    return a.gen->GetDataLayout().getABIIntegerTypeAlignment(bits);
 }
