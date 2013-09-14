@@ -4,17 +4,16 @@
 #include <Wide/Codegen/Statement.h>
 #include <Wide/Codegen/LLVMGenerator.h>
 
-using namespace Wide;
-using namespace LLVMCodegen;
-
 #pragma warning(push, 0)
-
 #include <llvm/IR/Function.h>
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/Module.h>
 #include <llvm/Analysis/Verifier.h>
-
 #pragma warning(pop)
+
+using namespace Wide;
+using namespace LLVMCodegen;
+
 
 llvm::Value* Function::GetParameter(unsigned i) {
     return ParameterValues[i];

@@ -62,6 +62,7 @@ namespace Wide {
             virtual StoreExpression* CreateStore(Expression*, Expression*) { return nullptr; }
             virtual LoadExpression* CreateLoad(Expression*) { return nullptr; }
             virtual ReturnStatement* CreateReturn() { return nullptr; }
+            virtual ReturnStatement* CreateReturn(std::function < Expression*()>) { return nullptr; }
             virtual ReturnStatement* CreateReturn(Expression*) { return nullptr; }
             virtual FunctionValue* CreateFunctionValue(std::string name) { return new MockFunctionValue(std::move(name)); }
             virtual IntegralExpression* CreateIntegralExpression(unsigned long long val, bool is_signed, std::function<llvm::Type*(llvm::Module*)> ty) { return new MockIntegralExpression(val, is_signed); }
@@ -71,8 +72,10 @@ namespace Wide {
             virtual ParamExpression* CreateParameterExpression(unsigned) { return nullptr; }
             virtual ParamExpression* CreateParameterExpression(std::function<unsigned()>) { return nullptr; }
             virtual IfStatement* CreateIfStatement(Expression*, Statement*, Statement*) { return nullptr; }
+            virtual IfStatement* CreateIfStatement(std::function<Expression*()>, Statement*, Statement*) { return nullptr; }
             virtual ChainStatement* CreateChainStatement(Statement*, Statement*) { return nullptr; }
             virtual TruncateExpression* CreateTruncate(Expression*, std::function<llvm::Type*(llvm::Module*)>) { return nullptr; }
+            virtual WhileStatement* CreateWhile(std::function<Expression*()>, Statement*) { return nullptr; }
             virtual WhileStatement* CreateWhile(Expression*, Statement*) { return nullptr; }
             virtual NullExpression* CreateNull(std::function<llvm::Type*(llvm::Module*)> type) { return nullptr; }
             virtual IntegralLeftShiftExpression* CreateLeftShift(Expression*, Expression*) { return nullptr; }
@@ -90,7 +93,11 @@ namespace Wide {
             virtual SubExpression* CreateSubExpression(Expression* l, Expression* r) { return nullptr; }
             virtual XorExpression* CreateXorExpression(Expression* l, Expression* r) { return nullptr; }
             virtual ModExpression* CreateModExpression(Expression* l, Expression* r, bool is_signed) { return nullptr; }
-            virtual DivExpression* CreateDivExpression(Expression* l, Expression* r, bool is_signed) { return nullptr; }        
+            virtual DivExpression* CreateDivExpression(Expression* l, Expression* r, bool is_signed) { return nullptr; }  
+            virtual FPLessThan* CreateFPLT(Expression* l, Expression* r) { return nullptr; }
+            virtual FPDiv* CreateFPDiv(Expression* l, Expression* r) { return nullptr; }
+            virtual FPMod* CreateFPMod(Expression* l, Expression* r) { return nullptr; }
+            virtual FPExtension* CreateFPExtension(Expression*, std::function < llvm::Type*(llvm::Module*)>) { return nullptr;  }
         };
     }
 }
@@ -104,6 +111,7 @@ namespace Wide {
 #include <Wide/Util/ParallelForEach.h>
 #include <Wide/Parser/Builder.h>
 #include <Wide/Util/Ranges/IStreamRange.h>
+#include <Wide/Util/ConcurrentVector.h>
 #include <mutex>
 #include <atomic>
 #include <sstream>
@@ -115,12 +123,15 @@ namespace Wide {
 #include <llvm/Support/Host.h>
 #endif
 
-void Compile(const Wide::Options::Clang& copts, llvm::DataLayout lopts, std::initializer_list<std::string> files) {    
+
+void Compile(const Wide::Options::Clang& copts, llvm::DataLayout lopts, std::initializer_list<std::string> files) {
     Wide::Codegen::MockGenerator Generator(lopts);
-    Wide::AST::Builder ASTBuilder;
+    Wide::AST::Combiner combiner;
     Wide::Semantic::Analyzer Sema(copts, &Generator);
-    
+
     Wide::Concurrency::Vector<std::string> excepts;
+    Wide::Concurrency::Vector<std::string> warnings;
+    Wide::Concurrency::Vector<std::shared_ptr<Wide::AST::Builder>> builders;
     Wide::Concurrency::ParallelForEach(files.begin(), files.end(), [&](const std::string& filename) {
         std::ifstream inputfile(filename, std::ios::binary | std::ios::in);
         if (!inputfile)
@@ -135,24 +146,40 @@ void Compile(const Wide::Options::Clang& copts, llvm::DataLayout lopts, std::ini
             str << Wide::Parser::ErrorStrings.at(what);
             excepts.push_back(str.str());
         };
+        auto parserwarninghandler = [&](Wide::Lexer::Range where, Wide::Parser::Warning what) {
+            std::stringstream str;
+            str << "Warning in file " << filename << ", line " << where.begin.line << " column " << where.begin.column << ":\n";
+            str << Wide::Parser::WarningStrings.at(what);
+            warnings.push_back(str.str());
+        };
         try {
-            Wide::Parser::ParseGlobalModuleContents(lex, Wide::AST::ThreadLocalBuilder(ASTBuilder, parsererrorhandler), ASTBuilder.GetGlobalModule());
-        } catch(Wide::Parser::UnrecoverableError& e) {
+            auto builder = std::make_shared<Wide::AST::Builder>(parsererrorhandler, parserwarninghandler);
+            Wide::Parser::ParseGlobalModuleContents(lex, *builder, builder->GetGlobalModule());
+            builders.push_back(std::move(builder));
+        }
+        catch (Wide::Parser::ParserError& e) {
             parsererrorhandler(e.where(), e.error());
-        } catch(std::exception& e) {
+        }
+        catch (std::exception& e) {
             excepts.push_back(e.what());
-        } catch(...) {
+        }
+        catch (...) {
             excepts.push_back("Internal Compiler Error");
         }
     });
 
+    for (auto&& x : warnings)
+        std::cout << x << "\n";
+
     if (excepts.empty()) {
-        Sema(ASTBuilder.GetGlobalModule());
+        for (auto&& x : builders)
+            combiner.Add(x->GetGlobalModule());
+        Sema(combiner.GetGlobalModule());
     } else {
-        for(auto&& msg : excepts) {
+        for (auto&& msg : excepts) {
             std::cout << msg << "\n";
         }
-        throw std::runtime_error("Test failed.");
+        throw std::runtime_error("Terminating test due to failures.");
     }
 }
 
@@ -161,13 +188,15 @@ TEST_CASE("", "") {
     llvm::InitializeAllTargetMCs();
     llvm::InitializeAllAsmPrinters();
     llvm::InitializeAllAsmParsers();
-    std::string triple = "i686-pc-mingw32";
+    Wide::Options::Clang clangopts;
+    clangopts.TargetOptions.Triple = "i686-pc-mingw32";
     std::unique_ptr<llvm::TargetMachine> targetmachine;
     std::string err;
-    const llvm::Target& target = *llvm::TargetRegistry::lookupTarget(triple, err);
+    const llvm::Target& target = *llvm::TargetRegistry::lookupTarget(clangopts.TargetOptions.Triple, err);
     llvm::TargetOptions targetopts;
-    targetmachine = std::unique_ptr<llvm::TargetMachine>(target.createTargetMachine(triple, llvm::Triple(triple).getArchName(), "", targetopts));
-    Wide::Options::Clang clangopts;
-    CHECK_NOTHROW(Compile(clangopts, *targetmachine->getDataLayout(), {"IntegerOperations.wide"}));
-    CHECK_NOTHROW(Compile(clangopts, *targetmachine->getDataLayout(), {"PrimitiveADL.wide"}));
+    targetmachine = std::unique_ptr<llvm::TargetMachine>(target.createTargetMachine(clangopts.TargetOptions.Triple, llvm::Triple(clangopts.TargetOptions.Triple).getArchName(), "", targetopts));
+    CHECK_NOTHROW(Compile(clangopts, *targetmachine->getDataLayout(), { "IntegerOperations.wide" }));
+    CHECK_NOTHROW(Compile(clangopts, *targetmachine->getDataLayout(), { "PrimitiveADL.wide" }));
+    CHECK_NOTHROW(Compile(clangopts, *targetmachine->getDataLayout(), { "RecursiveTypeInference.wide" }));
+    CHECK_NOTHROW(Compile(clangopts, *targetmachine->getDataLayout(), { "CorecursiveTypeInference.wide" }));
 }

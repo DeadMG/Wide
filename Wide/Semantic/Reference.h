@@ -13,7 +13,7 @@ namespace Wide {
             std::function<llvm::Type*(llvm::Module*)> GetLLVMType(Analyzer& a) override;
             clang::QualType GetClangType(ClangUtil::ClangTU& tu, Analyzer& a) override;
 
-            Codegen::Expression* BuildInplaceConstruction(Codegen::Expression* mem, std::vector<Expression> args, Analyzer& a) override;
+            Codegen::Expression* BuildInplaceConstruction(Codegen::Expression* mem, std::vector<ConcreteExpression> args, Analyzer& a) override;
 
             bool IsReference() override {
                 return true;
@@ -21,8 +21,9 @@ namespace Wide {
             bool IsReference(Type* to) override {
                 return to == Pointee;
             }
-            Expression BuildRvalueConstruction(std::vector<Expression> args, Analyzer& a) override;
-            Expression BuildLvalueConstruction(std::vector<Expression> args, Analyzer& a) override;
+
+            ConcreteExpression BuildRvalueConstruction(std::vector<ConcreteExpression> args, Analyzer& a) override;
+            ConcreteExpression BuildLvalueConstruction(std::vector<ConcreteExpression> args, Analyzer& a) override;
 
             ConversionRank RankConversionFrom(Type* from, Analyzer& a) override {
                 assert(false && "Internal Compiler Error: All T& conversions should be dealt with by Analyzer.");

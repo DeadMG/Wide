@@ -184,9 +184,8 @@ function CheckBoost(proj)
     return true
 end
 
-local WideProjects = {
-    { 
-        name = "CLI", 
+WideProjects = {
+    CLI = { 
         dependencies = function(proj) 
             return CheckLLVM(proj) and CheckBoost(proj)
         end, 
@@ -204,26 +203,19 @@ local WideProjects = {
             end
         end,
     },
-    { 
-        name = "Util", 
-    },
-    { 
-        name = "Semantic", 
+    Util = {},
+    Semantic = { 
         dependencies = function(proj) 
-            return CheckLLVM(proj) 
+            return CheckLLVM(proj) and CheckBoost(proj)
         end, 
         configure = function(plat, conf)
             AddClangDependencies(conf)
+            AddBoostDependencies(conf)
         end
     },
-    { 
-        name = "Parser"
-    },
-    { 
-        name = "Lexer", 
-    },
-    { 
-        name = "Codegen", 
+    Parser = {},
+    Lexer = {},
+    Codegen = { 
         dependencies = function(proj)
             return CheckLLVM(proj)
         end, 
@@ -231,22 +223,19 @@ local WideProjects = {
             includedirs({ _OPTIONS["llvm-path"] .. "include" })
         end 
     },
-    { 
-        name = "CAPI",
+    CAPI = { 
         action = function()
             kind "SharedLib"
             links { "Lexer", "Parser" }
         end 
     },
-    {
-        name = "WideLibrary",
+    WideLibrary = {
         action = function()
             files ({ "Wide/WideLibrary/**.wide"})
             postbuildcommands ({ "(robocopy /mir \"Standard\" \"../Deployment/WideLibrary/Standard\") ^& IF %ERRORLEVEL% LEQ 1 exit 0" })
         end
     },
-    { 
-        name = "LexerTest", 
+    LexerTest = { 
         action = function() 
             kind("ConsoleApp")
             links { "Lexer" }
@@ -259,17 +248,18 @@ local WideProjects = {
             end
         end,
     },
-    {
+    SemanticTest = {
         name = "SemanticTest",
         action = function()
             kind("ConsoleApp")
             links { "Lexer", "Parser", "Semantic" }
+            files ({ "Wide/SemanticTest/**.wide" })
         end,
         dependencies = function(proj)
-            return CheckLLVM(proj)
+            return WideProjects.Semantic.dependencies(proj)
         end, 
         configure = function(plat, conf)
-            AddClangDependencies(conf)
+            WideProjects.Semantic.configure(plat, conf)
             if os.is("windows") then
                 postbuildcommands ({ "$(TargetPath)" })
             else
@@ -293,17 +283,17 @@ else
 end
 includedirs("./")
 location("Wide")
-for k, v in pairs(WideProjects) do
-    if (not v.dependencies) or v.dependencies(v.name) then 
-        project(v.name)
-        location("Wide/"..v.name)
-        if v.action then v.action() end
-        files( { "Wide/" .. v.name .. "/**.cpp", "Wide/" .. v.name .. "/**.h" })
+for name, proj in pairs(WideProjects) do
+    if (not proj.dependencies) or proj.dependencies(name) then 
+        project(name)
+        location("Wide/"..name)
+        if proj.action then proj.action() end
+        files( { "Wide/" .. name .. "/**.cpp", "Wide/" .. name .. "/**.h" })
         for k, plat in pairs(SupportedPlatforms) do
             for k, conf in pairs(SupportedConfigurations) do
                 configuration { plat, conf }
                 if plat == "x32" then plat = "x86" end
-                if v.configure then v.configure(plat, conf) end
+                if proj.configure then proj.configure(plat, conf) end
                 objdir("Wide/Obj/" .. plat .. "/" .. conf .. "/")
                 if conf == "Debug" then 
                     flags("Symbols")

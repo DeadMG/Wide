@@ -24,7 +24,7 @@ clang::QualType Bool::GetClangType(ClangUtil::ClangTU& where, Analyzer& a) {
     return where.GetASTContext().BoolTy;
 }
 
-Codegen::Expression* Bool::BuildBooleanConversion(Expression e, Analyzer& a) {
+Codegen::Expression* Bool::BuildBooleanConversion(ConcreteExpression e, Analyzer& a) {
     return e.BuildValue(a).Expr;
 }
 
@@ -35,7 +35,7 @@ std::size_t Bool::alignment(Analyzer& a) {
     return llvm::DataLayout(a.gen->GetDataLayout()).getABIIntegerTypeAlignment(8);
 }
 
-Expression Bool::BuildBinaryExpression(Expression lhs, Expression rhs, Wide::Lexer::TokenType type, Analyzer& a) {
+ConcreteExpression Bool::BuildBinaryExpression(ConcreteExpression lhs, ConcreteExpression rhs, Wide::Lexer::TokenType type, Analyzer& a) {
     auto lhsval = lhs.BuildValue(a);
     auto rhsval = rhs.BuildValue(a);
 
@@ -45,7 +45,7 @@ Expression Bool::BuildBinaryExpression(Expression lhs, Expression rhs, Wide::Lex
 
     switch(type) {
     case Lexer::TokenType::EqCmp:
-        return Expression(this, a.gen->CreateEqualityExpression(lhsval.Expr, rhsval.Expr));
+        return ConcreteExpression(this, a.gen->CreateEqualityExpression(lhsval.Expr, rhsval.Expr));
         // Let the default come for ~=.
     }
 
@@ -54,11 +54,11 @@ Expression Bool::BuildBinaryExpression(Expression lhs, Expression rhs, Wide::Lex
     
     switch(type) {
     case Lexer::TokenType::AndAssign:
-        return Expression(lhs.t, a.gen->CreateStore(lhs.Expr, a.gen->CreateAndExpression(lhsval.Expr, rhsval.Expr)));
+        return ConcreteExpression(lhs.t, a.gen->CreateStore(lhs.Expr, a.gen->CreateAndExpression(lhsval.Expr, rhsval.Expr)));
     case Lexer::TokenType::XorAssign:
-        return Expression(lhs.t, a.gen->CreateStore(lhs.Expr, a.gen->CreateXorExpression(lhsval.Expr, rhsval.Expr)));
+        return ConcreteExpression(lhs.t, a.gen->CreateStore(lhs.Expr, a.gen->CreateXorExpression(lhsval.Expr, rhsval.Expr)));
     case Lexer::TokenType::OrAssign:
-        return Expression(lhs.t, a.gen->CreateStore(lhs.Expr, a.gen->CreateOrExpression(lhsval.Expr, rhsval.Expr)));
+        return ConcreteExpression(lhs.t, a.gen->CreateStore(lhs.Expr, a.gen->CreateOrExpression(lhsval.Expr, rhsval.Expr)));
     }
     return Type::BuildBinaryExpression(lhs, rhs, type, a);
 }

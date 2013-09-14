@@ -4,7 +4,7 @@
 #include <memory>
 #include <functional>
 #include <algorithm>
-#include "MakeUnique.h"
+#include <Wide/Util/MakeUnique.h>
  
 namespace Wide {
     namespace Memory {
@@ -112,7 +112,11 @@ namespace Wide {
                 if (size > BufferSize)
                     throw std::runtime_error("Fuck");
                 return tail->AllocateFor(size, alignment);
-            }
+            }/*
+            template<typename T, typename... Args> T* Allocate(Args&&... args) {
+                T* ret = new (tail->AllocateFor<T>()) T(std::forward<Args>(args)...);
+                return ret;
+            }*/
             template<typename T> T* Allocate() {
                 T* ret = new (tail->AllocateFor<T>()) T();
                 return ret;

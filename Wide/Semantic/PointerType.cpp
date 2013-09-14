@@ -32,11 +32,11 @@ std::function<llvm::Type*(llvm::Module*)> PointerType::GetLLVMType(Analyzer& a) 
     };
 }
 
-Expression PointerType::BuildDereference(Expression val, Analyzer& a) {
-    return Expression(a.AsLvalueType(pointee), val.BuildValue(a).Expr);
+ConcreteExpression PointerType::BuildDereference(ConcreteExpression val, Analyzer& a) {
+    return ConcreteExpression(a.AsLvalueType(pointee), val.BuildValue(a).Expr);
 }
 
-Codegen::Expression* PointerType::BuildInplaceConstruction(Codegen::Expression* mem, std::vector<Expression> args, Analyzer& a) {
+Codegen::Expression* PointerType::BuildInplaceConstruction(Codegen::Expression* mem, std::vector<ConcreteExpression> args, Analyzer& a) {
     if (args.size() > 1)
         throw std::runtime_error("Attempted to construct a pointer from more than one argument.");
     if (args.size() == 0)
@@ -49,7 +49,7 @@ Codegen::Expression* PointerType::BuildInplaceConstruction(Codegen::Expression* 
     throw std::runtime_error("Attempted to construct a pointer from something that was not a pointer of the same type or null.");
 }
 
-Expression PointerType::BuildBinaryExpression(Expression lhs, Expression rhs, Lexer::TokenType type, Analyzer& a) {
+ConcreteExpression PointerType::BuildBinaryExpression(ConcreteExpression lhs, ConcreteExpression rhs, Lexer::TokenType type, Analyzer& a) {
     auto lhsval = lhs.BuildValue(a);
     auto rhsval = rhs.BuildValue(a);
 
@@ -58,7 +58,7 @@ Expression PointerType::BuildBinaryExpression(Expression lhs, Expression rhs, Le
        return Type::BuildBinaryExpression(lhs, rhs, type, a);
 
     if (type == Lexer::TokenType::EqCmp) {
-        return Expression(a.GetBooleanType(), a.gen->CreateEqualityExpression(lhsval.Expr, rhsval.Expr));
+        return ConcreteExpression(a.GetBooleanType(), a.gen->CreateEqualityExpression(lhsval.Expr, rhsval.Expr));
     }
 
     // Let ADL take over if we are not an lvalue.
@@ -73,7 +73,7 @@ Expression PointerType::BuildBinaryExpression(Expression lhs, Expression rhs, Le
     return Type::BuildBinaryExpression(lhs, rhs, type, a);
 }
 
-Codegen::Expression* PointerType::BuildBooleanConversion(Expression obj, Analyzer& a) {
+Codegen::Expression* PointerType::BuildBooleanConversion(ConcreteExpression obj, Analyzer& a) {
     obj = obj.t->BuildValue(obj, a);
     return a.gen->CreateIsNullExpression(obj.Expr);
 }

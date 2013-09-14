@@ -5,7 +5,6 @@
 #include <Wide/Semantic/ClangOverloadSet.h>
 #include <Wide/Semantic/ConstructorType.h>
 #include <Wide/Semantic/ClangTemplateClass.h>
-#include <Wide/Codegen/Expression.h>
 #include <Wide/Codegen/Generator.h>
 #include <Wide/Util/MakeUnique.h>
 
@@ -20,7 +19,7 @@
 using namespace Wide;
 using namespace Semantic;
 
-Wide::Util::optional<Expression> ClangNamespace::AccessMember(Expression val, std::string name, Analyzer& a) {        
+Wide::Util::optional<ConcreteExpression> ClangNamespace::AccessMember(ConcreteExpression val, std::string name, Analyzer& a) {
     clang::LookupResult lr(
         from->GetSema(), 
         clang::DeclarationNameInfo(clang::DeclarationName(from->GetIdentifierInfo(name)), clang::SourceLocation()),
@@ -38,10 +37,10 @@ Wide::Util::optional<Expression> ClangNamespace::AccessMember(Expression val, st
             for(auto decl = fundecl->param_begin(); decl != fundecl->param_end(); ++decl) {
                 args.push_back(a.GetClangType(*from, (*decl)->getType()));
             }
-            return Expression(a.GetFunctionType(a.GetClangType(*from, fundecl->getResultType()), args), a.gen->CreateFunctionValue(from->MangleName(fundecl)));
+            return ConcreteExpression(a.GetFunctionType(a.GetClangType(*from, fundecl->getResultType()), args), a.gen->CreateFunctionValue(from->MangleName(fundecl)));
         }
         if (auto vardecl = llvm::dyn_cast<clang::VarDecl>(result)) {
-            return Expression(a.AsLvalueType(a.GetClangType(*from, vardecl->getType())), a.gen->CreateGlobalVariable(from->MangleName(vardecl)));
+            return ConcreteExpression(a.AsLvalueType(a.GetClangType(*from, vardecl->getType())), a.gen->CreateGlobalVariable(from->MangleName(vardecl)));
         }
         if (auto namedecl = llvm::dyn_cast<clang::NamespaceDecl>(result)) {
             return a.GetConstructorType(a.GetClangNamespace(*from, namedecl))->BuildValueConstruction(a);
@@ -59,5 +58,5 @@ Wide::Util::optional<Expression> ClangNamespace::AccessMember(Expression val, st
     for(auto it = lr.begin(); it != lr.end(); ++it) {
         us.addDecl(*it);
     }
-    return Expression(a.arena.Allocate<ClangOverloadSet>(std::move(ptr), from, nullptr), nullptr);
+    return ConcreteExpression(a.arena.Allocate<ClangOverloadSet>(std::move(ptr), from, nullptr), nullptr);
 }

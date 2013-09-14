@@ -3,10 +3,8 @@
 #include <vector>
 #include <string>
 #include <unordered_map>
+#include <memory>
 #include <Wide/Lexer/Token.h>
-
-#include <Wide/Util/ConcurrentUnorderedMap.h>
-#include <Wide/Util/ConcurrentVector.h>
 
 namespace Wide {
     namespace AST {
@@ -38,19 +36,24 @@ namespace Wide {
             DeclContext(DeclContext* nested, std::string name)
                 : ModuleLevelDeclaration(nested, std::move(name)) {}
         };
-        struct FunctionOverloadSet;
+        struct Function;
+        struct FunctionOverloadSet : public DeclContext {
+            FunctionOverloadSet(std::string nam, DeclContext* p)
+                : DeclContext(p, std::move(nam)) {}
+            std::unordered_set<Function*> functions;
+        };
         struct Module : public DeclContext {
             Module(std::string nam, Module* parent)
                 : DeclContext(parent, std::move(nam)) {}
-            Concurrency::UnorderedMap<std::string, ModuleLevelDeclaration*> decls;
-            Concurrency::UnorderedMap<Lexer::TokenType, FunctionOverloadSet*> opcondecls;
+            std::unordered_map<std::string, ModuleLevelDeclaration*> decls;
+            std::unordered_map<Lexer::TokenType, FunctionOverloadSet*> opcondecls;
         };
         struct VariableStatement;
         struct Type : public DeclContext, Expression {
             Type(DeclContext* above, std::string name, Lexer::Range loc) : DeclContext(above, name), Expression(loc) {}
             std::vector<VariableStatement*> variables;
             std::unordered_map<std::string, FunctionOverloadSet*> Functions;
-            Concurrency::UnorderedMap<Lexer::TokenType, FunctionOverloadSet*> opcondecls;
+            std::unordered_map<Lexer::TokenType, FunctionOverloadSet*> opcondecls;
         };
         struct IdentifierExpr : Expression {
             IdentifierExpr(std::string nam, Lexer::Range loc)
@@ -103,17 +106,12 @@ namespace Wide {
             Expression* callee;
             std::vector<Expression*> args;
         };
-        struct FunctionOverloadSet : public ModuleLevelDeclaration {
-            FunctionOverloadSet(std::string nam, DeclContext* p)
-                : ModuleLevelDeclaration(p, std::move(nam)) {}
-            Concurrency::Vector<Function*> functions;
-        };
         /*struct QualifiedName {
             std::vector<std::string> components;
         };*/
-        struct Using : public ModuleLevelDeclaration {
+        struct Using : public DeclContext {
             Using(std::string name, Expression* ex, Module* m)
-                : expr(ex), ModuleLevelDeclaration(m, std::move(name)) {}
+                : expr(ex), DeclContext(m, std::move(name)) {}
             Expression* expr;
         };
         struct Return : public Statement {
@@ -196,6 +194,18 @@ namespace Wide {
             bool postfix;
             Decrement(Expression* ex, Lexer::Range r, bool post)
                 : UnaryExpression(ex, r), postfix(post) {}
+        };
+        struct Combiner {
+            Module root;
+            std::unordered_map<DeclContext*, std::unique_ptr<DeclContext>> owned_decl_contexts;
+        public:
+            Combiner()
+                : root("global", nullptr) {}
+
+            Module* GetGlobalModule() { return &root; }
+
+            void Add(Module* m);
+            void Remove(Module* m);
         };
     }
 }

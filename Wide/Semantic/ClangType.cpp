@@ -1,7 +1,6 @@
 #include <Wide/Semantic/ClangType.h>
 #include <Wide/Semantic/Analyzer.h>
 #include <Wide/Semantic/FunctionType.h>
-#include <Wide/Codegen/Expression.h>
 #include <Wide/Util/MakeUnique.h>
 #include <Wide/Semantic/ClangOverloadSet.h>
 #include <Wide/Semantic/ClangTU.h>
@@ -106,28 +105,28 @@ clang::QualType ClangType::GetClangType(ClangUtil::ClangTU& tu, Analyzer& a) {
     return type;
 }
 
-Expression ClangType::BuildOverloadSet(Expression self, std::string name, clang::LookupResult& lr, Analyzer& a) {
+ConcreteExpression ClangType::BuildOverloadSet(ConcreteExpression self, std::string name, clang::LookupResult& lr, Analyzer& a) {
     auto ptr = Wide::Memory::MakeUnique<clang::UnresolvedSet<8>>();
     clang::UnresolvedSet<8>& us = *ptr;
     for(auto it = lr.begin(); it != lr.end(); ++it) {
         us.addDecl(*it);
     }
-    Expression out;
+    ConcreteExpression out;
     if (self.t && !self.t->IsReference()) {
-        std::vector<Expression> args;
+        std::vector<ConcreteExpression> args;
         args.push_back(self);
         self = self.t->BuildRvalueConstruction(std::move(args), a);
     }
     LookupResultCache[name] = a.arena.Allocate<ClangOverloadSet>(std::move(ptr), from, self.t);
-    std::vector<Expression> args;
+    std::vector<ConcreteExpression> args;
     if (self.t)
         args.push_back(self);
     return LookupResultCache[name]->BuildValueConstruction(self, a);
 }
 
-Wide::Util::optional<Expression> ClangType::AccessMember(Expression val, std::string name, Analyzer& a) {
+Wide::Util::optional<ConcreteExpression> ClangType::AccessMember(ConcreteExpression val, std::string name, Analyzer& a) {
     if (LookupResultCache.find(name) != LookupResultCache.end()) {
-        std::vector<Expression> args;
+        std::vector<ConcreteExpression> args;
         if (val.Expr) args.push_back(val);
         return LookupResultCache[name]->BuildValueConstruction(std::move(args), a);
     }
@@ -138,12 +137,12 @@ Wide::Util::optional<Expression> ClangType::AccessMember(Expression val, std::st
         us.addDecl(des);
         
         if (val.t && !val.t->IsReference()) {
-            std::vector<Expression> args;
+            std::vector<ConcreteExpression> args;
             args.push_back(val);
             val = val.t->BuildRvalueConstruction(std::move(args), a);
         }
         LookupResultCache[name] = a.arena.Allocate<ClangOverloadSet>(std::move(ptr), from, val.t);
-        std::vector<Expression> args;
+        std::vector<ConcreteExpression> args;
         if (val.t)
             args.push_back(val);
         return LookupResultCache[name]->BuildValueConstruction(val, a);
@@ -161,7 +160,7 @@ Wide::Util::optional<Expression> ClangType::AccessMember(Expression val, std::st
         if (val.Expr) {
             // Check for members first.
             if (auto field = llvm::dyn_cast<clang::FieldDecl>(lr.getFoundDecl())) {
-                Expression out;
+                ConcreteExpression out;
                 if (a.IsLvalueType(val.t)) {
                     // The result is an lvalue of that type.
                     out.t = a.AsLvalueType(a.GetClangType(*from, field->getType()));
@@ -176,20 +175,20 @@ Wide::Util::optional<Expression> ClangType::AccessMember(Expression val, std::st
             }
         }
         if (auto ty = llvm::dyn_cast<clang::TypeDecl>(lr.getFoundDecl())) {
-            Expression out;
+            ConcreteExpression out;
             out.t = a.GetConstructorType(a.GetClangType(*from, from->GetASTContext().getTypeDeclType(ty)));
             out.Expr = nullptr;
             return out;
         }
         if (auto vardecl = llvm::dyn_cast<clang::VarDecl>(lr.getFoundDecl())) {    
-            Expression out;
+            ConcreteExpression out;
             out.t = a.AsLvalueType(a.GetClangType(*from, vardecl->getType()));
             if (a.gen)
                 out.Expr = a.gen->CreateGlobalVariable(from->MangleName(vardecl));
             return out;
         }
         if (auto tempdecl = llvm::dyn_cast<clang::ClassTemplateDecl>(lr.getFoundDecl())) {
-            Expression out;
+            ConcreteExpression out;
             out.Expr = nullptr;
             out.t = a.GetClangTemplateClass(*from, tempdecl);
             return out;
@@ -199,7 +198,7 @@ Wide::Util::optional<Expression> ClangType::AccessMember(Expression val, std::st
     return BuildOverloadSet(val, std::move(name), lr, a);
 }
 
-Expression ClangType::BuildCall(Expression self, std::vector<Expression> args, Analyzer& a) {
+Expression ClangType::BuildCall(ConcreteExpression self, std::vector<ConcreteExpression> args, Analyzer& a) {
     clang::OpaqueValueExpr ope(clang::SourceLocation(), type.getNonLValueExprType(from->GetASTContext()), Semantic::GetKindOfType(self.t));
     auto declname = from->GetASTContext().DeclarationNames.getCXXOperatorName(clang::OverloadedOperatorKind::OO_Call);
     clang::LookupResult lr(from->GetSema(), clang::DeclarationNameInfo(declname, clang::SourceLocation()), clang::Sema::LookupNameKind::LookupOrdinaryName);
@@ -207,7 +206,7 @@ Expression ClangType::BuildCall(Expression self, std::vector<Expression> args, A
     if (!result) {
         throw std::runtime_error("Attempted to call a Clang type, but Clang said that it could not find the member.");
     }
-    return BuildOverloadSet(self, "()", lr, a).BuildCall(std::move(args), a);
+    return BuildOverloadSet(self, "()", lr, a).BuildCall(std::move(args), a).Resolve(nullptr);
 }
 
 
@@ -215,7 +214,7 @@ std::function<llvm::Type*(llvm::Module*)> ClangType::GetLLVMType(Analyzer& a) {
     return from->GetLLVMTypeFromClangType(type, a);
 }
            
-Codegen::Expression* ClangType::BuildInplaceConstruction(Codegen::Expression* mem, std::vector<Expression> args, Analyzer& a) {
+Codegen::Expression* ClangType::BuildInplaceConstruction(Codegen::Expression* mem, std::vector<ConcreteExpression> args, Analyzer& a) {
     if (args.size() == 1 && args[0].t->Decay() == this && !IsComplexType()) {
         return a.gen->CreateStore(mem, args[0].t->BuildValue(args[0], a).Expr);
     }
@@ -267,7 +266,7 @@ Codegen::Expression* ClangType::BuildInplaceConstruction(Codegen::Expression* me
 
     // Constructor signatures don't seem to include the need for "this", so just lie.
     // It all turns out alright.
-    Expression self;
+    ConcreteExpression self;
     self.t = a.AsLvalueType(this);
     self.Expr = mem;
     types.push_back(self.t);
@@ -279,7 +278,7 @@ Codegen::Expression* ClangType::BuildInplaceConstruction(Codegen::Expression* me
         if (i >= args.size()) {
             if (paramdecl->hasDefaultArg()) {
                 // Assume that it is default-construct for now because fuck every other thing.
-                std::vector<Expression> conargs;
+                std::vector<ConcreteExpression> conargs;
                 auto ty = a.GetClangType(*from, paramdecl->getType());
                 // If ty is T&, construct lvalue construction.
                 if (a.IsLvalueType(ty)) {
@@ -298,10 +297,10 @@ Codegen::Expression* ClangType::BuildInplaceConstruction(Codegen::Expression* me
 
     auto rty = a.GetClangType(*from, fun->getResultType());
     auto funty = a.GetFunctionType(rty, types);
-    Expression obj;
+    ConcreteExpression obj;
     obj.t = funty;
     obj.Expr = a.gen->CreateFunctionValue(from->MangleName(fun));
-    return funty->BuildCall(obj, args, a).Expr;
+    return funty->BuildCall(obj, args, a).Resolve(nullptr).Expr;
 }
 
 bool ClangType::IsComplexType() {
@@ -344,7 +343,7 @@ static const std::unordered_map<Lexer::TokenType, std::pair<clang::OverloadedOpe
     ret[Lexer::TokenType::AndAssign] = std::make_pair(clang::OverloadedOperatorKind::OO_AmpEqual, clang::BinaryOperatorKind::BO_AndAssign);
     return ret;
 }();
-Expression ClangType::BuildBinaryExpression(Expression lhs, Expression rhs, Lexer::TokenType tok, Analyzer& a) {
+ConcreteExpression ClangType::BuildBinaryExpression(ConcreteExpression lhs, ConcreteExpression rhs, Lexer::TokenType tok, Analyzer& a) {
     auto opkind = BinaryTokenMapping.at(tok).first;
     auto opcode = BinaryTokenMapping.at(tok).second;
     clang::ADLResult result;
@@ -387,17 +386,17 @@ Expression ClangType::BuildBinaryExpression(Expression lhs, Expression rhs, Lexe
 
     auto funty = a.GetFunctionType(ret, types);
     
-    Expression clangfunc;
+    ConcreteExpression clangfunc;
     clangfunc.t = funty;
 
     if (a.gen)
         clangfunc.Expr = a.gen->CreateFunctionValue(from->MangleName(fun));
 
-    std::vector<Expression> expressions;
+    std::vector<ConcreteExpression> expressions;
     expressions.push_back(lhs); expressions.push_back(rhs);
-    return funty->BuildCall(clangfunc, std::move(expressions), a);
+    return funty->BuildCall(clangfunc, std::move(expressions), a).Resolve(nullptr);
 }
-Wide::Codegen::Expression* ClangType::BuildBooleanConversion(Expression self, Analyzer& a) {
+Wide::Codegen::Expression* ClangType::BuildBooleanConversion(ConcreteExpression self, Analyzer& a) {
     clang::OpaqueValueExpr ope(clang::SourceLocation(), type.getNonLValueExprType(from->GetASTContext()), Semantic::GetKindOfType(self.t));
     auto p = from->GetSema().PerformContextuallyConvertToBool(&ope);
     if (!p.get())
@@ -420,13 +419,13 @@ Wide::Codegen::Expression* ClangType::BuildBooleanConversion(Expression self, An
     std::vector<Type*> types;
     types.insert(types.begin(), self.t);
     auto funty = a.GetFunctionType(ret, types);    
-    Expression clangfunc;
+    ConcreteExpression clangfunc;
     clangfunc.t = funty;
     if (a.gen)
         clangfunc.Expr = a.gen->CreateFunctionValue(from->MangleName(fun));
-    std::vector<Expression> expressions;
+    std::vector<ConcreteExpression> expressions;
     expressions.push_back(self);
-    auto e = funty->BuildCall(clangfunc, std::move(expressions), a);
+    auto e = funty->BuildCall(clangfunc, std::move(expressions), a).Resolve(nullptr);
 
     // The return type should be bool.
     // If the function really returns an i1, the code generator will implicitly patch it up for us.
@@ -465,7 +464,7 @@ ConversionRank ClangType::RankConversionFrom(Type* src, Analyzer& a) {
     return ConversionRank::Two;
 }
 
-Expression ClangType::BuildDereference(Expression self, Analyzer& a) {
+ConcreteExpression ClangType::BuildDereference(ConcreteExpression self, Analyzer& a) {
     clang::OpaqueValueExpr ope(clang::SourceLocation(), type.getNonLValueExprType(from->GetASTContext()), Semantic::GetKindOfType(self.t));
     auto declname = from->GetASTContext().DeclarationNames.getCXXOperatorName(clang::OverloadedOperatorKind::OO_Star);
     clang::LookupResult lr(from->GetSema(), clang::DeclarationNameInfo(declname, clang::SourceLocation()), clang::Sema::LookupNameKind::LookupOrdinaryName);
@@ -473,12 +472,12 @@ Expression ClangType::BuildDereference(Expression self, Analyzer& a) {
     if (!result) {
         throw std::runtime_error("Attempted to de-reference a Clang type, but Clang said that it could not find the member.");
     }
-    return BuildOverloadSet(self, "*", lr, a).BuildCall(a);
+    return BuildOverloadSet(self, "*", lr, a).BuildCall(a).Resolve(nullptr);
 }
 
-Expression ClangType::BuildIncrement(Expression self, bool postfix, Analyzer& a) {
+ConcreteExpression ClangType::BuildIncrement(ConcreteExpression self, bool postfix, Analyzer& a) {
     if (postfix) {
-        std::vector<Expression> args;
+        std::vector<ConcreteExpression> args;
         args.push_back(self);
         auto result = BuildRvalueConstruction(args, a);
         self = self.t->BuildIncrement(self, false, a);
@@ -492,7 +491,7 @@ Expression ClangType::BuildIncrement(Expression self, bool postfix, Analyzer& a)
     if (!result) {
         throw std::runtime_error("Attempted to de-reference a Clang type, but Clang said that it could not find the member.");
     }
-    return BuildOverloadSet(self, "p++", lr, a).BuildCall(a);
+    return BuildOverloadSet(self, "p++", lr, a).BuildCall(a).Resolve(nullptr);
 }
 
 std::size_t ClangType::size(Analyzer& a) {

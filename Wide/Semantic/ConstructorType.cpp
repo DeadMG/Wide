@@ -18,40 +18,40 @@ struct EmplaceType : public MetaType {
         : t(con) {}
     Type* t;
 
-    Expression BuildCall(Expression obj, std::vector<Expression> args, Analyzer& a) {
+    Expression BuildCall(ConcreteExpression obj, std::vector<ConcreteExpression> args, Analyzer& a) {
         if (args.size() == 0)
             throw std::runtime_error("Attempted to emplace a type without providing any memory into which to emplace it.");
         if (args[0].t->Decay() != a.GetPointerType(t))
             throw std::runtime_error("Attempted to emplace a T into a type that was not a pointer to T.");
         auto expr = args.front();
         args.erase(args.begin());
-        return Expression(a.GetRvalueType(t), a.gen->CreateChainExpression(t->BuildInplaceConstruction(expr.Expr, args, a), expr.Expr));
+        return ConcreteExpression(a.GetRvalueType(t), a.gen->CreateChainExpression(t->BuildInplaceConstruction(expr.Expr, args, a), expr.Expr));
     }
 };
 
-Expression ConstructorType::BuildCall(Expression, std::vector<Expression> args, Analyzer& a) {
+Expression ConstructorType::BuildCall(ConcreteExpression, std::vector<ConcreteExpression> args, Analyzer& a) {
     return t->BuildRvalueConstruction(std::move(args), a);
 }
-Wide::Util::optional<Expression> ConstructorType::AccessMember(Expression, std::string name, Analyzer& a) {
-    Expression self;
+Wide::Util::optional<ConcreteExpression> ConstructorType::AccessMember(ConcreteExpression, std::string name, Analyzer& a) {
+    ConcreteExpression self;
     self.t = t;
     self.Expr = nullptr;
     return t->AccessMember(self, name, a);
 }
 
-Wide::Util::optional<Expression> ConstructorType::PointerAccessMember(Expression obj, std::string name, Analyzer& a) {
+Wide::Util::optional<ConcreteExpression> ConstructorType::PointerAccessMember(ConcreteExpression obj, std::string name, Analyzer& a) {
     if (name == "decay")
-        return a.GetConstructorType(t->Decay())->BuildValueConstruction(std::vector<Expression>(), a);
+        return a.GetConstructorType(t->Decay())->BuildValueConstruction(std::vector<ConcreteExpression>(), a);
     if (name == "lvalue")
-        return a.GetConstructorType(a.AsLvalueType(t))->BuildValueConstruction(std::vector<Expression>(), a);
+        return a.GetConstructorType(a.AsLvalueType(t))->BuildValueConstruction(std::vector<ConcreteExpression>(), a);
     if (name == "rvalue")
-        return a.GetConstructorType(a.AsRvalueType(t))->BuildValueConstruction(std::vector<Expression>(), a);
+        return a.GetConstructorType(a.AsRvalueType(t))->BuildValueConstruction(std::vector<ConcreteExpression>(), a);
     if (name == "pointer")
-        return a.GetConstructorType(a.GetPointerType(t))->BuildValueConstruction(std::vector<Expression>(), a);
+        return a.GetConstructorType(a.GetPointerType(t))->BuildValueConstruction(std::vector<ConcreteExpression>(), a);
     if (name == "size")
-        return Expression(a.GetIntegralType(64, false), a.gen->CreateIntegralExpression(t->size(a), false, a.GetIntegralType(64, false)->GetLLVMType(a)));
+        return ConcreteExpression(a.GetIntegralType(64, false), a.gen->CreateIntegralExpression(t->size(a), false, a.GetIntegralType(64, false)->GetLLVMType(a)));
     if (name == "alignment")
-        return Expression(a.GetIntegralType(64, false), a.gen->CreateIntegralExpression(t->alignment(a), false, a.GetIntegralType(64, false)->GetLLVMType(a)));
+        return ConcreteExpression(a.GetIntegralType(64, false), a.gen->CreateIntegralExpression(t->alignment(a), false, a.GetIntegralType(64, false)->GetLLVMType(a)));
     if (name == "emplace") {
         if (!emplace) emplace = a.arena.Allocate<EmplaceType>(t);
         return emplace->BuildValueConstruction(a);

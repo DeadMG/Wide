@@ -2,22 +2,9 @@
 #include <vector>
 #include <Wide/Codegen/Generator.h>
 
-namespace llvm {
-    class Value;
-#ifdef _MSC_VER
-    template <bool preserveNames = true>
-        class IRBuilderDefaultInserter;
-    class ConstantFolder;
-    template<bool preserveNames = true, typename T = ConstantFolder,
-        typename Inserter = IRBuilderDefaultInserter<preserveNames> >
-    class IRBuilder;
-#else
-}
+#pragma warning(push, 0)
 #include <llvm/IR/IRBuilder.h>
-namespace llvm {
-#endif
-    class Module;
-}
+#pragma warning(pop)
 
 namespace Wide {
     namespace LLVMCodegen {
@@ -29,21 +16,21 @@ namespace Wide {
             virtual void Build(llvm::IRBuilder<>& bb, Generator& g) = 0;
         };
         class ReturnStatement : public Statement, public Codegen::ReturnStatement {
-            LLVMCodegen::Expression* val;
+            std::function<LLVMCodegen::Expression*()> val;
         public:
             Codegen::Expression* GetReturnExpression();
             ReturnStatement();
-            ReturnStatement(LLVMCodegen::Expression* e);
+            ReturnStatement(std::function<LLVMCodegen::Expression*()> e);
             void Build(llvm::IRBuilder<>& bb, Generator& g);
         };
 
         class IfStatement : public Statement, public Codegen::IfStatement {
             LLVMCodegen::Statement* true_br;
             LLVMCodegen::Statement* false_br;
-            LLVMCodegen::Expression* condition;
+            std::function<LLVMCodegen::Expression*()> condition;
         public:
-            IfStatement(LLVMCodegen::Expression* cond, LLVMCodegen::Statement* tbr, LLVMCodegen::Statement* fbr)
-                : condition(cond), true_br(std::move(tbr)), false_br(std::move(fbr)) {}
+            IfStatement(std::function<LLVMCodegen::Expression*()> cond, LLVMCodegen::Statement* tbr, LLVMCodegen::Statement* fbr)
+                : true_br(std::move(tbr)), false_br(std::move(fbr)), condition(cond) {}
             void Build(llvm::IRBuilder<>& bb, Generator& g);
         };
 
@@ -59,10 +46,10 @@ namespace Wide {
             }
         };
         class WhileStatement : public Statement, public Codegen::WhileStatement {
-            LLVMCodegen::Expression* cond;
+            std::function<LLVMCodegen::Expression*()> cond;
             LLVMCodegen::Statement* body;
         public:
-            WhileStatement(LLVMCodegen::Expression* c, LLVMCodegen::Statement* b)
+            WhileStatement(std::function<LLVMCodegen::Expression*()> c, LLVMCodegen::Statement* b)
                 : cond(c), body(b) {}
             void Build(llvm::IRBuilder<>& b, Generator& g);
         };

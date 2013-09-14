@@ -3,7 +3,6 @@
 #include <Wide/Semantic/ClangTU.h>
 #include <Wide/Semantic/ClangNamespace.h>
 #include <Wide/Semantic/FunctionType.h>
-#include <Wide/Codegen/Expression.h>
 #include <Wide/Codegen/Generator.h>
 
 #pragma warning(push, 0)
@@ -13,10 +12,10 @@
 using namespace Wide;
 using namespace Semantic;
 
-Wide::Util::optional<Expression> ClangIncludeEntity::AccessMember(Expression, std::string name, Analyzer& a) {
+Wide::Util::optional<ConcreteExpression> ClangIncludeEntity::AccessMember(ConcreteExpression, std::string name, Analyzer& a) {
     if (name == "mangle") {
         struct ClangNameMangler : public MetaType {
-            Expression BuildCall(Expression, std::vector<Expression> args, Analyzer& a) {
+            Expression BuildCall(ConcreteExpression, std::vector<ConcreteExpression> args, Analyzer& a) override {
                 if (args.size() != 1)
                     throw std::runtime_error("Attempt to mangle name but passed more than one object.");
                 auto ty = dynamic_cast<FunctionType*>(args[0].t);
@@ -24,7 +23,7 @@ Wide::Util::optional<Expression> ClangIncludeEntity::AccessMember(Expression, st
                 auto fun = dynamic_cast<Codegen::FunctionValue*>(args[0].Expr);
                 if (!fun)
                     throw std::runtime_error("The argument was not a Clang mangled function name.");
-                return Expression(a.GetLiteralStringType(), a.gen->CreateStringExpression(fun->GetMangledName()));
+                return ConcreteExpression(a.GetLiteralStringType(), a.gen->CreateStringExpression(fun->GetMangledName()));
             }
         };
         return a.arena.Allocate<ClangNameMangler>()->BuildValueConstruction(a);
@@ -32,7 +31,7 @@ Wide::Util::optional<Expression> ClangIncludeEntity::AccessMember(Expression, st
     return Wide::Util::none;
 }
 
-Expression ClangIncludeEntity::BuildCall(Expression e, std::vector<Expression> args, Analyzer& a) {
+Expression ClangIncludeEntity::BuildCall(ConcreteExpression e, std::vector<ConcreteExpression> args, Analyzer& a) {
     if (args.size() != 1)
         throw std::runtime_error("Attempted to call the Clang Include Entity with the wrong number of arguments.");
     auto expr = dynamic_cast<Codegen::StringExpression*>(args[0].Expr);

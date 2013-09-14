@@ -8,11 +8,9 @@
 #include <unordered_set>
 #include <unordered_map>
 
-#ifndef _MSC_VER
 #pragma warning(push, 0)
 #include <clang/AST/Type.h>
 #pragma warning(pop)
-#endif
 
 namespace llvm {
     class Module;

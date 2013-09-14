@@ -1,0 +1,14 @@
+foo(x) {
+    if (x > 5)
+        return bar(x);
+    return x;
+}
+bar(x) {
+    return foo(x - 1);
+}
+
+module Standard {
+    Main() {
+        int64(foo(6));
+    }
+}

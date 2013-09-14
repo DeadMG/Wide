@@ -24,7 +24,7 @@ namespace Wide {
         public:
             Expression() : val(nullptr) {}
 
-            void Build(llvm::IRBuilder<>& bb, Generator& g);
+            void Build(llvm::IRBuilder<>& bb, Generator& g) override;
             llvm::Value* GetValue(llvm::IRBuilder<>& bb, Generator& g);
         protected:
             llvm::Value* val;
@@ -37,7 +37,7 @@ namespace Wide {
         public:
             Variable(std::function<llvm::Type*(llvm::Module*)> ty, unsigned alignment)
                 : t(std::move(ty)), align(alignment) {}
-            llvm::Value* ComputeValue(llvm::IRBuilder<>&, Generator& g);
+            llvm::Value* ComputeValue(llvm::IRBuilder<>&, Generator& g) override;
         };
 
         class FunctionCall : public Expression, public Codegen::FunctionCall {
@@ -47,17 +47,17 @@ namespace Wide {
         public:
             LLVMCodegen::Expression* GetCallee() { return object; }
             FunctionCall(LLVMCodegen::Expression* obj, std::vector<LLVMCodegen::Expression*> args, std::function<llvm::Type*(llvm::Module*)>);
-            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g);
+            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g) override;
         };
         
         class FunctionValue : public Expression, public Codegen::FunctionValue {
             std::string mangled_name;
         public:
-            std::string GetMangledName() {
+            std::string GetMangledName() override {
                 return mangled_name;
             }
             FunctionValue(std::string name);
-            llvm::Value* ComputeValue(llvm::IRBuilder<>&, Generator& g);
+            llvm::Value* ComputeValue(llvm::IRBuilder<>&, Generator& g) override;
         };
 
         class LoadExpression : public Expression, public Codegen::LoadExpression {
@@ -66,7 +66,7 @@ namespace Wide {
             LoadExpression(LLVMCodegen::Expression* o)
                 : obj(o) {}
 
-            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g);
+            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g) override;
         };
         
         class ChainExpression : public Expression, public Codegen::ChainExpression {
@@ -76,7 +76,7 @@ namespace Wide {
             ChainExpression(LLVMCodegen::Statement* stat, LLVMCodegen::Expression* e)
                 : s(stat), next(e) {}
 
-            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g);
+            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g) override;
         };
         
         class StringExpression : public Expression, public Codegen::StringExpression {
@@ -85,10 +85,10 @@ namespace Wide {
             StringExpression(std::string expr)
                 : value(std::move(expr)) {}
 
-            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g);
+            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g) override;
 
             
-            std::string GetContents() {
+            std::string GetContents() override {
                 return value;
             }
         };
@@ -99,7 +99,7 @@ namespace Wide {
             NamedGlobalVariable(std::string mangledname)
                 : mangled(std::move(mangledname)) {}
 
-            llvm::Value* ComputeValue(llvm::IRBuilder<>&, Generator& g);
+            llvm::Value* ComputeValue(llvm::IRBuilder<>&, Generator& g) override;
         };              
 
         class StoreExpression : public Expression, public Codegen::StoreExpression {
@@ -109,22 +109,22 @@ namespace Wide {
             StoreExpression(LLVMCodegen::Expression* l, LLVMCodegen::Expression* r)
                 : obj(l), val(r) {}
             
-            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g);
+            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g) override; 
         };
 
         class IntegralExpression : public Expression, public Codegen::IntegralExpression {
             std::function<llvm::Type*(llvm::Module*)> type;
         public:
             IntegralExpression(unsigned long long val, bool s, std::function<llvm::Type*(llvm::Module*)> t)
-                : value(val), sign(s), type(std::move(t)) {}
+                : type(std::move(t)), value(val), sign(s) {}
 
-            unsigned long long GetValue() { return value; }
-            bool GetSign() { return sign; }
+            unsigned long long GetValue() override { return value; }
+            bool GetSign() override { return sign; }
 
             unsigned long long value;
             bool sign;
 
-            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g);
+            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g) override;
         };
 
 
@@ -134,7 +134,7 @@ namespace Wide {
         public:
             FieldExpression(std::function<unsigned()> f, LLVMCodegen::Expression* o)
                 : fieldnum(f), obj(o) {}
-            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g);
+            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g) override;
         };
 
         class ParamExpression : public Expression, public Codegen::ParamExpression {
@@ -142,7 +142,7 @@ namespace Wide {
         public:
             ParamExpression(std::function<unsigned()> p)
                 : param(std::move(p)) {}
-            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g);
+            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g) override;
         };
 
         class TruncateExpression : public Expression, public Codegen::TruncateExpression {
@@ -151,7 +151,7 @@ namespace Wide {
         public:
             TruncateExpression(LLVMCodegen::Expression* e, std::function<llvm::Type*(llvm::Module*)> type)
                 : val(e), ty(std::move(type)) {}
-            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g);
+            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g) override;
         };
 
         class NullExpression : public Expression, public Codegen::NullExpression {
@@ -159,7 +159,7 @@ namespace Wide {
         public:
             NullExpression(std::function<llvm::Type*(llvm::Module*)> type)
                 : ty(std::move(type)) {}
-            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g);
+            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g) override;
         };
 
         class IntegralLeftShiftExpression : public Expression, public Codegen::IntegralLeftShiftExpression {
@@ -168,7 +168,7 @@ namespace Wide {
         public:
             IntegralLeftShiftExpression(LLVMCodegen::Expression* l, LLVMCodegen::Expression* r)
                 : lhs(l), rhs(r) {}
-            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g);
+            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g) override;
         };
 
         class IntegralRightShiftExpression : public Expression, public Codegen::IntegralRightShiftExpression {
@@ -178,7 +178,7 @@ namespace Wide {
         public:
             IntegralRightShiftExpression(LLVMCodegen::Expression* l, LLVMCodegen::Expression* r, bool s)
                 : lhs(l), rhs(r), is_signed(s) {}
-            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g);
+            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g) override;
         };
 
         class IntegralLessThan : public Expression, public Codegen::IntegralLessThan {
@@ -188,7 +188,7 @@ namespace Wide {
         public:
             IntegralLessThan(LLVMCodegen::Expression* l, LLVMCodegen::Expression* r, bool sign)
                 : lhs(l), rhs(r), sign(sign) {}
-            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g);
+            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g) override;
         };
 
         class ZExt : public Expression, public Codegen::ZExt {
@@ -197,7 +197,7 @@ namespace Wide {
         public:
             ZExt(LLVMCodegen::Expression* f, std::function<llvm::Type*(llvm::Module*)> ty)
                 : from(f), to(std::move(ty)) {}
-            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g);
+            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g) override ;
         };
 
         class SExt : public Expression, public Codegen:: SExt {
@@ -206,7 +206,7 @@ namespace Wide {
         public:
             SExt(LLVMCodegen::Expression* f, std::function<llvm::Type*(llvm::Module*)> ty)
                 : from(f), to(std::move(ty)) {}
-            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g);
+            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g) override;
         };
 
         class NegateExpression : public Expression, public Codegen::NegateExpression {
@@ -214,7 +214,7 @@ namespace Wide {
         public:
             NegateExpression(LLVMCodegen::Expression* ex)
                 : expr(ex) {}
-            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g);
+            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g) override;
         };
 
         class OrExpression : public Expression, public Codegen::OrExpression {
@@ -223,7 +223,7 @@ namespace Wide {
         public:
             OrExpression(LLVMCodegen::Expression* l, LLVMCodegen::Expression* r)
                 : lhs(l), rhs(r) {}
-            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g);
+            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g) override;
         };
         class AndExpression : public Expression, public Codegen::AndExpression {
             LLVMCodegen::Expression* lhs;
@@ -231,7 +231,7 @@ namespace Wide {
         public:
             AndExpression(LLVMCodegen::Expression* l, LLVMCodegen::Expression* r)
                 : lhs(l), rhs(r) {}
-            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g);
+            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g) override;
         };
 
         class EqualityExpression : public Expression, public Codegen::EqualityExpression {
@@ -240,7 +240,7 @@ namespace Wide {
         public:
             EqualityExpression(LLVMCodegen::Expression* l, LLVMCodegen::Expression* r)
                 : lhs(l), rhs(r) {}
-            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g);
+            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g) override;
         };
         class PlusExpression : public Expression, public Codegen::PlusExpression  {
             LLVMCodegen::Expression* lhs;
@@ -248,7 +248,7 @@ namespace Wide {
         public:
             PlusExpression(LLVMCodegen::Expression* l, LLVMCodegen::Expression* r)
                 : lhs(l), rhs(r) {}
-            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g);
+            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g) override;
         };
         class MultiplyExpression : public Expression, public Codegen::MultiplyExpression  {
             LLVMCodegen::Expression* lhs;
@@ -256,7 +256,7 @@ namespace Wide {
         public:
             MultiplyExpression(LLVMCodegen::Expression* l, LLVMCodegen::Expression* r)
                 : lhs(l), rhs(r) {}
-            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g);
+            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g) override;
         };
 
         class IsNullExpression : public Expression, public Codegen::IsNullExpression {
@@ -264,7 +264,7 @@ namespace Wide {
         public:
             IsNullExpression(LLVMCodegen::Expression* p)
                 : ptr(p) {}
-            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g);
+            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g) override;
         };
 
         class XorExpression : public Expression, public Codegen::XorExpression {
@@ -272,7 +272,7 @@ namespace Wide {
             LLVMCodegen::Expression* rhs;
         public:
             XorExpression(LLVMCodegen::Expression* l, LLVMCodegen::Expression* r) : lhs(l), rhs(r) {}
-            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g);
+            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g) override;
         };
 
         class SubExpression : public Expression, public Codegen::SubExpression {
@@ -280,7 +280,7 @@ namespace Wide {
             LLVMCodegen::Expression* rhs;
         public:
             SubExpression(LLVMCodegen::Expression* l, LLVMCodegen::Expression* r) : lhs(l), rhs(r) {}
-            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g);
+            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g) override;
         };
 
         class ModExpression : public Expression, public Codegen::ModExpression {
@@ -289,7 +289,7 @@ namespace Wide {
             bool is_signed;
         public:
             ModExpression(LLVMCodegen::Expression* l, LLVMCodegen::Expression* r, bool is_sign) : lhs(l), rhs(r), is_signed(is_sign){}
-            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g);
+            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g) override;
         };
 
         class DivExpression : public Expression, public Codegen::DivExpression {
@@ -298,7 +298,7 @@ namespace Wide {
             bool is_signed;
         public:
             DivExpression(LLVMCodegen::Expression* l, LLVMCodegen::Expression* r, bool is_sign) : lhs(l), rhs(r), is_signed(is_sign) {}
-            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g);
+            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g) override;
         };
         
         class FPExtension : public Expression, public Codegen::FPExtension {
@@ -307,7 +307,7 @@ namespace Wide {
         public:
             FPExtension(LLVMCodegen::Expression* f, std::function<llvm::Type*(llvm::Module*)> ty)
                 : from(f), to(std::move(ty)) {}
-            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g);
+            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g) override;
         };
 
         class FPDiv : public Expression, public Codegen::FPDiv {
@@ -315,7 +315,7 @@ namespace Wide {
             LLVMCodegen::Expression* rhs;
         public:
             FPDiv(LLVMCodegen::Expression* l, LLVMCodegen::Expression* r) : lhs(l), rhs(r) {}
-            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g);
+            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g) override;
         };
 
         class FPMod : public Expression, public Codegen::FPMod {
@@ -323,7 +323,7 @@ namespace Wide {
             LLVMCodegen::Expression* rhs;
         public:
             FPMod(LLVMCodegen::Expression* l, LLVMCodegen::Expression* r) : lhs(l), rhs(r) {}
-            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g);
+            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g) override;
         };
 
         class FPLT : public Expression, public Codegen::FPLessThan {
@@ -331,7 +331,12 @@ namespace Wide {
             LLVMCodegen::Expression* rhs;
         public:
             FPLT(LLVMCodegen::Expression* l, LLVMCodegen::Expression* r) : lhs(l), rhs(r) {}
-            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g);
+            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g) override;
+        };
+
+        class Nop : public Expression, public Codegen::Nop {
+        public:
+            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g) override;
         };
     }
 }

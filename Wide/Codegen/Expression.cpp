@@ -5,21 +5,9 @@
 #include <array>
 
 #pragma warning(push, 0)
-
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/Module.h>
-
 #pragma warning(pop)
-
-#ifdef _DEBUG
-#ifdef UNICODE
-#undef UNICODE
-#endif
-#ifdef _UNICODE
-#undef _UNICODE
-#endif
-#include <Windows.h>
-#endif
 
 using namespace Wide;
 using namespace LLVMCodegen;
@@ -34,7 +22,7 @@ void Expression::Build(llvm::IRBuilder<>& bb, Generator& g) {
 }
 
 FunctionCall::FunctionCall(LLVMCodegen::Expression* obj, std::vector<LLVMCodegen::Expression*> args, std::function<llvm::Type*(llvm::Module*)> ty)
-    : object(obj), arguments(std::move(args)), CastTy(std::move(ty)) {}
+    : arguments(std::move(args)), object(obj), CastTy(std::move(ty)) {}
 
 llvm::Value* FunctionCall::ComputeValue(llvm::IRBuilder<>& builder, Generator& g) {
     auto&& mod = builder.GetInsertBlock()->getParent()->getParent();
@@ -313,4 +301,7 @@ llvm::Value* FPLT::ComputeValue(llvm::IRBuilder<>& builder, Generator& g) {
     auto lhsval = lhs->GetValue(builder, g);
     auto rhsval = rhs->GetValue(builder, g);
     return builder.CreateFCmpOLT(lhsval, rhsval);
+}
+llvm::Value* Nop::ComputeValue(llvm::IRBuilder<>& builder, Generator& g) {
+    return builder.CreateGlobalString("nop");
 }

@@ -4,9 +4,7 @@
 #include <vector>
 
 #pragma warning(push, 0)
-
 #include <llvm/Pass.h>
-
 #pragma warning(pop)
 
 namespace Wide {

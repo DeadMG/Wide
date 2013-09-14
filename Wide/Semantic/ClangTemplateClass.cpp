@@ -2,11 +2,8 @@
 #include <Wide/Semantic/ConstructorType.h>
 #include <Wide/Semantic/Analyzer.h>
 #include <Wide/Semantic/ClangTU.h>
-#include <Wide/Codegen/Expression.h>
 #include <Wide/Semantic/IntegralType.h>
-
-using namespace Wide;
-using namespace Semantic;
+#include <Wide/Codegen/Generator.h>
 
 #pragma warning(push, 0)
 #include <clang/AST/DeclTemplate.h>
@@ -15,7 +12,10 @@ using namespace Semantic;
 #include <clang/Sema/Sema.h>
 #pragma warning(pop)
 
-Expression ClangTemplateClass::BuildCall(Expression, std::vector<Expression> args, Analyzer& a) {
+using namespace Wide;
+using namespace Semantic;
+
+Expression ClangTemplateClass::BuildCall(ConcreteExpression, std::vector<ConcreteExpression> args, Analyzer& a) {
     clang::TemplateArgumentListInfo tl;
     for(auto&& x : args) {
         if (auto con = dynamic_cast<ConstructorType*>(x.t)) {
@@ -45,7 +45,7 @@ Expression ClangTemplateClass::BuildCall(Expression, std::vector<Expression> arg
     void* pos = 0;
     auto spec = tempdecl->findSpecialization(tempargs.data(), tempargs.size(), pos);    
     if (spec) {        
-        Expression out;
+        ConcreteExpression out;
         out.Expr = nullptr;
         out.t = a.GetConstructorType(a.GetClangType(*from, from->GetASTContext().getRecordType(spec)));
         return out;

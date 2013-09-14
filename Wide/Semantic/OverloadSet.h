@@ -28,8 +28,8 @@ namespace Wide {
             OverloadSet(OverloadSet* s, OverloadSet* other);
             std::function<llvm::Type*(llvm::Module*)> GetLLVMType(Analyzer& a) override;
             clang::QualType GetClangType(ClangUtil::ClangTU& TU, Analyzer& a) override;
-            Expression BuildCall(Expression, std::vector<Expression> args, Analyzer& a) override;
-            Codegen::Expression* BuildInplaceConstruction(Codegen::Expression* mem, std::vector<Expression> args, Analyzer& a) override;
+            Expression BuildCall(ConcreteExpression, std::vector<ConcreteExpression> args, Analyzer& a) override;
+            Codegen::Expression* BuildInplaceConstruction(Codegen::Expression* mem, std::vector<ConcreteExpression> args, Analyzer& a) override;
             ConversionRank ResolveOverloadRank(std::vector<Type*> types, Analyzer& a);
             std::size_t size(Analyzer& a) override;
             std::size_t alignment(Analyzer& a) override;

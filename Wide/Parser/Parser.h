@@ -222,7 +222,7 @@ namespace Wide {
                 if (t.GetType() == Lexer::TokenType::Dot) {
                     Check(lex, Error::MemberAccessNoIdentifierOrDestructor, [&](decltype(lex())& tok) {
                         if (tok.GetType() == Lexer::TokenType::Identifier) {                           
-                            expr = sema.CreateMemberAccessExpression(t.GetValue(), std::move(expr), sema.GetLocation(expr) + tok.GetLocation());
+                            expr = sema.CreateMemberAccessExpression(tok.GetValue(), std::move(expr), sema.GetLocation(expr) + tok.GetLocation());
                             return true;
                         }
                         if (tok.GetType() != Lexer::TokenType::Negate)
@@ -236,7 +236,7 @@ namespace Wide {
                 if (t.GetType() == Lexer::TokenType::PointerAccess) {
                     Check(lex, Error::PointerAccessNoIdentifierOrDestructor, [&](decltype(lex())& tok) {
                         if (tok.GetType() == Lexer::TokenType::Identifier) {                           
-                            expr = sema.CreatePointerAccessExpression(t.GetValue(), std::move(expr), sema.GetLocation(expr) + tok.GetLocation());
+                            expr = sema.CreatePointerAccessExpression(tok.GetValue(), std::move(expr), sema.GetLocation(expr) + tok.GetLocation());
                             return true;
                         }
                         if (tok.GetType() != Lexer::TokenType::Negate)

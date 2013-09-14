@@ -61,6 +61,7 @@ namespace Wide {
         class UserDefinedType;
         class IntegralType;
         class PointerType;
+        class FloatType;
         struct NullType;
         enum ConversionRank;
         struct Result;
@@ -78,6 +79,7 @@ namespace Wide {
             std::unordered_map<Type*, ConstructorType*> ConstructorTypes;
             std::unordered_map<clang::ClassTemplateDecl*, ClangTemplateClass*> ClangTemplateClasses;
             std::unordered_map<AST::FunctionOverloadSet*, std::unordered_map<Type*, OverloadSet*>> OverloadSets;
+            std::unordered_map<unsigned, FloatType*> FloatTypes;
 
             std::unordered_map<AST::DeclContext*, Type*> DeclContexts;
             std::unordered_map<AST::Type*, std::unordered_map<Type*, UserDefinedType*>> UDTs;
@@ -130,6 +132,7 @@ namespace Wide {
             Type* GetDeclContext(AST::DeclContext* con);
             IntegralType* GetIntegralType(unsigned, bool);
             PointerType* GetPointerType(Type* to);
+            FloatType* GetFloatType(unsigned);
             
             Expression AnalyzeExpression(Type* t, AST::Expression* e);
             Expression LookupIdentifier(AST::ModuleLevelDeclaration* decl, std::string ident);

@@ -23,16 +23,30 @@ namespace Wide {
         class FunctionType;
         class UserDefinedType;
         class Function : public Type {
+            enum class State {
+                NotYetAnalyzed,
+                AnalyzeInProgress,
+                AnalyzeCompleted
+            };
+            enum ReturnState {
+                NoReturnSeen,
+                DeferredReturnSeen,
+                ConcreteReturnSeen
+            };
+            State s;
             Type* ReturnType;
             std::vector<Type*> Args;
             Analyzer& analyzer;
             AST::Function* fun;
             Codegen::Function* codefun;
             UserDefinedType* member;
+            ReturnState returnstate;
             void ComputeBody(Analyzer& a);
 
+            void CompleteAnalysis(Type* ret, Analyzer& a);
+
             std::vector<Codegen::Statement*> exprs;
-            std::vector<std::unordered_map<std::string, Expression>> variables;
+            std::vector<std::unordered_map<std::string, ConcreteExpression>> variables;
             std::string name;
         public:
             bool HasLocalVariable(std::string name);
@@ -42,8 +56,8 @@ namespace Wide {
             std::function<llvm::Type*(llvm::Module*)> GetLLVMType(Analyzer& a) override; 
             AST::DeclContext* GetDeclContext() override;
      
-            Expression BuildCall(Expression, std::vector<Expression> args, Analyzer& a) override;        
-            Wide::Util::optional<Expression> AccessMember(Expression, std::string name, Analyzer& a) override;   
+            Expression BuildCall(ConcreteExpression, std::vector<ConcreteExpression> args, Analyzer& a) override;
+            Wide::Util::optional<ConcreteExpression> AccessMember(ConcreteExpression, std::string name, Analyzer& a) override;
             std::string GetName();
             UserDefinedType* IsMember() { return member; }
 

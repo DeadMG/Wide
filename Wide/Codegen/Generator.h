@@ -64,6 +64,7 @@ namespace Wide {
         class FPLessThan : public Expression {};
         class FPMod : public Expression {};
         class FPDiv : public Expression {};
+        class Nop : public Expression {};
         class Function {
         public:
             virtual ~Function() {}
@@ -79,7 +80,11 @@ namespace Wide {
             virtual StoreExpression* CreateStore(Expression*, Expression*) = 0;
             virtual LoadExpression* CreateLoad(Expression*) = 0;
             virtual ReturnStatement* CreateReturn() = 0;
-            virtual ReturnStatement* CreateReturn(Expression*) = 0;
+            virtual ReturnStatement* CreateReturn(std::function<Expression*()>) = 0;
+            virtual ReturnStatement* CreateReturn(Expression* e) {
+                return CreateReturn([=] { return e; });
+            }
+            virtual Nop* CreateNop() = 0;
             virtual FunctionValue* CreateFunctionValue(std::string) = 0;
             virtual IntegralExpression* CreateIntegralExpression(unsigned long long val, bool is_signed, std::function<llvm::Type*(llvm::Module*)> ty) = 0;
             virtual ChainExpression* CreateChainExpression(Statement*, Expression*) = 0;
@@ -87,10 +92,16 @@ namespace Wide {
             virtual FieldExpression* CreateFieldExpression(Expression*, std::function<unsigned()>) = 0;
             virtual ParamExpression* CreateParameterExpression(unsigned) = 0;
             virtual ParamExpression* CreateParameterExpression(std::function<unsigned()>) = 0;
-            virtual IfStatement* CreateIfStatement(Expression*, Statement*, Statement*) = 0;
+            virtual IfStatement* CreateIfStatement(Expression* expr, Statement* t, Statement* f) {
+                return CreateIfStatement([=] { return expr; }, t, f);
+            }
+            virtual IfStatement* CreateIfStatement(std::function<Expression*()>, Statement*, Statement*) = 0;
             virtual ChainStatement* CreateChainStatement(Statement*, Statement*) = 0;
             virtual TruncateExpression* CreateTruncate(Expression*, std::function<llvm::Type*(llvm::Module*)>) = 0;
-            virtual WhileStatement* CreateWhile(Expression*, Statement*) = 0;
+            virtual WhileStatement* CreateWhile(Expression* e, Statement* s) {
+                return CreateWhile([=]{ return e; }, s);
+            }
+            virtual WhileStatement* CreateWhile(std::function<Expression*()>, Statement*) = 0;
             virtual NullExpression* CreateNull(std::function<llvm::Type*(llvm::Module*)> type) = 0;
             virtual IntegralLeftShiftExpression* CreateLeftShift(Expression*, Expression*) = 0;
             virtual IntegralRightShiftExpression* CreateRightShift(Expression*, Expression*, bool) = 0;

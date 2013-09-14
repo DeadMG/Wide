@@ -15,6 +15,8 @@
 #include <sstream>
 #include <fstream>
 #include <iostream>
+#include <Wide/Util/ConcurrentVector.h>
+#include <Wide/Parser/AST.h>
 
 #ifndef _MSC_VER
 #include <llvm/Support/Host.h>
@@ -22,11 +24,12 @@
 
 void Compile(const Wide::Options::Clang& copts, const Wide::Options::LLVM& lopts, const std::vector<std::string>& files) {    
     Wide::LLVMCodegen::Generator Generator(lopts, copts.FrontendOptions.OutputFile, copts.TargetOptions.Triple);
-    Wide::AST::Builder ASTBuilder;
+    Wide::AST::Combiner combiner;
     Wide::Semantic::Analyzer Sema(copts, &Generator);
     
     Wide::Concurrency::Vector<std::string> excepts;
     Wide::Concurrency::Vector<std::string> warnings;
+    Wide::Concurrency::Vector<std::shared_ptr<Wide::AST::Builder>> builders;
     Wide::Concurrency::ParallelForEach(files.begin(), files.end(), [&](const std::string& filename) {
         std::ifstream inputfile(filename, std::ios::binary | std::ios::in);
         if (!inputfile)
@@ -48,7 +51,9 @@ void Compile(const Wide::Options::Clang& copts, const Wide::Options::LLVM& lopts
             warnings.push_back(str.str());
         };
         try {
-            Wide::Parser::ParseGlobalModuleContents(lex, Wide::AST::ThreadLocalBuilder(ASTBuilder, parsererrorhandler, parserwarninghandler), ASTBuilder.GetGlobalModule());
+            auto builder = std::make_shared<Wide::AST::Builder>(parsererrorhandler, parserwarninghandler);
+            Wide::Parser::ParseGlobalModuleContents(lex, *builder, builder->GetGlobalModule());
+            builders.push_back(std::move(builder));
         } catch(Wide::Parser::ParserError& e) {
             parsererrorhandler(e.where(), e.error());
         } catch(std::exception& e) {
@@ -61,9 +66,12 @@ void Compile(const Wide::Options::Clang& copts, const Wide::Options::LLVM& lopts
     for(auto&& x : warnings)
         std::cout << x << "\n";
 
+    for(auto&& x : builders)
+        combiner.Add(x->GetGlobalModule());
+
     if (excepts.empty()) {
         try {
-           Sema(ASTBuilder.GetGlobalModule());
+           Sema(combiner.GetGlobalModule());
            Generator();
         } catch(std::exception& e) {
             std::cout << e.what() << "\n";

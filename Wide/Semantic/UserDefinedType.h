@@ -54,13 +54,13 @@ namespace Wide {
             std::function<llvm::Type*(llvm::Module*)> GetLLVMType(Analyzer& a) override;
 
             clang::QualType GetClangType(ClangUtil::ClangTU& TU, Analyzer& a) override;  
-            Codegen::Expression* BuildInplaceConstruction(Codegen::Expression* mem, std::vector<Expression> args, Analyzer& a) override;
-            Wide::Util::optional<Expression> AccessMember(Expression, std::string name, Analyzer& a) override;
+            Codegen::Expression* BuildInplaceConstruction(Codegen::Expression* mem, std::vector<ConcreteExpression> args, Analyzer& a) override;
+            Wide::Util::optional<ConcreteExpression> AccessMember(ConcreteExpression, std::string name, Analyzer& a) override;
             ConversionRank RankConversionFrom(Type* from, Analyzer& a) override;
-            Expression BuildCall(Expression val, std::vector<Expression> args, Analyzer& a) override;
+            Expression BuildCall(ConcreteExpression val, std::vector<ConcreteExpression> args, Analyzer& a) override;
             std::size_t size(Analyzer& a) override;
             std::size_t alignment(Analyzer& a) override;
-            Expression BuildBinaryExpression(Expression lhs, Expression rhs, Lexer::TokenType ty, Analyzer& a) override;
+            ConcreteExpression BuildBinaryExpression(ConcreteExpression lhs, ConcreteExpression rhs, Lexer::TokenType ty, Analyzer& a) override;
         };
     }
 }

@@ -5,13 +5,11 @@
 #include <Wide/Semantic/FunctionType.h>
 #include <Wide/Parser/AST.h>
 #include <Wide/Semantic/ClangTU.h>
-#include <array>
-#include <sstream>
 #include <Wide/Semantic/Analyzer.h>
-#include <Wide/Codegen/Generator.h>
-#include <Wide/Codegen/Function.h>
 #include <Wide/Semantic/ConstructorType.h>
 #include <Wide/Semantic/UserDefinedType.h>
+#include <array>
+#include <sstream>
 
 #pragma warning(push, 0)
 #include <llvm/IR/LLVMContext.h>
@@ -68,7 +66,7 @@ std::function<llvm::Type*(llvm::Module*)> OverloadSet::GetLLVMType(Analyzer& a) 
         };
     }
 }
-Expression OverloadSet::BuildCall(Expression e, std::vector<Expression> args, Analyzer& a) {
+Expression OverloadSet::BuildCall(ConcreteExpression e, std::vector<ConcreteExpression> args, Analyzer& a) {
     std::vector<AST::Function*> ViableCandidates;
 
     if (nonstatic) {
@@ -111,11 +109,11 @@ Expression OverloadSet::BuildCall(Expression e, std::vector<Expression> args, An
                     AST::DeclContext* con;
                     Type* autotype;
                     Type* nonstatic;
-                    Wide::Util::optional<Expression> AccessMember(Expression self, std::string name, Analyzer& a) {
+                    Wide::Util::optional<ConcreteExpression> AccessMember(ConcreteExpression self, std::string name, Analyzer& a) override {
                         if (name == "this")
-                            return a.GetConstructorType(nonstatic)->BuildValueConstruction(std::vector<Expression>(), a);
+                            return a.GetConstructorType(nonstatic)->BuildValueConstruction(std::vector<ConcreteExpression>(), a);
                         if (name == "auto")
-                            return a.GetConstructorType(autotype->Decay())->BuildValueConstruction(std::vector<Expression>(), a);
+                            return a.GetConstructorType(autotype->Decay())->BuildValueConstruction(std::vector<ConcreteExpression>(), a);
                         return a.GetDeclContext(con)->AccessMember(self, std::move(name), a);
                     }
                 };
@@ -123,7 +121,8 @@ Expression OverloadSet::BuildCall(Expression e, std::vector<Expression> args, An
                 lt.con = con;
                 lt.autotype = args[i].t;
                 lt.nonstatic = nonstatic;
-                auto argty = a.AnalyzeExpression(&lt, f->args[fi].type).t;
+
+                auto argty = a.AnalyzeExpression(&lt, f->args[fi].type).Resolve(nullptr).t;
                 if (auto con = dynamic_cast<ConstructorType*>(argty))
                     argty = con->GetConstructedType();
                 else
@@ -161,8 +160,10 @@ Expression OverloadSet::BuildCall(Expression e, std::vector<Expression> args, An
     
     if (rank.size() == 1) {
         auto call = rank[0]->BuildCall(e, std::move(args), a);
-        if (e.Expr)
-            call.Expr = a.gen->CreateChainExpression(e.Expr, call.Expr);
+        call.VisitContents([=, &a](ConcreteExpression& expr) {
+            if (e.Expr)
+                expr.Expr = a.gen->CreateChainExpression(e.Expr, expr.Expr);
+        }, [&](DeferredExpression& expr) {});
         return call;
     }
 
@@ -208,9 +209,9 @@ ConversionRank OverloadSet::ResolveOverloadRank(std::vector<Type*> args, Analyze
                 struct LookupType : Type {
                     AST::DeclContext* con;
                     Type* nonstatic;
-                    Wide::Util::optional<Expression> AccessMember(Expression self, std::string name, Analyzer& a) {
+                    Wide::Util::optional<ConcreteExpression> AccessMember(ConcreteExpression self, std::string name, Analyzer& a) {
                         if (name == "this") {
-                            return a.GetConstructorType(nonstatic)->BuildValueConstruction(std::vector<Expression>(), a);
+                            return a.GetConstructorType(nonstatic)->BuildValueConstruction(std::vector<ConcreteExpression>(), a);
                         }
                         auto udt = debug_cast<UserDefinedType>(nonstatic->Decay());
                         if (udt->HasMember(name))
@@ -221,7 +222,7 @@ ConversionRank OverloadSet::ResolveOverloadRank(std::vector<Type*> args, Analyze
                 LookupType lt;
                 lt.con = con;
                 lt.nonstatic = nonstatic;
-                auto argty = a.AnalyzeExpression(&lt, f->args[fi].type).t;
+                auto argty = a.AnalyzeExpression(&lt, f->args[fi].type).Resolve(nullptr).t;
                 if (auto con = dynamic_cast<ConstructorType*>(argty))
                     argty = con->GetConstructedType();
                 else
@@ -263,7 +264,7 @@ ConversionRank OverloadSet::ResolveOverloadRank(std::vector<Type*> args, Analyze
     return ConversionRank::None;
 }
 
-Codegen::Expression* OverloadSet::BuildInplaceConstruction(Codegen::Expression* mem, std::vector<Expression> args, Analyzer& a) {
+Codegen::Expression* OverloadSet::BuildInplaceConstruction(Codegen::Expression* mem, std::vector<ConcreteExpression> args, Analyzer& a) {
     if (args.size() > 1)
         throw std::runtime_error("Cannot construct an overload set from more than one argument.");
     if (args.size() == 1) {

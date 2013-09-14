@@ -3,7 +3,6 @@
 #include <Wide/Lexer/Token.h>
 #include <Wide/Semantic/ClangTU.h>
 #include <Wide/Codegen/Generator.h>
-#include <Wide/Codegen/Expression.h>
 
 #pragma warning(push, 0)
 #include <clang/AST/ASTContext.h>
@@ -45,7 +44,7 @@ std::function<llvm::Type*(llvm::Module*)> IntegralType::GetLLVMType(Analyzer& a)
         return llvm::IntegerType::get(m->getContext(), bits);
     };
 }
-Expression IntegralType::BuildBinaryExpression(Expression lhs, Expression rhs, Lexer::TokenType type, Analyzer& a) {
+ConcreteExpression IntegralType::BuildBinaryExpression(ConcreteExpression lhs, ConcreteExpression rhs, Lexer::TokenType type, Analyzer& a) {
     auto lhsval = lhs.BuildValue(a);
     auto rhsval = rhs.BuildValue(a);
 
@@ -55,9 +54,9 @@ Expression IntegralType::BuildBinaryExpression(Expression lhs, Expression rhs, L
     
     switch(type) {
     case Lexer::TokenType::LT:
-        return Expression(a.GetBooleanType(), a.gen->CreateLT(lhsval.Expr, rhsval.Expr, is_signed));
+        return ConcreteExpression(a.GetBooleanType(), a.gen->CreateLT(lhsval.Expr, rhsval.Expr, is_signed));
     case Lexer::TokenType::EqCmp:
-        return Expression(a.GetBooleanType(), a.gen->CreateEqualityExpression(lhsval.Expr, rhsval.Expr));
+        return ConcreteExpression(a.GetBooleanType(), a.gen->CreateEqualityExpression(lhsval.Expr, rhsval.Expr));
     }
 
     // If the LHS is not an lvalue, the assign ops are invalid, so go to ADL or default implementation.
@@ -66,36 +65,36 @@ Expression IntegralType::BuildBinaryExpression(Expression lhs, Expression rhs, L
 
     switch(type) {
     case Lexer::TokenType::RightShiftAssign:
-        return Expression(lhs.t, a.gen->CreateStore(lhs.Expr, a.gen->CreateRightShift(lhsval.Expr, rhsval.Expr, is_signed)));
+        return ConcreteExpression(lhs.t, a.gen->CreateStore(lhs.Expr, a.gen->CreateRightShift(lhsval.Expr, rhsval.Expr, is_signed)));
     case Lexer::TokenType::LeftShiftAssign:
-        return Expression(lhs.t, a.gen->CreateStore(lhs.Expr, a.gen->CreateLeftShift(lhsval.Expr, rhsval.Expr)));
+        return ConcreteExpression(lhs.t, a.gen->CreateStore(lhs.Expr, a.gen->CreateLeftShift(lhsval.Expr, rhsval.Expr)));
     case Lexer::TokenType::MulAssign:
-        return Expression(lhs.t, a.gen->CreateStore(lhs.Expr, a.gen->CreateMultiplyExpression(lhsval.Expr, rhsval.Expr)));
+        return ConcreteExpression(lhs.t, a.gen->CreateStore(lhs.Expr, a.gen->CreateMultiplyExpression(lhsval.Expr, rhsval.Expr)));
     case Lexer::TokenType::PlusAssign:
-        return Expression(lhs.t, a.gen->CreateStore(lhs.Expr, a.gen->CreatePlusExpression(lhsval.Expr, rhsval.Expr)));
+        return ConcreteExpression(lhs.t, a.gen->CreateStore(lhs.Expr, a.gen->CreatePlusExpression(lhsval.Expr, rhsval.Expr)));
     case Lexer::TokenType::OrAssign:
-        return Expression(lhs.t, a.gen->CreateStore(lhs.Expr, a.gen->CreateOrExpression(lhsval.Expr, rhsval.Expr)));
+        return ConcreteExpression(lhs.t, a.gen->CreateStore(lhs.Expr, a.gen->CreateOrExpression(lhsval.Expr, rhsval.Expr)));
     case Lexer::TokenType::AndAssign:
-        return Expression(lhs.t, a.gen->CreateStore(lhs.Expr, a.gen->CreateAndExpression(lhsval.Expr, rhsval.Expr)));
+        return ConcreteExpression(lhs.t, a.gen->CreateStore(lhs.Expr, a.gen->CreateAndExpression(lhsval.Expr, rhsval.Expr)));
     case Lexer::TokenType::XorAssign:
-        return Expression(lhs.t, a.gen->CreateStore(lhs.Expr, a.gen->CreateXorExpression(lhsval.Expr, rhsval.Expr)));
+        return ConcreteExpression(lhs.t, a.gen->CreateStore(lhs.Expr, a.gen->CreateXorExpression(lhsval.Expr, rhsval.Expr)));
     case Lexer::TokenType::MinusAssign:
-        return Expression(lhs.t, a.gen->CreateStore(lhs.Expr, a.gen->CreateSubExpression(lhsval.Expr, rhsval.Expr)));
+        return ConcreteExpression(lhs.t, a.gen->CreateStore(lhs.Expr, a.gen->CreateSubExpression(lhsval.Expr, rhsval.Expr)));
     case Lexer::TokenType::ModAssign:
-        return Expression(lhs.t, a.gen->CreateStore(lhs.Expr, a.gen->CreateModExpression(lhsval.Expr, rhsval.Expr, is_signed)));
+        return ConcreteExpression(lhs.t, a.gen->CreateStore(lhs.Expr, a.gen->CreateModExpression(lhsval.Expr, rhsval.Expr, is_signed)));
     case Lexer::TokenType::DivAssign:
-        return Expression(lhs.t, a.gen->CreateStore(lhs.Expr, a.gen->CreateDivExpression(lhsval.Expr, rhsval.Expr, is_signed)));
+        return ConcreteExpression(lhs.t, a.gen->CreateStore(lhs.Expr, a.gen->CreateDivExpression(lhsval.Expr, rhsval.Expr, is_signed)));
     }
     
     // Not a primitive operator- report to ADL.
     return Type::BuildBinaryExpression(lhs, rhs, type, a);
 }
-Expression IntegralType::BuildIncrement(Expression obj, bool postfix, Analyzer& a) {    
+ConcreteExpression IntegralType::BuildIncrement(ConcreteExpression obj, bool postfix, Analyzer& a) {    
     if (postfix) {
         if (a.IsLvalueType(obj.t)) {
             auto curr = a.gen->CreateLoad(obj.Expr);
             auto next = a.gen->CreatePlusExpression(curr, a.gen->CreateIntegralExpression(1, false, GetLLVMType(a)));
-            return Expression(this, a.gen->CreateChainExpression(a.gen->CreateChainExpression(curr, a.gen->CreateStore(obj.Expr, next)), curr));
+            return ConcreteExpression(this, a.gen->CreateChainExpression(a.gen->CreateChainExpression(curr, a.gen->CreateStore(obj.Expr, next)), curr));
         } else
             throw std::runtime_error("Attempted to postfix increment a non-lvalue integer.");
     }
@@ -103,10 +102,10 @@ Expression IntegralType::BuildIncrement(Expression obj, bool postfix, Analyzer& 
         throw std::runtime_error("Attempted to prefix increment a stealable integer.");
     auto curr = a.gen->CreateLoad(obj.Expr);
     auto next = a.gen->CreatePlusExpression(curr, a.gen->CreateIntegralExpression(1, false, GetLLVMType(a)));
-    return Expression(this, a.gen->CreateChainExpression(a.gen->CreateStore(obj.Expr, next), next));
+    return ConcreteExpression(this, a.gen->CreateChainExpression(a.gen->CreateStore(obj.Expr, next), next));
 }
 
-Codegen::Expression* IntegralType::BuildInplaceConstruction(Codegen::Expression* mem, std::vector<Expression> args, Analyzer& a) {
+Codegen::Expression* IntegralType::BuildInplaceConstruction(Codegen::Expression* mem, std::vector<ConcreteExpression> args, Analyzer& a) {
     if (args.size() == 1) {
         args[0] = args[0].BuildValue(a);
         if (args[0].t == this)

@@ -11,15 +11,13 @@ namespace Wide {
         enum class Warning : int;
     }
     namespace AST {
-        class Builder;
-        class ThreadLocalBuilder {
+        class Builder {
             Wide::Memory::Arena arena;
-            Builder* b;
+            Module GlobalModule;
             std::function<void(Lexer::Range, Parser::Error)> error;
             std::function<void(Lexer::Range, Parser::Warning)> warning;
         public:
-            ThreadLocalBuilder(Builder&, std::function<void(Lexer::Range, Parser::Error)>, std::function<void(Lexer::Range, Parser::Warning)>);
-            ~ThreadLocalBuilder();
+            Builder(std::function<void(Lexer::Range, Parser::Error)>, std::function<void(Lexer::Range, Parser::Warning)>);
 
             IdentifierExpr* CreateIdentExpression(std::string name, Lexer::Range r);
             StringExpr* CreateStringExpression(std::string val, Lexer::Range r);
@@ -91,17 +89,10 @@ namespace Wide {
             void Error(Wide::Lexer::Range, Parser::Error);
             void Warning(Wide::Lexer::Range, Parser::Warning);
 
+            Module* GetGlobalModule() { return &GlobalModule; }
+
             typedef Statement* StatementType;
             typedef Expression* ExpressionType;
-        };
-        class Builder {
-            Concurrency::Queue<Wide::Memory::Arena> arenas;
-            Module* GlobalModule;
-            friend class ThreadLocalBuilder;
-        public:            
-            Builder();
-
-            Module* GetGlobalModule();
         };
     }
 }

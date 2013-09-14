@@ -17,7 +17,7 @@ namespace Wide {
             ClangNamespace(clang::DeclContext* p, ClangUtil::ClangTU* f)
                 : con(p), from(f) {}
         
-            Wide::Util::optional<Expression> AccessMember(Expression val, std::string name, Analyzer& a) override;
+            Wide::Util::optional<ConcreteExpression> AccessMember(ConcreteExpression val, std::string name, Analyzer& a) override;
         };
     }
 }

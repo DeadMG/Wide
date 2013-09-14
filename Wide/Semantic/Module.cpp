@@ -19,10 +19,10 @@ using namespace Semantic;
 Module::Module(AST::Module* p) 
     : m(p) {}
 
-void Module::AddSpecialMember(std::string name, Expression t){
+void Module::AddSpecialMember(std::string name, ConcreteExpression t){
     SpecialMembers[std::move(name)] = t;
 }
-Wide::Util::optional<Expression> Module::AccessMember(Expression val, Wide::Lexer::TokenType ty, Analyzer& a) {
+Wide::Util::optional<ConcreteExpression> Module::AccessMember(ConcreteExpression val, Wide::Lexer::TokenType ty, Analyzer& a) {
     if (m->opcondecls.find(ty) != m->opcondecls.end()) {
         if (m->higher) {
             auto result = a.GetDeclContext(m->higher)->AccessMember(val, ty, a);
@@ -35,14 +35,14 @@ Wide::Util::optional<Expression> Module::AccessMember(Expression val, Wide::Lexe
         return a.GetDeclContext(m->higher)->AccessMember(val, ty, a);
     return Wide::Util::none;
 }
-Wide::Util::optional<Expression> Module::AccessMember(Expression val, std::string name, Analyzer& a) {
+Wide::Util::optional<ConcreteExpression> Module::AccessMember(ConcreteExpression val, std::string name, Analyzer& a) {
     if (m->decls.find(name) != m->decls.end()) {
         auto decl = m->decls[name];
         if (auto moddecl = dynamic_cast<AST::Module*>(decl)) {
             return a.GetWideModule(moddecl)->BuildValueConstruction(a);
         }
         if (auto usedecl = dynamic_cast<AST::Using*>(decl)) {
-            auto expr = a.AnalyzeExpression(this, usedecl->expr);
+            auto expr = a.AnalyzeExpression(this, usedecl->expr).Resolve(nullptr);
             if (auto conty = dynamic_cast<ConstructorType*>(expr.t->Decay())) {
                 return conty->BuildValueConstruction(a);
             }

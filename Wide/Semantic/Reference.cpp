@@ -1,6 +1,5 @@
 #include <Wide/Semantic/ClangTU.h>
 #include <Wide/Semantic/Analyzer.h>
-#include <Wide/Codegen/Expression.h>
 #include <Wide/Codegen/Generator.h>
 #include <Wide/Semantic/Reference.h>
 
@@ -24,7 +23,7 @@ clang::QualType Reference::GetClangType(ClangUtil::ClangTU& tu, Analyzer& a) {
     return tu.GetASTContext().getLValueReferenceType(Pointee->GetClangType(tu, a));
 }
 
-Codegen::Expression* Reference::BuildInplaceConstruction(Codegen::Expression* mem, std::vector<Expression> args, Analyzer& a) {
+Codegen::Expression* Reference::BuildInplaceConstruction(Codegen::Expression* mem, std::vector<ConcreteExpression> args, Analyzer& a) {
     if (args.size() == 0)
         throw std::runtime_error("Cannot default-construct a reference type.");
     if (args.size() == 1 && args[0].t->IsReference(Pointee))
@@ -40,17 +39,17 @@ std::size_t Reference::alignment(Analyzer& a) {
 }
 
 // Perform collapse
-Expression Reference::BuildRvalueConstruction(std::vector<Expression> args, Analyzer& a) {
+ConcreteExpression Reference::BuildRvalueConstruction(std::vector<ConcreteExpression> args, Analyzer& a) {
     if (args.size() == 0)
         throw std::runtime_error("Cannot default-construct a reference type.");
     if (args.size() == 1 && args[0].t->IsReference(Pointee))
-        return Expression(this, args[0].Expr);
+        return ConcreteExpression(this, args[0].Expr);
     throw std::runtime_error("Attempt to construct a reference from something it could not be.");
 }
-Expression Reference::BuildLvalueConstruction(std::vector<Expression> args, Analyzer& a) {
+ConcreteExpression Reference::BuildLvalueConstruction(std::vector<ConcreteExpression> args, Analyzer& a) {
     if (args.size() == 0)
         throw std::runtime_error("Cannot default-construct a reference type.");
     if (args.size() == 1 && args[0].t->IsReference(Pointee))
-        return Expression(this, args[0].Expr);
+        return ConcreteExpression(this, args[0].Expr);
     throw std::runtime_error("Attempt to construct a reference from something it could not be.");
 }

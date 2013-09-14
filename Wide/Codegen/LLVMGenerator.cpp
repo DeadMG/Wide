@@ -1,11 +1,9 @@
 #include <Wide/Codegen/LLVMGenerator.h>
 #include <Wide/Codegen/Expression.h>
 #include <Wide/Codegen/Function.h>
-
 #include <fstream>
 
 #pragma warning(push, 0)
-
 #include <llvm/IR/Function.h>
 #include <llvm/IR/Type.h>
 #include <llvm/IR/DerivedTypes.h>
@@ -14,7 +12,6 @@
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/Analysis/Verifier.h>
 #include <llvm/Support/raw_os_ostream.h>
-
 #include <llvm/Support/TargetSelect.h>
 #include <llvm/Target/TargetOptions.h>
 #include <llvm/Target/TargetMachine.h>
@@ -22,7 +19,6 @@
 #include <llvm/PassManager.h>
 #include <llvm/Support/FormattedStream.h>
 #include <llvm/Transforms/IPO.h>
-
 #pragma warning(pop)
 
 using namespace Wide;
@@ -109,8 +105,10 @@ LoadExpression* Generator::CreateLoad(Codegen::Expression* obj) {
 ReturnStatement* Generator::CreateReturn() {
     return arena.Allocate<ReturnStatement>();
 }
-ReturnStatement* Generator::CreateReturn(Codegen::Expression* obj) {
-    return arena.Allocate<ReturnStatement>(AssertExpression(obj));
+ReturnStatement* Generator::CreateReturn(std::function<Codegen::Expression*()> obj) {
+    return arena.Allocate<ReturnStatement>([=] {
+        return AssertExpression(obj());
+    });
 }
 FunctionValue* Generator::CreateFunctionValue(std::string name) {
     return arena.Allocate<FunctionValue>(name);
@@ -168,8 +166,8 @@ ParamExpression* Generator::CreateParameterExpression(std::function<unsigned()> 
     return arena.Allocate<ParamExpression>(std::move(num));
 }
 
-IfStatement* Generator::CreateIfStatement(Codegen::Expression* cond, Codegen::Statement* tr, Codegen::Statement* fls) {
-    return arena.Allocate<IfStatement>(AssertExpression(cond), AssertStatement(tr), fls ? AssertStatement(fls) : nullptr);
+IfStatement* Generator::CreateIfStatement(const std::function<Codegen::Expression*()> cond, Codegen::Statement* tr, Codegen::Statement* fls) {
+    return arena.Allocate<IfStatement>([=] { return AssertExpression(cond()); }, AssertStatement(tr), fls ? AssertStatement(fls) : nullptr);
 }
 
 TruncateExpression* Generator::CreateTruncate(Codegen::Expression* expr, std::function<llvm::Type*(llvm::Module*)> ty) {
@@ -181,8 +179,8 @@ ChainStatement* Generator::CreateChainStatement(Codegen::Statement* l, Codegen::
     return arena.Allocate<ChainStatement>(AssertStatement(l), AssertStatement(r));
 }
 
-WhileStatement* Generator::CreateWhile(Codegen::Expression* c, Codegen::Statement* b) {
-    return arena.Allocate<WhileStatement>(AssertExpression(c), AssertStatement(b));
+WhileStatement* Generator::CreateWhile(std::function<Codegen::Expression*()> c, Codegen::Statement* b) {
+    return arena.Allocate<WhileStatement>([=] { return AssertExpression(c()); }, AssertStatement(b));
 }
 
 NullExpression* Generator::CreateNull(std::function<llvm::Type*(llvm::Module*)> ty) {
@@ -280,4 +278,7 @@ FPDiv* Generator::CreateFPDiv(Codegen::Expression* l, Codegen::Expression* r) {
 
 FPLT* Generator::CreateFPLT(Codegen::Expression* l, Codegen::Expression* r) {
     return arena.Allocate<FPLT>(AssertExpression(l), AssertExpression(r));
+}
+Nop* Generator::CreateNop() {
+    return arena.Allocate<Nop>();
 }

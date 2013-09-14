@@ -1,7 +1,6 @@
 #include <Wide/Semantic/ClangOverloadSet.h>
 #include <Wide/Util/MakeUnique.h>
 #include <Wide/Codegen/Generator.h>
-#include <Wide/Codegen/Expression.h>
 #include <Wide/Semantic/ClangTU.h>
 #include <Wide/Semantic/Util.h>
 #include <Wide/Semantic/ConstructorType.h>
@@ -24,7 +23,7 @@ using namespace Semantic;
 ClangOverloadSet::ClangOverloadSet(std::unique_ptr<clang::UnresolvedSet<8>> arg, ClangUtil::ClangTU* tu, Type* t)
     : lookupset(std::move(arg)), from(tu), nonstatic(t), templateargs(nullptr) {}
 
-Expression ClangOverloadSet::BuildCallWithTemplateArguments(clang::TemplateArgumentListInfo* templateargs, Expression mem, std::vector<Expression> args, Analyzer& a) {
+ConcreteExpression ClangOverloadSet::BuildCallWithTemplateArguments(clang::TemplateArgumentListInfo* templateargs, ConcreteExpression mem, std::vector<ConcreteExpression> args, Analyzer& a) {
     std::vector<clang::OpaqueValueExpr> exprs;
     if (nonstatic) {
         // The mem's type will be this, even though we don't actually want that. Set it back to the original type.
@@ -59,18 +58,18 @@ Expression ClangOverloadSet::BuildCallWithTemplateArguments(clang::TemplateArgum
     for(unsigned i = 0; i < fun->getNumParams(); ++i) {
         types.push_back(a.GetClangType(*from, fun->getParamDecl(i)->getType()));
     }
-    return Expression(a.GetFunctionType(a.GetClangType(*from, fun->getResultType()), types), a.gen->CreateFunctionValue(from->MangleName(fun))).BuildCall(args, a);
+    return ConcreteExpression(a.GetFunctionType(a.GetClangType(*from, fun->getResultType()), types), a.gen->CreateFunctionValue(from->MangleName(fun))).BuildCall(args, a).Resolve(nullptr);
 }
 
-Expression ClangOverloadSet::BuildCall(Expression mem, std::vector<Expression> args, Analyzer& a) {
+Expression ClangOverloadSet::BuildCall(ConcreteExpression mem, std::vector<ConcreteExpression> args, Analyzer& a) {
     return BuildCallWithTemplateArguments(nullptr, mem, std::move(args), a);
 }
 
-Expression ClangOverloadSet::BuildMetaCall(Expression val, std::vector<Expression> args, Analyzer& a) {
+ConcreteExpression ClangOverloadSet::BuildMetaCall(ConcreteExpression val, std::vector<ConcreteExpression> args, Analyzer& a) {
     struct TemplateOverloadSet : public Type {
         clang::TemplateArgumentListInfo tempargs;
         ClangOverloadSet* set;
-        Expression BuildCall(Expression val, std::vector<Expression> args, Analyzer& a) {
+        Expression BuildCall(ConcreteExpression val, std::vector<ConcreteExpression> args, Analyzer& a) override {
             return set->BuildCallWithTemplateArguments(&tempargs, val, std::move(args), a);
         }
     };
@@ -86,7 +85,7 @@ Expression ClangOverloadSet::BuildMetaCall(Expression val, std::vector<Expressio
         
         tset->tempargs.addArgument(clang::TemplateArgumentLoc(clang::TemplateArgument(clangty), tysrcinfo));
     }
-    return Expression(tset, val.Expr);
+    return ConcreteExpression(tset, val.Expr);
 }
 
 std::function<llvm::Type*(llvm::Module*)> ClangOverloadSet::GetLLVMType(Analyzer& a) {
@@ -129,7 +128,7 @@ std::size_t ClangOverloadSet::alignment(Analyzer& a) {
     if (!nonstatic) return llvm::DataLayout(a.gen->GetDataLayout()).getABIIntegerTypeAlignment(8);
     return a.gen->GetDataLayout().getPointerABIAlignment();
 }
-Expression ClangOverloadSet::BuildValueConstruction(std::vector<Expression> args, Analyzer& a) {
+ConcreteExpression ClangOverloadSet::BuildValueConstruction(std::vector<ConcreteExpression> args, Analyzer& a) {
     if (args.size() > 1)
         throw std::runtime_error("Cannot construct an overload set from more than one argument.");
     if (args.size() == 1) {
@@ -141,7 +140,7 @@ Expression ClangOverloadSet::BuildValueConstruction(std::vector<Expression> args
             if (args[0].t->IsReference(nonstatic) || (nonstatic->IsReference() && (nonstatic->IsReference() == args[0].t->IsReference()))) {
                 auto var = a.gen->CreateVariable(GetLLVMType(a), alignment(a));
                 auto store = a.gen->CreateStore(a.gen->CreateFieldExpression(var, 0), args[0].Expr);
-                return Expression(this, a.gen->CreateChainExpression(store, a.gen->CreateLoad(var)));
+                return ConcreteExpression(this, a.gen->CreateChainExpression(store, a.gen->CreateLoad(var)));
             } 
             if (args[0].t == nonstatic) {
                 assert("Internal compiler error: Attempt to call a member function of a value.");
@@ -151,7 +150,7 @@ Expression ClangOverloadSet::BuildValueConstruction(std::vector<Expression> args
     }
     if (nonstatic)
         throw std::runtime_error("Cannot default-construct a non-static overload set.");
-    Expression out;
+    ConcreteExpression out;
     out.t = this;
     out.Expr = a.gen->CreateNull(GetLLVMType(a));
     return out;

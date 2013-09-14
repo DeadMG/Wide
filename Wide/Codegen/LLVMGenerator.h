@@ -59,18 +59,28 @@ namespace Wide {
             StoreExpression* CreateStore(Codegen::Expression*, Codegen::Expression*);
             LoadExpression* CreateLoad(Codegen::Expression*);
             ReturnStatement* CreateReturn();
-            ReturnStatement* CreateReturn(Codegen::Expression*);
+            ReturnStatement* CreateReturn(const std::function<Codegen::Expression*()>);
+            ReturnStatement* CreateReturn(Codegen::Expression* e) {
+                return CreateReturn([=] { return e; });
+            }
             FunctionValue* CreateFunctionValue(std::string);
             IntegralExpression* CreateIntegralExpression(uint64_t val, bool is_signed, std::function<llvm::Type*(llvm::Module*)> ty);
             ChainExpression* CreateChainExpression(Codegen::Statement*, Codegen::Expression*);
             FieldExpression* CreateFieldExpression(Codegen::Expression*, unsigned);
             FieldExpression* CreateFieldExpression(Codegen::Expression*, std::function<unsigned()>);
             ParamExpression* CreateParameterExpression(unsigned);
-            ParamExpression* CreateParameterExpression(std::function<unsigned()>);
-            IfStatement* CreateIfStatement(Codegen::Expression*, Codegen::Statement*, Codegen::Statement*);
+            ParamExpression* CreateParameterExpression(std::function<unsigned()>); 
+            IfStatement* CreateIfStatement(Codegen::Expression* expr, Codegen::Statement* t, Codegen::Statement* f) {
+                return CreateIfStatement([=] { return expr; }, t, f);
+            }
+            Nop* CreateNop();
+            IfStatement* CreateIfStatement(const std::function<Codegen::Expression*()>, Codegen::Statement*, Codegen::Statement*);
             ChainStatement* CreateChainStatement(Codegen::Statement*, Codegen::Statement*);
             TruncateExpression* CreateTruncate(Codegen::Expression*, std::function<llvm::Type*(llvm::Module*)>);
-            WhileStatement* CreateWhile(Codegen::Expression*, Codegen::Statement*);
+            WhileStatement* CreateWhile(const std::function<Codegen::Expression*()>, Codegen::Statement*);
+            WhileStatement* CreateWhile(Codegen::Expression* e, Codegen::Statement* s) {
+                return CreateWhile([=]{ return e; }, s);
+            }
             NullExpression* CreateNull(std::function<llvm::Type*(llvm::Module*)> type);
             IntegralLeftShiftExpression* CreateLeftShift(Codegen::Expression*, Codegen::Expression*);
             IntegralRightShiftExpression* CreateRightShift(Codegen::Expression*, Codegen::Expression*, bool);
@@ -96,7 +106,7 @@ namespace Wide {
             llvm::DataLayout GetDataLayout();
             void AddClangTU(std::function<void(llvm::Module* m)>);
             llvm::LLVMContext& GetContext();
-            std::size_t Wide::Codegen::Generator::GetInt8AllocSize();
+            std::size_t GetInt8AllocSize();
 
             void operator()();
         };
