@@ -1,8 +1,9 @@
 #pragma once
 
-#include <unordered_map>
-#include <string>
 #include <Wide/Lexer/Token.h>
+#include <unordered_map>
+#include <initializer_list>
+#include <string>
 
 namespace Wide {
     namespace Parser {
@@ -55,7 +56,28 @@ namespace Wide {
             LambdaNoOpenBracket,
             LambdaNoOpenCurly,
             TypeExpressionNoCurly,
-            ExpressionNoBeginning
+            ExpressionNoBeginning,
+            UsingAlreadyFunction,
+            UsingAlreadyUsing,
+            UsingAlreadyType,
+            UsingAlreadyModule,
+            UsingAlreadySomething,
+            ModuleAlreadyType,
+            ModuleAlreadyUsing,
+            ModuleAlreadyFunction,
+            ModuleAlreadySomething,
+            TypeFunctionAlreadyVariable,
+            TypeVariableAlreadyFunction,
+            FunctionAlreadyModule,
+            FunctionAlreadyUsing,
+            FunctionAlreadyType,
+            FunctionAlreadySomething,
+            TypeAlreadyFunction,
+            TypeAlreadyType,
+            TypeAlreadyUsing,
+            TypeAlreadyModule,
+            TypeAlreadySomething,
+            UnknownDeclContext
         };
 
         enum class Warning : int {
@@ -125,7 +147,28 @@ namespace Wide {
                 std::make_pair(Error::LambdaNoOpenBracket, "Expected ( after function to denote a lambda expression."),
                 std::make_pair(Error::LambdaNoOpenCurly, "Expected { after function(arguments) to denote a lambda function expression."),
                 std::make_pair(Error::TypeExpressionNoCurly, "Expected { after type to denote an anonymous type expression."),
-                std::make_pair(Error::ExpressionNoBeginning, "Expected this, type, function, integer, string, identifier, or bracket to begin an expression.")
+                std::make_pair(Error::ExpressionNoBeginning, "Expected this, type, function, integer, string, identifier, or bracket to begin an expression."),
+                std::make_pair(Error::UsingAlreadyFunction, "Attempted to create a using, but that identifier was already used in that context for a function overload set."),
+                std::make_pair(Error::UsingAlreadyUsing, "Attempted to create a using, but that identifier was already used in that context for another using."),
+                std::make_pair(Error::UsingAlreadyType, "Attempted to create a using, but that identifier was already used in that context for a type."),
+                std::make_pair(Error::UsingAlreadyModule, "Attempted to create a using, but that identifier was already used in that context for a module."),
+                std::make_pair(Error::UsingAlreadySomething, "ICE: Attempted to create a using, but that identifier was already used in that context for an unknown entity."),
+                std::make_pair(Error::ModuleAlreadyType, "Attempted to create a module, but that identifier was already used in that context for a type."),
+                std::make_pair(Error::ModuleAlreadyUsing, "Attempted to create a module, but that identifier was already used in that context for a using."),
+                std::make_pair(Error::ModuleAlreadyFunction, "Attempted to create a module, but that identifier was already used in that context for a function."),
+                std::make_pair(Error::ModuleAlreadySomething, "ICE: Attempted to create a module, but that identifier was already used in that context for an unknown entity."),
+                std::make_pair(Error::TypeFunctionAlreadyVariable, "Attempted to add a function to a type, but that identifier was already used to denote a variable."),
+                std::make_pair(Error::TypeVariableAlreadyFunction, "Attempted to add a variable to a type, but that identifier was already used to denote a function."),
+                std::make_pair(Error::FunctionAlreadyModule, "Attempted to insert a function into a module, but that identifier was already used for another module."),
+                std::make_pair(Error::FunctionAlreadyUsing, "Attempted to insert a function into a module, but that identifier was already used for a using."),
+                std::make_pair(Error::FunctionAlreadyType, "Attempted to insert a function into a module, but that identifier was already used for a type."),
+                std::make_pair(Error::FunctionAlreadySomething, "ICE: Attempted to insert a function into a module, but that identifier was already used for an unknown entity."),
+                std::make_pair(Error::TypeAlreadyFunction, "Attempted to insert a type into a module, but that identifier was already used for a function."),
+                std::make_pair(Error::TypeAlreadyType, "Attempted to insert a type into a module, but that identifier was already used for a type."),
+                std::make_pair(Error::TypeAlreadyUsing, "Attempted to insert a type into a module, but that identifier was already used for a using."),
+                std::make_pair(Error::TypeAlreadyModule, "Attempted to insert a type into a module, but that identifier was already used for a module."),
+                std::make_pair(Error::TypeAlreadySomething, "ICE: Attempted to insert a function into a module, but that identifier was already used for an unknown entity."),
+                std::make_pair(Error::UnknownDeclContext, "Attempted to combine a declcontext that was unknown."),
             };
             return std::unordered_map<Error, std::string>(std::begin(strings), std::end(strings));
         }());
@@ -140,17 +183,24 @@ namespace Wide {
 
         class ParserError : public std::exception {
             Error err;
-            Lexer::Range loc;
+            std::vector<Lexer::Range> loc;
             Lexer::Range recoverloc;
         public:
             ParserError(Lexer::Range pos, Error error)
-                : err(error), loc(pos), recoverloc(loc) {}
+                : err(error), recoverloc(pos) { loc.push_back(pos); }
             ParserError(Lexer::Range pos, Lexer::Range recloc, Error error)
-                : err(error), loc(pos), recoverloc(recloc) {}
-            const char* what() {
+                : err(error), recoverloc(recloc) { loc.push_back(pos); }
+            ParserError(Lexer::Range first, std::initializer_list<Lexer::Range> rest, Error error)
+                : recoverloc(first), err(error)
+            {
+                loc.push_back(first);
+                for(auto x : rest)
+                    loc.push_back(x);
+            }
+            const char* what() const {
                 return ErrorStrings.at(err).c_str();
             }
-            Lexer::Range where() {
+            std::vector<Lexer::Range> where() {
                 return loc;
             }
             Error error() {

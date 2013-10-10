@@ -8,6 +8,7 @@
 #include <Wide/Semantic/FunctionType.h>
 #include <Wide/Semantic/ConstructorType.h>
 #include <Wide/Parser/AST.h>
+#include <Wide/Semantic/SemanticExpression.h>
 #include <sstream>
 
 #pragma warning(push, 0)
@@ -25,37 +26,12 @@
 using namespace Wide;
 using namespace Semantic;
 
-struct SemanticExpression : public AST::Expression {
-    Semantic::Expression e;
-    SemanticExpression(Semantic::Expression expr)
-        : e(expr), AST::Expression(Lexer::Range()) {}
-};
-
 bool UserDefinedType::IsComplexType() {
-    if (!processedconstructors) {                
-        iscomplex = iscomplex || type->Functions.find("~type") != type->Functions.end();
-        if (type->Functions.find("type") != type->Functions.end()) {
-            std::vector<Type*> self;
-            self.push_back(a.AsLvalueType(this));
-            iscomplex = iscomplex || a.GetOverloadSet(type->Functions["type"], a.AsLvalueType(this))->ResolveOverloadRank(std::move(self), a) != ConversionRank::None;
-            //self.push_back(a.GetRvalueType(this));
-            //iscomplex = iscomplex || a.GetOverloadSet(type->Functions["type"], this)->ResolveOverloadRank(std::move(self), a) != ConversionRank::None;
-        }
-        
-        if (type->Functions.find("type") == type->Functions.end()) {
-            a.AddDefaultConstructor(type, this);
-            a.AddCopyConstructor(type, this);
-            a.AddMoveConstructor(type, this);
-        }
-
-        processedconstructors = true;
-        
-    }
     return iscomplex;
 }
 
 
-UserDefinedType::UserDefinedType(AST::Type* t, Analyzer& a, Type* context)
+UserDefinedType::UserDefinedType(const AST::Type* t, Analyzer& a, Type* context)
 : a(a) {
     iscomplex = false;
     std::unordered_map<std::string, unsigned> mem;
@@ -65,7 +41,6 @@ UserDefinedType::UserDefinedType(AST::Type* t, Analyzer& a, Type* context)
     std::stringstream stream;
     stream << "struct.__" << this;
     llvmname = stream.str();
-    processedconstructors = false;
 
     struct TypeMemberVariableLookupContext : public Type {
         Type* context;
@@ -144,19 +119,18 @@ UserDefinedType::UserDefinedType(AST::Type* t, Analyzer& a, Type* context)
     AST::Function* des;
     // Generate destructors    
     if (type->Functions.find("~type") != type->Functions.end()) {
-        des = *type->Functions["~type"]->functions.begin();
-        type->Functions["~type"]->functions.clear();
+        des = *type->Functions.at("~type")->functions.begin();
     } else {
+        static const std::shared_ptr<std::string> destructor_location = std::make_shared<std::string>("Automatically generated destructor");
         des = a.arena.Allocate<AST::Function>(
             "~type",
             std::vector<AST::Statement*>(),
             std::vector<AST::Statement*>(),
-            Lexer::Range(),
+            Lexer::Range(destructor_location),
             std::vector<AST::FunctionArgument>(),
             GetDeclContext(),
-            std::vector<AST::VariableStatement*>()
+            std::vector<AST::Variable*>()
         );
-        type->Functions["~type"] = a.arena.Allocate<AST::FunctionOverloadSet>("~type", GetDeclContext());
     }
 
     for(auto x = llvmtypes.rbegin(); x != llvmtypes.rend(); ++x) {
@@ -164,10 +138,30 @@ UserDefinedType::UserDefinedType(AST::Type* t, Analyzer& a, Type* context)
         des->statements.push_back(a.arena.Allocate<SemanticExpression>(ConcreteExpression(nullptr, 
             ConcreteExpression(a.AsLvalueType(x->t), a.gen->CreateFieldExpression(a.gen->CreateParameterExpression(0), x->num))
             .AccessMember("~type", a)
-            ->BuildCall(a).Resolve(a.GetVoidType()).Expr)));
+            ->BuildCall(a, Lexer::Range(std::shared_ptr<std::string>())).Resolve(a.GetVoidType()).Expr)));
     }
+    std::unordered_set<const AST::Function*> funcs;
+    funcs.insert(des);
+    destructor = a.arena.Allocate<OverloadSet>(std::move(funcs), a.AsLvalueType(this));
 
-    type->Functions["~type"]->functions.insert(des);    
+    iscomplex = iscomplex || type->Functions.find("~type") != type->Functions.end();
+    if (type->Functions.find("type") != type->Functions.end()) {
+        std::vector<Type*> self;
+        self.push_back(a.AsLvalueType(this));
+        iscomplex = iscomplex || a.GetOverloadSet(type->Functions.at("type"), a.AsLvalueType(this))->ResolveOverloadRank(std::move(self), a) != ConversionRank::None;
+    }
+    
+    std::unordered_set<const AST::Function*> cons;
+    if (type->Functions.find("type") == type->Functions.end() || type->name == "__lambda") {
+        cons.insert(AddDefaultConstructor(a));
+        cons.insert(AddCopyConstructor(a));
+        cons.insert(AddMoveConstructor(a));
+        cons.erase(nullptr);
+    } else {
+        for(auto x : type->Functions.at("type")->functions)
+            cons.insert(x);
+    }
+    constructor = a.arena.Allocate<OverloadSet>(cons);
 }
 
 std::function<llvm::Type*(llvm::Module*)> UserDefinedType::GetLLVMType(Analyzer& a) {
@@ -178,10 +172,17 @@ Codegen::Expression* UserDefinedType::BuildInplaceConstruction(Codegen::Expressi
     if (!IsComplexType() && args.size() == 1 && args[0].t->Decay() == this) {
         return a.gen->CreateStore(mem, args[0].BuildValue(a).Expr);
     }
-    return a.GetOverloadSet(type->Functions["type"], a.AsLvalueType(this))->BuildValueConstruction(ConcreteExpression(a.AsLvalueType(this), mem), a).BuildCall(std::move(args), a).Resolve(nullptr).Expr;
+    return a.GetOverloadSet(type->Functions.at("type"), a.AsLvalueType(this))->BuildValueConstruction(ConcreteExpression(a.AsLvalueType(this), mem), a).BuildCall(std::move(args), a, Lexer::Range(std::shared_ptr<std::string>())).Resolve(nullptr).Expr;
 }
 
 Wide::Util::optional<ConcreteExpression> UserDefinedType::AccessMember(ConcreteExpression expr, std::string name, Analyzer& a) {
+    if (name == "~type") {
+        if (!expr.t->IsReference())
+            expr = expr.t->BuildLvalueConstruction(expr, a);
+        else if (a.IsRvalueType(expr.t))
+            expr.t = a.AsLvalueType(expr.t->Decay());
+        return destructor->BuildValueConstruction(expr, a);
+    }
     if (members.find(name) != members.end()) {
         auto member = llvmtypes[members[name]];
         ConcreteExpression out;
@@ -203,55 +204,18 @@ Wide::Util::optional<ConcreteExpression> UserDefinedType::AccessMember(ConcreteE
     }
     if (type->Functions.find(name) != type->Functions.end()) {
         auto self = expr.t == this ? BuildRvalueConstruction(expr, a) : expr;
-        return a.GetOverloadSet(type->Functions[name], self.t)->BuildValueConstruction(self, a);
+        return a.GetOverloadSet(type->Functions.at(name), self.t)->BuildValueConstruction(self, a);
     }
     return Wide::Util::none;
 }
 
-AST::DeclContext* UserDefinedType::GetDeclContext() {
+const AST::DeclContext* UserDefinedType::GetDeclContext() {
     return type;
 }
-
-/*Expression UserDefinedType::BuildAssignment(Expression lhs, Expression rhs, Analyzer& a) {
-    if (a.IsLvalueType(lhs.t)) {
-        // If we have an overloaded operator, call that.
-        if (type->Functions.find("=") != type->Functions.end()) {
-            return a.GetOverloadSet(type->Functions["="], lhs.t)->BuildValueConstruction(lhs, a).BuildCall(rhs, a);
-        }
-        if (!IsComplexType()) {
-            return Expression(lhs.t, a.gen->CreateStore(lhs.Expr, rhs.BuildValue(a).Expr));
-        }        
-        Expression out;
-        auto&& e = out.Expr;
-
-        for(auto&& x : llvmtypes) {
-            if (x.t->IsReference())
-                throw std::runtime_error("Attempted to assign to a user-defined type which had a member reference but no user-defined assignment operator.");
-            Type* t;
-            if (a.IsLvalueType(rhs.t)) {
-                t = a.AsLvalueType(x.t);
-            } else {
-                t = a.AsRvalueType(x.t);
-            }
-            auto num = x.num;
-            Expression rhs(t, a.gen->CreateFieldExpression(rhs.Expr, [this, num] { return AdjustFieldOffset(num);}));
-            Expression lhs(a.AsLvalueType(x.t), a.gen->CreateFieldExpression(lhs.Expr, [this, num] { return AdjustFieldOffset(num);}));
-
-            auto construct = x.t->BuildAssignment(lhs, rhs, a);
-            e = e ? a.gen->CreateChainExpression(e, construct.Expr) : construct.Expr;
-        }
-        // The original expr referred to the memory we were in- return that.
-        e = a.gen->CreateChainExpression(e, lhs.Expr);
-        out.t = lhs.t;
-        return out;
-    }
-    throw std::runtime_error("Attempt to assign to an rvalue of user-defined type.");
-}*/
-
 ConcreteExpression UserDefinedType::BuildBinaryExpression(ConcreteExpression lhs, ConcreteExpression rhs, Lexer::TokenType t, Analyzer& a) {
     if (type->opcondecls.find(t) != type->opcondecls.end()) {
         lhs = lhs.t == this ? BuildRvalueConstruction(lhs, a) : lhs;
-        return a.GetOverloadSet(type->opcondecls[t], lhs.t)->BuildValueConstruction(lhs, a).BuildCall(rhs, a).Resolve(nullptr);
+        return a.GetOverloadSet(type->opcondecls.at(t), lhs.t)->BuildValueConstruction(lhs, a).BuildCall(rhs, a, Lexer::Range(std::shared_ptr<std::string>())).Resolve(nullptr);
     }
     return Type::BuildBinaryExpression(lhs, rhs, t, a);
 }
@@ -286,7 +250,7 @@ clang::QualType UserDefinedType::GetClangType(ClangUtil::ClangTU& TU, Analyzer& 
     // Todo: Expose member functions
     // Only those which are not generic right now
     if (type->Functions.find("()") != type->Functions.end()) {
-        for(auto&& x : type->Functions["()"]->functions) {
+        for(auto&& x : type->Functions.at("()")->functions) {
             bool skip = false;
             for(auto&& arg : x->args)
                 if (!arg.type)
@@ -374,16 +338,15 @@ bool UserDefinedType::HasMember(std::string name) {
 }
 
 ConversionRank UserDefinedType::RankConversionFrom(Type* from, Analyzer& a) {
-    IsComplexType();
     std::vector<Type*> arg;
     arg.push_back(from);
-    return a.GetOverloadSet(type->Functions["type"], a.AsLvalueType(this))->ResolveOverloadRank(std::move(arg), a);
+    return a.GetOverloadSet(type->Functions.at("type"), a.AsLvalueType(this))->ResolveOverloadRank(std::move(arg), a);
 }
 
-Expression UserDefinedType::BuildCall(ConcreteExpression val, std::vector<ConcreteExpression> args, Analyzer& a) {
+Expression UserDefinedType::BuildCall(ConcreteExpression val, std::vector<ConcreteExpression> args, Analyzer& a, Lexer::Range where) {
     auto self = val.t == this ? BuildRvalueConstruction(val, a) : val;
     if (type->opcondecls.find(Lexer::TokenType::OpenBracket) != type->opcondecls.end())
-        return a.GetOverloadSet(type->opcondecls[Lexer::TokenType::OpenBracket], self.t)->BuildValueConstruction(self, a).BuildCall(std::move(args), a);
+        return a.GetOverloadSet(type->opcondecls.at(Lexer::TokenType::OpenBracket), self.t)->BuildValueConstruction(self, a).BuildCall(std::move(args), a, where);
     throw std::runtime_error("Attempt to call a user-defined type with no operator() defined.");
 }
 
@@ -397,4 +360,60 @@ unsigned UserDefinedType::AdjustFieldOffset(unsigned index) {
     return index;
     /*if (clangtypes.empty()) return index;
     return clangtypes.begin()->first->GetFieldNumber(*std::next(clangtypes.begin()->second->getAsCXXRecordDecl()->field_begin(), index));*/
+}
+
+AST::Function* UserDefinedType::AddCopyConstructor(Analyzer& a) {
+    // If non-complex, we just use a load/store, no need for explicit.
+    if (!IsComplexType()) return nullptr;
+
+    auto should = true;
+    for(auto&& m : llvmtypes) {
+        should = should && ((a.RankConversion(a.AsLvalueType(m.t), m.t) == ConversionRank::Zero) || !m.t->IsComplexType());
+    }
+    if (!should) return nullptr;
+    std::vector<AST::FunctionArgument> args;
+    AST::FunctionArgument self;
+    self.name = "other";
+    self.type = a.arena.Allocate<SemanticExpression>(ConcreteExpression(a.GetConstructorType(a.AsLvalueType(this)), nullptr));
+    args.push_back(self);
+
+    static const auto location = std::make_shared<std::string>("Analyzer copy constructor internal detail");
+
+    std::vector<AST::Variable*> initializers;
+    for(auto&& m : llvmtypes) {
+        initializers.push_back(
+            a.arena.Allocate<AST::Variable>(m.name, a.arena.Allocate<AST::MemberAccess>(m.name, a.arena.Allocate<AST::Identifier>("other", Lexer::Range(location)), Lexer::Range(location)), Lexer::Range(location))
+        );
+    }
+    return a.arena.Allocate<AST::Function>("type", std::vector<AST::Statement*>(), std::vector<AST::Statement*>(), Lexer::Range(location), std::move(args), type, std::move(initializers));
+}
+AST::Function* UserDefinedType::AddMoveConstructor(Analyzer& a) {
+    // If non-complex, we just use a load/store, no need for explicit.
+    if (!IsComplexType()) return nullptr;
+
+    auto should = true;
+    for(auto&& m : llvmtypes) {
+        should = should && ((a.RankConversion(a.GetRvalueType(m.t), m.t) == ConversionRank::Zero)|| !m.t->IsComplexType());
+    }
+    if (!should) return nullptr;
+    std::vector<AST::FunctionArgument> args;
+    AST::FunctionArgument self;
+    self.name = "other";
+    self.type = a.arena.Allocate<SemanticExpression>(ConcreteExpression(a.GetConstructorType(a.GetRvalueType(this)), nullptr));
+    args.push_back(self);
+
+    static const auto location = std::make_shared<std::string>("Analyzer move constructor internal detail");
+
+    std::vector<AST::Variable*> initializers;
+    auto other = ConcreteExpression(a.GetRvalueType(this), a.gen->CreateParameterExpression(1));
+    for(auto&& m : llvmtypes) {
+        initializers.push_back(a.arena.Allocate<AST::Variable>(m.name, a.arena.Allocate<SemanticExpression>(*other.t->AccessMember(other, m.name, a)), Lexer::Range(location)));
+    }
+    return a.arena.Allocate<AST::Function>("type", std::vector<AST::Statement*>(), std::vector<AST::Statement*>(), Lexer::Range(location), std::move(args), type, std::move(initializers));
+}
+AST::Function* UserDefinedType::AddDefaultConstructor(Analyzer& a) {
+    std::vector<AST::FunctionArgument> args;
+    std::vector<AST::Variable*> initializers;
+    static const auto location = std::make_shared<std::string>("Analyzer default constructor internal detail");
+    return a.arena.Allocate<AST::Function>("type", std::vector<AST::Statement*>(), std::vector<AST::Statement*>(), Lexer::Range(location), std::move(args), type, std::move(initializers));
 }

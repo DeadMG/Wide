@@ -15,7 +15,7 @@
 using namespace Wide;
 using namespace Semantic;
 
-Expression ClangTemplateClass::BuildCall(ConcreteExpression, std::vector<ConcreteExpression> args, Analyzer& a) {
+Expression ClangTemplateClass::BuildCall(ConcreteExpression, std::vector<ConcreteExpression> args, Analyzer& a, Lexer::Range where) {
     clang::TemplateArgumentListInfo tl;
     for(auto&& x : args) {
         if (auto con = dynamic_cast<ConstructorType*>(x.t)) {

@@ -198,7 +198,7 @@ Wide::Util::optional<ConcreteExpression> ClangType::AccessMember(ConcreteExpress
     return BuildOverloadSet(val, std::move(name), lr, a);
 }
 
-Expression ClangType::BuildCall(ConcreteExpression self, std::vector<ConcreteExpression> args, Analyzer& a) {
+Expression ClangType::BuildCall(ConcreteExpression self, std::vector<ConcreteExpression> args, Analyzer& a, Lexer::Range where) {
     clang::OpaqueValueExpr ope(clang::SourceLocation(), type.getNonLValueExprType(from->GetASTContext()), Semantic::GetKindOfType(self.t));
     auto declname = from->GetASTContext().DeclarationNames.getCXXOperatorName(clang::OverloadedOperatorKind::OO_Call);
     clang::LookupResult lr(from->GetSema(), clang::DeclarationNameInfo(declname, clang::SourceLocation()), clang::Sema::LookupNameKind::LookupOrdinaryName);
@@ -206,7 +206,7 @@ Expression ClangType::BuildCall(ConcreteExpression self, std::vector<ConcreteExp
     if (!result) {
         throw std::runtime_error("Attempted to call a Clang type, but Clang said that it could not find the member.");
     }
-    return BuildOverloadSet(self, "()", lr, a).BuildCall(std::move(args), a).Resolve(nullptr);
+    return BuildOverloadSet(self, "()", lr, a).BuildCall(std::move(args), a, where).Resolve(nullptr);
 }
 
 
@@ -300,7 +300,7 @@ Codegen::Expression* ClangType::BuildInplaceConstruction(Codegen::Expression* me
     ConcreteExpression obj;
     obj.t = funty;
     obj.Expr = a.gen->CreateFunctionValue(from->MangleName(fun));
-    return funty->BuildCall(obj, args, a).Resolve(nullptr).Expr;
+    return funty->BuildCall(obj, args, a, Lexer::Range(std::make_shared<std::string>("C++ type constructor"))).Resolve(nullptr).Expr;
 }
 
 bool ClangType::IsComplexType() {
@@ -394,7 +394,7 @@ ConcreteExpression ClangType::BuildBinaryExpression(ConcreteExpression lhs, Conc
 
     std::vector<ConcreteExpression> expressions;
     expressions.push_back(lhs); expressions.push_back(rhs);
-    return funty->BuildCall(clangfunc, std::move(expressions), a).Resolve(nullptr);
+    return funty->BuildCall(clangfunc, std::move(expressions), a, Lexer::Range(std::shared_ptr<std::string>())).Resolve(nullptr);
 }
 Wide::Codegen::Expression* ClangType::BuildBooleanConversion(ConcreteExpression self, Analyzer& a) {
     clang::OpaqueValueExpr ope(clang::SourceLocation(), type.getNonLValueExprType(from->GetASTContext()), Semantic::GetKindOfType(self.t));
@@ -425,7 +425,7 @@ Wide::Codegen::Expression* ClangType::BuildBooleanConversion(ConcreteExpression 
         clangfunc.Expr = a.gen->CreateFunctionValue(from->MangleName(fun));
     std::vector<ConcreteExpression> expressions;
     expressions.push_back(self);
-    auto e = funty->BuildCall(clangfunc, std::move(expressions), a).Resolve(nullptr);
+    auto e = funty->BuildCall(clangfunc, std::move(expressions), a, Lexer::Range(std::shared_ptr<std::string>())).Resolve(nullptr);
 
     // The return type should be bool.
     // If the function really returns an i1, the code generator will implicitly patch it up for us.
@@ -472,7 +472,7 @@ ConcreteExpression ClangType::BuildDereference(ConcreteExpression self, Analyzer
     if (!result) {
         throw std::runtime_error("Attempted to de-reference a Clang type, but Clang said that it could not find the member.");
     }
-    return BuildOverloadSet(self, "*", lr, a).BuildCall(a).Resolve(nullptr);
+    return BuildOverloadSet(self, "*", lr, a).BuildCall(a, Lexer::Range(std::shared_ptr<std::string>())).Resolve(nullptr);
 }
 
 ConcreteExpression ClangType::BuildIncrement(ConcreteExpression self, bool postfix, Analyzer& a) {
@@ -491,12 +491,14 @@ ConcreteExpression ClangType::BuildIncrement(ConcreteExpression self, bool postf
     if (!result) {
         throw std::runtime_error("Attempted to de-reference a Clang type, but Clang said that it could not find the member.");
     }
-    return BuildOverloadSet(self, "p++", lr, a).BuildCall(a).Resolve(nullptr);
+    return BuildOverloadSet(self, "p++", lr, a).BuildCall(a, Lexer::Range(std::shared_ptr<std::string>())).Resolve(nullptr);
 }
 
+#pragma warning(disable : 4244)
 std::size_t ClangType::size(Analyzer& a) {
     return from->GetASTContext().getTypeSizeInChars(type).getQuantity();
 }
 std::size_t ClangType::alignment(Analyzer& a) {
     return from->GetASTContext().getTypeAlignInChars(type).getQuantity();
 }
+#pragma warning(default : 4244)

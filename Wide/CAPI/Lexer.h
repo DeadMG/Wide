@@ -23,15 +23,9 @@ namespace CEquivalents {
         Position(Wide::Lexer::Position pos)
             : column(pos.column)
             , line(pos.line)
-            , offset(pos.offset) {}
-
-        operator Wide::Lexer::Position() {
-            Wide::Lexer::Position p;
-            p.column = column;
-            p.line = line;
-            p.offset = offset;
-            return p;
-        }
+            , offset(pos.offset)
+            , location(pos.name->c_str()) {}
+        const char* location;
         unsigned column;
         unsigned line;
         unsigned offset;
@@ -44,14 +38,11 @@ namespace CEquivalents {
             : begin(r.begin), end(r.end) {}
         Position begin, end;
         
-        operator Wide::Lexer::Range() {
-            return Wide::Lexer::Range(begin, end);
-        }
     };
 
     struct LexerBody {
-        LexerBody(LexerRange r)
-            : inv(args, r) {}
+        LexerBody(LexerRange r, std::shared_ptr<std::string> what)
+            : inv(args, r, std::move(what)) {}
         Wide::Lexer::Arguments args;
         Wide::Lexer::Invocation<LexerRange> inv;
     };

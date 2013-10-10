@@ -1,7 +1,6 @@
 using std := cpp("WideLibrary/test.h").std;
 module Standard {  
-    Main()
-        prolog {
+    Main() prolog {
             ExportName = cpp.mangle(cpp("<WideLibrary/main_trampoline.cpp>").Wide.Main);
         } {
         return global.Main();

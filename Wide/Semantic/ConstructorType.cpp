@@ -29,7 +29,7 @@ struct EmplaceType : public MetaType {
     }
 };
 
-Expression ConstructorType::BuildCall(ConcreteExpression, std::vector<ConcreteExpression> args, Analyzer& a) {
+Expression ConstructorType::BuildCall(ConcreteExpression, std::vector<ConcreteExpression> args, Analyzer& a, Lexer::Range where) {
     return t->BuildRvalueConstruction(std::move(args), a);
 }
 Wide::Util::optional<ConcreteExpression> ConstructorType::AccessMember(ConcreteExpression, std::string name, Analyzer& a) {

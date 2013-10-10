@@ -92,11 +92,11 @@ ConcreteExpression ConcreteExpression::BuildNegate(Analyzer& a) {
     return t->BuildNegate(*this, a);
 }
 
-Expression ConcreteExpression::BuildCall(Expression l, Expression r, Analyzer& a) {
+Expression ConcreteExpression::BuildCall(Expression l, Expression r, Analyzer& a, Lexer::Range where) {
     std::vector<Expression> exprs;
     exprs.push_back(l);
     exprs.push_back(r);
-    return BuildCall(std::move(exprs), a);
+    return BuildCall(std::move(exprs), a, where);
 }
 
 Util::optional<ConcreteExpression> ConcreteExpression::PointerAccessMember(std::string mem, Analyzer& a) {
@@ -107,17 +107,17 @@ ConcreteExpression ConcreteExpression::BuildDereference(Analyzer& a) {
     return t->BuildDereference(*this, a);
 }
 
-Expression ConcreteExpression::BuildCall(ConcreteExpression lhs, ConcreteExpression rhs, Analyzer& a) {
+Expression ConcreteExpression::BuildCall(ConcreteExpression lhs, ConcreteExpression rhs, Analyzer& a, Lexer::Range where) {
     std::vector<ConcreteExpression> exprs;
     exprs.push_back(lhs);
     exprs.push_back(rhs);
-    return BuildCall(std::move(exprs), a);
+    return BuildCall(std::move(exprs), a, where);
 }
 
-Expression ConcreteExpression::BuildCall(ConcreteExpression lhs, Analyzer& a) {
+Expression ConcreteExpression::BuildCall(ConcreteExpression lhs, Analyzer& a, Lexer::Range where) {
     std::vector<ConcreteExpression> exprs;
     exprs.push_back(lhs);
-    return BuildCall(std::move(exprs), a);
+    return BuildCall(std::move(exprs), a, where);
 }
 
 ConcreteExpression ConcreteExpression::AddressOf(Analyzer& a) {
@@ -187,7 +187,7 @@ Wide::Util::optional<Expression> Expression::AccessMember(std::string name, Anal
     //return t->AccessMember(*this, std::move(name), a);
 }
 
-Expression ConcreteExpression::BuildCall(std::vector<Expression> args, Analyzer& a) {
+Expression ConcreteExpression::BuildCall(std::vector<Expression> args, Analyzer& a, Lexer::Range where) {
     // If they are all concrete, we're on a winner.
     std::vector<ConcreteExpression> concrete;
     for(auto arg : args) {
@@ -198,12 +198,12 @@ Expression ConcreteExpression::BuildCall(std::vector<Expression> args, Analyzer&
                 std::vector<ConcreteExpression> concrete;
                 for (auto arg : args)
                     concrete.push_back(arg.Resolve(nullptr));
-                return t->BuildCall(*this, std::move(concrete), a).Resolve(result);
+                return t->BuildCall(*this, std::move(concrete), a, where).Resolve(result);
             });
     }
-    return t->BuildCall(*this, std::move(concrete), a);
+    return t->BuildCall(*this, std::move(concrete), a, where);
 }
-DeferredExpression DeferredExpression::BuildCall(std::vector<Expression> args, Analyzer& a) {
+DeferredExpression DeferredExpression::BuildCall(std::vector<Expression> args, Analyzer& a, Lexer::Range where) {
     return DeferredExpression([=, &a](Type* result) {
         std::vector<ConcreteExpression> concrete;
         for(auto arg : args)
@@ -211,32 +211,32 @@ DeferredExpression DeferredExpression::BuildCall(std::vector<Expression> args, A
                 concrete.push_back(boost::get<ConcreteExpression>(arg.contents));
             else
                 concrete.push_back(boost::get<DeferredExpression>(arg.contents)(nullptr));
-        return (*this)(nullptr).BuildCall(std::move(concrete), a).Resolve(result);
+        return (*this)(nullptr).BuildCall(std::move(concrete), a, where).Resolve(result);
     });
 }
-Expression ConcreteExpression::BuildCall(std::vector<ConcreteExpression> exprs, Analyzer& a) {
-    return t->BuildCall(*this, std::move(exprs), a);
+Expression ConcreteExpression::BuildCall(std::vector<ConcreteExpression> exprs, Analyzer& a, Lexer::Range where) {
+    return t->BuildCall(*this, std::move(exprs), a, where);
 }
 
-Expression Expression::BuildCall(std::vector<Expression> args, Analyzer& a) {
+Expression Expression::BuildCall(std::vector<Expression> args, Analyzer& a, Lexer::Range where) {
     return VisitContents(
         [&](ConcreteExpression& e) -> Expression {
-            return e.BuildCall(std::move(args), a);
+            return e.BuildCall(std::move(args), a, where);
         },
         [&](DeferredExpression& e) {
-            return e.BuildCall(std::move(args), a);
+            return e.BuildCall(std::move(args), a, where);
         }
     );
 }
 
-Expression ConcreteExpression::BuildCall(Analyzer& a) {
-    return BuildCall(std::vector<ConcreteExpression>(), a);
+Expression ConcreteExpression::BuildCall(Analyzer& a, Lexer::Range where) {
+    return BuildCall(std::vector<ConcreteExpression>(), a, where);
 }
-DeferredExpression DeferredExpression::BuildCall(Analyzer& a) {
-    return BuildCall(std::vector<Expression>(), a);
+DeferredExpression DeferredExpression::BuildCall(Analyzer& a, Lexer::Range where) {
+    return BuildCall(std::vector<Expression>(), a, where);
 }
-Expression Expression::BuildCall(Analyzer& a) {
-    return BuildCall(std::vector<Expression>(), a);
+Expression Expression::BuildCall(Analyzer& a, Lexer::Range where) {
+    return BuildCall(std::vector<Expression>(), a, where);
 }
 
 ConcreteExpression ConcreteExpression::BuildMetaCall(std::vector<ConcreteExpression> args, Analyzer& a) {
@@ -342,16 +342,16 @@ Expression Expression::BuildNegate(Analyzer& a) {
     );
     //return t->BuildNegate(*this, a);
 }
-Expression Expression::BuildCall(Expression arg, Analyzer& a) {
+Expression Expression::BuildCall(Expression arg, Analyzer& a, Lexer::Range where) {
     std::vector<Expression> args;
     args.push_back(arg);
-    return BuildCall(std::move(args), a);
+    return BuildCall(std::move(args), a, where);
 }
-Expression Expression::BuildCall(Expression lhs, Expression rhs, Analyzer& a) {
+Expression Expression::BuildCall(Expression lhs, Expression rhs, Analyzer& a, Lexer::Range where) {
     std::vector<Expression> args;
     args.push_back(lhs);
     args.push_back(rhs);
-    return BuildCall(std::move(args), a);
+    return BuildCall(std::move(args), a, where);
 }
 
 ConcreteExpression Type::BuildValueConstruction(ConcreteExpression arg, Analyzer& a) {
@@ -437,14 +437,14 @@ ConcreteExpression Type::BuildBinaryExpression(ConcreteExpression lhs, ConcreteE
         if (auto loverset = dynamic_cast<OverloadSet*>(ldecls->t->Decay()))
             if (rdecls) {
                 if (auto roverset = dynamic_cast<OverloadSet*>(rdecls->t->Decay()))
-                    return a.GetOverloadSet(loverset, roverset)->BuildValueConstruction(a).BuildCall(lhs, rhs, a).Resolve(nullptr);
+                    return a.GetOverloadSet(loverset, roverset)->BuildValueConstruction(a).BuildCall(lhs, rhs, a, Lexer::Range(std::shared_ptr<std::string>())).Resolve(nullptr);
             } else {
-                return loverset->BuildValueConstruction(a).BuildCall(lhs, rhs, a).Resolve(nullptr);
+                return loverset->BuildValueConstruction(a).BuildCall(lhs, rhs, a, Lexer::Range(std::shared_ptr<std::string>())).Resolve(nullptr);
             }
     } else
         if (rdecls)
             if (auto roverset = dynamic_cast<OverloadSet*>(rdecls->t->Decay()))
-                return roverset->BuildValueConstruction(a).BuildCall(lhs, rhs, a).Resolve(nullptr);
+                return roverset->BuildValueConstruction(a).BuildCall(lhs, rhs, a, Lexer::Range(std::shared_ptr<std::string>())).Resolve(nullptr);
 
     // At this point, ADL has failed to find an operator and the type also failed to post one.
     // So let us attempt a default implementation for some operators.

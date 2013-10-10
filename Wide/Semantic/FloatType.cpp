@@ -14,7 +14,11 @@
 using namespace Wide;
 using namespace Semantic;
 
-llvm::Type* GetLLVMTypeForBits(unsigned bits, llvm::LLVMContext& con) {switch(bits) {
+
+
+#pragma warning(disable : 4715)
+llvm::Type* GetLLVMTypeForBits(unsigned bits, llvm::LLVMContext& con) {
+    switch(bits) {
     case 16:
         return llvm::Type::getHalfTy(con);
     case 32:
@@ -25,12 +29,6 @@ llvm::Type* GetLLVMTypeForBits(unsigned bits, llvm::LLVMContext& con) {switch(bi
         return llvm::Type::getFP128Ty(con);
     }
     assert(false && "Bad number of bits for floating-point type.");
-}
-
-std::function<llvm::Type*(llvm::Module*)> FloatType::GetLLVMType(Analyzer& a) {
-    return [=](llvm::Module* m) -> llvm::Type* {
-        return GetLLVMTypeForBits(bits, m->getContext());
-    };
 }
 
 clang::QualType FloatType::GetClangType(ClangUtil::ClangTU& from, Analyzer& a) {
@@ -46,13 +44,21 @@ clang::QualType FloatType::GetClangType(ClangUtil::ClangTU& from, Analyzer& a) {
     }
     assert(false && "Bad number of bits for floating-point type.");
 }
+#pragma warning(disable : 4715)
+std::function<llvm::Type*(llvm::Module*)> FloatType::GetLLVMType(Analyzer& a) {
+    return [=](llvm::Module* m) -> llvm::Type* {
+        return GetLLVMTypeForBits(bits, m->getContext());
+    };
+}
 
+#pragma warning(disable : 4244)
 std::size_t FloatType::size(Analyzer& a) {
     return a.gen->GetDataLayout().getTypeAllocSize(GetLLVMTypeForBits(bits, a.gen->GetContext()));
 }
 std::size_t FloatType::alignment(Analyzer& a) {
     return a.gen->GetDataLayout().getABITypeAlignment(GetLLVMTypeForBits(bits, a.gen->GetContext()));
 }
+#pragma warning(default : 4244)
 
 Codegen::Expression* FloatType::BuildInplaceConstruction(Codegen::Expression* mem, std::vector<ConcreteExpression> args, Analyzer& a) {
     if (args.size() > 1)

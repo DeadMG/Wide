@@ -24,11 +24,19 @@
 
 void Compile(const Wide::Options::Clang& copts, const Wide::Options::LLVM& lopts, const std::vector<std::string>& files) {    
     Wide::LLVMCodegen::Generator Generator(lopts, copts.FrontendOptions.OutputFile, copts.TargetOptions.Triple);
-    Wide::AST::Combiner combiner;
     Wide::Semantic::Analyzer Sema(copts, &Generator);
     
     Wide::Concurrency::Vector<std::string> excepts;
     Wide::Concurrency::Vector<std::string> warnings;
+    auto parsererrorhandler = [&](std::vector<Wide::Lexer::Range> where, Wide::Parser::Error what) {
+        std::stringstream str;
+        str << "Error at locations:\n";
+        for(auto loc : where)
+            str << "    File: " << *loc.begin.name << ", line: " << loc.begin.line << " column: " << loc.begin.line << "\n";
+        str << Wide::Parser::ErrorStrings.at(what);
+        excepts.push_back(str.str());
+    };
+    Wide::AST::Combiner combiner(parsererrorhandler);
     Wide::Concurrency::Vector<std::shared_ptr<Wide::AST::Builder>> builders;
     Wide::Concurrency::ParallelForEach(files.begin(), files.end(), [&](const std::string& filename) {
         std::ifstream inputfile(filename, std::ios::binary | std::ios::in);
@@ -37,13 +45,7 @@ void Compile(const Wide::Options::Clang& copts, const Wide::Options::LLVM& lopts
         std::noskipws(inputfile);
         Wide::Lexer::Arguments largs;
         auto contents = Wide::Range::IStreamRange(inputfile);
-        Wide::Lexer::Invocation<decltype(contents)> lex(largs, contents);
-        auto parsererrorhandler = [&](Wide::Lexer::Range where, Wide::Parser::Error what) {
-            std::stringstream str;
-            str << "Error in file " << filename << ", line " << where.begin.line << " column " << where.begin.column << ":\n";
-            str << Wide::Parser::ErrorStrings.at(what);
-            excepts.push_back(str.str());
-        };
+        Wide::Lexer::Invocation<decltype(contents)> lex(largs, contents, std::make_shared<std::string>(filename));
         auto parserwarninghandler = [&](Wide::Lexer::Range where, Wide::Parser::Warning what) {
             std::stringstream str;
             str << "Warning in file " << filename << ", line " << where.begin.line << " column " << where.begin.column << ":\n";
@@ -51,7 +53,7 @@ void Compile(const Wide::Options::Clang& copts, const Wide::Options::LLVM& lopts
             warnings.push_back(str.str());
         };
         try {
-            auto builder = std::make_shared<Wide::AST::Builder>(parsererrorhandler, parserwarninghandler);
+            auto builder = std::make_shared<Wide::AST::Builder>(parsererrorhandler, parserwarninghandler, [](Wide::Lexer::Range, Wide::AST::OutliningType){});
             Wide::Parser::ParseGlobalModuleContents(lex, *builder, builder->GetGlobalModule());
             builders.push_back(std::move(builder));
         } catch(Wide::Parser::ParserError& e) {

@@ -16,15 +16,16 @@ namespace Wide {
     namespace AST {
         struct Type;
         struct Expression;
+        struct Function;
     }
     namespace Semantic {
         class Function;
+        class OverloadSet;
         class UserDefinedType : public Type {
             Analyzer& a;
             std::size_t align;
             std::size_t allocsize;
-            AST::Type* type;
-            bool processedconstructors;
+            const AST::Type* type;
             bool iscomplex;
             struct member {
                 Type* t;
@@ -36,6 +37,8 @@ namespace Wide {
 
             // Actually an ordered list of all members
             std::vector<member> llvmtypes;
+            OverloadSet* destructor;
+            OverloadSet* constructor;
 
             // Actually a list of member variables
             std::unordered_map<std::string, unsigned> members;
@@ -44,10 +47,13 @@ namespace Wide {
             std::unordered_map<ClangUtil::ClangTU*, clang::QualType> clangtypes;
             std::vector<std::function<llvm::Type*(llvm::Module*)>> types;
             unsigned AdjustFieldOffset(unsigned);
+            AST::Function* AddCopyConstructor(Analyzer& a);
+            AST::Function* AddMoveConstructor(Analyzer& a);
+            AST::Function* AddDefaultConstructor(Analyzer& a);
         public:
             std::vector<member> GetMembers() { return llvmtypes; }
-            UserDefinedType(AST::Type* t, Analyzer& a, Type* context);
-            AST::DeclContext* GetDeclContext() override;
+            UserDefinedType(const AST::Type* t, Analyzer& a, Type* context);
+            const AST::DeclContext* GetDeclContext() override;
             bool HasMember(std::string name);
 
             bool IsComplexType() override;
@@ -57,7 +63,7 @@ namespace Wide {
             Codegen::Expression* BuildInplaceConstruction(Codegen::Expression* mem, std::vector<ConcreteExpression> args, Analyzer& a) override;
             Wide::Util::optional<ConcreteExpression> AccessMember(ConcreteExpression, std::string name, Analyzer& a) override;
             ConversionRank RankConversionFrom(Type* from, Analyzer& a) override;
-            Expression BuildCall(ConcreteExpression val, std::vector<ConcreteExpression> args, Analyzer& a) override;
+            Expression BuildCall(ConcreteExpression val, std::vector<ConcreteExpression> args, Analyzer& a, Lexer::Range where) override;
             std::size_t size(Analyzer& a) override;
             std::size_t alignment(Analyzer& a) override;
             ConcreteExpression BuildBinaryExpression(ConcreteExpression lhs, ConcreteExpression rhs, Lexer::TokenType ty, Analyzer& a) override;

@@ -4,18 +4,20 @@ extern "C" __declspec(dllexport) void LexWide(
     void* con,
     std::add_pointer<CEquivalents::OptionalChar(void*)>::type curr,
     std::add_pointer<bool(CEquivalents::Range, const char*, Wide::Lexer::TokenType, void*)>::type token,
-    std::add_pointer<void(Wide::Lexer::Range, void*)>::type comment,
-    std::add_pointer<bool(CEquivalents::Position, Wide::Lexer::Arguments::Failure, void*)>::type err
+    std::add_pointer<void(CEquivalents::Range, void*)>::type comment,
+    std::add_pointer<bool(CEquivalents::Position, Wide::Lexer::Arguments::Failure, void*)>::type err,
+    const char* filename
 ) {
     CEquivalents::LexerRange range;
     range.curr = curr;
     range.context = con;
 
-    auto p = CEquivalents::LexerBody(range);
+    CEquivalents::LexerBody p(range, std::make_shared<std::string>(filename));
 
     p.args.OnComment = [=](Wide::Lexer::Range r) {
+        CEquivalents::Range debug = r;
         if (comment)
-            comment(r, con);
+            comment(debug, con);
     };
 
     p.inv.OnError = [=](Wide::Lexer::Position loc, Wide::Lexer::Arguments::Failure f, decltype(&p.inv) lex) -> Wide::Util::optional<Wide::Lexer::Token> {

@@ -24,7 +24,7 @@ namespace Wide {
             clang::QualType GetClangType(ClangUtil::ClangTU& tu, Analyzer& a) override;  
 
             Wide::Util::optional<ConcreteExpression> AccessMember(ConcreteExpression val, std::string name, Analyzer& a) override;
-            Expression BuildCall(ConcreteExpression val, std::vector<ConcreteExpression> args, Analyzer& a) override;
+            Expression BuildCall(ConcreteExpression val, std::vector<ConcreteExpression> args, Analyzer& a, Lexer::Range where) override;
             ConcreteExpression BuildBinaryExpression(ConcreteExpression lhs, ConcreteExpression rhs, Lexer::TokenType type, Analyzer& a) override;
             
             Wide::Codegen::Expression* BuildBooleanConversion(ConcreteExpression self, Analyzer& a) override;

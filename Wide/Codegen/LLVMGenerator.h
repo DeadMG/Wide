@@ -17,6 +17,8 @@
 #include <llvm/Target/TargetMachine.h>
 #pragma warning(pop)
 
+#pragma warning(disable : 4373)
+
 namespace llvm {
     class Type;
 }
@@ -59,6 +61,10 @@ namespace Wide {
             StoreExpression* CreateStore(Codegen::Expression*, Codegen::Expression*);
             LoadExpression* CreateLoad(Codegen::Expression*);
             ReturnStatement* CreateReturn();
+
+            // Const parameter or compiler bug
+            IfStatement* CreateIfStatement(const std::function<Codegen::Expression*()>, Codegen::Statement*, Codegen::Statement*);
+            WhileStatement* CreateWhile(const std::function<Codegen::Expression*()>, Codegen::Statement*);
             ReturnStatement* CreateReturn(const std::function<Codegen::Expression*()>);
             ReturnStatement* CreateReturn(Codegen::Expression* e) {
                 return CreateReturn([=] { return e; });
@@ -74,10 +80,8 @@ namespace Wide {
                 return CreateIfStatement([=] { return expr; }, t, f);
             }
             Nop* CreateNop();
-            IfStatement* CreateIfStatement(const std::function<Codegen::Expression*()>, Codegen::Statement*, Codegen::Statement*);
             ChainStatement* CreateChainStatement(Codegen::Statement*, Codegen::Statement*);
             TruncateExpression* CreateTruncate(Codegen::Expression*, std::function<llvm::Type*(llvm::Module*)>);
-            WhileStatement* CreateWhile(const std::function<Codegen::Expression*()>, Codegen::Statement*);
             WhileStatement* CreateWhile(Codegen::Expression* e, Codegen::Statement* s) {
                 return CreateWhile([=]{ return e; }, s);
             }

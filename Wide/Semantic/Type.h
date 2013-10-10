@@ -1,5 +1,6 @@
 #pragma once
 
+#include <Wide/Lexer/Token.h>
 #include <Wide/Util/Ranges/Optional.h>
 #include <boost/variant.hpp>
 #include <vector>
@@ -52,19 +53,19 @@ namespace Wide {
             ConcreteExpression BuildDereference(Analyzer& a);
             ConcreteExpression BuildIncrement(bool postfix, Analyzer& a);
             ConcreteExpression BuildNegate(Analyzer& a);
-            Expression BuildCall(Analyzer& a);
-            Expression BuildCall(ConcreteExpression arg, Analyzer& a);
-            Expression BuildCall(ConcreteExpression lhs, ConcreteExpression rhs, Analyzer& a);
-            Expression BuildCall(std::vector<ConcreteExpression> args, Analyzer& a);
+            Expression BuildCall(Analyzer& a, Lexer::Range where);
+            Expression BuildCall(ConcreteExpression arg, Analyzer& a, Lexer::Range where);
+            Expression BuildCall(ConcreteExpression lhs, ConcreteExpression rhs, Analyzer& a, Lexer::Range where);
+            Expression BuildCall(std::vector<ConcreteExpression> args, Analyzer& a, Lexer::Range where);
             ConcreteExpression BuildMetaCall(std::vector<ConcreteExpression> args, Analyzer& a);    
             Wide::Util::optional<ConcreteExpression> PointerAccessMember(std::string name, Analyzer& a);
             ConcreteExpression AddressOf(Analyzer& a);
             Codegen::Expression* BuildBooleanConversion(Analyzer& a);
             ConcreteExpression BuildBinaryExpression(ConcreteExpression rhs, Lexer::TokenType type, Analyzer& a);
 
-            Expression BuildCall(std::vector<Expression> args, Analyzer& a);
-            Expression BuildCall(Expression lhs, Expression rhs, Analyzer& a);
-            Expression BuildCall(Expression arg, Analyzer& a);
+            Expression BuildCall(std::vector<Expression> args, Analyzer& a, Lexer::Range where);
+            Expression BuildCall(Expression lhs, Expression rhs, Analyzer& a, Lexer::Range where);
+            Expression BuildCall(Expression arg, Analyzer& a, Lexer::Range where);
             Expression BuildMetaCall(std::vector<Expression> args, Analyzer& a);            
             Expression BuildBinaryExpression(Expression rhs, Lexer::TokenType type, Analyzer& a);
             DeferredExpression BuildCall(std::vector<DeferredExpression> args, Analyzer& a);
@@ -83,10 +84,10 @@ namespace Wide {
             DeferredExpression BuildDereference(Analyzer& a);
             DeferredExpression BuildIncrement(bool postfix, Analyzer& a);
             DeferredExpression BuildNegate(Analyzer& a);
-            DeferredExpression BuildCall(Analyzer& a);
-            DeferredExpression BuildCall(std::vector<Expression> args, Analyzer& a);
-            DeferredExpression BuildCall(Expression lhs, Expression rhs, Analyzer& a);
-            DeferredExpression BuildCall(Expression arg, Analyzer& a);
+            DeferredExpression BuildCall(Analyzer& a, Lexer::Range where);
+            DeferredExpression BuildCall(std::vector<Expression> args, Analyzer& a, Lexer::Range where);
+            DeferredExpression BuildCall(Expression lhs, Expression rhs, Analyzer& a, Lexer::Range where);
+            DeferredExpression BuildCall(Expression arg, Analyzer& a, Lexer::Range where);
             DeferredExpression PointerAccessMember(std::string name, Analyzer& a);
             DeferredExpression AddressOf(Analyzer& a);
             DeferredExpression BuildBooleanConversion(Analyzer& a);
@@ -167,10 +168,10 @@ namespace Wide {
             
             Expression BuildValue(Analyzer& a);
             Wide::Util::optional<Expression> AccessMember(std::string name, Analyzer& a);
-            Expression BuildCall(std::vector<Expression> args, Analyzer& a);
-            Expression BuildCall(Expression lhs, Expression rhs, Analyzer& a);
-            Expression BuildCall(Expression arg, Analyzer& a);
-            Expression BuildCall(Analyzer& a);
+            Expression BuildCall(std::vector<Expression> args, Analyzer& a, Lexer::Range where);
+            Expression BuildCall(Expression lhs, Expression rhs, Analyzer& a, Lexer::Range where);
+            Expression BuildCall(Expression arg, Analyzer& a, Lexer::Range where);
+            Expression BuildCall(Analyzer& a, Lexer::Range where);
             Expression BuildMetaCall(std::vector<Expression> args, Analyzer& a);
             Expression BuildDereference(Analyzer& a);
             Expression BuildIncrement(bool postfix, Analyzer& a);
@@ -210,7 +211,7 @@ namespace Wide {
                 return this;
             }
 
-            virtual AST::DeclContext* GetDeclContext() {
+            virtual const AST::DeclContext* GetDeclContext() {
                 if (IsReference())
                     return Decay()->GetDeclContext();
                 return nullptr;
@@ -241,15 +242,17 @@ namespace Wide {
 
 
             virtual ConcreteExpression BuildValue(ConcreteExpression lhs, Analyzer& a);
+
             virtual Wide::Util::optional<ConcreteExpression> AccessMember(ConcreteExpression, std::string name, Analyzer& a);
             virtual Wide::Util::optional<ConcreteExpression> AccessMember(ConcreteExpression e, Lexer::TokenType type, Analyzer& a) {
                 if (IsReference())
                     return Decay()->AccessMember(e, type, a);
                 return Wide::Util::none;
             }
-            virtual Expression BuildCall(ConcreteExpression val, std::vector<ConcreteExpression> args, Analyzer& a) {
+
+            virtual Expression BuildCall(ConcreteExpression val, std::vector<ConcreteExpression> args, Analyzer& a, Lexer::Range where) {
                 if (IsReference())
-                    return Decay()->BuildCall(val, std::move(args), a);
+                    return Decay()->BuildCall(val, std::move(args), a, where);
                 throw std::runtime_error("Attempted to call a type that did not support it.");
             }
             virtual ConcreteExpression BuildMetaCall(ConcreteExpression val, std::vector<ConcreteExpression> args, Analyzer& a) {
@@ -284,6 +287,10 @@ namespace Wide {
             virtual ConcreteExpression BuildBinaryExpression(ConcreteExpression lhs, ConcreteExpression rhs, Lexer::TokenType type, Analyzer& a);
                                                 
             virtual ~Type() {}
-        };     
+        };
+        struct Callable : public Type {
+            virtual Type* GetReturnType() = 0;
+            virtual std::vector<Type*> GetArgumentTypes() = 0;
+        };
     }
 }

@@ -1,14 +1,15 @@
 #include <Wide/Semantic/ClangTU.h>
 #include <Wide/Semantic/Util.h>
 #include <Wide/Util/MakeUnique.h>
+#include <Wide/Semantic/SemanticError.h>
+#include <Wide/Semantic/Analyzer.h>
+#include <Wide/Semantic/ClangType.h>
+#include <Wide/Codegen/Generator.h>
 #include <functional>
 #include <string>
 #include <fstream>
 #include <unordered_map>
 #include <unordered_set>
-#include <Wide/Semantic/Analyzer.h>
-#include <Wide/Semantic/ClangType.h>
-#include <Wide/Codegen/Generator.h>
 
 #pragma warning(push, 0)
 #include <llvm/IR/Module.h>
@@ -91,7 +92,7 @@ public:
         errors.clear();
     }
     
-    Impl(llvm::LLVMContext& con, std::string file, const Wide::Options::Clang& opts)        
+    Impl(llvm::LLVMContext& con, std::string file, const Wide::Options::Clang& opts, Lexer::Range where)        
         : Options(&opts)
         , error_stream(errors)
         , FileManager(opts.FileSearchOptions)
@@ -119,7 +120,7 @@ public:
         if (!entry)
             entry = FileManager.getFile(filename);
         if (!entry)
-            throw std::runtime_error("Could not find file " + filename);
+            throw Semantic::SemanticError(where, Semantic::Error::CouldNotFindHeader);
         
         auto fileid = sm.createFileID(entry, clang::SourceLocation(), clang::SrcMgr::CharacteristicKind::C_User);
         if (fileid.isInvalid())
@@ -138,8 +139,8 @@ public:
 
 ClangTU::~ClangTU() {}
 
-ClangTU::ClangTU(llvm::LLVMContext& c, std::string file, const Wide::Options::Clang& ccs)
-    : impl(Wide::Memory::MakeUnique<Impl>(c, file, ccs)) 
+ClangTU::ClangTU(llvm::LLVMContext& c, std::string file, const Wide::Options::Clang& ccs, Lexer::Range where)
+    : impl(Wide::Memory::MakeUnique<Impl>(c, file, ccs, where)) 
 {
 }
 

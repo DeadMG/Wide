@@ -30,11 +30,14 @@ template<typename T, typename U> T* debug_cast(U* other) {
     return static_cast<T*>(other);
 }
 
-OverloadSet::OverloadSet(AST::FunctionOverloadSet* s, Type* mem) {
+OverloadSet::OverloadSet(const AST::FunctionOverloadSet* s, Type* mem) {
     for(auto x : s->functions)
         functions.insert(x);
     nonstatic = mem;
 }
+OverloadSet::OverloadSet(std::unordered_set<const AST::Function*> funcs, Type* mem) 
+    : functions(std::move(funcs))
+    , nonstatic(mem) {}
 std::function<llvm::Type*(llvm::Module*)> OverloadSet::GetLLVMType(Analyzer& a) {
     // Have to cache result - not fun.
     auto g = a.gen;
@@ -66,8 +69,8 @@ std::function<llvm::Type*(llvm::Module*)> OverloadSet::GetLLVMType(Analyzer& a) 
         };
     }
 }
-Expression OverloadSet::BuildCall(ConcreteExpression e, std::vector<ConcreteExpression> args, Analyzer& a) {
-    std::vector<AST::Function*> ViableCandidates;
+Expression OverloadSet::BuildCall(ConcreteExpression e, std::vector<ConcreteExpression> args, Analyzer& a, Lexer::Range where) {
+    std::vector<const AST::Function*> ViableCandidates;
 
     if (nonstatic) {
         e = e.t->BuildValue(e, a);
@@ -77,7 +80,7 @@ Expression OverloadSet::BuildCall(ConcreteExpression e, std::vector<ConcreteExpr
     }
 
     // Really badly named
-    auto skipfirst = [&](AST::Function* x) {
+    auto skipfirst = [&](const AST::Function* x) {
         return nonstatic && (x->args.size() < 1 || x->args.front().name != "this");
     };
     for(auto x : functions) {
@@ -102,11 +105,11 @@ Expression OverloadSet::BuildCall(ConcreteExpression e, std::vector<ConcreteExpr
             if (skipfirst(f) && i == 0) continue;
             auto fi = skipfirst(f) ? i - 1 : i;
             if (f->args[fi].type) {
-                auto con = f->higher;
-                while(!dynamic_cast<AST::Module*>(con))
+                const auto* con = f->higher;
+                while(!dynamic_cast<const AST::Module*>(con))
                     con = con->higher;
                 struct LookupType : Type {
-                    AST::DeclContext* con;
+                    const AST::DeclContext* con;
                     Type* autotype;
                     Type* nonstatic;
                     Wide::Util::optional<ConcreteExpression> AccessMember(ConcreteExpression self, std::string name, Analyzer& a) override {
@@ -159,7 +162,7 @@ Expression OverloadSet::BuildCall(ConcreteExpression e, std::vector<ConcreteExpr
     }
     
     if (rank.size() == 1) {
-        auto call = rank[0]->BuildCall(e, std::move(args), a);
+        auto call = rank[0]->BuildCall(e, std::move(args), a, where);
         call.VisitContents([=, &a](ConcreteExpression& expr) {
             if (e.Expr)
                 expr.Expr = a.gen->CreateChainExpression(e.Expr, expr.Expr);
@@ -174,7 +177,7 @@ Expression OverloadSet::BuildCall(ConcreteExpression e, std::vector<ConcreteExpr
 }
 
 ConversionRank OverloadSet::ResolveOverloadRank(std::vector<Type*> args, Analyzer& a) {
-    std::vector<AST::Function*> ViableCandidates;
+    std::vector<const AST::Function*> ViableCandidates;
 
     if (nonstatic) {
         args.insert(args.begin(), a.AsLvalueType(nonstatic));
@@ -203,11 +206,11 @@ ConversionRank OverloadSet::ResolveOverloadRank(std::vector<Type*> args, Analyze
             if (nonstatic && i == 0) continue;
             auto fi = nonstatic ? i - 1 : i;
             if (f->args[fi].type) {
-                auto con = f->higher;
-                while(!dynamic_cast<AST::Module*>(con))
+                const auto* con = f->higher;
+                while(!dynamic_cast<const AST::Module*>(con))
                     con = con->higher;
                 struct LookupType : Type {
-                    AST::DeclContext* con;
+                    const AST::DeclContext* con;
                     Type* nonstatic;
                     Wide::Util::optional<ConcreteExpression> AccessMember(ConcreteExpression self, std::string name, Analyzer& a) {
                         if (name == "this") {

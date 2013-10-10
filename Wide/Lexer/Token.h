@@ -1,6 +1,8 @@
 #pragma once
 
 #include <unordered_set>
+#include <string>
+#include <memory>
 
 namespace Wide {
     namespace Lexer {
@@ -66,8 +68,9 @@ namespace Wide {
             Ellipsis
         };    
         struct Position {
-            Position()
-                : line(1), column(1), offset(0) {}
+            Position(std::shared_ptr<std::string> where)
+                : line(1), column(1), offset(0), name(std::move(where)) {}
+            std::shared_ptr<std::string> name;
             unsigned line;
             unsigned column;
             unsigned offset;
@@ -82,7 +85,7 @@ namespace Wide {
             return lhs.offset == rhs.offset;
         }
         struct Range {
-            Range() {}
+            Range(std::shared_ptr<std::string> where) : begin(where), end(where) {}
             Range(Position pos)
                 : begin(pos), end(pos) {}
             Range(Position lhs, Position rhs)

@@ -123,14 +123,13 @@ namespace Wide {
                 }
                 return OnError(start, Arguments::Failure::UnterminatedComment, this);
             }
-
         public:
             Range r;
             std::function<Wide::Util::optional<Token>(Position, Arguments::Failure, Invocation*)> OnError;
 
             // Used only for some error handling in the parser
-            Invocation(const Arguments& arg, Range range)
-                : args(&arg), r(range) {
+            Invocation(const Arguments& arg, Range range, std::shared_ptr<std::string> name)
+                : args(&arg), r(range), current_position(name) {
 
                 OnError = [](Position, Arguments::Failure, Invocation* self) {
                     return (*self)();
@@ -204,26 +203,6 @@ namespace Wide {
                         return Wide::Lexer::Token(begin_pos, args->singles.at(*val), std::string(1, *val));
                     }
                 }
-                /*
-                // Aassumes that all doubles lead with a character that is a valid single.
-                if (args->singles.find(*val) != args->singles.end()) {
-                    auto this_token = [&] {
-                        lastpos = begin_pos;
-                        return Wide::Lexer::Token(begin_pos, args->singles.at(*val), std::string(1, *val));
-                    };
-                    if (args->doubles.find(*val) == args->doubles.end())
-                        return this_token();
-                    auto old_pos = current_position;
-                    auto second = get();
-                    if (!second) return this_token();
-                    if (args->doubles.at(*val).find(*second) != args->doubles.at(*val).end()) {
-                        lastpos = Lexer::Range(begin_pos);
-                        return Wide::Lexer::Token(begin_pos, args->doubles.at(*val).at(*second), std::string(1, *val) + std::string(1, *second));
-                    }
-                    putback = std::make_pair(*second, current_position);
-                    current_position = old_pos;
-                    return this_token();
-                }*/
 
                 // Variable-length tokens.
                 std::string variable_length_value;

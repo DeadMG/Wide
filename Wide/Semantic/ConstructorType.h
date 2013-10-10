@@ -9,7 +9,7 @@ namespace Wide {
             Type* emplace;
         public:
             ConstructorType(Type* con);
-            Expression BuildCall(ConcreteExpression, std::vector<ConcreteExpression>, Analyzer& a) override;
+            Expression BuildCall(ConcreteExpression, std::vector<ConcreteExpression>, Analyzer& a, Lexer::Range where) override;
 
             Type* GetConstructedType() {
                 return t;

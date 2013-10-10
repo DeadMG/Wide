@@ -43,7 +43,7 @@ clang::QualType FunctionType::GetClangType(ClangUtil::ClangTU& from, Analyzer& a
     return from.GetASTContext().getFunctionType(ReturnType->GetClangType(from, a), types, clang::FunctionProtoType::ExtProtoInfo());
 }
 
-Expression FunctionType::BuildCall(ConcreteExpression val, std::vector<ConcreteExpression> args, Analyzer& a) {
+Expression FunctionType::BuildCall(ConcreteExpression val, std::vector<ConcreteExpression> args, Analyzer& a, Lexer::Range where) {
     ConcreteExpression out;
     out.t = ReturnType;
     if (Args.size() != args.size())

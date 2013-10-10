@@ -23,7 +23,7 @@
 using namespace Wide;
 using namespace Semantic;
 
-Function::Function(std::vector<Type*> args, AST::Function* astfun, Analyzer& a, UserDefinedType* mem)
+Function::Function(std::vector<Type*> args, const AST::Function* astfun, Analyzer& a, UserDefinedType* mem)
 : analyzer(a)
 , ReturnType(nullptr)
 , fun(astfun)
@@ -67,10 +67,10 @@ Function::Function(std::vector<Type*> args, AST::Function* astfun, Analyzer& a, 
 
     // Deal with the prolog first.
     for(auto&& prolog : astfun->prolog) {
-        auto ass = dynamic_cast<AST::BinaryExpression*>(prolog);
+        auto ass = dynamic_cast<const AST::BinaryExpression*>(prolog);
         if (!ass || ass->type != Lexer::TokenType::Assignment)            
             throw std::runtime_error("Prologs can only be composed of assignment expressions right now!");
-        auto ident = dynamic_cast<AST::IdentifierExpr*>(ass->lhs);
+        auto ident = dynamic_cast<const AST::Identifier*>(ass->lhs);
         if (!ident)
             throw std::runtime_error("Prolog assignment expressions must have a plain identifier on the left-hand-side right now!");
         auto expr = a.AnalyzeExpression(this, ass->rhs).Resolve(nullptr);
@@ -93,7 +93,7 @@ Function::Function(std::vector<Type*> args, AST::Function* astfun, Analyzer& a, 
     }
 }
 
-AST::DeclContext* Function::GetDeclContext() {
+const AST::DeclContext* Function::GetDeclContext() {
     return fun;
 }
 
@@ -118,7 +118,7 @@ void Function::ComputeBody(Analyzer& a) {
             auto self = check(AccessMember(ConcreteExpression(), "this", a)); // We're a constructor so "this" guaranteed.
             auto members = member->GetMembers();
             for (auto&& x : members) {
-                auto has_initializer = [&](std::string name) -> AST::VariableStatement* {
+                auto has_initializer = [&](std::string name) -> const AST::Variable* {
                     for (auto&& x : fun->initializers)
                     if (x->name == name)
                         return x;
@@ -154,15 +154,15 @@ void Function::ComputeBody(Analyzer& a) {
         }
         // Now the body.
         variables.push_back(std::unordered_map<std::string, ConcreteExpression>()); // Push back the function body scope.
-        std::function<Codegen::Statement*(AST::Statement*)> AnalyzeStatement;
-        AnalyzeStatement = [&](AST::Statement* stmt) -> Codegen::Statement* {
+        std::function<Codegen::Statement*(const AST::Statement*)> AnalyzeStatement;
+        AnalyzeStatement = [&](const AST::Statement* stmt) -> Codegen::Statement* {
             if (!stmt)
                 return nullptr;
         
-            if (auto e = dynamic_cast<AST::Expression*>(stmt))
+            if (auto e = dynamic_cast<const AST::Expression*>(stmt))
                 return analyzer.AnalyzeExpression(this, e).Resolve(nullptr).Expr;
         
-            if (auto ret = dynamic_cast<AST::Return*>(stmt)) {                
+            if (auto ret = dynamic_cast<const AST::Return*>(stmt)) {                
                 if (!ret->RetExpr) {
                     returnstate = ReturnState::ConcreteReturnSeen;
                     ReturnType = a.GetVoidType();
@@ -200,7 +200,7 @@ void Function::ComputeBody(Analyzer& a) {
                     });
                 }
             }
-            if (auto var = dynamic_cast<AST::VariableStatement*>(stmt)) {
+            if (auto var = dynamic_cast<const AST::Variable*>(stmt)) {
                 auto result = a.AnalyzeExpression(this, var->initializer).Resolve(nullptr);
         
                 for (auto scope = variables.begin(); scope != variables.end(); ++scope) {
@@ -242,7 +242,7 @@ void Function::ComputeBody(Analyzer& a) {
                 return variables.back()[var->name].Expr;
             }
         
-            if (auto comp = dynamic_cast<AST::CompoundStatement*>(stmt)) {
+            if (auto comp = dynamic_cast<const AST::CompoundStatement*>(stmt)) {
                 variables.push_back(std::unordered_map<std::string, ConcreteExpression>());
                 if (comp->stmts.size() == 0)
                     return nullptr;
@@ -254,7 +254,7 @@ void Function::ComputeBody(Analyzer& a) {
                 return chain;
             }
         
-            if (auto if_stmt = dynamic_cast<AST::IfStatement*>(stmt)) {
+            if (auto if_stmt = dynamic_cast<const AST::If*>(stmt)) {
                 auto cond = a.AnalyzeExpression(this, if_stmt->condition);
                 auto expr = cond.BuildBooleanConversion(a);
                 auto true_br = AnalyzeStatement(if_stmt->true_statement);
@@ -269,7 +269,7 @@ void Function::ComputeBody(Analyzer& a) {
                 );                
             }
         
-            if (auto while_stmt = dynamic_cast<AST::WhileStatement*>(stmt)) {
+            if (auto while_stmt = dynamic_cast<const AST::While*>(stmt)) {
                 auto cond = a.AnalyzeExpression(this, while_stmt->condition);
                 auto expr = cond.BuildBooleanConversion(a);
                 auto body = AnalyzeStatement(while_stmt->body);                
@@ -312,24 +312,24 @@ void Function::CompleteAnalysis(Type* ret, Analyzer& a) {
         codefun->AddStatement(x);
     variables.clear();    
 }
-Expression Function::BuildCall(ConcreteExpression ex, std::vector<ConcreteExpression> args, Analyzer& a) {
+Expression Function::BuildCall(ConcreteExpression ex, std::vector<ConcreteExpression> args, Analyzer& a, Lexer::Range where) {
     if (s == State::AnalyzeCompleted) {
         ConcreteExpression val;
         val.t = this;
         val.Expr = a.gen->CreateFunctionValue(name);
-        return GetSignature(a)->BuildCall(val, std::move(args), a);
+        return GetSignature(a)->BuildCall(val, std::move(args), a, where);
     } 
     if (s == State::NotYetAnalyzed) {
         ComputeBody(a);
-        return BuildCall(ex, std::move(args), a);
+        return BuildCall(ex, std::move(args), a, where);
     }
-    return DeferredExpression([this, &a, args](Type* t) {
+    return DeferredExpression([this, &a, args, where](Type* t) {
         if (s != State::AnalyzeCompleted)
             CompleteAnalysis(t, a);
         ConcreteExpression val;
         val.t = this;
         val.Expr = a.gen->CreateFunctionValue(name);
-        return GetSignature(a)->BuildCall(val, std::move(args), a).Resolve(t);
+        return GetSignature(a)->BuildCall(val, std::move(args), a, where).Resolve(t);
     });    
 }
 Wide::Util::optional<ConcreteExpression> Function::AccessMember(ConcreteExpression e, std::string name, Analyzer& a) {
@@ -346,7 +346,7 @@ Wide::Util::optional<ConcreteExpression> Function::AccessMember(ConcreteExpressi
         if (member->HasMember(name))
             return self.t->AccessMember(self, std::move(name), a);
         auto context = member->GetDeclContext()->higher;
-        while(!dynamic_cast<AST::Module*>(context))
+        while(!dynamic_cast<const AST::Module*>(context))
             context = context->higher;
         return a.GetDeclContext(context)->AccessMember(ConcreteExpression(), name, a);
     }

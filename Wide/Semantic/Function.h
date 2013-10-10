@@ -37,7 +37,7 @@ namespace Wide {
             Type* ReturnType;
             std::vector<Type*> Args;
             Analyzer& analyzer;
-            AST::Function* fun;
+            const AST::Function* fun;
             Codegen::Function* codefun;
             UserDefinedType* member;
             ReturnState returnstate;
@@ -50,13 +50,13 @@ namespace Wide {
             std::string name;
         public:
             bool HasLocalVariable(std::string name);
-            Function(std::vector<Type*> args, AST::Function* astfun, Analyzer& a, UserDefinedType* member = nullptr);        
+            Function(std::vector<Type*> args, const AST::Function* astfun, Analyzer& a, UserDefinedType* member = nullptr);        
 
             clang::QualType GetClangType(ClangUtil::ClangTU& where, Analyzer& a) override;        
             std::function<llvm::Type*(llvm::Module*)> GetLLVMType(Analyzer& a) override; 
-            AST::DeclContext* GetDeclContext() override;
+            const AST::DeclContext* GetDeclContext() override;
      
-            Expression BuildCall(ConcreteExpression, std::vector<ConcreteExpression> args, Analyzer& a) override;
+            Expression BuildCall(ConcreteExpression, std::vector<ConcreteExpression> args, Analyzer& a, Lexer::Range where) override;
             Wide::Util::optional<ConcreteExpression> AccessMember(ConcreteExpression, std::string name, Analyzer& a) override;
             std::string GetName();
             UserDefinedType* IsMember() { return member; }

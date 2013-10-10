@@ -14,11 +14,11 @@ namespace Wide {
             Type* nonstatic;
             clang::TemplateArgumentListInfo* templateargs;
 
-            ConcreteExpression BuildCallWithTemplateArguments(clang::TemplateArgumentListInfo*, ConcreteExpression mem, std::vector<ConcreteExpression>, Analyzer& a);
+            ConcreteExpression BuildCallWithTemplateArguments(clang::TemplateArgumentListInfo*, ConcreteExpression mem, std::vector<ConcreteExpression>, Analyzer& a, Lexer::Range where);
         public:
             ClangOverloadSet(std::unique_ptr<clang::UnresolvedSet<8>> s, ClangUtil::ClangTU* from, Type* t = nullptr);
             
-            Expression BuildCall(ConcreteExpression val, std::vector<ConcreteExpression> args, Analyzer& a) override;
+            Expression BuildCall(ConcreteExpression val, std::vector<ConcreteExpression> args, Analyzer& a, Lexer::Range where) override;
             ConcreteExpression BuildMetaCall(ConcreteExpression val, std::vector<ConcreteExpression> args, Analyzer& a) override;
 
             std::function<llvm::Type*(llvm::Module*)> GetLLVMType(Analyzer& a) override;

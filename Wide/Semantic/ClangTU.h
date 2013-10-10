@@ -1,5 +1,6 @@
 #pragma once
 
+#include <Wide/Lexer/Token.h>
 #include <Wide/Semantic/Util.h>
 #include <Wide/Semantic/ClangOptions.h>
 #include <memory>
@@ -53,7 +54,7 @@ namespace Wide {
 
             ClangTU(ClangTU&&);
 
-            ClangTU(llvm::LLVMContext& c, std::string file, const Wide::Options::Clang&);
+            ClangTU(llvm::LLVMContext& c, std::string file, const Wide::Options::Clang&, Lexer::Range where);
             std::function<llvm::Type*(llvm::Module*)> GetLLVMTypeFromClangType(clang::QualType t, Semantic::Analyzer& a);
             std::string MangleName(clang::NamedDecl* D);
 

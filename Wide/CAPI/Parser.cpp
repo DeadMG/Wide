@@ -10,6 +10,8 @@ namespace CEquivalents {
         bool exists;
     };
     struct ParserLexer {
+        ParserLexer(std::shared_ptr<std::string> where)
+            : lastpos(where) {}
         void* context;
         std::add_pointer<CEquivalents::LexerResult(void*)>::type TokenCallback;
         Wide::Lexer::Range lastpos;
@@ -23,8 +25,13 @@ namespace CEquivalents {
             }
             auto tok = TokenCallback(context);
             if (tok.exists) {
-                lastpos = tok.location;
-                return Wide::Lexer::Token(tok.location, tok.type, tok.value);
+                lastpos.begin.line = tok.location.begin.line;
+                lastpos.begin.column = tok.location.begin.column;
+                lastpos.begin.offset = tok.location.begin.offset;
+                lastpos.end.line = tok.location.end.line;
+                lastpos.end.column = tok.location.end.column;
+                lastpos.end.offset = tok.location.end.offset;
+                return Wide::Lexer::Token(lastpos, tok.type, tok.value);
             }
             return Wide::Util::none;
         }
@@ -34,109 +41,122 @@ namespace CEquivalents {
         Wide::Lexer::Range GetLastPosition() {
             return lastpos;
         }
-    };
-
-    enum OutliningType {
-        Module,
+    }; 
+    enum class DeclType : int {
         Function,
-        Type
+        Using,
+        Type,
+        Module,
     };
-    
-    class Builder : public Wide::AST::Builder {
-    public:     
-
-        std::function<void(Wide::Lexer::Range r, CEquivalents::OutliningType type)> OutliningCallback;
-
-        Builder(std::function<void(Wide::Lexer::Range, Wide::Parser::Error)> err, 
-                std::function<void(Wide::Lexer::Range, Wide::Parser::Warning)> war,
-                std::function<void(Wide::Lexer::Range, CEquivalents::OutliningType)> out) 
-        : Wide::AST::Builder(std::move(err), std::move(war))
-        , OutliningCallback(std::move(out)) {}
-
-        void CreateFunction(
-            std::string name, 
-            std::vector<Wide::AST::Statement*> body, 
-            std::vector<Wide::AST::Statement*> prolog, 
-            Wide::Lexer::Range r, 
-            Wide::AST::Module* p, 
-            std::vector<Wide::AST::FunctionArgument> args, 
-            std::vector<Wide::AST::VariableStatement*> caps
-        ) { 
-            OutliningCallback(r, OutliningType::Function); 
-            return Wide::AST::Builder::CreateFunction(std::move(name), std::move(body), std::move(prolog), r, p, std::move(args), std::move(caps)); 
-        }
-        void CreateFunction(
-            std::string name, 
-            std::vector<Wide::AST::Statement*> body, 
-            std::vector<Wide::AST::Statement*> prolog, 
-            Wide::Lexer::Range r, 
-            Wide::AST::Type* p, 
-            std::vector<Wide::AST::FunctionArgument> args, 
-            std::vector<Wide::AST::VariableStatement*> caps
-        ) { 
-            OutliningCallback(r, OutliningType::Function); 
-            return Wide::AST::Builder::CreateFunction(std::move(name), std::move(body), std::move(prolog), r, p, std::move(args), std::move(caps)); 
-        }
-
-        void CreateOverloadedOperator(
-            Wide::Lexer::TokenType name, 
-            std::vector<Wide::AST::Statement*> body, 
-            std::vector<Wide::AST::Statement*> prolog, 
-            Wide::Lexer::Range r, 
-            Wide::AST::Module* p, 
-            std::vector<Wide::AST::FunctionArgument> args
-        ) {
-            OutliningCallback(r, OutliningType::Function);
-            return Wide::AST::Builder::CreateOverloadedOperator(name, std::move(body), std::move(prolog), r, p, std::move(args));
-        }
-        void CreateOverloadedOperator(
-            Wide::Lexer::TokenType name, 
-            std::vector<Wide::AST::Statement*> body,
-            std::vector<Wide::AST::Statement*> prolog, 
-            Wide::Lexer::Range r, Wide::AST::Type* p,
-            std::vector<Wide::AST::FunctionArgument> args
-        )
-        { 
-            OutliningCallback(r, OutliningType::Function); 
-            return Wide::AST::Builder::CreateOverloadedOperator(name, std::move(body), std::move(prolog), r, p, std::move(args));
-        }
-
-        void SetTypeEndLocation(Wide::Lexer::Range loc, Wide::AST::Type* t) { Wide::AST::Builder::SetTypeEndLocation(loc, t); OutliningCallback(t->location, OutliningType::Type); }
-        void SetModuleEndLocation(Wide::AST::Module* m, Wide::Lexer::Range loc) { Wide::AST::Builder::SetModuleEndLocation(m, loc); OutliningCallback(loc, OutliningType::Module); }
+    struct CombinedError {
+        CombinedError(CEquivalents::Range f, DeclType s)
+            : where(std::move(f)), type(s) {}
+        CEquivalents::Range where;
+        DeclType type;
     };
 }
 
-extern "C" __declspec(dllexport) void ParseWide(
+std::unordered_set<Wide::AST::Builder*> valid_builders;
+
+extern "C" __declspec(dllexport) Wide::AST::Builder* ParseWide(
     void* context,
     std::add_pointer<CEquivalents::LexerResult(void*)>::type TokenCallback,
-    std::add_pointer<void(CEquivalents::Range, CEquivalents::OutliningType, void*)>::type OutliningCallback,
-    std::add_pointer<void(CEquivalents::Range, Wide::Parser::Error, void*)>::type ErrorCallback,
-    std::add_pointer<void(CEquivalents::Range, Wide::Parser::Warning, void*)>::type WarningCallback
+    std::add_pointer<void(CEquivalents::Range, Wide::AST::OutliningType, void*)>::type OutliningCallback,
+    std::add_pointer<void(unsigned count, CEquivalents::Range*, Wide::Parser::Error, void*)>::type ErrorCallback,
+    std::add_pointer<void(CEquivalents::Range, Wide::Parser::Warning, void*)>::type WarningCallback,
+    const char* filename
 ) {
-    CEquivalents::Builder builder(
-         [=](Wide::Lexer::Range where, Wide::Parser::Error what) { return ErrorCallback(where, what, context); },
+    auto onerror = [=](const std::vector<Wide::Lexer::Range>& where, Wide::Parser::Error what) {
+        std::vector<CEquivalents::Range> locs;
+        for(auto x : where)
+            locs.push_back(CEquivalents::Range(x));
+        ErrorCallback(locs.size(), locs.data(), what, context);
+    };
+    Wide::AST::Builder& builder = *new Wide::AST::Builder(
+         [=](std::vector<Wide::Lexer::Range> where, Wide::Parser::Error what) { onerror(where, what); },
          [=](Wide::Lexer::Range where, Wide::Parser::Warning what) { return WarningCallback(where, what, context); },
-         [=](Wide::Lexer::Range r, CEquivalents::OutliningType t) { return OutliningCallback(r, t, context); }
+         [=](Wide::Lexer::Range r, Wide::AST::OutliningType t) { return OutliningCallback(r, t, context); }
     );
-    CEquivalents::ParserLexer pl;
+    CEquivalents::ParserLexer pl(std::make_shared<std::string>(filename));
     pl.context = context;
     pl.TokenCallback = TokenCallback;
     try {
         Wide::Parser::ParseGlobalModuleContents(pl, builder, builder.GetGlobalModule());
     } catch(Wide::Parser::ParserError& e) {
-        ErrorCallback(e.where(), e.error(), context);
+        onerror(e.where(), e.error());
     } catch(...) {
     }
+    valid_builders.insert(&builder);
+    return &builder;
+}
+
+extern "C" __declspec(dllexport) void DestroyParser(Wide::AST::Builder* p) {
+    if (valid_builders.find(p) == valid_builders.end())
+        __debugbreak();
+    valid_builders.erase(p);
+    delete p;
+}
+
+extern "C" __declspec(dllexport) Wide::AST::Combiner* CreateCombiner(
+    std::add_pointer<void(unsigned count, CEquivalents::Range*, Wide::Parser::Error, void*)>::type ErrorCallback,
+    void* context
+) {
+    auto onerror = [=](const std::vector<Wide::Lexer::Range>& where, Wide::Parser::Error what) {
+        std::vector<CEquivalents::Range> locs;
+        for(auto x : where)
+            locs.push_back(CEquivalents::Range(x));
+        ErrorCallback(locs.size(), locs.data(), what, context);
+    };
+    return new Wide::AST::Combiner(onerror);
+}
+
+extern "C" __declspec(dllexport) void DestroyCombiner(Wide::AST::Combiner* p) {
+    delete p;
+}
+
+extern "C" __declspec(dllexport) void AddParser(Wide::AST::Combiner* c, Wide::AST::Builder* p) {
+    assert(valid_builders.find(p) != valid_builders.end());
+    c->Add(p->GetGlobalModule());
+}
+
+extern "C" __declspec(dllexport) void RemoveParser(Wide::AST::Combiner* c, Wide::AST::Builder* p) {
+    assert(valid_builders.find(p) != valid_builders.end());
+    c->Remove(p->GetGlobalModule());
 }
 
 extern "C" __declspec(dllexport) const char* GetParserErrorString(Wide::Parser::Error err) {
     if (Wide::Parser::ErrorStrings.find(err) == Wide::Parser::ErrorStrings.end())
-        return nullptr;
+        return "ICE: Failed to retrieve error string: unknown error.";
     return Wide::Parser::ErrorStrings.at(err).c_str();
 }
 
 extern "C" __declspec(dllexport) const char* GetParserWarningString(Wide::Parser::Warning err) {
     if (Wide::Parser::WarningStrings.find(err) == Wide::Parser::WarningStrings.end())
-        return nullptr;
+        return "ICE: Failed to retrieve warning string: unknown warning.";
     return Wide::Parser::WarningStrings.at(err).c_str();
+}
+
+extern "C" __declspec(dllexport) void GetParserCombinedErrors(
+    Wide::AST::Builder* b,
+    std::add_pointer<void(unsigned count, CEquivalents::CombinedError*, void*)>::type callback,
+    void* context
+) { 
+    assert(valid_builders.find(b) != valid_builders.end());
+    auto errs = b->GetCombinerErrors();
+    for(auto x : errs) {
+        std::vector<CEquivalents::CombinedError> err;
+        for(auto error : x) {
+            CEquivalents::DeclType d;
+            if (dynamic_cast<Wide::AST::Module*>(error.second))
+                d = CEquivalents::DeclType::Module;
+            if (dynamic_cast<Wide::AST::Function*>(error.second))
+                d = CEquivalents::DeclType::Function;
+            if (dynamic_cast<Wide::AST::Type*>(error.second))
+                d = CEquivalents::DeclType::Type;
+            if (dynamic_cast<Wide::AST::Using*>(error.second))
+                d = CEquivalents::DeclType::Using;
+            err.push_back(CEquivalents::CombinedError(error.first, d));
+        }
+        callback(err.size(), err.data(), context);
+    }
 }

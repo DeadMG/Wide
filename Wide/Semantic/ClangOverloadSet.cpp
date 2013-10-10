@@ -23,7 +23,7 @@ using namespace Semantic;
 ClangOverloadSet::ClangOverloadSet(std::unique_ptr<clang::UnresolvedSet<8>> arg, ClangUtil::ClangTU* tu, Type* t)
     : lookupset(std::move(arg)), from(tu), nonstatic(t), templateargs(nullptr) {}
 
-ConcreteExpression ClangOverloadSet::BuildCallWithTemplateArguments(clang::TemplateArgumentListInfo* templateargs, ConcreteExpression mem, std::vector<ConcreteExpression> args, Analyzer& a) {
+ConcreteExpression ClangOverloadSet::BuildCallWithTemplateArguments(clang::TemplateArgumentListInfo* templateargs, ConcreteExpression mem, std::vector<ConcreteExpression> args, Analyzer& a, Lexer::Range where) {
     std::vector<clang::OpaqueValueExpr> exprs;
     if (nonstatic) {
         // The mem's type will be this, even though we don't actually want that. Set it back to the original type.
@@ -58,19 +58,19 @@ ConcreteExpression ClangOverloadSet::BuildCallWithTemplateArguments(clang::Templ
     for(unsigned i = 0; i < fun->getNumParams(); ++i) {
         types.push_back(a.GetClangType(*from, fun->getParamDecl(i)->getType()));
     }
-    return ConcreteExpression(a.GetFunctionType(a.GetClangType(*from, fun->getResultType()), types), a.gen->CreateFunctionValue(from->MangleName(fun))).BuildCall(args, a).Resolve(nullptr);
+    return ConcreteExpression(a.GetFunctionType(a.GetClangType(*from, fun->getResultType()), types), a.gen->CreateFunctionValue(from->MangleName(fun))).BuildCall(args, a, where).Resolve(nullptr);
 }
 
-Expression ClangOverloadSet::BuildCall(ConcreteExpression mem, std::vector<ConcreteExpression> args, Analyzer& a) {
-    return BuildCallWithTemplateArguments(nullptr, mem, std::move(args), a);
+Expression ClangOverloadSet::BuildCall(ConcreteExpression mem, std::vector<ConcreteExpression> args, Analyzer& a, Lexer::Range where) {
+    return BuildCallWithTemplateArguments(nullptr, mem, std::move(args), a, where);
 }
 
 ConcreteExpression ClangOverloadSet::BuildMetaCall(ConcreteExpression val, std::vector<ConcreteExpression> args, Analyzer& a) {
     struct TemplateOverloadSet : public Type {
         clang::TemplateArgumentListInfo tempargs;
         ClangOverloadSet* set;
-        Expression BuildCall(ConcreteExpression val, std::vector<ConcreteExpression> args, Analyzer& a) override {
-            return set->BuildCallWithTemplateArguments(&tempargs, val, std::move(args), a);
+        Expression BuildCall(ConcreteExpression val, std::vector<ConcreteExpression> args, Analyzer& a, Lexer::Range where) override {
+            return set->BuildCallWithTemplateArguments(&tempargs, val, std::move(args), a, where);
         }
     };
     auto tset = a.arena.Allocate<TemplateOverloadSet>();

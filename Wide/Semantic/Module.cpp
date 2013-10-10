@@ -16,7 +16,7 @@
 using namespace Wide;
 using namespace Semantic;
 
-Module::Module(AST::Module* p) 
+Module::Module(const AST::Module* p) 
     : m(p) {}
 
 void Module::AddSpecialMember(std::string name, ConcreteExpression t){
@@ -37,11 +37,11 @@ Wide::Util::optional<ConcreteExpression> Module::AccessMember(ConcreteExpression
 }
 Wide::Util::optional<ConcreteExpression> Module::AccessMember(ConcreteExpression val, std::string name, Analyzer& a) {
     if (m->decls.find(name) != m->decls.end()) {
-        auto decl = m->decls[name];
-        if (auto moddecl = dynamic_cast<AST::Module*>(decl)) {
+        auto decl = m->decls.at(name);
+        if (auto moddecl = dynamic_cast<const AST::Module*>(decl)) {
             return a.GetWideModule(moddecl)->BuildValueConstruction(a);
         }
-        if (auto usedecl = dynamic_cast<AST::Using*>(decl)) {
+        if (auto usedecl = dynamic_cast<const AST::Using*>(decl)) {
             auto expr = a.AnalyzeExpression(this, usedecl->expr).Resolve(nullptr);
             if (auto conty = dynamic_cast<ConstructorType*>(expr.t->Decay())) {
                 return conty->BuildValueConstruction(a);
@@ -66,17 +66,25 @@ Wide::Util::optional<ConcreteExpression> Module::AccessMember(ConcreteExpression
                 return expr;
             throw std::runtime_error("Attempted to using something that was not a type, template, module, or function");
         }
-        if (auto overdecl = dynamic_cast<AST::FunctionOverloadSet*>(decl)) {
+        if (auto overdecl = dynamic_cast<const AST::FunctionOverloadSet*>(decl)) {
             if (m->higher)
                 if (auto decl = a.GetDeclContext(m->higher)->AccessMember(val, name, a))
                     if (auto overset = dynamic_cast<OverloadSet*>(decl->t->Decay()))
                         return a.GetOverloadSet(a.GetOverloadSet(overdecl), overset)->BuildValueConstruction(a);
             return a.GetOverloadSet(overdecl)->BuildValueConstruction(a);          
         }
-        if (auto tydecl = dynamic_cast<AST::Type*>(decl)) {
+        if (auto tydecl = dynamic_cast<const AST::Type*>(decl)) {
             return a.GetConstructorType(a.GetUDT(tydecl, this))->BuildValueConstruction(a);
         }
         throw std::runtime_error("Attempted to access a member of a Wide module, but did not recognize it as a using, a type, or a function.");
+    }
+    if (m->functions.find(name) != m->functions.end()) {
+        auto overdecl = m->functions.at(name);
+        if (m->higher)
+            if (auto decl = a.GetDeclContext(m->higher)->AccessMember(val, name, a))
+                if (auto overset = dynamic_cast<OverloadSet*>(decl->t->Decay()))
+                    return a.GetOverloadSet(a.GetOverloadSet(overdecl), overset)->BuildValueConstruction(a);
+        return a.GetOverloadSet(overdecl)->BuildValueConstruction(a);        
     }
     if (SpecialMembers.find(name) != SpecialMembers.end()) {
         return SpecialMembers[name];
@@ -86,6 +94,6 @@ Wide::Util::optional<ConcreteExpression> Module::AccessMember(ConcreteExpression
     return Wide::Util::none;
 }
 
-AST::DeclContext* Module::GetDeclContext() {
+const AST::DeclContext* Module::GetDeclContext() {
     return m;
 }

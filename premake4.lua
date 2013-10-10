@@ -219,14 +219,21 @@ WideProjects = {
         dependencies = function(proj)
             return CheckLLVM(proj)
         end, 
-        action = function()
-            includedirs({ _OPTIONS["llvm-path"] .. "include" })
-        end 
+        configure = function(plat, conf)
+            AddClangDependencies(conf)
+        end
     },
-    CAPI = { 
+    CAPI = {
+        dependencies = function(proj)
+            return CheckLLVM(proj) and CheckBoost(proj)
+        end,
+        configure = function(plat, conf)
+            AddClangDependencies(conf)
+            AddBoostDependencies(conf)
+        end,            
         action = function()
             kind "SharedLib"
-            links { "Lexer", "Parser" }
+            links { "Lexer", "Parser", "Semantic" }
         end 
     },
     WideLibrary = {
