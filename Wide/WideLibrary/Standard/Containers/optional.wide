@@ -50,7 +50,7 @@ module Standard {
                 ~type() { if (present) destroy(); }
             };
         }*/
-        using Optional := cpp("WideLibrary/test.h").Wide.Util.optional;
-        using None := cpp("WideLibrary/test.h").Wide.Util.none;
+        using Optional := cpp("<Wide/WideLibrary/test.h>").Wide.Util.optional;
+        using None := cpp("<Wide/WideLibrary/test.h>").Wide.Util.none;
     }
 }

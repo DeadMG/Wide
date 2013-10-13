@@ -323,8 +323,10 @@ std::vector<std::vector<std::pair<Lexer::Range, DeclContext*>>> Builder::GetComb
     std::vector<std::vector<std::pair<Lexer::Range, DeclContext*>>> out;
     for(auto x : combine_errors) {
         std::unordered_map<std::string, std::vector<DeclContext*>> contexts;
+        // Sort them by name.
         for(auto con : x.second)
             contexts[con->name].push_back(con);
+        // Issue each name as a separate list of errors.
         for(auto list : contexts) {
             out.push_back(std::vector<std::pair<Lexer::Range, DeclContext*>>());
             for(auto con : list.second)

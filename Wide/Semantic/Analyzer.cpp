@@ -117,16 +117,6 @@ void Analyzer::operator()(const AST::Module* GlobalModule) {
     GetWideModule(GlobalModule)->AddSpecialMember("null", GetNullType()->BuildValueConstruction(std::vector<ConcreteExpression>(), *this));
     GetWideModule(GlobalModule)->AddSpecialMember("reinterpret_cast", arena.Allocate<PointerCastType>()->BuildValueConstruction(std::vector<ConcreteExpression>(), *this));
     //GetWideModule(GlobalModule)->AddSpecialMember("move", arena.Allocate<MoveType>()->BuildValueConstruction(std::vector<Expression>(), *this));
-    
-    auto std = GetWideModule(GlobalModule)->AccessMember(ConcreteExpression(), "Standard", *this);
-    if (!std)
-        throw std::runtime_error("Fuck.");
-    auto main = std->t->AccessMember(ConcreteExpression(), "Main", *this);
-    if (!main)
-        throw std::runtime_error("Fuck.");
-    main->t->BuildCall(ConcreteExpression(), std::vector<ConcreteExpression>(), *this, GlobalModule->decls.at("Standard")->where.front());
-    for(auto&& x : this->headers)
-        gen->AddClangTU([&](llvm::Module* main) { x.second.GenerateCodeAndLinkModule(main); });
 }
 
 Expression Analyzer::AnalyzeExpression(Type* t, const AST::Expression* e) {
@@ -362,6 +352,7 @@ ClangUtil::ClangTU* Analyzer::LoadCPPHeader(std::string file, Lexer::Range where
         return &headers.find(file)->second;
     headers.insert(std::make_pair(file, ClangUtil::ClangTU(gen->GetContext(), file, *clangopts, where)));
     auto ptr = &headers.find(file)->second;
+    gen->AddClangTU([&](llvm::Module* main) { ptr->GenerateCodeAndLinkModule(main); });
     return ptr;
 }
 

@@ -98,14 +98,24 @@ extern "C" __declspec(dllexport) void DestroyParser(Wide::AST::Builder* p) {
 }
 
 extern "C" __declspec(dllexport) Wide::AST::Combiner* CreateCombiner(
-    std::add_pointer<void(unsigned count, CEquivalents::Range*, Wide::Parser::Error, void*)>::type ErrorCallback,
+    std::add_pointer<void(unsigned count, CEquivalents::CombinedError*, void*)>::type ErrorCallback,
     void* context
 ) {
-    auto onerror = [=](const std::vector<Wide::Lexer::Range>& where, Wide::Parser::Error what) {
-        std::vector<CEquivalents::Range> locs;
-        for(auto x : where)
-            locs.push_back(CEquivalents::Range(x));
-        ErrorCallback(locs.size(), locs.data(), what, context);
+    auto onerror = [=](std::vector<std::pair<Wide::Lexer::Range, Wide::AST::DeclContext*>> errs) {
+        std::vector<CEquivalents::CombinedError> err;
+        for(auto error : errs) {
+            CEquivalents::DeclType d;
+            if (dynamic_cast<Wide::AST::Module*>(error.second))
+                d = CEquivalents::DeclType::Module;
+            if (dynamic_cast<Wide::AST::Function*>(error.second))
+                d = CEquivalents::DeclType::Function;
+            if (dynamic_cast<Wide::AST::Type*>(error.second))
+                d = CEquivalents::DeclType::Type;
+            if (dynamic_cast<Wide::AST::Using*>(error.second))
+                d = CEquivalents::DeclType::Using;
+            err.push_back(CEquivalents::CombinedError(error.first, d));
+        }
+        ErrorCallback(err.size(), err.data(), context);
     };
     return new Wide::AST::Combiner(onerror);
 }

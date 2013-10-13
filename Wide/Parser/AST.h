@@ -203,10 +203,12 @@ namespace Wide {
             std::unordered_map<FunctionOverloadSet*, std::unique_ptr<FunctionOverloadSet>> owned_overload_sets;
             std::unordered_map<Function*, Function*> inverse;
 
-            std::function<void(std::vector<Wide::Lexer::Range>, Parser::Error)> error;
+            std::function<void(std::vector<std::pair<Wide::Lexer::Range, Wide::AST::DeclContext*>>)> error;
             std::unordered_set<Module*> modules;
+
+            std::unordered_map<Module*, std::unordered_set<DeclContext*>> errors;
         public:
-            Combiner(std::function<void(std::vector<Wide::Lexer::Range>, Parser::Error)> err)
+            Combiner(std::function<void(std::vector<std::pair<Wide::Lexer::Range, Wide::AST::DeclContext*>>)> err)
                 : root("global", nullptr, Lexer::Range(global_module_location)), error(std::move(err)) {}
 
             Module* GetGlobalModule() { return &root; }

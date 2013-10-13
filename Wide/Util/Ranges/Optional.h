@@ -24,10 +24,9 @@ namespace Wide {
         template <typename T>
         struct optional {
         public:
-            template<typename X> optional(const optional<X>& ref)
-                : present(ref)
+            template<typename X> optional(const optional<X>& ref) : present(false)
             {
-                if (present)
+                if (ref)
                     place(*ref);
             }
             optional() : present(false) {}

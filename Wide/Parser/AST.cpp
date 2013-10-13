@@ -34,56 +34,32 @@ void Combiner::Add(Module* m) {
         for(auto&& entry : from->decls) {
             if (auto nested = dynamic_cast<AST::Module*>(entry.second)) {
                 Module* next;
-                if (to->functions.find(nested->name) != to->functions.end()) {
-                    auto copy = nested->where;
-                    for(auto x : to->functions.at(nested->name)->functions)
-                        copy.push_back(x->where.front());
-                    error(copy, Parser::Error::ModuleAlreadyFunction);
+                if (to->functions.find(entry.first) != to->functions.end()) {
+                    errors[to].insert(nested);
                     continue;
                 }
-                if (to->decls.find(nested->name) != to->decls.end())
-                    if (auto mod = dynamic_cast<AST::Module*>(to->decls[nested->name]))
+                if (to->decls.find(entry.first) != to->decls.end())
+                    if (auto mod = dynamic_cast<AST::Module*>(to->decls[entry.first]))
                         next = mod;
                     else {
-                        auto con = to->decls.at(nested->name);
-                        auto loc = con->where;
-                        loc.insert(loc.end(), nested->where.begin(), nested->where.end());
-                        if (dynamic_cast<AST::Type*>(con))
-                            error(loc, Parser::Error::ModuleAlreadyType);
-                        else if (dynamic_cast<AST::Using*>(con))
-                            error(loc, Parser::Error::ModuleAlreadyUsing);
-                        else
-                            error(loc, Parser::Error::ModuleAlreadySomething);
+                        errors[to].insert(nested);
                         continue;
                     }
                 else {
-                    auto new_mod = Wide::Memory::MakeUnique<Module>(nested->name, to, nested->where.front());
+                    auto new_mod = Wide::Memory::MakeUnique<Module>(entry.first, to, nested->where.front());
                     new_mod->where = nested->where;
-                    to->decls[nested->name] = owned_decl_contexts.insert(std::make_pair(next = new_mod.get(), std::move(new_mod))).first->first;
+                    to->decls[entry.first] = owned_decl_contexts.insert(std::make_pair(next = new_mod.get(), std::move(new_mod))).first->first;
                 }
                 adder(next, nested);
                 continue;
             }
             if (auto use = dynamic_cast<AST::Using*>(entry.second)) {
                 if (to->decls.find(use->name) != to->decls.end()) {
-                    auto con = to->decls.at(use->name);
-                    auto loc = con->where;
-                    loc.insert(loc.end(), use->where.begin(), use->where.end());
-                    if (dynamic_cast<AST::Type*>(con))
-                        error(loc, Parser::Error::UsingAlreadyType);
-                    else if (dynamic_cast<AST::Using*>(con))
-                        error(loc, Parser::Error::UsingAlreadyUsing);
-                    else if (dynamic_cast<AST::Module*>(con))
-                        error(loc, Parser::Error::UsingAlreadyModule);
-                    else
-                        error(loc, Parser::Error::UsingAlreadySomething);
+                    errors[to].insert(use);
                     continue;
                 }
                 if (to->functions.find(use->name) != to->functions.end()) {
-                    auto loc = use->where;
-                    for(auto x : to->functions.at(use->name)->functions)
-                        loc.push_back(x->where.front());
-                    error(loc, Parser::Error::UsingAlreadyFunction);
+                    errors[to].insert(use);
                     continue;
                 }
                 auto new_using = Wide::Memory::MakeUnique<AST::Using>(use->name, use->expr, to, use->where.front());
@@ -91,6 +67,15 @@ void Combiner::Add(Module* m) {
                 continue;
             }
             if (auto ty = dynamic_cast<AST::Type*>(entry.second)) {
+                if (to->decls.find(entry.first) != to->decls.end()) {
+                    errors[to].insert(ty);
+                    continue;
+                }
+                if (to->functions.find(entry.first) != to->functions.end()) {
+                    errors[to].insert(ty);
+                    continue;
+                }
+
                 auto newty = Wide::Memory::MakeUnique<Type>(to, entry.first, ty->location);
                 newty->variables = ty->variables;
                 newty->Functions = ty->Functions;
@@ -102,24 +87,13 @@ void Combiner::Add(Module* m) {
             std::vector<Lexer::Range> loc = entry.second->where;
             if (to->decls.find(entry.first) != to->decls.end())
                 loc.insert(loc.end(), to->decls.at(entry.first)->where.begin(), to->decls.at(entry.first)->where.end());
-            error(loc, Parser::Error::UnknownDeclContext);
         }
         for(auto entry : from->functions) {
             auto overset = entry.second;
             FunctionOverloadSet* InsertPoint = nullptr;
             if (to->decls.find(entry.first) != to->decls.end()) {
-                auto con = to->decls.at(entry.first);
-                auto loc = con->where;
                 for(auto x : overset->functions)
-                    loc.push_back(x->where.front());
-                if (dynamic_cast<AST::Type*>(con))
-                    error(loc, Parser::Error::FunctionAlreadyType);
-                else if (dynamic_cast<AST::Using*>(con))
-                    error(loc, Parser::Error::FunctionAlreadyUsing);
-                else if (dynamic_cast<AST::Module*>(con))
-                    error(loc, Parser::Error::FunctionAlreadyModule);
-                else
-                    error(loc, Parser::Error::FunctionAlreadySomething);
+                    errors[to].insert(x);
                 continue;
             }
             if (to->functions.find(entry.first) != to->functions.end()) {
@@ -138,7 +112,28 @@ void Combiner::Add(Module* m) {
             }
         }
     };
-    adder(&root, m);
+    adder(&root, m);    
+    for(auto x : errors) {
+        std::unordered_map<std::string, std::unordered_set<DeclContext*>> contexts;
+        // Sort them by name, and grab the dest.
+        for(auto con : x.second) {
+            if (x.first->decls.find(con->name) != x.first->decls.end())
+                contexts[con->name].insert(x.first->decls.at(con->name));
+            if (x.first->functions.find(con->name) != x.first->functions.end())
+                for(auto fun : x.first->functions.at(con->name)->functions)
+                    contexts[con->name].insert(fun);
+            contexts[con->name].insert(con);
+        }
+        
+        // Issue each name as a separate list of errors.
+        for(auto list : contexts) {
+            auto vec = std::vector<std::pair<Lexer::Range, DeclContext*>>();
+            for(auto con : list.second)
+                for(auto loc : con->where)
+                    vec.push_back(std::make_pair(loc, con));
+            error(std::move(vec));
+        }
+    }
 }
 
 void Combiner::Remove(Module* m) {
@@ -171,6 +166,8 @@ void Combiner::Remove(Module* m) {
             assert(owned_overload_sets.find(to_overset) != owned_overload_sets.end());
             for(auto&& fun : overset->functions) {
                 assert(inverse.find(fun) != inverse.end());
+                if (errors.find(to) != errors.end())
+                    errors.at(to).erase(fun);
                 to_overset->functions.erase(inverse[fun]);
                 inverse.erase(fun);
                 owned_decl_contexts.erase(fun);
@@ -194,7 +191,13 @@ void Combiner::Remove(Module* m) {
                 continue;
             }
             to->decls.erase(entry.first);
+            if (errors.find(to) != errors.end())
+                errors.at(to).erase(entry.second);
+
         }
+        if (errors.find(to) != errors.end())
+            if (errors.at(to).size() == 0)
+                errors.erase(to);
     };
     remover(&root, m);
 }
