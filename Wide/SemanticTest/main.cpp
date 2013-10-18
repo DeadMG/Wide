@@ -6,6 +6,8 @@
 #include <Wide/Lexer/Lexer.h>
 #include <Wide/Util/ParallelForEach.h>
 #include <Wide/Parser/Builder.h>
+#include <Wide/SemanticTest/Test.h>
+#include <Wide/Semantic/SemanticError.h>
 #include <Wide/Util/Ranges/IStreamRange.h>
 #include <Wide/Util/ConcurrentVector.h>
 #include <mutex>
@@ -30,12 +32,21 @@
 #pragma warning(pop)
 
 void Compile(const Wide::Options::Clang& copts, llvm::DataLayout lopts, std::initializer_list<std::string> files) {
-    Wide::Codegen::MockGenerator Generator(lopts);
-    Wide::AST::Combiner combiner;
-    Wide::Semantic::Analyzer Sema(copts, &Generator);
-
+    Wide::Codegen::MockGenerator mockgen(lopts);
+    
     Wide::Concurrency::Vector<std::string> excepts;
     Wide::Concurrency::Vector<std::string> warnings;
+    auto parsererrorhandler = [&](std::vector<Wide::Lexer::Range> where, Wide::Parser::Error what) {
+        std::stringstream str;
+        str << "Error at locations:\n";
+        for(auto loc : where)
+            str << "    File: " << *loc.begin.name << ", line: " << loc.begin.line << " column: " << loc.begin.line << "\n";
+        str << Wide::Parser::ErrorStrings.at(what);
+        excepts.push_back(str.str());
+    };
+    auto combineerrorhandler = [=](std::vector<std::pair<Wide::Lexer::Range, Wide::AST::DeclContext*>> errs) {
+    };
+    Wide::AST::Combiner combiner(combineerrorhandler);
     Wide::Concurrency::Vector<std::shared_ptr<Wide::AST::Builder>> builders;
     Wide::Concurrency::ParallelForEach(files.begin(), files.end(), [&](const std::string& filename) {
         std::ifstream inputfile(filename, std::ios::binary | std::ios::in);
@@ -44,13 +55,7 @@ void Compile(const Wide::Options::Clang& copts, llvm::DataLayout lopts, std::ini
         std::noskipws(inputfile);
         Wide::Lexer::Arguments largs;
         auto contents = Wide::Range::IStreamRange(inputfile);
-        Wide::Lexer::Invocation<decltype(contents)> lex(largs, contents);
-        auto parsererrorhandler = [&](Wide::Lexer::Range where, Wide::Parser::Error what) {
-            std::stringstream str;
-            str << "Error in file " << filename << ", line " << where.begin.line << " column " << where.begin.column << ":\n";
-            str << Wide::Parser::ErrorStrings.at(what);
-            excepts.push_back(str.str());
-        };
+        Wide::Lexer::Invocation<decltype(contents)> lex(largs, contents, std::make_shared<std::string>(filename));
         auto parserwarninghandler = [&](Wide::Lexer::Range where, Wide::Parser::Warning what) {
             std::stringstream str;
             str << "Warning in file " << filename << ", line " << where.begin.line << " column " << where.begin.column << ":\n";
@@ -58,28 +63,29 @@ void Compile(const Wide::Options::Clang& copts, llvm::DataLayout lopts, std::ini
             warnings.push_back(str.str());
         };
         try {
-            auto builder = std::make_shared<Wide::AST::Builder>(parsererrorhandler, parserwarninghandler);
+            auto builder = std::make_shared<Wide::AST::Builder>(parsererrorhandler, parserwarninghandler, [](Wide::Lexer::Range, Wide::AST::OutliningType){});
             Wide::Parser::ParseGlobalModuleContents(lex, *builder, builder->GetGlobalModule());
             builders.push_back(std::move(builder));
-        }
-        catch (Wide::Parser::ParserError& e) {
+        } catch(Wide::Parser::ParserError& e) {
             parsererrorhandler(e.where(), e.error());
-        }
-        catch (std::exception& e) {
+        } catch(std::exception& e) {
             excepts.push_back(e.what());
-        }
-        catch (...) {
+        } catch(...) {
             excepts.push_back("Internal Compiler Error");
         }
     });
 
+    for(auto&& x : warnings)
+        std::cout << x << "\n";
+    
     for (auto&& x : warnings)
         std::cout << x << "\n";
 
     if (excepts.empty()) {
         for (auto&& x : builders)
             combiner.Add(x->GetGlobalModule());
-        Sema(combiner.GetGlobalModule());
+        Wide::Semantic::Analyzer sema(copts, &mockgen, combiner.GetGlobalModule());
+        Test(sema, nullptr, combiner.GetGlobalModule(), [&](Wide::Lexer::Range r, Wide::Semantic::Error e) { throw Wide::Semantic::SemanticError(r, e); }, mockgen);
     } else {
         for (auto&& msg : excepts) {
             std::cout << msg << "\n";
@@ -104,4 +110,5 @@ TEST_CASE("", "") {
     CHECK_NOTHROW(Compile(clangopts, *targetmachine->getDataLayout(), { "PrimitiveADL.wide" }));
     CHECK_NOTHROW(Compile(clangopts, *targetmachine->getDataLayout(), { "RecursiveTypeInference.wide" }));
     CHECK_NOTHROW(Compile(clangopts, *targetmachine->getDataLayout(), { "CorecursiveTypeInference.wide" }));
+    CHECK_THROWS(Compile(clangopts, *targetmachine->getDataLayout(), { "SubmoduleNoQualifiedLookup.wide" }));
 }

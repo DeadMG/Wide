@@ -1,9 +1,9 @@
-f(x) {
-    if (x > 5)
-        return f(3) + 1;
-    return x;
-}
-module Standard {
+module RecursiveTypeInference {
+    f(x) {
+        if (x > 5)
+            return f(3) + 1;
+        return x;
+    }
     Main() {
         int64(f(6));
     }

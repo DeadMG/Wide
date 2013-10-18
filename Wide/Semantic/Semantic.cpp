@@ -5,13 +5,13 @@
 #include <Wide/Semantic/Type.h>
 
 void Wide::Semantic::Analyze(const AST::Module* root, const Options::Clang& opts, Codegen::Generator& g) {
-    Analyzer a(opts, &g);
-    a(root);    
-    auto std = a.GetWideModule(root)->AccessMember(ConcreteExpression(), "Standard", a);
+    static const Lexer::Range location = std::make_shared<std::string>("Analyzer entry point");
+    Analyzer a(opts, &g, root);
+    auto std = a.GetGlobalModule()->AccessMember("Standard", a, location);
     if (!std)
         throw std::runtime_error("Fuck.");
-    auto main = std->t->AccessMember(ConcreteExpression(), "Main", a);
+    auto main = std->t->AccessMember("Main", a, location);
     if (!main)
         throw std::runtime_error("Fuck.");
-    main->t->BuildCall(ConcreteExpression(), std::vector<ConcreteExpression>(), a, root->decls.at("Standard")->where.front());
+    main->BuildCall(a, root->decls.at("Standard")->where.front());
 }

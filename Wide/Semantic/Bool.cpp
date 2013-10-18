@@ -24,8 +24,8 @@ clang::QualType Bool::GetClangType(ClangUtil::ClangTU& where, Analyzer& a) {
     return where.GetASTContext().BoolTy;
 }
 
-Codegen::Expression* Bool::BuildBooleanConversion(ConcreteExpression e, Analyzer& a) {
-    return e.BuildValue(a).Expr;
+Codegen::Expression* Bool::BuildBooleanConversion(ConcreteExpression e, Analyzer& a, Lexer::Range where) {
+    return e.BuildValue(a, where).Expr;
 }
 
 std::size_t Bool::size(Analyzer& a) {
@@ -35,13 +35,13 @@ std::size_t Bool::alignment(Analyzer& a) {
     return llvm::DataLayout(a.gen->GetDataLayout()).getABIIntegerTypeAlignment(8);
 }
 
-ConcreteExpression Bool::BuildBinaryExpression(ConcreteExpression lhs, ConcreteExpression rhs, Wide::Lexer::TokenType type, Analyzer& a) {
-    auto lhsval = lhs.BuildValue(a);
-    auto rhsval = rhs.BuildValue(a);
+ConcreteExpression Bool::BuildBinaryExpression(ConcreteExpression lhs, ConcreteExpression rhs, Wide::Lexer::TokenType type, Analyzer& a, Lexer::Range where) {
+    auto lhsval = lhs.BuildValue(a, where);
+    auto rhsval = rhs.BuildValue(a, where);
 
     // If the types are not suitable for primitive ops, fall back to ADL.
     if (lhs.t->Decay() != this || rhs.t->Decay() != this)
-        return Type::BuildBinaryExpression(lhs, rhs, type, a);
+        return Type::BuildBinaryExpression(lhs, rhs, type, a, where);
 
     switch(type) {
     case Lexer::TokenType::EqCmp:
@@ -49,8 +49,8 @@ ConcreteExpression Bool::BuildBinaryExpression(ConcreteExpression lhs, ConcreteE
         // Let the default come for ~=.
     }
 
-    if (!a.IsLvalueType(lhs.t))
-        return Type::BuildBinaryExpression(lhs, rhs, type, a);
+    if (!IsLvalueType(lhs.t))
+        return Type::BuildBinaryExpression(lhs, rhs, type, a, where);
     
     switch(type) {
     case Lexer::TokenType::AndAssign:
@@ -60,5 +60,5 @@ ConcreteExpression Bool::BuildBinaryExpression(ConcreteExpression lhs, ConcreteE
     case Lexer::TokenType::OrAssign:
         return ConcreteExpression(lhs.t, a.gen->CreateStore(lhs.Expr, a.gen->CreateOrExpression(lhsval.Expr, rhsval.Expr)));
     }
-    return Type::BuildBinaryExpression(lhs, rhs, type, a);
+    return Type::BuildBinaryExpression(lhs, rhs, type, a, where);
 }

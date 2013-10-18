@@ -48,51 +48,51 @@ namespace Wide {
             Codegen::Expression* Expr;
             bool steal;
             
-            ConcreteExpression BuildValue(Analyzer& a);
-            Wide::Util::optional<ConcreteExpression> AccessMember(std::string name, Analyzer& a);
-            ConcreteExpression BuildDereference(Analyzer& a);
-            ConcreteExpression BuildIncrement(bool postfix, Analyzer& a);
-            ConcreteExpression BuildNegate(Analyzer& a);
+            ConcreteExpression BuildValue(Analyzer& a, Lexer::Range where);
+            Wide::Util::optional<ConcreteExpression> AccessMember(std::string name, Analyzer& a, Lexer::Range where);
+            ConcreteExpression BuildDereference(Analyzer& a, Lexer::Range where);
+            ConcreteExpression BuildIncrement(bool postfix, Analyzer& a, Lexer::Range where);
+            ConcreteExpression BuildNegate(Analyzer& a, Lexer::Range where);
             Expression BuildCall(Analyzer& a, Lexer::Range where);
             Expression BuildCall(ConcreteExpression arg, Analyzer& a, Lexer::Range where);
             Expression BuildCall(ConcreteExpression lhs, ConcreteExpression rhs, Analyzer& a, Lexer::Range where);
             Expression BuildCall(std::vector<ConcreteExpression> args, Analyzer& a, Lexer::Range where);
-            ConcreteExpression BuildMetaCall(std::vector<ConcreteExpression> args, Analyzer& a);    
-            Wide::Util::optional<ConcreteExpression> PointerAccessMember(std::string name, Analyzer& a);
-            ConcreteExpression AddressOf(Analyzer& a);
-            Codegen::Expression* BuildBooleanConversion(Analyzer& a);
-            ConcreteExpression BuildBinaryExpression(ConcreteExpression rhs, Lexer::TokenType type, Analyzer& a);
+            ConcreteExpression BuildMetaCall(std::vector<ConcreteExpression> args, Analyzer& a, Lexer::Range where);    
+            Wide::Util::optional<ConcreteExpression> PointerAccessMember(std::string name, Analyzer& a, Lexer::Range where);
+            ConcreteExpression AddressOf(Analyzer& a, Lexer::Range where);
+            Codegen::Expression* BuildBooleanConversion(Analyzer& a, Lexer::Range where);
+            ConcreteExpression BuildBinaryExpression(ConcreteExpression rhs, Lexer::TokenType type, Analyzer& a, Lexer::Range where);
 
             Expression BuildCall(std::vector<Expression> args, Analyzer& a, Lexer::Range where);
             Expression BuildCall(Expression lhs, Expression rhs, Analyzer& a, Lexer::Range where);
             Expression BuildCall(Expression arg, Analyzer& a, Lexer::Range where);
-            Expression BuildMetaCall(std::vector<Expression> args, Analyzer& a);            
-            Expression BuildBinaryExpression(Expression rhs, Lexer::TokenType type, Analyzer& a);
-            DeferredExpression BuildCall(std::vector<DeferredExpression> args, Analyzer& a);
-            DeferredExpression BuildCall(DeferredExpression lhs, DeferredExpression rhs, Analyzer& a);
-            DeferredExpression BuildCall(DeferredExpression arg, Analyzer& a);
-            DeferredExpression BuildMetaCall(std::vector<DeferredExpression> args, Analyzer& a);            
-            DeferredExpression BuildBinaryExpression(DeferredExpression rhs, Lexer::TokenType type, Analyzer& a);
+            Expression BuildMetaCall(std::vector<Expression> args, Analyzer& a, Lexer::Range where);            
+            Expression BuildBinaryExpression(Expression rhs, Lexer::TokenType type, Analyzer& a, Lexer::Range where);
+            DeferredExpression BuildCall(std::vector<DeferredExpression> args, Analyzer& a, Lexer::Range where);
+            DeferredExpression BuildCall(DeferredExpression lhs, DeferredExpression rhs, Analyzer& a, Lexer::Range where);
+            DeferredExpression BuildCall(DeferredExpression arg, Analyzer& a, Lexer::Range where);
+            DeferredExpression BuildMetaCall(std::vector<DeferredExpression> args, Analyzer& a, Lexer::Range where);            
+            DeferredExpression BuildBinaryExpression(DeferredExpression rhs, Lexer::TokenType type, Analyzer& a, Lexer::Range where);
         };
 
         struct DeferredExpression {
             DeferredExpression(std::function<ConcreteExpression(Type*)> d)
                 : delay(std::make_shared<std::function<ConcreteExpression(Type*)>>(std::move(d))) {}
 
-            DeferredExpression BuildValue(Analyzer& a);
-            DeferredExpression AccessMember(std::string name, Analyzer& a);
-            DeferredExpression BuildDereference(Analyzer& a);
-            DeferredExpression BuildIncrement(bool postfix, Analyzer& a);
-            DeferredExpression BuildNegate(Analyzer& a);
+            DeferredExpression BuildValue(Analyzer& a, Lexer::Range where);
+            DeferredExpression AccessMember(std::string name, Analyzer& a, Lexer::Range where);
+            DeferredExpression BuildDereference(Analyzer& a, Lexer::Range where);
+            DeferredExpression BuildIncrement(bool postfix, Analyzer& a, Lexer::Range where);
+            DeferredExpression BuildNegate(Analyzer& a, Lexer::Range where);
             DeferredExpression BuildCall(Analyzer& a, Lexer::Range where);
             DeferredExpression BuildCall(std::vector<Expression> args, Analyzer& a, Lexer::Range where);
             DeferredExpression BuildCall(Expression lhs, Expression rhs, Analyzer& a, Lexer::Range where);
             DeferredExpression BuildCall(Expression arg, Analyzer& a, Lexer::Range where);
-            DeferredExpression PointerAccessMember(std::string name, Analyzer& a);
-            DeferredExpression AddressOf(Analyzer& a);
-            DeferredExpression BuildBooleanConversion(Analyzer& a);
-            DeferredExpression BuildMetaCall(std::vector<Expression> args, Analyzer& a);            
-            DeferredExpression BuildBinaryExpression(Expression rhs, Lexer::TokenType type, Analyzer& a);   
+            DeferredExpression PointerAccessMember(std::string name, Analyzer& a, Lexer::Range where);
+            DeferredExpression AddressOf(Analyzer& a, Lexer::Range where);
+            DeferredExpression BuildBooleanConversion(Analyzer& a, Lexer::Range where);
+            DeferredExpression BuildMetaCall(std::vector<Expression> args, Analyzer& a, Lexer::Range where);            
+            DeferredExpression BuildBinaryExpression(Expression rhs, Lexer::TokenType type, Analyzer& a, Lexer::Range where);   
 
             ConcreteExpression operator()(Type* t) const {
                 return (*delay)(t);
@@ -166,24 +166,24 @@ namespace Wide {
                 );
             }
             
-            Expression BuildValue(Analyzer& a);
-            Wide::Util::optional<Expression> AccessMember(std::string name, Analyzer& a);
+            Expression BuildValue(Analyzer& a, Lexer::Range where);
+            Wide::Util::optional<Expression> AccessMember(std::string name, Analyzer& a, Lexer::Range where);
             Expression BuildCall(std::vector<Expression> args, Analyzer& a, Lexer::Range where);
             Expression BuildCall(Expression lhs, Expression rhs, Analyzer& a, Lexer::Range where);
             Expression BuildCall(Expression arg, Analyzer& a, Lexer::Range where);
             Expression BuildCall(Analyzer& a, Lexer::Range where);
-            Expression BuildMetaCall(std::vector<Expression> args, Analyzer& a);
-            Expression BuildDereference(Analyzer& a);
-            Expression BuildIncrement(bool postfix, Analyzer& a);
-            Expression BuildNegate(Analyzer& a);
+            Expression BuildMetaCall(std::vector<Expression> args, Analyzer& a, Lexer::Range where);
+            Expression BuildDereference(Analyzer& a, Lexer::Range where);
+            Expression BuildIncrement(bool postfix, Analyzer& a, Lexer::Range where);
+            Expression BuildNegate(Analyzer& a, Lexer::Range where);
             
-            Expression BuildBinaryExpression(Expression rhs, Lexer::TokenType type, Analyzer& a);
+            Expression BuildBinaryExpression(Expression rhs, Lexer::TokenType type, Analyzer& a, Lexer::Range where);
 
-            Wide::Util::optional<Expression> PointerAccessMember(std::string name, Analyzer& a);
+            Wide::Util::optional<Expression> PointerAccessMember(std::string name, Analyzer& a, Lexer::Range where);
 
-            Expression AddressOf(Analyzer& a);
+            Expression AddressOf(Analyzer& a, Lexer::Range where);
 
-            Expression BuildBooleanConversion(Analyzer& a);
+            Expression BuildBooleanConversion(Analyzer& a, Lexer::Range where);
         };
 
         enum ConversionRank {
@@ -211,11 +211,8 @@ namespace Wide {
                 return this;
             }
 
-            virtual const AST::DeclContext* GetDeclContext() {
-                if (IsReference())
-                    return Decay()->GetDeclContext();
-                return nullptr;
-            }
+            virtual Type* GetContext(Analyzer& a);
+
             virtual bool IsComplexType() { return false; }
             virtual clang::QualType GetClangType(ClangUtil::ClangTU& TU, Analyzer& a);
             virtual std::function<llvm::Type*(llvm::Module*)> GetLLVMType(Analyzer& a) {
@@ -225,28 +222,30 @@ namespace Wide {
             virtual std::size_t size(Analyzer& a) { throw std::runtime_error("Attempted to size a type that does not have a run-time size."); }
             virtual std::size_t alignment(Analyzer& a) { throw std::runtime_error("Attempted to align a type that does not have a run-time alignment."); }
 
-            virtual ConcreteExpression BuildValueConstruction(std::vector<ConcreteExpression> args, Analyzer& a);
-            virtual ConcreteExpression BuildRvalueConstruction(std::vector<ConcreteExpression> args, Analyzer& a);
-            virtual ConcreteExpression BuildLvalueConstruction(std::vector<ConcreteExpression> args, Analyzer& a);
-            virtual Codegen::Expression* BuildInplaceConstruction(Codegen::Expression* mem, std::vector<ConcreteExpression> args, Analyzer& a);
+            virtual ConcreteExpression BuildValueConstruction(std::vector<ConcreteExpression> args, Analyzer& a, Lexer::Range where);
+            virtual ConcreteExpression BuildRvalueConstruction(std::vector<ConcreteExpression> args, Analyzer& a, Lexer::Range where);
+            virtual ConcreteExpression BuildLvalueConstruction(std::vector<ConcreteExpression> args, Analyzer& a, Lexer::Range where);
+            virtual Codegen::Expression* BuildInplaceConstruction(Codegen::Expression* mem, std::vector<ConcreteExpression> args, Analyzer& a, Lexer::Range where);
             
-            virtual ConcreteExpression BuildValueConstruction(ConcreteExpression arg, Analyzer& a);
-            virtual ConcreteExpression BuildRvalueConstruction(ConcreteExpression arg, Analyzer& a);
-            virtual ConcreteExpression BuildLvalueConstruction(ConcreteExpression args, Analyzer& a);
-            virtual Codegen::Expression* BuildInplaceConstruction(Codegen::Expression* mem, ConcreteExpression args, Analyzer& a);
+            virtual ConcreteExpression BuildValueConstruction(ConcreteExpression arg, Analyzer& a, Lexer::Range where);
+            virtual ConcreteExpression BuildRvalueConstruction(ConcreteExpression arg, Analyzer& a, Lexer::Range where);
+            virtual ConcreteExpression BuildLvalueConstruction(ConcreteExpression args, Analyzer& a, Lexer::Range where);
+            virtual Codegen::Expression* BuildInplaceConstruction(Codegen::Expression* mem, ConcreteExpression args, Analyzer& a, Lexer::Range where);
 
-            virtual ConcreteExpression BuildValueConstruction(Analyzer& a);
-            virtual ConcreteExpression BuildRvalueConstruction(Analyzer& a);
-            virtual ConcreteExpression BuildLvalueConstruction(Analyzer& a);
-            virtual Codegen::Expression* BuildInplaceConstruction(Codegen::Expression* mem, Analyzer& a);
+            virtual ConcreteExpression BuildValueConstruction(Analyzer& a, Lexer::Range where);
+            virtual ConcreteExpression BuildRvalueConstruction(Analyzer& a, Lexer::Range where);
+            virtual ConcreteExpression BuildLvalueConstruction(Analyzer& a, Lexer::Range where);
+            virtual Codegen::Expression* BuildInplaceConstruction(Codegen::Expression* mem, Analyzer& a, Lexer::Range where);
 
 
-            virtual ConcreteExpression BuildValue(ConcreteExpression lhs, Analyzer& a);
-
-            virtual Wide::Util::optional<ConcreteExpression> AccessMember(ConcreteExpression, std::string name, Analyzer& a);
-            virtual Wide::Util::optional<ConcreteExpression> AccessMember(ConcreteExpression e, Lexer::TokenType type, Analyzer& a) {
+            virtual ConcreteExpression BuildValue(ConcreteExpression lhs, Analyzer& a, Lexer::Range where);
+            
+            virtual Wide::Util::optional<ConcreteExpression> AccessMember(Lexer::TokenType type, Analyzer& a, Lexer::Range where);
+            virtual Wide::Util::optional<ConcreteExpression> AccessMember(std::string name, Analyzer& a, Lexer::Range where);
+            virtual Wide::Util::optional<ConcreteExpression> AccessMember(ConcreteExpression, std::string name, Analyzer& a, Lexer::Range where);
+            virtual Wide::Util::optional<ConcreteExpression> AccessMember(ConcreteExpression e, Lexer::TokenType type, Analyzer& a, Lexer::Range where) {
                 if (IsReference())
-                    return Decay()->AccessMember(e, type, a);
+                    return Decay()->AccessMember(e, type, a, where);
                 return Wide::Util::none;
             }
 
@@ -255,36 +254,36 @@ namespace Wide {
                     return Decay()->BuildCall(val, std::move(args), a, where);
                 throw std::runtime_error("Attempted to call a type that did not support it.");
             }
-            virtual ConcreteExpression BuildMetaCall(ConcreteExpression val, std::vector<ConcreteExpression> args, Analyzer& a) {
+            virtual ConcreteExpression BuildMetaCall(ConcreteExpression val, std::vector<ConcreteExpression> args, Analyzer& a, Lexer::Range where) {
                 throw std::runtime_error("Attempted to call a type that did not support it.");
             }
             virtual ConversionRank RankConversionFrom(Type* to, Analyzer& a);
-            virtual Codegen::Expression* BuildBooleanConversion(ConcreteExpression val, Analyzer& a) {
+            virtual Codegen::Expression* BuildBooleanConversion(ConcreteExpression val, Analyzer& a, Lexer::Range where) {
                 if (IsReference())
-                    return Decay()->BuildBooleanConversion(val, a);
+                    return Decay()->BuildBooleanConversion(val, a, where);
                 throw std::runtime_error("Could not convert a type to boolean.");
             }
             
-            virtual ConcreteExpression BuildNegate(ConcreteExpression val, Analyzer& a);
-            virtual ConcreteExpression BuildIncrement(ConcreteExpression obj, bool postfix, Analyzer& a) {
+            virtual ConcreteExpression BuildNegate(ConcreteExpression val, Analyzer& a, Lexer::Range where);
+            virtual ConcreteExpression BuildIncrement(ConcreteExpression obj, bool postfix, Analyzer& a, Lexer::Range where) {
                 if (IsReference())
-                    return Decay()->BuildIncrement(obj, postfix, a);
+                    return Decay()->BuildIncrement(obj, postfix, a, where);
                 throw std::runtime_error("Attempted to increment a type that did not support it.");
             }    
-            virtual ConcreteExpression BuildDereference(ConcreteExpression obj, Analyzer& a) {
+            virtual ConcreteExpression BuildDereference(ConcreteExpression obj, Analyzer& a, Lexer::Range where) {
                 if (IsReference())
-                    return Decay()->BuildDereference(obj, a);
+                    return Decay()->BuildDereference(obj, a, where);
                 throw std::runtime_error("This type does not support de-referencing.");
             }
-            virtual Wide::Util::optional<ConcreteExpression> PointerAccessMember(ConcreteExpression obj, std::string name, Analyzer& a) {
+            virtual Wide::Util::optional<ConcreteExpression> PointerAccessMember(ConcreteExpression obj, std::string name, Analyzer& a, Lexer::Range where) {
                 if (IsReference())
-                    return Decay()->PointerAccessMember(obj, std::move(name), a);
-                obj = obj.t->BuildDereference(obj, a);
-                return obj.t->AccessMember(obj, std::move(name), a);
+                    return Decay()->PointerAccessMember(obj, std::move(name), a, where);
+                obj = obj.t->BuildDereference(obj, a, where);
+                return obj.t->AccessMember(obj, std::move(name), a, where);
             }
-            virtual ConcreteExpression AddressOf(ConcreteExpression obj, Analyzer& a);
+            virtual ConcreteExpression AddressOf(ConcreteExpression obj, Analyzer& a, Lexer::Range where);
 
-            virtual ConcreteExpression BuildBinaryExpression(ConcreteExpression lhs, ConcreteExpression rhs, Lexer::TokenType type, Analyzer& a);
+            virtual ConcreteExpression BuildBinaryExpression(ConcreteExpression lhs, ConcreteExpression rhs, Lexer::TokenType type, Analyzer& a, Lexer::Range where);
                                                 
             virtual ~Type() {}
         };

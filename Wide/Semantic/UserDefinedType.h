@@ -21,8 +21,8 @@ namespace Wide {
     namespace Semantic {
         class Function;
         class OverloadSet;
+        class Module;
         class UserDefinedType : public Type {
-            Analyzer& a;
             std::size_t align;
             std::size_t allocsize;
             const AST::Type* type;
@@ -46,6 +46,8 @@ namespace Wide {
             std::string llvmname;
             std::unordered_map<ClangUtil::ClangTU*, clang::QualType> clangtypes;
             std::vector<std::function<llvm::Type*(llvm::Module*)>> types;
+            Type* context;
+
             unsigned AdjustFieldOffset(unsigned);
             AST::Function* AddCopyConstructor(Analyzer& a);
             AST::Function* AddMoveConstructor(Analyzer& a);
@@ -53,20 +55,22 @@ namespace Wide {
         public:
             std::vector<member> GetMembers() { return llvmtypes; }
             UserDefinedType(const AST::Type* t, Analyzer& a, Type* context);
-            const AST::DeclContext* GetDeclContext() override;
+           
+            Type* GetContext(Analyzer& a) override { return context; }
+
             bool HasMember(std::string name);
 
             bool IsComplexType() override;
             std::function<llvm::Type*(llvm::Module*)> GetLLVMType(Analyzer& a) override;
 
             clang::QualType GetClangType(ClangUtil::ClangTU& TU, Analyzer& a) override;  
-            Codegen::Expression* BuildInplaceConstruction(Codegen::Expression* mem, std::vector<ConcreteExpression> args, Analyzer& a) override;
-            Wide::Util::optional<ConcreteExpression> AccessMember(ConcreteExpression, std::string name, Analyzer& a) override;
+            Codegen::Expression* BuildInplaceConstruction(Codegen::Expression* mem, std::vector<ConcreteExpression> args, Analyzer& a, Lexer::Range where) override;
+            Wide::Util::optional<ConcreteExpression> AccessMember(ConcreteExpression, std::string name, Analyzer& a, Lexer::Range where) override;
             ConversionRank RankConversionFrom(Type* from, Analyzer& a) override;
             Expression BuildCall(ConcreteExpression val, std::vector<ConcreteExpression> args, Analyzer& a, Lexer::Range where) override;
             std::size_t size(Analyzer& a) override;
             std::size_t alignment(Analyzer& a) override;
-            ConcreteExpression BuildBinaryExpression(ConcreteExpression lhs, ConcreteExpression rhs, Lexer::TokenType ty, Analyzer& a) override;
+            ConcreteExpression BuildBinaryExpression(ConcreteExpression lhs, ConcreteExpression rhs, Lexer::TokenType ty, Analyzer& a, Lexer::Range where) override;
         };
     }
 }

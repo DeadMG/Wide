@@ -11,15 +11,17 @@ namespace Wide {
     namespace Semantic {
         class Module : public MetaType {
             const AST::Module* m;
+            Module* context;
             std::unordered_map<std::string, ConcreteExpression> SpecialMembers;
         public:
-            using Type::BuildValueConstruction;
+            Module(const AST::Module* p, Module* higher);
+            Module* GetContext(Analyzer& a) override { return context; }
+            void AddSpecialMember(std::string name, ConcreteExpression t);          
 
-            Module(const AST::Module* p);
-            const AST::DeclContext* GetDeclContext() override;
-            void AddSpecialMember(std::string name, ConcreteExpression t);            
-            Wide::Util::optional<ConcreteExpression> AccessMember(ConcreteExpression val, std::string name, Analyzer& a) override;
-            Wide::Util::optional<ConcreteExpression> AccessMember(ConcreteExpression val, Wide::Lexer::TokenType, Analyzer& a) override;
+            using Type::AccessMember;
+
+            Wide::Util::optional<ConcreteExpression> AccessMember(ConcreteExpression val, std::string name, Analyzer& a, Lexer::Range where) override;
+            Wide::Util::optional<ConcreteExpression> AccessMember(ConcreteExpression val, Wide::Lexer::TokenType, Analyzer& a, Lexer::Range where) override;
         };
     }
 }

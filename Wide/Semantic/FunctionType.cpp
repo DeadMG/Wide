@@ -2,6 +2,7 @@
 #include <Wide/Semantic/Analyzer.h>
 #include <Wide/Codegen/Generator.h>
 #include <Wide/Semantic/ClangTU.h>
+#include <Wide/Semantic/Reference.h>
 
 #pragma warning(push, 0)
 #include <clang/AST/Type.h>
@@ -70,20 +71,20 @@ Expression FunctionType::BuildCall(ConcreteExpression val, std::vector<ConcreteE
                     continue;
                 }
                 // Else, we have a complex T from some U, in which case, perform rvalue construction.
-                e.push_back(Args[i]->BuildRvalueConstruction(args[i], a).Expr);
+                e.push_back(Args[i]->BuildRvalueConstruction(args[i], a, where).Expr);
                 continue;
             }
 
             // If we take value T, and the argument is T& or T&&, then just decay no problem.
             if (args[i].t->IsReference(Args[i])) {
-                e.push_back(args[i].BuildValue(a).Expr);
+                e.push_back(args[i].BuildValue(a, where).Expr);
                 continue;
             }
 
             // If we take T&&, the only acceptable argument is T, in which case we need a copy, or U.
-            if (a.IsRvalueType(Args[i])) {
+            if (IsRvalueType(Args[i])) {
                 // Since the types did not match, we know it can only be T, T&, or U. If T& error, else call BuildRvalueConstruction to construct a T&& from value T or U.
-                if (a.IsLvalueType(args[i].t)) {
+                if (IsLvalueType(args[i].t)) {
                     // If T is the same, forbid.
                     if (Args[i]->Decay() == args[i].t->Decay()) {
                         throw std::runtime_error("Could not convert a T& to a T&&.");
@@ -92,21 +93,21 @@ Expression FunctionType::BuildCall(ConcreteExpression val, std::vector<ConcreteE
 
                 // Try a copy. The user knows that unless inheritance is involved, we'll need a new value here anyway.
                 // T::BuildRvalueConstruction called to construct a T in memory from T or some U, which may be reference.
-                e.push_back(Args[i]->Decay()->BuildRvalueConstruction(args[i], a).Expr);
+                e.push_back(Args[i]->Decay()->BuildRvalueConstruction(args[i], a, where).Expr);
                 continue;
             }
 
             // If we take T&, then the only acceptable target is T& or U. We already discarded T&, so go for U.
             // The only way this can work is if U inherits from T, or offers a UDC to T&, neither of which we support right now.
             // Except where Clang takes as const T& an rvalue, in which case we need to create an rvalue of U but pretend it's an lvalue.
-            if (a.IsLvalueType(Args[i])) {
-                e.push_back(Args[i]->Decay()->BuildLvalueConstruction(args[i], a).Expr);
+            if (IsLvalueType(Args[i])) {
+                e.push_back(Args[i]->Decay()->BuildLvalueConstruction(args[i], a, where).Expr);
                 continue;
             }
 
             // We take a value T, and we need to construct from some U. Use ValueConstruction.
             // Type::BuildValueConstruction called.
-            e.push_back(Args[i]->BuildValueConstruction(args[i], a).Expr);
+            e.push_back(Args[i]->BuildValueConstruction(args[i], a, where).Expr);
         }
         // Insert a bit cast because Clang sucks.
         out.Expr = a.gen->CreateFunctionCall(val.Expr, e, GetLLVMType(a));

@@ -39,9 +39,9 @@ namespace Wide {
             Analyzer& analyzer;
             const AST::Function* fun;
             Codegen::Function* codefun;
-            UserDefinedType* member;
             ReturnState returnstate;
             void ComputeBody(Analyzer& a);
+            Type* context;
 
             void CompleteAnalysis(Type* ret, Analyzer& a);
 
@@ -50,18 +50,20 @@ namespace Wide {
             std::string name;
         public:
             bool HasLocalVariable(std::string name);
-            Function(std::vector<Type*> args, const AST::Function* astfun, Analyzer& a, UserDefinedType* member = nullptr);        
+            Function(std::vector<Type*> args, const AST::Function* astfun, Analyzer& a, Type* container);        
 
             clang::QualType GetClangType(ClangUtil::ClangTU& where, Analyzer& a) override;        
             std::function<llvm::Type*(llvm::Module*)> GetLLVMType(Analyzer& a) override; 
-            const AST::DeclContext* GetDeclContext() override;
      
             Expression BuildCall(ConcreteExpression, std::vector<ConcreteExpression> args, Analyzer& a, Lexer::Range where) override;
-            Wide::Util::optional<ConcreteExpression> AccessMember(ConcreteExpression, std::string name, Analyzer& a) override;
+            Wide::Util::optional<ConcreteExpression> AccessMember(ConcreteExpression expr, std::string name, Analyzer& a, Lexer::Range where) override;
+            using Type::AccessMember;
             std::string GetName();
-            UserDefinedType* IsMember() { return member; }
+            Type* GetContext(Analyzer& a) override { return context; }
 
             FunctionType* GetSignature(Analyzer& a);
+        };
+        class FunctionLookupContext : public Type {
         };
     }
 }

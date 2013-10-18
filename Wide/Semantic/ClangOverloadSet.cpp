@@ -27,7 +27,7 @@ ConcreteExpression ClangOverloadSet::BuildCallWithTemplateArguments(clang::Templ
     std::vector<clang::OpaqueValueExpr> exprs;
     if (nonstatic) {
         // The mem's type will be this, even though we don't actually want that. Set it back to the original type.
-        mem = mem.BuildValue(a);
+        mem = mem.BuildValue(a, where);
         mem.t = nonstatic;
         mem.Expr = a.gen->CreateFieldExpression(mem.Expr, 0);
         args.insert(args.begin(), mem);
@@ -65,7 +65,7 @@ Expression ClangOverloadSet::BuildCall(ConcreteExpression mem, std::vector<Concr
     return BuildCallWithTemplateArguments(nullptr, mem, std::move(args), a, where);
 }
 
-ConcreteExpression ClangOverloadSet::BuildMetaCall(ConcreteExpression val, std::vector<ConcreteExpression> args, Analyzer& a) {
+ConcreteExpression ClangOverloadSet::BuildMetaCall(ConcreteExpression val, std::vector<ConcreteExpression> args, Analyzer& a, Lexer::Range where) {
     struct TemplateOverloadSet : public Type {
         clang::TemplateArgumentListInfo tempargs;
         ClangOverloadSet* set;
@@ -128,12 +128,12 @@ std::size_t ClangOverloadSet::alignment(Analyzer& a) {
     if (!nonstatic) return llvm::DataLayout(a.gen->GetDataLayout()).getABIIntegerTypeAlignment(8);
     return a.gen->GetDataLayout().getPointerABIAlignment();
 }
-ConcreteExpression ClangOverloadSet::BuildValueConstruction(std::vector<ConcreteExpression> args, Analyzer& a) {
+ConcreteExpression ClangOverloadSet::BuildValueConstruction(std::vector<ConcreteExpression> args, Analyzer& a, Lexer::Range where) {
     if (args.size() > 1)
         throw std::runtime_error("Cannot construct an overload set from more than one argument.");
     if (args.size() == 1) {
         if (args[0].t->IsReference(this))
-            return args[0].t->BuildValue(args[0], a);
+            return args[0].BuildValue(a, where);
         if (args[0].t == this)
             return args[0];
         if (nonstatic) {

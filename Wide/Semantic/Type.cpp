@@ -1,7 +1,9 @@
 #include <Wide/Semantic/Type.h>
 #include <Wide/Semantic/Analyzer.h>
 #include <Wide/Semantic/PointerType.h>
+#include <Wide/Semantic/Module.h>
 #include <Wide/Codegen/Generator.h>
+#include <Wide/Semantic/Reference.h>
 #include <Wide/Lexer/Token.h>
 #include <Wide/Semantic/OverloadSet.h>
 
@@ -12,84 +14,87 @@ using namespace Semantic;
 #include <clang/AST/AST.h>
 #pragma warning(pop)
 
+Type* Type::GetContext(Analyzer& a) {
+    return a.GetGlobalModule();
+}
 clang::QualType Type::GetClangType(ClangUtil::ClangTU& TU, Analyzer& a) {
     throw std::runtime_error("This type has no Clang representation.");
 }
 
-DeferredExpression DeferredExpression::BuildDereference(Analyzer& a) {
+DeferredExpression DeferredExpression::BuildDereference(Analyzer& a, Lexer::Range where) {
     auto copy = delay;
     return [=, &a](Type* t) {
-        return (*copy)(nullptr).BuildDereference(a);
+        return (*copy)(nullptr).BuildDereference(a, where);
     };
 }
-DeferredExpression DeferredExpression::BuildNegate(Analyzer& a) {
+DeferredExpression DeferredExpression::BuildNegate(Analyzer& a, Lexer::Range where) {
     auto copy = delay;
     return [=, &a](Type* t) {
-        return (*copy)(nullptr).BuildNegate(a);
+        return (*copy)(nullptr).BuildNegate(a, where);
     };
 }
-DeferredExpression DeferredExpression::AddressOf(Analyzer& a) {
+DeferredExpression DeferredExpression::AddressOf(Analyzer& a, Lexer::Range where) {
     auto copy = delay;
     return [=, &a](Type* t) {
-        return (*copy)(nullptr).AddressOf(a);
+        return (*copy)(nullptr).AddressOf(a, where);
     };
 }
-DeferredExpression DeferredExpression::BuildBooleanConversion(Analyzer& a) {
+DeferredExpression DeferredExpression::BuildBooleanConversion(Analyzer& a, Lexer::Range where) {
     auto copy = delay;
     return [=, &a](Type* t) {
-        return ConcreteExpression(a.GetBooleanType(), (*copy)(nullptr).BuildBooleanConversion(a));
+        return ConcreteExpression(a.GetBooleanType(), (*copy)(nullptr).BuildBooleanConversion(a, where));
     };
 }
-DeferredExpression DeferredExpression::BuildIncrement(bool b, Analyzer& a) {
+DeferredExpression DeferredExpression::BuildIncrement(bool b, Analyzer& a, Lexer::Range where) {
     auto copy = delay;
     return [=, &a](Type* t) {
-        return (*copy)(nullptr).BuildIncrement(b, a);
+        return (*copy)(nullptr).BuildIncrement(b, a, where);
     };
 }
-DeferredExpression DeferredExpression::PointerAccessMember(std::string name, Analyzer& a) {
+DeferredExpression DeferredExpression::PointerAccessMember(std::string name, Analyzer& a, Lexer::Range where) {
     auto copy = delay;
     return DeferredExpression([=, &a](Type* t) {
         auto expr = (*copy)(nullptr);
-        auto opt = expr.PointerAccessMember(name, a);
+        auto opt = expr.PointerAccessMember(name, a, where);
         if (opt)
             return *opt;
         throw std::runtime_error("Attempted to access a member of an object, but that object had no such member.");
     });
 }
-DeferredExpression DeferredExpression::BuildBinaryExpression(Expression other, Lexer::TokenType what, Analyzer& a) {
+DeferredExpression DeferredExpression::BuildBinaryExpression(Expression other, Lexer::TokenType what, Analyzer& a, Lexer::Range where) {
     auto copy = delay;
     return DeferredExpression([=, &a](Type* t) {
-        return (*copy)(nullptr).BuildBinaryExpression(other.Resolve(nullptr), what, a);
+        return (*copy)(nullptr).BuildBinaryExpression(other.Resolve(nullptr), what, a, where);
     });
 }
 
-ConcreteExpression ConcreteExpression::BuildValue(Analyzer& a) {
-    return t->BuildValue(*this, a);
+ConcreteExpression ConcreteExpression::BuildValue(Analyzer& a, Lexer::Range where) {
+    return t->BuildValue(*this, a, where);
 }
-DeferredExpression DeferredExpression::BuildValue(Analyzer& a) {
+DeferredExpression DeferredExpression::BuildValue(Analyzer& a, Lexer::Range where) {
     auto copy = delay;
     return DeferredExpression([=, &a](Type* t) {
-        return (*copy)(nullptr).BuildValue(a);
+        return (*copy)(nullptr).BuildValue(a, where);
     });
 }
-Expression Expression::BuildValue(Analyzer& a) {
+Expression Expression::BuildValue(Analyzer& a, Lexer::Range where) {
     return VisitContents(
         [&](ConcreteExpression& e) -> Expression {
-            return e.BuildValue(a);
+            return e.BuildValue(a, where);
         },
         [&](DeferredExpression& e) {
-            return e.BuildValue(a);
+            return e.BuildValue(a, where);
         }
     );
     // return expr.t->BuildValue(*this, a);
 }
 
-ConcreteExpression ConcreteExpression::BuildIncrement(bool b, Analyzer& a) {
-    return t->BuildIncrement(*this, b, a);
+ConcreteExpression ConcreteExpression::BuildIncrement(bool b, Analyzer& a, Lexer::Range where) {
+    return t->BuildIncrement(*this, b, a, where);
 }
 
-ConcreteExpression ConcreteExpression::BuildNegate(Analyzer& a) {
-    return t->BuildNegate(*this, a);
+ConcreteExpression ConcreteExpression::BuildNegate(Analyzer& a, Lexer::Range where) {
+    return t->BuildNegate(*this, a, where);
 }
 
 Expression ConcreteExpression::BuildCall(Expression l, Expression r, Analyzer& a, Lexer::Range where) {
@@ -99,12 +104,12 @@ Expression ConcreteExpression::BuildCall(Expression l, Expression r, Analyzer& a
     return BuildCall(std::move(exprs), a, where);
 }
 
-Util::optional<ConcreteExpression> ConcreteExpression::PointerAccessMember(std::string mem, Analyzer& a) {
-    return t->PointerAccessMember(*this, std::move(mem), a);
+Util::optional<ConcreteExpression> ConcreteExpression::PointerAccessMember(std::string mem, Analyzer& a, Lexer::Range where) {
+    return t->PointerAccessMember(*this, std::move(mem), a, where);
 }
 
-ConcreteExpression ConcreteExpression::BuildDereference(Analyzer& a) {
-    return t->BuildDereference(*this, a);
+ConcreteExpression ConcreteExpression::BuildDereference(Analyzer& a, Lexer::Range where) {
+    return t->BuildDereference(*this, a, where);
 }
 
 Expression ConcreteExpression::BuildCall(ConcreteExpression lhs, ConcreteExpression rhs, Analyzer& a, Lexer::Range where) {
@@ -120,29 +125,29 @@ Expression ConcreteExpression::BuildCall(ConcreteExpression lhs, Analyzer& a, Le
     return BuildCall(std::move(exprs), a, where);
 }
 
-ConcreteExpression ConcreteExpression::AddressOf(Analyzer& a) {
-    return t->AddressOf(*this, a);
+ConcreteExpression ConcreteExpression::AddressOf(Analyzer& a, Lexer::Range where) {
+    return t->AddressOf(*this, a, where);
 }
 
-Codegen::Expression* ConcreteExpression::BuildBooleanConversion(Analyzer& a) {
-    return t->BuildBooleanConversion(*this, a);
+Codegen::Expression* ConcreteExpression::BuildBooleanConversion(Analyzer& a, Lexer::Range where) {
+    return t->BuildBooleanConversion(*this, a, where);
 }
 
-ConcreteExpression ConcreteExpression::BuildBinaryExpression(ConcreteExpression other, Lexer::TokenType ty, Analyzer& a) {
-    return t->BuildBinaryExpression(*this, other, ty, a);
+ConcreteExpression ConcreteExpression::BuildBinaryExpression(ConcreteExpression other, Lexer::TokenType ty, Analyzer& a, Lexer::Range where) {
+    return t->BuildBinaryExpression(*this, other, ty, a, where);
 }
 
-Expression ConcreteExpression::BuildBinaryExpression(Expression l, Lexer::TokenType r, Analyzer& a) {
+Expression ConcreteExpression::BuildBinaryExpression(Expression l, Lexer::TokenType r, Analyzer& a, Lexer::Range where) {
     if (l.contents.type() == typeid(ConcreteExpression)) {
-        return t->BuildBinaryExpression(*this, boost::get<ConcreteExpression>(l.contents), r, a);
+        return t->BuildBinaryExpression(*this, boost::get<ConcreteExpression>(l.contents), r, a, where);
     }
     ConcreteExpression self = *this;
     return DeferredExpression([=, &a](Type* t) {
-        return t->BuildBinaryExpression(self, l.Resolve(nullptr), r, a);
+        return t->BuildBinaryExpression(self, l.Resolve(nullptr), r, a, where);
     });
 }
 
-Expression ConcreteExpression::BuildMetaCall(std::vector<Expression> args, Analyzer& a) {
+Expression ConcreteExpression::BuildMetaCall(std::vector<Expression> args, Analyzer& a, Lexer::Range where) {
     // If they are all concrete, we're on a winner.
     std::vector<ConcreteExpression> concrete;
     for (auto arg : args) {
@@ -153,35 +158,35 @@ Expression ConcreteExpression::BuildMetaCall(std::vector<Expression> args, Analy
                 std::vector<ConcreteExpression> concrete;
                 for (auto arg : args)
                     concrete.push_back(arg.Resolve(nullptr));
-                return t->BuildMetaCall(*this, std::move(concrete), a);
+                return t->BuildMetaCall(*this, std::move(concrete), a, where);
         });
     }
-    return t->BuildMetaCall(*this, std::move(concrete), a);
+    return t->BuildMetaCall(*this, std::move(concrete), a, where);
 }
 
-DeferredExpression DeferredExpression::AccessMember(std::string name, Analyzer& a) {
+DeferredExpression DeferredExpression::AccessMember(std::string name, Analyzer& a, Lexer::Range where) {
     auto copy = delay;
     return DeferredExpression([=, &a](Type* t) {
         auto expr = (*copy)(nullptr);
-        auto opt = expr.AccessMember(name, a);
+        auto opt = expr.AccessMember(name, a, where);
         if (opt)
             return *opt;
         throw std::runtime_error("Attempted to access a member of an object, but that object had no such member.");
     });
 }
-Wide::Util::optional<ConcreteExpression> ConcreteExpression::AccessMember(std::string name, Analyzer& a) {
-    return t->AccessMember(*this, std::move(name), a);
+Wide::Util::optional<ConcreteExpression> ConcreteExpression::AccessMember(std::string name, Analyzer& a, Lexer::Range where) {
+    return t->AccessMember(*this, std::move(name), a, where);
 }
-Wide::Util::optional<Expression> Expression::AccessMember(std::string name, Analyzer& a){
+Wide::Util::optional<Expression> Expression::AccessMember(std::string name, Analyzer& a, Lexer::Range where){
     return VisitContents(
         [&](ConcreteExpression& e) -> Wide::Util::optional<Expression> {
-            auto opt = e.AccessMember(std::move(name), a);
+            auto opt = e.AccessMember(std::move(name), a, where);
             if (opt)
                 return *opt;
             return Wide::Util::none;
         },
         [&](DeferredExpression& e) -> Wide::Util::optional<Expression> {
-            return e.AccessMember(std::move(name), a);
+            return e.AccessMember(std::move(name), a, where);
         }
     );
     //return t->AccessMember(*this, std::move(name), a);
@@ -239,105 +244,105 @@ Expression Expression::BuildCall(Analyzer& a, Lexer::Range where) {
     return BuildCall(std::vector<Expression>(), a, where);
 }
 
-ConcreteExpression ConcreteExpression::BuildMetaCall(std::vector<ConcreteExpression> args, Analyzer& a) {
-    return t->BuildMetaCall(*this, std::move(args), a);
+ConcreteExpression ConcreteExpression::BuildMetaCall(std::vector<ConcreteExpression> args, Analyzer& a, Lexer::Range where) {
+    return t->BuildMetaCall(*this, std::move(args), a, where);
 }
-DeferredExpression DeferredExpression::BuildMetaCall(std::vector<Expression> args, Analyzer& a) {
+DeferredExpression DeferredExpression::BuildMetaCall(std::vector<Expression> args, Analyzer& a, Lexer::Range where) {
     return DeferredExpression([=, &a](Type* t) {
         std::vector<ConcreteExpression> concrete;
         for (auto&& arg : args) {
             concrete.push_back(arg.Resolve(nullptr));
         }
-        return (*this)(nullptr).BuildMetaCall(std::move(concrete), a);
+        return (*this)(nullptr).BuildMetaCall(std::move(concrete), a, where);
     });
 }
 
-Expression Expression::BuildMetaCall(std::vector<Expression> args, Analyzer& a) {
+Expression Expression::BuildMetaCall(std::vector<Expression> args, Analyzer& a, Lexer::Range where) {
     return VisitContents(
         [&](ConcreteExpression& e) -> Expression {
-            return e.BuildMetaCall(std::move(args), a);
+            return e.BuildMetaCall(std::move(args), a, where);
         },
         [&](DeferredExpression& e) {
-            return e.BuildMetaCall(std::move(args), a);
+            return e.BuildMetaCall(std::move(args), a, where);
         }
     );
     //return t->BuildMetaCall(*this, std::move(args), a);
 }
 
-Expression Expression::BuildDereference(Analyzer& a)  {
+Expression Expression::BuildDereference(Analyzer& a, Lexer::Range where)  {
     return VisitContents(
         [&](ConcreteExpression& e) -> Expression {
-            return e.BuildDereference(a);
+            return e.BuildDereference(a, where);
         },
         [&](DeferredExpression& e) {
-            return e.BuildDereference(a);
+            return e.BuildDereference(a, where);
         }
     );
     //return t->BuildDereference(*this, a);
 }
-Expression Expression::BuildIncrement(bool postfix, Analyzer& a) {
+Expression Expression::BuildIncrement(bool postfix, Analyzer& a, Lexer::Range where) {
     return VisitContents(
         [&](ConcreteExpression& e) -> Expression {
-            return e.BuildIncrement(postfix, a);
+            return e.BuildIncrement(postfix, a, where);
         },
         [&](DeferredExpression& e) {
-            return e.BuildIncrement(postfix, a);
+            return e.BuildIncrement(postfix, a, where);
         }
     );
     //return t->BuildIncrement(*this, postfix, a);
 }  
 
-Wide::Util::optional<Expression> Expression::PointerAccessMember(std::string name, Analyzer& a) {
+Wide::Util::optional<Expression> Expression::PointerAccessMember(std::string name, Analyzer& a, Lexer::Range where) {
     return VisitContents(
         [&](ConcreteExpression& e) -> Wide::Util::optional<Expression> {
-            return e.PointerAccessMember(std::move(name), a);
+            return e.PointerAccessMember(std::move(name), a, where);
         },
         [&](DeferredExpression& e) {
-            return e.PointerAccessMember(std::move(name), a);
+            return e.PointerAccessMember(std::move(name), a, where);
         }
     );
     //return t->PointerAccessMember(*this, std::move(name), a);
 }
-Expression Expression::AddressOf(Analyzer& a) {
+Expression Expression::AddressOf(Analyzer& a, Lexer::Range where) {
     return VisitContents(
         [&](ConcreteExpression& e) -> Expression {
-            return e.AddressOf(a);
+            return e.AddressOf(a, where);
         },
         [&](DeferredExpression& e) {
-            return e.AddressOf(a);
+            return e.AddressOf(a, where);
         }
     );
     //return t->AddressOf(*this, a);
 }
-Expression Expression::BuildBooleanConversion(Analyzer& a) {
+Expression Expression::BuildBooleanConversion(Analyzer& a, Lexer::Range where) {
     return VisitContents(
         [&](ConcreteExpression& e) -> Expression {
-            return ConcreteExpression(a.GetBooleanType(), e.BuildBooleanConversion(a));
+            return ConcreteExpression(a.GetBooleanType(), e.BuildBooleanConversion(a, where));
         },
         [&](DeferredExpression& e) {
-            return e.BuildBooleanConversion(a);
+            return e.BuildBooleanConversion(a, where);
         }
     );
     //return t->BuildBooleanConversion(*this, a);
 }
-Expression Expression::BuildBinaryExpression(Expression rhs, Lexer::TokenType type, Analyzer& a) {
+Expression Expression::BuildBinaryExpression(Expression rhs, Lexer::TokenType type, Analyzer& a, Lexer::Range where) {
     return VisitContents(
         [&](ConcreteExpression& e) -> Expression {
-            return e.BuildBinaryExpression(rhs, type, a);
+            return e.BuildBinaryExpression(rhs, type, a, where);
         },
         [&](DeferredExpression& e) {
-            return e.BuildBinaryExpression(rhs, type, a);
+            return e.BuildBinaryExpression(rhs, type, a, where);
         }
     );
     //return t->BuildBinaryExpression(*this, rhs, type, a);
 }
-Expression Expression::BuildNegate(Analyzer& a) {
+Expression Expression::BuildNegate(Analyzer& a, Lexer::Range where) {
     return VisitContents(
         [&](ConcreteExpression& e) -> Expression {
-            return e.BuildNegate(a);
+            return e.BuildNegate(a, where);
         },
         [&](DeferredExpression& e) {
-            return e.BuildNegate(a);
+            return e.BuildNegate(a, where);
         }
     );
     //return t->BuildNegate(*this, a);
@@ -354,60 +359,60 @@ Expression Expression::BuildCall(Expression lhs, Expression rhs, Analyzer& a, Le
     return BuildCall(std::move(args), a, where);
 }
 
-ConcreteExpression Type::BuildValueConstruction(ConcreteExpression arg, Analyzer& a) {
+ConcreteExpression Type::BuildValueConstruction(ConcreteExpression arg, Analyzer& a, Lexer::Range where) {
     std::vector<ConcreteExpression> args;
     args.push_back(arg);
-    return BuildValueConstruction(std::move(args), a);
+    return BuildValueConstruction(std::move(args), a, where);
 }
-ConcreteExpression Type::BuildRvalueConstruction(ConcreteExpression arg, Analyzer& a) {
+ConcreteExpression Type::BuildRvalueConstruction(ConcreteExpression arg, Analyzer& a, Lexer::Range where) {
     std::vector<ConcreteExpression> args;
     args.push_back(arg);
-    return BuildRvalueConstruction(std::move(args), a);
+    return BuildRvalueConstruction(std::move(args), a, where);
 }
-ConcreteExpression Type::BuildLvalueConstruction(ConcreteExpression arg, Analyzer& a) {
+ConcreteExpression Type::BuildLvalueConstruction(ConcreteExpression arg, Analyzer& a, Lexer::Range where) {
     std::vector<ConcreteExpression> args;
     args.push_back(arg);
-    return BuildLvalueConstruction(std::move(args), a);
+    return BuildLvalueConstruction(std::move(args), a, where);
 }
-Codegen::Expression* Type::BuildInplaceConstruction(Codegen::Expression* mem, ConcreteExpression arg, Analyzer& a){
+Codegen::Expression* Type::BuildInplaceConstruction(Codegen::Expression* mem, ConcreteExpression arg, Analyzer& a, Lexer::Range where){
     std::vector<ConcreteExpression> args;
     args.push_back(arg);
-    return BuildInplaceConstruction(mem, std::move(args), a);
+    return BuildInplaceConstruction(mem, std::move(args), a, where);
 }
-ConcreteExpression Type::BuildValueConstruction(Analyzer& a) {
+ConcreteExpression Type::BuildValueConstruction(Analyzer& a, Lexer::Range where) {
     std::vector<ConcreteExpression> args;
-    return BuildValueConstruction(args, a);
+    return BuildValueConstruction(args, a, where);
 }
-ConcreteExpression Type::BuildRvalueConstruction(Analyzer& a) {
+ConcreteExpression Type::BuildRvalueConstruction(Analyzer& a, Lexer::Range where) {
     std::vector<ConcreteExpression> args;
-    return BuildRvalueConstruction(args, a);
+    return BuildRvalueConstruction(args, a, where);
 }
-ConcreteExpression Type::BuildLvalueConstruction(Analyzer& a) {
+ConcreteExpression Type::BuildLvalueConstruction(Analyzer& a, Lexer::Range where) {
     std::vector<ConcreteExpression> args;
-    return BuildLvalueConstruction(args, a);
+    return BuildLvalueConstruction(args, a, where);
 }
-Codegen::Expression* Type::BuildInplaceConstruction(Codegen::Expression* mem, Analyzer& a) {
+Codegen::Expression* Type::BuildInplaceConstruction(Codegen::Expression* mem, Analyzer& a, Lexer::Range where) {
     std::vector<ConcreteExpression> args;
-    return BuildInplaceConstruction(mem, args, a);
+    return BuildInplaceConstruction(mem, args, a, where);
 }
-Wide::Util::optional<ConcreteExpression> Type::AccessMember(ConcreteExpression e, std::string name, Analyzer& a) {
+Wide::Util::optional<ConcreteExpression> Type::AccessMember(ConcreteExpression e, std::string name, Analyzer& a, Lexer::Range where) {
     if (IsReference())
-        return Decay()->AccessMember(e, std::move(name), a);
+        return Decay()->AccessMember(e, std::move(name), a, where);
     if (name == "~type")
-        return a.GetNothingFunctorType()->BuildValueConstruction(a);
-    throw std::runtime_error("Attempted to access the member of a type that did not support it.");
+        return a.GetNothingFunctorType()->BuildValueConstruction(a, where);
+    return Wide::Util::none;
 }
-ConcreteExpression Type::BuildValue(ConcreteExpression lhs, Analyzer& a) {
+ConcreteExpression Type::BuildValue(ConcreteExpression lhs, Analyzer& a, Lexer::Range where) {
     if (IsComplexType())
         throw std::runtime_error("Internal Compiler Error: Attempted to build a complex type into a register.");
     if (lhs.t->IsReference())
         return ConcreteExpression(lhs.t->Decay(), a.gen->CreateLoad(lhs.Expr));
     return lhs;
 }            
-ConcreteExpression Type::BuildNegate(ConcreteExpression val, Analyzer& a) {
+ConcreteExpression Type::BuildNegate(ConcreteExpression val, Analyzer& a, Lexer::Range where) {
     if (IsReference())
-        return Decay()->BuildNegate(val, a);
-    return ConcreteExpression(a.GetBooleanType(), a.gen->CreateNegateExpression(val.BuildBooleanConversion(a)));
+        return Decay()->BuildNegate(val, a, where);
+    return ConcreteExpression(a.GetBooleanType(), a.gen->CreateNegateExpression(val.BuildBooleanConversion(a, where)));
 }
 
 static const std::unordered_map<Lexer::TokenType, Lexer::TokenType> Assign = []() -> std::unordered_map<Lexer::TokenType, Lexer::TokenType> {
@@ -425,89 +430,96 @@ static const std::unordered_map<Lexer::TokenType, Lexer::TokenType> Assign = [](
     return assign;
 }();
 
-ConcreteExpression Type::BuildBinaryExpression(ConcreteExpression lhs, ConcreteExpression rhs, Lexer::TokenType type, Analyzer& a) {
+Wide::Util::optional<Wide::Semantic::ConcreteExpression> Type::AccessMember(std::string name, Analyzer& a, Lexer::Range where) {
+    return AccessMember(ConcreteExpression(), std::move(name), a, where);
+}
+Wide::Util::optional<Wide::Semantic::ConcreteExpression> Type::AccessMember(Lexer::TokenType name, Analyzer& a, Lexer::Range where) {
+    return AccessMember(ConcreteExpression(), std::move(name), a, where);
+}
+
+ConcreteExpression Type::BuildBinaryExpression(ConcreteExpression lhs, ConcreteExpression rhs, Lexer::TokenType type, Analyzer& a, Lexer::Range where) {
     if (IsReference())
-        return Decay()->BuildBinaryExpression(lhs, rhs, type, a);
+        return Decay()->BuildBinaryExpression(lhs, rhs, type, a, where);
 
     // If this function is entered, it's because the type-specific logic could not resolve the operator.
     // So let us attempt ADL.
-    auto ldecls = lhs.t->Decay()->GetDeclContext() ? a.GetDeclContext(lhs.t->Decay()->GetDeclContext())->AccessMember(ConcreteExpression(), type, a) : Wide::Util::none;
-    auto rdecls = rhs.t->Decay()->GetDeclContext() ? a.GetDeclContext(rhs.t->Decay()->GetDeclContext())->AccessMember(ConcreteExpression(), type, a) : Wide::Util::none;
+    auto ldecls = lhs.t->GetContext(a) ? lhs.t->GetContext(a)->AccessMember(type, a, where) : Wide::Util::none;
+    auto rdecls = rhs.t->GetContext(a) ? rhs.t->GetContext(a)->AccessMember(type, a, where) : Wide::Util::none;
     if (ldecls) {
         if (auto loverset = dynamic_cast<OverloadSet*>(ldecls->t->Decay()))
             if (rdecls) {
                 if (auto roverset = dynamic_cast<OverloadSet*>(rdecls->t->Decay()))
-                    return a.GetOverloadSet(loverset, roverset)->BuildValueConstruction(a).BuildCall(lhs, rhs, a, Lexer::Range(std::shared_ptr<std::string>())).Resolve(nullptr);
+                    return a.GetOverloadSet(loverset, roverset)->BuildValueConstruction(a, where).BuildCall(lhs, rhs, a, where).Resolve(nullptr);
             } else {
-                return loverset->BuildValueConstruction(a).BuildCall(lhs, rhs, a, Lexer::Range(std::shared_ptr<std::string>())).Resolve(nullptr);
+                return loverset->BuildValueConstruction(a, where).BuildCall(lhs, rhs, a, where).Resolve(nullptr);
             }
     } else
         if (rdecls)
             if (auto roverset = dynamic_cast<OverloadSet*>(rdecls->t->Decay()))
-                return roverset->BuildValueConstruction(a).BuildCall(lhs, rhs, a, Lexer::Range(std::shared_ptr<std::string>())).Resolve(nullptr);
+                return roverset->BuildValueConstruction(a, where).BuildCall(lhs, rhs, a, where).Resolve(nullptr);
 
     // At this point, ADL has failed to find an operator and the type also failed to post one.
     // So let us attempt a default implementation for some operators.
     if (Assign.find(type) != Assign.end())
-        return BuildLvalueConstruction(lhs, a).BuildBinaryExpression(rhs, Assign.at(type), a);
+        return BuildLvalueConstruction(lhs, a, where).BuildBinaryExpression(rhs, Assign.at(type), a, where);
     switch(type) {
     case Lexer::TokenType::NotEqCmp:
-        return lhs.BuildBinaryExpression(rhs, Lexer::TokenType::EqCmp, a).BuildNegate(a);
+        return lhs.BuildBinaryExpression(rhs, Lexer::TokenType::EqCmp, a, where).BuildNegate(a, where);
     case Lexer::TokenType::EqCmp:
-        return lhs.BuildBinaryExpression(rhs, Lexer::TokenType::LT, a).BuildNegate(a).BuildBinaryExpression(rhs.BuildBinaryExpression(lhs, Lexer::TokenType::LT, a).BuildNegate(a), Lexer::TokenType::And, a);
+        return lhs.BuildBinaryExpression(rhs, Lexer::TokenType::LT, a, where).BuildNegate(a, where).BuildBinaryExpression(rhs.BuildBinaryExpression(lhs, Lexer::TokenType::LT, a, where).BuildNegate(a, where), Lexer::TokenType::And, a, where);
     case Lexer::TokenType::LTE:
-        return rhs.BuildBinaryExpression(lhs, Lexer::TokenType::LT, a).BuildNegate(a);
+        return rhs.BuildBinaryExpression(lhs, Lexer::TokenType::LT, a, where).BuildNegate(a, where);
     case Lexer::TokenType::GT:
-        return rhs.BuildBinaryExpression(lhs, Lexer::TokenType::LT, a);
+        return rhs.BuildBinaryExpression(lhs, Lexer::TokenType::LT, a, where);
     case Lexer::TokenType::GTE:
-        return lhs.BuildBinaryExpression(rhs, Lexer::TokenType::LT, a).BuildNegate(a);
+        return lhs.BuildBinaryExpression(rhs, Lexer::TokenType::LT, a, where).BuildNegate(a, where);
     case Lexer::TokenType::Assignment:
-        if (!IsComplexType() && lhs.t->Decay() == rhs.t->Decay() && a.IsLvalueType(lhs.t))
-            return ConcreteExpression(lhs.t, a.gen->CreateStore(lhs.Expr, rhs.BuildValue(a).Expr));
+        if (!IsComplexType() && lhs.t->Decay() == rhs.t->Decay() && IsLvalueType(lhs.t))
+            return ConcreteExpression(lhs.t, a.gen->CreateStore(lhs.Expr, rhs.BuildValue(a, where).Expr));
     case Lexer::TokenType::Or:
-        return ConcreteExpression(a.GetBooleanType(), lhs.BuildBooleanConversion(a)).BuildBinaryExpression(ConcreteExpression(a.GetBooleanType(), rhs.BuildBooleanConversion(a)), Wide::Lexer::TokenType::Or, a);
+        return ConcreteExpression(a.GetBooleanType(), lhs.BuildBooleanConversion(a, where)).BuildBinaryExpression(ConcreteExpression(a.GetBooleanType(), rhs.BuildBooleanConversion(a, where)), Wide::Lexer::TokenType::Or, a, where);
     case Lexer::TokenType::And:
-        return ConcreteExpression(a.GetBooleanType(), lhs.BuildBooleanConversion(a)).BuildBinaryExpression(ConcreteExpression(a.GetBooleanType(), rhs.BuildBooleanConversion(a)), Wide::Lexer::TokenType::And, a);
+        return ConcreteExpression(a.GetBooleanType(), lhs.BuildBooleanConversion(a, where)).BuildBinaryExpression(ConcreteExpression(a.GetBooleanType(), rhs.BuildBooleanConversion(a, where)), Wide::Lexer::TokenType::And, a, where);
     }
     throw std::runtime_error("Attempted to build a binary expression; but it could not be found by the type, and a default could not be applied.");
 }
 
-ConcreteExpression Type::BuildRvalueConstruction(std::vector<ConcreteExpression> args, Analyzer& a) {
+ConcreteExpression Type::BuildRvalueConstruction(std::vector<ConcreteExpression> args, Analyzer& a, Lexer::Range where) {
     ConcreteExpression out;
     out.t = a.GetRvalueType(this);
     auto mem = a.gen->CreateVariable(GetLLVMType(a), alignment(a));
     if (!IsComplexType() && args.size() == 1 && args[0].t->Decay() == this) {
-        args[0] = args[0].t->BuildValue(args[0], a);
+        args[0] = args[0].t->BuildValue(args[0], a, where);
         out.Expr = a.gen->CreateChainExpression(a.gen->CreateStore(mem, args[0].Expr), mem);
     } else
-        out.Expr = a.gen->CreateChainExpression(BuildInplaceConstruction(mem, args, a), mem);
+        out.Expr = a.gen->CreateChainExpression(BuildInplaceConstruction(mem, args, a, where), mem);
     out.steal = true;
     return out;
 }
 
-ConcreteExpression Type::BuildLvalueConstruction(std::vector<ConcreteExpression> args, Analyzer& a) {
+ConcreteExpression Type::BuildLvalueConstruction(std::vector<ConcreteExpression> args, Analyzer& a, Lexer::Range where) {
     ConcreteExpression out;
-    out.t = a.AsLvalueType(this);
+    out.t = a.GetLvalueType(this);
     auto mem = a.gen->CreateVariable(GetLLVMType(a), alignment(a));
     if (!IsComplexType() && args.size() == 1 && args[0].t->Decay() == this) {
-        args[0] = args[0].t->BuildValue(args[0], a);
+        args[0] = args[0].BuildValue(a, where);
         out.Expr = a.gen->CreateChainExpression(a.gen->CreateStore(mem, args[0].Expr), mem);
     } else
-        out.Expr = a.gen->CreateChainExpression(BuildInplaceConstruction(mem, args, a), mem);    return out;
+        out.Expr = a.gen->CreateChainExpression(BuildInplaceConstruction(mem, args, a, where), mem);    return out;
 }            
-Codegen::Expression* Type::BuildInplaceConstruction(Codegen::Expression* mem, std::vector<ConcreteExpression> args, Analyzer& a) {
+Codegen::Expression* Type::BuildInplaceConstruction(Codegen::Expression* mem, std::vector<ConcreteExpression> args, Analyzer& a, Lexer::Range where) {
     if (!IsReference() && !IsComplexType() && args.size() == 1 && args[0].t->Decay() == this)
-        return a.gen->CreateStore(mem, args[0].BuildValue(a).Expr);
+        return a.gen->CreateStore(mem, args[0].BuildValue(a, where).Expr);
     throw std::runtime_error("Could not inplace construct this type.");
 }
 
-ConcreteExpression Type::BuildValueConstruction(std::vector<ConcreteExpression> args, Analyzer& a) {
+ConcreteExpression Type::BuildValueConstruction(std::vector<ConcreteExpression> args, Analyzer& a, Lexer::Range where) {
     if (IsComplexType())
         throw std::runtime_error("Internal compiler error: Attempted to value construct a complex UDT.");
     if (args.size() == 1 && args[0].t == this)
         return args[0];
     auto mem = a.gen->CreateVariable(GetLLVMType(a), alignment(a));
-    return ConcreteExpression(this, a.gen->CreateLoad(a.gen->CreateChainExpression(BuildInplaceConstruction(mem, std::move(args), a), mem)));
+    return ConcreteExpression(this, a.gen->CreateLoad(a.gen->CreateChainExpression(BuildInplaceConstruction(mem, std::move(args), a, where), mem)));
 }
 ConversionRank Type::RankConversionFrom(Type* from, Analyzer& a) {
     // We only cover the following cases:
@@ -523,9 +535,9 @@ ConversionRank Type::RankConversionFrom(Type* from, Analyzer& a) {
         return ConversionRank::Zero;
     return ConversionRank::None;
 }
-ConcreteExpression Type::AddressOf(ConcreteExpression obj, Analyzer& a) {
+ConcreteExpression Type::AddressOf(ConcreteExpression obj, Analyzer& a, Lexer::Range where) {
     // TODO: Remove this restriction, it is not very Wide.
-    if (!a.IsLvalueType(obj.t))
+    if (!IsLvalueType(obj.t))
         throw std::runtime_error("Attempted to take the address of something that was not an lvalue.");
     return ConcreteExpression(a.GetPointerType(obj.t->Decay()), obj.Expr);
 }

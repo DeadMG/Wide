@@ -1,37 +1,37 @@
-module Standard {
+module IntegerOperations {
     Main() {
-	    x := 5;
-		y := 10;
+        x := 5;
+        y := 10;
 
-		z := x < y;
-		z = x == y;
-		z = x ~= y;
-		z = x <= y;
-		z = x >= y;
-		z = x < y;
+        z := x < y;
+        z = x == y;
+        z = x ~= y;
+        z = x <= y;
+        z = x >= y;
+        z = x < y;
 
-		x += y;
-		w := x + y;
+        x += y;
+        w := x + y;
 
-		x ^= y;
-		w = x ^ y;
+        x ^= y;
+        w = x ^ y;
 
-		x &= y;
-		w = x & y;
+        x &= y;
+        w = x & y;
 
-		x |= y;
-		w = x | y;
+        x |= y;
+        w = x | y;
 
-		x <<= y;
-		w = x << y;
+        x <<= y;
+        w = x << y;
 
-		x >>= y;
-		w = x >> y;
+        x >>= y;
+        w = x >> y;
 
-		x %= y;
-		w = x % y;
-		
-		x -= y;
-		w = x - y;
-	}
+        x %= y;
+        w = x % y;
+        
+        x -= y;
+        w = x - y;
+    }
 }

@@ -8,7 +8,7 @@
 #include <Wide/Semantic/Type.h>
 #include <Wide/Semantic/ConstructorType.h>
 #include <Wide/SemanticTest/MockCodeGenerator.h>
-
+#include <Wide/SemanticTest/Test.h>
 #pragma warning(push, 0)
 #include <llvm/Support/TargetSelect.h>
 #include <llvm/Target/TargetOptions.h>
@@ -36,52 +36,6 @@ extern "C" __declspec(dllexport) void AddHeaderPath(Wide::Options::Clang* p, con
     p->HeaderSearchOptions->AddPath(path, angled ? clang::frontend::IncludeDirGroup::Angled : clang::frontend::IncludeDirGroup::Quoted, false, false);
 }
 
-template<typename F, typename T> void Try(F&& t, T errorcallback) {
-    try {
-        t();
-    } catch(Wide::Semantic::SemanticError& err) {
-         errorcallback(err.location(), err.error());
-    } catch(...) {}
-}
-
-template<typename T, typename U> void Test(Wide::Semantic::Analyzer& a, const Wide::AST::Module* root, T errorfunc, U& mockgen) {
-    for(auto overset : root->functions) {
-        for(auto fun : overset.second->functions) {
-            if (fun->args.size() == 0) {
-                Try([&] { a.GetWideFunction(fun)->BuildCall(Wide::Semantic::ConcreteExpression(), std::vector<Wide::Semantic::ConcreteExpression>(), a, fun->where.front()); }, errorfunc);
-                continue;
-            }
-            std::vector<Wide::Semantic::ConcreteExpression> concexpr;
-            try {
-                for(auto arg : fun->args) {
-                    if (!arg.type)
-                        continue;
-                    Try([&] {
-                        auto ty = a.AnalyzeExpression(a.GetDeclContext(fun->higher), arg.type);
-                        if (auto conty = dynamic_cast<Wide::Semantic::ConstructorType*>(ty.Resolve(nullptr).t->Decay())) 
-                            concexpr.push_back(Wide::Semantic::ConcreteExpression(conty->GetConstructedType(), mockgen.CreateNop()));
-                    }, errorfunc);
-                }
-                if (concexpr.size() == fun->args.size()) {
-                    std::vector<Wide::Semantic::Type*> types;
-                    for(auto x : concexpr)
-                        types.push_back(x.t);
-                    Try([&] { a.GetWideFunction(fun, nullptr, std::move(types))->BuildCall(Wide::Semantic::ConcreteExpression(), std::move(concexpr), a, fun->where.front()); }, errorfunc);
-                }
-            } catch(...) {}
-        }
-    }
-    for(auto decl : root->decls) {
-        if (auto use = dynamic_cast<Wide::AST::Using*>(decl.second)) {
-            Try([&] { a.GetWideModule(root)->BuildValueConstruction(a).AccessMember(use->name, a); }, errorfunc);
-        }
-        if (auto mod = dynamic_cast<Wide::AST::Module*>(decl.second)) {
-            Try([&] { a.GetWideModule(root)->BuildValueConstruction(a).AccessMember(mod->name, a); }, errorfunc);
-            Test(a, mod, errorfunc, mockgen);
-        }
-    }
-}
-
 extern "C" __declspec(dllexport) void AnalyzeWide(
     Wide::AST::Combiner* comb,
     Wide::Options::Clang* clangopts,
@@ -98,9 +52,8 @@ extern "C" __declspec(dllexport) void AnalyzeWide(
     llvm::TargetOptions targetopts;
     targetmachine = std::unique_ptr<llvm::TargetMachine>(target.createTargetMachine(clangopts->TargetOptions.Triple, llvm::Triple(clangopts->TargetOptions.Triple).getArchName(), "", targetopts));
     Wide::Codegen::MockGenerator mockgen(*targetmachine->getDataLayout());
-    Wide::Semantic::Analyzer a(*clangopts, &mockgen);
-    a(comb->GetGlobalModule());
-    Test(a, comb->GetGlobalModule(), [&](CEquivalents::Range r, Wide::Semantic::Error e) { errorcallback(r, e, context); }, mockgen);
+    Wide::Semantic::Analyzer a(*clangopts, &mockgen, comb->GetGlobalModule());
+    Test(a, nullptr, comb->GetGlobalModule(), [&](CEquivalents::Range r, Wide::Semantic::Error e) { errorcallback(r, e, context); }, mockgen);
 }
 
 extern "C" __declspec(dllexport) const char* GetAnalyzerErrorString(Wide::Semantic::Error err) {

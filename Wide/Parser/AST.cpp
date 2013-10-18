@@ -25,7 +25,7 @@ void Combiner::Add(Module* m) {
                 owned_overload_sets.insert(std::make_pair(InsertPoint, std::move(new_set)));
             }
             for(auto x : entry.second->functions) {
-                auto newfunc = Wide::Memory::MakeUnique<Function>(x->name, x->statements, x->prolog, x->where.front(), x->args, to, x->initializers);
+                auto newfunc = Wide::Memory::MakeUnique<Function>(x->name, x->statements, x->prolog, x->where.front(), x->args, x->initializers);
                 inverse[x] = newfunc.get();
                 InsertPoint->functions.insert(newfunc.get());
                 owned_decl_contexts.insert(std::make_pair(newfunc.get(), std::move(newfunc)));
@@ -46,7 +46,7 @@ void Combiner::Add(Module* m) {
                         continue;
                     }
                 else {
-                    auto new_mod = Wide::Memory::MakeUnique<Module>(entry.first, to, nested->where.front());
+                    auto new_mod = Wide::Memory::MakeUnique<Module>(entry.first, nested->where.front());
                     new_mod->where = nested->where;
                     to->decls[entry.first] = owned_decl_contexts.insert(std::make_pair(next = new_mod.get(), std::move(new_mod))).first->first;
                 }
@@ -62,7 +62,7 @@ void Combiner::Add(Module* m) {
                     errors[to].insert(use);
                     continue;
                 }
-                auto new_using = Wide::Memory::MakeUnique<AST::Using>(use->name, use->expr, to, use->where.front());
+                auto new_using = Wide::Memory::MakeUnique<AST::Using>(use->name, use->expr, use->where.front());
                 to->decls[use->name] = owned_decl_contexts.insert(std::make_pair(new_using.get(), std::move(new_using))).first->first;
                 continue;
             }
@@ -76,7 +76,7 @@ void Combiner::Add(Module* m) {
                     continue;
                 }
 
-                auto newty = Wide::Memory::MakeUnique<Type>(to, entry.first, ty->location);
+                auto newty = Wide::Memory::MakeUnique<Type>(entry.first, ty->location);
                 newty->variables = ty->variables;
                 newty->Functions = ty->Functions;
                 newty->opcondecls = ty->opcondecls;
@@ -105,7 +105,7 @@ void Combiner::Add(Module* m) {
                 to->functions[entry.first] = owned_overload_sets.insert(std::make_pair(InsertPoint, std::move(new_set))).first->first;
             }
             for(auto x : overset->functions) {
-                auto newfunc = Wide::Memory::MakeUnique<Function>(x->name, x->statements, x->prolog, x->where.front(), x->args, to, x->initializers);
+                auto newfunc = Wide::Memory::MakeUnique<Function>(x->name, x->statements, x->prolog, x->where.front(), x->args, x->initializers);
                 inverse[x] = newfunc.get();
                 InsertPoint->functions.insert(newfunc.get());
                 owned_decl_contexts.insert(std::make_pair(newfunc.get(), std::move(newfunc)));

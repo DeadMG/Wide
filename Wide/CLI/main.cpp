@@ -2,7 +2,7 @@
 
 #include <Wide/Semantic/ClangOptions.h>
 #include <Wide/Codegen/LLVMOptions.h>
-#include <Wide/Semantic/Analyzer.h>
+#include <Wide/Semantic/Semantic.h>
 #include <Wide/Parser/Parser.h>
 #include <Wide/Codegen/LLVMGenerator.h>
 #include <Wide/Lexer/Lexer.h>
@@ -24,7 +24,6 @@
 
 void Compile(const Wide::Options::Clang& copts, const Wide::Options::LLVM& lopts, const std::vector<std::string>& files) {    
     Wide::LLVMCodegen::Generator Generator(lopts, copts.FrontendOptions.OutputFile, copts.TargetOptions.Triple);
-    Wide::Semantic::Analyzer Sema(copts, &Generator);
     
     Wide::Concurrency::Vector<std::string> excepts;
     Wide::Concurrency::Vector<std::string> warnings;
@@ -36,7 +35,9 @@ void Compile(const Wide::Options::Clang& copts, const Wide::Options::LLVM& lopts
         str << Wide::Parser::ErrorStrings.at(what);
         excepts.push_back(str.str());
     };
-    Wide::AST::Combiner combiner(parsererrorhandler);
+    auto combineerrorhandler = [=](std::vector<std::pair<Wide::Lexer::Range, Wide::AST::DeclContext*>> errs) {
+    };
+    Wide::AST::Combiner combiner(combineerrorhandler);
     Wide::Concurrency::Vector<std::shared_ptr<Wide::AST::Builder>> builders;
     Wide::Concurrency::ParallelForEach(files.begin(), files.end(), [&](const std::string& filename) {
         std::ifstream inputfile(filename, std::ios::binary | std::ios::in);
@@ -73,8 +74,8 @@ void Compile(const Wide::Options::Clang& copts, const Wide::Options::LLVM& lopts
 
     if (excepts.empty()) {
         try {
-           Sema(combiner.GetGlobalModule());
-           Generator();
+            Wide::Semantic::Analyze(combiner.GetGlobalModule(), copts, Generator);
+            Generator();
         } catch(std::exception& e) {
             std::cout << e.what() << "\n";
             //std::cin.get();

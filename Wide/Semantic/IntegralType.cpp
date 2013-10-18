@@ -44,13 +44,13 @@ std::function<llvm::Type*(llvm::Module*)> IntegralType::GetLLVMType(Analyzer& a)
         return llvm::IntegerType::get(m->getContext(), bits);
     };
 }
-ConcreteExpression IntegralType::BuildBinaryExpression(ConcreteExpression lhs, ConcreteExpression rhs, Lexer::TokenType type, Analyzer& a) {
-    auto lhsval = lhs.BuildValue(a);
-    auto rhsval = rhs.BuildValue(a);
+ConcreteExpression IntegralType::BuildBinaryExpression(ConcreteExpression lhs, ConcreteExpression rhs, Lexer::TokenType type, Analyzer& a, Lexer::Range where) {
+    auto lhsval = lhs.BuildValue(a, where);
+    auto rhsval = rhs.BuildValue(a, where);
 
     // Check that these types are valid for primitive integral operations. If not, go to ADL.
     if (lhsval.t != rhsval.t)
-        return Type::BuildBinaryExpression(lhs, rhs, type, a);
+        return Type::BuildBinaryExpression(lhs, rhs, type, a, where);
     
     switch(type) {
     case Lexer::TokenType::LT:
@@ -60,8 +60,8 @@ ConcreteExpression IntegralType::BuildBinaryExpression(ConcreteExpression lhs, C
     }
 
     // If the LHS is not an lvalue, the assign ops are invalid, so go to ADL or default implementation.
-    if (!a.IsLvalueType(lhs.t))
-        return Type::BuildBinaryExpression(lhs, rhs, type, a);
+    if (!IsLvalueType(lhs.t))
+        return Type::BuildBinaryExpression(lhs, rhs, type, a, where);
 
     switch(type) {
     case Lexer::TokenType::RightShiftAssign:
@@ -87,11 +87,11 @@ ConcreteExpression IntegralType::BuildBinaryExpression(ConcreteExpression lhs, C
     }
     
     // Not a primitive operator- report to ADL.
-    return Type::BuildBinaryExpression(lhs, rhs, type, a);
+    return Type::BuildBinaryExpression(lhs, rhs, type, a, where);
 }
-ConcreteExpression IntegralType::BuildIncrement(ConcreteExpression obj, bool postfix, Analyzer& a) {    
+ConcreteExpression IntegralType::BuildIncrement(ConcreteExpression obj, bool postfix, Analyzer& a, Lexer::Range where) {    
     if (postfix) {
-        if (a.IsLvalueType(obj.t)) {
+        if (IsLvalueType(obj.t)) {
             auto curr = a.gen->CreateLoad(obj.Expr);
             auto next = a.gen->CreatePlusExpression(curr, a.gen->CreateIntegralExpression(1, false, GetLLVMType(a)));
             return ConcreteExpression(this, a.gen->CreateChainExpression(a.gen->CreateChainExpression(curr, a.gen->CreateStore(obj.Expr, next)), curr));
@@ -105,9 +105,9 @@ ConcreteExpression IntegralType::BuildIncrement(ConcreteExpression obj, bool pos
     return ConcreteExpression(this, a.gen->CreateChainExpression(a.gen->CreateStore(obj.Expr, next), next));
 }
 
-Codegen::Expression* IntegralType::BuildInplaceConstruction(Codegen::Expression* mem, std::vector<ConcreteExpression> args, Analyzer& a) {
+Codegen::Expression* IntegralType::BuildInplaceConstruction(Codegen::Expression* mem, std::vector<ConcreteExpression> args, Analyzer& a, Lexer::Range where) {
     if (args.size() == 1) {
-        args[0] = args[0].BuildValue(a);
+        args[0] = args[0].BuildValue(a, where);
         if (args[0].t == this)
             return a.gen->CreateStore(mem, args[0].Expr);
         auto inttype = dynamic_cast<IntegralType*>(args[0].t);

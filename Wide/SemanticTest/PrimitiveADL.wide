@@ -1,11 +1,11 @@
-module Funcakes {
-    type t {}
-	operator+(lhs, rhs) {}
-}
-module Standard {
+module PrimitiveADL {
+    module Submodule {
+        type t {}
+        operator+(lhs, rhs) {}        
+    }
     Main() {
-	    x := 5;
-		y := Funcakes.t();
-		x + y;
-	}
+        x := 5;
+        y := Submodule.t();
+        x + y;
+    }
 }

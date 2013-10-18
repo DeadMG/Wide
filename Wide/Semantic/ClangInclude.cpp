@@ -12,7 +12,7 @@
 using namespace Wide;
 using namespace Semantic;
 
-Wide::Util::optional<ConcreteExpression> ClangIncludeEntity::AccessMember(ConcreteExpression, std::string name, Analyzer& a) {
+Wide::Util::optional<ConcreteExpression> ClangIncludeEntity::AccessMember(ConcreteExpression, std::string name, Analyzer& a, Lexer::Range where) {
     if (name == "mangle") {
         struct ClangNameMangler : public MetaType {
             Expression BuildCall(ConcreteExpression, std::vector<ConcreteExpression> args, Analyzer& a, Lexer::Range where) override {
@@ -26,7 +26,7 @@ Wide::Util::optional<ConcreteExpression> ClangIncludeEntity::AccessMember(Concre
                 return ConcreteExpression(a.GetLiteralStringType(), a.gen->CreateStringExpression(fun->GetMangledName()));
             }
         };
-        return a.arena.Allocate<ClangNameMangler>()->BuildValueConstruction(a);
+        return a.arena.Allocate<ClangNameMangler>()->BuildValueConstruction(a, where);
     }
     return Wide::Util::none;
 }
@@ -44,5 +44,5 @@ Expression ClangIncludeEntity::BuildCall(ConcreteExpression e, std::vector<Concr
         name = std::string(name.begin(), name.end() - 1);
     auto clangtu = a.LoadCPPHeader(std::move(name), where);
 
-    return a.GetClangNamespace(*clangtu, clangtu->GetDeclContext())->BuildValueConstruction(a);
+    return a.GetClangNamespace(*clangtu, clangtu->GetDeclContext())->BuildValueConstruction(a, where);
 }

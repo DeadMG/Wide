@@ -3,7 +3,7 @@
 #include <Wide/Codegen/Generator.h>
 #include <Wide/Semantic/Analyzer.h>
 #include <Wide/Semantic/NullType.h>
-#include <Wide/Lexer/Token.h>
+#include <Wide/Semantic/Reference.h>
 
 #pragma warning(push, 0)
 #include <llvm/IR/Module.h>
@@ -32,50 +32,40 @@ std::function<llvm::Type*(llvm::Module*)> PointerType::GetLLVMType(Analyzer& a) 
     };
 }
 
-ConcreteExpression PointerType::BuildDereference(ConcreteExpression val, Analyzer& a) {
-    return ConcreteExpression(a.AsLvalueType(pointee), val.BuildValue(a).Expr);
+ConcreteExpression PointerType::BuildDereference(ConcreteExpression val, Analyzer& a, Lexer::Range where) {
+    return ConcreteExpression(a.GetLvalueType(pointee), val.BuildValue(a, where).Expr);
 }
 
-Codegen::Expression* PointerType::BuildInplaceConstruction(Codegen::Expression* mem, std::vector<ConcreteExpression> args, Analyzer& a) {
+Codegen::Expression* PointerType::BuildInplaceConstruction(Codegen::Expression* mem, std::vector<ConcreteExpression> args, Analyzer& a, Lexer::Range where) {
     if (args.size() > 1)
         throw std::runtime_error("Attempted to construct a pointer from more than one argument.");
     if (args.size() == 0)
         throw std::runtime_error("Attempted to default-construct a pointer.");
-    args[0] = args[0].t->BuildValue(args[0], a);
-    if (args[0].t->Decay() == this)
-        return a.gen->CreateStore(mem, args[0].t->BuildValue(args[0], a).Expr);
+    args[0] = args[0].BuildValue(a, where);
+    if (args[0].t == this)
+        return a.gen->CreateStore(mem, args[0].Expr);
     if (args[0].t->Decay() == a.GetNullType())
         return a.gen->CreateStore(mem, a.gen->CreateChainExpression(args[0].Expr, a.gen->CreateNull(GetLLVMType(a))));
     throw std::runtime_error("Attempted to construct a pointer from something that was not a pointer of the same type or null.");
 }
 
-ConcreteExpression PointerType::BuildBinaryExpression(ConcreteExpression lhs, ConcreteExpression rhs, Lexer::TokenType type, Analyzer& a) {
-    auto lhsval = lhs.BuildValue(a);
-    auto rhsval = rhs.BuildValue(a);
+ConcreteExpression PointerType::BuildBinaryExpression(ConcreteExpression lhs, ConcreteExpression rhs, Lexer::TokenType type, Analyzer& a, Lexer::Range where) {
+    auto lhsval = lhs.BuildValue(a, where);
+    auto rhsval = rhs.BuildValue(a, where);
 
     // If we're not a match, permit ADL to take over. Else, generate the primitive operator.
     if (lhs.t->Decay() != this || rhs.t->Decay() != this)
-       return Type::BuildBinaryExpression(lhs, rhs, type, a);
+       return Type::BuildBinaryExpression(lhs, rhs, type, a, where);
 
     if (type == Lexer::TokenType::EqCmp) {
         return ConcreteExpression(a.GetBooleanType(), a.gen->CreateEqualityExpression(lhsval.Expr, rhsval.Expr));
     }
-
-    // Let ADL take over if we are not an lvalue.
-    if (!a.IsLvalueType(lhs.t))
-        return Type::BuildBinaryExpression(lhs, rhs, type, a);
-
-    /*switch(type) {
-    case Lexer::TokenType::Assignment:
-        return Expression(lhs.t, a.gen->CreateStore(lhs.Expr, rhsval.Expr));
-    }*/
-    // Permit ADL to find any funky operators the user may have defined or defaults.
-    return Type::BuildBinaryExpression(lhs, rhs, type, a);
+    
+    return Type::BuildBinaryExpression(lhs, rhs, type, a, where);
 }
 
-Codegen::Expression* PointerType::BuildBooleanConversion(ConcreteExpression obj, Analyzer& a) {
-    obj = obj.t->BuildValue(obj, a);
-    return a.gen->CreateIsNullExpression(obj.Expr);
+Codegen::Expression* PointerType::BuildBooleanConversion(ConcreteExpression obj, Analyzer& a, Lexer::Range where) {
+    return a.gen->CreateIsNullExpression(obj.BuildValue(a, where).Expr);
 }
 
 std::size_t PointerType::size(Analyzer& a) {

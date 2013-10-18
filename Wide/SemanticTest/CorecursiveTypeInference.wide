@@ -1,13 +1,12 @@
-foo(x) {
-    if (x > 5)
-        return bar(x);
-    return x;
-}
-bar(x) {
-    return foo(x - 1);
-}
-
-module Standard {
+module CoRecursiveTypeInference {
+    foo(x) {
+        if (x > 5)
+            return bar(x);
+        return x;
+    }
+    bar(x) {
+        return foo(x - 1);
+    }
     Main() {
         int64(foo(6));
     }

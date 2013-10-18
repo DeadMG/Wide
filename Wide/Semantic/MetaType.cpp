@@ -22,7 +22,7 @@ std::function<llvm::Type*(llvm::Module*)> MetaType::GetLLVMType(Analyzer& a) {
         return llvm::StructType::create(nam, llvm::IntegerType::getInt8Ty(mod->getContext()), nullptr);
     };
 }
-Codegen::Expression* MetaType::BuildInplaceConstruction(Codegen::Expression* mem, std::vector<ConcreteExpression> args, Analyzer& a) {
+Codegen::Expression* MetaType::BuildInplaceConstruction(Codegen::Expression* mem, std::vector<ConcreteExpression> args, Analyzer& a, Lexer::Range where) {
     if (args.size() > 1)
         throw std::runtime_error("Attempt to construct a type object with too many arguments.");
     if (args.size() == 1 && args[0].t->Decay() != this)
@@ -33,7 +33,7 @@ Codegen::Expression* MetaType::BuildInplaceConstruction(Codegen::Expression* mem
 std::size_t MetaType::size(Analyzer& a) { return a.gen->GetInt8AllocSize(); }
 std::size_t MetaType::alignment(Analyzer& a) { return a.gen->GetDataLayout().getABIIntegerTypeAlignment(8); }
 
-ConcreteExpression MetaType::BuildValueConstruction(std::vector<ConcreteExpression> args, Analyzer& a) {
+ConcreteExpression MetaType::BuildValueConstruction(std::vector<ConcreteExpression> args, Analyzer& a, Lexer::Range where) {
     if (args.size() > 1)
         throw std::runtime_error("Attempt to construct a type object with too many arguments.");
     if (args.size() == 1 && args[0].t->Decay() != this)

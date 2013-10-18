@@ -7,6 +7,7 @@
 #include <Wide/Semantic/Module.h>
 #include <Wide/Semantic/ConstructorType.h>
 #include <Wide/Semantic/UserDefinedType.h>
+#include <Wide/Semantic/Reference.h>
 #include <unordered_set>
 #include <sstream>
 #include <iostream>
@@ -23,12 +24,12 @@
 using namespace Wide;
 using namespace Semantic;
 
-Function::Function(std::vector<Type*> args, const AST::Function* astfun, Analyzer& a, UserDefinedType* mem)
+Function::Function(std::vector<Type*> args, const AST::Function* astfun, Analyzer& a, Type* mem)
 : analyzer(a)
 , ReturnType(nullptr)
 , fun(astfun)
 , codefun(nullptr)
-, member(mem)
+, context(mem)
 , s(State::NotYetAnalyzed)
 , returnstate(ReturnState::NoReturnSeen) {
     // Only match the non-concrete arguments.
@@ -36,24 +37,25 @@ Function::Function(std::vector<Type*> args, const AST::Function* astfun, Analyze
     unsigned num = 0;
     unsigned metaargs = 0;
     if (mem && (astfun->args.size() < 1 || astfun->args.front().name != "this"))
-        Args.push_back(a.AsLvalueType(mem));
+        Args.push_back(a.GetLvalueType(mem));
     for(auto&& arg : astfun->args) {
-        auto param = [this, num] { return num + ReturnType->IsComplexType() + (member != nullptr); };
+#pragma warning(disable : 4800)
+        auto param = [this, num] { return num + ReturnType->IsComplexType() + (bool(dynamic_cast<UserDefinedType*>(context))); };
         Type* ty = args[num];
         ConcreteExpression var;
-        var.t = a.AsLvalueType(ty);
+        var.t = a.GetLvalueType(ty);
         if (ty->IsComplexType()) {
             var.Expr = a.gen->CreateParameterExpression(param);
         } else {
             std::vector<ConcreteExpression> args;
-            ConcreteExpression arg;
-            arg.Expr = a.gen->CreateParameterExpression(param);
-            arg.t = ty;
-            args.push_back(arg);
-            if (arg.t->IsReference())
-                var.Expr = arg.Expr;
+            ConcreteExpression copy;
+            copy.Expr = a.gen->CreateParameterExpression(param);
+            copy.t = ty;
+            args.push_back(copy);
+            if (copy.t->IsReference())
+                var.Expr = copy.Expr;
             else
-                var.Expr = ty->BuildLvalueConstruction(args, a).Expr;
+                var.Expr = ty->BuildLvalueConstruction(args, a, arg.location).Expr;
         }
         ++num;
         variables.back()[arg.name] = var;
@@ -93,10 +95,6 @@ Function::Function(std::vector<Type*> args, const AST::Function* astfun, Analyze
     }
 }
 
-const AST::DeclContext* Function::GetDeclContext() {
-    return fun;
-}
-
 clang::QualType Function::GetClangType(ClangUtil::ClangTU& where, Analyzer& a) {
     return GetSignature(a)->GetClangType(where, a);
 }
@@ -111,11 +109,12 @@ ConcreteExpression check(Wide::Util::optional<ConcreteExpression> e) {
     return *e;
 }
 void Function::ComputeBody(Analyzer& a) {
+    auto member = dynamic_cast<UserDefinedType*>(context);
     if (s == State::NotYetAnalyzed) {
         s = State::AnalyzeInProgress;
         // Initializers first, if we are a constructor
         if (member && fun->name == "type") {
-            auto self = check(AccessMember(ConcreteExpression(), "this", a)); // We're a constructor so "this" guaranteed.
+            ConcreteExpression self(a.GetLvalueType(member), a.gen->CreateParameterExpression([this] { return ReturnType->IsComplexType(); }));
             auto members = member->GetMembers();
             for (auto&& x : members) {
                 auto has_initializer = [&](std::string name) -> const AST::Variable* {
@@ -131,24 +130,24 @@ void Function::ComputeBody(Analyzer& a) {
                     std::vector<ConcreteExpression> args;
                     if (init->initializer)
                         args.push_back(a.AnalyzeExpression(this, init->initializer).Resolve(nullptr));
-                    exprs.push_back(x.t->BuildInplaceConstruction(mem, std::move(args), a));
+                    exprs.push_back(x.t->BuildInplaceConstruction(mem, std::move(args), a, init->location));
                 }
                 else {
                     // Don't care about if x.t is ref because refs can't be default-constructed anyway.
                     if (x.InClassInitializer)
                     {
                         auto expr = a.AnalyzeExpression(this, x.InClassInitializer).Resolve(nullptr);
-                        auto mem = check(self.t->AccessMember(self, x.name, a));
+                        auto mem = check(self.t->AccessMember(self, x.name, a, x.InClassInitializer->location));
                         std::vector<ConcreteExpression> args;
                         args.push_back(expr);
-                        exprs.push_back(x.t->BuildInplaceConstruction(mem.Expr, std::move(args), a));
+                        exprs.push_back(x.t->BuildInplaceConstruction(mem.Expr, std::move(args), a, x.InClassInitializer->location));
                         continue;
                     }
                     if (x.t->IsReference())
                         throw std::runtime_error("Failed to initialize a reference member.");
-                    auto mem = check(self.t->AccessMember(self, x.name, a));
+                    auto mem = a.gen->CreateFieldExpression(self.Expr, x.num);
                     std::vector<ConcreteExpression> args;
-                    exprs.push_back(x.t->BuildInplaceConstruction(mem.Expr, std::move(args), a));
+                    exprs.push_back(x.t->BuildInplaceConstruction(mem, std::move(args), a, fun->where.front()));
                 }
             }
         }
@@ -182,10 +181,10 @@ void Function::ComputeBody(Analyzer& a) {
                         if (ReturnType->IsComplexType()) {
                             std::vector<ConcreteExpression> args;
                             args.push_back(result);
-                            return a.gen->CreateReturn(ReturnType->BuildInplaceConstruction(a.gen->CreateParameterExpression(0), std::move(args), a));
+                            return a.gen->CreateReturn(ReturnType->BuildInplaceConstruction(a.gen->CreateParameterExpression(0), std::move(args), a, ret->location));
                         }
                         else
-                            return a.gen->CreateReturn(result.t->BuildValue(result, a).Expr);
+                            return a.gen->CreateReturn(result.t->BuildValue(result, a, ret->location).Expr);
                     }, [&](DeferredExpression& expr) {
                         if (returnstate == ReturnState::NoReturnSeen)
                             returnstate = ReturnState::DeferredReturnSeen;
@@ -210,21 +209,13 @@ void Function::ComputeBody(Analyzer& a) {
         
                 // If it's a function call, and it returns a complex T, then the return expression already points to
                 // a memory variable of type T. Just use that.
-                // This only works for AST function calls, e.g. f(), it doesn't work for, say, lambda expressions.
-                // Go down to the LLVM level.
-                /*if (auto func = dynamic_cast<AST::FunctionCallExpr*>(var->initializer)) {
-                    if (result.t->IsReference() && result.t->IsReference()->IsComplexType()) {
-                    variables.back()[var->name].t = a.GetLvalueType(result.t);
-                    return variables.back()[var->name].Expr = result.Expr;
-                    }
-                    }*/
                 std::vector<ConcreteExpression> args;
                 args.push_back(result);
         
                 if (result.t->IsReference()) {
                     if (!result.steal) {
-                        result.t = a.AsLvalueType(result.t);
-                        variables.back()[var->name] = result.t->Decay()->BuildLvalueConstruction(args, a);
+                        result.t = a.GetLvalueType(result.t);
+                        variables.back()[var->name] = result.t->Decay()->BuildLvalueConstruction(args, a, var->location);
                     }
                     else {
                         result.steal = false;
@@ -232,12 +223,12 @@ void Function::ComputeBody(Analyzer& a) {
                         // So the expr will be T** whereas I want just T*
                         //if (dynamic_cast<LvalueType*>(result.t))
                         //    result.Expr = a.gen->CreateLoad(result.Expr);
-                        result.t = a.AsLvalueType(result.t);
+                        result.t = a.GetLvalueType(result.t);
                         variables.back()[var->name] = result;
                     }
                 }
                 else {
-                    variables.back()[var->name] = result.t->BuildLvalueConstruction(args, a);
+                    variables.back()[var->name] = result.t->BuildLvalueConstruction(args, a, var->location);
                 }
                 return variables.back()[var->name].Expr;
             }
@@ -256,7 +247,7 @@ void Function::ComputeBody(Analyzer& a) {
         
             if (auto if_stmt = dynamic_cast<const AST::If*>(stmt)) {
                 auto cond = a.AnalyzeExpression(this, if_stmt->condition);
-                auto expr = cond.BuildBooleanConversion(a);
+                auto expr = cond.BuildBooleanConversion(a, if_stmt->condition->location);
                 auto true_br = AnalyzeStatement(if_stmt->true_statement);
                 auto false_br =  AnalyzeStatement(if_stmt->false_statement);
                 return expr.VisitContents(
@@ -271,7 +262,7 @@ void Function::ComputeBody(Analyzer& a) {
         
             if (auto while_stmt = dynamic_cast<const AST::While*>(stmt)) {
                 auto cond = a.AnalyzeExpression(this, while_stmt->condition);
-                auto expr = cond.BuildBooleanConversion(a);
+                auto expr = cond.BuildBooleanConversion(a, while_stmt->condition->location);
                 auto body = AnalyzeStatement(while_stmt->body);                
                 return expr.VisitContents(
                     [&](ConcreteExpression& expr) {
@@ -332,25 +323,16 @@ Expression Function::BuildCall(ConcreteExpression ex, std::vector<ConcreteExpres
         return GetSignature(a)->BuildCall(val, std::move(args), a, where).Resolve(t);
     });    
 }
-Wide::Util::optional<ConcreteExpression> Function::AccessMember(ConcreteExpression e, std::string name, Analyzer& a) {
+Wide::Util::optional<ConcreteExpression> Function::AccessMember(ConcreteExpression e, std::string name, Analyzer& a, Lexer::Range where) {
     for(auto it = variables.rbegin(); it != variables.rend(); ++it) {
         auto&& map = *it;
         if (map.find(name) != map.end()) {
             return map[name];
         }
     }
-    if (member) {
-        ConcreteExpression self(a.AsLvalueType(member), a.gen->CreateParameterExpression([this] { return ReturnType->IsComplexType(); }));
-        if (name == "this")
-            return self;
-        if (member->HasMember(name))
-            return self.t->AccessMember(self, std::move(name), a);
-        auto context = member->GetDeclContext()->higher;
-        while(!dynamic_cast<const AST::Module*>(context))
-            context = context->higher;
-        return a.GetDeclContext(context)->AccessMember(ConcreteExpression(), name, a);
-    }
-    return a.GetDeclContext(fun->higher)->AccessMember(e, std::move(name), a);
+    if (name == "this" && dynamic_cast<UserDefinedType*>(context))
+        return ConcreteExpression(a.GetLvalueType(context), a.gen->CreateParameterExpression([this] { return ReturnType->IsComplexType(); }));
+    return Wide::Util::none;
 }
 std::string Function::GetName() {
     return name;

@@ -5,6 +5,7 @@
 #include <Wide/Semantic/ClangOverloadSet.h>
 #include <Wide/Semantic/ConstructorType.h>
 #include <Wide/Semantic/ClangTemplateClass.h>
+#include <Wide/Semantic/Reference.h>
 #include <Wide/Codegen/Generator.h>
 #include <Wide/Util/MakeUnique.h>
 
@@ -19,7 +20,7 @@
 using namespace Wide;
 using namespace Semantic;
 
-Wide::Util::optional<ConcreteExpression> ClangNamespace::AccessMember(ConcreteExpression val, std::string name, Analyzer& a) {
+Wide::Util::optional<ConcreteExpression> ClangNamespace::AccessMember(ConcreteExpression val, std::string name, Analyzer& a, Lexer::Range where) {
     clang::LookupResult lr(
         from->GetSema(), 
         clang::DeclarationNameInfo(clang::DeclarationName(from->GetIdentifierInfo(name)), clang::SourceLocation()),
@@ -40,16 +41,16 @@ Wide::Util::optional<ConcreteExpression> ClangNamespace::AccessMember(ConcreteEx
             return ConcreteExpression(a.GetFunctionType(a.GetClangType(*from, fundecl->getResultType()), args), a.gen->CreateFunctionValue(from->MangleName(fundecl)));
         }
         if (auto vardecl = llvm::dyn_cast<clang::VarDecl>(result)) {
-            return ConcreteExpression(a.AsLvalueType(a.GetClangType(*from, vardecl->getType())), a.gen->CreateGlobalVariable(from->MangleName(vardecl)));
+            return ConcreteExpression(a.GetLvalueType(a.GetClangType(*from, vardecl->getType())), a.gen->CreateGlobalVariable(from->MangleName(vardecl)));
         }
         if (auto namedecl = llvm::dyn_cast<clang::NamespaceDecl>(result)) {
-            return a.GetConstructorType(a.GetClangNamespace(*from, namedecl))->BuildValueConstruction(a);
+            return a.GetConstructorType(a.GetClangNamespace(*from, namedecl))->BuildValueConstruction(a, where);
         }
         if (auto typedefdecl = llvm::dyn_cast<clang::TypeDecl>(result)) {
-            return a.GetConstructorType(a.GetClangType(*from, from->GetASTContext().getTypeDeclType(typedefdecl)))->BuildValueConstruction(a);
+            return a.GetConstructorType(a.GetClangType(*from, from->GetASTContext().getTypeDeclType(typedefdecl)))->BuildValueConstruction(a, where);
         }
         if (auto tempdecl = llvm::dyn_cast<clang::ClassTemplateDecl>(result)) {
-            return a.GetClangTemplateClass(*from, tempdecl)->BuildValueConstruction(a);
+            return a.GetClangTemplateClass(*from, tempdecl)->BuildValueConstruction(a, where);
         }
         throw std::runtime_error("Found a decl but didn't know how to interpret it.");
     }
@@ -59,4 +60,8 @@ Wide::Util::optional<ConcreteExpression> ClangNamespace::AccessMember(ConcreteEx
         us.addDecl(*it);
     }
     return ConcreteExpression(a.arena.Allocate<ClangOverloadSet>(std::move(ptr), from, nullptr), nullptr);
+}
+
+Type* ClangNamespace::GetContext(Analyzer& a) {
+    return a.GetClangNamespace(*from, con->getParent());
 }

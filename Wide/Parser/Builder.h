@@ -91,8 +91,8 @@ namespace Wide {
             void SetModuleEndLocation(Module* m, Lexer::Range loc);            
             std::vector<FunctionArgument> CreateFunctionArgumentGroup();
             void AddTypeField(Type* t, Variable* decl);
-            void AddArgumentToFunctionGroup(std::vector<FunctionArgument>& args, std::string name, Expression* expr);
-            void AddArgumentToFunctionGroup(std::vector<FunctionArgument>& args, std::string name);
+            void AddArgumentToFunctionGroup(std::vector<FunctionArgument>& args, std::string name, Lexer::Range r, Expression* expr);
+            void AddArgumentToFunctionGroup(std::vector<FunctionArgument>& args, std::string name, Lexer::Range r);
             void AddCaptureToGroup(std::vector<Variable*>& l, Variable* cap);
             void AddInitializerToGroup(std::vector<Variable*>& l, Variable* b);
             void AddStatementToGroup(std::vector<Statement*>& grp, Statement* stmt);

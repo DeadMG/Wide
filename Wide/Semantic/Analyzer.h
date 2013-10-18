@@ -3,6 +3,7 @@
 #include <Wide/Lexer/Token.h>
 #include <Wide/Util/MemoryArena.h>
 #include <Wide/Semantic/Util.h>
+#include <Wide/Util/Ranges/Optional.h>
 #include <Wide/Semantic/ClangOptions.h>
 #include <string>
 #include <unordered_map>
@@ -44,6 +45,7 @@ namespace Wide {
         struct FunctionOverloadSet;
         struct Type;
         struct DeclContext;
+        struct Identifier;
     };
     namespace Semantic {
         struct Expression;
@@ -70,6 +72,8 @@ namespace Wide {
             std::size_t operator()(const std::vector<Type*>& t) const;
         };
         class Analyzer {
+            Module* global;
+
             std::unordered_map<std::string, ClangUtil::ClangTU> headers;
             std::unordered_map<clang::QualType, Type*, ClangUtil::ClangTypeHasher> ClangTypes;
             std::unordered_map<clang::DeclContext*, ClangNamespace*> ClangNamespaces;
@@ -82,7 +86,6 @@ namespace Wide {
             std::unordered_map<const AST::FunctionOverloadSet*, std::unordered_map<Type*, OverloadSet*>> OverloadSets;
             std::unordered_map<unsigned, FloatType*> FloatTypes;
 
-            std::unordered_map<const AST::DeclContext*, Type*> DeclContexts;
             std::unordered_map<const AST::Type*, std::unordered_map<Type*, UserDefinedType*>> UDTs;
             std::unordered_map<const AST::Module*, Module*> WideModules;
             std::unordered_map<unsigned, std::unordered_map<bool, IntegralType*>> integers;
@@ -117,34 +120,30 @@ namespace Wide {
             Type* GetClangType(ClangUtil::ClangTU& from, clang::QualType t);
             ClangNamespace* GetClangNamespace(ClangUtil::ClangTU& from, clang::DeclContext* dc);
             FunctionType* GetFunctionType(Type* ret, const std::vector<Type*>& t);
-            Module* GetWideModule(const AST::Module* m);
-            Function* GetWideFunction(const AST::Function* p, UserDefinedType* nonstatic = nullptr, const std::vector<Type*>& = std::vector<Type*>());
+            Module* GetWideModule(const AST::Module* m, Module* higher);
+            Function* GetWideFunction(const AST::Function* p, Type* context, const std::vector<Type*>& = std::vector<Type*>());
             LvalueType* GetLvalueType(Type* t);
             Type* GetRvalueType(Type* t);
             ConstructorType* GetConstructorType(Type* t);
             ClangTemplateClass* GetClangTemplateClass(ClangUtil::ClangTU& from, clang::ClassTemplateDecl*);
-            OverloadSet* GetOverloadSet(const AST::FunctionOverloadSet* set, Type* nonstatic = nullptr);
+            OverloadSet* GetOverloadSet(const AST::FunctionOverloadSet* set, Type* nonstatic);
             OverloadSet* GetOverloadSet(OverloadSet*, OverloadSet*);
             UserDefinedType* GetUDT(const AST::Type*, Type* context);
-            Type* GetDeclContext(const AST::DeclContext* con);
             IntegralType* GetIntegralType(unsigned, bool);
             PointerType* GetPointerType(Type* to);
             FloatType* GetFloatType(unsigned);
+            Module* GetGlobalModule();
             
             Expression AnalyzeExpression(Type* t, const AST::Expression* e);
-            Expression LookupIdentifier(const AST::ModuleLevelDeclaration* decl, std::string ident);
+            Wide::Util::optional<Expression> LookupIdentifier(Type* context, const AST::Identifier* ident);
 
-            Analyzer(const Options::Clang&, Codegen::Generator*);     
+            Analyzer(const Options::Clang&, Codegen::Generator*, const AST::Module*);     
 
             ClangUtil::ClangTU* LoadCPPHeader(std::string file, Lexer::Range where);
-
-            bool IsLvalueType(Type*);
-            bool IsRvalueType(Type*);
-            Type* AsLvalueType(Type*);
-            Type* AsRvalueType(Type*);
-
-            void operator()(const AST::Module*);
+            
             ~Analyzer();
         };
+        bool IsRvalueType(Type* t);
+        bool IsLvalueType(Type* t);
     }
 }

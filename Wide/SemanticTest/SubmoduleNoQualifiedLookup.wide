@@ -1,0 +1,7 @@
+module SubmoduleNoQualifiedLookup {
+    module Submodule {
+    }
+    Main() {
+        Submodule.Submodule.Submodule.Submodule;
+    }
+}

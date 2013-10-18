@@ -8,6 +8,7 @@ namespace Wide {
     namespace Semantic {
         enum class Error : int {
             CouldNotFindHeader,
+            NoMember
         };
     }
 }
@@ -25,6 +26,7 @@ namespace Wide {
         static const std::unordered_map<Error, std::string> ErrorStrings([]() -> std::unordered_map<Error, std::string> {
             std::pair<Error, std::string> strings[] = {
                 std::make_pair(Error::CouldNotFindHeader, "Clang could not find the specified header."),
+                std::make_pair(Error::NoMember, "The requested member could not be found."),
             };
             return std::unordered_map<Error, std::string>(std::begin(strings), std::end(strings));
         }());

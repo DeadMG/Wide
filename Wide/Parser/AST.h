@@ -26,9 +26,8 @@ namespace Wide {
                 : Expression(r) {}
         };
         struct DeclContext {
-            DeclContext(const DeclContext* above, std::string nam, Lexer::Range decl)
-                : higher(above), name(std::move(nam)), where() { where.push_back(decl); }
-            const DeclContext* higher;
+            DeclContext(std::string nam, Lexer::Range decl)
+                : name(std::move(nam)), where() { where.push_back(decl); }
             std::vector<Wide::Lexer::Range> where;
             virtual ~DeclContext() {} 
             std::string name;
@@ -39,15 +38,15 @@ namespace Wide {
             std::unordered_set<Function*> functions;
         };
         struct Module : public DeclContext {
-            Module(std::string nam, const Module* parent, Lexer::Range where)
-                : DeclContext(parent, std::move(nam), where) {}
+            Module(std::string nam, Lexer::Range where)
+                : DeclContext(std::move(nam), where) {}
             std::unordered_map<std::string, DeclContext*> decls;
             std::unordered_map<std::string, FunctionOverloadSet*> functions;
             std::unordered_map<Lexer::TokenType, FunctionOverloadSet*> opcondecls;
         };
         struct Variable;
         struct Type : public DeclContext, Expression {
-            Type(const DeclContext* above, std::string name, Lexer::Range loc) : DeclContext(above, name, loc), Expression(loc) {}
+            Type(std::string name, Lexer::Range loc) : DeclContext(name, loc), Expression(loc) {}
             std::vector<Variable*> variables;
             std::unordered_map<std::string, FunctionOverloadSet*> Functions;
             std::unordered_map<Lexer::TokenType, FunctionOverloadSet*> opcondecls;
@@ -76,9 +75,12 @@ namespace Wide {
             Lexer::TokenType type;
         };
         struct FunctionArgument {
+            FunctionArgument(Lexer::Range where)
+                : location(std::move(where)) {}
              // May be null
             Expression* type;
             std::string name;
+            Lexer::Range location;
         };
         struct Lambda : Expression {
             std::vector<FunctionArgument> args;
@@ -89,8 +91,8 @@ namespace Wide {
                 : Expression(r), args(std::move(arg)), statements(std::move(body)), Captures(std::move(caps)), defaultref(ref) {}
         };
         struct Function : DeclContext {
-            Function(std::string nam, std::vector<Statement*> b, std::vector<Statement*> prolog, Lexer::Range loc, std::vector<FunctionArgument> ar, const DeclContext* m, std::vector<Variable*> caps)
-                : DeclContext(m, std::move(nam), loc), args(std::move(ar)), prolog(std::move(prolog)), statements(std::move(b)), initializers(std::move(caps)) {}
+            Function(std::string nam, std::vector<Statement*> b, std::vector<Statement*> prolog, Lexer::Range loc, std::vector<FunctionArgument> ar, std::vector<Variable*> caps)
+                : DeclContext(std::move(nam), loc), args(std::move(ar)), prolog(std::move(prolog)), statements(std::move(b)), initializers(std::move(caps)) {}
             std::vector<FunctionArgument> args;
             std::vector<Statement*> prolog;
             std::vector<Statement*> statements;
@@ -106,8 +108,8 @@ namespace Wide {
             std::vector<std::string> components;
         };*/
         struct Using : public DeclContext {
-            Using(std::string name, Expression* ex, Module* m, Lexer::Range where)
-                :  DeclContext(m, std::move(name), where), expr(ex) {}
+            Using(std::string name, Expression* ex, Lexer::Range where)
+                :  DeclContext(std::move(name), where), expr(ex) {}
             Expression* expr;
         };
         struct Return : public Statement {
@@ -209,7 +211,7 @@ namespace Wide {
             std::unordered_map<Module*, std::unordered_set<DeclContext*>> errors;
         public:
             Combiner(std::function<void(std::vector<std::pair<Wide::Lexer::Range, Wide::AST::DeclContext*>>)> err)
-                : root("global", nullptr, Lexer::Range(global_module_location)), error(std::move(err)) {}
+                : root("global", Lexer::Range(global_module_location)), error(std::move(err)) {}
 
             Module* GetGlobalModule() { return &root; }
 

@@ -219,10 +219,13 @@ namespace Wide {
                 }
 
                 TokenType result = TokenType::Integer;
-                if (!((*val >= '0' && *val <= '9') || (*val >= 'a' && *val <= 'z') || (*val >= 'A' && *val <= 'Z') || *val == '_')) {
+                auto old_pos = current_position;
+                if (*val == '@') {
+                    result = TokenType::Identifier;
+                    val = get();
+                } else if (!((*val >= '0' && *val <= '9') || (*val >= 'a' && *val <= 'z') || (*val >= 'A' && *val <= 'Z') || *val == '_')) {
                     return OnError(begin_pos, Arguments::Failure::UnlexableCharacter, this);
                 }
-                auto old_pos = current_position;
                 while(val) {
                     if (*val < '0' || *val > '9')
                         if ((*val >= 'a' && *val <= 'z') || (*val >= 'A' && *val <= 'Z') || *val == '_')

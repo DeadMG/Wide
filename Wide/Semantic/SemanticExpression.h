@@ -6,10 +6,9 @@
 namespace Wide {
     namespace Semantic {
         struct SemanticExpression : public AST::Expression {
-            static const std::shared_ptr<std::string> semantic_expression_location;
             Semantic::Expression e;
-            SemanticExpression(Semantic::Expression expr)
-                : e(expr), AST::Expression(Lexer::Range(semantic_expression_location)) {}
+            SemanticExpression(Semantic::Expression expr, Lexer::Range where)
+                : e(expr), AST::Expression(std::move(where)) {}
         };
     }
 }

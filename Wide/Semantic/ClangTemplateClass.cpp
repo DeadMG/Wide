@@ -75,5 +75,5 @@ Expression ClangTemplateClass::BuildCall(ConcreteExpression, std::vector<Concret
 
     //from->GetSema().InstantiateClassTemplateSpecializationMembers(loc, llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(spec->getDefinition()), tsk);
     
-    return a.GetConstructorType(a.GetClangType(*from, from->GetASTContext().getRecordType(spec)))->BuildValueConstruction(a);
+    return a.GetConstructorType(a.GetClangType(*from, from->GetASTContext().getRecordType(spec)))->BuildValueConstruction(a, where);
 }

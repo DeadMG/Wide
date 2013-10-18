@@ -619,7 +619,7 @@ namespace Wide {
                 auto t2 = lex();
                 if (t.GetType() == Lexer::TokenType::Identifier && (t2.GetType() == Lexer::TokenType::Comma || t2.GetType() == Lexer::TokenType::CloseBracket)) {
                     // Type-deduced argument.
-                    sema.AddArgumentToFunctionGroup(ret, t.GetValue());
+                    sema.AddArgumentToFunctionGroup(ret, t.GetValue(), t.GetLocation());
                     if (t2.GetType() == Lexer::TokenType::CloseBracket) {
                         break;
                     }
@@ -634,7 +634,7 @@ namespace Wide {
                                 return true;
                             return false;
                         });
-                        sema.AddArgumentToFunctionGroup(ret, ident.GetValue(), ty);
+                        sema.AddArgumentToFunctionGroup(ret, ident.GetValue(), ident.GetLocation() + sema.GetLocation(ty), ty);
                         auto brace = Check(lex, Error::FunctionArgumentNoBracketOrComma, [&](decltype(lex())& tok) {
                             if (tok.GetType() == Lexer::TokenType::CloseBracket || tok.GetType() == Lexer::TokenType::Comma)
                                 return true;
