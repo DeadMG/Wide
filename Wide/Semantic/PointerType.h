@@ -12,7 +12,6 @@ namespace Wide {
             PointerType(Type* point);
             Codegen::Expression* BuildInplaceConstruction(Codegen::Expression* mem, std::vector<ConcreteExpression> args, Analyzer& a, Lexer::Range where) override;
             ConcreteExpression BuildDereference(ConcreteExpression obj, Analyzer& a, Lexer::Range where) override;
-            ConcreteExpression BuildBinaryExpression(ConcreteExpression lhs, ConcreteExpression rhs, Lexer::TokenType type, Analyzer& a, Lexer::Range where) override;
             Codegen::Expression* BuildBooleanConversion(ConcreteExpression val, Analyzer& a, Lexer::Range where) override;
             clang::QualType GetClangType(ClangUtil::ClangTU& TU, Analyzer& a) override;
             std::function<llvm::Type*(llvm::Module*)> GetLLVMType(Analyzer& a) override;

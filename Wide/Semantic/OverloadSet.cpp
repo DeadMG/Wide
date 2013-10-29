@@ -37,12 +37,13 @@ OverloadSet::OverloadSet(const AST::FunctionOverloadSet* s, Type* mem) {
 }
 OverloadSet::OverloadSet(std::unordered_set<const AST::Function*> funcs, Type* mem) 
 {
-    functions[mem].insert(funcs.begin(), funcs.end());
+    if (funcs.size() != 0)
+        functions[mem].insert(funcs.begin(), funcs.end());
 }
 Type* OverloadSet::nonstatic() {
-    for(auto x : functions)
-        if (!dynamic_cast<MetaType*>(x.first))
-            return x.first;
+    for(auto&& x : functions)
+        if (auto udt = dynamic_cast<UserDefinedType*>(x.first->Decay()))
+            return udt;
     return nullptr;
 }
 std::function<llvm::Type*(llvm::Module*)> OverloadSet::GetLLVMType(Analyzer& a) {
@@ -76,211 +77,106 @@ std::function<llvm::Type*(llvm::Module*)> OverloadSet::GetLLVMType(Analyzer& a) 
     };    
 }
 Expression OverloadSet::BuildCall(ConcreteExpression e, std::vector<ConcreteExpression> args, Analyzer& a, Lexer::Range where) {
-    std::vector<std::pair<Type*, const AST::Function*>> ViableCandidates;
+    std::vector<Type*> targs;
+    for(auto x : args)
+        targs.push_back(x.t);
+    auto call = Resolve(std::move(targs), a);
+    if (!call)
+        throw std::runtime_error("Fuck!");
 
-    if (nonstatic()) {
-        e = e.t->BuildValue(e, a, where);
-        e.t = nonstatic();
-        e.Expr = a.gen->CreateFieldExpression(e.Expr, 0);
-        args.insert(args.begin(), e);
-    }
+    if (auto func = dynamic_cast<Function*>(call))
+        if (dynamic_cast<UserDefinedType*>(func->GetContext(a)->Decay()))
+            args.insert(args.begin(), ConcreteExpression(func->GetContext(a), a.gen->CreateFieldExpression(e.BuildValue(a, where).Expr, 0)));
 
-    // Really badly named
-    auto skipfirst = [&](const AST::Function* x) {
-        return nonstatic() && (x->args.size() < 1 || x->args.front().name != "this");
-    };
-    for(auto x : functions) {
-        for(auto fun : x.second) {
-           if (nonstatic() && skipfirst(fun)) {
-               if (fun->args.size() + 1 == args.size())
-                   ViableCandidates.emplace_back(x.first, fun);
-           } else {
-               if (fun->args.size() == args.size())
-                   ViableCandidates.emplace_back(x.first, fun);
-           }
-        }
-    }
-
-    if (ViableCandidates.size() == 0)
-        throw std::runtime_error("Attempted to call a function, but there were none with the right amount of arguments.");
-
-    auto rank = std::vector<Function*>();
-    auto best_rank = ConversionRank::None;
-    for(auto pair : ViableCandidates) {
-        auto f = pair.second;
-        auto types = std::vector<Type*>();
-        auto curr_rank = ConversionRank::Zero;
-        for(std::size_t i = 0; i < args.size(); ++i) {
-            if (skipfirst(f) && i == 0) continue;
-            auto fi = skipfirst(f) ? i - 1 : i;
-            if (f->args[fi].type) {
-                struct LookupType : Type {
-                    Type* con;
-                    Type* autotype;
-                    Type* nonstatic;
-                    Wide::Util::optional<ConcreteExpression> AccessMember(ConcreteExpression self, std::string name, Analyzer& a, Lexer::Range where) override {
-                        if (name == "this")
-                            return a.GetConstructorType(nonstatic)->BuildValueConstruction(a, where);
-                        if (name == "auto")
-                            return a.GetConstructorType(autotype->Decay())->BuildValueConstruction(a, where);
-                        return con->AccessMember(self, std::move(name), a, where);
-                    }
-                    Type* GetContext(Analyzer& a) override {
-                        return con->GetContext(a);
-                    }
-                };
-                LookupType lt;
-                lt.con = pair.first;
-                lt.autotype = args[i].t;
-                lt.nonstatic = nonstatic();
-
-                auto argty = a.AnalyzeExpression(&lt, f->args[fi].type).Resolve(nullptr).t;
-                if (auto con = dynamic_cast<ConstructorType*>(argty))
-                    argty = con->GetConstructedType();
-                else
-                    throw std::runtime_error("The expression for a function argument must be a type.");
-
-                // Prevent move constructors matching- so if T(T&&), T(U), T(T(U)) should not match as well as T(U)
-                // Also, if the argument is T&& or T&, prevent others matching.
-                if (nonstatic()
-                    && f->name == "type"
-                    && args.size() == 2
-                    && (argty->IsReference(nonstatic()->Decay()) || args[i].t->IsReference(nonstatic()->Decay()))) 
-                {
-                    curr_rank = argty == args[i].t ? ConversionRank::Zero : ConversionRank::None;
-                } else {
-                    curr_rank = std::max(curr_rank, a.RankConversion(args[i].t, argty));
-                }
-                types.push_back(argty);
-            } else {
-                types.push_back(args[i].t->Decay());
-            }
-        }
-        if (curr_rank < best_rank) {
-            auto x = a.GetWideFunction(f, pair.first, types);
-            rank.clear();
-            rank.push_back(x);
-            best_rank = curr_rank;
-            continue;
-        }
-        if (curr_rank == best_rank && best_rank != ConversionRank::None) {
-            auto x = a.GetWideFunction(f, pair.first, types);
-            rank.push_back(x);
-        }
-    }
-    
-    if (rank.size() == 1) {
-        auto call = rank[0]->BuildCall(e, std::move(args), a, where);
-        call.VisitContents([=, &a](ConcreteExpression& expr) {
-            if (e.Expr)
-                expr.Expr = a.gen->CreateChainExpression(e.Expr, expr.Expr);
-        }, [&](DeferredExpression& expr) {});
-        return call;
-    }
-
-    if (rank.size() == 0)
-        throw std::runtime_error("Attempted to call a function overload set, but there were no matches.");
-
-    throw std::runtime_error("Attempted to call a function, but the call was ambiguous- there was more than one function of the correct ranking.");
+    return call->BuildCall(ConcreteExpression(), std::move(args), a, where);
 }
 
-ConversionRank OverloadSet::ResolveOverloadRank(std::vector<Type*> args, Analyzer& a) {
+OverloadSet::OverloadSet(std::unordered_set<Callable*> call)
+    : callables(std::move(call)) {}
+
+Callable* OverloadSet::Resolve(std::vector<Type*> f_args, Analyzer& a) {
     std::vector<std::pair<Type*, const AST::Function*>> ViableCandidates;
+    for(auto&& x : functions)
+        for(auto func : x.second)
+            ViableCandidates.emplace_back(x.first, func);
+    auto is_compatible = [](Type* takety, Type* argty) -> bool {
+        if (takety->Decay() != argty->Decay())
+            return false;
 
-    if (nonstatic()) {
-        args.insert(args.begin(), nonstatic());
-    }
-
-    // Really badly named
-    auto skipfirst = [&](const AST::Function* x) {
-        return nonstatic() && (x->args.size() < 1 || x->args.front().name != "this");
+        //      argument:  T       T&        T&&
+        // takes:
+        //   T           accept IsCopyable IsMovable
+        //  T&           reject   accept    reject
+        // T&&           accept   reject    accept
+        // T T can only come up if T is primitive, so we know in advance if T is copyable or not.
+          
+        if (takety == argty)
+            return true;
+        if (IsRvalueType(takety)) {
+            if (IsLvalueType(argty))
+                return false;
+            return true;
+        }
+        if (IsLvalueType(takety)) {
+            // Already accepted T& T&, and both other cases are rejection.
+            return false;
+        }
+        if (IsLvalueType(argty))
+            if (takety->IsCopyable())
+                return true;
+        if (IsRvalueType(argty))
+            if (takety->IsMovable())
+                return true;
+        // Should have covered all nine cases here.
+        __debugbreak();
     };
-    for(auto x : functions) {
-        for(auto fun : x.second) {
-           if (nonstatic() && skipfirst(fun)) {
-               if (fun->args.size() + 1 == args.size())
-                   ViableCandidates.emplace_back(x.first, fun);
-           } else {
-               if (fun->args.size() == args.size())
-                   ViableCandidates.emplace_back(x.first, fun);
-           }
-        }
-    }
-
-    if (ViableCandidates.size() == 0)
-        throw std::runtime_error("Attempted to call a function, but there were none with the right amount of arguments.");
-
-    auto rank = std::vector<Function*>();
-    auto best_rank = ConversionRank::None;
-    for(auto pair : ViableCandidates) {
-        auto f = pair.second;
-        auto types = std::vector<Type*>();
-        auto curr_rank = ConversionRank::Zero;
-        for(std::size_t i = 0; i < args.size(); ++i) {
-            if (skipfirst(f) && i == 0) continue;
-            auto fi = skipfirst(f) ? i - 1 : i;
-            if (f->args[fi].type) {
-                struct LookupType : Type {
-                    Type* con;
-                    Type* autotype;
-                    Type* nonstatic;
-                    Wide::Util::optional<ConcreteExpression> AccessMember(ConcreteExpression self, std::string name, Analyzer& a, Lexer::Range where) override {
-                        if (name == "this")
-                            return a.GetConstructorType(nonstatic)->BuildValueConstruction(a, where);
-                        if (name == "auto")
-                            return a.GetConstructorType(autotype->Decay())->BuildValueConstruction(a, where);
-                        return con->AccessMember(self, std::move(name), a, where);
-                    }
-                    Type* GetContext(Analyzer& a) override {
-                        return con->GetContext(a);
-                    }
-                };
-                LookupType lt;
-                lt.con = pair.first;
-                lt.autotype = args[i];
-                lt.nonstatic = nonstatic();
-
-                auto argty = a.AnalyzeExpression(&lt, f->args[fi].type).Resolve(nullptr).t;
-                if (auto con = dynamic_cast<ConstructorType*>(argty))
-                    argty = con->GetConstructedType();
-                else
-                    throw std::runtime_error("The expression for a function argument must be a type.");
-
-                // Prevent move constructors matching- so if T(T&&), T(U), T(T(U)) should not match as well as T(U)
-                // Also, if the argument is T&& or T&, prevent others matching.
-                if (nonstatic()
-                    && f->name == "type"
-                    && args.size() == 2
-                    && (argty->IsReference(nonstatic()->Decay()) || args[i]->IsReference(nonstatic()->Decay()))) 
-                {
-                    curr_rank = argty == args[i] ? ConversionRank::Zero : ConversionRank::None;
-                } else {
-                    curr_rank = std::max(curr_rank, a.RankConversion(args[i], argty));
-                }
-                types.push_back(argty);
-            } else {
-                types.push_back(args[i]->Decay());
+    ViableCandidates.erase(
+        std::remove_if(ViableCandidates.begin(), ViableCandidates.end(), [&](std::pair<Type*, const AST::Function*> candidate) {
+            auto args = f_args;
+            if (candidate.second->args.size() >= 1)
+                if (candidate.second->args[0].name == "this")
+                    args.insert(args.begin(), candidate.first);
+            if (args.size() != candidate.second->args.size())
+                return true;
+            for(std::size_t i = 0; i < args.size(); ++i) {
+                if (!candidate.second->args[i].type)
+                    continue;
+                auto takety = dynamic_cast<ConstructorType*>(a.AnalyzeExpression(candidate.first, candidate.second->args[i].type).Resolve(nullptr).t->Decay());
+                if (!takety)
+                    throw std::runtime_error("Fuck");
+                // We don't accept any U here right now.
+                if (is_compatible(takety->GetConstructedType(), args[i]))
+                    continue;
+                return true;
             }
-        }
-        if (curr_rank < best_rank) {
-            auto x = a.GetWideFunction(f, pair.first, types);
-            rank.clear();
-            rank.push_back(x);
-            best_rank = curr_rank;
+            return false;
+        }), 
+        ViableCandidates.end()
+    );
+    auto call = callables;
+    for(auto it = call.begin(); it != call.end();) {
+        auto funcobj = *it;
+        auto args = funcobj->GetArgumentTypes(a);
+        if (args.size() != f_args.size()) {
+            it = call.erase(it);
             continue;
         }
-        if (curr_rank == best_rank && best_rank != ConversionRank::None) {
-            auto x = a.GetWideFunction(f, pair.first, types);
-            rank.push_back(x);
+        for(std::size_t i = 0; i < args.size(); ++i) {
+            if (!args[i])
+                continue;
+            if (is_compatible(args[i], f_args[i]))
+                continue;
+            it = call.erase(it);
+            break;
         }
+        if (it != call.end()) ++it;
     }
     
-    
-    if (rank.size() == 1) {
-        return best_rank;
-    }
-
-    return ConversionRank::None;
+    if (ViableCandidates.size() + call.size() != 1)
+        return nullptr;
+    if (ViableCandidates.size() == 1)
+        return a.GetWideFunction(ViableCandidates[0].second, ViableCandidates[0].first, f_args);
+    return *call.begin();
 }
 
 Codegen::Expression* OverloadSet::BuildInplaceConstruction(Codegen::Expression* mem, std::vector<ConcreteExpression> args, Analyzer& a, Lexer::Range where) {
@@ -427,4 +323,8 @@ OverloadSet::OverloadSet(OverloadSet* s, OverloadSet* other) {
         functions.insert(x);
     for(auto x : other->functions)
         functions.insert(x);
+    for(auto x : s->callables)
+        callables.insert(x);
+    for(auto x : other->callables)
+        callables.insert(x);
 }

@@ -9,7 +9,6 @@ namespace Wide {
             clang::QualType GetClangType(ClangUtil::ClangTU&, Analyzer& a) override;
 
             Codegen::Expression* BuildBooleanConversion(ConcreteExpression, Analyzer& a, Lexer::Range where) override;
-            ConcreteExpression BuildBinaryExpression(ConcreteExpression lhs, ConcreteExpression rhs, Wide::Lexer::TokenType type, Analyzer& a, Lexer::Range where) override;
             std::size_t size(Analyzer& a) override;
             std::size_t alignment(Analyzer& a) override;
         };

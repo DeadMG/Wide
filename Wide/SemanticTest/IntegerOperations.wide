@@ -8,7 +8,7 @@ module IntegerOperations {
         z = x ~= y;
         z = x <= y;
         z = x >= y;
-        z = x < y;
+        z = x > y;
 
         x += y;
         w := x + y;

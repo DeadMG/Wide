@@ -3,8 +3,10 @@
 #include <Wide/Semantic/PointerType.h>
 #include <Wide/Semantic/Module.h>
 #include <Wide/Codegen/Generator.h>
+#include <Wide/Semantic/Function.h>
 #include <Wide/Semantic/Reference.h>
 #include <Wide/Lexer/Token.h>
+#include <Wide/Semantic/UserDefinedType.h>
 #include <Wide/Semantic/OverloadSet.h>
 
 using namespace Wide;
@@ -64,7 +66,7 @@ DeferredExpression DeferredExpression::PointerAccessMember(std::string name, Ana
 DeferredExpression DeferredExpression::BuildBinaryExpression(Expression other, Lexer::TokenType what, Analyzer& a, Lexer::Range where) {
     auto copy = delay;
     return DeferredExpression([=, &a](Type* t) {
-        return (*copy)(nullptr).BuildBinaryExpression(other.Resolve(nullptr), what, a, where);
+        return (*copy)(nullptr).BuildBinaryExpression(other.Resolve(nullptr), what, a, where).Resolve(t);
     });
 }
 
@@ -133,7 +135,7 @@ Codegen::Expression* ConcreteExpression::BuildBooleanConversion(Analyzer& a, Lex
     return t->BuildBooleanConversion(*this, a, where);
 }
 
-ConcreteExpression ConcreteExpression::BuildBinaryExpression(ConcreteExpression other, Lexer::TokenType ty, Analyzer& a, Lexer::Range where) {
+Expression ConcreteExpression::BuildBinaryExpression(ConcreteExpression other, Lexer::TokenType ty, Analyzer& a, Lexer::Range where) {
     return t->BuildBinaryExpression(*this, other, ty, a, where);
 }
 
@@ -143,7 +145,7 @@ Expression ConcreteExpression::BuildBinaryExpression(Expression l, Lexer::TokenT
     }
     ConcreteExpression self = *this;
     return DeferredExpression([=, &a](Type* t) {
-        return t->BuildBinaryExpression(self, l.Resolve(nullptr), r, a, where);
+        return self.t->BuildBinaryExpression(self, l.Resolve(nullptr), r, a, where).Resolve(t);
     });
 }
 
@@ -433,35 +435,57 @@ static const std::unordered_map<Lexer::TokenType, Lexer::TokenType> Assign = [](
 Wide::Util::optional<Wide::Semantic::ConcreteExpression> Type::AccessMember(std::string name, Analyzer& a, Lexer::Range where) {
     return AccessMember(ConcreteExpression(), std::move(name), a, where);
 }
-Wide::Util::optional<Wide::Semantic::ConcreteExpression> Type::AccessMember(Lexer::TokenType name, Analyzer& a, Lexer::Range where) {
+OverloadSet* Type::AccessMember(Lexer::TokenType name, Analyzer& a, Lexer::Range where) {
     return AccessMember(ConcreteExpression(), std::move(name), a, where);
 }
 
-ConcreteExpression Type::BuildBinaryExpression(ConcreteExpression lhs, ConcreteExpression rhs, Lexer::TokenType type, Analyzer& a, Lexer::Range where) {
+OverloadSet* ConcreteExpression::AccessMember(Lexer::TokenType name, Analyzer& a, Lexer::Range where) {
+    return t->AccessMember(*this, name, a, where);
+}
+
+Expression Type::BuildBinaryExpression(ConcreteExpression lhs, ConcreteExpression rhs, Lexer::TokenType type, Analyzer& a, Lexer::Range where) {
     if (IsReference())
         return Decay()->BuildBinaryExpression(lhs, rhs, type, a, where);
 
     // If this function is entered, it's because the type-specific logic could not resolve the operator.
     // So let us attempt ADL.
-    auto ldecls = lhs.t->GetContext(a) ? lhs.t->GetContext(a)->AccessMember(type, a, where) : Wide::Util::none;
-    auto rdecls = rhs.t->GetContext(a) ? rhs.t->GetContext(a)->AccessMember(type, a, where) : Wide::Util::none;
-    if (ldecls) {
-        if (auto loverset = dynamic_cast<OverloadSet*>(ldecls->t->Decay()))
-            if (rdecls) {
-                if (auto roverset = dynamic_cast<OverloadSet*>(rdecls->t->Decay()))
-                    return a.GetOverloadSet(loverset, roverset)->BuildValueConstruction(a, where).BuildCall(lhs, rhs, a, where).Resolve(nullptr);
-            } else {
-                return loverset->BuildValueConstruction(a, where).BuildCall(lhs, rhs, a, where).Resolve(nullptr);
+    auto adlset = a.GetOverloadSet(lhs.AccessMember(type, a, where), a.GetOverloadSet(lhs.t->PerformADL(type, a, where), rhs.t->PerformADL(type, a, where)));
+    std::vector<Type*> arguments;
+    arguments.push_back(lhs.t);
+    arguments.push_back(rhs.t);
+    if (auto call = adlset->Resolve(arguments, a)) {
+        if (auto func = dynamic_cast<Function*>(call)) {
+            if (auto udt = dynamic_cast<UserDefinedType*>(func->GetContext(a))) {
+                return adlset->BuildValueConstruction(lhs, a, where).BuildCall(lhs, rhs, a, where);
             }
-    } else
-        if (rdecls)
-            if (auto roverset = dynamic_cast<OverloadSet*>(rdecls->t->Decay()))
-                return roverset->BuildValueConstruction(a, where).BuildCall(lhs, rhs, a, where).Resolve(nullptr);
+        }
+        return adlset->BuildValueConstruction(a, where).BuildCall(lhs, rhs, a, where);
+    }
+    
+    // ADL has failed to find us a suitable operator, so fall back to defaults.
+    // First implement binary op in terms of op=
+    if (Assign.find(type) != Assign.end()) {
+        auto lval = BuildLvalueConstruction(lhs, a, where).BuildBinaryExpression(rhs, Assign.at(type), a, where).VisitContents(
+            [&](ConcreteExpression& expr) -> Expression {
+                auto copy = expr;
+                copy.t = a.GetRvalueType(expr.t);
+                return copy;
+            },
+            [&](DeferredExpression& expr) {
+                auto copy = *expr.delay;
+                *expr.delay = [=, &a](Type* context) {
+                    auto expr = copy(context);
+                    expr.t = a.GetRvalueType(expr.t);
+                    return expr;
+                };
+                return expr;
+            }
+        );
+        return lval;
+    }
 
-    // At this point, ADL has failed to find an operator and the type also failed to post one.
-    // So let us attempt a default implementation for some operators.
-    if (Assign.find(type) != Assign.end())
-        return BuildLvalueConstruction(lhs, a, where).BuildBinaryExpression(rhs, Assign.at(type), a, where);
+    // Try fallbacks for relational operators
+    // And default assignment for non-complex types.        
     switch(type) {
     case Lexer::TokenType::NotEqCmp:
         return lhs.BuildBinaryExpression(rhs, Lexer::TokenType::EqCmp, a, where).BuildNegate(a, where);
@@ -521,23 +545,24 @@ ConcreteExpression Type::BuildValueConstruction(std::vector<ConcreteExpression> 
     auto mem = a.gen->CreateVariable(GetLLVMType(a), alignment(a));
     return ConcreteExpression(this, a.gen->CreateLoad(a.gen->CreateChainExpression(BuildInplaceConstruction(mem, std::move(args), a, where), mem)));
 }
-ConversionRank Type::RankConversionFrom(Type* from, Analyzer& a) {
-    // We only cover the following cases:
-    // U to T         - convertible for any U
-    // T& to T        - copyable
-    // T&& to T       - movable
-    // "this" is always the to type. We want to know if we can convert from "from" to "this".
-
-    // U to this&& is just U to this, then this to this&&. T to T&& is always valid- even for something like std::mutex.
-
-    // The default is not convertible but movable and copyable.
-    if (from->IsReference(this))
-        return ConversionRank::Zero;
-    return ConversionRank::None;
-}
 ConcreteExpression Type::AddressOf(ConcreteExpression obj, Analyzer& a, Lexer::Range where) {
     // TODO: Remove this restriction, it is not very Wide.
     if (!IsLvalueType(obj.t))
         throw std::runtime_error("Attempted to take the address of something that was not an lvalue.");
     return ConcreteExpression(a.GetPointerType(obj.t->Decay()), obj.Expr);
+}
+
+OverloadSet* Type::PerformADL(Lexer::TokenType what, Analyzer& a, Lexer::Range loc) {
+    auto context = GetContext(a);
+    if (!context)
+        return a.GetOverloadSet();
+    auto result = GetContext(a)->AccessMember(what, a, loc);
+    auto subresult = GetContext(a)->PerformADL(what, a, loc);
+    return a.GetOverloadSet(result, subresult);
+}
+
+OverloadSet* Type::AccessMember(ConcreteExpression e, Lexer::TokenType type, Analyzer& a, Lexer::Range where) {
+    if (IsReference())
+        return Decay()->AccessMember(e, type, a, where);
+    return a.GetOverloadSet();
 }

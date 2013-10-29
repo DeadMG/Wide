@@ -26,13 +26,7 @@ namespace Wide {
 
             ConcreteExpression BuildRvalueConstruction(std::vector<ConcreteExpression> args, Analyzer& a, Lexer::Range where) override;
             ConcreteExpression BuildLvalueConstruction(std::vector<ConcreteExpression> args, Analyzer& a, Lexer::Range where) override;
-
-            ConversionRank RankConversionFrom(Type* from, Analyzer& a) override {
-                assert(false && "Internal Compiler Error: All T& conversions should be dealt with by Analyzer.");
-                // Just to shut up the compiler
-                return ConversionRank::None;
-            }
-
+            
             virtual Type* Decay() override {
                 return Pointee;
             }

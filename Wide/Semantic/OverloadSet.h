@@ -22,18 +22,20 @@ namespace Wide {
         class OverloadSet : public Type {
             std::unordered_map<Type*, std::unordered_set<const AST::Function*>> functions;
             std::unordered_map<ClangUtil::ClangTU*, clang::QualType> clangtypes;
+            std::unordered_set<Callable*> callables;
 
             Type* nonstatic();
         public:
             OverloadSet(const AST::FunctionOverloadSet* s,Type* context);
             OverloadSet(OverloadSet* s, OverloadSet* other);
             OverloadSet(std::unordered_set<const AST::Function*>, Type* context);
+            OverloadSet(std::unordered_set<Callable*> call);
 
             std::function<llvm::Type*(llvm::Module*)> GetLLVMType(Analyzer& a) override;
             clang::QualType GetClangType(ClangUtil::ClangTU& TU, Analyzer& a) override;
             Expression BuildCall(ConcreteExpression, std::vector<ConcreteExpression> args, Analyzer& a, Lexer::Range where) override;
             Codegen::Expression* BuildInplaceConstruction(Codegen::Expression* mem, std::vector<ConcreteExpression> args, Analyzer& a, Lexer::Range where) override;
-            ConversionRank ResolveOverloadRank(std::vector<Type*> types, Analyzer& a);
+            Callable* Resolve(std::vector<Type*> types, Analyzer& a);
             std::size_t size(Analyzer& a) override;
             std::size_t alignment(Analyzer& a) override;
 

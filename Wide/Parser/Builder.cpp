@@ -117,6 +117,18 @@ void Builder::CreateOverloadedOperator(
         m->opcondecls[name] = arena.Allocate<FunctionOverloadSet>();
     m->opcondecls[name]->functions.insert(arena.Allocate<Function>("operator", std::move(body), std::move(prolog), r, std::move(args), std::vector<Variable*>()));
 }
+void Builder::CreateOverloadedOperator(
+    Wide::Lexer::TokenType name, 
+    std::vector<Statement*> body, 
+    std::vector<Statement*> prolog, 
+    Lexer::Range r, 
+    Type* t, 
+    std::vector<FunctionArgument> args
+) {
+    if (t->opcondecls.find(name) == t->opcondecls.end())
+        t->opcondecls[name] = arena.Allocate<FunctionOverloadSet>();
+    t->opcondecls[name]->functions.insert(arena.Allocate<Function>("operator", std::move(body), std::move(prolog), r, std::move(args), std::vector<Variable*>()));
+}
 
 Type* Builder::CreateType(std::string name, Lexer::Range loc) { return arena.Allocate<Type>(name, loc); }
 Type* Builder::CreateType(std::string name, Module* higher, Lexer::Range loc) {

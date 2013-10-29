@@ -1,0 +1,15 @@
+module AcceptQualifiedThis {
+    type t1 {
+        operator()(t1->lvalue this) {
+        }
+    }
+    type t2 {
+        operator()(t2->rvalue this) {
+        }
+    }
+    Main() {
+        x := t1();
+        x();
+        t2()();
+    }
+}

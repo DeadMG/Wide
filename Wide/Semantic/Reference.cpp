@@ -26,19 +26,19 @@ clang::QualType RvalueType::GetClangType(ClangUtil::ClangTU& tu, Analyzer& a) {
     return tu.GetASTContext().getRValueReferenceType(Decay()->GetClangType(tu, a));
 }
 
+std::size_t Reference::size(Analyzer& a) {
+    return llvm::DataLayout(a.gen->GetDataLayout()).getPointerSize();
+}
+std::size_t Reference::alignment(Analyzer& a) {
+    return llvm::DataLayout(a.gen->GetDataLayout()).getPointerABIAlignment();
+}
+
 Codegen::Expression* Reference::BuildInplaceConstruction(Codegen::Expression* mem, std::vector<ConcreteExpression> args, Analyzer& a, Lexer::Range where) {
     if (args.size() == 0)
         throw std::runtime_error("Cannot default-construct a reference type.");
     if (args.size() == 1 && args[0].t->IsReference(Pointee))
         return a.gen->CreateStore(mem, args[0].Expr);
     throw std::runtime_error("Attempt to construct a reference from something it could not be.");
-}
-
-std::size_t Reference::size(Analyzer& a) {
-    return llvm::DataLayout(a.gen->GetDataLayout()).getPointerSize();
-}
-std::size_t Reference::alignment(Analyzer& a) {
-    return llvm::DataLayout(a.gen->GetDataLayout()).getPointerABIAlignment();
 }
 
 // Perform collapse

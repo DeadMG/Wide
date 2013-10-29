@@ -34,6 +34,7 @@ namespace Wide {
     }
     namespace Semantic {
         class Analyzer;
+        class OverloadSet;
         struct Type;
         struct DeferredExpression;
         struct Expression;
@@ -49,6 +50,7 @@ namespace Wide {
             bool steal;
             
             ConcreteExpression BuildValue(Analyzer& a, Lexer::Range where);
+            OverloadSet* AccessMember(Lexer::TokenType name, Analyzer& a, Lexer::Range where);
             Wide::Util::optional<ConcreteExpression> AccessMember(std::string name, Analyzer& a, Lexer::Range where);
             ConcreteExpression BuildDereference(Analyzer& a, Lexer::Range where);
             ConcreteExpression BuildIncrement(bool postfix, Analyzer& a, Lexer::Range where);
@@ -61,7 +63,7 @@ namespace Wide {
             Wide::Util::optional<ConcreteExpression> PointerAccessMember(std::string name, Analyzer& a, Lexer::Range where);
             ConcreteExpression AddressOf(Analyzer& a, Lexer::Range where);
             Codegen::Expression* BuildBooleanConversion(Analyzer& a, Lexer::Range where);
-            ConcreteExpression BuildBinaryExpression(ConcreteExpression rhs, Lexer::TokenType type, Analyzer& a, Lexer::Range where);
+            Expression BuildBinaryExpression(ConcreteExpression rhs, Lexer::TokenType type, Analyzer& a, Lexer::Range where);
 
             Expression BuildCall(std::vector<Expression> args, Analyzer& a, Lexer::Range where);
             Expression BuildCall(Expression lhs, Expression rhs, Analyzer& a, Lexer::Range where);
@@ -185,20 +187,6 @@ namespace Wide {
 
             Expression BuildBooleanConversion(Analyzer& a, Lexer::Range where);
         };
-
-        enum ConversionRank {
-            // No-cost conversion like reference binding or exact match
-            Zero,
-
-            // Derived-to-base conversion and such
-            One,
-
-            // User-defined implicit conversion
-            Two,
-
-            // No conversion possible
-            None,
-        };
         struct Type  {
         public:
             virtual bool IsReference(Type* to) {
@@ -219,6 +207,9 @@ namespace Wide {
                 throw std::runtime_error("This type has no LLVM counterpart.");
             }
 
+            virtual bool IsMovable() { return true; }
+            virtual bool IsCopyable() { return true; }
+
             virtual std::size_t size(Analyzer& a) { throw std::runtime_error("Attempted to size a type that does not have a run-time size."); }
             virtual std::size_t alignment(Analyzer& a) { throw std::runtime_error("Attempted to align a type that does not have a run-time alignment."); }
 
@@ -237,17 +228,12 @@ namespace Wide {
             virtual ConcreteExpression BuildLvalueConstruction(Analyzer& a, Lexer::Range where);
             virtual Codegen::Expression* BuildInplaceConstruction(Codegen::Expression* mem, Analyzer& a, Lexer::Range where);
 
-
             virtual ConcreteExpression BuildValue(ConcreteExpression lhs, Analyzer& a, Lexer::Range where);
             
-            virtual Wide::Util::optional<ConcreteExpression> AccessMember(Lexer::TokenType type, Analyzer& a, Lexer::Range where);
+            virtual OverloadSet* AccessMember(Lexer::TokenType type, Analyzer& a, Lexer::Range where);
             virtual Wide::Util::optional<ConcreteExpression> AccessMember(std::string name, Analyzer& a, Lexer::Range where);
             virtual Wide::Util::optional<ConcreteExpression> AccessMember(ConcreteExpression, std::string name, Analyzer& a, Lexer::Range where);
-            virtual Wide::Util::optional<ConcreteExpression> AccessMember(ConcreteExpression e, Lexer::TokenType type, Analyzer& a, Lexer::Range where) {
-                if (IsReference())
-                    return Decay()->AccessMember(e, type, a, where);
-                return Wide::Util::none;
-            }
+            virtual OverloadSet* AccessMember(ConcreteExpression e, Lexer::TokenType type, Analyzer& a, Lexer::Range where);
 
             virtual Expression BuildCall(ConcreteExpression val, std::vector<ConcreteExpression> args, Analyzer& a, Lexer::Range where) {
                 if (IsReference())
@@ -257,7 +243,6 @@ namespace Wide {
             virtual ConcreteExpression BuildMetaCall(ConcreteExpression val, std::vector<ConcreteExpression> args, Analyzer& a, Lexer::Range where) {
                 throw std::runtime_error("Attempted to call a type that did not support it.");
             }
-            virtual ConversionRank RankConversionFrom(Type* to, Analyzer& a);
             virtual Codegen::Expression* BuildBooleanConversion(ConcreteExpression val, Analyzer& a, Lexer::Range where) {
                 if (IsReference())
                     return Decay()->BuildBooleanConversion(val, a, where);
@@ -283,13 +268,59 @@ namespace Wide {
             }
             virtual ConcreteExpression AddressOf(ConcreteExpression obj, Analyzer& a, Lexer::Range where);
 
-            virtual ConcreteExpression BuildBinaryExpression(ConcreteExpression lhs, ConcreteExpression rhs, Lexer::TokenType type, Analyzer& a, Lexer::Range where);
+            virtual Expression BuildBinaryExpression(ConcreteExpression lhs, ConcreteExpression rhs, Lexer::TokenType type, Analyzer& a, Lexer::Range where);
+            
+            virtual OverloadSet* PerformADL(Lexer::TokenType what, Analyzer& a, Lexer::Range where);
                                                 
             virtual ~Type() {}
         };
         struct Callable : public Type {
-            virtual Type* GetReturnType() = 0;
-            virtual std::vector<Type*> GetArgumentTypes() = 0;
+            virtual std::vector<Type*> GetArgumentTypes(Analyzer& a) = 0;
         };
+        template<typename F, typename T> Callable* make_assignment_callable(F f, T* self, Analyzer& a) {            
+            struct assign : public Callable {
+                T* self;
+                F action;
+                assign(T* obj, F func)
+                    : self(obj), action(std::move(func)) {}
+
+                Expression BuildCall(ConcreteExpression lhs, std::vector<ConcreteExpression> args, Analyzer& a, Lexer::Range where) override {
+                    // Overload resolution should not pick us unless the args are a fit. Assert if we are picked and it's not correct.
+                    assert(args.size() == 2);
+                    assert(args[0].t = a.GetLvalueType(self));
+                    assert(args[1].t->Decay() == self);
+                    return action(args[0], args[1].BuildValue(a, where), a, self);
+                }
+                std::vector<Type*> GetArgumentTypes(Analyzer& a) override {
+                    std::vector<Type*> out;
+                    out.push_back(a.GetLvalueType(self));
+                    out.push_back(self);
+                    return out;
+                }
+            };
+            return a.arena.Allocate<assign>(self, std::move(f));
+        }
+        template<typename F, typename T> Callable* make_value_callable(F f, T* self, Analyzer& a) {            
+            struct assign : public Callable {
+                T* self;
+                F action;
+                assign(T* obj, F func)
+                    : self(obj), action(std::move(func)) {}
+                Expression BuildCall(ConcreteExpression lhs, std::vector<ConcreteExpression> args, Analyzer& a, Lexer::Range where) override {
+                    // Overload resolution should not pick us unless the args are a fit. Assert if we are picked and it's not correct.
+                    assert(args.size() == 2);
+                    assert(args[0].BuildValue(a, where).t == args[1].BuildValue(a, where).t);
+                    assert(args[0].BuildValue(a, where).t == self);
+                    return action(args[0].BuildValue(a, where), args[1].BuildValue(a, where), a, self);
+                }
+                std::vector<Type*> GetArgumentTypes(Analyzer& a) override {
+                    std::vector<Type*> out;
+                    out.push_back(self);
+                    out.push_back(self);
+                    return out;
+                }
+            };
+            return a.arena.Allocate<assign>(self, std::move(f));
+        }
     }
 }

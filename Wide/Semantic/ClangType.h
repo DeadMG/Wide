@@ -25,13 +25,11 @@ namespace Wide {
 
             Wide::Util::optional<ConcreteExpression> AccessMember(ConcreteExpression val, std::string name, Analyzer& a, Lexer::Range where) override;
             Expression BuildCall(ConcreteExpression val, std::vector<ConcreteExpression> args, Analyzer& a, Lexer::Range where) override;
-            ConcreteExpression BuildBinaryExpression(ConcreteExpression lhs, ConcreteExpression rhs, Lexer::TokenType type, Analyzer& a, Lexer::Range where) override;
             
             Wide::Codegen::Expression* BuildBooleanConversion(ConcreteExpression self, Analyzer& a, Lexer::Range where) override;
 
             bool IsComplexType() override;
             Codegen::Expression* BuildInplaceConstruction(Codegen::Expression* mem, std::vector<ConcreteExpression> args, Analyzer& a, Lexer::Range where) override;
-            ConversionRank RankConversionFrom(Type* from, Analyzer& a) override;
             ConcreteExpression BuildDereference(ConcreteExpression obj, Analyzer& a, Lexer::Range where) override;
             ConcreteExpression BuildIncrement(ConcreteExpression obj, bool postfix, Analyzer& a, Lexer::Range where) override;
             std::size_t size(Analyzer& a) override;

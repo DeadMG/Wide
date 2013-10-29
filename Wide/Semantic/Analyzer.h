@@ -48,6 +48,7 @@ namespace Wide {
         struct Identifier;
     };
     namespace Semantic {
+        struct Callable;
         struct Expression;
         class Function;
         class Module;
@@ -71,9 +72,17 @@ namespace Wide {
         struct VectorTypeHasher {
             std::size_t operator()(const std::vector<Type*>& t) const;
         };
+        struct SetTypeHasher {
+            std::size_t operator()(const std::unordered_set<Callable*>& t) const {
+                std::size_t hash = 0;
+                for(auto ty : t)
+                    hash += std::hash<Callable*>()(ty);
+                return hash;
+            }
+        };
         class Analyzer {
             Module* global;
-
+            std::unordered_map<std::unordered_set<Callable*>, OverloadSet*, SetTypeHasher> callable_overload_sets;
             std::unordered_map<std::string, ClangUtil::ClangTU> headers;
             std::unordered_map<clang::QualType, Type*, ClangUtil::ClangTypeHasher> ClangTypes;
             std::unordered_map<clang::DeclContext*, ClangNamespace*> ClangNamespaces;
@@ -99,10 +108,9 @@ namespace Wide {
             Type* Void;
             Type* Boolean;
             Type* NothingFunctor;
+            OverloadSet* EmptyOverloadSet;
 
         public:
-            ConversionRank RankConversion(Type* from, Type* to);
-
             void AddClangType(clang::QualType t, Type* match);
 
             Wide::Memory::Arena arena;
@@ -126,6 +134,8 @@ namespace Wide {
             Type* GetRvalueType(Type* t);
             ConstructorType* GetConstructorType(Type* t);
             ClangTemplateClass* GetClangTemplateClass(ClangUtil::ClangTU& from, clang::ClassTemplateDecl*);
+            OverloadSet* GetOverloadSet();
+            OverloadSet* GetOverloadSet(Callable* c);
             OverloadSet* GetOverloadSet(const AST::FunctionOverloadSet* set, Type* nonstatic);
             OverloadSet* GetOverloadSet(OverloadSet*, OverloadSet*);
             UserDefinedType* GetUDT(const AST::Type*, Type* context);

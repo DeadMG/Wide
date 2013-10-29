@@ -345,59 +345,6 @@ static const std::unordered_map<Lexer::TokenType, std::pair<clang::OverloadedOpe
     ret[Lexer::TokenType::AndAssign] = std::make_pair(clang::OverloadedOperatorKind::OO_AmpEqual, clang::BinaryOperatorKind::BO_AndAssign);
     return ret;
 }();
-ConcreteExpression ClangType::BuildBinaryExpression(ConcreteExpression lhs, ConcreteExpression rhs, Lexer::TokenType tok, Analyzer& a, Lexer::Range where) {
-    auto opkind = BinaryTokenMapping.at(tok).first;
-    auto opcode = BinaryTokenMapping.at(tok).second;
-    clang::ADLResult result;
-    auto declname = from->GetASTContext().DeclarationNames.getCXXOperatorName(opkind);
-    std::vector<clang::Expr*> exprs;
-       
-    // Decay the types, because for some reason expressions of type T& are bad. They need to be lvalues of type T.
-    auto lhsty = type.getNonLValueExprType(from->GetASTContext());
-    auto rhsty = rhs.t->GetClangType(*from, a).getNonLValueExprType(from->GetASTContext());
-    clang::OpaqueValueExpr first(clang::SourceLocation(), lhsty, Semantic::GetKindOfType(lhs.t));
-    exprs.push_back(&first);
-    clang::OpaqueValueExpr second(clang::SourceLocation(), rhsty, Semantic::GetKindOfType(rhs.t));
-    exprs.push_back(&second);
-    from->GetSema().ArgumentDependentLookup(declname, true, clang::SourceLocation(), exprs, result);
-    clang::UnresolvedSet<10> out;
-    for(auto x : result)
-        out.addDecl(x);
-    auto opresult = from->GetSema().CreateOverloadedBinOp(clang::SourceLocation(), opcode, out, &first, &second);
-    if (!opresult.get())
-        return Type::BuildBinaryExpression(lhs, rhs, tok, a, where);
-    auto callexpr = llvm::dyn_cast<clang::CallExpr>(opresult.get());
-       
-    auto fun = callexpr->getDirectCallee();
-    if (!fun) {
-        std::cout << "Fun was 0.\n";
-        llvm::raw_os_ostream out(std::cout);
-        callexpr->printPretty(out, 0, clang::PrintingPolicy(from->GetASTContext().getLangOpts()));
-        throw std::runtime_error("Internal compiler error: Attempted to build an overloaded binary operator, and Clang resolved the operator, but not to a function?");
-    }
-
-    Type* ret = a.GetClangType(*from, fun->getResultType());
-    std::vector<Type*> types;
-    types.push_back(a.GetClangType(*from, fun->getParamDecl(0)->getType()));
-    if (fun->getNumParams() == 1) {
-        // Member method, and this is missing.
-        types.insert(types.begin(), lhs.t);
-    } else {
-        types.push_back(a.GetClangType(*from, fun->getParamDecl(1)->getType()));
-    }
-
-    auto funty = a.GetFunctionType(ret, types);
-    
-    ConcreteExpression clangfunc;
-    clangfunc.t = funty;
-
-    if (a.gen)
-        clangfunc.Expr = a.gen->CreateFunctionValue(from->MangleName(fun));
-
-    std::vector<ConcreteExpression> expressions;
-    expressions.push_back(lhs); expressions.push_back(rhs);
-    return funty->BuildCall(clangfunc, std::move(expressions), a, where).Resolve(nullptr);
-}
 Wide::Codegen::Expression* ClangType::BuildBooleanConversion(ConcreteExpression self, Analyzer& a, Lexer::Range where) {
     clang::OpaqueValueExpr ope(clang::SourceLocation(), type.getNonLValueExprType(from->GetASTContext()), Semantic::GetKindOfType(self.t));
     auto p = from->GetSema().PerformContextuallyConvertToBool(&ope);
@@ -434,36 +381,6 @@ Wide::Codegen::Expression* ClangType::BuildBooleanConversion(ConcreteExpression 
     if (e.t == a.GetBooleanType())
         return e.Expr;
     throw std::runtime_error("Attempted to contextually convert to bool, but Clang gave back a function that did not return a bool. WTF.");
-}
-
-ConversionRank ClangType::RankConversionFrom(Type* src, Analyzer& a) {
-    // Now in the realms of: implicit conversions, is the type movable, etc.
-    clang::UnresolvedSet<8> us;
-
-    auto recdecl = type->getAsCXXRecordDecl();    
-    // The first argument is pseudo-this.
-    for(auto begin = recdecl->ctor_begin(); begin != recdecl->ctor_end(); ++begin) {
-        us.addDecl(*begin);
-    }
-
-    clang::OpaqueValueExpr ope(clang::SourceLocation(), src->GetClangType(*from, a).getNonLValueExprType(from->GetASTContext()), GetKindOfType(src));
-    std::vector<clang::Expr*> exprptrs;
-    exprptrs.push_back(&ope);
-    clang::OverloadCandidateSet s((clang::SourceLocation()));
-    for(auto&& x : us) {
-        auto con = static_cast<clang::CXXConstructorDecl*>(x);
-        clang::DeclAccessPair d;
-        d.set(con, con->getAccess());
-        from->GetSema().AddOverloadCandidate(con, d, exprptrs, s);
-    }
-    clang::OverloadCandidateSet::iterator best;
-    auto result = s.BestViableFunction(from->GetSema(), clang::SourceLocation(), best);
-    if (result != clang::OverloadingResult::OR_Success)
-        return ConversionRank::None;
-    // Assign ranks differently if it's a copy/move to if it's an implicit conversion
-    if (src->IsReference(this))
-        return ConversionRank::Zero;
-    return ConversionRank::Two;
 }
 
 ConcreteExpression ClangType::BuildDereference(ConcreteExpression self, Analyzer& a, Lexer::Range where) {

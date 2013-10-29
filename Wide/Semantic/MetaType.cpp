@@ -12,6 +12,9 @@
 using namespace Wide;
 using namespace Semantic;
 
+std::size_t MetaType::size(Analyzer& a) { return a.gen->GetInt8AllocSize(); }
+std::size_t MetaType::alignment(Analyzer& a) { return a.gen->GetDataLayout().getABIIntegerTypeAlignment(8); }
+
 std::function<llvm::Type*(llvm::Module*)> MetaType::GetLLVMType(Analyzer& a) {
     std::stringstream typenam;
     typenam << this;
@@ -22,6 +25,7 @@ std::function<llvm::Type*(llvm::Module*)> MetaType::GetLLVMType(Analyzer& a) {
         return llvm::StructType::create(nam, llvm::IntegerType::getInt8Ty(mod->getContext()), nullptr);
     };
 }
+
 Codegen::Expression* MetaType::BuildInplaceConstruction(Codegen::Expression* mem, std::vector<ConcreteExpression> args, Analyzer& a, Lexer::Range where) {
     if (args.size() > 1)
         throw std::runtime_error("Attempt to construct a type object with too many arguments.");
@@ -29,9 +33,6 @@ Codegen::Expression* MetaType::BuildInplaceConstruction(Codegen::Expression* mem
         throw std::runtime_error("Attempt to construct a type object with something other than another instance of that type.");
     return args.size() == 0 ? mem : a.gen->CreateChainExpression(args[0].Expr, mem);
 }
-
-std::size_t MetaType::size(Analyzer& a) { return a.gen->GetInt8AllocSize(); }
-std::size_t MetaType::alignment(Analyzer& a) { return a.gen->GetDataLayout().getABIIntegerTypeAlignment(8); }
 
 ConcreteExpression MetaType::BuildValueConstruction(std::vector<ConcreteExpression> args, Analyzer& a, Lexer::Range where) {
     if (args.size() > 1)

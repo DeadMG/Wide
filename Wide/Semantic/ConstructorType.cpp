@@ -6,11 +6,6 @@
 #include <Wide/Semantic/Reference.h>
 #include <sstream>
 
-#pragma warning(push, 0)
-#include <llvm/IR/Module.h>
-#include <llvm/IR/DerivedTypes.h>
-#pragma warning(pop)
-
 using namespace Wide;
 using namespace Semantic;
 

@@ -89,6 +89,7 @@ Analyzer::Analyzer(const Options::Clang& opts, Codegen::Generator* g, const AST:
 
     static const auto location = Lexer::Range(std::make_shared<std::string>("Analyzer internal."));
     global = GetWideModule(GlobalModule, nullptr);
+    EmptyOverloadSet = arena.Allocate<OverloadSet>(std::unordered_set<const AST::Function*>(), global);
     global->AddSpecialMember("cpp", ConcreteExpression(arena.Allocate<ClangIncludeEntity>(), nullptr));
     global->AddSpecialMember("void", ConcreteExpression(GetConstructorType(Void = arena.Allocate<VoidType>()), nullptr));
     global->AddSpecialMember("global", ConcreteExpression(global, nullptr));
@@ -469,6 +470,16 @@ OverloadSet* Analyzer::GetOverloadSet(const AST::FunctionOverloadSet* set, Type*
             return OverloadSets[set][t];
     return OverloadSets[set][t] = arena.Allocate<OverloadSet>(set, t);
 }
+OverloadSet* Analyzer::GetOverloadSet() {
+    return EmptyOverloadSet;
+}
+OverloadSet* Analyzer::GetOverloadSet(Callable* c) {
+    std::unordered_set<Callable*> set;
+    set.insert(c);
+    if (callable_overload_sets.find(set) != callable_overload_sets.end())
+        return callable_overload_sets[set];
+    return callable_overload_sets[set] = arena.Allocate<OverloadSet>(set);
+}
 void Analyzer::AddClangType(clang::QualType t, Type* match) {
     if (ClangTypes.find(t) != ClangTypes.end())
         throw std::runtime_error("Attempt to AddClangType on a type that already had a Clang type.");
@@ -481,60 +492,6 @@ UserDefinedType* Analyzer::GetUDT(const AST::Type* t, Type* context) {
             return UDTs[t][context];
     auto ty = UDTs[t][context] = arena.Allocate<UserDefinedType>(t, *this, context);
     return ty;
-}
-
-ConversionRank Analyzer::RankConversion(Type* from, Type* to) {
-    //          T T& T&& to
-    //    T     0  x  0
-    //    T&    0  0  x
-    //    T&&   0  x  0
-    //    U     2  x  2
-    //    from
-
-    if (from == to) return ConversionRank::Zero;        
-    //          T T& T&& to
-    //    T        x  0
-    //    T&    0     x
-    //    T&&   0  x  
-    //    U     2  x  2
-    //    from
-
-    if (auto rval = dynamic_cast<RvalueType*>(to)) {
-        if (rval->Decay() == from) {
-            return ConversionRank::Zero;
-        }
-    }
-    //          T T& T&& to
-    //    T        x  
-    //    T&    0     x
-    //    T&&   0  x  
-    //    U     2  x  2
-    //    from
-
-    // Since we just covered the only valid T& case, if T& then fail
-    if (auto lval = dynamic_cast<LvalueType*>(to))
-        return ConversionRank::None;    
-    //          T T& T&& to
-    //    T           
-    //    T&    0     x
-    //    T&&   0      
-    //    U     2     2
-    //    from
-
-    if (auto rval = dynamic_cast<RvalueType*>(to))
-        if (auto lval = dynamic_cast<LvalueType*>(from))
-            if (lval->IsReference() == rval->IsReference())
-                return ConversionRank::None;
-    //          T            T&&       U
-    //    T           
-    //    T&    copyable    
-    //    T&&   movable      
-    //    U     convertible  U to T
-    //    from
-
-    // The only remaining cases are type-specific, not guaranteed for all types.
-    // Ask "to" to handle it.
-    return to->RankConversionFrom(from, *this);
 }
 IntegralType* Analyzer::GetIntegralType(unsigned bits, bool sign) {
     if (integers.find(bits) != integers.end())

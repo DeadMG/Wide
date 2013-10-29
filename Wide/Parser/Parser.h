@@ -898,7 +898,7 @@ namespace Wide {
                         return false;
                     });
                     auto bracket = Check(lex, Error::TypeScopeOperatorNoOpenBracket, Lexer::TokenType::OpenBracket);
-                    ParseFunction(lex, sema, op, ty, bracket.GetLocation());
+                    ParseOverloadedOperator(lex, sema, op, ty, bracket.GetLocation());
                     t = lex();
                     continue;
                 }

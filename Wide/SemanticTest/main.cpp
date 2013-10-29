@@ -85,7 +85,7 @@ void Compile(const Wide::Options::Clang& copts, llvm::DataLayout lopts, std::ini
         for (auto&& x : builders)
             combiner.Add(x->GetGlobalModule());
         Wide::Semantic::Analyzer sema(copts, &mockgen, combiner.GetGlobalModule());
-        Test(sema, nullptr, combiner.GetGlobalModule(), [&](Wide::Lexer::Range r, Wide::Semantic::Error e) { throw Wide::Semantic::SemanticError(r, e); }, mockgen);
+        Test(sema, nullptr, combiner.GetGlobalModule(), [&](Wide::Lexer::Range r, Wide::Semantic::Error e) { throw Wide::Semantic::SemanticError(r, e); }, mockgen, false);
     } else {
         for (auto&& msg : excepts) {
             std::cout << msg << "\n";
@@ -110,5 +110,8 @@ TEST_CASE("", "") {
     CHECK_NOTHROW(Compile(clangopts, *targetmachine->getDataLayout(), { "PrimitiveADL.wide" }));
     CHECK_NOTHROW(Compile(clangopts, *targetmachine->getDataLayout(), { "RecursiveTypeInference.wide" }));
     CHECK_NOTHROW(Compile(clangopts, *targetmachine->getDataLayout(), { "CorecursiveTypeInference.wide" }));
+    CHECK_NOTHROW(Compile(clangopts, *targetmachine->getDataLayout(), { "MemberCall.wide" }));
+    CHECK_NOTHROW(Compile(clangopts, *targetmachine->getDataLayout(), { "AcceptQualifiedThis.wide" }));
+    CHECK_THROWS(Compile(clangopts, *targetmachine->getDataLayout(), { "RejectQualifiedThis.wide" }));
     CHECK_THROWS(Compile(clangopts, *targetmachine->getDataLayout(), { "SubmoduleNoQualifiedLookup.wide" }));
 }

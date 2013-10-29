@@ -36,9 +36,11 @@ Function::Function(std::vector<Type*> args, const AST::Function* astfun, Analyze
     variables.push_back(std::unordered_map<std::string, ConcreteExpression>()); // Push back the argument scope
     unsigned num = 0;
     unsigned metaargs = 0;
-    if (mem && (astfun->args.size() < 1 || astfun->args.front().name != "this"))
-        Args.push_back(a.GetLvalueType(mem));
+    if (mem && dynamic_cast<UserDefinedType*>(mem->Decay()))
+        Args.push_back(mem == mem->Decay() ? a.GetLvalueType(mem) : mem);
     for(auto&& arg : astfun->args) {
+        if (arg.name == "this")
+            continue;
 #pragma warning(disable : 4800)
         auto param = [this, num] { return num + ReturnType->IsComplexType() + (bool(dynamic_cast<UserDefinedType*>(context))); };
         Type* ty = args[num];
@@ -174,8 +176,6 @@ void Function::ComputeBody(Analyzer& a) {
                         returnstate = ReturnState::ConcreteReturnSeen;                        
                         if (!ReturnType)
                             ReturnType = result.t->Decay();
-                        else if (ReturnType != result.t->Decay() && (a.RankConversion(result.t, ReturnType) == ConversionRank::None || a.RankConversion(ReturnType, result.t->Decay()) != ConversionRank::None))
-                            throw std::runtime_error("Attempted to return more than 1 post-decay type from a function.");
         
                         // Deal with emplacing the result
                         if (ReturnType->IsComplexType()) {

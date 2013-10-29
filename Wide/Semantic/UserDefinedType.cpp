@@ -147,7 +147,7 @@ UserDefinedType::UserDefinedType(const AST::Type* t, Analyzer& a, Type* higher)
     if (type->Functions.find("type") != type->Functions.end()) {
         std::vector<Type*> self;
         self.push_back(a.GetLvalueType(this));
-        iscomplex = iscomplex || a.GetOverloadSet(type->Functions.at("type"), a.GetLvalueType(this))->ResolveOverloadRank(std::move(self), a) != ConversionRank::None;
+        iscomplex = iscomplex || a.GetOverloadSet(type->Functions.at("type"), a.GetLvalueType(this))->Resolve(std::move(self), a);
     }
     
     std::unordered_set<const AST::Function*> cons;
@@ -209,14 +209,6 @@ Wide::Util::optional<ConcreteExpression> UserDefinedType::AccessMember(ConcreteE
     }
     return Wide::Util::none;
 }
-ConcreteExpression UserDefinedType::BuildBinaryExpression(ConcreteExpression lhs, ConcreteExpression rhs, Lexer::TokenType t, Analyzer& a, Lexer::Range where) {
-    if (type->opcondecls.find(t) != type->opcondecls.end()) {
-        lhs = lhs.t == this ? BuildRvalueConstruction(lhs, a, where) : lhs;
-        return a.GetOverloadSet(type->opcondecls.at(t), lhs.t)->BuildValueConstruction(lhs, a, where).BuildCall(rhs, a, where).Resolve(nullptr);
-    }
-    return Type::BuildBinaryExpression(lhs, rhs, t, a, where);
-}
-
 clang::QualType UserDefinedType::GetClangType(ClangUtil::ClangTU& TU, Analyzer& a) {
     if (clangtypes.find(&TU) != clangtypes.end())
         return clangtypes[&TU];
@@ -334,12 +326,6 @@ bool UserDefinedType::HasMember(std::string name) {
     return type->Functions.find(name) != type->Functions.end() || members.find(name) != members.end();
 }
 
-ConversionRank UserDefinedType::RankConversionFrom(Type* from, Analyzer& a) {
-    std::vector<Type*> arg;
-    arg.push_back(from);
-    return constructor->ResolveOverloadRank(std::move(arg), a);
-}
-
 Expression UserDefinedType::BuildCall(ConcreteExpression val, std::vector<ConcreteExpression> args, Analyzer& a, Lexer::Range where) {
     auto self = val.t == this ? BuildRvalueConstruction(val, a, where) : val;
     if (type->opcondecls.find(Lexer::TokenType::OpenBracket) != type->opcondecls.end())
@@ -365,7 +351,7 @@ AST::Function* UserDefinedType::AddCopyConstructor(Analyzer& a) {
 
     auto should = true;
     for(auto&& m : llvmtypes) {
-        should = should && ((a.RankConversion(a.GetLvalueType(m.t), m.t) == ConversionRank::Zero) || !m.t->IsComplexType());
+        should = should && m.t->IsCopyable();
     }
     if (!should) return nullptr;
     std::vector<AST::FunctionArgument> args;
@@ -389,7 +375,7 @@ AST::Function* UserDefinedType::AddMoveConstructor(Analyzer& a) {
 
     auto should = true;
     for(auto&& m : llvmtypes) {
-        should = should && ((a.RankConversion(a.GetRvalueType(m.t), m.t) == ConversionRank::Zero)|| !m.t->IsComplexType());
+        should = should && m.t->IsMovable();
     }
     if (!should) return nullptr;
     std::vector<AST::FunctionArgument> args;

@@ -22,7 +22,7 @@ namespace Wide {
     namespace Semantic {
         class FunctionType;
         class UserDefinedType;
-        class Function : public Type {
+        class Function : public Callable {
             enum class State {
                 NotYetAnalyzed,
                 AnalyzeInProgress,
@@ -62,6 +62,9 @@ namespace Wide {
             Type* GetContext(Analyzer& a) override { return context; }
 
             FunctionType* GetSignature(Analyzer& a);
+            std::vector<Type*> GetArgumentTypes(Analyzer& a) override {
+                return Args;
+            }
         };
         class FunctionLookupContext : public Type {
         };

@@ -53,7 +53,7 @@ extern "C" __declspec(dllexport) void AnalyzeWide(
     targetmachine = std::unique_ptr<llvm::TargetMachine>(target.createTargetMachine(clangopts->TargetOptions.Triple, llvm::Triple(clangopts->TargetOptions.Triple).getArchName(), "", targetopts));
     Wide::Codegen::MockGenerator mockgen(*targetmachine->getDataLayout());
     Wide::Semantic::Analyzer a(*clangopts, &mockgen, comb->GetGlobalModule());
-    Test(a, nullptr, comb->GetGlobalModule(), [&](CEquivalents::Range r, Wide::Semantic::Error e) { errorcallback(r, e, context); }, mockgen);
+    Test(a, nullptr, comb->GetGlobalModule(), [&](CEquivalents::Range r, Wide::Semantic::Error e) { errorcallback(r, e, context); }, mockgen, true);
 }
 
 extern "C" __declspec(dllexport) const char* GetAnalyzerErrorString(Wide::Semantic::Error err) {

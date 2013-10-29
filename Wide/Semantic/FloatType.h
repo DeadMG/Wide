@@ -13,7 +13,6 @@ namespace Wide {
             Codegen::Expression* BuildInplaceConstruction(Codegen::Expression* mem, std::vector<ConcreteExpression> args, Analyzer& a, Lexer::Range where) override;
             std::size_t size(Analyzer& a) override;
             std::size_t alignment(Analyzer& a) override;
-            ConcreteExpression BuildBinaryExpression(ConcreteExpression lhs, ConcreteExpression rhs, Lexer::TokenType type, Analyzer& a, Lexer::Range where) override;
         };
     }
 }

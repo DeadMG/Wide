@@ -15,10 +15,6 @@
 using namespace Wide;
 using namespace Semantic;
 
-PointerType::PointerType(Type* point) {
-    pointee = point;
-}
-
 clang::QualType PointerType::GetClangType(ClangUtil::ClangTU& tu, Analyzer& a) {
     return tu.GetASTContext().getPointerType(pointee->GetClangType(tu, a));
 }
@@ -30,6 +26,16 @@ std::function<llvm::Type*(llvm::Module*)> PointerType::GetLLVMType(Analyzer& a) 
             ty = llvm::IntegerType::getInt8Ty(mod->getContext());
         return llvm::PointerType::get(ty, 0);
     };
+}
+std::size_t PointerType::size(Analyzer& a) {
+    return llvm::DataLayout(a.gen->GetDataLayout()).getPointerSize();
+}
+std::size_t PointerType::alignment(Analyzer& a) {
+    return llvm::DataLayout(a.gen->GetDataLayout()).getPointerABIAlignment();
+}
+
+PointerType::PointerType(Type* point) {
+    pointee = point;
 }
 
 ConcreteExpression PointerType::BuildDereference(ConcreteExpression val, Analyzer& a, Lexer::Range where) {
@@ -49,28 +55,6 @@ Codegen::Expression* PointerType::BuildInplaceConstruction(Codegen::Expression* 
     throw std::runtime_error("Attempted to construct a pointer from something that was not a pointer of the same type or null.");
 }
 
-ConcreteExpression PointerType::BuildBinaryExpression(ConcreteExpression lhs, ConcreteExpression rhs, Lexer::TokenType type, Analyzer& a, Lexer::Range where) {
-    auto lhsval = lhs.BuildValue(a, where);
-    auto rhsval = rhs.BuildValue(a, where);
-
-    // If we're not a match, permit ADL to take over. Else, generate the primitive operator.
-    if (lhs.t->Decay() != this || rhs.t->Decay() != this)
-       return Type::BuildBinaryExpression(lhs, rhs, type, a, where);
-
-    if (type == Lexer::TokenType::EqCmp) {
-        return ConcreteExpression(a.GetBooleanType(), a.gen->CreateEqualityExpression(lhsval.Expr, rhsval.Expr));
-    }
-    
-    return Type::BuildBinaryExpression(lhs, rhs, type, a, where);
-}
-
 Codegen::Expression* PointerType::BuildBooleanConversion(ConcreteExpression obj, Analyzer& a, Lexer::Range where) {
     return a.gen->CreateIsNullExpression(obj.BuildValue(a, where).Expr);
-}
-
-std::size_t PointerType::size(Analyzer& a) {
-    return llvm::DataLayout(a.gen->GetDataLayout()).getPointerSize();
-}
-std::size_t PointerType::alignment(Analyzer& a) {
-    return llvm::DataLayout(a.gen->GetDataLayout()).getPointerABIAlignment();
 }

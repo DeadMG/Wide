@@ -21,7 +21,7 @@ namespace Wide {
             using Type::AccessMember;
 
             Wide::Util::optional<ConcreteExpression> AccessMember(ConcreteExpression val, std::string name, Analyzer& a, Lexer::Range where) override;
-            Wide::Util::optional<ConcreteExpression> AccessMember(ConcreteExpression val, Wide::Lexer::TokenType, Analyzer& a, Lexer::Range where) override;
+            OverloadSet* AccessMember(ConcreteExpression val, Wide::Lexer::TokenType, Analyzer& a, Lexer::Range where) override;
         };
     }
 }
