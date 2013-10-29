@@ -1,0 +1,12 @@
+module DeferredVariable {
+    f(x) {
+        if (x > 5) {
+            z := f(3) + 1;
+            return z;
+        }
+        return x;
+    }
+    Main() {
+        int64(f(6));
+    }
+}

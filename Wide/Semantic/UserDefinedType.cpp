@@ -46,7 +46,7 @@ UserDefinedType::UserDefinedType(const AST::Type* t, Analyzer& a, Type* higher)
     struct TypeMemberVariableLookupContext : public Type {
         Type* context;
         Type* udt;
-        Wide::Util::optional<ConcreteExpression> AccessMember(ConcreteExpression self, std::string name, Analyzer& a, Lexer::Range where) override {
+        Wide::Util::optional<Expression> AccessMember(ConcreteExpression self, std::string name, Analyzer& a, Lexer::Range where) override {
             if (name == "this")
                 return a.GetConstructorType(udt)->BuildValueConstruction(a, where);
             return context->AccessMember(self, name, a, where);
@@ -176,7 +176,7 @@ Codegen::Expression* UserDefinedType::BuildInplaceConstruction(Codegen::Expressi
         .BuildCall(std::move(args), a, where).Resolve(nullptr).Expr;
 }
 
-Wide::Util::optional<ConcreteExpression> UserDefinedType::AccessMember(ConcreteExpression expr, std::string name, Analyzer& a, Lexer::Range where) {
+Wide::Util::optional<Expression> UserDefinedType::AccessMember(ConcreteExpression expr, std::string name, Analyzer& a, Lexer::Range where) {
     if (name == "~type") {
         if (!expr.t->IsReference())
             expr = expr.t->BuildLvalueConstruction(expr, a, where);

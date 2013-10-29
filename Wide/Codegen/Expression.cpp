@@ -126,6 +126,7 @@ llvm::Value* LoadExpression::ComputeValue(llvm::IRBuilder<>& builder, Generator&
     return builder.CreateLoad(obj->GetValue(builder, g), false);
 }
 
+
 llvm::Value* StoreExpression::ComputeValue(llvm::IRBuilder<>& builder, Generator& g) {
     /*auto llvmlhs = val->GetValue(builder)->getType();
     auto llvmrhs = obj->GetValue(builder)->getType();

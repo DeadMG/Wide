@@ -188,7 +188,7 @@ Expression Analyzer::AnalyzeExpression(Type* t, const AST::Expression* e) {
             auto fargs = lam->args;
             auto fun = self->arena.Allocate<AST::Function>("()", lam->statements, std::vector<AST::Statement*>(), lam->location, std::move(fargs), std::vector<AST::Variable*>());
             ovr->functions.insert(fun);
-            ty->Functions["()"] = ovr;
+            ty->opcondecls[Lexer::TokenType::OpenBracket] = ovr;
             
             // Need to not-capture things that would be available anyway.
             
@@ -272,44 +272,71 @@ Expression Analyzer::AnalyzeExpression(Type* t, const AST::Expression* e) {
             // but I'll hunt down any bugs caused by eliminating it later.
             for(auto&& arg : lam->Captures)
                 caps.erase(arg->name);
-            std::vector<AST::Variable*> initializers;
-            std::vector<AST::FunctionArgument> funargs;
-            std::vector<ConcreteExpression> args;
-            unsigned num = 0;
+
+            std::vector<Expression> cap_expressions;
+            bool defer = false;
             for(auto&& arg : lam->Captures) {
-                std::stringstream str;
-                str << "__param" << num;
-                auto init = self->AnalyzeExpression(t, arg->initializer).Resolve(nullptr);
-                AST::FunctionArgument f(lam->location);
-                f.name = str.str();
-                f.type = self->arena.Allocate<SemanticExpression>(ConcreteExpression(self->GetConstructorType(init.t), nullptr), lam->location);
-                ty->variables.push_back(self->arena.Allocate<AST::Variable>(arg->name, self->arena.Allocate<SemanticExpression>(ConcreteExpression(self->GetConstructorType(init.t->Decay()), nullptr), lam->location), lam->location));
-                initializers.push_back(self->arena.Allocate<AST::Variable>(arg->name, self->arena.Allocate<AST::Identifier>(str.str(), lam->location), lam->location));
-                funargs.push_back(f);
-                ++num;
-                args.push_back(init);
+                auto expr = self->AnalyzeExpression(t, arg->initializer);
+                if (expr.contents.type() == typeid(DeferredExpression))
+                    defer = true;
+                cap_expressions.push_back(expr);
             }
-            for(auto&& name : captures) {
-                std::stringstream str;
-                str << "__param" << num;
-                auto capty = t->AccessMember(ConcreteExpression(), name, *self, lam->location)->t;
-                initializers.push_back(self->arena.Allocate<AST::Variable>(name, self->arena.Allocate<AST::Identifier>(str.str(), lam->location), lam->location));
-                AST::FunctionArgument f(lam->location);
-                f.name = str.str();
-                f.type = self->arena.Allocate<SemanticExpression>(ConcreteExpression(self->GetConstructorType(capty), nullptr), lam->location);
-                funargs.push_back(f);
-                if (!lam->defaultref)
-                    capty = capty->Decay();
-                ty->variables.push_back(self->arena.Allocate<AST::Variable>(name, self->arena.Allocate<SemanticExpression>(ConcreteExpression(self->GetConstructorType(capty), nullptr), lam->location), lam->location));
-                ++num;
-                args.push_back(*t->AccessMember(ConcreteExpression(), name, *self, lam->location));
+            for(auto&& name : captures) {                
+                AST::Identifier ident(name, lam->location);
+                auto expr = self->AnalyzeExpression(t, &ident);
+                if (expr.contents.type() == typeid(DeferredExpression))
+                    defer = true;
+                cap_expressions.push_back(expr);
             }
-            auto conoverset = self->arena.Allocate<AST::FunctionOverloadSet>();
-            conoverset->functions.insert(self->arena.Allocate<AST::Function>("type", std::vector<AST::Statement*>(), std::vector<AST::Statement*>(), lam->location, std::move(funargs), std::move(initializers)));
-            ty->Functions["type"] = conoverset;
-            auto lamty = self->GetUDT(ty, t);
-            auto obj = lamty->BuildRvalueConstruction(std::move(args), *self, lam->location);
-            out = obj;
+
+            auto lamself = self;
+            auto lamt = t;
+            auto process_lambda = [lam, cap_expressions, lamself, ty, lamt, captures](Type*) {
+                auto t = lamt;
+                auto self = lamself;
+                std::vector<AST::Variable*> initializers;
+                std::vector<AST::FunctionArgument> funargs;
+                std::vector<ConcreteExpression> args;
+                unsigned num = 0;
+                for(auto&& arg : lam->Captures) {
+                    std::stringstream str;
+                    str << "__param" << num;
+                    auto init = cap_expressions[num].Resolve(nullptr);
+                    AST::FunctionArgument f(lam->location);
+                    f.name = str.str();
+                    f.type = self->arena.Allocate<SemanticExpression>(ConcreteExpression(self->GetConstructorType(init.t), nullptr), lam->location);
+                    ty->variables.push_back(self->arena.Allocate<AST::Variable>(arg->name, self->arena.Allocate<SemanticExpression>(ConcreteExpression(self->GetConstructorType(init.t->Decay()), nullptr), lam->location), lam->location));
+                    initializers.push_back(self->arena.Allocate<AST::Variable>(arg->name, self->arena.Allocate<AST::Identifier>(str.str(), lam->location), lam->location));
+                    funargs.push_back(f);
+                    ++num;
+                    args.push_back(init);
+                }
+                for(auto&& name : captures) {
+                    std::stringstream str;
+                    str << "__param" << num;
+                    auto capty = cap_expressions[num].Resolve(nullptr).t;
+                    initializers.push_back(self->arena.Allocate<AST::Variable>(name, self->arena.Allocate<AST::Identifier>(str.str(), lam->location), lam->location));
+                    AST::FunctionArgument f(lam->location);
+                    f.name = str.str();
+                    f.type = self->arena.Allocate<SemanticExpression>(ConcreteExpression(self->GetConstructorType(capty), nullptr), lam->location);
+                    funargs.push_back(f);
+                    if (!lam->defaultref)
+                        capty = capty->Decay();
+                    ty->variables.push_back(self->arena.Allocate<AST::Variable>(name, self->arena.Allocate<SemanticExpression>(ConcreteExpression(self->GetConstructorType(capty), nullptr), lam->location), lam->location));
+                    ++num;
+                    args.push_back(cap_expressions[num].Resolve(nullptr));
+                }
+                auto conoverset = self->arena.Allocate<AST::FunctionOverloadSet>();
+                conoverset->functions.insert(self->arena.Allocate<AST::Function>("type", std::vector<AST::Statement*>(), std::vector<AST::Statement*>(), lam->location, std::move(funargs), std::move(initializers)));
+                ty->Functions["type"] = conoverset;
+                auto lamty = self->GetUDT(ty, t);
+                return lamty->BuildRvalueConstruction(std::move(args), *self, lam->location);
+            };
+            if (defer) {
+                out = DeferredExpression(process_lambda);
+                return;
+            }
+            out = process_lambda(nullptr);
         }
         void VisitDereference(const AST::Dereference* deref) {
             out = self->AnalyzeExpression(t, deref->ex).BuildDereference(*self, deref->location);
@@ -558,13 +585,13 @@ Wide::Util::optional<Expression> Analyzer::LookupIdentifier(Type* context, const
         auto lookup = mod->AccessMember(ident->val, *this, ident->location);
         if (!lookup)
             return LookupIdentifier(mod->GetContext(*this), ident);
-        if (!dynamic_cast<OverloadSet*>(lookup->t))
+        if (!dynamic_cast<OverloadSet*>(lookup->Resolve(nullptr).t))
             return lookup;
         auto lookup2 = LookupIdentifier(mod->GetContext(*this), ident);
         if (!lookup2)
             return lookup;
         if (dynamic_cast<OverloadSet*>(lookup2->Resolve(nullptr).t))
-            return GetOverloadSet(dynamic_cast<OverloadSet*>(lookup->t), dynamic_cast<OverloadSet*>(lookup2->Resolve(nullptr).t))->BuildValueConstruction(*this, ident->location);
+            return GetOverloadSet(dynamic_cast<OverloadSet*>(lookup->Resolve(nullptr).t), dynamic_cast<OverloadSet*>(lookup2->Resolve(nullptr).t))->BuildValueConstruction(*this, ident->location);
         return lookup;
     }
     auto value = context->AccessMember(ident->val, *this, ident->location);

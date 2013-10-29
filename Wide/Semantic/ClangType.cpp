@@ -126,7 +126,7 @@ ConcreteExpression ClangType::BuildOverloadSet(ConcreteExpression self, std::str
     return LookupResultCache[name]->BuildValueConstruction(self, a, where);
 }
 
-Wide::Util::optional<ConcreteExpression> ClangType::AccessMember(ConcreteExpression val, std::string name, Analyzer& a, Lexer::Range where) {
+Wide::Util::optional<Expression> ClangType::AccessMember(ConcreteExpression val, std::string name, Analyzer& a, Lexer::Range where) {
     if (LookupResultCache.find(name) != LookupResultCache.end()) {
         std::vector<ConcreteExpression> args;
         if (val.Expr) args.push_back(val);

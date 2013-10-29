@@ -117,6 +117,7 @@ namespace Wide {
             virtual FPMod* CreateFPMod(Expression* l, Expression* r) { return nullptr; }
             virtual FPExtension* CreateFPExtension(Expression*, std::function < llvm::Type*(llvm::Module*)>) { return nullptr;  }
             virtual Nop* CreateNop() { return nullptr; }
+            virtual Deferred* CreateDeferredStatement(std::function<Statement*()>) { return nullptr; }
         };
     }
 }

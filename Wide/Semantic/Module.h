@@ -12,15 +12,15 @@ namespace Wide {
         class Module : public MetaType {
             const AST::Module* m;
             Module* context;
-            std::unordered_map<std::string, ConcreteExpression> SpecialMembers;
+            std::unordered_map<std::string, Expression> SpecialMembers;
         public:
             Module(const AST::Module* p, Module* higher);
             Module* GetContext(Analyzer& a) override { return context; }
-            void AddSpecialMember(std::string name, ConcreteExpression t);          
+            void AddSpecialMember(std::string name, Expression t);          
 
             using Type::AccessMember;
 
-            Wide::Util::optional<ConcreteExpression> AccessMember(ConcreteExpression val, std::string name, Analyzer& a, Lexer::Range where) override;
+            Wide::Util::optional<Expression> AccessMember(ConcreteExpression val, std::string name, Analyzer& a, Lexer::Range where) override;
             OverloadSet* AccessMember(ConcreteExpression val, Wide::Lexer::TokenType, Analyzer& a, Lexer::Range where) override;
         };
     }

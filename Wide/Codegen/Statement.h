@@ -21,7 +21,15 @@ namespace Wide {
             Codegen::Expression* GetReturnExpression();
             ReturnStatement();
             ReturnStatement(std::function<LLVMCodegen::Expression*()> e);
-            void Build(llvm::IRBuilder<>& bb, Generator& g);
+            void Build(llvm::IRBuilder<>& bb, Generator& g) override final;
+        };
+
+        class Deferred : public Statement, public Codegen::Deferred {
+            std::function<Codegen::Expression*()> func;
+        public:
+            Deferred(std::function<Codegen::Expression*()> f)
+                : func(std::move(f)) {}
+            void Build(llvm::IRBuilder<>&, Generator& g) override final;
         };
 
         class IfStatement : public Statement, public Codegen::IfStatement {
@@ -31,7 +39,7 @@ namespace Wide {
         public:
             IfStatement(std::function<LLVMCodegen::Expression*()> cond, LLVMCodegen::Statement* tbr, LLVMCodegen::Statement* fbr)
                 : true_br(std::move(tbr)), false_br(std::move(fbr)), condition(cond) {}
-            void Build(llvm::IRBuilder<>& bb, Generator& g);
+            void Build(llvm::IRBuilder<>& bb, Generator& g) override final;
         };
 
         class ChainStatement : public Statement, public Codegen::ChainStatement {
@@ -40,7 +48,7 @@ namespace Wide {
         public:
             ChainStatement(LLVMCodegen::Statement* l, LLVMCodegen::Statement* r)
                 : lhs(l), rhs(r) {}
-            void Build(llvm::IRBuilder<>& bb, Generator& g) {
+            void Build(llvm::IRBuilder<>& bb, Generator& g) override final {
                 lhs->Build(bb, g);
                 rhs->Build(bb, g);
             }
@@ -51,7 +59,7 @@ namespace Wide {
         public:
             WhileStatement(std::function<LLVMCodegen::Expression*()> c, LLVMCodegen::Statement* b)
                 : cond(c), body(b) {}
-            void Build(llvm::IRBuilder<>& b, Generator& g);
+            void Build(llvm::IRBuilder<>& b, Generator& g) override final;
         };
     }
 }

@@ -51,7 +51,7 @@ namespace Wide {
             
             ConcreteExpression BuildValue(Analyzer& a, Lexer::Range where);
             OverloadSet* AccessMember(Lexer::TokenType name, Analyzer& a, Lexer::Range where);
-            Wide::Util::optional<ConcreteExpression> AccessMember(std::string name, Analyzer& a, Lexer::Range where);
+            Wide::Util::optional<Expression> AccessMember(std::string name, Analyzer& a, Lexer::Range where);
             ConcreteExpression BuildDereference(Analyzer& a, Lexer::Range where);
             ConcreteExpression BuildIncrement(bool postfix, Analyzer& a, Lexer::Range where);
             ConcreteExpression BuildNegate(Analyzer& a, Lexer::Range where);
@@ -60,7 +60,7 @@ namespace Wide {
             Expression BuildCall(ConcreteExpression lhs, ConcreteExpression rhs, Analyzer& a, Lexer::Range where);
             Expression BuildCall(std::vector<ConcreteExpression> args, Analyzer& a, Lexer::Range where);
             ConcreteExpression BuildMetaCall(std::vector<ConcreteExpression> args, Analyzer& a, Lexer::Range where);    
-            Wide::Util::optional<ConcreteExpression> PointerAccessMember(std::string name, Analyzer& a, Lexer::Range where);
+            Wide::Util::optional<Expression> PointerAccessMember(std::string name, Analyzer& a, Lexer::Range where);
             ConcreteExpression AddressOf(Analyzer& a, Lexer::Range where);
             Codegen::Expression* BuildBooleanConversion(Analyzer& a, Lexer::Range where);
             Expression BuildBinaryExpression(ConcreteExpression rhs, Lexer::TokenType type, Analyzer& a, Lexer::Range where);
@@ -231,8 +231,8 @@ namespace Wide {
             virtual ConcreteExpression BuildValue(ConcreteExpression lhs, Analyzer& a, Lexer::Range where);
             
             virtual OverloadSet* AccessMember(Lexer::TokenType type, Analyzer& a, Lexer::Range where);
-            virtual Wide::Util::optional<ConcreteExpression> AccessMember(std::string name, Analyzer& a, Lexer::Range where);
-            virtual Wide::Util::optional<ConcreteExpression> AccessMember(ConcreteExpression, std::string name, Analyzer& a, Lexer::Range where);
+            virtual Wide::Util::optional<Expression> AccessMember(std::string name, Analyzer& a, Lexer::Range where);
+            virtual Wide::Util::optional<Expression> AccessMember(ConcreteExpression, std::string name, Analyzer& a, Lexer::Range where);
             virtual OverloadSet* AccessMember(ConcreteExpression e, Lexer::TokenType type, Analyzer& a, Lexer::Range where);
 
             virtual Expression BuildCall(ConcreteExpression val, std::vector<ConcreteExpression> args, Analyzer& a, Lexer::Range where) {
@@ -260,7 +260,7 @@ namespace Wide {
                     return Decay()->BuildDereference(obj, a, where);
                 throw std::runtime_error("This type does not support de-referencing.");
             }
-            virtual Wide::Util::optional<ConcreteExpression> PointerAccessMember(ConcreteExpression obj, std::string name, Analyzer& a, Lexer::Range where) {
+            virtual Wide::Util::optional<Expression> PointerAccessMember(ConcreteExpression obj, std::string name, Analyzer& a, Lexer::Range where) {
                 if (IsReference())
                     return Decay()->PointerAccessMember(obj, std::move(name), a, where);
                 obj = obj.t->BuildDereference(obj, a, where);

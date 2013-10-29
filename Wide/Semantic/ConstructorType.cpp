@@ -28,14 +28,14 @@ struct EmplaceType : public MetaType {
 Expression ConstructorType::BuildCall(ConcreteExpression, std::vector<ConcreteExpression> args, Analyzer& a, Lexer::Range where) {
     return t->BuildRvalueConstruction(std::move(args), a, where);
 }
-Wide::Util::optional<ConcreteExpression> ConstructorType::AccessMember(ConcreteExpression, std::string name, Analyzer& a, Lexer::Range where) {
+Wide::Util::optional<Expression> ConstructorType::AccessMember(ConcreteExpression, std::string name, Analyzer& a, Lexer::Range where) {
     ConcreteExpression self;
     self.t = t;
     self.Expr = nullptr;
     return t->AccessMember(self, name, a, where);
 }
 
-Wide::Util::optional<ConcreteExpression> ConstructorType::PointerAccessMember(ConcreteExpression obj, std::string name, Analyzer& a, Lexer::Range where) {
+Wide::Util::optional<Expression> ConstructorType::PointerAccessMember(ConcreteExpression obj, std::string name, Analyzer& a, Lexer::Range where) {
     if (name == "decay")
         return a.GetConstructorType(t->Decay())->BuildValueConstruction(std::vector<ConcreteExpression>(), a, where);
     if (name == "lvalue")

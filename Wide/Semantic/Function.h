@@ -46,7 +46,7 @@ namespace Wide {
             void CompleteAnalysis(Type* ret, Analyzer& a);
 
             std::vector<Codegen::Statement*> exprs;
-            std::vector<std::unordered_map<std::string, ConcreteExpression>> variables;
+            std::vector<std::unordered_map<std::string, Expression>> variables;
             std::string name;
         public:
             bool HasLocalVariable(std::string name);
@@ -56,7 +56,7 @@ namespace Wide {
             std::function<llvm::Type*(llvm::Module*)> GetLLVMType(Analyzer& a) override; 
      
             Expression BuildCall(ConcreteExpression, std::vector<ConcreteExpression> args, Analyzer& a, Lexer::Range where) override;
-            Wide::Util::optional<ConcreteExpression> AccessMember(ConcreteExpression expr, std::string name, Analyzer& a, Lexer::Range where) override;
+            Wide::Util::optional<Expression> AccessMember(ConcreteExpression expr, std::string name, Analyzer& a, Lexer::Range where) override;
             using Type::AccessMember;
             std::string GetName();
             Type* GetContext(Analyzer& a) override { return context; }

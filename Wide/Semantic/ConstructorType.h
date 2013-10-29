@@ -14,8 +14,8 @@ namespace Wide {
             Type* GetConstructedType() {
                 return t;
             }
-            Wide::Util::optional<ConcreteExpression> AccessMember(ConcreteExpression, std::string name, Analyzer& a, Lexer::Range where) override;
-            Wide::Util::optional<ConcreteExpression> PointerAccessMember(ConcreteExpression obj, std::string name, Analyzer& a, Lexer::Range where) override;
+            Wide::Util::optional<Expression> AccessMember(ConcreteExpression, std::string name, Analyzer& a, Lexer::Range where) override;
+            Wide::Util::optional<Expression> PointerAccessMember(ConcreteExpression obj, std::string name, Analyzer& a, Lexer::Range where) override;
             using Type::BuildValueConstruction;
         };
     }

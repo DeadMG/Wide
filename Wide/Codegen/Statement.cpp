@@ -42,6 +42,13 @@ Codegen::Expression* ReturnStatement::GetReturnExpression() {
     return p;
 }
 
+void Deferred::Build(llvm::IRBuilder<>& b, Generator& g) {
+    auto expr = func();
+    auto realstatement = dynamic_cast<LLVMCodegen::Statement*>(expr);
+    assert(realstatement);
+    realstatement->Build(b, g);
+}
+
 void IfStatement::Build(llvm::IRBuilder<>& bb, Generator& g) {
     auto true_bb = llvm::BasicBlock::Create(bb.getContext(), "true_bb", bb.GetInsertBlock()->getParent());
     auto continue_bb = llvm::BasicBlock::Create(bb.getContext(), "continue_bb", bb.GetInsertBlock()->getParent());

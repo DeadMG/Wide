@@ -65,7 +65,7 @@ namespace Wide {
 
             clang::QualType GetClangType(ClangUtil::ClangTU& TU, Analyzer& a) override;  
             Codegen::Expression* BuildInplaceConstruction(Codegen::Expression* mem, std::vector<ConcreteExpression> args, Analyzer& a, Lexer::Range where) override;
-            Wide::Util::optional<ConcreteExpression> AccessMember(ConcreteExpression, std::string name, Analyzer& a, Lexer::Range where) override;
+            Wide::Util::optional<Expression> AccessMember(ConcreteExpression, std::string name, Analyzer& a, Lexer::Range where) override;
             Expression BuildCall(ConcreteExpression val, std::vector<ConcreteExpression> args, Analyzer& a, Lexer::Range where) override;
             std::size_t size(Analyzer& a) override;
             std::size_t alignment(Analyzer& a) override;

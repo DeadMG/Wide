@@ -10,8 +10,8 @@ void Wide::Semantic::Analyze(const AST::Module* root, const Options::Clang& opts
     auto std = a.GetGlobalModule()->AccessMember("Standard", a, location);
     if (!std)
         throw std::runtime_error("Fuck.");
-    auto main = std->t->AccessMember("Main", a, location);
+    auto main = std->Resolve(nullptr).t->AccessMember("Main", a, location);
     if (!main)
         throw std::runtime_error("Fuck.");
-    main->BuildCall(a, root->decls.at("Standard")->where.front());
+    main->Resolve(nullptr).BuildCall(a, root->decls.at("Standard")->where.front());
 }

@@ -59,7 +59,7 @@ DeferredExpression DeferredExpression::PointerAccessMember(std::string name, Ana
         auto expr = (*copy)(nullptr);
         auto opt = expr.PointerAccessMember(name, a, where);
         if (opt)
-            return *opt;
+            return opt->Resolve(t);
         throw std::runtime_error("Attempted to access a member of an object, but that object had no such member.");
     });
 }
@@ -106,7 +106,7 @@ Expression ConcreteExpression::BuildCall(Expression l, Expression r, Analyzer& a
     return BuildCall(std::move(exprs), a, where);
 }
 
-Util::optional<ConcreteExpression> ConcreteExpression::PointerAccessMember(std::string mem, Analyzer& a, Lexer::Range where) {
+Util::optional<Expression> ConcreteExpression::PointerAccessMember(std::string mem, Analyzer& a, Lexer::Range where) {
     return t->PointerAccessMember(*this, std::move(mem), a, where);
 }
 
@@ -172,20 +172,17 @@ DeferredExpression DeferredExpression::AccessMember(std::string name, Analyzer& 
         auto expr = (*copy)(nullptr);
         auto opt = expr.AccessMember(name, a, where);
         if (opt)
-            return *opt;
+            return opt->Resolve(t);
         throw std::runtime_error("Attempted to access a member of an object, but that object had no such member.");
     });
 }
-Wide::Util::optional<ConcreteExpression> ConcreteExpression::AccessMember(std::string name, Analyzer& a, Lexer::Range where) {
+Wide::Util::optional<Expression> ConcreteExpression::AccessMember(std::string name, Analyzer& a, Lexer::Range where) {
     return t->AccessMember(*this, std::move(name), a, where);
 }
 Wide::Util::optional<Expression> Expression::AccessMember(std::string name, Analyzer& a, Lexer::Range where){
     return VisitContents(
         [&](ConcreteExpression& e) -> Wide::Util::optional<Expression> {
-            auto opt = e.AccessMember(std::move(name), a, where);
-            if (opt)
-                return *opt;
-            return Wide::Util::none;
+            return e.AccessMember(std::move(name), a, where);
         },
         [&](DeferredExpression& e) -> Wide::Util::optional<Expression> {
             return e.AccessMember(std::move(name), a, where);
@@ -397,7 +394,7 @@ Codegen::Expression* Type::BuildInplaceConstruction(Codegen::Expression* mem, An
     std::vector<ConcreteExpression> args;
     return BuildInplaceConstruction(mem, args, a, where);
 }
-Wide::Util::optional<ConcreteExpression> Type::AccessMember(ConcreteExpression e, std::string name, Analyzer& a, Lexer::Range where) {
+Wide::Util::optional<Expression> Type::AccessMember(ConcreteExpression e, std::string name, Analyzer& a, Lexer::Range where) {
     if (IsReference())
         return Decay()->AccessMember(e, std::move(name), a, where);
     if (name == "~type")
@@ -432,7 +429,7 @@ static const std::unordered_map<Lexer::TokenType, Lexer::TokenType> Assign = [](
     return assign;
 }();
 
-Wide::Util::optional<Wide::Semantic::ConcreteExpression> Type::AccessMember(std::string name, Analyzer& a, Lexer::Range where) {
+Wide::Util::optional<Expression> Type::AccessMember(std::string name, Analyzer& a, Lexer::Range where) {
     return AccessMember(ConcreteExpression(), std::move(name), a, where);
 }
 OverloadSet* Type::AccessMember(Lexer::TokenType name, Analyzer& a, Lexer::Range where) {

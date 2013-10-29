@@ -112,6 +112,8 @@ TEST_CASE("", "") {
     CHECK_NOTHROW(Compile(clangopts, *targetmachine->getDataLayout(), { "CorecursiveTypeInference.wide" }));
     CHECK_NOTHROW(Compile(clangopts, *targetmachine->getDataLayout(), { "MemberCall.wide" }));
     CHECK_NOTHROW(Compile(clangopts, *targetmachine->getDataLayout(), { "AcceptQualifiedThis.wide" }));
+    CHECK_NOTHROW(Compile(clangopts, *targetmachine->getDataLayout(), { "DeferredVariable.wide" }));
+    CHECK_NOTHROW(Compile(clangopts, *targetmachine->getDataLayout(), { "DeferredLambda.wide" }));
     CHECK_THROWS(Compile(clangopts, *targetmachine->getDataLayout(), { "RejectQualifiedThis.wide" }));
     CHECK_THROWS(Compile(clangopts, *targetmachine->getDataLayout(), { "SubmoduleNoQualifiedLookup.wide" }));
 }

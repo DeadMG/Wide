@@ -15,7 +15,7 @@ using namespace Semantic;
 Module::Module(const AST::Module* p, Module* higher) 
     : m(p), context(higher) {}
 
-void Module::AddSpecialMember(std::string name, ConcreteExpression t){
+void Module::AddSpecialMember(std::string name, Expression t){
     SpecialMembers[std::move(name)] = t;
 }
 OverloadSet* Module::AccessMember(ConcreteExpression val, Wide::Lexer::TokenType ty, Analyzer& a, Lexer::Range where) {
@@ -23,7 +23,7 @@ OverloadSet* Module::AccessMember(ConcreteExpression val, Wide::Lexer::TokenType
         return a.GetOverloadSet(m->opcondecls.find(ty)->second, this);
     return a.GetOverloadSet();
 }
-Wide::Util::optional<ConcreteExpression> Module::AccessMember(ConcreteExpression val, std::string name, Analyzer& a, Lexer::Range where) {
+Wide::Util::optional<Expression> Module::AccessMember(ConcreteExpression val, std::string name, Analyzer& a, Lexer::Range where) {
     if (m->decls.find(name) != m->decls.end()) {
         auto decl = m->decls.at(name);
         if (auto moddecl = dynamic_cast<const AST::Module*>(decl)) {

@@ -43,7 +43,7 @@ namespace Wide {
 
         public:            
             bool IsEliminateType(llvm::Type*);
-            void AddEliminateType(llvm::Type*);
+            void AddEliminateType(llvm::Type*) override final;
             void TieFunction(llvm::Function*, Function*);
             Function* FromLLVMFunc(llvm::Function*);
 
@@ -52,65 +52,65 @@ namespace Wide {
 
             Generator(const Options::LLVM&, std::string outputfile, std::string triple);
 
-            Function* CreateFunction(std::function<llvm::Type*(llvm::Module*)>, std::string, Semantic::Function* debug, bool trampoline = false);
-
-            Variable* CreateVariable(std::function<llvm::Type*(llvm::Module*)>, unsigned alignment) final;
-            FunctionCall* CreateFunctionCall(Codegen::Expression*, std::vector<Codegen::Expression*>, std::function<llvm::Type*(llvm::Module*)> = std::function<llvm::Type*(llvm::Module*)>());
-            StringExpression* CreateStringExpression(std::string);
-            NamedGlobalVariable* CreateGlobalVariable(std::string);
-            StoreExpression* CreateStore(Codegen::Expression*, Codegen::Expression*);
-            LoadExpression* CreateLoad(Codegen::Expression*);
-            ReturnStatement* CreateReturn();
+            Function* CreateFunction(std::function<llvm::Type*(llvm::Module*)>, std::string, Semantic::Function* debug, bool trampoline = false) override final;
+            Deferred* CreateDeferredStatement(std::function<Codegen::Statement*()>) override final;
+            Variable* CreateVariable(std::function<llvm::Type*(llvm::Module*)>, unsigned alignment) override final;
+            FunctionCall* CreateFunctionCall(Codegen::Expression*, std::vector<Codegen::Expression*>, std::function<llvm::Type*(llvm::Module*)> = std::function<llvm::Type*(llvm::Module*)>()) override final;
+            StringExpression* CreateStringExpression(std::string) override final;
+            NamedGlobalVariable* CreateGlobalVariable(std::string) override final;
+            StoreExpression* CreateStore(Codegen::Expression*, Codegen::Expression*) override final;
+            LoadExpression* CreateLoad(Codegen::Expression*) override final;
+            ReturnStatement* CreateReturn() override final; 
 
             // Const parameter or compiler bug
-            IfStatement* CreateIfStatement(const std::function<Codegen::Expression*()>, Codegen::Statement*, Codegen::Statement*);
-            WhileStatement* CreateWhile(const std::function<Codegen::Expression*()>, Codegen::Statement*);
-            ReturnStatement* CreateReturn(const std::function<Codegen::Expression*()>);
-            ReturnStatement* CreateReturn(Codegen::Expression* e) {
+            IfStatement* CreateIfStatement(const std::function<Codegen::Expression*()>, Codegen::Statement*, Codegen::Statement*) override final;
+            WhileStatement* CreateWhile(const std::function<Codegen::Expression*()>, Codegen::Statement*) override final;
+            ReturnStatement* CreateReturn(const std::function<Codegen::Expression*()>) override final;
+            ReturnStatement* CreateReturn(Codegen::Expression* e) override final {
                 return CreateReturn([=] { return e; });
             }
-            FunctionValue* CreateFunctionValue(std::string);
-            IntegralExpression* CreateIntegralExpression(uint64_t val, bool is_signed, std::function<llvm::Type*(llvm::Module*)> ty);
-            ChainExpression* CreateChainExpression(Codegen::Statement*, Codegen::Expression*);
-            FieldExpression* CreateFieldExpression(Codegen::Expression*, unsigned);
-            FieldExpression* CreateFieldExpression(Codegen::Expression*, std::function<unsigned()>);
-            ParamExpression* CreateParameterExpression(unsigned);
-            ParamExpression* CreateParameterExpression(std::function<unsigned()>); 
-            IfStatement* CreateIfStatement(Codegen::Expression* expr, Codegen::Statement* t, Codegen::Statement* f) {
+            FunctionValue* CreateFunctionValue(std::string) override final;
+            IntegralExpression* CreateIntegralExpression(uint64_t val, bool is_signed, std::function<llvm::Type*(llvm::Module*)> ty) override final;
+            ChainExpression* CreateChainExpression(Codegen::Statement*, Codegen::Expression*) override final;
+            FieldExpression* CreateFieldExpression(Codegen::Expression*, unsigned) override final;
+            FieldExpression* CreateFieldExpression(Codegen::Expression*, std::function<unsigned()>) override final;
+            ParamExpression* CreateParameterExpression(unsigned) override final;
+            ParamExpression* CreateParameterExpression(std::function<unsigned()>) override final; 
+            IfStatement* CreateIfStatement(Codegen::Expression* expr, Codegen::Statement* t, Codegen::Statement* f) override final {
                 return CreateIfStatement([=] { return expr; }, t, f);
             }
             Nop* CreateNop();
-            ChainStatement* CreateChainStatement(Codegen::Statement*, Codegen::Statement*);
-            TruncateExpression* CreateTruncate(Codegen::Expression*, std::function<llvm::Type*(llvm::Module*)>);
-            WhileStatement* CreateWhile(Codegen::Expression* e, Codegen::Statement* s) {
+            ChainStatement* CreateChainStatement(Codegen::Statement*, Codegen::Statement*) override final;
+            TruncateExpression* CreateTruncate(Codegen::Expression*, std::function<llvm::Type*(llvm::Module*)>) override final;
+            WhileStatement* CreateWhile(Codegen::Expression* e, Codegen::Statement* s) override final {
                 return CreateWhile([=]{ return e; }, s);
             }
-            NullExpression* CreateNull(std::function<llvm::Type*(llvm::Module*)> type);
-            IntegralLeftShiftExpression* CreateLeftShift(Codegen::Expression*, Codegen::Expression*);
-            IntegralRightShiftExpression* CreateRightShift(Codegen::Expression*, Codegen::Expression*, bool);
-            IntegralLessThan* CreateLT(Codegen::Expression* lhs, Codegen::Expression* rhs, bool);
-            ZExt* CreateZeroExtension(Codegen::Expression* val, std::function<llvm::Type*(llvm::Module*)> to);
-            NegateExpression* CreateNegateExpression(Codegen::Expression* val);
-            OrExpression* CreateOrExpression(Codegen::Expression* lhs, Codegen::Expression* rhs);
-            EqualityExpression* CreateEqualityExpression(Codegen::Expression* lhs, Codegen::Expression* rhs);
-            PlusExpression* CreatePlusExpression(Codegen::Expression* lhs, Codegen::Expression* rhs);
-            MultiplyExpression* CreateMultiplyExpression(Codegen::Expression* lhs, Codegen::Expression* rhs);
-            AndExpression* CreateAndExpression(Codegen::Expression* lhs, Codegen::Expression* rhs);
-            SExt* CreateSignedExtension(Codegen::Expression* val, std::function<llvm::Type*(llvm::Module*)> to);
-            IsNullExpression* CreateIsNullExpression(Codegen::Expression* val);
-            SubExpression* CreateSubExpression(Codegen::Expression* l, Codegen::Expression* r);
-            XorExpression* CreateXorExpression(Codegen::Expression* l, Codegen::Expression* r);
-            ModExpression* CreateModExpression(Codegen::Expression* l, Codegen::Expression* r, bool is_signed);
-            DivExpression* CreateDivExpression(Codegen::Expression* l, Codegen::Expression* r, bool is_signed);
-            FPExtension* CreateFPExtension(Codegen::Expression* l, std::function<llvm::Type*(llvm::Module*)> r);
-            FPMod* CreateFPMod(Codegen::Expression* r, Codegen::Expression* l);
-            FPDiv* CreateFPDiv(Codegen::Expression* r, Codegen::Expression* l);
-            FPLT* CreateFPLT(Codegen::Expression* r, Codegen::Expression* l);
+            NullExpression* CreateNull(std::function<llvm::Type*(llvm::Module*)> type) override final;
+            IntegralLeftShiftExpression* CreateLeftShift(Codegen::Expression*, Codegen::Expression*) override final;
+            IntegralRightShiftExpression* CreateRightShift(Codegen::Expression*, Codegen::Expression*, bool) override final;
+            IntegralLessThan* CreateLT(Codegen::Expression* lhs, Codegen::Expression* rhs, bool) override final;
+            ZExt* CreateZeroExtension(Codegen::Expression* val, std::function<llvm::Type*(llvm::Module*)> to) override final;
+            NegateExpression* CreateNegateExpression(Codegen::Expression* val) override final;
+            OrExpression* CreateOrExpression(Codegen::Expression* lhs, Codegen::Expression* rhs) override final;
+            EqualityExpression* CreateEqualityExpression(Codegen::Expression* lhs, Codegen::Expression* rhs) override final;
+            PlusExpression* CreatePlusExpression(Codegen::Expression* lhs, Codegen::Expression* rhs) override final;
+            MultiplyExpression* CreateMultiplyExpression(Codegen::Expression* lhs, Codegen::Expression* rhs) override final;
+            AndExpression* CreateAndExpression(Codegen::Expression* lhs, Codegen::Expression* rhs) override final;
+            SExt* CreateSignedExtension(Codegen::Expression* val, std::function<llvm::Type*(llvm::Module*)> to) override final;
+            IsNullExpression* CreateIsNullExpression(Codegen::Expression* val) override final;
+            SubExpression* CreateSubExpression(Codegen::Expression* l, Codegen::Expression* r) override final;
+            XorExpression* CreateXorExpression(Codegen::Expression* l, Codegen::Expression* r) override final;
+            ModExpression* CreateModExpression(Codegen::Expression* l, Codegen::Expression* r, bool is_signed) override final;
+            DivExpression* CreateDivExpression(Codegen::Expression* l, Codegen::Expression* r, bool is_signed) override final;
+            FPExtension* CreateFPExtension(Codegen::Expression* l, std::function<llvm::Type*(llvm::Module*)> r) override final;
+            FPMod* CreateFPMod(Codegen::Expression* r, Codegen::Expression* l) override final;
+            FPDiv* CreateFPDiv(Codegen::Expression* r, Codegen::Expression* l) override final;
+            FPLT* CreateFPLT(Codegen::Expression* r, Codegen::Expression* l) override final;
             
-            llvm::DataLayout GetDataLayout();
-            void AddClangTU(std::function<void(llvm::Module* m)>);
-            llvm::LLVMContext& GetContext();
-            std::size_t GetInt8AllocSize();
+            llvm::DataLayout GetDataLayout() override final;
+            void AddClangTU(std::function<void(llvm::Module* m)>) override final;
+            llvm::LLVMContext& GetContext() override final;
+            std::size_t GetInt8AllocSize() override final;
 
             void operator()();
         };

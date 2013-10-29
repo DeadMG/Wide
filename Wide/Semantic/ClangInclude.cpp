@@ -12,7 +12,7 @@
 using namespace Wide;
 using namespace Semantic;
 
-Wide::Util::optional<ConcreteExpression> ClangIncludeEntity::AccessMember(ConcreteExpression, std::string name, Analyzer& a, Lexer::Range where) {
+Wide::Util::optional<Expression> ClangIncludeEntity::AccessMember(ConcreteExpression, std::string name, Analyzer& a, Lexer::Range where) {
     if (name == "mangle") {
         struct ClangNameMangler : public MetaType {
             Expression BuildCall(ConcreteExpression, std::vector<ConcreteExpression> args, Analyzer& a, Lexer::Range where) override {

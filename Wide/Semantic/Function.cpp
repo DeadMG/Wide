@@ -33,7 +33,7 @@ Function::Function(std::vector<Type*> args, const AST::Function* astfun, Analyze
 , s(State::NotYetAnalyzed)
 , returnstate(ReturnState::NoReturnSeen) {
     // Only match the non-concrete arguments.
-    variables.push_back(std::unordered_map<std::string, ConcreteExpression>()); // Push back the argument scope
+    variables.push_back(std::unordered_map<std::string, Expression>()); // Push back the argument scope
     unsigned num = 0;
     unsigned metaargs = 0;
     if (mem && dynamic_cast<UserDefinedType*>(mem->Decay()))
@@ -89,6 +89,7 @@ Function::Function(std::vector<Type*> args, const AST::Function* astfun, Analyze
             if (!ty)
                 throw std::runtime_error("Prolog right-hand-side of ReturnType must be a type.");
             ReturnType = ty->GetConstructedType();
+            returnstate = ReturnState::ConcreteReturnSeen;
         }
     }
     if (ReturnType) {
@@ -105,7 +106,7 @@ std::function<llvm::Type*(llvm::Module*)> Function::GetLLVMType(Analyzer& a) {
     return GetSignature(a)->GetLLVMType(a);
 }
 
-ConcreteExpression check(Wide::Util::optional<ConcreteExpression> e) {
+Expression check(Wide::Util::optional<Expression> e) {
     if (!e)
         assert(false && "Expected to find this thing for sure, but it didn't exist! Check call stack for trigger.");
     return *e;
@@ -139,7 +140,7 @@ void Function::ComputeBody(Analyzer& a) {
                     if (x.InClassInitializer)
                     {
                         auto expr = a.AnalyzeExpression(this, x.InClassInitializer).Resolve(nullptr);
-                        auto mem = check(self.t->AccessMember(self, x.name, a, x.InClassInitializer->location));
+                        auto mem = check(self.t->AccessMember(self, x.name, a, x.InClassInitializer->location)).Resolve(nullptr);
                         std::vector<ConcreteExpression> args;
                         args.push_back(expr);
                         exprs.push_back(x.t->BuildInplaceConstruction(mem.Expr, std::move(args), a, x.InClassInitializer->location));
@@ -154,7 +155,7 @@ void Function::ComputeBody(Analyzer& a) {
             }
         }
         // Now the body.
-        variables.push_back(std::unordered_map<std::string, ConcreteExpression>()); // Push back the function body scope.
+        variables.push_back(std::unordered_map<std::string, Expression>()); // Push back the function body scope.
         std::function<Codegen::Statement*(const AST::Statement*)> AnalyzeStatement;
         AnalyzeStatement = [&](const AST::Statement* stmt) -> Codegen::Statement* {
             if (!stmt)
@@ -173,6 +174,11 @@ void Function::ComputeBody(Analyzer& a) {
                     // When returning an lvalue or rvalue, decay them.
                     auto expr = a.AnalyzeExpression(this, ret->RetExpr);
                     return expr.VisitContents([&](ConcreteExpression& result) {
+                        if (returnstate == ReturnState::ConcreteReturnSeen) {
+                            if (ReturnType != result.t->Decay()) {
+                                throw std::runtime_error("Return mismatch: In a deduced function, all returns must return the same type.");
+                            }
+                        }
                         returnstate = ReturnState::ConcreteReturnSeen;                        
                         if (!ReturnType)
                             ReturnType = result.t->Decay();
@@ -200,43 +206,60 @@ void Function::ComputeBody(Analyzer& a) {
                 }
             }
             if (auto var = dynamic_cast<const AST::Variable*>(stmt)) {
-                auto result = a.AnalyzeExpression(this, var->initializer).Resolve(nullptr);
+                auto result = a.AnalyzeExpression(this, var->initializer);
         
                 for (auto scope = variables.begin(); scope != variables.end(); ++scope) {
                     if (scope->find(var->name) != scope->end())
                         throw std::runtime_error("Error: variable shadowing " + var->name);
                 }
+
+                auto handle_variable_expression = [&, var](ConcreteExpression result) {
+                    std::vector<ConcreteExpression> args;
+                    args.push_back(result);
+                    
+                    if (result.t->IsReference()) {
+                        if (!result.steal) {
+                            result.t = a.GetLvalueType(result.t);
+                            return result.t->Decay()->BuildLvalueConstruction(args, a, var->location);
+                        } else {
+                            result.steal = false;
+                            // If I've been asked to steal an lvalue, it's because I rvalue constructed an lvalue reference
+                            // So the expr will be T** whereas I want just T*
+                            //if (dynamic_cast<LvalueType*>(result.t))
+                            //    result.Expr = a.gen->CreateLoad(result.Expr);
+                            result.t = a.GetLvalueType(result.t);
+                            return result;
+                        }
+                    } else {
+                        return result.t->BuildLvalueConstruction(args, a, var->location);
+                    }
+                };
+
+                return result.VisitContents(
+                    [&, handle_variable_expression](ConcreteExpression& result) {
+                        auto expr = handle_variable_expression(result);
+                        variables.back()[var->name] = expr;
+                        return expr.Expr;
+                    }, 
+                    [&, handle_variable_expression](DeferredExpression& result) {
+                        auto defexpr = DeferredExpression([result, handle_variable_expression](Type* t) {
+                            return handle_variable_expression((*result.delay)(t));
+                        });
+                        variables.back()[var->name] = defexpr;
+                        return a.gen->CreateDeferredStatement([=] {
+                            return (*defexpr.delay)(nullptr).Expr;
+                        });
+                    }
+                );
         
                 // If it's a function call, and it returns a complex T, then the return expression already points to
                 // a memory variable of type T. Just use that.
-                std::vector<ConcreteExpression> args;
-                args.push_back(result);
-        
-                if (result.t->IsReference()) {
-                    if (!result.steal) {
-                        result.t = a.GetLvalueType(result.t);
-                        variables.back()[var->name] = result.t->Decay()->BuildLvalueConstruction(args, a, var->location);
-                    }
-                    else {
-                        result.steal = false;
-                        // If I've been asked to steal an lvalue, it's because I rvalue constructed an lvalue reference
-                        // So the expr will be T** whereas I want just T*
-                        //if (dynamic_cast<LvalueType*>(result.t))
-                        //    result.Expr = a.gen->CreateLoad(result.Expr);
-                        result.t = a.GetLvalueType(result.t);
-                        variables.back()[var->name] = result;
-                    }
-                }
-                else {
-                    variables.back()[var->name] = result.t->BuildLvalueConstruction(args, a, var->location);
-                }
-                return variables.back()[var->name].Expr;
             }
         
             if (auto comp = dynamic_cast<const AST::CompoundStatement*>(stmt)) {
-                variables.push_back(std::unordered_map<std::string, ConcreteExpression>());
+                variables.push_back(std::unordered_map<std::string, Expression>());
                 if (comp->stmts.size() == 0)
-                    return nullptr;
+                    return a.gen->CreateNop();
                 Codegen::Statement* chain = a.gen->CreateNop();
                 for (auto&& x : comp->stmts) {
                     chain = a.gen->CreateChainStatement(chain, AnalyzeStatement(x));
@@ -323,7 +346,7 @@ Expression Function::BuildCall(ConcreteExpression ex, std::vector<ConcreteExpres
         return GetSignature(a)->BuildCall(val, std::move(args), a, where).Resolve(t);
     });    
 }
-Wide::Util::optional<ConcreteExpression> Function::AccessMember(ConcreteExpression e, std::string name, Analyzer& a, Lexer::Range where) {
+Wide::Util::optional<Expression> Function::AccessMember(ConcreteExpression e, std::string name, Analyzer& a, Lexer::Range where) {
     for(auto it = variables.rbegin(); it != variables.rend(); ++it) {
         auto&& map = *it;
         if (map.find(name) != map.end()) {
