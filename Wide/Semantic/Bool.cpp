@@ -2,6 +2,7 @@
 #include <Wide/Semantic/ClangTU.h>
 #include <Wide/Semantic/Analyzer.h>
 #include <Wide/Codegen/Generator.h>
+#include <Wide/Semantic/Reference.h>
 #include <Wide/Lexer/Token.h>
 
 #pragma warning(push, 0)
@@ -32,4 +33,32 @@ std::size_t Bool::alignment(Analyzer& a) {
 
 Codegen::Expression* Bool::BuildBooleanConversion(ConcreteExpression e, Analyzer& a, Lexer::Range where) {
     return e.BuildValue(a, where).Expr;
+}
+
+OverloadSet* Bool::AccessMember(ConcreteExpression expr, Lexer::TokenType name, Analyzer& a, Lexer::Range where) {
+    if (callables.find(name) != callables.end())
+        return callables[name];
+    switch(name) {       
+    case Lexer::TokenType::OrAssign:
+        return callables[name] = a.GetOverloadSet(make_assignment_callable([](ConcreteExpression lhs, ConcreteExpression rhs, Analyzer& a, Bool* self) {
+            return ConcreteExpression(lhs.t, a.gen->CreateStore(lhs.Expr, a.gen->CreateOrExpression(lhs.Expr, rhs.Expr)));
+        }, this, a));
+    case Lexer::TokenType::AndAssign:
+        return callables[name] = a.GetOverloadSet(make_assignment_callable([](ConcreteExpression lhs, ConcreteExpression rhs, Analyzer& a, Bool* self) {
+            return ConcreteExpression(lhs.t, a.gen->CreateStore(lhs.Expr, a.gen->CreateAndExpression(lhs.Expr, rhs.Expr)));
+        }, this, a));
+    case Lexer::TokenType::XorAssign:
+        return callables[name] = a.GetOverloadSet(make_assignment_callable([](ConcreteExpression lhs, ConcreteExpression rhs, Analyzer& a, Bool* self) {
+            return ConcreteExpression(lhs.t, a.gen->CreateStore(lhs.Expr, a.gen->CreateXorExpression(lhs.Expr, rhs.Expr)));
+        }, this, a));
+    case Lexer::TokenType::LT:
+        return callables[name] = a.GetOverloadSet(make_value_callable([](ConcreteExpression lhs, ConcreteExpression rhs, Analyzer& a, Bool* self) {
+            return ConcreteExpression(a.GetBooleanType(), a.gen->CreateLT(lhs.Expr, rhs.Expr, false));
+        }, this, a));
+    case Lexer::TokenType::EqCmp:
+        return callables[name] = a.GetOverloadSet(make_value_callable([](ConcreteExpression lhs, ConcreteExpression rhs, Analyzer& a, Bool* self) {
+            return ConcreteExpression(a.GetBooleanType(), a.gen->CreateEqualityExpression(lhs.Expr, rhs.Expr));
+        }, this, a));
+    }
+    return a.GetOverloadSet();
 }

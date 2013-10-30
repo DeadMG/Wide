@@ -114,6 +114,8 @@ TEST_CASE("", "") {
     CHECK_NOTHROW(Compile(clangopts, *targetmachine->getDataLayout(), { "AcceptQualifiedThis.wide" }));
     CHECK_NOTHROW(Compile(clangopts, *targetmachine->getDataLayout(), { "DeferredVariable.wide" }));
     CHECK_NOTHROW(Compile(clangopts, *targetmachine->getDataLayout(), { "DeferredLambda.wide" }));
+    CHECK_NOTHROW(Compile(clangopts, *targetmachine->getDataLayout(), { "DeferredExpressionStatement.wide" }));
+    CHECK_NOTHROW(Compile(clangopts, *targetmachine->getDataLayout(), { "BooleanOperations.wide" }));
     CHECK_THROWS(Compile(clangopts, *targetmachine->getDataLayout(), { "RejectQualifiedThis.wide" }));
     CHECK_THROWS(Compile(clangopts, *targetmachine->getDataLayout(), { "SubmoduleNoQualifiedLookup.wide" }));
 }

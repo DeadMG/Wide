@@ -162,7 +162,16 @@ void Function::ComputeBody(Analyzer& a) {
                 return nullptr;
         
             if (auto e = dynamic_cast<const AST::Expression*>(stmt))
-                return analyzer.AnalyzeExpression(this, e).Resolve(nullptr).Expr;
+                return analyzer.AnalyzeExpression(this, e).VisitContents(
+                    [](ConcreteExpression& expr) {
+                        return expr.Expr;
+                    },
+                    [&](DeferredExpression& delay) {
+                        return a.gen->CreateDeferredStatement([=] {
+                            return delay(nullptr).Expr;
+                        });
+                    }
+               );
         
             if (auto ret = dynamic_cast<const AST::Return*>(stmt)) {                
                 if (!ret->RetExpr) {

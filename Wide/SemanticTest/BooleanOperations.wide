@@ -1,0 +1,12 @@
+module BooleanOperations {
+    Main() {
+        x := false;
+        y := true;
+        x & y;
+        x | y;
+        x ^ y;
+        x &= y;
+        x |= y;
+        x ^= y;
+    }
+}
