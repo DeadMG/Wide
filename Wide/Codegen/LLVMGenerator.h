@@ -32,7 +32,7 @@ namespace Wide {
             std::deque<Function*> functions;
             Wide::Memory::Arena arena;
 
-            std::string outputfile;
+            std::function<void(std::unique_ptr<llvm::Module>)> func;
             std::string triple;
 
             void EmitCode();
@@ -48,12 +48,15 @@ namespace Wide {
             Function* FromLLVMFunc(llvm::Function*);
 
             llvm::LLVMContext context;
-            llvm::Module main;
+        private:
+            std::unique_ptr<llvm::Module> main;
+            std::string layout;
+        public:
 
-            Generator(const Options::LLVM&, std::string outputfile, std::string triple);
+            Generator(const Options::LLVM&, std::string triple, std::function<void(std::unique_ptr<llvm::Module>)> action);
 
             Function* CreateFunction(std::function<llvm::Type*(llvm::Module*)>, std::string, Semantic::Function* debug, bool trampoline = false) override final;
-            Deferred* CreateDeferredStatement(std::function<Codegen::Statement*()>) override final;
+            Deferred* CreateDeferredStatement(const std::function<Codegen::Statement*()>) override final;
             Variable* CreateVariable(std::function<llvm::Type*(llvm::Module*)>, unsigned alignment) override final;
             FunctionCall* CreateFunctionCall(Codegen::Expression*, std::vector<Codegen::Expression*>, std::function<llvm::Type*(llvm::Module*)> = std::function<llvm::Type*(llvm::Module*)>()) override final;
             StringExpression* CreateStringExpression(std::string) override final;

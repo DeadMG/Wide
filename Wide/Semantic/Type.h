@@ -289,7 +289,7 @@ namespace Wide {
                     assert(args.size() == 2);
                     assert(args[0].t = a.GetLvalueType(self));
                     assert(args[1].t->Decay() == self);
-                    return action(args[0], args[1].BuildValue(a, where), a, self);
+                    return action(args[0], args[1].BuildValue(a, where), a, where, self);
                 }
                 std::vector<Type*> GetArgumentTypes(Analyzer& a) override {
                     std::vector<Type*> out;
@@ -311,7 +311,7 @@ namespace Wide {
                     assert(args.size() == 2);
                     assert(args[0].BuildValue(a, where).t == args[1].BuildValue(a, where).t);
                     assert(args[0].BuildValue(a, where).t == self);
-                    return action(args[0].BuildValue(a, where), args[1].BuildValue(a, where), a, self);
+                    return action(args[0].BuildValue(a, where), args[1].BuildValue(a, where), a, where, self);
                 }
                 std::vector<Type*> GetArgumentTypes(Analyzer& a) override {
                     std::vector<Type*> out;

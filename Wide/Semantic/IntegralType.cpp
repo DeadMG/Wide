@@ -94,51 +94,51 @@ OverloadSet* IntegralType::AccessMember(ConcreteExpression expr, Lexer::TokenTyp
         return callables[name];
     switch(name) {
     case Lexer::TokenType::RightShiftAssign:
-        return callables[name] = a.GetOverloadSet(make_assignment_callable([](ConcreteExpression lhs, ConcreteExpression rhs, Analyzer& a, IntegralType* self) {
-            return ConcreteExpression(lhs.t, a.gen->CreateStore(lhs.Expr, a.gen->CreateRightShift(lhs.Expr, rhs.Expr, self->is_signed)));
+        return callables[name] = a.GetOverloadSet(make_assignment_callable([](ConcreteExpression lhs, ConcreteExpression rhs, Analyzer& a, Lexer::Range where, IntegralType* self) {
+            return ConcreteExpression(lhs.t, a.gen->CreateStore(lhs.Expr, a.gen->CreateRightShift(a.gen->CreateLoad(lhs.Expr), rhs.Expr, self->is_signed)));
         }, this, a));
     case Lexer::TokenType::LeftShiftAssign:  
-        return callables[name] = a.GetOverloadSet(make_assignment_callable([](ConcreteExpression lhs, ConcreteExpression rhs, Analyzer& a, IntegralType* self) {
-            return ConcreteExpression(lhs.t, a.gen->CreateStore(lhs.Expr, a.gen->CreateLeftShift(lhs.Expr, rhs.Expr)));
+        return callables[name] = a.GetOverloadSet(make_assignment_callable([](ConcreteExpression lhs, ConcreteExpression rhs, Analyzer& a, Lexer::Range where, IntegralType* self) {
+            return ConcreteExpression(lhs.t, a.gen->CreateStore(lhs.Expr, a.gen->CreateLeftShift(a.gen->CreateLoad(lhs.Expr), rhs.Expr)));
         }, this, a));
     case Lexer::TokenType::MulAssign:
-        return callables[name] = a.GetOverloadSet(make_assignment_callable([](ConcreteExpression lhs, ConcreteExpression rhs, Analyzer& a, IntegralType* self) {
-            return ConcreteExpression(lhs.t, a.gen->CreateStore(lhs.Expr, a.gen->CreateMultiplyExpression(lhs.Expr, rhs.Expr)));
+        return callables[name] = a.GetOverloadSet(make_assignment_callable([](ConcreteExpression lhs, ConcreteExpression rhs, Analyzer& a, Lexer::Range where, IntegralType* self) {
+            return ConcreteExpression(lhs.t, a.gen->CreateStore(lhs.Expr, a.gen->CreateMultiplyExpression(a.gen->CreateLoad(lhs.Expr), rhs.Expr)));
         }, this, a));
     case Lexer::TokenType::PlusAssign:
-        return callables[name] = a.GetOverloadSet(make_assignment_callable([](ConcreteExpression lhs, ConcreteExpression rhs, Analyzer& a, IntegralType* self) {
-            return ConcreteExpression(lhs.t, a.gen->CreateStore(lhs.Expr, a.gen->CreatePlusExpression(lhs.Expr, rhs.Expr)));
+        return callables[name] = a.GetOverloadSet(make_assignment_callable([](ConcreteExpression lhs, ConcreteExpression rhs, Analyzer& a, Lexer::Range where, IntegralType* self) {
+            return ConcreteExpression(lhs.t, a.gen->CreateStore(lhs.Expr, a.gen->CreatePlusExpression(a.gen->CreateLoad(lhs.Expr), rhs.Expr)));
         }, this, a));        
     case Lexer::TokenType::OrAssign:
-        return callables[name] = a.GetOverloadSet(make_assignment_callable([](ConcreteExpression lhs, ConcreteExpression rhs, Analyzer& a, IntegralType* self) {
-            return ConcreteExpression(lhs.t, a.gen->CreateStore(lhs.Expr, a.gen->CreateOrExpression(lhs.Expr, rhs.Expr)));
+        return callables[name] = a.GetOverloadSet(make_assignment_callable([](ConcreteExpression lhs, ConcreteExpression rhs, Analyzer& a, Lexer::Range where, IntegralType* self) {
+            return ConcreteExpression(lhs.t, a.gen->CreateStore(lhs.Expr, a.gen->CreateOrExpression(a.gen->CreateLoad(lhs.Expr), rhs.Expr)));
         }, this, a));
     case Lexer::TokenType::AndAssign:
-        return callables[name] = a.GetOverloadSet(make_assignment_callable([](ConcreteExpression lhs, ConcreteExpression rhs, Analyzer& a, IntegralType* self) {
-            return ConcreteExpression(lhs.t, a.gen->CreateStore(lhs.Expr, a.gen->CreateAndExpression(lhs.Expr, rhs.Expr)));
+        return callables[name] = a.GetOverloadSet(make_assignment_callable([](ConcreteExpression lhs, ConcreteExpression rhs, Analyzer& a, Lexer::Range where, IntegralType* self) {
+            return ConcreteExpression(lhs.t, a.gen->CreateStore(lhs.Expr, a.gen->CreateAndExpression(a.gen->CreateLoad(lhs.Expr), rhs.Expr)));
         }, this, a));
     case Lexer::TokenType::XorAssign:
-        return callables[name] = a.GetOverloadSet(make_assignment_callable([](ConcreteExpression lhs, ConcreteExpression rhs, Analyzer& a, IntegralType* self) {
-            return ConcreteExpression(lhs.t, a.gen->CreateStore(lhs.Expr, a.gen->CreateXorExpression(lhs.Expr, rhs.Expr)));
+        return callables[name] = a.GetOverloadSet(make_assignment_callable([](ConcreteExpression lhs, ConcreteExpression rhs, Analyzer& a, Lexer::Range where, IntegralType* self) {
+            return ConcreteExpression(lhs.t, a.gen->CreateStore(lhs.Expr, a.gen->CreateXorExpression(a.gen->CreateLoad(lhs.Expr), rhs.Expr)));
         }, this, a));
     case Lexer::TokenType::MinusAssign:
-        return callables[name] = a.GetOverloadSet(make_assignment_callable([](ConcreteExpression lhs, ConcreteExpression rhs, Analyzer& a, IntegralType* self) {
-            return ConcreteExpression(lhs.t, a.gen->CreateStore(lhs.Expr, a.gen->CreateSubExpression(lhs.Expr, rhs.Expr)));
+        return callables[name] = a.GetOverloadSet(make_assignment_callable([](ConcreteExpression lhs, ConcreteExpression rhs, Analyzer& a, Lexer::Range where, IntegralType* self) {
+            return ConcreteExpression(lhs.t, a.gen->CreateStore(lhs.Expr, a.gen->CreateSubExpression(a.gen->CreateLoad(lhs.Expr), rhs.Expr)));
         }, this, a));
     case Lexer::TokenType::ModAssign:
-        return callables[name] = a.GetOverloadSet(make_assignment_callable([](ConcreteExpression lhs, ConcreteExpression rhs, Analyzer& a, IntegralType* self) {
-            return ConcreteExpression(lhs.t, a.gen->CreateStore(lhs.Expr, a.gen->CreateModExpression(lhs.Expr, rhs.Expr, self->is_signed)));
+        return callables[name] = a.GetOverloadSet(make_assignment_callable([](ConcreteExpression lhs, ConcreteExpression rhs, Analyzer& a, Lexer::Range where, IntegralType* self) {
+            return ConcreteExpression(lhs.t, a.gen->CreateStore(lhs.Expr, a.gen->CreateModExpression(a.gen->CreateLoad(lhs.Expr), rhs.Expr, self->is_signed)));
         }, this, a));
     case Lexer::TokenType::DivAssign:
-        return callables[name] = a.GetOverloadSet(make_assignment_callable([](ConcreteExpression lhs, ConcreteExpression rhs, Analyzer& a, IntegralType* self) {
-            return ConcreteExpression(lhs.t, a.gen->CreateStore(lhs.Expr, a.gen->CreateDivExpression(lhs.Expr, rhs.Expr, self->is_signed)));
+        return callables[name] = a.GetOverloadSet(make_assignment_callable([](ConcreteExpression lhs, ConcreteExpression rhs, Analyzer& a, Lexer::Range where, IntegralType* self) {
+            return ConcreteExpression(lhs.t, a.gen->CreateStore(lhs.Expr, a.gen->CreateDivExpression(a.gen->CreateLoad(lhs.Expr), rhs.Expr, self->is_signed)));
         }, this, a));
     case Lexer::TokenType::LT:
-        return callables[name] = a.GetOverloadSet(make_value_callable([](ConcreteExpression lhs, ConcreteExpression rhs, Analyzer& a, IntegralType* self) {
+        return callables[name] = a.GetOverloadSet(make_value_callable([](ConcreteExpression lhs, ConcreteExpression rhs, Analyzer& a, Lexer::Range where, IntegralType* self) {
             return ConcreteExpression(a.GetBooleanType(), a.gen->CreateLT(lhs.Expr, rhs.Expr, self->is_signed));
         }, this, a));
     case Lexer::TokenType::EqCmp:
-        return callables[name] = a.GetOverloadSet(make_value_callable([](ConcreteExpression lhs, ConcreteExpression rhs, Analyzer& a, IntegralType* self) {
+        return callables[name] = a.GetOverloadSet(make_value_callable([](ConcreteExpression lhs, ConcreteExpression rhs, Analyzer& a, Lexer::Range where, IntegralType* self) {
             return ConcreteExpression(a.GetBooleanType(), a.gen->CreateEqualityExpression(lhs.Expr, rhs.Expr));
         }, this, a));
     }

@@ -40,23 +40,26 @@ OverloadSet* Bool::AccessMember(ConcreteExpression expr, Lexer::TokenType name, 
         return callables[name];
     switch(name) {       
     case Lexer::TokenType::OrAssign:
-        return callables[name] = a.GetOverloadSet(make_assignment_callable([](ConcreteExpression lhs, ConcreteExpression rhs, Analyzer& a, Bool* self) {
-            return ConcreteExpression(lhs.t, a.gen->CreateStore(lhs.Expr, a.gen->CreateOrExpression(lhs.Expr, rhs.Expr)));
+        return callables[name] = a.GetOverloadSet(make_assignment_callable([](ConcreteExpression lhs, ConcreteExpression rhs, Analyzer& a, Lexer::Range where, Bool* self) {
+            auto stmt = a.gen->CreateIfStatement(lhs.BuildValue(a, where).BuildNegate(a, where).Expr, a.gen->CreateStore(lhs.Expr, rhs.Expr), nullptr);
+            return ConcreteExpression(lhs.t, a.gen->CreateChainExpression(stmt, lhs.Expr));
         }, this, a));
     case Lexer::TokenType::AndAssign:
-        return callables[name] = a.GetOverloadSet(make_assignment_callable([](ConcreteExpression lhs, ConcreteExpression rhs, Analyzer& a, Bool* self) {
-            return ConcreteExpression(lhs.t, a.gen->CreateStore(lhs.Expr, a.gen->CreateAndExpression(lhs.Expr, rhs.Expr)));
+        return callables[name] = a.GetOverloadSet(make_assignment_callable([](ConcreteExpression lhs, ConcreteExpression rhs, Analyzer& a, Lexer::Range where, Bool* self) {
+            auto stmt = a.gen->CreateIfStatement(lhs.BuildValue(a, where).Expr, a.gen->CreateStore(lhs.Expr, rhs.Expr), nullptr);
+            return ConcreteExpression(lhs.t, a.gen->CreateChainExpression(stmt, lhs.Expr));
         }, this, a));
+
     case Lexer::TokenType::XorAssign:
-        return callables[name] = a.GetOverloadSet(make_assignment_callable([](ConcreteExpression lhs, ConcreteExpression rhs, Analyzer& a, Bool* self) {
-            return ConcreteExpression(lhs.t, a.gen->CreateStore(lhs.Expr, a.gen->CreateXorExpression(lhs.Expr, rhs.Expr)));
+        return callables[name] = a.GetOverloadSet(make_assignment_callable([](ConcreteExpression lhs, ConcreteExpression rhs, Analyzer& a, Lexer::Range where, Bool* self) {
+            return ConcreteExpression(lhs.t, a.gen->CreateStore(lhs.Expr, a.gen->CreateXorExpression(a.gen->CreateLoad(lhs.Expr), rhs.Expr)));
         }, this, a));
     case Lexer::TokenType::LT:
-        return callables[name] = a.GetOverloadSet(make_value_callable([](ConcreteExpression lhs, ConcreteExpression rhs, Analyzer& a, Bool* self) {
+        return callables[name] = a.GetOverloadSet(make_value_callable([](ConcreteExpression lhs, ConcreteExpression rhs, Analyzer& a, Lexer::Range where, Bool* self) {
             return ConcreteExpression(a.GetBooleanType(), a.gen->CreateLT(lhs.Expr, rhs.Expr, false));
         }, this, a));
     case Lexer::TokenType::EqCmp:
-        return callables[name] = a.GetOverloadSet(make_value_callable([](ConcreteExpression lhs, ConcreteExpression rhs, Analyzer& a, Bool* self) {
+        return callables[name] = a.GetOverloadSet(make_value_callable([](ConcreteExpression lhs, ConcreteExpression rhs, Analyzer& a, Lexer::Range where, Bool* self) {
             return ConcreteExpression(a.GetBooleanType(), a.gen->CreateEqualityExpression(lhs.Expr, rhs.Expr));
         }, this, a));
     }

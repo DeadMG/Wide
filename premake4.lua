@@ -259,7 +259,7 @@ WideProjects = {
         name = "SemanticTest",
         action = function()
             kind("ConsoleApp")
-            links { "Lexer", "Parser", "Semantic" }
+            links { "Lexer", "Parser", "Semantic", "Codegen" }
             files ({ "Wide/SemanticTest/**.wide" })
         end,
         dependencies = function(proj)

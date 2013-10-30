@@ -25,9 +25,9 @@ namespace Wide {
         };
 
         class Deferred : public Statement, public Codegen::Deferred {
-            std::function<Codegen::Expression*()> func;
+            std::function<Codegen::Statement*()> func;
         public:
-            Deferred(std::function<Codegen::Expression*()> f)
+            Deferred(std::function<Codegen::Statement*()> f)
                 : func(std::move(f)) {}
             void Build(llvm::IRBuilder<>&, Generator& g) override final;
         };

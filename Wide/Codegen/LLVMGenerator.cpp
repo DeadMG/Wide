@@ -24,7 +24,26 @@
 using namespace Wide;
 using namespace LLVMCodegen;
 
-void Generator::operator()() {        
+void Generator::operator()() {
+    EmitCode();
+        
+    llvm::PassManager pm;
+    
+    pm.add(new llvm::DataLayout(main->getDataLayout()));
+    for(auto&& pass : llvmopts.Passes)        
+        pm.add(pass->createPass(pass->getPassID()));
+
+    pm.run(*main);
+
+    func(std::move(main));
+}
+
+Generator::Generator(const Options::LLVM& l, std::string trip, std::function<void(std::unique_ptr<llvm::Module>)> action)
+    : main(Wide::Memory::MakeUnique<llvm::Module>("", context))
+    , llvmopts(l)
+    , func(std::move(action))
+    , triple(std::move(trip))
+{
     llvm::InitializeAllTargets();
     llvm::InitializeAllTargetMCs();
     llvm::InitializeAllAsmPrinters();
@@ -34,31 +53,9 @@ void Generator::operator()() {
     const llvm::Target& target = *llvm::TargetRegistry::lookupTarget(triple, err);
     llvm::TargetOptions targetopts;
     targetmachine = std::unique_ptr<llvm::TargetMachine>(target.createTargetMachine(triple, llvm::Triple(triple).getArchName(), "", targetopts));
-    main.setDataLayout(targetmachine->getDataLayout()->getStringRepresentation());  
-
-    EmitCode();
-        
-    llvm::PassManager pm;
-    std::ofstream file(outputfile, std::ios::trunc | std::ios::binary);
-    llvm::raw_os_ostream out(file);
-    llvm::formatted_raw_ostream format_out(out);
-    
-    pm.add(new llvm::DataLayout(main.getDataLayout()));
-    for(auto&& pass : llvmopts.Passes)        
-        pm.add(pass->createPass(pass->getPassID()));
-
-    if (llvmopts.Emit)
-        targetmachine->addPassesToEmitFile(pm, format_out, llvm::TargetMachine::CodeGenFileType::CGFT_ObjectFile);
-    pm.run(main);
-}
-
-Generator::Generator(const Options::LLVM& l, std::string ofile, std::string trip)
-    : main("", context)
-    , llvmopts(l)
-    , outputfile(std::move(ofile))
-    , triple(std::move(trip))
-{
-    main.setTargetTriple(triple);
+    main->setDataLayout(targetmachine->getDataLayout()->getStringRepresentation());  
+    main->setTargetTriple(triple);
+    layout = main->getDataLayout();
 }
 
 Function* Generator::CreateFunction(std::function<llvm::Type*(llvm::Module*)> ty, std::string name, Semantic::Function* debug, bool tramp) {
@@ -116,19 +113,19 @@ FunctionValue* Generator::CreateFunctionValue(std::string name) {
 
 void Generator::EmitCode() {    
     for(auto&& x : tus)
-        x(&main);
+        x(main.get());
     std::string err;
-    if (llvm::verifyModule(main, llvm::VerifierFailureAction::PrintMessageAction, &err))
+    if (llvm::verifyModule(*main, llvm::VerifierFailureAction::PrintMessageAction, &err))
         throw std::runtime_error("Internal Compiler Error: An LLVM module failed verification.");
     std::string s;
     llvm::raw_string_ostream stream(s);
-    main.print(stream, nullptr);
+    main->print(stream, nullptr);
     for(auto&& x : functions) {
-        x->EmitCode(&main, context, *this);
+        x->EmitCode(main.get(), context, *this);
     }    
     s.clear();
-    main.print(stream, nullptr);    
-    if (llvm::verifyModule(main, llvm::VerifierFailureAction::PrintMessageAction, &err))
+    main->print(stream, nullptr);    
+    if (llvm::verifyModule(*main, llvm::VerifierFailureAction::PrintMessageAction, &err))
         throw std::runtime_error("Internal Compiler Error: An LLVM module failed verification.");
 }
 
@@ -249,7 +246,7 @@ DivExpression* Generator::CreateDivExpression(Codegen::Expression* l, Codegen::E
 }
 
 llvm::DataLayout Generator::GetDataLayout() {
-    return llvm::DataLayout(main.getDataLayout());
+    return llvm::DataLayout(layout);
 }
 
 std::size_t Generator::GetInt8AllocSize() {
@@ -281,4 +278,8 @@ FPLT* Generator::CreateFPLT(Codegen::Expression* l, Codegen::Expression* r) {
 }
 Nop* Generator::CreateNop() {
     return arena.Allocate<Nop>();
+}
+
+Deferred* Generator::CreateDeferredStatement(std::function<Codegen::Statement*()> func) {
+    return arena.Allocate<Deferred>([=] { return func(); });
 }

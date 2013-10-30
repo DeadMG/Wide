@@ -1,4 +1,10 @@
-module BooleanShortCircuit {
-    Main() {
-    }
+f(bool->lvalue arg) {
+    arg = false;
+    return true;
+}
+Main() {
+    ret := true;
+    true | f(ret);
+    false & f(ret);
+    return ret;
 }

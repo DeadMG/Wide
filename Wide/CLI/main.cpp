@@ -9,21 +9,42 @@
 #include <Wide/Util/ParallelForEach.h>
 #include <Wide/Parser/Builder.h>
 #include <boost/program_options.hpp>
+#include <Wide/Util/ConcurrentVector.h>
+#include <Wide/Parser/AST.h>
 #include <Wide/Util/Ranges/IStreamRange.h>
 #include <mutex>
 #include <atomic>
 #include <sstream>
 #include <fstream>
+#include <memory>
 #include <iostream>
-#include <Wide/Util/ConcurrentVector.h>
-#include <Wide/Parser/AST.h>
 
+#pragma warning(push, 0)
 #ifndef _MSC_VER
 #include <llvm/Support/Host.h>
 #endif
+#include <llvm/PassManager.h>
+#include <llvm/Target/TargetOptions.h>
+#include <llvm/Target/TargetMachine.h>
+#include <llvm/Support/TargetRegistry.h>
+#include <llvm/Support/FormattedStream.h>
+#include <llvm/Support/raw_os_ostream.h>
+#pragma warning(pop)
 
 void Compile(const Wide::Options::Clang& copts, const Wide::Options::LLVM& lopts, const std::vector<std::string>& files) {    
-    Wide::LLVMCodegen::Generator Generator(lopts, copts.FrontendOptions.OutputFile, copts.TargetOptions.Triple);
+    Wide::LLVMCodegen::Generator Generator(lopts, copts.TargetOptions.Triple, [&](std::unique_ptr<llvm::Module> main) {
+        llvm::PassManager pm;
+        std::unique_ptr<llvm::TargetMachine> targetmachine;
+        llvm::TargetOptions targetopts;
+        std::string err;
+        const llvm::Target& target = *llvm::TargetRegistry::lookupTarget(copts.TargetOptions.Triple, err);
+        targetmachine = std::unique_ptr<llvm::TargetMachine>(target.createTargetMachine(copts.TargetOptions.Triple, llvm::Triple(copts.TargetOptions.Triple).getArchName(), "", targetopts));
+        std::ofstream file(copts.FrontendOptions.OutputFile, std::ios::trunc | std::ios::binary);
+        llvm::raw_os_ostream out(file);
+        llvm::formatted_raw_ostream format_out(out);
+        targetmachine->addPassesToEmitFile(pm, format_out, llvm::TargetMachine::CodeGenFileType::CGFT_ObjectFile);
+        pm.run(*main);
+    });
     
     Wide::Concurrency::Vector<std::string> excepts;
     Wide::Concurrency::Vector<std::string> warnings;

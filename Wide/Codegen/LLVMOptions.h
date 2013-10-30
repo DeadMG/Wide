@@ -11,8 +11,7 @@ namespace Wide {
     namespace Options {
         struct LLVM {
             std::vector<std::unique_ptr<llvm::Pass>> Passes;
-            bool Emit;
-            LLVM() : Emit(true) {}
+            LLVM() {}
         };
         std::unique_ptr<llvm::Pass> CreateEdgeProfiler();
         std::unique_ptr<llvm::Pass> CreateStripDeadPrototypes();
