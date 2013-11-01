@@ -1,7 +1,7 @@
 #pragma once
 
 #include <Wide/Lexer/Token.h>
-#include <Wide/Util/MemoryArena.h>
+#include <Wide/Util/Memory/MemoryArena.h>
 #include <Wide/Semantic/Util.h>
 #include <Wide/Util/Ranges/Optional.h>
 #include <Wide/Semantic/ClangOptions.h>
@@ -147,7 +147,7 @@ namespace Wide {
             Expression AnalyzeExpression(Type* t, const AST::Expression* e);
             Wide::Util::optional<Expression> LookupIdentifier(Type* context, const AST::Identifier* ident);
 
-            Analyzer(const Options::Clang&, Codegen::Generator*, const AST::Module*);     
+            Analyzer(const Options::Clang&, Codegen::Generator&, const AST::Module*);     
 
             ClangUtil::ClangTU* LoadCPPHeader(std::string file, Lexer::Range where);
             

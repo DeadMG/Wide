@@ -132,6 +132,8 @@ namespace Wide {
             virtual llvm::LLVMContext& GetContext() = 0;
 
             virtual void AddClangTU(std::function<void(llvm::Module* m)>) = 0;
+
+            virtual void operator()() {}
         };
     }
 }

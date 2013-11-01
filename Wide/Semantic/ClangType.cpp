@@ -1,7 +1,7 @@
 #include <Wide/Semantic/ClangType.h>
 #include <Wide/Semantic/Analyzer.h>
 #include <Wide/Semantic/FunctionType.h>
-#include <Wide/Util/MakeUnique.h>
+#include <Wide/Util/Memory/MakeUnique.h>
 #include <Wide/Semantic/ClangOverloadSet.h>
 #include <Wide/Semantic/ClangNamespace.h>
 #include <Wide/Semantic/ClangTU.h>

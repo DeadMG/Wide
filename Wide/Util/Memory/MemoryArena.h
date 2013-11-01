@@ -4,7 +4,7 @@
 #include <memory>
 #include <functional>
 #include <algorithm>
-#include <Wide/Util/MakeUnique.h>
+#include <Wide/Util/Memory/MakeUnique.h>
  
 namespace Wide {
     namespace Memory {

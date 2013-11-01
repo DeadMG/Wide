@@ -203,7 +203,15 @@ WideProjects = {
             end
         end,
     },
-    Util = {},
+    Util = {
+        dependencies = function(proj) 
+            return CheckLLVM(proj) and CheckBoost(proj)
+        end, 
+        configure = function(plat, conf)
+            AddClangDependencies(conf)
+            AddBoostDependencies(conf)
+        end
+    },
     Semantic = { 
         dependencies = function(proj) 
             return CheckLLVM(proj) and CheckBoost(proj)
@@ -295,6 +303,7 @@ for name, proj in pairs(WideProjects) do
         project(name)
         location("Wide/"..name)
         if proj.action then proj.action() end
+        if name ~= "Util" then links { "Util" } end
         files( { "Wide/" .. name .. "/**.cpp", "Wide/" .. name .. "/**.h" })
         for k, plat in pairs(SupportedPlatforms) do
             for k, conf in pairs(SupportedConfigurations) do

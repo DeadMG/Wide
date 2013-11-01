@@ -7,7 +7,7 @@
 #include <Wide/Semantic/ClangTemplateClass.h>
 #include <Wide/Semantic/Reference.h>
 #include <Wide/Codegen/Generator.h>
-#include <Wide/Util/MakeUnique.h>
+#include <Wide/Util/Memory/MakeUnique.h>
 
 #pragma warning(push, 0)
 #include <clang/AST/Type.h>

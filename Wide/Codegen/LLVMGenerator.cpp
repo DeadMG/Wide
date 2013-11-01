@@ -1,4 +1,5 @@
 #include <Wide/Codegen/LLVMGenerator.h>
+#include <Wide/Util/Codegen/InitializeLLVM.h>
 #include <Wide/Codegen/Expression.h>
 #include <Wide/Codegen/Function.h>
 #include <fstream>
@@ -44,10 +45,7 @@ Generator::Generator(const Options::LLVM& l, std::string trip, std::function<voi
     , func(std::move(action))
     , triple(std::move(trip))
 {
-    llvm::InitializeAllTargets();
-    llvm::InitializeAllTargetMCs();
-    llvm::InitializeAllAsmPrinters();
-    llvm::InitializeAllAsmParsers();
+    Codegen::InitializeLLVM();
     std::unique_ptr<llvm::TargetMachine> targetmachine;
     std::string err;
     const llvm::Target& target = *llvm::TargetRegistry::lookupTarget(triple, err);

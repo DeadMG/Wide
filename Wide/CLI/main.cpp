@@ -2,27 +2,16 @@
 
 #include <Wide/Semantic/ClangOptions.h>
 #include <Wide/Codegen/LLVMOptions.h>
-#include <Wide/Semantic/Semantic.h>
-#include <Wide/Parser/Parser.h>
+#include <Wide/Util/Driver/Compile.h>
 #include <Wide/Codegen/LLVMGenerator.h>
-#include <Wide/Lexer/Lexer.h>
-#include <Wide/Util/ParallelForEach.h>
-#include <Wide/Parser/Builder.h>
+#include <Wide/Semantic/Module.h>
+#include <Wide/Semantic/Analyzer.h>
 #include <boost/program_options.hpp>
-#include <Wide/Util/ConcurrentVector.h>
-#include <Wide/Parser/AST.h>
-#include <Wide/Util/Ranges/IStreamRange.h>
-#include <mutex>
-#include <atomic>
-#include <sstream>
-#include <fstream>
 #include <memory>
+#include <fstream>
 #include <iostream>
 
 #pragma warning(push, 0)
-#ifndef _MSC_VER
-#include <llvm/Support/Host.h>
-#endif
 #include <llvm/PassManager.h>
 #include <llvm/Target/TargetOptions.h>
 #include <llvm/Target/TargetMachine.h>
@@ -30,84 +19,6 @@
 #include <llvm/Support/FormattedStream.h>
 #include <llvm/Support/raw_os_ostream.h>
 #pragma warning(pop)
-
-void Compile(const Wide::Options::Clang& copts, const Wide::Options::LLVM& lopts, const std::vector<std::string>& files) {    
-    Wide::LLVMCodegen::Generator Generator(lopts, copts.TargetOptions.Triple, [&](std::unique_ptr<llvm::Module> main) {
-        llvm::PassManager pm;
-        std::unique_ptr<llvm::TargetMachine> targetmachine;
-        llvm::TargetOptions targetopts;
-        std::string err;
-        const llvm::Target& target = *llvm::TargetRegistry::lookupTarget(copts.TargetOptions.Triple, err);
-        targetmachine = std::unique_ptr<llvm::TargetMachine>(target.createTargetMachine(copts.TargetOptions.Triple, llvm::Triple(copts.TargetOptions.Triple).getArchName(), "", targetopts));
-        std::ofstream file(copts.FrontendOptions.OutputFile, std::ios::trunc | std::ios::binary);
-        llvm::raw_os_ostream out(file);
-        llvm::formatted_raw_ostream format_out(out);
-        targetmachine->addPassesToEmitFile(pm, format_out, llvm::TargetMachine::CodeGenFileType::CGFT_ObjectFile);
-        pm.run(*main);
-    });
-    
-    Wide::Concurrency::Vector<std::string> excepts;
-    Wide::Concurrency::Vector<std::string> warnings;
-    auto parsererrorhandler = [&](std::vector<Wide::Lexer::Range> where, Wide::Parser::Error what) {
-        std::stringstream str;
-        str << "Error at locations:\n";
-        for(auto loc : where)
-            str << "    File: " << *loc.begin.name << ", line: " << loc.begin.line << " column: " << loc.begin.line << "\n";
-        str << Wide::Parser::ErrorStrings.at(what);
-        excepts.push_back(str.str());
-    };
-    auto combineerrorhandler = [=](std::vector<std::pair<Wide::Lexer::Range, Wide::AST::DeclContext*>> errs) {
-    };
-    Wide::AST::Combiner combiner(combineerrorhandler);
-    Wide::Concurrency::Vector<std::shared_ptr<Wide::AST::Builder>> builders;
-    Wide::Concurrency::ParallelForEach(files.begin(), files.end(), [&](const std::string& filename) {
-        std::ifstream inputfile(filename, std::ios::binary | std::ios::in);
-        if (!inputfile)
-            throw std::runtime_error("Could not open this input file.");
-        std::noskipws(inputfile);
-        Wide::Lexer::Arguments largs;
-        auto contents = Wide::Range::IStreamRange(inputfile);
-        Wide::Lexer::Invocation<decltype(contents)> lex(largs, contents, std::make_shared<std::string>(filename));
-        auto parserwarninghandler = [&](Wide::Lexer::Range where, Wide::Parser::Warning what) {
-            std::stringstream str;
-            str << "Warning in file " << filename << ", line " << where.begin.line << " column " << where.begin.column << ":\n";
-            str << Wide::Parser::WarningStrings.at(what);
-            warnings.push_back(str.str());
-        };
-        try {
-            auto builder = std::make_shared<Wide::AST::Builder>(parsererrorhandler, parserwarninghandler, [](Wide::Lexer::Range, Wide::AST::OutliningType){});
-            Wide::Parser::ParseGlobalModuleContents(lex, *builder, builder->GetGlobalModule());
-            builders.push_back(std::move(builder));
-        } catch(Wide::Parser::ParserError& e) {
-            parsererrorhandler(e.where(), e.error());
-        } catch(std::exception& e) {
-            excepts.push_back(e.what());
-        } catch(...) {
-            excepts.push_back("Internal Compiler Error");
-        }
-    });
-
-    for(auto&& x : warnings)
-        std::cout << x << "\n";
-
-    for(auto&& x : builders)
-        combiner.Add(x->GetGlobalModule());
-
-    if (excepts.empty()) {
-        try {
-            Wide::Semantic::Analyze(combiner.GetGlobalModule(), copts, Generator);
-            Generator();
-        } catch(std::exception& e) {
-            std::cout << e.what() << "\n";
-            //std::cin.get();
-        }
-    } else {
-        for(auto&& msg : excepts) {
-            std::cout << msg << "\n";
-        }
-        //std::cin.get();
-    }
-}
 
 int main(int argc, char** argv)
 {
@@ -200,7 +111,29 @@ int main(int argc, char** argv)
     files.push_back(stdlib + "Standard/Range/StreamInserter.wide");
     files.push_back(stdlib + "Standard/Utility/Move.wide");
     files.push_back(stdlib + "stdlib.wide");
-    Compile(ClangOpts, LLVMOpts, files);
+    Wide::LLVMCodegen::Generator Generator(LLVMOpts, ClangOpts.TargetOptions.Triple, [&](std::unique_ptr<llvm::Module> main) {
+        llvm::PassManager pm;
+        std::unique_ptr<llvm::TargetMachine> targetmachine;
+        llvm::TargetOptions targetopts;
+        std::string err;
+        const llvm::Target& target = *llvm::TargetRegistry::lookupTarget(ClangOpts.TargetOptions.Triple, err);
+        targetmachine = std::unique_ptr<llvm::TargetMachine>(target.createTargetMachine(ClangOpts.TargetOptions.Triple, llvm::Triple(ClangOpts.TargetOptions.Triple).getArchName(), "", targetopts));
+        std::ofstream file(ClangOpts.FrontendOptions.OutputFile, std::ios::trunc | std::ios::binary);
+        llvm::raw_os_ostream out(file);
+        llvm::formatted_raw_ostream format_out(out);
+        targetmachine->addPassesToEmitFile(pm, format_out, llvm::TargetMachine::CodeGenFileType::CGFT_ObjectFile);
+        pm.run(*main);
+    });
+    Wide::Driver::Compile(ClangOpts, [](Wide::Semantic::Analyzer& a, const Wide::AST::Module* root) {
+        static const Wide::Lexer::Range location = std::make_shared<std::string>("Analyzer entry point");
+        auto std = a.GetGlobalModule()->AccessMember("Standard", a, location);
+        if (!std)
+            throw std::runtime_error("Fuck.");
+        auto main = std->Resolve(nullptr).t->AccessMember("Main", a, location);
+        if (!main)
+            throw std::runtime_error("Fuck.");
+        main->Resolve(nullptr).BuildCall(a, location);
+    }, Generator, files);
 
     return 0;
 }

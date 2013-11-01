@@ -1,5 +1,5 @@
 #include <Wide/Semantic/ClangOverloadSet.h>
-#include <Wide/Util/MakeUnique.h>
+#include <Wide/Util/Memory/MakeUnique.h>
 #include <Wide/Codegen/Generator.h>
 #include <Wide/Semantic/ClangTU.h>
 #include <Wide/Semantic/Util.h>

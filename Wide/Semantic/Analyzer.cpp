@@ -40,9 +40,9 @@ using namespace Semantic;
 // After definition of type
 Analyzer::~Analyzer() {}
 
-Analyzer::Analyzer(const Options::Clang& opts, Codegen::Generator* g, const AST::Module* GlobalModule)    
+Analyzer::Analyzer(const Options::Clang& opts, Codegen::Generator& g, const AST::Module* GlobalModule)    
     : clangopts(&opts)
-    , gen(g)
+    , gen(&g)
     , null(nullptr)
 {
     LiteralStringType = arena.Allocate<StringType>();

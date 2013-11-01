@@ -1,6 +1,6 @@
 #include <Wide/Semantic/ClangTU.h>
 #include <Wide/Semantic/Util.h>
-#include <Wide/Util/MakeUnique.h>
+#include <Wide/Util/Memory/MakeUnique.h>
 #include <Wide/Semantic/SemanticError.h>
 #include <Wide/Semantic/Analyzer.h>
 #include <Wide/Semantic/ClangType.h>

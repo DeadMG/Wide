@@ -4,8 +4,8 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <Wide/Parser/AST.h>
-#include <Wide/Util/MemoryArena.h>
-#include <Wide/Util/ConcurrentQueue.h>
+#include <Wide/Util/Memory/MemoryArena.h>
+#include <Wide/Util/Concurrency/ConcurrentQueue.h>
 
 namespace Wide {
     namespace Parser {

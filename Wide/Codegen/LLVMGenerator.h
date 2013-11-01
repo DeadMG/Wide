@@ -1,5 +1,5 @@
 #pragma once
-#include <Wide/Util/MemoryArena.h>
+#include <Wide/Util/Memory/MemoryArena.h>
 #include <Wide/Codegen/Expression.h>
 #include <Wide/Codegen/LLVMOptions.h>
 #include <Wide/Codegen/Generator.h>
