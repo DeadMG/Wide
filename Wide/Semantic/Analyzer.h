@@ -12,7 +12,6 @@
 #ifndef _MSC_VER
 #include <Wide/Semantic/ClangTU.h>
 #include <clang/AST/Type.h>
-#include <Wide/Semantic/Type.h>
 #endif
 
 namespace llvm {
@@ -67,7 +66,6 @@ namespace Wide {
         class PointerType;
         class FloatType;
         struct NullType;
-        enum ConversionRank;
         struct Result;
         struct VectorTypeHasher {
             std::size_t operator()(const std::vector<Type*>& t) const;

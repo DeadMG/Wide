@@ -166,8 +166,8 @@ namespace Wide {
             Negate(Expression* e, Lexer::Range pos)
                 : UnaryExpression(e, pos) {}
         };
-        struct Error : public Expression {
-            Error(Lexer::Range pos)
+        struct ErrorExpr : public Expression {
+            ErrorExpr(Lexer::Range pos)
                 : Expression(pos) {}
         };
         struct MetaCall : public Expression {        

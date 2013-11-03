@@ -291,7 +291,7 @@ Expression Analyzer::AnalyzeExpression(Type* t, const AST::Expression* e) {
 
             auto lamself = self;
             auto lamt = t;
-            auto process_lambda = [lam, cap_expressions, lamself, ty, lamt, captures](Type*) {
+            auto process_lambda = [lam, cap_expressions, lamself, ty, lamt, captures](Wide::Semantic::Type*) -> Wide::Semantic::ConcreteExpression {
                 auto t = lamt;
                 auto self = lamself;
                 std::vector<AST::Variable*> initializers;
@@ -333,7 +333,8 @@ Expression Analyzer::AnalyzeExpression(Type* t, const AST::Expression* e) {
                 return lamty->BuildRvalueConstruction(std::move(args), *self, lam->location);
             };
             if (defer) {
-                out = DeferredExpression(process_lambda);
+                DeferredExpression d(std::move(process_lambda));
+                out = d;
                 return;
             }
             out = process_lambda(nullptr);

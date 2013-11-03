@@ -321,8 +321,8 @@ void Builder::Warning(Wide::Lexer::Range where, Parser::Warning what) {
     return warning(where, what);
 }
 
-AST::Error* Builder::CreateError(Wide::Lexer::Range where) {
-    return arena.Allocate<AST::Error>(where);
+AST::ErrorExpr* Builder::CreateError(Wide::Lexer::Range where) {
+    return arena.Allocate<AST::ErrorExpr>(where);
 }
 
 void Builder::Error(Wide::Lexer::Range loc, Parser::Error err) {

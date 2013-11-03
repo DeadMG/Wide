@@ -15,14 +15,39 @@
 #include <llvm/ExecutionEngine/ExecutionEngine.h>
 #pragma warning(pop)
 
-void Compile(const Wide::Options::Clang& copts, std::initializer_list<std::string> files) {
+void Compile(const Wide::Options::Clang& copts, std::string file) {
     Wide::Driver::NullGenerator mockgen(copts.TargetOptions.Triple);
     Wide::Driver::Compile(copts, [&](Wide::Semantic::Analyzer& a, const Wide::AST::Module* root) {
-        Wide::Test::Test(a, nullptr, root, [&](Wide::Lexer::Range r, Wide::Semantic::Error e) { throw Wide::Semantic::SemanticError(r, e); }, mockgen, false);
-    }, mockgen, files);
+        Wide::Test::Test(a, nullptr, root, [&](Wide::Lexer::Range r, Wide::Semantic::Error e) { 
+            throw Wide::Semantic::SemanticError(r, e); 
+        }, mockgen, false);
+    }, mockgen, { file });
 }
 
-void Interpret(const Wide::Options::Clang& copts, std::initializer_list<std::string> files) {
+void Compile(const Wide::Options::Clang& copts, std::string file, Wide::Semantic::Error expected, int linebegin, int columnbegin, int lineend, int columnend) {
+    Wide::Driver::NullGenerator mockgen(copts.TargetOptions.Triple);
+    Wide::Driver::Compile(copts, [&](Wide::Semantic::Analyzer& a, const Wide::AST::Module* root) {
+        Wide::Test::Test(a, nullptr, root, [&](Wide::Lexer::Range r, Wide::Semantic::Error e) {
+            // Would be nice to use || here but MSVC no compile it.
+            if ((*r.begin.name) != file)
+                throw std::runtime_error("Error ocurred, but it did not match the expected.");
+            if ((*r.end.name) != file)                
+                throw std::runtime_error("Error ocurred, but it did not match the expected.");
+            if (r.begin.line != linebegin)
+                throw std::runtime_error("Error ocurred, but it did not match the expected.");
+            if (r.begin.column != columnbegin)                
+                throw std::runtime_error("Error ocurred, but it did not match the expected.");
+            if (r.end.line != lineend)
+                throw std::runtime_error("Error ocurred, but it did not match the expected.");
+            if (r.end.column != columnend)
+                throw std::runtime_error("Error ocurred, but it did not match the expected.");
+            if (expected != e)
+                throw std::runtime_error("Error ocurred, but it did not match the expected.");
+        }, mockgen, false);
+    }, mockgen, { file });
+}
+
+void Interpret(const Wide::Options::Clang& copts, std::string file) {
     std::string name;
     static const auto loc = Wide::Lexer::Range(std::make_shared<std::string>("Test harness internal"));
     Wide::Options::LLVM llvmopts;
@@ -54,23 +79,34 @@ void Interpret(const Wide::Options::Clang& copts, std::initializer_list<std::str
             throw std::runtime_error("Could not resolve Main to a function.");
         name = f->GetName();
         f->BuildCall(Wide::Semantic::ConcreteExpression(), std::vector<Wide::Semantic::ConcreteExpression>(), a, loc);
-    }, g, files);
+    }, g, { file });
 }
 
-TEST_CASE("", "") {
+TEST_CASE("Compile Success", "Compile") {
     Wide::Options::Clang clangopts;
     clangopts.TargetOptions.Triple = "i686-pc-mingw32";
-    CHECK_NOTHROW(Compile(clangopts, { "IntegerOperations.wide" }));
-    CHECK_NOTHROW(Compile(clangopts, { "PrimitiveADL.wide" }));
-    CHECK_NOTHROW(Compile(clangopts, { "RecursiveTypeInference.wide" }));
-    CHECK_NOTHROW(Compile(clangopts, { "CorecursiveTypeInference.wide" }));
-    CHECK_NOTHROW(Compile(clangopts, { "MemberCall.wide" }));
-    CHECK_NOTHROW(Compile(clangopts, { "AcceptQualifiedThis.wide" }));
-    CHECK_NOTHROW(Compile(clangopts, { "DeferredVariable.wide" }));
-    CHECK_NOTHROW(Compile(clangopts, { "DeferredLambda.wide" }));
-    CHECK_NOTHROW(Compile(clangopts, { "DeferredExpressionStatement.wide" }));
-    CHECK_NOTHROW(Compile(clangopts,  { "BooleanOperations.wide" }));
-    CHECK_NOTHROW(Interpret(clangopts, { "BooleanShortCircuit.wide" }));
-    CHECK_THROWS(Compile(clangopts, { "RejectQualifiedThis.wide" }));
-    CHECK_THROWS(Compile(clangopts, { "SubmoduleNoQualifiedLookup.wide" }));
+    CHECK_NOTHROW(Compile(clangopts, "IntegerOperations.wide" ));
+    CHECK_NOTHROW(Compile(clangopts, "PrimitiveADL.wide" ));
+    CHECK_NOTHROW(Compile(clangopts, "RecursiveTypeInference.wide" ));
+    CHECK_NOTHROW(Compile(clangopts, "CorecursiveTypeInference.wide" ));
+    CHECK_NOTHROW(Compile(clangopts, "MemberCall.wide" ));
+    CHECK_NOTHROW(Compile(clangopts, "AcceptQualifiedThis.wide" ));
+    CHECK_NOTHROW(Compile(clangopts, "DeferredVariable.wide" ));
+    CHECK_NOTHROW(Compile(clangopts, "DeferredLambda.wide" ));
+    CHECK_NOTHROW(Compile(clangopts, "DeferredExpressionStatement.wide" ));
+    CHECK_NOTHROW(Compile(clangopts, "BooleanOperations.wide" ));
+}
+
+TEST_CASE("Interpet Success", "Interpret") {
+    Wide::Options::Clang clangopts;
+    clangopts.TargetOptions.Triple = "i686-pc-mingw32";
+    CHECK_NOTHROW(Interpret(clangopts, "BooleanShortCircuit.wide" ));
+}
+
+TEST_CASE("Compile Fail", "Compile") {
+    Wide::Options::Clang clangopts;
+    clangopts.TargetOptions.Triple = "i686-pc-mingw32";
+    CHECK_NOTHROW(Compile(clangopts, "RejectNontypeFunctionArgumentExpression.wide", Wide::Semantic::Error::ExpressionNoType, 2, 3, 2, 9 ));
+    CHECK_THROWS(Compile(clangopts, "RejectQualifiedThis.wide" ));
+    CHECK_THROWS(Compile(clangopts, "SubmoduleNoQualifiedLookup.wide" ));
 }

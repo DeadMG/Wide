@@ -71,7 +71,7 @@ namespace Wide {
             BinaryExpression* CreateModulus(Expression* lhs, Expression* rhs);
             BinaryExpression* CreateDivision(Expression* lhs, Expression* rhs);
             Auto* CreateAuto(Lexer::Range loc);
-            Error* CreateError(Lexer::Range loc);
+            ErrorExpr* CreateError(Lexer::Range loc);
             Decrement* CreatePrefixDecrement(Expression* ex, Lexer::Range r);
             Decrement* CreatePostfixDecrement(Expression* ex, Lexer::Range r);
             AddressOf* CreateAddressOf(Expression* ex, Lexer::Range r);

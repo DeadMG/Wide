@@ -252,11 +252,11 @@ void Function::ComputeBody(Analyzer& a) {
                     }, 
                     [&, handle_variable_expression](DeferredExpression& result) {
                         auto defexpr = DeferredExpression([result, handle_variable_expression](Type* t) {
-                            return handle_variable_expression((*result.delay)(t));
+                            return handle_variable_expression(result(t));
                         });
                         variables.back()[var->name] = defexpr;
                         return a.gen->CreateDeferredStatement([=] {
-                            return (*defexpr.delay)(nullptr).Expr;
+                            return defexpr(nullptr).Expr;
                         });
                     }
                 );

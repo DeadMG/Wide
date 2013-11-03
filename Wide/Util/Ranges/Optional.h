@@ -29,6 +29,11 @@ namespace Wide {
                 if (ref)
                     place(*ref);
             }
+
+            template<typename X> optional(X&& ref, typename std::enable_if<std::is_constructible<T, X&&>::value && !std::is_same<optional, typename std::decay<X>::type>::value>::type* = 0) : present(false) {
+                place(std::forward<X>(ref));
+            }
+
             optional() : present(false) {}
 
             optional(none_t) : present(false) {}

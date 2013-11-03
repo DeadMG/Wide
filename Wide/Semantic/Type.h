@@ -10,6 +10,10 @@
 #include <cassert>
 #include <memory>
 
+#ifndef _MSC_VER
+#include <Wide/Semantic/Analyzer.h>
+#endif
+
 namespace llvm {
     class Type;
     class LLVMContext;
@@ -78,8 +82,24 @@ namespace Wide {
         };
 
         struct DeferredExpression {
-            DeferredExpression(std::function<ConcreteExpression(Type*)> d)
-                : delay(std::make_shared<std::function<ConcreteExpression(Type*)>>(std::move(d))) {}
+            template<typename X> DeferredExpression(
+                X&& other, 
+                typename std::enable_if<
+                    //std::is_same<
+                    //    decltype(std::declval<X&>()(std::declval<Wide::Semantic::Type*>())), 
+                    //    ConcreteExpression
+                    //>::value &&
+                    !std::is_same<DeferredExpression, typename std::decay<X>::type>::value
+                >::type* = 0
+            ) : delay(std::make_shared<std::function<ConcreteExpression(Type*)>>(std::forward<X>(other))) {
+                // Should be SFINAE but VS2012 CTP compiler bug.
+                static_assert(std::is_same<decltype(std::declval<X&>()(std::declval<Wide::Semantic::Type*>())), ConcreteExpression>::value, "");
+            }
+
+            DeferredExpression(const DeferredExpression& other)
+                : delay(other.delay) {}
+            DeferredExpression(DeferredExpression&& other)
+                : delay(std::move(other.delay)) {}
 
             DeferredExpression BuildValue(Analyzer& a, Lexer::Range where);
             DeferredExpression AccessMember(std::string name, Analyzer& a, Lexer::Range where);
@@ -153,7 +173,7 @@ namespace Wide {
                         return expr;
                     },
                     [&](const DeferredExpression& expr) {
-                        return (*expr.delay)(t);
+                        return expr(t);
                     }
                 );
             }
@@ -163,7 +183,7 @@ namespace Wide {
                         return expr;
                      },
                     [&](DeferredExpression& expr) {
-                        return (*expr.delay)(t);
+                        return expr(t);
                     }
                 );
             }

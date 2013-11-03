@@ -6,6 +6,7 @@
 #include <Wide/Parser/AST.h>
 #include <Wide/Semantic/ClangTU.h>
 #include <Wide/Semantic/Analyzer.h>
+#include <Wide/Semantic/SemanticError.h>
 #include <Wide/Semantic/ConstructorType.h>
 #include <Wide/Semantic/Reference.h>
 #include <Wide/Semantic/UserDefinedType.h>
@@ -143,7 +144,7 @@ Callable* OverloadSet::Resolve(std::vector<Type*> f_args, Analyzer& a) {
                     continue;
                 auto takety = dynamic_cast<ConstructorType*>(a.AnalyzeExpression(candidate.first, candidate.second->args[i].type).Resolve(nullptr).t->Decay());
                 if (!takety)
-                    throw std::runtime_error("Fuck");
+                    throw Wide::Semantic::SemanticError(candidate.second->args[i].location, Wide::Semantic::Error::ExpressionNoType);
                 // We don't accept any U here right now.
                 if (is_compatible(takety->GetConstructedType(), args[i]))
                     continue;

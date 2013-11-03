@@ -79,18 +79,14 @@ void Wide::Driver::Compile(const Wide::Options::Clang& copts, std::function<void
         combiner.Add(x->GetGlobalModule());
 
     if (excepts.empty()) {
-        try {
-            Wide::Semantic::Analyzer a(copts, gen, combiner.GetGlobalModule());
-            func(a, combiner.GetGlobalModule());
-            gen();
-        } catch(std::exception& e) {
-            std::cout << e.what() << "\n";
-            throw;
-        }
+        Wide::Semantic::Analyzer a(copts, gen, combiner.GetGlobalModule());
+        func(a, combiner.GetGlobalModule());
+        gen();
     } else {
+        std::string err = "Compilation failed with errors:\n";
         for(auto&& msg : excepts) {
-            std::cout << msg << "\n";
+            err += "    " + msg + "\n";
         }
-        throw std::runtime_error("Compilation failed with errors.");
+        throw std::runtime_error(err);
     }
 }

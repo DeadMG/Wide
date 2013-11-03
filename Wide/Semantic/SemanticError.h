@@ -8,14 +8,15 @@ namespace Wide {
     namespace Semantic {
         enum class Error : int {
             CouldNotFindHeader,
-            NoMember
+            NoMember,
+            ExpressionNoType,
         };
     }
 }
 #ifndef _MSC_VER
 namespace std {
-    struct hash<Wide::Semantic::Error> {
-        std::size_t operator()(Wide::Parser::Error p) const {
+    template<> struct hash<Wide::Semantic::Error> {
+        std::size_t operator()(Wide::Semantic::Error p) const {
             return hash<int>()((int)p);
         }
     };
@@ -27,6 +28,7 @@ namespace Wide {
             std::pair<Error, std::string> strings[] = {
                 std::make_pair(Error::CouldNotFindHeader, "Clang could not find the specified header."),
                 std::make_pair(Error::NoMember, "The requested member could not be found."),
+                std::make_pair(Error::ExpressionNoType, "The expression did not resolve to a type.")
             };
             return std::unordered_map<Error, std::string>(std::begin(strings), std::end(strings));
         }());
@@ -38,7 +40,11 @@ namespace Wide {
                 : where(loc), err(wha) {}
             Error error() { return err; }
             Lexer::Range location() { return where; }
-            const char* what() const override {
+            const char* what() const 
+#ifndef _MSC_VER
+                noexcept
+#endif
+                override {
                 return ErrorStrings.at(err).c_str();
             }
         };
