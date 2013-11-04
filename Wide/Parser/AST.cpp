@@ -24,12 +24,8 @@ void Combiner::Add(Module* m) {
                 InsertPoint = to->opcondecls[entry.first] = new_set.get();
                 owned_overload_sets.insert(std::make_pair(InsertPoint, std::move(new_set)));
             }
-            for(auto x : entry.second->functions) {
-                auto newfunc = Wide::Memory::MakeUnique<Function>(x->name, x->statements, x->prolog, x->where.front(), x->args, x->initializers);
-                inverse[x] = newfunc.get();
-                InsertPoint->functions.insert(newfunc.get());
-                owned_decl_contexts.insert(std::make_pair(newfunc.get(), std::move(newfunc)));
-            }
+            for(auto x : entry.second->functions)
+                InsertPoint->functions.insert(x);
         }
         for(auto&& entry : from->decls) {
             if (auto nested = dynamic_cast<AST::Module*>(entry.second)) {
@@ -62,8 +58,7 @@ void Combiner::Add(Module* m) {
                     errors[to].insert(use);
                     continue;
                 }
-                auto new_using = Wide::Memory::MakeUnique<AST::Using>(use->name, use->expr, use->where.front());
-                to->decls[use->name] = owned_decl_contexts.insert(std::make_pair(new_using.get(), std::move(new_using))).first->first;
+                to->decls[use->name] = use;
                 continue;
             }
             if (auto ty = dynamic_cast<AST::Type*>(entry.second)) {
@@ -76,11 +71,7 @@ void Combiner::Add(Module* m) {
                     continue;
                 }
 
-                auto newty = Wide::Memory::MakeUnique<Type>(entry.first, ty->location);
-                newty->variables = ty->variables;
-                newty->Functions = ty->Functions;
-                newty->opcondecls = ty->opcondecls;
-                to->decls[entry.first] = owned_decl_contexts.insert(std::make_pair(newty.get(), std::move(newty))).first->first;
+                to->decls[entry.first] = ty;
                 continue;
             }
 
@@ -104,12 +95,8 @@ void Combiner::Add(Module* m) {
                 InsertPoint = new_set.get();
                 to->functions[entry.first] = owned_overload_sets.insert(std::make_pair(InsertPoint, std::move(new_set))).first->first;
             }
-            for(auto x : overset->functions) {
-                auto newfunc = Wide::Memory::MakeUnique<Function>(x->name, x->statements, x->prolog, x->where.front(), x->args, x->initializers);
-                inverse[x] = newfunc.get();
-                InsertPoint->functions.insert(newfunc.get());
-                owned_decl_contexts.insert(std::make_pair(newfunc.get(), std::move(newfunc)));
-            }
+            for(auto x : overset->functions)
+                InsertPoint->functions.insert(x);
         }
     };
     adder(&root, m);    
@@ -148,12 +135,8 @@ void Combiner::Remove(Module* m) {
             auto to_overset = to->opcondecls.at(entry.first);
             assert(to_overset);
             assert(owned_overload_sets.find(to_overset) != owned_overload_sets.end());
-            for(auto&& fun : overset->functions) {
-                assert(inverse.find(fun) != inverse.end());
-                to_overset->functions.erase(inverse[fun]);
-                inverse.erase(fun);
-                owned_decl_contexts.erase(fun);
-            }
+            for(auto&& fun : overset->functions)
+                to_overset->functions.erase(fun);
             if (to_overset->functions.empty()) {
                 to->opcondecls.erase(entry.first);
                 owned_overload_sets.erase(to_overset);
@@ -165,12 +148,9 @@ void Combiner::Remove(Module* m) {
             assert(to_overset);
             assert(owned_overload_sets.find(to_overset) != owned_overload_sets.end());
             for(auto&& fun : overset->functions) {
-                assert(inverse.find(fun) != inverse.end());
                 if (errors.find(to) != errors.end())
                     errors.at(to).erase(fun);
-                to_overset->functions.erase(inverse[fun]);
-                inverse.erase(fun);
-                owned_decl_contexts.erase(fun);
+                to_overset->functions.erase(fun);
             }
             if (to_overset->functions.empty()) {
                 to->functions.erase(entry.first);
@@ -193,7 +173,6 @@ void Combiner::Remove(Module* m) {
             to->decls.erase(entry.first);
             if (errors.find(to) != errors.end())
                 errors.at(to).erase(entry.second);
-
         }
         if (errors.find(to) != errors.end())
             if (errors.at(to).size() == 0)

@@ -5,7 +5,6 @@
 
 #pragma warning(push, 0)
 #include <clang/AST/Type.h>
-#include <clang/AST/Expr.h>
 #pragma warning(pop)
 
 namespace clang {
@@ -14,8 +13,6 @@ namespace clang {
 namespace Wide {
     namespace Semantic {       
         class ClangType : public Type {
-            std::unordered_map<std::string, Type*> LookupResultCache;
-            ConcreteExpression BuildOverloadSet(ConcreteExpression self, std::string name, clang::LookupResult& lr, Analyzer& a, Lexer::Range where);
             ClangUtil::ClangTU* from;
             clang::QualType type;
         public:
@@ -35,6 +32,8 @@ namespace Wide {
             std::size_t size(Analyzer& a) override;
             std::size_t alignment(Analyzer& a) override;
             Type* GetContext(Analyzer& a) override;
+            OverloadSet* PerformADL(Lexer::TokenType what, Type* lhs, Type* rhs, Analyzer& a, Lexer::Range where) override;
+            OverloadSet* AccessMember(ConcreteExpression self, Lexer::TokenType name, Analyzer& a, Lexer::Range where) override;
         };
     }
 }

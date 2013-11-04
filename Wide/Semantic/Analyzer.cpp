@@ -393,6 +393,8 @@ Type* Analyzer::GetClangType(ClangUtil::ClangTU& from, clang::QualType t) {
         return GetIntegralType(from.GetASTContext().getIntWidth(t), t->isSignedIntegerType());
     if (t->isVoidType())
         return Void;
+    if (t->isNullPtrType())
+        return null;
     if (t->isPointerType()) {
         auto pt = t->getPointeeType();
         if (pt->isCharType())
@@ -602,4 +604,10 @@ Wide::Util::optional<Expression> Analyzer::LookupIdentifier(Type* context, const
 }
 Module* Analyzer::GetGlobalModule() {
     return global;
+}
+OverloadSet* Analyzer::GetOverloadSet(std::unordered_set<clang::NamedDecl*> decls, ClangUtil::ClangTU* from, Type* context) {
+    if (clang_overload_sets.find(decls) != clang_overload_sets.end())
+        if (clang_overload_sets[decls].find(context) != clang_overload_sets[decls].end())
+            return clang_overload_sets[decls][context];
+    return clang_overload_sets[decls][context] = arena.Allocate<OverloadSet>(std::move(decls), from, context);
 }

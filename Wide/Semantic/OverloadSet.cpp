@@ -2,6 +2,7 @@
 #include <Wide/Semantic/Analyzer.h>
 #include <Wide/Codegen/Generator.h>
 #include <Wide/Semantic/Function.h>
+#include <Wide/Semantic/ClangType.h>
 #include <Wide/Semantic/FunctionType.h>
 #include <Wide/Parser/AST.h>
 #include <Wide/Semantic/ClangTU.h>
@@ -22,6 +23,8 @@
 #include <clang/AST/ASTContext.h>
 #include <llvm/IR/DataLayout.h>
 #include <clang/Sema/Sema.h>
+#include <llvm/IR/DataLayout.h>
+#include <clang/Sema/Overload.h>
 #pragma warning(pop)
 
 using namespace Wide;
@@ -32,20 +35,18 @@ template<typename T, typename U> T* debug_cast(U* other) {
     return static_cast<T*>(other);
 }
 
-OverloadSet::OverloadSet(const AST::FunctionOverloadSet* s, Type* mem) {
+OverloadSet::OverloadSet(const AST::FunctionOverloadSet* s, Type* mem) : from(nullptr), nonstatic(nullptr) {
+    if (dynamic_cast<UserDefinedType*>(mem->Decay()))
+        nonstatic = mem;
     for(auto x : s->functions)
         functions[mem].insert(x);
 }
-OverloadSet::OverloadSet(std::unordered_set<const AST::Function*> funcs, Type* mem) 
+OverloadSet::OverloadSet(std::unordered_set<const AST::Function*> funcs, Type* mem) : from(nullptr), nonstatic(nullptr)
 {
     if (funcs.size() != 0)
         functions[mem].insert(funcs.begin(), funcs.end());
-}
-Type* OverloadSet::nonstatic() {
-    for(auto&& x : functions)
-        if (auto udt = dynamic_cast<UserDefinedType*>(x.first->Decay()))
-            return udt;
-    return nullptr;
+    if (dynamic_cast<UserDefinedType*>(mem->Decay()))
+        nonstatic = mem;
 }
 std::function<llvm::Type*(llvm::Module*)> OverloadSet::GetLLVMType(Analyzer& a) {
     // Have to cache result - not fun.
@@ -53,7 +54,7 @@ std::function<llvm::Type*(llvm::Module*)> OverloadSet::GetLLVMType(Analyzer& a) 
     std::stringstream stream;
     stream << "struct.__" << this;
     auto str = stream.str();
-    if (!nonstatic()) {
+    if (!nonstatic) {
         return [=](llvm::Module* m) -> llvm::Type* {
             llvm::Type* t = nullptr;
             if (m->getTypeByName(str))
@@ -66,7 +67,7 @@ std::function<llvm::Type*(llvm::Module*)> OverloadSet::GetLLVMType(Analyzer& a) 
             return t;
         };
     }
-    auto ty = nonstatic()->Decay()->GetLLVMType(a);
+    auto ty = nonstatic->Decay()->GetLLVMType(a);
     return [=](llvm::Module* m) -> llvm::Type* {
         llvm::Type* t = nullptr;
         if (m->getTypeByName(str))
@@ -79,21 +80,22 @@ std::function<llvm::Type*(llvm::Module*)> OverloadSet::GetLLVMType(Analyzer& a) 
 }
 Expression OverloadSet::BuildCall(ConcreteExpression e, std::vector<ConcreteExpression> args, Analyzer& a, Lexer::Range where) {
     std::vector<Type*> targs;
+    if (nonstatic)
+        targs.push_back(nonstatic);
     for(auto x : args)
         targs.push_back(x.t);
     auto call = Resolve(std::move(targs), a);
     if (!call)
         throw std::runtime_error("Fuck!");
 
-    if (auto func = dynamic_cast<Function*>(call))
-        if (dynamic_cast<UserDefinedType*>(func->GetContext(a)->Decay()))
-            args.insert(args.begin(), ConcreteExpression(func->GetContext(a), a.gen->CreateFieldExpression(e.BuildValue(a, where).Expr, 0)));
+    if (call->AddThis())
+        args.insert(args.begin(), ConcreteExpression(nonstatic, a.gen->CreateFieldExpression(e.BuildValue(a, where).Expr, 0)));
 
     return call->BuildCall(ConcreteExpression(), std::move(args), a, where);
 }
 
 OverloadSet::OverloadSet(std::unordered_set<Callable*> call)
-    : callables(std::move(call)) {}
+    : callables(std::move(call)), from(nullptr), nonstatic(nullptr) {}
 
 Callable* OverloadSet::Resolve(std::vector<Type*> f_args, Analyzer& a) {
     std::vector<std::pair<Type*, const AST::Function*>> ViableCandidates;
@@ -134,15 +136,18 @@ Callable* OverloadSet::Resolve(std::vector<Type*> f_args, Analyzer& a) {
     ViableCandidates.erase(
         std::remove_if(ViableCandidates.begin(), ViableCandidates.end(), [&](std::pair<Type*, const AST::Function*> candidate) {
             auto args = f_args;
-            if (candidate.second->args.size() >= 1)
-                if (candidate.second->args[0].name == "this")
-                    args.insert(args.begin(), candidate.first);
+            // If a this was added, and we're not in a context that calls for resolving it, then erase it from the list.
+            if (nonstatic) {
+                if (candidate.second->args.size() == 0 || candidate.second->args[0].name != "this" || !dynamic_cast<UserDefinedType*>(candidate.first->Decay())) {
+                    args.erase(args.begin());
+                }
+            }
             if (args.size() != candidate.second->args.size())
                 return true;
             for(std::size_t i = 0; i < args.size(); ++i) {
-                if (!candidate.second->args[i].type)
-                    continue;
-                auto takety = dynamic_cast<ConstructorType*>(a.AnalyzeExpression(candidate.first, candidate.second->args[i].type).Resolve(nullptr).t->Decay());
+                auto takety = candidate.second->args[i].type ? 
+                    dynamic_cast<ConstructorType*>(a.AnalyzeExpression(candidate.first, candidate.second->args[i].type).Resolve(nullptr).t->Decay()) :
+                    a.GetConstructorType(args[i]->Decay());
                 if (!takety)
                     throw Wide::Semantic::SemanticError(candidate.second->args[i].location, Wide::Semantic::Error::ExpressionNoType);
                 // We don't accept any U here right now.
@@ -163,21 +168,84 @@ Callable* OverloadSet::Resolve(std::vector<Type*> f_args, Analyzer& a) {
             continue;
         }
         for(std::size_t i = 0; i < args.size(); ++i) {
-            if (!args[i])
-                continue;
-            if (is_compatible(args[i], f_args[i]))
+            auto ty = args[i] ? args[i] : f_args[i]->Decay();
+            if (is_compatible(ty, f_args[i]))
                 continue;
             it = call.erase(it);
             break;
         }
         if (it != call.end()) ++it;
     }
-    
-    if (ViableCandidates.size() + call.size() != 1)
-        return nullptr;
-    if (ViableCandidates.size() == 1)
-        return a.GetWideFunction(ViableCandidates[0].second, ViableCandidates[0].first, f_args);
-    return *call.begin();
+
+    auto get_wide_or_result = [&]() -> Callable* {
+        if (ViableCandidates.size() + call.size() != 1)
+            return nullptr;
+        if (ViableCandidates.size() == 1)
+            return a.GetWideFunction(ViableCandidates[0].second, ViableCandidates[0].first, f_args);
+        return *call.begin();
+    };
+
+    if (from) {    
+        std::vector<clang::OpaqueValueExpr> exprs;
+        exprs.reserve(f_args.size() + 1);
+        for(auto x : f_args)
+            exprs.push_back(clang::OpaqueValueExpr(clang::SourceLocation(), x->GetClangType(*from, a).getNonLValueExprType(from->GetASTContext()), GetKindOfType(x)));
+        std::vector<clang::Expr*> exprptrs;
+        for(auto&& x : exprs)
+            exprptrs.push_back(&x);
+        clang::OverloadCandidateSet s((clang::SourceLocation()));
+        clang::UnresolvedSet<8> us;
+        for(auto decl : clangfuncs)
+            if (!decl->isCXXInstanceMember())
+                us.addDecl(decl);
+        from->GetSema().AddFunctionCandidates(us, exprptrs, s, false, nullptr);
+
+        if (nonstatic) {
+            us.clear();
+            for(auto decl : clangfuncs)
+                if (decl->isCXXInstanceMember())
+                    us.addDecl(decl);
+            //exprs.push_back(clang::OpaqueValueExpr(clang::SourceLocation(), nonstatic->GetClangType(*from, a).getNonLValueExprType(from->GetASTContext()), GetKindOfType(nonstatic)));
+            //exprptrs.push_back(&exprs.back());
+            from->GetSema().AddFunctionCandidates(us, exprptrs, s, false, nullptr);
+        }
+        assert(s.size() == clangfuncs.size());
+        clang::OverloadCandidateSet::iterator best;
+        auto result = s.BestViableFunction(from->GetSema(), clang::SourceLocation(), best);
+        if (result != clang::OverloadingResult::OR_Success) {
+            //s.NoteCandidates(from->GetSema(), clang::OverloadCandidateDisplayKind::OCD_AllCandidates, exprptrs);
+            return get_wide_or_result();
+        }
+        auto wide_result = get_wide_or_result();
+        if (wide_result)
+            throw std::runtime_error("Attempted to resolve an overload set, but both Wide and C++ provided viable results.");
+        auto fun = best->Function;
+        struct cppcallable : public Callable {
+            clang::FunctionDecl* fun;
+            ClangUtil::ClangTU* from;
+            Type* nonstatic;
+            std::vector<Type*> GetArgumentTypes(Analyzer& a) override {
+                std::vector<Type*> types;
+                if (nonstatic)
+                    types.push_back(nonstatic);
+                for(unsigned i = 0; i < fun->getNumParams(); ++i)
+                    types.push_back(a.GetClangType(*from, fun->getParamDecl(i)->getType()));
+                return types;
+            }
+            Expression BuildCall(ConcreteExpression, std::vector<ConcreteExpression> args, Analyzer& a, Lexer::Range where) override {
+                return ConcreteExpression(a.GetFunctionType(a.GetClangType(*from, fun->getResultType()), GetArgumentTypes(a)), a.gen->CreateFunctionValue(from->MangleName(fun))).BuildCall(args, a, where);
+            }
+            bool AddThis() override {
+                return fun->isCXXInstanceMember();
+            }
+        };
+        auto p = new cppcallable();
+        p->fun = fun;
+        p->nonstatic = nonstatic;
+        p->from = from;
+        return p;
+    }
+    return get_wide_or_result();
 }
 
 Codegen::Expression* OverloadSet::BuildInplaceConstruction(Codegen::Expression* mem, std::vector<ConcreteExpression> args, Analyzer& a, Lexer::Range where) {
@@ -186,15 +254,15 @@ Codegen::Expression* OverloadSet::BuildInplaceConstruction(Codegen::Expression* 
     if (args.size() == 1) {
         if (args[0].BuildValue(a, where).t == this)
             return a.gen->CreateStore(mem, args[0].BuildValue(a, where).Expr);
-        if (nonstatic()) {
-            if (args[0].t->IsReference(nonstatic()) || (nonstatic()->IsReference() && nonstatic() == args[0].t))
+        if (nonstatic) {
+            if (args[0].t->IsReference(nonstatic) || (nonstatic->IsReference() && nonstatic == args[0].t))
                 return a.gen->CreateStore(a.gen->CreateFieldExpression(mem, 0), args[0].Expr);
-            if (args[0].t == nonstatic())
+            if (args[0].t == nonstatic)
                 assert("Internal compiler error: Attempt to call a member function of a value.");
         }
         throw std::runtime_error("Can only construct overload set from another overload set of the same type, or a reference to T.");
     }
-    if (nonstatic())
+    if (nonstatic)
         throw std::runtime_error("Cannot default-construct a non-static overload set.");
     return a.gen->CreateNull(GetLLVMType(a));
 }
@@ -206,14 +274,14 @@ clang::QualType OverloadSet::GetClangType(ClangUtil::ClangTU& TU, Analyzer& a) {
     stream << "__" << this;
     auto recdecl = clang::CXXRecordDecl::Create(TU.GetASTContext(), clang::TagDecl::TagKind::TTK_Struct, TU.GetDeclContext(), clang::SourceLocation(), clang::SourceLocation(), TU.GetIdentifierInfo(stream.str()));
     recdecl->startDefinition();
-    if (nonstatic()) {
+    if (nonstatic) {
         auto var = clang::FieldDecl::Create(
             TU.GetASTContext(),
             recdecl,
             clang::SourceLocation(),
             clang::SourceLocation(),
             TU.GetIdentifierInfo("__this"),
-            TU.GetASTContext().getPointerType(nonstatic()->Decay()->GetClangType(TU, a)),
+            TU.GetASTContext().getPointerType(nonstatic->Decay()->GetClangType(TU, a)),
             nullptr,
             nullptr,
             false,
@@ -229,7 +297,7 @@ clang::QualType OverloadSet::GetClangType(ClangUtil::ClangTU& TU, Analyzer& a) {
             for(auto arg : x->args) if (!arg.type) continue;
             auto f = a.GetWideFunction(x, pair.first);
             auto sig = f->GetSignature(a);
-            if (nonstatic()) {
+            if (nonstatic) {
                 auto ret = sig->GetReturnType();
                 auto args = sig->GetArguments();
                 args.erase(args.begin());
@@ -289,14 +357,14 @@ clang::QualType OverloadSet::GetClangType(ClangUtil::ClangTU& TU, Analyzer& a) {
                     // Two hidden arguments: ret, this, skip this and do the rest.
                     // If we are nonstatic, then perform a load.
                     exprs.push_back(a.gen->CreateParameterExpression(0));
-                    if (nonstatic())
+                    if (nonstatic)
                         exprs.push_back(a.gen->CreateFieldExpression(a.gen->CreateParameterExpression(1), 0));
                     for(std::size_t i = 2; i < sig->GetArguments().size() + 2; ++i) {
                         exprs.push_back(a.gen->CreateParameterExpression(i));
                     }
                 } else {
                     // One hidden argument: this, pos 0. Skip it and do the rest.
-                    if (nonstatic())
+                    if (nonstatic)
                         exprs.push_back(a.gen->CreateLoad(a.gen->CreateFieldExpression(a.gen->CreateParameterExpression(0), 0)));
                     for(std::size_t i = 1; i < sig->GetArguments().size() + 1; ++i) {
                         exprs.push_back(a.gen->CreateParameterExpression(i));
@@ -312,11 +380,11 @@ clang::QualType OverloadSet::GetClangType(ClangUtil::ClangTU& TU, Analyzer& a) {
     return clangtypes[&TU] = TU.GetASTContext().getTypeDeclType(recdecl);
 }
 std::size_t OverloadSet::size(Analyzer& a) {
-    if (!nonstatic()) return a.gen->GetInt8AllocSize();
+    if (!nonstatic) return a.gen->GetInt8AllocSize();
     return llvm::DataLayout(a.gen->GetDataLayout()).getPointerSize();
 }
 std::size_t OverloadSet::alignment(Analyzer& a) {
-    if (!nonstatic()) return a.gen->GetDataLayout().getABIIntegerTypeAlignment(8);
+    if (!nonstatic) return a.gen->GetDataLayout().getABIIntegerTypeAlignment(8);
     return llvm::DataLayout(a.gen->GetDataLayout()).getPointerABIAlignment();
 }
 OverloadSet::OverloadSet(OverloadSet* s, OverloadSet* other) {
@@ -328,4 +396,24 @@ OverloadSet::OverloadSet(OverloadSet* s, OverloadSet* other) {
         callables.insert(x);
     for(auto x : other->callables)
         callables.insert(x);
+    for(auto x : other->clangfuncs)
+        clangfuncs.insert(x);
+    clangfuncs.insert(s->clangfuncs.begin(), s->clangfuncs.end());
+    if (s->from && other->from && s->from != other->from)
+        assert(false && "Attempted to combine an overload set of two overload sets containing functions from two different Clang TUs.");
+    from = s->from;
+    if (!from)
+        from = other->from;
+    if (s->nonstatic && other->nonstatic && s->nonstatic != other->nonstatic)
+        assert(false && "Attempted to combine an overload set of two overload sets containing functions which are members of two different types.");
+    nonstatic = s->nonstatic;
+    if (!nonstatic)
+        nonstatic = other->nonstatic;
+
+}
+OverloadSet::OverloadSet(std::unordered_set<clang::NamedDecl*> clangdecls, ClangUtil::ClangTU* tu, Type* context)
+    : clangfuncs(std::move(clangdecls)), from(tu), nonstatic(nullptr)
+{
+    if(dynamic_cast<ClangType*>(context->Decay()))
+        nonstatic = context;
 }

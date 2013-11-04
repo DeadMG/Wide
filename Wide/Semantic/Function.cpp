@@ -385,3 +385,7 @@ bool Function::HasLocalVariable(std::string name) {
     }
     return false;
 }
+
+bool Function::AddThis() {
+    return dynamic_cast<UserDefinedType*>(context->Decay());
+}

@@ -1,0 +1,3 @@
+Main() {
+    cpp("ClangMemberFunction.h").test().f();
+}

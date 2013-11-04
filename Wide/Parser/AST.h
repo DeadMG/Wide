@@ -201,9 +201,8 @@ namespace Wide {
     namespace AST {
         struct Combiner {
             Module root;
-            std::unordered_map<DeclContext*, std::unique_ptr<DeclContext>> owned_decl_contexts;
+            std::unordered_map<DeclContext*, std::unique_ptr<Module>> owned_decl_contexts;
             std::unordered_map<FunctionOverloadSet*, std::unique_ptr<FunctionOverloadSet>> owned_overload_sets;
-            std::unordered_map<Function*, Function*> inverse;
 
             std::function<void(std::vector<std::pair<Wide::Lexer::Range, Wide::AST::DeclContext*>>)> error;
             std::unordered_set<Module*> modules;

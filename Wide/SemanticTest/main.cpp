@@ -95,6 +95,10 @@ TEST_CASE("Compile Success", "Compile") {
     CHECK_NOTHROW(Compile(clangopts, "DeferredLambda.wide" ));
     CHECK_NOTHROW(Compile(clangopts, "DeferredExpressionStatement.wide" ));
     CHECK_NOTHROW(Compile(clangopts, "BooleanOperations.wide" ));
+    CHECK_NOTHROW(Compile(clangopts, "ClangADL.wide" ));
+    CHECK_NOTHROW(Compile(clangopts, "ClangMixedADL.wide" ));
+    CHECK_NOTHROW(Compile(clangopts, "ClangMemberFunction.wide" ));
+    CHECK_NOTHROW(Compile(clangopts, "ClangMemberOperator.wide" ));
 }
 
 TEST_CASE("Interpet Success", "Interpret") {
@@ -107,6 +111,7 @@ TEST_CASE("Compile Fail", "Compile") {
     Wide::Options::Clang clangopts;
     clangopts.TargetOptions.Triple = "i686-pc-mingw32";
     CHECK_NOTHROW(Compile(clangopts, "RejectNontypeFunctionArgumentExpression.wide", Wide::Semantic::Error::ExpressionNoType, 2, 3, 2, 9 ));
-    CHECK_THROWS(Compile(clangopts, "RejectQualifiedThis.wide" ));
-    CHECK_THROWS(Compile(clangopts, "SubmoduleNoQualifiedLookup.wide" ));
+    CHECK_NOTHROW(Compile(clangopts, "SubmoduleNoQualifiedLookup.wide", Wide::Semantic::Error::NoMember, 5, 9, 5, 28 ));
+    CHECK_THROWS(Compile(clangopts, "RejectLvalueQualifiedThis.wide" ));
+    CHECK_THROWS(Compile(clangopts, "RejectRvalueQualifiedThis.wide" ));
 }

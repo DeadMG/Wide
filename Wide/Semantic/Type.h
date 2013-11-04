@@ -290,12 +290,13 @@ namespace Wide {
 
             virtual Expression BuildBinaryExpression(ConcreteExpression lhs, ConcreteExpression rhs, Lexer::TokenType type, Analyzer& a, Lexer::Range where);
             
-            virtual OverloadSet* PerformADL(Lexer::TokenType what, Analyzer& a, Lexer::Range where);
+            virtual OverloadSet* PerformADL(Lexer::TokenType what, Type* lhs, Type* rhs, Analyzer& a, Lexer::Range where);
                                                 
             virtual ~Type() {}
         };
         struct Callable : public Type {
             virtual std::vector<Type*> GetArgumentTypes(Analyzer& a) = 0;
+            virtual bool AddThis() { return false; }
         };
         template<typename F, typename T> Callable* make_assignment_callable(F f, T* self, Analyzer& a) {            
             struct assign : public Callable {

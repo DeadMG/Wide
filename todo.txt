@@ -28,12 +28,13 @@ Add metafunctions.
 Add ability for C++ to call into Wide public global functions without having to declare it.
 Add ability for C++ to understand Wide member functions, constructors, and destructors.
 Add exceptions.
-Add the ability to call into Clang for ADL based on C++ types.
 Add the ability for Wide to expose Wide generic functions as C++ templates
 Add the ability for Wide functions to refer to constant context.
 Add the ability to resolve one function from a C++ overload set.
-Add tests.
+Fix default arguments.
 Add polymorphic types.
+Fix static vs non-static lookup and require values for module/etc.
+Add tests.
 
 WideLibrary:
 Add the ability for optional to contain lvalue references.

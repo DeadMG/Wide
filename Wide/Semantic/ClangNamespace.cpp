@@ -2,7 +2,7 @@
 #include <Wide/Semantic/ClangTU.h>
 #include <Wide/Semantic/FunctionType.h>
 #include <Wide/Semantic/Analyzer.h>
-#include <Wide/Semantic/ClangOverloadSet.h>
+#include <Wide/Semantic/OverloadSet.h>
 #include <Wide/Semantic/ConstructorType.h>
 #include <Wide/Semantic/ClangTemplateClass.h>
 #include <Wide/Semantic/Reference.h>
@@ -15,6 +15,7 @@
 #include <clang/Sema/Lookup.h>
 #include <clang/Sema/Sema.h>
 #include <clang/AST/UnresolvedSet.h>
+#include <clang/AST/AST.h>
 #pragma warning(pop)
 
 using namespace Wide;
@@ -54,12 +55,9 @@ Wide::Util::optional<Expression> ClangNamespace::AccessMember(ConcreteExpression
         }
         throw std::runtime_error("Found a decl but didn't know how to interpret it.");
     }
-    auto ptr = Wide::Memory::MakeUnique<clang::UnresolvedSet<8>>();
-    clang::UnresolvedSet<8>& us = *ptr;
-    for(auto it = lr.begin(); it != lr.end(); ++it) {
-        us.addDecl(*it);
-    }
-    return ConcreteExpression(a.arena.Allocate<ClangOverloadSet>(std::move(ptr), from, nullptr), nullptr);
+    std::unordered_set<clang::NamedDecl*> decls;
+    decls.insert(lr.begin(), lr.end());
+    return a.GetOverloadSet(std::move(decls), from, GetContext(a))->BuildValueConstruction(a, where);
 }
 
 Type* ClangNamespace::GetContext(Analyzer& a) {

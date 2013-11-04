@@ -147,6 +147,7 @@ UserDefinedType::UserDefinedType(const AST::Type* t, Analyzer& a, Type* higher)
     if (type->Functions.find("type") != type->Functions.end()) {
         std::vector<Type*> self;
         self.push_back(a.GetLvalueType(this));
+        self.push_back(a.GetLvalueType(this));
         iscomplex = iscomplex || a.GetOverloadSet(type->Functions.at("type"), a.GetLvalueType(this))->Resolve(std::move(self), a);
     }
     

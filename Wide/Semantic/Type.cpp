@@ -446,15 +446,13 @@ Expression Type::BuildBinaryExpression(ConcreteExpression lhs, ConcreteExpressio
 
     // If this function is entered, it's because the type-specific logic could not resolve the operator.
     // So let us attempt ADL.
-    auto adlset = a.GetOverloadSet(lhs.AccessMember(type, a, where), a.GetOverloadSet(lhs.t->PerformADL(type, a, where), rhs.t->PerformADL(type, a, where)));
+    auto adlset = a.GetOverloadSet(lhs.AccessMember(type, a, where), a.GetOverloadSet(lhs.t->PerformADL(type, lhs.t, rhs.t, a, where), rhs.t->PerformADL(type, lhs.t, rhs.t, a, where)));
     std::vector<Type*> arguments;
     arguments.push_back(lhs.t);
     arguments.push_back(rhs.t);
     if (auto call = adlset->Resolve(arguments, a)) {
-        if (auto func = dynamic_cast<Function*>(call)) {
-            if (auto udt = dynamic_cast<UserDefinedType*>(func->GetContext(a))) {
-                return adlset->BuildValueConstruction(lhs, a, where).BuildCall(lhs, rhs, a, where);
-            }
+        if (call->AddThis()) {
+            return adlset->BuildValueConstruction(lhs, a, where).BuildCall(rhs, a, where);
         }
         return adlset->BuildValueConstruction(a, where).BuildCall(lhs, rhs, a, where);
     }
@@ -549,13 +547,13 @@ ConcreteExpression Type::AddressOf(ConcreteExpression obj, Analyzer& a, Lexer::R
     return ConcreteExpression(a.GetPointerType(obj.t->Decay()), obj.Expr);
 }
 
-OverloadSet* Type::PerformADL(Lexer::TokenType what, Analyzer& a, Lexer::Range loc) {
+OverloadSet* Type::PerformADL(Lexer::TokenType what, Type* lhs, Type* rhs, Analyzer& a, Lexer::Range loc) {
+    if (IsReference())
+        return Decay()->PerformADL(what, lhs, rhs, a, loc);
     auto context = GetContext(a);
     if (!context)
         return a.GetOverloadSet();
-    auto result = GetContext(a)->AccessMember(what, a, loc);
-    auto subresult = GetContext(a)->PerformADL(what, a, loc);
-    return a.GetOverloadSet(result, subresult);
+    return GetContext(a)->AccessMember(what, a, loc);
 }
 
 OverloadSet* Type::AccessMember(ConcreteExpression e, Lexer::TokenType type, Analyzer& a, Lexer::Range where) {

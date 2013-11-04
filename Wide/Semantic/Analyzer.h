@@ -26,6 +26,7 @@ namespace clang {
     class QualType;
     class DeclContext;
     class ClassTemplateDecl;
+    class NamedDecl;
 }
 
 namespace Wide {
@@ -71,10 +72,10 @@ namespace Wide {
             std::size_t operator()(const std::vector<Type*>& t) const;
         };
         struct SetTypeHasher {
-            std::size_t operator()(const std::unordered_set<Callable*>& t) const {
+            template<typename T> std::size_t operator()(const std::unordered_set<T*>& t) const {
                 std::size_t hash = 0;
                 for(auto ty : t)
-                    hash += std::hash<Callable*>()(ty);
+                    hash += std::hash<T*>()(ty);
                 return hash;
             }
         };
@@ -92,6 +93,7 @@ namespace Wide {
             std::unordered_map<clang::ClassTemplateDecl*, ClangTemplateClass*> ClangTemplateClasses;
             std::unordered_map<const AST::FunctionOverloadSet*, std::unordered_map<Type*, OverloadSet*>> OverloadSets;
             std::unordered_map<unsigned, FloatType*> FloatTypes;
+            std::unordered_map<std::unordered_set<clang::NamedDecl*>, std::unordered_map<Type*, OverloadSet*>, SetTypeHasher> clang_overload_sets;
 
             std::unordered_map<const AST::Type*, std::unordered_map<Type*, UserDefinedType*>> UDTs;
             std::unordered_map<const AST::Module*, Module*> WideModules;
@@ -136,6 +138,7 @@ namespace Wide {
             OverloadSet* GetOverloadSet(Callable* c);
             OverloadSet* GetOverloadSet(const AST::FunctionOverloadSet* set, Type* nonstatic);
             OverloadSet* GetOverloadSet(OverloadSet*, OverloadSet*);
+            OverloadSet* GetOverloadSet(std::unordered_set<clang::NamedDecl*> decls, ClangUtil::ClangTU* from, Type* context);
             UserDefinedType* GetUDT(const AST::Type*, Type* context);
             IntegralType* GetIntegralType(unsigned, bool);
             PointerType* GetPointerType(Type* to);
