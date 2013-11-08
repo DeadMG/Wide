@@ -1,8 +1,8 @@
 using clangtest := cpp("ClangADL.h").ClangADL.test;
 module Test {
     type t {}
-    operator==(t lhs, clangtest rhs) {}
+    operator==(t lhs, clangtest rhs) { return true; }
 }
 Main() {
-    Test.t() == clangtest();
+    return Test.t() == clangtest();
 }

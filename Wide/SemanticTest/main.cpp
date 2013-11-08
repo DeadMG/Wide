@@ -9,12 +9,6 @@
 #define CATCH_CONFIG_MAIN
 #include <Wide/Util/Test/Catch.h>
 
-#pragma warning(push, 0)
-#include <llvm/ExecutionEngine/GenericValue.h>
-#include <llvm/ExecutionEngine/Interpreter.h>
-#include <llvm/ExecutionEngine/ExecutionEngine.h>
-#pragma warning(pop)
-
 void Compile(const Wide::Options::Clang& copts, std::string file) {
     Wide::Driver::NullGenerator mockgen(copts.TargetOptions.Triple);
     Wide::Driver::Compile(copts, [&](Wide::Semantic::Analyzer& a, const Wide::AST::Module* root) {
@@ -51,22 +45,7 @@ void Interpret(const Wide::Options::Clang& copts, std::string file) {
     std::string name;
     static const auto loc = Wide::Lexer::Range(std::make_shared<std::string>("Test harness internal"));
     Wide::Options::LLVM llvmopts;
-    Wide::LLVMCodegen::Generator g(llvmopts, copts.TargetOptions.Triple, [&](std::unique_ptr<llvm::Module> main) {
-        llvm::EngineBuilder b(main.get());
-        b.setAllocateGVsWithCode(false);
-        b.setEngineKind(llvm::EngineKind::Interpreter);
-        std::string errstring;
-        b.setErrorStr(&errstring);
-        auto ee = b.create();
-        // Fuck you, shitty LLVM ownership semantics.
-        if (ee)
-            main.release();
-        auto result = ee->runFunction(ee->FindFunctionNamed(name.c_str()), std::vector<llvm::GenericValue>());
-        auto intval = result.IntVal.getLimitedValue();
-        if (!intval)
-            throw std::runtime_error("Test returned false.");
-        delete ee;
-    });
+    Wide::LLVMCodegen::Generator g(llvmopts, copts.TargetOptions.Triple, std::function<void(std::unique_ptr<llvm::Module>)>());
     Wide::Driver::Compile(copts, [&](Wide::Semantic::Analyzer& a, const Wide::AST::Module* root) {        
         auto m = a.GetGlobalModule()->AccessMember("Main", a, Wide::Lexer::Range(loc));
         if (!m)
@@ -95,16 +74,16 @@ TEST_CASE("Compile Success", "Compile") {
     CHECK_NOTHROW(Compile(clangopts, "DeferredLambda.wide" ));
     CHECK_NOTHROW(Compile(clangopts, "DeferredExpressionStatement.wide" ));
     CHECK_NOTHROW(Compile(clangopts, "BooleanOperations.wide" ));
-    CHECK_NOTHROW(Compile(clangopts, "ClangADL.wide" ));
-    CHECK_NOTHROW(Compile(clangopts, "ClangMixedADL.wide" ));
-    CHECK_NOTHROW(Compile(clangopts, "ClangMemberFunction.wide" ));
-    CHECK_NOTHROW(Compile(clangopts, "ClangMemberOperator.wide" ));
 }
 
 TEST_CASE("Interpet Success", "Interpret") {
     Wide::Options::Clang clangopts;
     clangopts.TargetOptions.Triple = "i686-pc-mingw32";
     CHECK_NOTHROW(Interpret(clangopts, "BooleanShortCircuit.wide" ));
+    CHECK_NOTHROW(Interpret(clangopts, "ClangADL.wide" ));
+    CHECK_NOTHROW(Interpret(clangopts, "ClangMixedADL.wide" ));
+    CHECK_NOTHROW(Interpret(clangopts, "ClangMemberFunction.wide" ));
+    CHECK_NOTHROW(Interpret(clangopts, "ClangMemberOperator.wide" ));
 }
 
 TEST_CASE("Compile Fail", "Compile") {

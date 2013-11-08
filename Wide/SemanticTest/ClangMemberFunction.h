@@ -1,3 +1,3 @@
 struct test {
-    void f() {}
+    bool f() { return true; }
 };

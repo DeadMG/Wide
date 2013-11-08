@@ -373,7 +373,7 @@ ClangUtil::ClangTU* Analyzer::LoadCPPHeader(std::string file, Lexer::Range where
         return &headers.find(file)->second;
     headers.insert(std::make_pair(file, ClangUtil::ClangTU(gen->GetContext(), file, *clangopts, where)));
     auto ptr = &headers.find(file)->second;
-    gen->AddClangTU([&](llvm::Module* main) { ptr->GenerateCodeAndLinkModule(main); });
+    gen->AddClangTU([=](llvm::Module* main) { ptr->GenerateCodeAndLinkModule(main); });
     return ptr;
 }
 

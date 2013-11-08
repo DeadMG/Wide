@@ -59,7 +59,6 @@ namespace Wide {
         class LvalueType;
         class RvalueType;
         class FunctionType;
-        class ClangOverloadSet;
         class ClangTemplateClass;
         class OverloadSet;       
         class UserDefinedType;

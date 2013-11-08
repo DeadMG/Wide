@@ -1,4 +1,4 @@
 namespace ClangADL {
     struct test {};
-    void operator==(decltype(nullptr) lhs, test rhs) {}
+    bool operator==(decltype(nullptr) lhs, test rhs) { return true; }
 }

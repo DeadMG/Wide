@@ -5,6 +5,7 @@
 #include <Wide/Semantic/Analyzer.h>
 #include <Wide/Semantic/ClangType.h>
 #include <Wide/Codegen/Generator.h>
+#include <Wide/Util/Codegen/InitializeLLVM.h>
 #include <functional>
 #include <string>
 #include <fstream>
@@ -19,6 +20,10 @@
 #include <clang/AST/ASTContext.h>
 #include <llvm/IR/DataLayout.h>
 #include <CodeGen/CodeGenModule.h>
+#include <llvm/Support/TargetSelect.h>
+#include <llvm/Target/TargetOptions.h>
+#include <llvm/Target/TargetMachine.h>
+#include <llvm/Support/TargetRegistry.h>
 #include <clang/Sema/Sema.h>
 #include <clang/Frontend/TextDiagnosticPrinter.h>
 #include <clang/Frontend/Utils.h>
@@ -110,7 +115,12 @@ public:
         , codegenmod(astcon, Options->CodegenOptions, mod, layout, engine)
         , filename(std::move(file))   
     {
-        mod.setDataLayout(targetinfo->getTargetDescription());
+        Codegen::InitializeLLVM();
+        std::string err;
+        const llvm::Target& llvmtarget = *llvm::TargetRegistry::lookupTarget(opts.TargetOptions.Triple, err);
+        llvm::TargetOptions llvmtargetopts;
+        auto targetmachine = std::unique_ptr<llvm::TargetMachine>(llvmtarget.createTargetMachine(opts.TargetOptions.Triple, llvm::Triple(opts.TargetOptions.Triple).getArchName(), "", llvmtargetopts));
+        mod.setDataLayout(targetmachine->getDataLayout()->getStringRepresentation());  
         mod.setTargetTriple(Options->TargetOptions.Triple);
         clang::InitializePreprocessor(preproc, *Options->PreprocessorOptions, *Options->HeaderSearchOptions, Options->FrontendOptions);
         preproc.getBuiltinInfo().InitializeBuiltins(preproc.getIdentifierTable(), Options->LanguageOptions);

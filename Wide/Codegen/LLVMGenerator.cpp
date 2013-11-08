@@ -36,7 +36,8 @@ void Generator::operator()() {
 
     pm.run(*main);
 
-    func(std::move(main));
+    if (func)
+        func(std::move(main));
 }
 
 Generator::Generator(const Options::LLVM& l, std::string trip, std::function<void(std::unique_ptr<llvm::Module>)> action)

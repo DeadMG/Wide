@@ -1,3 +1,3 @@
 struct test {
-    void operator==(const test& other) const {}
+    bool operator==(const test& other) const { return true; }
 };
