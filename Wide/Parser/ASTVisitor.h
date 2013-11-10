@@ -9,28 +9,28 @@ namespace Wide {
         public:
             void VisitStatement(const Statement* s) {
                 if (!s) return;
-                if (auto whil = dynamic_cast<const While*>(s)) { crtp_cast().VisitWhile(whil); return; }
-                if (auto br = dynamic_cast<const If*>(s)) { crtp_cast().VisitIf(br); return; }
-                if (auto ret = dynamic_cast<const Return*>(s)) { crtp_cast().VisitReturn(ret); return; }
-                if (auto comp = dynamic_cast<const CompoundStatement*>(s)) { crtp_cast().VisitCompoundStatement(comp); return; }
-                if (auto var = dynamic_cast<const Variable*>(s)) { crtp_cast().VisitVariable(var); return; }
-                if (auto expr = dynamic_cast<const Expression*>(s)) { crtp_cast().VisitExpression(expr); return; }
+                if (auto whil = dynamic_cast<const While*>(s)) { return crtp_cast().VisitWhile(whil); }
+                if (auto br = dynamic_cast<const If*>(s)) { return crtp_cast().VisitIf(br); }
+                if (auto ret = dynamic_cast<const Return*>(s)) { return crtp_cast().VisitReturn(ret); }
+                if (auto comp = dynamic_cast<const CompoundStatement*>(s)) { return crtp_cast().VisitCompoundStatement(comp); }
+                if (auto var = dynamic_cast<const Variable*>(s)) { return crtp_cast().VisitVariable(var); }
+                if (auto expr = dynamic_cast<const Expression*>(s)) { return crtp_cast().VisitExpression(expr); }
                 assert(false && "Internal Compiler Error: Encountered an unknown statement in AST::Visitor.");
             }
 
             void VisitExpression(const Expression* e) {
-                if (auto ident = dynamic_cast<const Identifier*>(e)) { crtp_cast().VisitIdentifier(ident); return; }
-                if (auto str = dynamic_cast<const String*>(e)) { crtp_cast().VisitString(str); return; }
-                if (auto mem = dynamic_cast<const MemberAccess*>(e)) { crtp_cast().VisitMemberAccess(mem); return; }
-                if (auto in = dynamic_cast<const Integer*>(e)) { crtp_cast().VisitInteger(in); return; }
-                if (auto call = dynamic_cast<const FunctionCall*>(e)) { crtp_cast().VisitCall(call); return; }
-                if (auto call = dynamic_cast<const MetaCall*>(e)) { crtp_cast().VisitMetaCall(call); return; }
-                if (auto lam = dynamic_cast<const Lambda*>(e)) { crtp_cast().VisitLambda(lam); return; }
-                if (auto deref = dynamic_cast<const Dereference*>(e)) { crtp_cast().VisitDereference(deref); return; }
-                if (auto neg = dynamic_cast<const Negate*>(e)) { crtp_cast().VisitNegate(neg); return; }
-                if (auto inc = dynamic_cast<const Increment*>(e)) { crtp_cast().VisitIncrement(inc); return; }
-                if (auto ptr = dynamic_cast<const PointerMemberAccess*>(e)) { crtp_cast().VisitPointerAccess(ptr); return; }
-                if (auto self = dynamic_cast<const This*>(e)) { crtp_cast().VisitThis(self); return; }
+                if (auto ident = dynamic_cast<const Identifier*>(e)) { return crtp_cast().VisitIdentifier(ident); }
+                if (auto str = dynamic_cast<const String*>(e)) { return crtp_cast().VisitString(str); }
+                if (auto mem = dynamic_cast<const MemberAccess*>(e)) { return crtp_cast().VisitMemberAccess(mem); }
+                if (auto in = dynamic_cast<const Integer*>(e)) { return crtp_cast().VisitInteger(in); }
+                if (auto call = dynamic_cast<const FunctionCall*>(e)) { return crtp_cast().VisitCall(call); }
+                if (auto call = dynamic_cast<const MetaCall*>(e)) { return crtp_cast().VisitMetaCall(call); }
+                if (auto lam = dynamic_cast<const Lambda*>(e)) { return crtp_cast().VisitLambda(lam); }
+                if (auto deref = dynamic_cast<const Dereference*>(e)) { return crtp_cast().VisitDereference(deref); }
+                if (auto neg = dynamic_cast<const Negate*>(e)) { return crtp_cast().VisitNegate(neg); }
+                if (auto inc = dynamic_cast<const Increment*>(e)) { return crtp_cast().VisitIncrement(inc); }
+                if (auto ptr = dynamic_cast<const PointerMemberAccess*>(e)) { return crtp_cast().VisitPointerAccess(ptr); }
+                if (auto self = dynamic_cast<const This*>(e)) { return crtp_cast().VisitThis(self); }
                 if (auto dec = dynamic_cast<const Decrement*>(e)) { return crtp_cast().VisitDecrement(dec); }
                 if (auto bin = dynamic_cast<const BinaryExpression*>(e)) { return crtp_cast().VisitBinaryExpression(bin); }
                 assert(false && "Internal Compiler Error: Encountered unknown expression node in AST::Visitor.");

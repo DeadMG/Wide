@@ -142,27 +142,16 @@ Wide::Util::optional<Expression> ClangType::AccessMember(ConcreteExpression val,
     if (lr.isAmbiguous())
         throw std::runtime_error("Attempted to access a member of a Clang type, but Clang said the lookup was ambiguous.");
     if (lr.isSingleResult()) {
-        // Check for members first.
         if (auto field = llvm::dyn_cast<clang::FieldDecl>(lr.getFoundDecl())) {
-            ConcreteExpression out;
-            if (IsLvalueType(val.t)) {
-                // The result is an lvalue of that type.
-                out.t = a.GetLvalueType(a.GetClangType(*from, field->getType()));
-            } else {
-                out.t = a.GetRvalueType(a.GetClangType(*from, field->getType()));
-            }
-            out.Expr = a.gen->CreateFieldExpression(val.Expr, from->GetFieldNumber(field));
-            return out;
+            auto ty = IsLvalueType(val.t) ? a.GetLvalueType(a.GetClangType(*from, field->getType())) : a.GetRvalueType(a.GetClangType(*from, field->getType()));
+            return ConcreteExpression(ty, a.gen->CreateFieldExpression(val.Expr, from->GetFieldNumber(field)));
         }        
         if (auto fun = llvm::dyn_cast<clang::CXXMethodDecl>(lr.getFoundDecl()))
             return GetOverloadSet(fun, a, from, val, where);
         if (auto ty = llvm::dyn_cast<clang::TypeDecl>(lr.getFoundDecl()))
             return a.GetConstructorType(a.GetClangType(*from, from->GetASTContext().getTypeDeclType(ty)))->BuildValueConstruction(a, where);
         if (auto vardecl = llvm::dyn_cast<clang::VarDecl>(lr.getFoundDecl())) {    
-            ConcreteExpression out;
-            out.t = a.GetLvalueType(a.GetClangType(*from, vardecl->getType()));
-            out.Expr = a.gen->CreateGlobalVariable(from->MangleName(vardecl));
-            return out;
+            return ConcreteExpression(a.GetLvalueType(a.GetClangType(*from, vardecl->getType())), a.gen->CreateGlobalVariable(from->MangleName(vardecl)));
         }
         if (auto tempdecl = llvm::dyn_cast<clang::ClassTemplateDecl>(lr.getFoundDecl()))
             return a.GetClangTemplateClass(*from, tempdecl)->BuildValueConstruction(a, where);
@@ -239,9 +228,7 @@ Codegen::Expression* ClangType::BuildInplaceConstruction(Codegen::Expression* me
 
     // Constructor signatures don't seem to include the need for "this", so just lie.
     // It all turns out alright.
-    ConcreteExpression self;
-    self.t = a.GetLvalueType(this);
-    self.Expr = mem;
+    ConcreteExpression self(a.GetLvalueType(this), mem);
     types.push_back(self.t);
 
     for(unsigned i = 0; i < fun->getNumParams(); ++i) {
@@ -270,9 +257,7 @@ Codegen::Expression* ClangType::BuildInplaceConstruction(Codegen::Expression* me
 
     auto rty = a.GetClangType(*from, fun->getResultType());
     auto funty = a.GetFunctionType(rty, types);
-    ConcreteExpression obj;
-    obj.t = funty;
-    obj.Expr = a.gen->CreateFunctionValue(from->MangleName(fun));
+    ConcreteExpression obj(funty, a.gen->CreateFunctionValue(from->MangleName(fun)));
     return funty->BuildCall(obj, args, a, where).Resolve(nullptr).Expr;
 }
 
@@ -341,9 +326,7 @@ Wide::Codegen::Expression* ClangType::BuildBooleanConversion(ConcreteExpression 
     std::vector<Type*> types;
     types.insert(types.begin(), self.t);
     auto funty = a.GetFunctionType(ret, types);    
-    ConcreteExpression clangfunc;
-    clangfunc.t = funty;
-    clangfunc.Expr = a.gen->CreateFunctionValue(from->MangleName(fun));
+    ConcreteExpression clangfunc(funty, a.gen->CreateFunctionValue(from->MangleName(fun)));
     std::vector<ConcreteExpression> expressions;
     expressions.push_back(self);
     auto e = funty->BuildCall(clangfunc, std::move(expressions), a, where).Resolve(nullptr);

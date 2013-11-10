@@ -91,7 +91,7 @@ Expression OverloadSet::BuildCall(ConcreteExpression e, std::vector<ConcreteExpr
     if (call->AddThis())
         args.insert(args.begin(), ConcreteExpression(nonstatic, a.gen->CreateFieldExpression(e.BuildValue(a, where).Expr, 0)));
 
-    return call->BuildCall(ConcreteExpression(), std::move(args), a, where);
+    return call->BuildCall(call->BuildValueConstruction(a, where), std::move(args), a, where);
 }
 
 OverloadSet::OverloadSet(std::unordered_set<Callable*> call)
@@ -220,7 +220,7 @@ Callable* OverloadSet::Resolve(std::vector<Type*> f_args, Analyzer& a) {
         if (wide_result)
             throw std::runtime_error("Attempted to resolve an overload set, but both Wide and C++ provided viable results.");
         auto fun = best->Function;
-        struct cppcallable : public Callable {
+        struct cppcallable : public Callable, public MetaType {
             clang::FunctionDecl* fun;
             ClangUtil::ClangTU* from;
             Type* nonstatic;

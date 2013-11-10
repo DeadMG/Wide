@@ -45,8 +45,7 @@ clang::QualType FunctionType::GetClangType(ClangUtil::ClangTU& from, Analyzer& a
 }
 
 Expression FunctionType::BuildCall(ConcreteExpression val, std::vector<ConcreteExpression> args, Analyzer& a, Lexer::Range where) {
-    ConcreteExpression out;
-    out.t = ReturnType;
+    ConcreteExpression out(ReturnType, nullptr);
     if (Args.size() != args.size())
         throw std::runtime_error("Attempt to call the function with the wrong number of arguments.");
     // Our type system handles T vs T&& transparently, so substitution should be clean here. Just mention it in out.t.

@@ -16,7 +16,7 @@ Module::Module(const AST::Module* p, Module* higher)
     : m(p), context(higher) {}
 
 void Module::AddSpecialMember(std::string name, Expression t){
-    SpecialMembers[std::move(name)] = t;
+    SpecialMembers.insert(std::make_pair(std::move(name), t));
 }
 OverloadSet* Module::AccessMember(ConcreteExpression val, Wide::Lexer::TokenType ty, Analyzer& a, Lexer::Range where) {
     if (m->opcondecls.find(ty) != m->opcondecls.end())
@@ -56,6 +56,6 @@ Wide::Util::optional<Expression> Module::AccessMember(ConcreteExpression val, st
     if (m->functions.find(name) != m->functions.end())
         return a.GetOverloadSet(m->functions.at(name), this)->BuildValueConstruction(a, where);   
     if (SpecialMembers.find(name) != SpecialMembers.end())
-        return SpecialMembers[name];
+        return SpecialMembers.at(name);
     return Wide::Util::none;
 }

@@ -44,15 +44,13 @@ Function::Function(std::vector<Type*> args, const AST::Function* astfun, Analyze
 #pragma warning(disable : 4800)
         auto param = [this, num] { return num + ReturnType->IsComplexType() + (bool(dynamic_cast<UserDefinedType*>(context))); };
         Type* ty = args[num];
-        ConcreteExpression var;
-        var.t = a.GetLvalueType(ty);
+        // Expr is set.
+        ConcreteExpression var(a.GetLvalueType(ty), nullptr);
         if (ty->IsComplexType()) {
             var.Expr = a.gen->CreateParameterExpression(param);
         } else {
             std::vector<ConcreteExpression> args;
-            ConcreteExpression copy;
-            copy.Expr = a.gen->CreateParameterExpression(param);
-            copy.t = ty;
+            ConcreteExpression copy(ty, a.gen->CreateParameterExpression(param));
             args.push_back(copy);
             if (copy.t->IsReference())
                 var.Expr = copy.Expr;
@@ -60,7 +58,7 @@ Function::Function(std::vector<Type*> args, const AST::Function* astfun, Analyze
                 var.Expr = ty->BuildLvalueConstruction(args, a, arg.location).Expr;
         }
         ++num;
-        variables.back()[arg.name] = var;
+        variables.back().insert(std::make_pair(arg.name, var));
         exprs.push_back(var.Expr);
         Args.push_back(ty);
     }
@@ -94,16 +92,12 @@ Function::Function(std::vector<Type*> args, const AST::Function* astfun, Analyze
     }
     if (ReturnType) {
         // We have the name and signature- declare, and generate the body later.
-        codefun = a.gen->CreateFunction(GetLLVMType(a), name, this);
+        codefun = a.gen->CreateFunction(GetSignature(a)->GetLLVMType(a), name, this);
     }
 }
 
 clang::QualType Function::GetClangType(ClangUtil::ClangTU& where, Analyzer& a) {
     return GetSignature(a)->GetClangType(where, a);
-}
-
-std::function<llvm::Type*(llvm::Module*)> Function::GetLLVMType(Analyzer& a) {    
-    return GetSignature(a)->GetLLVMType(a);
 }
 
 Expression check(Wide::Util::optional<Expression> e) {
@@ -247,14 +241,14 @@ void Function::ComputeBody(Analyzer& a) {
                 return result.VisitContents(
                     [&, handle_variable_expression](ConcreteExpression& result) {
                         auto expr = handle_variable_expression(result);
-                        variables.back()[var->name] = expr;
+                        variables.back().insert(std::make_pair(var->name, expr));
                         return expr.Expr;
                     }, 
                     [&, handle_variable_expression](DeferredExpression& result) {
                         auto defexpr = DeferredExpression([result, handle_variable_expression](Type* t) {
                             return handle_variable_expression(result(t));
                         });
-                        variables.back()[var->name] = defexpr;
+                        variables.back().insert(std::make_pair(var->name, defexpr));
                         return a.gen->CreateDeferredStatement([=] {
                             return defexpr(nullptr).Expr;
                         });
@@ -330,16 +324,14 @@ void Function::CompleteAnalysis(Type* ret, Analyzer& a) {
     if (ReturnType == a.GetVoidType() && !dynamic_cast<Codegen::ReturnStatement*>(exprs.back()))
         exprs.push_back(a.gen->CreateReturn());
     if (!codefun)
-        codefun = a.gen->CreateFunction(GetLLVMType(a), name, this);
+        codefun = a.gen->CreateFunction(GetSignature(a)->GetLLVMType(a), name, this);
     for (auto&& x : exprs)
         codefun->AddStatement(x);
     variables.clear();    
 }
 Expression Function::BuildCall(ConcreteExpression ex, std::vector<ConcreteExpression> args, Analyzer& a, Lexer::Range where) {
     if (s == State::AnalyzeCompleted) {
-        ConcreteExpression val;
-        val.t = this;
-        val.Expr = a.gen->CreateFunctionValue(name);
+        ConcreteExpression val(this, a.gen->CreateFunctionValue(name));
         return GetSignature(a)->BuildCall(val, std::move(args), a, where);
     } 
     if (s == State::NotYetAnalyzed) {
@@ -349,17 +341,15 @@ Expression Function::BuildCall(ConcreteExpression ex, std::vector<ConcreteExpres
     return DeferredExpression([this, &a, args, where](Type* t) {
         if (s != State::AnalyzeCompleted)
             CompleteAnalysis(t, a);
-        ConcreteExpression val;
-        val.t = this;
-        val.Expr = a.gen->CreateFunctionValue(name);
+        ConcreteExpression val(this, a.gen->CreateFunctionValue(name));
         return GetSignature(a)->BuildCall(val, std::move(args), a, where).Resolve(t);
     });    
 }
-Wide::Util::optional<Expression> Function::AccessMember(ConcreteExpression e, std::string name, Analyzer& a, Lexer::Range where) {
+Wide::Util::optional<Expression> Function::LookupLocal(std::string name, Analyzer& a, Lexer::Range where) {
     for(auto it = variables.rbegin(); it != variables.rend(); ++it) {
         auto&& map = *it;
         if (map.find(name) != map.end()) {
-            return map[name];
+            return map.at(name);
         }
     }
     if (name == "this" && dynamic_cast<UserDefinedType*>(context))

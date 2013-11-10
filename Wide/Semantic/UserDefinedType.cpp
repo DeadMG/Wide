@@ -187,9 +187,9 @@ Wide::Util::optional<Expression> UserDefinedType::AccessMember(ConcreteExpressio
     }
     if (members.find(name) != members.end()) {
         auto member = llvmtypes[members[name]];
-        ConcreteExpression out;
         if (expr.t->IsReference()) {
-            out.Expr = a.gen->CreateFieldExpression(expr.Expr, member.num);
+            auto ty = IsLvalueType(expr.t) ? a.GetLvalueType(member.t) : a.GetRvalueType(member.t);
+            ConcreteExpression out(ty, a.gen->CreateFieldExpression(expr.Expr, member.num));
             if (IsLvalueType(expr.t)) {
                 out.t = a.GetLvalueType(member.t);
             } else {

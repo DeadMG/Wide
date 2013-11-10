@@ -2,8 +2,8 @@
 #include <Wide/Semantic/ClangOptions.h>
 #include <Wide/Util/Concurrency/ParallelForEach.h>
 #include <Wide/Codegen/LLVMOptions.h>
+#include <Wide/Codegen/Generator.h>
 #include <Wide/Parser/Parser.h>
-#include <Wide/Codegen/LLVMGenerator.h>
 #include <Wide/Lexer/Lexer.h>
 #include <Wide/Parser/Builder.h>
 #include <boost/program_options.hpp>

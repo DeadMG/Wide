@@ -18,7 +18,7 @@ namespace Wide {
     namespace Semantic {
         class FunctionType;
         class UserDefinedType;
-        class Function : public Callable {
+        class Function : public Callable, public MetaType {
             enum class State {
                 NotYetAnalyzed,
                 AnalyzeInProgress,
@@ -48,11 +48,9 @@ namespace Wide {
             bool HasLocalVariable(std::string name);
             Function(std::vector<Type*> args, const AST::Function* astfun, Analyzer& a, Type* container);        
 
-            clang::QualType GetClangType(ClangUtil::ClangTU& where, Analyzer& a) override;        
-            std::function<llvm::Type*(llvm::Module*)> GetLLVMType(Analyzer& a) override; 
+            clang::QualType GetClangType(ClangUtil::ClangTU& where, Analyzer& a) override;       
      
             Expression BuildCall(ConcreteExpression, std::vector<ConcreteExpression> args, Analyzer& a, Lexer::Range where) override;
-            Wide::Util::optional<Expression> AccessMember(ConcreteExpression expr, std::string name, Analyzer& a, Lexer::Range where) override;
             using Type::AccessMember;
             std::string GetName();
             Type* GetContext(Analyzer& a) override { return context; }
@@ -62,6 +60,7 @@ namespace Wide {
                 return Args;
             }
             bool AddThis() override;
+            Wide::Util::optional<Expression> LookupLocal(std::string name, Analyzer& a, Lexer::Range where);
         };
     }
 }

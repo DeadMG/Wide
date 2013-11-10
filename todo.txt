@@ -33,7 +33,6 @@ Add the ability for Wide functions to refer to constant context.
 Add the ability to resolve one function from a C++ overload set.
 Fix default arguments.
 Add polymorphic types.
-Fix static vs non-static lookup and require values for module/etc.
 Add tests.
 
 WideLibrary:

@@ -47,7 +47,7 @@ void Interpret(const Wide::Options::Clang& copts, std::string file) {
     Wide::Options::LLVM llvmopts;
     Wide::LLVMCodegen::Generator g(llvmopts, copts.TargetOptions.Triple, std::function<void(std::unique_ptr<llvm::Module>)>());
     Wide::Driver::Compile(copts, [&](Wide::Semantic::Analyzer& a, const Wide::AST::Module* root) {        
-        auto m = a.GetGlobalModule()->AccessMember("Main", a, Wide::Lexer::Range(loc));
+        auto m = a.GetGlobalModule()->AccessMember(a.GetGlobalModule()->BuildValueConstruction(a, loc), "Main", a, loc);
         if (!m)
             throw std::runtime_error("No Main() found for test!");
         auto func = dynamic_cast<Wide::Semantic::OverloadSet*>(m->Resolve(nullptr).t);
@@ -57,7 +57,7 @@ void Interpret(const Wide::Options::Clang& copts, std::string file) {
         if (!f)
             throw std::runtime_error("Could not resolve Main to a function.");
         name = f->GetName();
-        f->BuildCall(Wide::Semantic::ConcreteExpression(), std::vector<Wide::Semantic::ConcreteExpression>(), a, loc);
+        f->BuildCall(f->BuildValueConstruction(a, loc), std::vector<Wide::Semantic::ConcreteExpression>(), a, loc);
     }, g, { file });
 }
 

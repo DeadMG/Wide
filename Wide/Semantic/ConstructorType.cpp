@@ -25,17 +25,17 @@ struct EmplaceType : public MetaType {
     }
 };
 
-Expression ConstructorType::BuildCall(ConcreteExpression, std::vector<ConcreteExpression> args, Analyzer& a, Lexer::Range where) {
+Expression ConstructorType::BuildCall(ConcreteExpression self, std::vector<ConcreteExpression> args, Analyzer& a, Lexer::Range where) {
+    assert(self.t->Decay() == this);
     return t->BuildRvalueConstruction(std::move(args), a, where);
 }
-Wide::Util::optional<Expression> ConstructorType::AccessMember(ConcreteExpression, std::string name, Analyzer& a, Lexer::Range where) {
-    ConcreteExpression self;
-    self.t = t;
-    self.Expr = nullptr;
-    return t->AccessMember(self, name, a, where);
+Wide::Util::optional<Expression> ConstructorType::AccessMember(ConcreteExpression self, std::string name, Analyzer& a, Lexer::Range where) {
+    assert(self.t->Decay() == this);
+    return t->AccessStaticMember(name, a, where);
 }
 
 Wide::Util::optional<Expression> ConstructorType::PointerAccessMember(ConcreteExpression obj, std::string name, Analyzer& a, Lexer::Range where) {
+    assert(obj.t->Decay() == this);
     if (name == "decay")
         return a.GetConstructorType(t->Decay())->BuildValueConstruction(std::vector<ConcreteExpression>(), a, where);
     if (name == "lvalue")

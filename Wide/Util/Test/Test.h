@@ -27,7 +27,7 @@ namespace Wide {
             for(auto overset : root->functions) {
                 for(auto fun : overset.second->functions) {
                     if (fun->args.size() == 0) {
-                        Try([&] { a.GetWideFunction(fun, mod)->BuildCall(Wide::Semantic::ConcreteExpression(), std::vector<Wide::Semantic::ConcreteExpression>(), a, fun->where.front()); }, errorfunc, swallow);
+                        Try([&] { a.GetWideFunction(fun, mod)->BuildCall(a.GetWideFunction(fun, mod)->BuildValueConstruction(a, fun->where.front()), std::vector<Wide::Semantic::ConcreteExpression>(), a, fun->where.front()); }, errorfunc, swallow);
                         continue;
                     }
                     std::vector<Wide::Semantic::ConcreteExpression> concexpr;
@@ -45,7 +45,10 @@ namespace Wide {
                             std::vector<Wide::Semantic::Type*> types;
                             for(auto x : concexpr)
                                 types.push_back(x.t);
-                            Try([&] { a.GetWideFunction(fun, mod, std::move(types))->BuildCall(Wide::Semantic::ConcreteExpression(), std::move(concexpr), a, fun->where.front()); }, errorfunc, swallow);
+                            Try([&] { 
+                                auto ty = a.GetWideFunction(fun, mod, std::move(types));
+                                ty->BuildCall(ty->BuildValueConstruction(a, fun->where.front()), std::move(concexpr), a, fun->where.front()); 
+                            }, errorfunc, swallow);
                         }
                     } catch(...) {}
                 }

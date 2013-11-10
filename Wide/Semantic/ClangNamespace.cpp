@@ -45,7 +45,7 @@ Wide::Util::optional<Expression> ClangNamespace::AccessMember(ConcreteExpression
             return ConcreteExpression(a.GetLvalueType(a.GetClangType(*from, vardecl->getType())), a.gen->CreateGlobalVariable(from->MangleName(vardecl)));
         }
         if (auto namedecl = llvm::dyn_cast<clang::NamespaceDecl>(result)) {
-            return a.GetConstructorType(a.GetClangNamespace(*from, namedecl))->BuildValueConstruction(a, where);
+            return a.GetClangNamespace(*from, namedecl)->BuildValueConstruction(a, where);
         }
         if (auto typedefdecl = llvm::dyn_cast<clang::TypeDecl>(result)) {
             return a.GetConstructorType(a.GetClangType(*from, from->GetASTContext().getTypeDeclType(typedefdecl)))->BuildValueConstruction(a, where);

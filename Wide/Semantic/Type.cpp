@@ -8,11 +8,14 @@
 #include <Wide/Lexer/Token.h>
 #include <Wide/Semantic/UserDefinedType.h>
 #include <Wide/Semantic/OverloadSet.h>
+#include <sstream>
 
 using namespace Wide;
 using namespace Semantic;
 
 #pragma warning(push, 0)
+#include <llvm/IR/DerivedTypes.h>
+#include <llvm/IR/Module.h>
 #include <clang/AST/AST.h>
 #pragma warning(pop)
 
@@ -429,15 +432,8 @@ static const std::unordered_map<Lexer::TokenType, Lexer::TokenType> Assign = [](
     return assign;
 }();
 
-Wide::Util::optional<Expression> Type::AccessMember(std::string name, Analyzer& a, Lexer::Range where) {
-    return AccessMember(ConcreteExpression(), std::move(name), a, where);
-}
-OverloadSet* Type::AccessMember(Lexer::TokenType name, Analyzer& a, Lexer::Range where) {
-    return AccessMember(ConcreteExpression(), std::move(name), a, where);
-}
-
 OverloadSet* ConcreteExpression::AccessMember(Lexer::TokenType name, Analyzer& a, Lexer::Range where) {
-    return t->AccessMember(*this, name, a, where);
+    return t->Decay()->AccessMember(*this, name, a, where);
 }
 
 Expression Type::BuildBinaryExpression(ConcreteExpression lhs, ConcreteExpression rhs, Lexer::TokenType type, Analyzer& a, Lexer::Range where) {
@@ -495,6 +491,7 @@ Expression Type::BuildBinaryExpression(ConcreteExpression lhs, ConcreteExpressio
     case Lexer::TokenType::Assignment:
         if (!IsComplexType() && lhs.t->Decay() == rhs.t->Decay() && IsLvalueType(lhs.t))
             return ConcreteExpression(lhs.t, a.gen->CreateStore(lhs.Expr, rhs.BuildValue(a, where).Expr));
+        break;
     case Lexer::TokenType::Or:
         return ConcreteExpression(a.GetBooleanType(), lhs.BuildBooleanConversion(a, where)).BuildBinaryExpression(ConcreteExpression(a.GetBooleanType(), rhs.BuildBooleanConversion(a, where)), Wide::Lexer::TokenType::Or, a, where);
     case Lexer::TokenType::And:
@@ -504,27 +501,27 @@ Expression Type::BuildBinaryExpression(ConcreteExpression lhs, ConcreteExpressio
 }
 
 ConcreteExpression Type::BuildRvalueConstruction(std::vector<ConcreteExpression> args, Analyzer& a, Lexer::Range where) {
-    ConcreteExpression out;
-    out.t = a.GetRvalueType(this);
-    auto mem = a.gen->CreateVariable(GetLLVMType(a), alignment(a));
+    Codegen::Expression* mem = a.gen->CreateVariable(GetLLVMType(a), alignment(a));
     if (!IsComplexType() && args.size() == 1 && args[0].t->Decay() == this) {
         args[0] = args[0].t->BuildValue(args[0], a, where);
-        out.Expr = a.gen->CreateChainExpression(a.gen->CreateStore(mem, args[0].Expr), mem);
+        mem = a.gen->CreateChainExpression(a.gen->CreateStore(mem, args[0].Expr), mem);
     } else
-        out.Expr = a.gen->CreateChainExpression(BuildInplaceConstruction(mem, args, a, where), mem);
+        mem = a.gen->CreateChainExpression(BuildInplaceConstruction(mem, args, a, where), mem);
+    ConcreteExpression out(a.GetRvalueType(this), mem);
     out.steal = true;
     return out;
 }
 
 ConcreteExpression Type::BuildLvalueConstruction(std::vector<ConcreteExpression> args, Analyzer& a, Lexer::Range where) {
-    ConcreteExpression out;
-    out.t = a.GetLvalueType(this);
-    auto mem = a.gen->CreateVariable(GetLLVMType(a), alignment(a));
+    Codegen::Expression* mem = a.gen->CreateVariable(GetLLVMType(a), alignment(a));
     if (!IsComplexType() && args.size() == 1 && args[0].t->Decay() == this) {
         args[0] = args[0].BuildValue(a, where);
-        out.Expr = a.gen->CreateChainExpression(a.gen->CreateStore(mem, args[0].Expr), mem);
+        mem = a.gen->CreateChainExpression(a.gen->CreateStore(mem, args[0].Expr), mem);
     } else
-        out.Expr = a.gen->CreateChainExpression(BuildInplaceConstruction(mem, args, a, where), mem);    return out;
+        mem = a.gen->CreateChainExpression(BuildInplaceConstruction(mem, args, a, where), mem);
+    ConcreteExpression out(a.GetLvalueType(this), mem);
+    out.steal = true;
+    return out;
 }            
 Codegen::Expression* Type::BuildInplaceConstruction(Codegen::Expression* mem, std::vector<ConcreteExpression> args, Analyzer& a, Lexer::Range where) {
     if (!IsReference() && !IsComplexType() && args.size() == 1 && args[0].t->Decay() == this)
@@ -553,11 +550,41 @@ OverloadSet* Type::PerformADL(Lexer::TokenType what, Type* lhs, Type* rhs, Analy
     auto context = GetContext(a);
     if (!context)
         return a.GetOverloadSet();
-    return GetContext(a)->AccessMember(what, a, loc);
+    return GetContext(a)->AccessMember(GetContext(a)->BuildValueConstruction(a, loc), what, a, loc);
 }
 
 OverloadSet* Type::AccessMember(ConcreteExpression e, Lexer::TokenType type, Analyzer& a, Lexer::Range where) {
     if (IsReference())
         return Decay()->AccessMember(e, type, a, where);
     return a.GetOverloadSet();
+}
+
+std::size_t MetaType::size(Analyzer& a) { return a.gen->GetInt8AllocSize(); }
+std::size_t MetaType::alignment(Analyzer& a) { return a.gen->GetDataLayout().getABIIntegerTypeAlignment(8); }
+
+std::function<llvm::Type*(llvm::Module*)> MetaType::GetLLVMType(Analyzer& a) {
+    std::stringstream typenam;
+    typenam << this;
+    auto nam = typenam.str();
+    return [=](llvm::Module* mod) -> llvm::Type* {
+        if (mod->getTypeByName(nam))
+            return mod->getTypeByName(nam);
+        return llvm::StructType::create(nam, llvm::IntegerType::getInt8Ty(mod->getContext()), nullptr);
+    };
+}
+
+Codegen::Expression* MetaType::BuildInplaceConstruction(Codegen::Expression* mem, std::vector<ConcreteExpression> args, Analyzer& a, Lexer::Range where) {
+    if (args.size() > 1)
+        throw std::runtime_error("Attempt to construct a type object with too many arguments.");
+    if (args.size() == 1 && args[0].t->Decay() != this)
+        throw std::runtime_error("Attempt to construct a type object with something other than another instance of that type.");
+    return args.size() == 0 ? mem : a.gen->CreateChainExpression(args[0].Expr, mem);
+}
+
+ConcreteExpression MetaType::BuildValueConstruction(std::vector<ConcreteExpression> args, Analyzer& a, Lexer::Range where) {
+    if (args.size() > 1)
+        throw std::runtime_error("Attempt to construct a type object with too many arguments.");
+    if (args.size() == 1 && args[0].t->Decay() != this)
+        throw std::runtime_error("Attempt to construct a type object with something other than another instance of that type.");
+    return ConcreteExpression(this, args.size() == 0 ? (Codegen::Expression*)a.gen->CreateNull(GetLLVMType(a)) : a.gen->CreateChainExpression(args[0].Expr, a.gen->CreateNull(GetLLVMType(a))));
 }

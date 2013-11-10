@@ -1,6 +1,6 @@
 #pragma once
 
-#include <Wide/Semantic/MetaType.h>
+#include <Wide/Semantic/Type.h>
 #include <unordered_map>
 #include <string>
 

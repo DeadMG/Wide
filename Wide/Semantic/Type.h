@@ -13,6 +13,7 @@
 #ifndef _MSC_VER
 #include <Wide/Semantic/Analyzer.h>
 #endif
+#pragma warning(disable : 4250)
 
 namespace llvm {
     class Type;
@@ -43,10 +44,6 @@ namespace Wide {
         struct DeferredExpression;
         struct Expression;
         struct ConcreteExpression {
-            ConcreteExpression()
-                : t(nullptr)
-                , Expr(nullptr)
-                , steal(false) {}
             ConcreteExpression(Type* ty, Codegen::Expression* ex)
                 : t(ty), Expr(ex), steal(false) {}
             Type* t;
@@ -124,8 +121,6 @@ namespace Wide {
         };
 
         struct Expression {
-            Expression()
-                : contents(ConcreteExpression()) {}
             Expression(ConcreteExpression e)
                 : contents(e) {}
             Expression(DeferredExpression e)
@@ -250,11 +245,15 @@ namespace Wide {
 
             virtual ConcreteExpression BuildValue(ConcreteExpression lhs, Analyzer& a, Lexer::Range where);
             
-            virtual OverloadSet* AccessMember(Lexer::TokenType type, Analyzer& a, Lexer::Range where);
-            virtual Wide::Util::optional<Expression> AccessMember(std::string name, Analyzer& a, Lexer::Range where);
+            virtual Wide::Util::optional<Expression> AccessStaticMember(std::string name, Analyzer& a, Lexer::Range where) {
+                throw std::runtime_error("This type does not have any static members.");
+            }
             virtual Wide::Util::optional<Expression> AccessMember(ConcreteExpression, std::string name, Analyzer& a, Lexer::Range where);
             virtual OverloadSet* AccessMember(ConcreteExpression e, Lexer::TokenType type, Analyzer& a, Lexer::Range where);
-
+            
+            virtual OverloadSet* AccessStaticMember(Lexer::TokenType type, Analyzer& a, Lexer::Range where) {
+                throw std::runtime_error("This type does not have any static members.");
+            }
             virtual Expression BuildCall(ConcreteExpression val, std::vector<ConcreteExpression> args, Analyzer& a, Lexer::Range where) {
                 if (IsReference())
                     return Decay()->BuildCall(val, std::move(args), a, where);
@@ -294,12 +293,21 @@ namespace Wide {
                                                 
             virtual ~Type() {}
         };
-        struct Callable : public Type {
+        struct Callable : public virtual Type {
             virtual std::vector<Type*> GetArgumentTypes(Analyzer& a) = 0;
             virtual bool AddThis() { return false; }
         };
+        class MetaType : public virtual Type {
+        public:
+            using Type::BuildValueConstruction;
+            std::function<llvm::Type*(llvm::Module*)> GetLLVMType(Analyzer& a) override;            
+            Codegen::Expression* BuildInplaceConstruction(Codegen::Expression* mem, std::vector<ConcreteExpression> args, Analyzer& a, Lexer::Range where) override;
+            std::size_t size(Analyzer& a) override;
+            std::size_t alignment(Analyzer& a) override;
+            ConcreteExpression BuildValueConstruction(std::vector<ConcreteExpression> args, Analyzer& a, Lexer::Range where) override;
+        };
         template<typename F, typename T> Callable* make_assignment_callable(F f, T* self, Analyzer& a) {            
-            struct assign : public Callable {
+            struct assign : public Callable, public MetaType {
                 T* self;
                 F action;
                 assign(T* obj, F func)
@@ -322,7 +330,7 @@ namespace Wide {
             return a.arena.Allocate<assign>(self, std::move(f));
         }
         template<typename F, typename T> Callable* make_value_callable(F f, T* self, Analyzer& a) {            
-            struct assign : public Callable {
+            struct assign : public Callable, public MetaType {
                 T* self;
                 F action;
                 assign(T* obj, F func)

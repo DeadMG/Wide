@@ -22,7 +22,6 @@
 #include <Wide/Semantic/UserDefinedType.h>
 #include <Wide/Semantic/NullType.h>
 #include <Wide/Semantic/SemanticError.h>
-#include <Wide/Semantic/MetaType.h>
 #include <Wide/Semantic/SemanticExpression.h>
 #include <Wide/Semantic/FloatType.h>
 #include <sstream>
@@ -89,6 +88,7 @@ Analyzer::Analyzer(const Options::Clang& opts, Codegen::Generator& g, const AST:
 
     static const auto location = Lexer::Range(std::make_shared<std::string>("Analyzer internal."));
     global = GetWideModule(GlobalModule, nullptr);
+    auto global_val = global->BuildValueConstruction(*this, location);
     EmptyOverloadSet = arena.Allocate<OverloadSet>(std::unordered_set<const AST::Function*>(), global);
     global->AddSpecialMember("cpp", ConcreteExpression(arena.Allocate<ClangIncludeEntity>(), nullptr));
     global->AddSpecialMember("void", ConcreteExpression(GetConstructorType(Void = arena.Allocate<VoidType>()), nullptr));
@@ -108,12 +108,12 @@ Analyzer::Analyzer(const Options::Clang& opts, Codegen::Generator& g, const AST:
     global->AddSpecialMember("false", ConcreteExpression(Boolean, gen->CreateIntegralExpression(0, false, Boolean->GetLLVMType(*this))));
     global->AddSpecialMember("decltype", arena.Allocate<decltypetype>()->BuildValueConstruction(*this, location));
 
-    global->AddSpecialMember("byte",   *global->AccessMember("uint8", *this, location));
-    global->AddSpecialMember("int",    *global->AccessMember("int32", *this, location));
-    global->AddSpecialMember("short",  *global->AccessMember("int16", *this, location));
-    global->AddSpecialMember("long",   *global->AccessMember("int64", *this, location));
-    global->AddSpecialMember("float",  *global->AccessMember("float32", *this, location));
-    global->AddSpecialMember("double", *global->AccessMember("float64", *this, location));
+    global->AddSpecialMember("byte",   *global->AccessMember(global_val, "uint8", *this, location));
+    global->AddSpecialMember("int",    *global->AccessMember(global_val, "int32", *this, location));
+    global->AddSpecialMember("short",  *global->AccessMember(global_val, "int16", *this, location));
+    global->AddSpecialMember("long",   *global->AccessMember(global_val, "int64", *this, location));
+    global->AddSpecialMember("float",  *global->AccessMember(global_val, "float32", *this, location));
+    global->AddSpecialMember("double", *global->AccessMember(global_val, "float64", *this, location));
 
     global->AddSpecialMember("null", GetNullType()->BuildValueConstruction(*this, location));
     global->AddSpecialMember("reinterpret_cast", arena.Allocate<PointerCastType>()->BuildValueConstruction(*this, location));
@@ -128,7 +128,7 @@ Expression Analyzer::AnalyzeExpression(Type* t, const AST::Expression* e) {
     struct AnalyzerVisitor : public AST::Visitor<AnalyzerVisitor> {
         Type* t;
         Analyzer* self;
-        Expression out;
+        Wide::Util::optional<Expression> out;
 
         void VisitString(const AST::String* str) {
             out = ConcreteExpression(
@@ -173,7 +173,9 @@ Expression Analyzer::AnalyzeExpression(Type* t, const AST::Expression* e) {
             out = ConcreteExpression( self->GetIntegralType(64, true), self->gen->CreateIntegralExpression(std::stoll(integer->integral_value), true, self->GetIntegralType(64, true)->GetLLVMType(*self)));
         }
         void VisitThis(const AST::This* loc) {
-            auto mem = t->AccessMember(ConcreteExpression(), "this", *self, loc->location);
+            auto fun = dynamic_cast<Function*>(t);
+            if (!fun) throw std::runtime_error("Attempted to access \"this\" outside of a function.");            
+            auto mem = fun->LookupLocal("this", *self, loc->location);
             if (!mem) throw std::runtime_error("Attempted to access \"this\", but it was not found, probably because you were not in a member function.");
             out = *mem;
         }
@@ -365,7 +367,9 @@ Expression Analyzer::AnalyzeExpression(Type* t, const AST::Expression* e) {
     v.self = this;
     v.t = t;
     v.VisitExpression(e);
-    return v.out;
+    if (!v.out)
+        assert(false && "ASTVisitor did not return an expression.");
+    return *v.out;
 }
 
 ClangUtil::ClangTU* Analyzer::LoadCPPHeader(std::string file, Lexer::Range where) {
@@ -571,12 +575,13 @@ FloatType* Analyzer::GetFloatType(unsigned bits) {
 Wide::Util::optional<Expression> Analyzer::LookupIdentifier(Type* context, const AST::Identifier* ident) {
     if (context == nullptr)
         return Wide::Util::none;
+    context = context->Decay();
     if (auto fun = dynamic_cast<Function*>(context)) {
-        auto lookup = fun->AccessMember(ident->val, *this, ident->location);
+        auto lookup = fun->LookupLocal(ident->val, *this, ident->location);
         if (lookup)
             return lookup;
         if (auto udt = dynamic_cast<UserDefinedType*>(fun->GetContext(*this))) {
-            auto self = fun->AccessMember("this", *this, ident->location);
+            auto self = fun->LookupLocal("this", *this, ident->location);
             lookup = self->AccessMember(ident->val, *this, ident->location);
             if (!lookup)
                 return LookupIdentifier(udt->GetContext(*this), ident);
@@ -585,7 +590,7 @@ Wide::Util::optional<Expression> Analyzer::LookupIdentifier(Type* context, const
         return LookupIdentifier(fun->GetContext(*this), ident);
     }
     if (auto mod = dynamic_cast<Module*>(context)) {
-        auto lookup = mod->AccessMember(ident->val, *this, ident->location);
+        auto lookup = mod->AccessMember(mod->BuildValueConstruction(*this, ident->location), ident->val, *this, ident->location);
         if (!lookup)
             return LookupIdentifier(mod->GetContext(*this), ident);
         if (!dynamic_cast<OverloadSet*>(lookup->Resolve(nullptr).t))
@@ -597,7 +602,11 @@ Wide::Util::optional<Expression> Analyzer::LookupIdentifier(Type* context, const
             return GetOverloadSet(dynamic_cast<OverloadSet*>(lookup->Resolve(nullptr).t), dynamic_cast<OverloadSet*>(lookup2->Resolve(nullptr).t))->BuildValueConstruction(*this, ident->location);
         return lookup;
     }
-    auto value = context->AccessMember(ident->val, *this, ident->location);
+    if (auto udt = dynamic_cast<UserDefinedType*>(context)) {
+        return LookupIdentifier(context->GetContext(*this), ident);
+    }
+    __debugbreak();
+    auto value = context->AccessMember(context->BuildValueConstruction(*this, ident->location), ident->val, *this, ident->location);
     if (value)
         return value;
     return LookupIdentifier(context->GetContext(*this), ident);
