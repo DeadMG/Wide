@@ -12,7 +12,7 @@ namespace Wide {
             
             std::function<llvm::Type*(llvm::Module*)> GetLLVMType(Analyzer& a) override;
 
-            Codegen::Expression* BuildInplaceConstruction(Codegen::Expression* mem, std::vector<ConcreteExpression> args, Analyzer& a, Lexer::Range where) override;
+            Codegen::Expression* BuildInplaceConstruction(Codegen::Expression* mem, std::vector<ConcreteExpression> args, Context c) override;
 
             bool IsReference() override {
                 return true;
@@ -24,8 +24,8 @@ namespace Wide {
                 return Pointee->GetContext(a);
             }
 
-            ConcreteExpression BuildRvalueConstruction(std::vector<ConcreteExpression> args, Analyzer& a, Lexer::Range where) override;
-            ConcreteExpression BuildLvalueConstruction(std::vector<ConcreteExpression> args, Analyzer& a, Lexer::Range where) override;
+            ConcreteExpression BuildRvalueConstruction(std::vector<ConcreteExpression> args, Context c) override;
+            ConcreteExpression BuildLvalueConstruction(std::vector<ConcreteExpression> args, Context c) override;
             
             virtual Type* Decay() override {
                 return Pointee;

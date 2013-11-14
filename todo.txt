@@ -33,6 +33,7 @@ Add the ability for Wide functions to refer to constant context.
 Add the ability to resolve one function from a C++ overload set.
 Fix default arguments.
 Add polymorphic types.
+Look into whether the UDT destructor code is modifying the AST.
 Add tests.
 
 WideLibrary:

@@ -10,6 +10,7 @@ namespace llvm {
     class Module;
     class LLVMContext;
     class Value;
+    class Function;
 }
 
 namespace Wide {
@@ -26,7 +27,9 @@ namespace Wide {
             bool tramp;
             std::unordered_map<unsigned, llvm::Value*> ParameterValues;
             Semantic::Function* debug;
+            llvm::Function* f;
         public:
+            void Declare(llvm::Module* mod, llvm::LLVMContext& con, Generator& g);
             llvm::Value* GetParameter(unsigned i);
             void AddStatement(Codegen::Statement* s);
             void Clear() { statements.clear(); }

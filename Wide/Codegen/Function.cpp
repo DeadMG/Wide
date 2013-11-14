@@ -14,12 +14,11 @@
 using namespace Wide;
 using namespace LLVMCodegen;
 
-
 llvm::Value* Function::GetParameter(unsigned i) {
     return ParameterValues[i];
 }
-void Function::EmitCode(llvm::Module* mod, llvm::LLVMContext& con, Generator& g) {
-    llvm::Function* f = nullptr;
+void Function::Declare(llvm::Module* mod, llvm::LLVMContext& con, Generator& g) {
+    if (f) return;
     if ((f = mod->getFunction(name))) {
         if (f->getType() == Type(mod))
             f = mod->getFunction(name);
@@ -78,6 +77,9 @@ void Function::EmitCode(llvm::Module* mod, llvm::LLVMContext& con, Generator& g)
     }
 
     g.TieFunction(f, this);
+}
+void Function::EmitCode(llvm::Module* mod, llvm::LLVMContext& con, Generator& g) {
+    llvm::IRBuilder<> irbuilder(&f->getEntryBlock());
 
     for(auto&& x : statements)
         x ? x->Build(irbuilder, g) : void();
@@ -91,6 +93,7 @@ Function::Function(std::function<llvm::Type*(llvm::Module*)> ret, std::string na
     , name(std::move(name))
     , tramp(trampoline)
     , debug(de)
+    , f(nullptr)
 {}
 void Function::AddStatement(Codegen::Statement* s) {
     auto p = dynamic_cast<LLVMCodegen::Statement*>(s);

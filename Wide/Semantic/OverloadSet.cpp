@@ -78,20 +78,20 @@ std::function<llvm::Type*(llvm::Module*)> OverloadSet::GetLLVMType(Analyzer& a) 
         return t;
     };    
 }
-Expression OverloadSet::BuildCall(ConcreteExpression e, std::vector<ConcreteExpression> args, Analyzer& a, Lexer::Range where) {
+Expression OverloadSet::BuildCall(ConcreteExpression e, std::vector<ConcreteExpression> args, Context c) {
     std::vector<Type*> targs;
     if (nonstatic)
         targs.push_back(nonstatic);
     for(auto x : args)
         targs.push_back(x.t);
-    auto call = Resolve(std::move(targs), a);
+    auto call = Resolve(std::move(targs), *c);
     if (!call)
         throw std::runtime_error("Fuck!");
 
     if (call->AddThis())
-        args.insert(args.begin(), ConcreteExpression(nonstatic, a.gen->CreateFieldExpression(e.BuildValue(a, where).Expr, 0)));
+        args.insert(args.begin(), ConcreteExpression(nonstatic, c->gen->CreateFieldExpression(e.BuildValue(c).Expr, 0)));
 
-    return call->BuildCall(call->BuildValueConstruction(a, where), std::move(args), a, where);
+    return call->BuildCall(call->BuildValueConstruction(c), std::move(args), c);
 }
 
 OverloadSet::OverloadSet(std::unordered_set<Callable*> call)
@@ -146,7 +146,7 @@ Callable* OverloadSet::Resolve(std::vector<Type*> f_args, Analyzer& a) {
                 return true;
             for(std::size_t i = 0; i < args.size(); ++i) {
                 auto takety = candidate.second->args[i].type ? 
-                    dynamic_cast<ConstructorType*>(a.AnalyzeExpression(candidate.first, candidate.second->args[i].type).Resolve(nullptr).t->Decay()) :
+                    dynamic_cast<ConstructorType*>(a.AnalyzeExpression(candidate.first, candidate.second->args[i].type, [](ConcreteExpression e) {}).Resolve(nullptr).t->Decay()) :
                     a.GetConstructorType(args[i]->Decay());
                 if (!takety)
                     throw Wide::Semantic::SemanticError(candidate.second->args[i].location, Wide::Semantic::Error::ExpressionNoType);
@@ -232,8 +232,8 @@ Callable* OverloadSet::Resolve(std::vector<Type*> f_args, Analyzer& a) {
                     types.push_back(a.GetClangType(*from, fun->getParamDecl(i)->getType()));
                 return types;
             }
-            Expression BuildCall(ConcreteExpression, std::vector<ConcreteExpression> args, Analyzer& a, Lexer::Range where) override {
-                return ConcreteExpression(a.GetFunctionType(a.GetClangType(*from, fun->getResultType()), GetArgumentTypes(a)), a.gen->CreateFunctionValue(from->MangleName(fun))).BuildCall(args, a, where);
+            Expression BuildCall(ConcreteExpression, std::vector<ConcreteExpression> args, Context c) override {
+                return ConcreteExpression(c->GetFunctionType(c->GetClangType(*from, fun->getResultType()), GetArgumentTypes(*c)), c->gen->CreateFunctionValue(from->MangleName(fun))).BuildCall(args, c);
             }
             bool AddThis() override {
                 return fun->isCXXInstanceMember();
@@ -248,15 +248,15 @@ Callable* OverloadSet::Resolve(std::vector<Type*> f_args, Analyzer& a) {
     return get_wide_or_result();
 }
 
-Codegen::Expression* OverloadSet::BuildInplaceConstruction(Codegen::Expression* mem, std::vector<ConcreteExpression> args, Analyzer& a, Lexer::Range where) {
+Codegen::Expression* OverloadSet::BuildInplaceConstruction(Codegen::Expression* mem, std::vector<ConcreteExpression> args, Context c) {
     if (args.size() > 1)
         throw std::runtime_error("Cannot construct an overload set from more than one argument.");
     if (args.size() == 1) {
-        if (args[0].BuildValue(a, where).t == this)
-            return a.gen->CreateStore(mem, args[0].BuildValue(a, where).Expr);
+        if (args[0].BuildValue(c).t == this)
+            return c->gen->CreateStore(mem, args[0].BuildValue(c).Expr);
         if (nonstatic) {
             if (args[0].t->IsReference(nonstatic) || (nonstatic->IsReference() && nonstatic == args[0].t))
-                return a.gen->CreateStore(a.gen->CreateFieldExpression(mem, 0), args[0].Expr);
+                return c->gen->CreateStore(c->gen->CreateFieldExpression(mem, 0), args[0].Expr);
             if (args[0].t == nonstatic)
                 assert("Internal compiler error: Attempt to call a member function of a value.");
         }
@@ -264,7 +264,7 @@ Codegen::Expression* OverloadSet::BuildInplaceConstruction(Codegen::Expression* 
     }
     if (nonstatic)
         throw std::runtime_error("Cannot default-construct a non-static overload set.");
-    return a.gen->CreateNull(GetLLVMType(a));
+    return c->gen->CreateNull(GetLLVMType(*c));
 }
 clang::QualType OverloadSet::GetClangType(ClangUtil::ClangTU& TU, Analyzer& a) {
     if (clangtypes.find(&TU) != clangtypes.end())

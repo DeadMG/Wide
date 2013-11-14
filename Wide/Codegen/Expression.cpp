@@ -27,6 +27,15 @@ FunctionCall::FunctionCall(LLVMCodegen::Expression* obj, std::vector<LLVMCodegen
 llvm::Value* FunctionCall::ComputeValue(llvm::IRBuilder<>& builder, Generator& g) {
     auto&& mod = builder.GetInsertBlock()->getParent()->getParent();
     auto obj = object->GetValue(builder, g);
+    if (!obj) {
+        if (auto fun = dynamic_cast<FunctionValue*>(object)) {
+            auto f = g.GetFunctionByName(fun->GetMangledName());
+            f->Declare(mod, builder.getContext(), g);
+            obj = object->GetValue(builder, g);
+        }
+    }
+    if (!obj)
+        __debugbreak();
     auto fun = llvm::dyn_cast<llvm::Function>(obj);
     auto funty = fun->getFunctionType();
     std::set<std::size_t> ignoredparams;
@@ -305,4 +314,8 @@ llvm::Value* FPLT::ComputeValue(llvm::IRBuilder<>& builder, Generator& g) {
 }
 llvm::Value* Nop::ComputeValue(llvm::IRBuilder<>& builder, Generator& g) {
     return builder.CreateGlobalString("nop");
+}
+llvm::Value* DeferredExpr::ComputeValue(llvm::IRBuilder<>& b, Generator& g) {
+    auto expr = dynamic_cast<LLVMCodegen::Expression*>(func());
+    return expr->GetValue(b, g);
 }

@@ -39,8 +39,8 @@ namespace Wide {
 
             std::function<llvm::Type*(llvm::Module*)> GetLLVMType(Analyzer& a) override;
             clang::QualType GetClangType(ClangUtil::ClangTU& TU, Analyzer& a) override;
-            Expression BuildCall(ConcreteExpression, std::vector<ConcreteExpression> args, Analyzer& a, Lexer::Range where) override;
-            Codegen::Expression* BuildInplaceConstruction(Codegen::Expression* mem, std::vector<ConcreteExpression> args, Analyzer& a, Lexer::Range where) override;
+            Expression BuildCall(ConcreteExpression, std::vector<ConcreteExpression> args, Context c) override;
+            Codegen::Expression* BuildInplaceConstruction(Codegen::Expression* mem, std::vector<ConcreteExpression> args, Context c) override;
             Callable* Resolve(std::vector<Type*> types, Analyzer& a);
             std::size_t size(Analyzer& a) override;
             std::size_t alignment(Analyzer& a) override;

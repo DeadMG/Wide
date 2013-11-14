@@ -15,11 +15,11 @@
 using namespace Wide;
 using namespace Semantic;
 
-Expression ClangTemplateClass::BuildCall(ConcreteExpression, std::vector<ConcreteExpression> args, Analyzer& a, Lexer::Range where) {
+Expression ClangTemplateClass::BuildCall(ConcreteExpression, std::vector<ConcreteExpression> args, Context c) {
     clang::TemplateArgumentListInfo tl;
     for(auto&& x : args) {
         if (auto con = dynamic_cast<ConstructorType*>(x.t)) {
-            auto clangty = con->GetConstructedType()->GetClangType(*from, a);
+            auto clangty = con->GetConstructedType()->GetClangType(*from, *c);
             
             auto tysrcinfo = from->GetASTContext().getTrivialTypeSourceInfo(clangty);
             
@@ -45,7 +45,7 @@ Expression ClangTemplateClass::BuildCall(ConcreteExpression, std::vector<Concret
     void* pos = 0;
     auto spec = tempdecl->findSpecialization(tempargs.data(), tempargs.size(), pos);    
     if (spec)    
-        return a.GetConstructorType(a.GetClangType(*from, from->GetASTContext().getRecordType(spec)))->BuildValueConstruction(a, where);
+        return c->GetConstructorType(c->GetClangType(*from, from->GetASTContext().getRecordType(spec)))->BuildValueConstruction(c);
     auto loc = from->GetFileEnd();
     if (!spec) {
         spec = clang::ClassTemplateSpecializationDecl::Create(
@@ -71,5 +71,5 @@ Expression ClangTemplateClass::BuildCall(ConcreteExpression, std::vector<Concret
 
     //from->GetSema().InstantiateClassTemplateSpecializationMembers(loc, llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(spec->getDefinition()), tsk);
     
-    return a.GetConstructorType(a.GetClangType(*from, from->GetASTContext().getRecordType(spec)))->BuildValueConstruction(a, where);
+    return c->GetConstructorType(c->GetClangType(*from, from->GetASTContext().getRecordType(spec)))->BuildValueConstruction(c);
 }

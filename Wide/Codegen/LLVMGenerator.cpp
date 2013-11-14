@@ -58,8 +58,9 @@ Generator::Generator(const Options::LLVM& l, std::string trip, std::function<voi
 }
 
 Function* Generator::CreateFunction(std::function<llvm::Type*(llvm::Module*)> ty, std::string name, Semantic::Function* debug, bool tramp) {
-    auto p = arena.Allocate<Function>(std::move(ty), std::move(name), debug, tramp);
+    auto p = arena.Allocate<Function>(std::move(ty), name, debug, tramp);
     functions.push_back(p);
+    named_funcs[name] = p;
     return p;
 }
 
@@ -110,6 +111,10 @@ FunctionValue* Generator::CreateFunctionValue(std::string name) {
     return arena.Allocate<FunctionValue>(name);
 }
 
+Function* Generator::GetFunctionByName(std::string name) {
+    return named_funcs.at(name);
+}
+
 void Generator::EmitCode() {    
     for(auto&& x : tus)
         x(main.get());
@@ -119,6 +124,9 @@ void Generator::EmitCode() {
     std::string s;
     llvm::raw_string_ostream stream(s);
     main->print(stream, nullptr);
+    for(auto&& x : functions) {
+        x->Declare(main.get(), context, *this);
+    }    
     for(auto&& x : functions) {
         x->EmitCode(main.get(), context, *this);
     }    
@@ -281,4 +289,7 @@ Nop* Generator::CreateNop() {
 
 Deferred* Generator::CreateDeferredStatement(std::function<Codegen::Statement*()> func) {
     return arena.Allocate<Deferred>([=] { return func(); });
+}
+DeferredExpr* Generator::CreateDeferredExpression(std::function<Codegen::Expression*()> func) {
+    return arena.Allocate<DeferredExpr>([=] { return func(); });
 }

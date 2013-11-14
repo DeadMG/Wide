@@ -14,43 +14,43 @@ struct EmplaceType : public MetaType {
         : t(con) {}
     Type* t;
 
-    Expression BuildCall(ConcreteExpression obj, std::vector<ConcreteExpression> args, Analyzer& a, Lexer::Range where) override {
+    Expression BuildCall(ConcreteExpression obj, std::vector<ConcreteExpression> args, Context c) override {
         if (args.size() == 0)
             throw std::runtime_error("Attempted to emplace a type without providing any memory into which to emplace it.");
-        if (args[0].t->Decay() != a.GetPointerType(t))
+        if (args[0].t->Decay() != c->GetPointerType(t))
             throw std::runtime_error("Attempted to emplace a T into a type that was not a pointer to T.");
         auto expr = args.front();
         args.erase(args.begin());
-        return ConcreteExpression(a.GetRvalueType(t), a.gen->CreateChainExpression(t->BuildInplaceConstruction(expr.Expr, args, a, where), expr.Expr));
+        return ConcreteExpression(c->GetRvalueType(t), c->gen->CreateChainExpression(t->BuildInplaceConstruction(expr.Expr, args, c), expr.Expr));
     }
 };
 
-Expression ConstructorType::BuildCall(ConcreteExpression self, std::vector<ConcreteExpression> args, Analyzer& a, Lexer::Range where) {
+Expression ConstructorType::BuildCall(ConcreteExpression self, std::vector<ConcreteExpression> args, Context c) {
     assert(self.t->Decay() == this);
-    return t->BuildRvalueConstruction(std::move(args), a, where);
+    return t->BuildRvalueConstruction(std::move(args), c);
 }
-Wide::Util::optional<Expression> ConstructorType::AccessMember(ConcreteExpression self, std::string name, Analyzer& a, Lexer::Range where) {
+Wide::Util::optional<Expression> ConstructorType::AccessMember(ConcreteExpression self, std::string name, Context c) {
     assert(self.t->Decay() == this);
-    return t->AccessStaticMember(name, a, where);
+    return t->AccessStaticMember(name, c);
 }
 
-Wide::Util::optional<Expression> ConstructorType::PointerAccessMember(ConcreteExpression obj, std::string name, Analyzer& a, Lexer::Range where) {
+Wide::Util::optional<Expression> ConstructorType::PointerAccessMember(ConcreteExpression obj, std::string name, Context c) {
     assert(obj.t->Decay() == this);
     if (name == "decay")
-        return a.GetConstructorType(t->Decay())->BuildValueConstruction(std::vector<ConcreteExpression>(), a, where);
+        return c->GetConstructorType(t->Decay())->BuildValueConstruction(c);
     if (name == "lvalue")
-        return a.GetConstructorType(a.GetLvalueType(t))->BuildValueConstruction(std::vector<ConcreteExpression>(), a, where);
+        return c->GetConstructorType(c->GetLvalueType(t))->BuildValueConstruction(c);
     if (name == "rvalue")
-        return a.GetConstructorType(a.GetRvalueType(t))->BuildValueConstruction(std::vector<ConcreteExpression>(), a, where);
+        return c->GetConstructorType(c->GetRvalueType(t))->BuildValueConstruction(c);
     if (name == "pointer")
-        return a.GetConstructorType(a.GetPointerType(t))->BuildValueConstruction(std::vector<ConcreteExpression>(), a, where);
+        return c->GetConstructorType(c->GetPointerType(t))->BuildValueConstruction(c);
     if (name == "size")
-        return ConcreteExpression(a.GetIntegralType(64, false), a.gen->CreateIntegralExpression(t->size(a), false, a.GetIntegralType(64, false)->GetLLVMType(a)));
+        return ConcreteExpression(c->GetIntegralType(64, false), c->gen->CreateIntegralExpression(t->size(*c), false, c->GetIntegralType(64, false)->GetLLVMType(*c)));
     if (name == "alignment")
-        return ConcreteExpression(a.GetIntegralType(64, false), a.gen->CreateIntegralExpression(t->alignment(a), false, a.GetIntegralType(64, false)->GetLLVMType(a)));
+        return ConcreteExpression(c->GetIntegralType(64, false), c->gen->CreateIntegralExpression(t->alignment(*c), false, c->GetIntegralType(64, false)->GetLLVMType(*c)));
     if (name == "emplace") {
-        if (!emplace) emplace = a.arena.Allocate<EmplaceType>(t);
-        return emplace->BuildValueConstruction(a, where);
+        if (!emplace) emplace = c->arena.Allocate<EmplaceType>(t);
+        return emplace->BuildValueConstruction(c);
     }
     throw std::runtime_error("Attempted to access the special members of a type, but the identifier provided did not name a special member.");
 }

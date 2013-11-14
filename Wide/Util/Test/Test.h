@@ -23,11 +23,13 @@ namespace Wide {
         }
         
         template<typename T, typename U> void Test(Wide::Semantic::Analyzer& a, Wide::Semantic::Module* higher, const Wide::AST::Module* root, T errorfunc, U& mockgen, bool swallow) {
+            auto swallow_raii = [](Wide::Semantic::ConcreteExpression e) {};
             auto mod = a.GetWideModule(root, higher);
             for(auto overset : root->functions) {
                 for(auto fun : overset.second->functions) {
+                    Wide::Semantic::Context c(a, fun->where.front(), swallow_raii);
                     if (fun->args.size() == 0) {
-                        Try([&] { a.GetWideFunction(fun, mod)->BuildCall(a.GetWideFunction(fun, mod)->BuildValueConstruction(a, fun->where.front()), std::vector<Wide::Semantic::ConcreteExpression>(), a, fun->where.front()); }, errorfunc, swallow);
+                        Try([&] { a.GetWideFunction(fun, mod)->BuildCall(a.GetWideFunction(fun, mod)->BuildValueConstruction(c), std::vector<Wide::Semantic::ConcreteExpression>(), c); }, errorfunc, swallow);
                         continue;
                     }
                     std::vector<Wide::Semantic::ConcreteExpression> concexpr;
@@ -36,7 +38,7 @@ namespace Wide {
                             if (!arg.type)
                                 continue;
                             Try([&] {
-                                auto ty = a.AnalyzeExpression(mod, arg.type);
+                                auto ty = a.AnalyzeExpression(mod, arg.type, swallow_raii);
                                 if (auto conty = dynamic_cast<Wide::Semantic::ConstructorType*>(ty.Resolve(nullptr).t->Decay())) 
                                     concexpr.push_back(Wide::Semantic::ConcreteExpression(conty->GetConstructedType(), mockgen.CreateNop()));
                             }, errorfunc, swallow);
@@ -47,18 +49,19 @@ namespace Wide {
                                 types.push_back(x.t);
                             Try([&] { 
                                 auto ty = a.GetWideFunction(fun, mod, std::move(types));
-                                ty->BuildCall(ty->BuildValueConstruction(a, fun->where.front()), std::move(concexpr), a, fun->where.front()); 
+                                ty->BuildCall(ty->BuildValueConstruction(c), std::move(concexpr), c); 
                             }, errorfunc, swallow);
                         }
                     } catch(...) {}
                 }
             }
             for(auto decl : root->decls) {
+                Wide::Semantic::Context c(a, root->where.front(), swallow_raii);
                 if (auto use = dynamic_cast<Wide::AST::Using*>(decl.second)) {
-                    Try([&] { mod->BuildValueConstruction(a, root->where.front()).AccessMember(use->name, a, root->where.front()); }, errorfunc, swallow);
+                    Try([&] { mod->BuildValueConstruction(c).AccessMember(use->name, c); }, errorfunc, swallow);
                 }
                 if (auto module = dynamic_cast<Wide::AST::Module*>(decl.second)) {
-                    Try([&] { mod->BuildValueConstruction(a, root->where.front()).AccessMember(module->name, a, root->where.front()); }, errorfunc, swallow);
+                    Try([&] { mod->BuildValueConstruction(c).AccessMember(module->name, c); }, errorfunc, swallow);
                     Test(a, mod, module, errorfunc, mockgen, swallow);
                 }
             }

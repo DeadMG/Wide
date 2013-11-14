@@ -1,9 +1,13 @@
-module MemberCall {
-    type t {
-        operator()() {
-        }
+type t {
+    operator()() {
     }
-    Main() {
-        t()();
+}
+type t2 {
+    operator()(bool arg) {
+        return arg;
     }
+}
+Main() {
+    t()();
+    return t2()(true);
 }

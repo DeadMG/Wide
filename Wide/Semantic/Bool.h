@@ -10,8 +10,8 @@ namespace Wide {
             std::function<llvm::Type*(llvm::Module*)> GetLLVMType(Analyzer& a) override;
             clang::QualType GetClangType(ClangUtil::ClangTU&, Analyzer& a) override;
             
-            OverloadSet* AccessMember(ConcreteExpression expr, Lexer::TokenType name, Analyzer& a, Lexer::Range where) override;
-            Codegen::Expression* BuildBooleanConversion(ConcreteExpression, Analyzer& a, Lexer::Range where) override;
+            OverloadSet* AccessMember(ConcreteExpression expr, Lexer::TokenType name, Context c) override;
+            Codegen::Expression* BuildBooleanConversion(ConcreteExpression, Context c) override;
             std::size_t size(Analyzer& a) override;
             std::size_t alignment(Analyzer& a) override;
         };

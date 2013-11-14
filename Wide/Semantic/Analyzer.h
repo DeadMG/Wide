@@ -56,6 +56,7 @@ namespace Wide {
         class ClangType;
         struct Type;
         class ConstructorType;
+        struct ConcreteExpression;
         class LvalueType;
         class RvalueType;
         class FunctionType;
@@ -144,7 +145,7 @@ namespace Wide {
             FloatType* GetFloatType(unsigned);
             Module* GetGlobalModule();
             
-            Expression AnalyzeExpression(Type* t, const AST::Expression* e);
+            Expression AnalyzeExpression(Type* t, const AST::Expression* e, std::function<void(ConcreteExpression)>);
             Wide::Util::optional<Expression> LookupIdentifier(Type* context, const AST::Identifier* ident);
 
             Analyzer(const Options::Clang&, Codegen::Generator&, const AST::Module*);     

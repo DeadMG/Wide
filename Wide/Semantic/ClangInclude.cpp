@@ -12,10 +12,10 @@
 using namespace Wide;
 using namespace Semantic;
 
-Wide::Util::optional<Expression> ClangIncludeEntity::AccessMember(ConcreteExpression, std::string name, Analyzer& a, Lexer::Range where) {
+Wide::Util::optional<Expression> ClangIncludeEntity::AccessMember(ConcreteExpression, std::string name, Context c) {
     if (name == "mangle") {
         struct ClangNameMangler : public MetaType {
-            Expression BuildCall(ConcreteExpression, std::vector<ConcreteExpression> args, Analyzer& a, Lexer::Range where) override {
+            Expression BuildCall(ConcreteExpression, std::vector<ConcreteExpression> args, Context c) override {
                 if (args.size() != 1)
                     throw std::runtime_error("Attempt to mangle name but passed more than one object.");
                 auto ty = dynamic_cast<FunctionType*>(args[0].t);
@@ -23,15 +23,15 @@ Wide::Util::optional<Expression> ClangIncludeEntity::AccessMember(ConcreteExpres
                 auto fun = dynamic_cast<Codegen::FunctionValue*>(args[0].Expr);
                 if (!fun)
                     throw std::runtime_error("The argument was not a Clang mangled function name.");
-                return ConcreteExpression(a.GetLiteralStringType(), a.gen->CreateStringExpression(fun->GetMangledName()));
+                return ConcreteExpression(c->GetLiteralStringType(), c->gen->CreateStringExpression(fun->GetMangledName()));
             }
         };
-        return a.arena.Allocate<ClangNameMangler>()->BuildValueConstruction(a, where);
+        return c->arena.Allocate<ClangNameMangler>()->BuildValueConstruction(c);
     }
     return Wide::Util::none;
 }
 
-Expression ClangIncludeEntity::BuildCall(ConcreteExpression e, std::vector<ConcreteExpression> args, Analyzer& a, Lexer::Range where) {
+Expression ClangIncludeEntity::BuildCall(ConcreteExpression e, std::vector<ConcreteExpression> args, Context c) {
     if (args.size() != 1)
         throw std::runtime_error("Attempted to call the Clang Include Entity with the wrong number of arguments.");
     auto expr = dynamic_cast<Codegen::StringExpression*>(args[0].Expr);
@@ -42,7 +42,7 @@ Expression ClangIncludeEntity::BuildCall(ConcreteExpression e, std::vector<Concr
         name = std::string(name.begin() + 1, name.end());
     if (name.size() > 1 && name.back() == '>')
         name = std::string(name.begin(), name.end() - 1);
-    auto clangtu = a.LoadCPPHeader(std::move(name), where);
+    auto clangtu = c->LoadCPPHeader(std::move(name), c.where);
 
-    return a.GetClangNamespace(*clangtu, clangtu->GetDeclContext())->BuildValueConstruction(a, where);
+    return c->GetClangNamespace(*clangtu, clangtu->GetDeclContext())->BuildValueConstruction(c);
 }

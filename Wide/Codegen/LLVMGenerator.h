@@ -5,7 +5,7 @@
 #include <Wide/Codegen/Generator.h>
 #include <Wide/Codegen/Function.h>
 #include <unordered_map>
-#include <deque>
+#include <list>
 #include <vector>
 #include <unordered_set>
 #include <string>
@@ -29,7 +29,7 @@ namespace Wide {
     namespace LLVMCodegen {
         class Function;
         class Generator : public Codegen::Generator {
-            std::deque<Function*> functions;
+            std::list<Function*> functions;
             Wide::Memory::Arena arena;
 
             std::function<void(std::unique_ptr<llvm::Module>)> func;
@@ -38,6 +38,7 @@ namespace Wide {
             void EmitCode();
             const Options::LLVM& llvmopts;
             std::unordered_map<llvm::Function*, Function*> funcs;
+            std::unordered_map<std::string, Function*> named_funcs;
             std::unordered_set<llvm::Type*> eliminate_types;
             std::vector<std::function<void(llvm::Module*)>> tus;
 
@@ -46,6 +47,7 @@ namespace Wide {
             void AddEliminateType(llvm::Type*) override final;
             void TieFunction(llvm::Function*, Function*);
             Function* FromLLVMFunc(llvm::Function*);
+            Function* GetFunctionByName(std::string name);
 
             llvm::LLVMContext context;
         private:
@@ -57,6 +59,7 @@ namespace Wide {
 
             Function* CreateFunction(std::function<llvm::Type*(llvm::Module*)>, std::string, Semantic::Function* debug, bool trampoline = false) override final;
             Deferred* CreateDeferredStatement(const std::function<Codegen::Statement*()>) override final;
+            DeferredExpr* CreateDeferredExpression(const std::function<Codegen::Expression*()>) override final;
             Variable* CreateVariable(std::function<llvm::Type*(llvm::Module*)>, unsigned alignment) override final;
             FunctionCall* CreateFunctionCall(Codegen::Expression*, std::vector<Codegen::Expression*>, std::function<llvm::Type*(llvm::Module*)> = std::function<llvm::Type*(llvm::Module*)>()) override final;
             StringExpression* CreateStringExpression(std::string) override final;

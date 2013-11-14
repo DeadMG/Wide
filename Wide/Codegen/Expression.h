@@ -31,6 +31,14 @@ namespace Wide {
             virtual llvm::Value* ComputeValue(llvm::IRBuilder<>&, Generator& g) = 0;
         };
 
+        class DeferredExpr : public Expression, public Codegen::DeferredExpr {
+            std::function<Codegen::Expression*()> func;
+        public:
+            DeferredExpr(std::function<Codegen::Expression*()> f)
+                : func(std::move(f)) {}
+            llvm::Value* ComputeValue(llvm::IRBuilder<>&, Generator& g) override final;
+        };
+
         class Variable : public Expression, public Codegen::Variable {
             std::function<llvm::Type*(llvm::Module*)> t;
             unsigned align;

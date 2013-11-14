@@ -1,15 +1,20 @@
-module AcceptQualifiedThis {
-    type t1 {
-        operator()(t1->lvalue this) {
-        }
+type t1 {
+    operator()(t1->lvalue this) {
+        return true;
     }
-    type t2 {
-        operator()(t2->rvalue this) {
-        }
+    operator()(t1->rvalue this) {
+        return false;
     }
-    Main() {
-        x := t1();
-        x();
-        t2()();
+}
+type t2 {
+    operator()(t2->rvalue this) {
+        return true;
     }
+    operator()(t2->lvalue this) {
+        return false;
+    }
+}
+Main() {
+    x := t1();
+    return x() & t2()();
 }

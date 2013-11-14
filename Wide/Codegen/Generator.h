@@ -65,7 +65,8 @@ namespace Wide {
         class FPMod : public Expression {};
         class FPDiv : public Expression {};
         class Nop : public Expression {};
-        class Deferred : public Expression {};
+        class Deferred : public Statement {};
+        class DeferredExpr : public Expression {};
         class Function {
         public:
             virtual ~Function() {}
@@ -77,6 +78,7 @@ namespace Wide {
             virtual Variable* CreateVariable(std::function<llvm::Type*(llvm::Module*)>, unsigned alignment) = 0;
             virtual FunctionCall* CreateFunctionCall(Expression*, std::vector<Expression*>, std::function<llvm::Type*(llvm::Module*)> = std::function<llvm::Type*(llvm::Module*)>()) = 0;
             virtual Deferred* CreateDeferredStatement(std::function<Codegen::Statement*()>) = 0;
+            virtual DeferredExpr* CreateDeferredExpression(std::function<Codegen::Expression*()>) = 0;
             virtual StringExpression* CreateStringExpression(std::string) = 0;
             virtual NamedGlobalVariable* CreateGlobalVariable(std::string) = 0;
             virtual StoreExpression* CreateStore(Expression*, Expression*) = 0;

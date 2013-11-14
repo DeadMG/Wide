@@ -1,12 +1,10 @@
-module DeferredLambda {
-    f(x) {
-        if (x > 5) {
-            z := f(3) + 1;
-            return function() { return z; }();
-        }
-        return x;
+f(x) {
+    if (x > 5) {
+        z := f(3) + 1;
+        return function() { return z; }();
     }
-    Main() {
-        int64(f(6));
-    }
+    return x;
+}
+Main() {
+    return f(6) == 4;
 }

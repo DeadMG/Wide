@@ -29,8 +29,12 @@ void ReturnStatement::Build(llvm::IRBuilder<>& bb, Generator& g) {
         bb.CreateRetVoid();
     else {
         auto llvmval = val()->GetValue(bb, g);
-        if (llvmval->getType() != llvm::Type::getVoidTy(bb.getContext()))
-            bb.CreateRet(val()->GetValue(bb, g));
+        if (llvmval->getType() != llvm::Type::getVoidTy(bb.getContext())) {
+            if (llvmval->getType() == llvm::IntegerType::getInt1Ty(bb.GetInsertBlock()->getContext())) {
+                llvmval = bb.CreateZExt(llvmval, llvm::IntegerType::getInt8Ty(bb.GetInsertBlock()->getContext()));
+            }
+            bb.CreateRet(llvmval);
+        }
         else
             bb.CreateRetVoid();
     }

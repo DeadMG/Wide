@@ -29,6 +29,11 @@ namespace Wide {
                 DeferredReturnSeen,
                 ConcreteReturnSeen
             };
+            enum DeferState {
+                Deferred,
+                Eager
+            };
+            DeferState def;
             State s;
             Type* ReturnType;
             std::vector<Type*> Args;
@@ -42,7 +47,15 @@ namespace Wide {
             void CompleteAnalysis(Type* ret, Analyzer& a);
 
             std::vector<Codegen::Statement*> exprs;
-            std::vector<std::unordered_map<std::string, Expression>> variables;
+            struct Scope {
+                Scope(Scope* s) : parent(s) {}
+                Scope* parent;
+                std::vector<std::unique_ptr<Scope>> children;
+                std::unordered_map<std::string, Expression> named_variables;
+                std::vector<Expression> needs_destruction;
+            };
+            Scope root_scope;
+            Scope* current_scope;
             std::string name;
         public:
             bool HasLocalVariable(std::string name);
@@ -50,7 +63,7 @@ namespace Wide {
 
             clang::QualType GetClangType(ClangUtil::ClangTU& where, Analyzer& a) override;       
      
-            Expression BuildCall(ConcreteExpression, std::vector<ConcreteExpression> args, Analyzer& a, Lexer::Range where) override;
+            Expression BuildCall(ConcreteExpression, std::vector<ConcreteExpression> args, Context c) override;
             using Type::AccessMember;
             std::string GetName();
             Type* GetContext(Analyzer& a) override { return context; }
@@ -60,7 +73,7 @@ namespace Wide {
                 return Args;
             }
             bool AddThis() override;
-            Wide::Util::optional<Expression> LookupLocal(std::string name, Analyzer& a, Lexer::Range where);
+            Wide::Util::optional<Expression> LookupLocal(std::string name, Context c);
         };
     }
 }
