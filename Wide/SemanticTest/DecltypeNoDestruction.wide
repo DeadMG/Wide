@@ -1,0 +1,16 @@
+type testty {
+    result := bool->pointer;
+    ~type() {
+         *result = false;
+    }
+    type(bool->pointer arg)
+        : result(arg) {}
+}
+testfunc(bool->pointer result) {
+    decltype(testty(result));
+}
+Main() {
+    result := true;
+    testfunc(&result);
+    return result;
+}

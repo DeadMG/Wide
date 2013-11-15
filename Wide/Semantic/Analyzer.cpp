@@ -53,7 +53,7 @@ Analyzer::Analyzer(const Options::Clang& opts, Codegen::Generator& g, const AST:
     null = arena.Allocate<NullType>();
     NothingFunctor = arena.Allocate<NothingCall>();
     struct decltypetype : public MetaType { 
-        Expression BuildCall(ConcreteExpression obj, std::vector<ConcreteExpression> args, Context c) override {
+        Expression BuildCall(ConcreteExpression obj, std::vector<ConcreteExpression> args, std::vector<ConcreteExpression> destructors, Context c) override {
             if (args.size() != 1)
                 throw std::runtime_error("Attempt to call decltype with more or less than 1 argument.");
 
@@ -147,13 +147,14 @@ Expression Analyzer::AnalyzeExpression(Type* t, const AST::Expression* e, std::f
             out = *mem;
         }
         void VisitCall(const AST::FunctionCall* funccall) {
+            std::vector<ConcreteExpression> destructors;
             auto fun = self->AnalyzeExpression(t, funccall->callee, handler);
             std::vector<Expression> args;
             for(auto&& arg : funccall->args) {
-                args.push_back(self->AnalyzeExpression(t, arg, handler));
+                args.push_back(self->AnalyzeExpression(t, arg, [&](ConcreteExpression e) { destructors.push_back(e); }));
             }
             
-            out = fun.BuildCall(std::move(args), Context(*self, funccall->location, handler));
+            out = fun.BuildCall(std::move(args), std::move(destructors), Context(*self, funccall->location, handler));
         }
         void VisitIdentifier(const AST::Identifier* ident) {
             auto mem = self->LookupIdentifier(t, ident);
@@ -161,9 +162,10 @@ Expression Analyzer::AnalyzeExpression(Type* t, const AST::Expression* e, std::f
             out = *mem;
         }
         void VisitBinaryExpression(const AST::BinaryExpression* bin) {
+            std::vector<ConcreteExpression> destructors;
             auto lhs = self->AnalyzeExpression(t, bin->lhs, handler);
-            auto rhs = self->AnalyzeExpression(t, bin->rhs, handler);
-            out = lhs.BuildBinaryExpression(rhs, bin->type, Context(*self, bin->location, handler));
+            auto rhs = self->AnalyzeExpression(t, bin->rhs, [&](ConcreteExpression e) { destructors.push_back(e); });
+            out = lhs.BuildBinaryExpression(rhs, bin->type, std::move(destructors), Context(*self, bin->location, handler));
         }
         void VisitMetaCall(const AST::MetaCall* mcall) {
             auto fun = self->AnalyzeExpression(t, mcall->callee, handler);

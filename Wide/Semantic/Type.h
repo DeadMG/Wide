@@ -87,12 +87,16 @@ namespace Wide {
             ConcreteExpression AddressOf(Context c);
             Codegen::Expression* BuildBooleanConversion(Context c);
             Expression BuildBinaryExpression(ConcreteExpression rhs, Lexer::TokenType type, Context c);
-
+            
+            Expression BuildCall(std::vector<Expression> args, std::vector<ConcreteExpression> destructors, Context c);
             Expression BuildCall(std::vector<Expression> args, Context c);
             Expression BuildCall(Expression lhs, Expression rhs, Context c);
             Expression BuildCall(Expression arg, Context c);
             Expression BuildMetaCall(std::vector<Expression> args, Context c);            
             Expression BuildBinaryExpression(Expression rhs, Lexer::TokenType type, Context c);
+            Expression BuildBinaryExpression(Expression rhs, Lexer::TokenType type, std::vector<ConcreteExpression> destructors, Context c);
+            Expression BuildBinaryExpression(ConcreteExpression rhs, Lexer::TokenType type, std::vector<ConcreteExpression> destructors, Context c);
+            Expression BuildCall(std::vector<ConcreteExpression> arguments, std::vector<ConcreteExpression> destructors, Context c);
             DeferredExpression BuildCall(std::vector<DeferredExpression> args, Context c);
             DeferredExpression BuildCall(DeferredExpression lhs, DeferredExpression rhs, Context c);
             DeferredExpression BuildCall(DeferredExpression arg, Context c);
@@ -126,6 +130,7 @@ namespace Wide {
             DeferredExpression BuildIncrement(bool postfix, Context c);
             DeferredExpression BuildNegate(Context c);
             DeferredExpression BuildCall(Context c);
+            DeferredExpression BuildCall(std::vector<Expression> args, std::vector<ConcreteExpression> destructors, Context c);
             DeferredExpression BuildCall(std::vector<Expression> args, Context c);
             DeferredExpression BuildCall(Expression lhs, Expression rhs, Context c);
             DeferredExpression BuildCall(Expression arg, Context c);
@@ -134,6 +139,7 @@ namespace Wide {
             DeferredExpression BuildBooleanConversion(Context c);
             DeferredExpression BuildMetaCall(std::vector<Expression> args, Context c);            
             DeferredExpression BuildBinaryExpression(Expression rhs, Lexer::TokenType type, Context c);   
+            DeferredExpression BuildBinaryExpression(Expression rhs, Lexer::TokenType type, std::vector<ConcreteExpression> destructors, Context c);   
 
             ConcreteExpression operator()(Type* t) const {
                 return (*delay)(t);
@@ -207,6 +213,7 @@ namespace Wide {
             
             Expression BuildValue(Context c);
             Wide::Util::optional<Expression> AccessMember(std::string name, Context c);
+            Expression BuildCall(std::vector<Expression> args, std::vector<ConcreteExpression> destructors, Context c);
             Expression BuildCall(std::vector<Expression> args, Context c);
             Expression BuildCall(Expression lhs, Expression rhs, Context c);
             Expression BuildCall(Expression arg, Context c);
@@ -217,6 +224,7 @@ namespace Wide {
             Expression BuildNegate(Context c);
             
             Expression BuildBinaryExpression(Expression rhs, Lexer::TokenType type, Context c);
+            Expression BuildBinaryExpression(Expression rhs, Lexer::TokenType type, std::vector<ConcreteExpression> destructors, Context c);
 
             Wide::Util::optional<Expression> PointerAccessMember(std::string name, Context c);
 
@@ -276,6 +284,11 @@ namespace Wide {
             virtual OverloadSet* AccessStaticMember(Lexer::TokenType type, Context c) {
                 throw std::runtime_error("This type does not have any static members.");
             }
+            virtual Expression BuildCall(ConcreteExpression val, std::vector<ConcreteExpression> args, std::vector<ConcreteExpression> destructors, Context c) {
+                for(auto x : destructors)
+                    c(x);
+                return BuildCall(val, std::move(args), c);
+            }
             virtual Expression BuildCall(ConcreteExpression val, std::vector<ConcreteExpression> args, Context c) {
                 if (IsReference())
                     return Decay()->BuildCall(val, std::move(args), c);
@@ -309,6 +322,7 @@ namespace Wide {
             virtual ConcreteExpression AddressOf(ConcreteExpression obj, Context c);
 
             virtual Expression BuildBinaryExpression(ConcreteExpression lhs, ConcreteExpression rhs, Lexer::TokenType type, Context c);
+            virtual Expression BuildBinaryExpression(ConcreteExpression lhs, ConcreteExpression rhs, std::vector<ConcreteExpression> destructors, Lexer::TokenType type, Context c);
             
             virtual OverloadSet* PerformADL(Lexer::TokenType what, Type* lhs, Type* rhs, Context c);
                                                 

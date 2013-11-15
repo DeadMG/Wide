@@ -61,7 +61,8 @@ void Jit(const Wide::Options::Clang& copts, std::string file) {
         // Fuck you, shitty LLVM ownership semantics.
         if (ee)
             main.release();
-        auto result = ee->runFunction(ee->FindFunctionNamed(name.c_str()), std::vector<llvm::GenericValue>());
+        auto f = ee->FindFunctionNamed(name.c_str());
+        auto result = ee->runFunction(f, std::vector<llvm::GenericValue>());
         auto intval = result.IntVal.getLimitedValue();
         if (!intval)
             throw std::runtime_error("Test returned false.");
@@ -186,6 +187,7 @@ int main(int argc, char** argv) {
         "MemberInitialization.wide",
         "AcceptQualifiedThis.wide",
         "DeferredLambda.wide",
+        "DecltypeNoDestruction.wide",
         "PrimitiveADL.wide", 
         "SimpleRAII.wide"
     };
@@ -204,7 +206,7 @@ int main(int argc, char** argv) {
     
     //atexit([] { __debugbreak(); });
     //std::set_terminate([] { __debugbreak(); });
-    //Jit(clangopts, "ClangADL.wide");
+    //Jit(clangopts, "AcceptQualifiedThis.wide");
 
     __debugbreak();
     return failure;

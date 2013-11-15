@@ -72,6 +72,12 @@ DeferredExpression DeferredExpression::BuildBinaryExpression(Expression other, L
         return (*copy)(nullptr).BuildBinaryExpression(other.Resolve(nullptr), what, c).Resolve(t);
     });
 }
+DeferredExpression DeferredExpression::BuildBinaryExpression(Expression other, Lexer::TokenType what, std::vector<ConcreteExpression> destructors, Context c) {
+    auto copy = delay;
+    return DeferredExpression([=](Type* t) {
+        return (*copy)(nullptr).BuildBinaryExpression(other.Resolve(nullptr), what, destructors, c).Resolve(t);
+    });
+}
 
 ConcreteExpression ConcreteExpression::BuildValue(Context c) {
     return t->BuildValue(*this, c);
@@ -142,9 +148,13 @@ Expression ConcreteExpression::BuildBinaryExpression(ConcreteExpression other, L
     return t->BuildBinaryExpression(*this, other, ty, c);
 }
 
+Expression ConcreteExpression::BuildBinaryExpression(ConcreteExpression rhs, Lexer::TokenType type, std::vector<ConcreteExpression> destructors, Context c) {
+    return t->BuildBinaryExpression(*this, rhs, std::move(destructors), type, c);
+}
+
 Expression ConcreteExpression::BuildBinaryExpression(Expression l, Lexer::TokenType r, Context c) {
     if (l.contents.type() == typeid(ConcreteExpression)) {
-        return t->BuildBinaryExpression(*this, boost::get<ConcreteExpression>(l.contents), r, c);
+        return BuildBinaryExpression(boost::get<ConcreteExpression>(l.contents), r, c);
     }
     ConcreteExpression self = *this;
     return DeferredExpression([=](Type* t) {
@@ -156,18 +166,49 @@ Expression ConcreteExpression::BuildMetaCall(std::vector<Expression> args, Conte
     // If they are all concrete, we're on a winner.
     std::vector<ConcreteExpression> concrete;
     auto copy = *this;
-    for (auto arg : args) {
+    auto localt = t;
+    auto t = localt;
+    for (auto&& arg : args) {
         if (arg.contents.type() == typeid(ConcreteExpression))
             concrete.push_back(boost::get<ConcreteExpression>(arg.contents));
         else
-            return DeferredExpression([=](Type* result) {
+            return DeferredExpression([copy, c, args, t](Type* result) {
                 std::vector<ConcreteExpression> concrete;
-                for (auto arg : args)
+                for (auto&& arg : args)
                     concrete.push_back(arg.Resolve(nullptr));
                 return t->BuildMetaCall(copy, std::move(concrete), c);
-        });
+            });
     }
     return t->BuildMetaCall(*this, std::move(concrete), c);
+}
+Expression ConcreteExpression::BuildCall(std::vector<Expression> arguments, std::vector<ConcreteExpression> destructors, Context c) {
+    std::vector<ConcreteExpression> args;
+    for(auto&& arg : arguments) {
+        auto copy = *this;
+        if (arg.contents.type() == typeid(ConcreteExpression))
+            args.push_back(boost::get<ConcreteExpression>(arg.contents));
+        else
+            return DeferredExpression([=](Type* result) {
+                std::vector<ConcreteExpression> concrete;
+                for (auto&& arg : arguments)
+                    concrete.push_back(arg.Resolve(nullptr));
+                return t->BuildCall(copy, std::move(concrete), destructors, c).Resolve(result);
+            });
+    }
+    return t->BuildCall(*this, std::move(args), std::move(destructors), c);
+}
+Expression ConcreteExpression::BuildCall(std::vector<ConcreteExpression> arguments, std::vector<ConcreteExpression> destructors, Context c) {
+    return t->BuildCall(*this, std::move(arguments), std::move(destructors), c);
+}
+
+DeferredExpression DeferredExpression::BuildCall(std::vector<Expression> args, std::vector<ConcreteExpression> destructors, Context c) {
+    auto copy = delay;
+    return DeferredExpression([=](Type* result) {
+        std::vector<ConcreteExpression> concrete;
+        for(auto&& arg : args)
+            concrete.push_back(arg.Resolve(nullptr));
+        return (*copy)(nullptr).BuildCall(std::move(concrete), destructors, c).Resolve(result);
+    });
 }
 
 DeferredExpression DeferredExpression::AccessMember(std::string name, Context c) {
@@ -195,17 +236,28 @@ Wide::Util::optional<Expression> Expression::AccessMember(std::string name, Cont
     //return t->AccessMember(*this, std::move(name), a);
 }
 
+Expression Expression::BuildCall(std::vector<Expression> args, std::vector<ConcreteExpression> destructors, Context c) {
+    return VisitContents(
+        [&](ConcreteExpression& expr) {
+            return expr.BuildCall(std::move(args), std::move(destructors), c);
+        },
+        [&](DeferredExpression& expr) {
+            return expr.BuildCall(std::move(args), std::move(destructors), c);
+        }
+    );
+}
+
 Expression ConcreteExpression::BuildCall(std::vector<Expression> args, Context c) {
     // If they are all concrete, we're on a winner.
     std::vector<ConcreteExpression> concrete;
     auto copy = *this;
-    for(auto arg : args) {
+    for(auto&& arg : args) {
         if (arg.contents.type() == typeid(ConcreteExpression))
             concrete.push_back(boost::get<ConcreteExpression>(arg.contents));
         else
             return DeferredExpression([=](Type* result) {
                 std::vector<ConcreteExpression> concrete;
-                for (auto arg : args)
+                for (auto&& arg : args)
                     concrete.push_back(arg.Resolve(nullptr));
                 return t->BuildCall(copy, std::move(concrete), c).Resolve(result);
             });
@@ -216,7 +268,7 @@ DeferredExpression DeferredExpression::BuildCall(std::vector<Expression> args, C
     auto copy = delay;
     return DeferredExpression([=](Type* result) {
         std::vector<ConcreteExpression> concrete;
-        for(auto arg : args)
+        for(auto&& arg : args)
             if (arg.contents.type() == typeid(ConcreteExpression))
                 concrete.push_back(boost::get<ConcreteExpression>(arg.contents));
             else
@@ -331,6 +383,26 @@ Expression Expression::BuildBooleanConversion(Context c) {
     );
     //return t->BuildBooleanConversion(*this, a);
 }
+Expression Expression::BuildBinaryExpression(Expression rhs, Lexer::TokenType type, std::vector<ConcreteExpression> destructors, Context c) {
+    return VisitContents(
+        [&](ConcreteExpression& e) -> Expression {
+            return e.BuildBinaryExpression(rhs, type, std::move(destructors), c);
+        },
+        [&](DeferredExpression& e) {
+            return e.BuildBinaryExpression(rhs, type, std::move(destructors), c);
+        }
+    );
+}
+Expression ConcreteExpression::BuildBinaryExpression(Expression rhs, Lexer::TokenType type, std::vector<ConcreteExpression> destructors, Context c) {
+    if (rhs.contents.type() == typeid(ConcreteExpression)) {
+        return t->BuildBinaryExpression(*this, boost::get<ConcreteExpression>(rhs.contents), std::move(destructors), type, c);
+    }
+    ConcreteExpression self = *this;
+    return DeferredExpression([=](Type* t) {
+        return self.t->BuildBinaryExpression(self, rhs.Resolve(nullptr), destructors, type, c).Resolve(t);
+    });
+    
+}
 Expression Expression::BuildBinaryExpression(Expression rhs, Lexer::TokenType type, Context c) {
     return VisitContents(
         [&](ConcreteExpression& e) -> Expression {
@@ -438,6 +510,12 @@ static const std::unordered_map<Lexer::TokenType, Lexer::TokenType> Assign = [](
 
 OverloadSet* ConcreteExpression::AccessMember(Lexer::TokenType name, Context c) {
     return t->Decay()->AccessMember(*this, name, c);
+}
+
+Expression Type::BuildBinaryExpression(ConcreteExpression lhs, ConcreteExpression rhs, std::vector<ConcreteExpression> destructors, Lexer::TokenType type, Context c) {
+    for(auto x : destructors)
+        c(x);
+    return BuildBinaryExpression(lhs, rhs, type, c);
 }
 
 Expression Type::BuildBinaryExpression(ConcreteExpression lhs, ConcreteExpression rhs, Lexer::TokenType type, Context c) {

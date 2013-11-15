@@ -363,21 +363,20 @@ void Function::CompleteAnalysis(Type* ret, Analyzer& a) {
         if (ret != ReturnType)
             throw std::runtime_error("Attempted to resolve a function with a return type, but it was already resolved with a different return type.");
     ReturnType = ret;
-    if (!ReturnType) { 
+    if (!ReturnType)
         ReturnType = a.GetVoidType();
+    if (ReturnType == a.GetVoidType() && !dynamic_cast<Codegen::ReturnStatement*>(exprs.empty() ? nullptr : exprs.back())) {
+        Context c(a, fun->where.front(), [](ConcreteExpression e) { assert(false); });
+        auto currscope = current_scope;
+        while(currscope) {
+            for(auto var = currscope->needs_destruction.rbegin(); var != currscope->needs_destruction.rend(); ++var) {
+                exprs.push_back(var->AccessMember("~type", c)->BuildCall(c).Resolve(nullptr).Expr);
+            }
+            currscope = currscope->parent;
+        }
         exprs.push_back(a.gen->CreateReturn()); 
     }
-    Context c(a, fun->where.front(), [](ConcreteExpression e) { assert(false); });
-    auto currscope = current_scope;
-    while(currscope) {
-        for(auto var = currscope->needs_destruction.rbegin(); var != currscope->needs_destruction.rend(); ++var) {
-            exprs.insert(exprs.end() - 1, var->AccessMember("~type", c)->BuildCall(c).Resolve(nullptr).Expr);
-        }
-        currscope = currscope->parent;
-    }
     s = State::AnalyzeCompleted;
-    if (ReturnType == a.GetVoidType() && !dynamic_cast<Codegen::ReturnStatement*>(exprs.back()))
-        exprs.push_back(a.gen->CreateReturn());
     if (!codefun)
         codefun = a.gen->CreateFunction(GetSignature(a)->GetLLVMType(a), name, this);
     for (auto&& x : exprs)
