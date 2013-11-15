@@ -308,21 +308,45 @@ void Function::ComputeBody(Analyzer& a) {
             }
         
             if (auto if_stmt = dynamic_cast<const AST::If*>(stmt)) {
-                auto cond = a.AnalyzeExpression(this, if_stmt->condition, register_local_destructor);
-                auto expr = cond.BuildBooleanConversion(Context(a, if_stmt->condition->location, register_local_destructor));
+                // condition
+                //     true
+                //     false
                 scope->children.push_back(Wide::Memory::MakeUnique<Scope>(scope));
-                current_scope = scope->children.back().get();
+                auto condscope = current_scope = scope->children.back().get();
+                auto cond = a.AnalyzeExpression(this, if_stmt->condition, [=](ConcreteExpression e) { current_scope->needs_destruction.push_back(e); });
+                auto expr = cond.BuildBooleanConversion(Context(a, if_stmt->condition->location, [=](ConcreteExpression e) { current_scope->needs_destruction.push_back(e); }));
+                condscope->children.push_back(Wide::Memory::MakeUnique<Scope>(condscope));
+                current_scope = condscope->children.back().get();
                 auto true_br = AnalyzeStatement(if_stmt->true_statement, current_scope);
-                scope->children.push_back(Wide::Memory::MakeUnique<Scope>(scope));
-                current_scope = scope->children.back().get();
-                auto false_br =  AnalyzeStatement(if_stmt->false_statement, current_scope);
+                // add any locals.
+                Context c(a, if_stmt->true_statement->location, [](ConcreteExpression e) {});
+                for(auto des = current_scope->needs_destruction.rbegin(); des != current_scope->needs_destruction.rend(); ++des)
+                    true_br = a.gen->CreateChainStatement(true_br, des->AccessMember("~type", c)->BuildCall(c).Resolve(nullptr).Expr);
+                condscope->children.push_back(Wide::Memory::MakeUnique<Scope>(condscope));
+                current_scope = condscope->children.back().get();
+                auto false_br = AnalyzeStatement(if_stmt->false_statement, current_scope);
+                // add any locals.
+                for(auto des = current_scope->needs_destruction.rbegin(); des != current_scope->needs_destruction.rend(); ++des)
+                    false_br = a.gen->CreateChainStatement(false_br, des->AccessMember("~type", c)->BuildCall(c).Resolve(nullptr).Expr);
                 current_scope = scope;
                 return expr.VisitContents(
                     [&](ConcreteExpression& expr) {
-                        return a.gen->CreateIfStatement(expr.Expr, true_br, false_br);
+                        auto cleanup = (Codegen::Statement*)a.gen->CreateNop();
+                        for(auto des = condscope->needs_destruction.rbegin(); des != condscope->needs_destruction.rend(); ++des)
+                            cleanup = a.gen->CreateChainStatement(cleanup, des->AccessMember("~type", c)->BuildCall(c).Resolve(nullptr).Expr);
+
+                        return a.gen->CreateChainStatement(a.gen->CreateIfStatement(expr.Expr, true_br, false_br), cleanup);
                     },
                     [&](DeferredExpression& expr) {
-                        return a.gen->CreateIfStatement([=] { return expr(nullptr).Expr; }, true_br, false_br);
+                        return a.gen->CreateChainStatement(
+                            a.gen->CreateIfStatement([=] { return expr(nullptr).Expr; }, true_br, false_br), 
+                            a.gen->CreateDeferredStatement([=, &a] {
+                                auto cleanup = (Codegen::Statement*)a.gen->CreateNop();
+                                for(auto des = condscope->needs_destruction.rbegin(); des != condscope->needs_destruction.rend(); ++des)
+                                    cleanup = a.gen->CreateChainStatement(cleanup, des->AccessMember("~type", c)->BuildCall(c).Resolve(nullptr).Expr);
+                                return cleanup;
+                            })
+                        );
                     }
                 );                
             }

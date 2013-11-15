@@ -313,7 +313,8 @@ llvm::Value* FPLT::ComputeValue(llvm::IRBuilder<>& builder, Generator& g) {
     return builder.CreateFCmpOLT(lhsval, rhsval);
 }
 llvm::Value* Nop::ComputeValue(llvm::IRBuilder<>& builder, Generator& g) {
-    return builder.CreateGlobalString("nop");
+    // Must create at least 1 actual instruction.
+    return builder.CreateAlloca(llvm::IntegerType::getInt1Ty(builder.getContext()), nullptr, "nop");
 }
 llvm::Value* DeferredExpr::ComputeValue(llvm::IRBuilder<>& b, Generator& g) {
     auto expr = dynamic_cast<LLVMCodegen::Expression*>(func());

@@ -159,7 +159,7 @@ int main(int argc, char** argv) {
             failure = true;
             std::cout << mode << " failed: " << file << "\n";
         } else
-            std::cout << mode << " succeeded:" << file << "\n";
+            std::cout << mode << " succeeded: " << file << "\n";
     };
 
     // Run with Image File Options attaching a debugger to debug a test.
@@ -189,7 +189,8 @@ int main(int argc, char** argv) {
         "DeferredLambda.wide",
         "DecltypeNoDestruction.wide",
         "PrimitiveADL.wide", 
-        "SimpleRAII.wide"
+        "SimpleRAII.wide",
+        "IfConditionScope.wide"
     };
     for(auto file : jit_success) {
         run_test_process(file, "jit-success");
@@ -206,7 +207,7 @@ int main(int argc, char** argv) {
     
     //atexit([] { __debugbreak(); });
     //std::set_terminate([] { __debugbreak(); });
-    //Jit(clangopts, "AcceptQualifiedThis.wide");
+    //Jit(clangopts, "IfConditionScope.wide");
 
     __debugbreak();
     return failure;
