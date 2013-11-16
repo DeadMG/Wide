@@ -190,7 +190,9 @@ int main(int argc, char** argv) {
         "DecltypeNoDestruction.wide",
         "PrimitiveADL.wide", 
         "SimpleRAII.wide",
-        "IfConditionScope.wide"
+        "IfConditionScope.wide",
+        "DestructorAfterReturnExpression.wide",
+        "CompoundScope.wide"
     };
     for(auto file : jit_success) {
         run_test_process(file, "jit-success");

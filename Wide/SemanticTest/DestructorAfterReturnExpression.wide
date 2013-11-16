@@ -1,0 +1,13 @@
+type testty {
+    result := bool->pointer;
+    ~type() {
+         *result = false;
+    }
+    type(bool->pointer arg)
+        : result(arg) {}
+}
+Main() {
+    result := true;
+    var := testty(&result);
+    return result;
+}

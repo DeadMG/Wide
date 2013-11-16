@@ -297,12 +297,15 @@ void Function::ComputeBody(Analyzer& a) {
             if (auto comp = dynamic_cast<const AST::CompoundStatement*>(stmt)) {
                 scope->children.push_back(Wide::Memory::MakeUnique<Scope>(scope));
                 current_scope = scope->children.back().get();
+                Context c(a, comp->location, [](ConcreteExpression e) {});
                 if (comp->stmts.size() == 0)
                     return a.gen->CreateNop();
                 Codegen::Statement* chain = a.gen->CreateNop();
                 for (auto&& x : comp->stmts) {
                     chain = a.gen->CreateChainStatement(chain, AnalyzeStatement(x, current_scope));
                 }
+                for(auto des = current_scope->needs_destruction.rbegin(); des != current_scope->needs_destruction.rend(); ++des)
+                    chain = a.gen->CreateChainStatement(chain, des->AccessMember("~type", c)->BuildCall(c).Resolve(nullptr).Expr);
                 current_scope = scope;
                 return chain;
             }
