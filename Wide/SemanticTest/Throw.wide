@@ -1,0 +1,4 @@
+Main() {
+    cpp("Throw.h").g();
+    return true;
+}

@@ -42,7 +42,10 @@ namespace Wide {
         class IfStatement  : public Statement{};
         class ChainStatement  : public Statement{};
         class TruncateExpression : public Expression {};
-        class WhileStatement : public Statement{};
+        class WhileStatement : public Statement {
+        public:
+            virtual void SetBody(Codegen::Statement* b) = 0;
+        };
         class NullExpression : public Expression {};
         class IntegralLeftShiftExpression : public Expression {};
         class IntegralRightShiftExpression : public Expression {};
@@ -67,6 +70,8 @@ namespace Wide {
         class Nop : public Expression {};
         class Deferred : public Statement {};
         class DeferredExpr : public Expression {};
+        class Continue : public Statement {};
+        class Break : public Statement {};
         class Function {
         public:
             virtual ~Function() {}
@@ -85,6 +90,8 @@ namespace Wide {
             virtual LoadExpression* CreateLoad(Expression*) = 0;
             virtual ReturnStatement* CreateReturn() = 0;
             virtual ReturnStatement* CreateReturn(std::function<Expression*()>) = 0;
+            virtual Continue* CreateContinue(WhileStatement* s) = 0;
+            virtual Break* CreateBreak(WhileStatement* s) = 0;
             virtual ReturnStatement* CreateReturn(Expression* e) {
                 return CreateReturn([=] { return e; });
             }
@@ -102,10 +109,10 @@ namespace Wide {
             virtual IfStatement* CreateIfStatement(std::function<Expression*()>, Statement*, Statement*) = 0;
             virtual ChainStatement* CreateChainStatement(Statement*, Statement*) = 0;
             virtual TruncateExpression* CreateTruncate(Expression*, std::function<llvm::Type*(llvm::Module*)>) = 0;
-            virtual WhileStatement* CreateWhile(Expression* e, Statement* s) {
-                return CreateWhile([=]{ return e; }, s);
+            virtual WhileStatement* CreateWhile(Expression* e) {
+                return CreateWhile([=]{ return e; });
             }
-            virtual WhileStatement* CreateWhile(std::function<Expression*()>, Statement*) = 0;
+            virtual WhileStatement* CreateWhile(std::function<Expression*()>) = 0;
             virtual NullExpression* CreateNull(std::function<llvm::Type*(llvm::Module*)> type) = 0;
             virtual IntegralLeftShiftExpression* CreateLeftShift(Expression*, Expression*) = 0;
             virtual IntegralRightShiftExpression* CreateRightShift(Expression*, Expression*, bool) = 0;

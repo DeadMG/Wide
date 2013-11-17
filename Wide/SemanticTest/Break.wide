@@ -1,0 +1,5 @@
+Main() {
+    while(true)
+        break;
+    return true;
+}

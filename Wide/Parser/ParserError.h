@@ -57,28 +57,11 @@ namespace Wide {
             LambdaNoOpenCurly,
             TypeExpressionNoCurly,
             ExpressionNoBeginning,
-            UsingAlreadyFunction,
-            UsingAlreadyUsing,
-            UsingAlreadyType,
-            UsingAlreadyModule,
-            UsingAlreadySomething,
-            ModuleAlreadyType,
-            ModuleAlreadyUsing,
-            ModuleAlreadyFunction,
-            ModuleAlreadySomething,
-            TypeFunctionAlreadyVariable,
+            TypeFunctionAlreadyVariable, 
             TypeVariableAlreadyFunction,
-            FunctionAlreadyModule,
-            FunctionAlreadyUsing,
-            FunctionAlreadyType,
-            FunctionAlreadySomething,
-            TypeAlreadyFunction,
-            TypeAlreadyType,
-            TypeAlreadyUsing,
-            TypeAlreadyModule,
-            TypeAlreadySomething,
-            UnknownDeclContext
-        };
+            BreakNoSemicolon,
+            ContinueNoSemicolon
+        };         
 
         enum class Warning : int {
             SemicolonAfterTypeDefinition,
@@ -155,6 +138,8 @@ namespace Wide {
                 std::make_pair(Error::ExpressionNoBeginning, "Expected this, type, function, integer, string, identifier, or bracket to begin an expression."),
                 std::make_pair(Error::TypeFunctionAlreadyVariable, "Attempted to add a function to a type, but that identifier was already used to denote a variable."),
                 std::make_pair(Error::TypeVariableAlreadyFunction, "Attempted to add a variable to a type, but that identifier was already used to denote a function."),
+                std::make_pair(Error::BreakNoSemicolon, "Found a break, but no semicolon afterwards."),
+                std::make_pair(Error::ContinueNoSemicolon, "Found a continue, but no semicolon afterwards."),
             };
             return std::unordered_map<Error, std::string>(std::begin(strings), std::end(strings));
         }());

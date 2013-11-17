@@ -17,6 +17,10 @@ namespace Wide {
         public:
             void AddStatement(Codegen::Statement*) {}
         };
+        class NullWhile : public Codegen::WhileStatement {
+        public:
+            void SetBody(Codegen::Statement*) {}
+        };
         class NullIntegralExpression : public Codegen::IntegralExpression {
             unsigned long long value;
             bool sign;
@@ -45,7 +49,7 @@ namespace Wide {
             NullGenerator(std::string triple);
 
             NullFunction mockfunc;
-
+            NullWhile mockwhile;
 
             llvm::LLVMContext con;
             std::string layout;
@@ -84,6 +88,8 @@ namespace Wide {
                 mockintegers.push_back(std::unique_ptr<NullIntegralExpression>(new NullIntegralExpression(val, is_signed)));
                 return mockintegers.back().get();
             }
+            virtual Codegen::Continue* CreateContinue(Codegen::WhileStatement* s) { return nullptr; }
+            virtual Codegen::Break* CreateBreak(Codegen::WhileStatement* s) { return nullptr; }
             virtual Codegen::ChainExpression* CreateChainExpression(Codegen::Statement*, Codegen::Expression*) { return nullptr; }
             virtual Codegen::FieldExpression* CreateFieldExpression(Codegen::Expression*, unsigned) { return nullptr; }
             virtual Codegen::FieldExpression* CreateFieldExpression(Codegen::Expression*, std::function<unsigned()>) { return nullptr; }
@@ -93,8 +99,8 @@ namespace Wide {
             virtual Codegen::IfStatement* CreateIfStatement(std::function<Codegen::Expression*()>, Codegen::Statement*, Codegen::Statement*) { return nullptr; }
             virtual Codegen::ChainStatement* CreateChainStatement(Codegen::Statement*,Codegen:: Statement*) { return nullptr; }
             virtual Codegen::TruncateExpression* CreateTruncate(Codegen::Expression*, std::function<llvm::Type*(llvm::Module*)>) { return nullptr; }
-            virtual Codegen::WhileStatement* CreateWhile(std::function<Codegen::Expression*()>, Codegen::Statement*) { return nullptr; }
-            virtual Codegen::WhileStatement* CreateWhile(Codegen::Expression*, Codegen::Statement*) { return nullptr; }
+            virtual Codegen::WhileStatement* CreateWhile(std::function<Codegen::Expression*()>) { return &mockwhile; }
+            virtual Codegen::WhileStatement* CreateWhile(Codegen::Expression*) { return &mockwhile; }
             virtual Codegen::NullExpression* CreateNull(std::function<llvm::Type*(llvm::Module*)> type) { return nullptr; }
             virtual Codegen::IntegralLeftShiftExpression* CreateLeftShift(Codegen::Expression*, Codegen::Expression*) { return nullptr; }
             virtual Codegen::IntegralRightShiftExpression* CreateRightShift(Codegen::Expression*, Codegen::Expression*, bool) { return nullptr; }

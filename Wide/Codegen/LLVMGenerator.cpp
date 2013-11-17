@@ -73,6 +73,11 @@ LLVMCodegen::Expression* AssertExpression(Codegen::Expression* e) {
     assert(p);
     return p;
 }
+template<typename T> T* AssertStatement(Codegen::Statement* e) {
+    auto p = dynamic_cast<T*>(e);
+    assert(p);
+    return p;
+}
 LLVMCodegen::Statement* AssertStatement(Codegen::Statement* e) {
     auto p = dynamic_cast<LLVMCodegen::Statement*>(e);
     assert(p);
@@ -183,8 +188,8 @@ ChainStatement* Generator::CreateChainStatement(Codegen::Statement* l, Codegen::
     return arena.Allocate<ChainStatement>(AssertStatement(l), AssertStatement(r));
 }
 
-WhileStatement* Generator::CreateWhile(std::function<Codegen::Expression*()> c, Codegen::Statement* b) {
-    return arena.Allocate<WhileStatement>([=] { return AssertExpression(c()); }, AssertStatement(b));
+WhileStatement* Generator::CreateWhile(std::function<Codegen::Expression*()> c) {
+    return arena.Allocate<WhileStatement>([=] { return AssertExpression(c()); });
 }
 
 NullExpression* Generator::CreateNull(std::function<llvm::Type*(llvm::Module*)> ty) {
@@ -292,4 +297,11 @@ Deferred* Generator::CreateDeferredStatement(std::function<Codegen::Statement*()
 }
 DeferredExpr* Generator::CreateDeferredExpression(std::function<Codegen::Expression*()> func) {
     return arena.Allocate<DeferredExpr>([=] { return func(); });
+}
+
+ContinueStatement* Generator::CreateContinue(Codegen::WhileStatement* s) {
+    return arena.Allocate<ContinueStatement>(AssertStatement<LLVMCodegen::WhileStatement>(s));
+}
+BreakStatement* Generator::CreateBreak(Codegen::WhileStatement* s) {
+    return arena.Allocate<BreakStatement>(AssertStatement<LLVMCodegen::WhileStatement>(s));
 }

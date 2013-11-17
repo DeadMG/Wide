@@ -355,20 +355,59 @@ void Function::ComputeBody(Analyzer& a) {
             }
         
             if (auto while_stmt = dynamic_cast<const AST::While*>(stmt)) {
-                auto cond = a.AnalyzeExpression(this, while_stmt->condition, register_local_destructor);
-                auto expr = cond.BuildBooleanConversion(Context(a, while_stmt->condition->location, register_local_destructor));
+                Context c(a, while_stmt->condition->location, [=](ConcreteExpression e) { current_scope->needs_destruction.push_back(e); });
                 scope->children.push_back(Wide::Memory::MakeUnique<Scope>(scope));
-                current_scope = scope->children.back().get();
-                auto body = AnalyzeStatement(while_stmt->body, current_scope);  
-                current_scope = scope;
-                return expr.VisitContents(
+                auto condscope = current_scope = scope->children.back().get();
+                auto cond = a.AnalyzeExpression(this, while_stmt->condition, [=](ConcreteExpression e) { current_scope->needs_destruction.push_back(e); });
+                auto expr = cond.BuildBooleanConversion(c);
+                auto ret = condscope->current_while = expr.VisitContents(
                     [&](ConcreteExpression& expr) {
-                        return a.gen->CreateWhile(expr.Expr, body);
+                        return a.gen->CreateWhile(expr.Expr);
                     },
                     [&](DeferredExpression& expr) {
-                        return a.gen->CreateWhile([=] { return expr(nullptr).Expr; }, body);
+                        return a.gen->CreateWhile([=] { return expr(nullptr).Expr; });
                     }
-                );                
+                );    
+                condscope->children.push_back(Wide::Memory::MakeUnique<Scope>(condscope));
+                current_scope = condscope->children.back().get();
+                auto body = AnalyzeStatement(while_stmt->body, current_scope);  
+                current_scope = scope;
+                condscope->current_while = nullptr;
+                ret->SetBody(body);
+                return a.gen->CreateChainStatement(ret, a.gen->CreateDeferredStatement([=, &a] {
+                    Codegen::Statement* cleanup = a.gen->CreateNop();
+                    for(auto des = condscope->needs_destruction.rbegin(); des != condscope->needs_destruction.rend(); ++des)
+                        cleanup = a.gen->CreateChainStatement(cleanup, des->AccessMember("~type", c)->BuildCall(c).Resolve(nullptr).Expr);
+                    return cleanup;
+                }));
+            }
+
+            if (auto break_stmt = dynamic_cast<const AST::Break*>(stmt)) {
+                Codegen::Statement* des = a.gen->CreateNop();
+                auto currscope = scope;
+                Context c(a, break_stmt->location, [](ConcreteExpression e) {});
+                while(currscope) {
+                    for(auto var = currscope->needs_destruction.rbegin(); var != currscope->needs_destruction.rend(); ++var)
+                        des = a.gen->CreateChainStatement(des, var->AccessMember("~type", c)->BuildCall(c).Resolve(nullptr).Expr);
+                    if (currscope->current_while)
+                        return a.gen->CreateChainStatement(des, a.gen->CreateBreak(currscope->current_while));
+                    currscope = currscope->parent;
+                }
+                throw std::runtime_error("Used a break but could not find a control flow statement to break out of.");
+            }
+
+            if (auto continue_stmt = dynamic_cast<const AST::Continue*>(stmt)) {
+                Codegen::Statement* des = a.gen->CreateNop();
+                auto currscope = scope;
+                Context c(a, continue_stmt->location, [](ConcreteExpression e) {});
+                while(currscope) {
+                    for(auto var = currscope->needs_destruction.rbegin(); var != currscope->needs_destruction.rend(); ++var)
+                        des = a.gen->CreateChainStatement(des, var->AccessMember("~type", c)->BuildCall(c).Resolve(nullptr).Expr);
+                    if (currscope->current_while)
+                        return a.gen->CreateChainStatement(des, a.gen->CreateContinue(currscope->current_while));
+                    currscope = currscope->parent;
+                }
+                throw std::runtime_error("Used a continue but could not find a control flow statement to break out of.");
             }
         
             throw std::runtime_error("Unsupported statement.");

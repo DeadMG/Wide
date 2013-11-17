@@ -600,6 +600,15 @@ namespace Wide {
                 // If it's not := then we're probably just looking at expression statement so put it back.
                 lex(next);
             }
+            // If continue or break, we're good.
+            if (t.GetType() == Lexer::TokenType::Break) {
+                auto semi = Check(lex, Error::BreakNoSemicolon, Lexer::TokenType::Semicolon);
+                return sema.CreateBreak(t.GetLocation() + semi.GetLocation());
+            }
+            if (t.GetType() == Lexer::TokenType::Continue) {
+                auto semi = Check(lex, Error::ContinueNoSemicolon, Lexer::TokenType::Semicolon);
+                return sema.CreateContinue(t.GetLocation() + semi.GetLocation());
+            }
             lex(t);
             // Else, expression statement.
             auto expr = ParseExpression(lex, sema);

@@ -74,6 +74,8 @@ namespace Wide {
             ErrorExpr* CreateError(Lexer::Range loc);
             Decrement* CreatePrefixDecrement(Expression* ex, Lexer::Range r);
             Decrement* CreatePostfixDecrement(Expression* ex, Lexer::Range r);
+            Break* CreateBreak(Lexer::Range r);
+            Continue* CreateContinue(Lexer::Range r);
             AddressOf* CreateAddressOf(Expression* ex, Lexer::Range r);
             std::vector<Statement*> CreateStatementGroup();
             std::vector<Expression*> CreateExpressionGroup();

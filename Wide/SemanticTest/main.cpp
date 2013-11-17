@@ -192,7 +192,10 @@ int main(int argc, char** argv) {
         "SimpleRAII.wide",
         "IfConditionScope.wide",
         "DestructorAfterReturnExpression.wide",
-        "CompoundScope.wide"
+        "CompoundScope.wide",
+        "Break.wide",
+        "WhileScope.wide",
+        "BreakScope.wide"
     };
     for(auto file : jit_success) {
         run_test_process(file, "jit-success");
@@ -209,7 +212,7 @@ int main(int argc, char** argv) {
     
     //atexit([] { __debugbreak(); });
     //std::set_terminate([] { __debugbreak(); });
-    //Jit(clangopts, "IfConditionScope.wide");
+    //Jit(clangopts, "Break.wide");
 
     __debugbreak();
     return failure;

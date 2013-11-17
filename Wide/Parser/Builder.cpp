@@ -348,3 +348,10 @@ std::vector<std::vector<std::pair<Lexer::Range, DeclContext*>>> Builder::GetComb
     }
     return out;
 }
+
+Break* Builder::CreateBreak(Lexer::Range r) {
+    return arena.Allocate<Break>(r);
+}
+Continue* Builder::CreateContinue(Lexer::Range r) {
+    return arena.Allocate<Continue>(r);
+}

@@ -29,11 +29,6 @@ namespace Wide {
                 DeferredReturnSeen,
                 ConcreteReturnSeen
             };
-            enum DeferState {
-                Deferred,
-                Eager
-            };
-            DeferState def;
             State s;
             Type* ReturnType;
             std::vector<Type*> Args;
@@ -48,11 +43,12 @@ namespace Wide {
 
             std::vector<Codegen::Statement*> exprs;
             struct Scope {
-                Scope(Scope* s) : parent(s) {}
+                Scope(Scope* s) : parent(s), current_while(nullptr) {}
                 Scope* parent;
                 std::vector<std::unique_ptr<Scope>> children;
                 std::unordered_map<std::string, Expression> named_variables;
                 std::vector<Expression> needs_destruction;
+                Codegen::WhileStatement* current_while;
             };
             Scope root_scope;
             Scope* current_scope;

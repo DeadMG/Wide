@@ -182,7 +182,14 @@ namespace Wide {
             Statement* body;
             Expression* condition;
         };
-
+        struct Continue : public Statement {
+            Continue(Lexer::Range where)
+                : Statement(where) {}
+        };
+        struct Break : public Statement {
+            Break(Lexer::Range where)
+                : Statement(where) {}
+        };
         struct Increment : public UnaryExpression {
             bool postfix;
             Increment(Expression* ex, Lexer::Range r, bool post)

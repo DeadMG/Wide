@@ -25,6 +25,8 @@ namespace Wide {
             Using,
             Prolog,
             Module,
+            Break,
+            Continue,
             If,
             Else,
             EqCmp,

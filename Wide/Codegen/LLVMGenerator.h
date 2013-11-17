@@ -70,7 +70,7 @@ namespace Wide {
 
             // Const parameter or compiler bug
             IfStatement* CreateIfStatement(const std::function<Codegen::Expression*()>, Codegen::Statement*, Codegen::Statement*) override final;
-            WhileStatement* CreateWhile(const std::function<Codegen::Expression*()>, Codegen::Statement*) override final;
+            WhileStatement* CreateWhile(const std::function<Codegen::Expression*()>) override final;
             ReturnStatement* CreateReturn(const std::function<Codegen::Expression*()>) override final;
             ReturnStatement* CreateReturn(Codegen::Expression* e) override final {
                 return CreateReturn([=] { return e; });
@@ -88,8 +88,8 @@ namespace Wide {
             Nop* CreateNop();
             ChainStatement* CreateChainStatement(Codegen::Statement*, Codegen::Statement*) override final;
             TruncateExpression* CreateTruncate(Codegen::Expression*, std::function<llvm::Type*(llvm::Module*)>) override final;
-            WhileStatement* CreateWhile(Codegen::Expression* e, Codegen::Statement* s) override final {
-                return CreateWhile([=]{ return e; }, s);
+            WhileStatement* CreateWhile(Codegen::Expression* e) override final {
+                return CreateWhile([=]{ return e; });
             }
             NullExpression* CreateNull(std::function<llvm::Type*(llvm::Module*)> type) override final;
             IntegralLeftShiftExpression* CreateLeftShift(Codegen::Expression*, Codegen::Expression*) override final;
@@ -112,7 +112,9 @@ namespace Wide {
             FPMod* CreateFPMod(Codegen::Expression* r, Codegen::Expression* l) override final;
             FPDiv* CreateFPDiv(Codegen::Expression* r, Codegen::Expression* l) override final;
             FPLT* CreateFPLT(Codegen::Expression* r, Codegen::Expression* l) override final;
-            
+            ContinueStatement* CreateContinue(Codegen::WhileStatement* s) override final;
+            BreakStatement* CreateBreak(Codegen::WhileStatement* s) override final;
+
             llvm::DataLayout GetDataLayout() override final;
             void AddClangTU(std::function<void(llvm::Module* m)>) override final;
             llvm::LLVMContext& GetContext() override final;

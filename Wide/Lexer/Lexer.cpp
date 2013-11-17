@@ -87,6 +87,8 @@ const std::unordered_map<std::string, TokenType> Arguments::keywords = []() -> s
     keywords["type"] = TokenType::Type;
     keywords["operator"] = TokenType::Operator;
     keywords["function"] = TokenType::Function;
+    keywords["break"] = TokenType::Break;
+    keywords["continue"] = TokenType::Continue;
     return keywords;
 }();
 

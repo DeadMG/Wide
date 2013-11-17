@@ -56,9 +56,33 @@ namespace Wide {
         class WhileStatement : public Statement, public Codegen::WhileStatement {
             std::function<LLVMCodegen::Expression*()> cond;
             LLVMCodegen::Statement* body;
+            llvm::BasicBlock* continue_bb;
+            llvm::BasicBlock* check_bb;
         public:
-            WhileStatement(std::function<LLVMCodegen::Expression*()> c, LLVMCodegen::Statement* b)
-                : cond(c), body(b) {}
+            void SetBody(Codegen::Statement* s) {
+                body = dynamic_cast<LLVMCodegen::Statement*>(s);
+                assert(body);
+            }
+            llvm::BasicBlock* GetContinueBlock() { return continue_bb; }
+            llvm::BasicBlock* GetCheckBlock() { return check_bb; }
+            WhileStatement(std::function<LLVMCodegen::Expression*()> c)
+                : cond(c), body(nullptr) {}
+            void Build(llvm::IRBuilder<>& b, Generator& g) override final;
+        };
+
+        class ContinueStatement : public Statement, public Codegen::Continue {
+            WhileStatement* cont;
+        public:
+            ContinueStatement(WhileStatement* where)
+                : cont(where) {}
+            void Build(llvm::IRBuilder<>& b, Generator& g) override final;
+        };
+
+        class BreakStatement : public Statement, public Codegen::Break {
+            WhileStatement* cont;
+        public:
+            BreakStatement(WhileStatement* where)
+                : cont(where) {}
             void Build(llvm::IRBuilder<>& b, Generator& g) override final;
         };
     }

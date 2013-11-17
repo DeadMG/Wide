@@ -76,9 +76,9 @@ void IfStatement::Build(llvm::IRBuilder<>& bb, Generator& g) {
 }
 
 void WhileStatement::Build(llvm::IRBuilder<>& bb, Generator& g) {
-    auto check_bb = llvm::BasicBlock::Create(bb.getContext(), "check_bb", bb.GetInsertBlock()->getParent());
+    check_bb = llvm::BasicBlock::Create(bb.getContext(), "check_bb", bb.GetInsertBlock()->getParent());
     auto loop_bb = llvm::BasicBlock::Create(bb.getContext(), "loop_bb", bb.GetInsertBlock()->getParent());
-    auto continue_bb = llvm::BasicBlock::Create(bb.getContext(), "continue_bb", bb.GetInsertBlock()->getParent());
+    continue_bb = llvm::BasicBlock::Create(bb.getContext(), "continue_bb", bb.GetInsertBlock()->getParent());
     bb.CreateBr(check_bb);
     bb.SetInsertPoint(check_bb);
     bb.CreateCondBr(ProcessBool(cond()->GetValue(bb, g), bb), loop_bb, continue_bb);
@@ -87,4 +87,12 @@ void WhileStatement::Build(llvm::IRBuilder<>& bb, Generator& g) {
     if (!bb.GetInsertBlock()->back().isTerminator())
         bb.CreateBr(check_bb);
     bb.SetInsertPoint(continue_bb);
+}
+
+void ContinueStatement::Build(llvm::IRBuilder<>& bb, Generator& g) {
+    bb.CreateBr(cont->GetCheckBlock());
+}
+
+void BreakStatement::Build(llvm::IRBuilder<>& bb, Generator& g) {
+    bb.CreateBr(cont->GetContinueBlock());
 }
