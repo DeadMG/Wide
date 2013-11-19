@@ -51,6 +51,7 @@ namespace Wide {
             BinaryExpression* CreateNotEqCmp(Expression* lhs, Expression* rhs);
             MetaCall* CreateMetaFunctionCall(Expression* e, std::vector<Expression*> args, Lexer::Range r);
             While* CreateWhile(Expression* cond, Statement* body, Lexer::Range loc);
+            While* CreateWhile(Variable* cond, Statement* body, Lexer::Range loc);
             This* CreateThis(Lexer::Range loc);
             Lambda* CreateLambda(std::vector<FunctionArgument> args, std::vector<Statement*> body, Lexer::Range loc, bool defaultref, std::vector<Variable*> caps);
             Negate* CreateNegate(Expression* e, Lexer::Range loc);

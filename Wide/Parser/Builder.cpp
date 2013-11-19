@@ -355,3 +355,7 @@ Break* Builder::CreateBreak(Lexer::Range r) {
 Continue* Builder::CreateContinue(Lexer::Range r) {
     return arena.Allocate<Continue>(r);
 }
+
+While* Builder::CreateWhile(Variable* cond, Statement* body, Lexer::Range loc) {
+    return arena.Allocate<While>(body, cond, loc);
+}

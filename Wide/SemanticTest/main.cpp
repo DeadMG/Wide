@@ -167,13 +167,11 @@ int main(int argc, char** argv) {
 
     std::string compile_success[] = { 
         "IntegerOperations.wide", 
-        "DeferredVariable.wide",
         "DeferredExpressionStatement.wide",
         "BooleanOperations.wide"
     };
-    for(auto file : compile_success) {
+    for(auto file : compile_success)
         run_test_process(file, "compile-success");
-    }
     
     std::string jit_success[] = {
         "BooleanShortCircuit.wide",
@@ -193,13 +191,15 @@ int main(int argc, char** argv) {
         "IfConditionScope.wide",
         "DestructorAfterReturnExpression.wide",
         "CompoundScope.wide",
+        "DeferredVariable.wide",
         "Break.wide",
         "WhileScope.wide",
-        "BreakScope.wide"
+        "BreakScope.wide",
+        "WhileVariable.wide"
     };
-    for(auto file : jit_success) {
+    std::sort(begin(jit_success), end(jit_success));
+    for(auto file : jit_success)
         run_test_process(file, "jit-success");
-    }
     
     std::string compile_fail[] = {
         "RejectNontypeFunctionArgumentExpression.wide",

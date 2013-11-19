@@ -355,12 +355,13 @@ void Function::ComputeBody(Analyzer& a) {
             }
         
             if (auto while_stmt = dynamic_cast<const AST::While*>(stmt)) {
-                Context c(a, while_stmt->condition->location, [=](ConcreteExpression e) { current_scope->needs_destruction.push_back(e); });
+                Context c(a, while_stmt->condition ? while_stmt->condition->location : while_stmt->var_condition->location, [=](ConcreteExpression e) { current_scope->needs_destruction.push_back(e); });
                 scope->children.push_back(Wide::Memory::MakeUnique<Scope>(scope));
                 auto condscope = current_scope = scope->children.back().get();
-                auto cond = a.AnalyzeExpression(this, while_stmt->condition, [=](ConcreteExpression e) { current_scope->needs_destruction.push_back(e); });
-                auto expr = cond.BuildBooleanConversion(c);
-                auto ret = condscope->current_while = expr.VisitContents(
+                Expression cond = while_stmt->var_condition
+                    ? AnalyzeStatement(while_stmt->var_condition, condscope), condscope->named_variables.begin()->second.BuildBooleanConversion(c)
+                    : a.AnalyzeExpression(this, while_stmt->condition, [=](ConcreteExpression e) { current_scope->needs_destruction.push_back(e); }).BuildBooleanConversion(c) ;
+                auto ret = condscope->current_while = cond.VisitContents(
                     [&](ConcreteExpression& expr) {
                         return a.gen->CreateWhile(expr.Expr);
                     },

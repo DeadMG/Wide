@@ -7,6 +7,8 @@
 
 #pragma warning(push, 0)
 #include <clang/AST/Type.h>
+#include <clang/Sema/Sema.h>
+#include <clang/Lex/Preprocessor.h>
 #pragma warning(pop)
 
 using namespace Wide;
@@ -28,6 +30,24 @@ Wide::Util::optional<Expression> ClangIncludeEntity::AccessMember(ConcreteExpres
         };
         return c->arena.Allocate<ClangNameMangler>()->BuildValueConstruction(c);
     }
+    /*
+    if (name == "macro") {
+        struct ClangMacroHandler : public MetaType {
+            Expression BuildCall(ConcreteExpression, std::vector<ConcreteExpression> args, Context c) override {
+                if (args.size() < 2)
+                    throw std::runtime_error("Attempt to access a macro but no TU or macro name was passed.");
+                // Should be a ClangNamespace as first argument.
+                auto gnamespace = dynamic_cast<ClangNamespace*>(args[0].t->Decay());
+                if (!gnamespace)
+                    throw std::runtime_error("Attempted to access a macro, but the first argument was not a Clang translation unit.");
+                auto str = dynamic_cast<Codegen::StringExpression*>(args[1].BuildValue(c).Expr);
+                if (!str)
+                    throw std::runtime_error("Attempted to access a macro, but the second argument was not a string literal.");
+                auto tu = gnamespace->GetTU();
+                
+            }
+        };
+    }*/
     return Wide::Util::none;
 }
 

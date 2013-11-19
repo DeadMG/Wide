@@ -84,6 +84,11 @@ void Function::EmitCode(llvm::Module* mod, llvm::LLVMContext& con, Generator& g)
     for(auto&& x : statements)
         x ? x->Build(irbuilder, g) : void();
 
+    // The analyzer should take care of inserting a return if it was legal.
+    // If not, then insert unreachable.
+    if(!irbuilder.GetInsertBlock()->getTerminator())
+        irbuilder.CreateUnreachable();
+
     if (llvm::verifyFunction(*f, llvm::VerifierFailureAction::PrintMessageAction))
         throw std::runtime_error("Internal Compiler Error: An LLVM function failed verification.");
 }

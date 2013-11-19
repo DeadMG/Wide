@@ -586,6 +586,21 @@ namespace Wide {
             }
             if (t.GetType() == Lexer::TokenType::While) {
                 Check(lex, Error::WhileNoOpenBracket, Lexer::TokenType::OpenBracket);
+                // Check for variable conditions.
+                auto ident = lex();
+                if (ident.GetType() == Lexer::TokenType::Identifier) {
+                    auto var = lex();
+                    if (var.GetType() == Lexer::TokenType::VarCreate) {
+                        auto expr = ParseExpression(std::forward<Lex>(lex), std::forward<Sema>(sema));
+                        auto variable = sema.CreateVariable(ident.GetValue(), std::move(expr), t.GetLocation() + sema.GetLocation(expr));
+                        Check(lex, Error::WhileNoCloseBracket, Lexer::TokenType::CloseBracket);
+                        auto body = ParseStatement(lex, sema);
+                        return sema.CreateWhile(variable, body, t.GetLocation() + sema.GetLocation(body));
+                    }
+                    lex(var);
+                }
+                lex(ident);
+
                 auto cond = ParseExpression(lex, sema);
                 Check(lex, Error::WhileNoCloseBracket, Lexer::TokenType::CloseBracket);
                 auto body = ParseStatement(lex, sema);

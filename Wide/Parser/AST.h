@@ -135,10 +135,13 @@ namespace Wide {
         };
         struct If : public Statement {
             If(Expression* c, Statement* t, Statement* f, Lexer::Range loc)
-                :  Statement(loc), true_statement(t), false_statement(f), condition(c) {}
+                :  Statement(loc), true_statement(t), false_statement(f), condition(c), var_condition(nullptr) {}
+            If(Variable* c, Statement* t, Statement* f, Lexer::Range loc)
+                :  Statement(loc), true_statement(t), false_statement(f), var_condition(c), condition(nullptr) {}
             Statement* true_statement;
             Statement* false_statement;
             Expression* condition;
+            Variable* var_condition;
         };
         struct Auto : public Expression {
             Auto(Lexer::Range loc)
@@ -178,9 +181,12 @@ namespace Wide {
         };
         struct While : public Statement {
             While(Statement* b, Expression* c, Lexer::Range loc)
-                : Statement(loc), body(b), condition(c) {}
+                : Statement(loc), body(b), condition(c), var_condition(nullptr) {}
+            While(Statement* b, Variable* c, Lexer::Range loc)
+                : Statement(loc), body(b), var_condition(c), condition(nullptr) {}
             Statement* body;
             Expression* condition;
+            Variable* var_condition;
         };
         struct Continue : public Statement {
             Continue(Lexer::Range where)
