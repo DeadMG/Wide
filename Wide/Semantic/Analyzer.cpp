@@ -24,6 +24,7 @@
 #include <Wide/Semantic/SemanticError.h>
 #include <Wide/Semantic/SemanticExpression.h>
 #include <Wide/Semantic/FloatType.h>
+#include <Wide/Util/DebugUtilities.h>
 #include <sstream>
 #include <iostream>
 #include <unordered_set>
@@ -617,7 +618,7 @@ Wide::Util::optional<Expression> Analyzer::LookupIdentifier(Type* context, const
     if (auto udt = dynamic_cast<UserDefinedType*>(context)) {
         return LookupIdentifier(context->GetContext(*this), ident);
     }
-    __debugbreak();
+    Wide::Util::DebugBreak();
     auto value = context->AccessMember(context->BuildValueConstruction(c), ident->val, c);
     if (value)
         return value;

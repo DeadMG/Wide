@@ -10,6 +10,7 @@
 #include <Wide/Semantic/SemanticError.h>
 #include <Wide/Semantic/ConstructorType.h>
 #include <Wide/Semantic/Reference.h>
+#include <Wide/Util/DebugUtilities.h>
 #include <Wide/Semantic/UserDefinedType.h>
 #include <array>
 #include <sstream>
@@ -131,7 +132,7 @@ Callable* OverloadSet::Resolve(std::vector<Type*> f_args, Analyzer& a) {
             if (takety->IsMovable())
                 return true;
         // Should have covered all nine cases here.
-        __debugbreak();
+        Wide::Util::DebugBreak();
     };
     ViableCandidates.erase(
         std::remove_if(ViableCandidates.begin(), ViableCandidates.end(), [&](std::pair<Type*, const AST::Function*> candidate) {
@@ -226,7 +227,7 @@ Callable* OverloadSet::Resolve(std::vector<Type*> f_args, Analyzer& a) {
             Type* nonstatic;
             std::vector<Type*> GetArgumentTypes(Analyzer& a) override {
                 std::vector<Type*> types;
-                if (nonstatic)
+                if (AddThis() && nonstatic)
                     types.push_back(nonstatic);
                 for(unsigned i = 0; i < fun->getNumParams(); ++i)
                     types.push_back(a.GetClangType(*from, fun->getParamDecl(i)->getType()));

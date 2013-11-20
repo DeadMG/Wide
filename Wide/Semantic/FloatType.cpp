@@ -38,8 +38,6 @@ clang::QualType FloatType::GetClangType(ClangUtil::ClangTU& from, Analyzer& a) {
         return from.GetASTContext().FloatTy;
     case 64:
         return from.GetASTContext().DoubleTy;
-    case 128:
-        return from.GetASTContext().getTypeDeclType(from.GetASTContext().getFloat128StubType());
     }
     assert(false && "Bad number of bits for floating-point type.");
 }

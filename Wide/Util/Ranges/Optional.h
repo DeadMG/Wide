@@ -15,6 +15,7 @@
 #pragma once
 
 #include <cassert>
+#include <utility>
 #include <type_traits>
 
 namespace Wide {

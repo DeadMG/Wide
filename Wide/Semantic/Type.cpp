@@ -529,10 +529,7 @@ Expression Type::BuildBinaryExpression(ConcreteExpression lhs, ConcreteExpressio
     arguments.push_back(lhs.t);
     arguments.push_back(rhs.t);
     if (auto call = adlset->Resolve(arguments, *c)) {
-        if (call->AddThis()) {
-            return adlset->BuildValueConstruction(lhs, c).BuildCall(rhs, c);
-        }
-        return adlset->BuildValueConstruction(c).BuildCall(lhs, rhs, c);
+        return call->BuildValueConstruction(c).BuildCall(lhs, rhs, c);
     }
     
     // ADL has failed to find us a suitable operator, so fall back to defaults.

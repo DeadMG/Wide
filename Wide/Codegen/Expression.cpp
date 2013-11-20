@@ -1,5 +1,6 @@
 #include <Wide/Codegen/Expression.h>
 #include <Wide/Codegen/LLVMGenerator.h>
+#include <Wide/Util/DebugUtilities.h>
 #include <Wide/Codegen/Function.h>
 #include <set>
 #include <array>
@@ -35,7 +36,7 @@ llvm::Value* FunctionCall::ComputeValue(llvm::IRBuilder<>& builder, Generator& g
         }
     }
     if (!obj)
-        __debugbreak();
+        Wide::Util::DebugBreak();
     auto fun = llvm::dyn_cast<llvm::Function>(obj);
     auto funty = fun->getFunctionType();
     std::set<std::size_t> ignoredparams;

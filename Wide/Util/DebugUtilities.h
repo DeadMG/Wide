@@ -2,7 +2,7 @@
 
 namespace Wide {
     namespace Util {
-        void DebugBreak() {
+        inline void DebugBreak() {
 #ifdef _MSC_VER
             __debugbreak();
 #else

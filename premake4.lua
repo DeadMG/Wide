@@ -20,34 +20,38 @@ function AddClangDependencies(conf)
     for k, v in pairs(llvmincludes) do
         includedirs({ _OPTIONS["llvm-path"] .. v })
     end
-    local llvmlibs = {
-        "build/lib/" .. conf
-    }
     for k, v in pairs(llvmlibs) do
-        libdirs({ _OPTIONS["llvm-path"] .. v})
+        if os.is("windows") then
+            libdirs({ _OPTIONS["llvm-path"] .. "build/lib/" .. conf })
+        else
+            libdirs({ _OPTIONS["llvm-path"] .. "build/Release+Debug+Asserts/lib" })
+        end
+    end
+    local clanglibs = { 
+        "clangFrontend",
+        "clangSerialization",
+        "clangDriver",
+        "clangTooling",
+        "clangCodeGen",
+        "clangParse",
+        "clangSema",
+        "clangAnalysis",
+        "clangRewriteFrontend",
+        "clangRewriteCore",
+        "clangEdit",
+        "clangAST",
+        "clangLex",
+        "clangBasic",
+    }
+    if not os.is("windows") then
+        for k, v in pairs(clanglibs) do
+            linkoptions { "-l" .. v }
+        end
+        linkoptions { "`../../" .. _OPTIONS["llvm-path"] .. "build/Release+Debug+Asserts/bin/llvm-config --libs all`" }
+        linkoptions { "-ldl", "-lpthread" }
+        return
     end
     local libs = {
-        "clangAnalysis",    
-        "clangARCMigrate",
-        "clangAST",
-        "clangASTMatchers",
-        "clangBasic",
-        "clangCodeGen",
-        "clangDriver",
-        "clangEdit",
-        "clangFormat",
-        "clangFrontend",
-        "clangFrontendTool",
-        "clangLex",
-        "clangParse",
-        "clangRewriteCore",
-        "clangRewriteFrontend",
-        "clangSema",
-        "clangSerialization",
-        "clangStaticAnalyzerCheckers",
-        "clangStaticAnalyzerCore",
-        "clangStaticAnalyzerFrontend",
-        "clangTooling",
         "LLVMAArch64AsmParser",
         "LLVMAArch64AsmPrinter",
         "LLVMAArch64CodeGen",
@@ -116,10 +120,6 @@ function AddClangDependencies(conf)
         "LLVMPowerPCCodeGen",
         "LLVMPowerPCDesc",
         "LLVMPowerPCInfo",
-        "LLVMR600AsmPrinter",
-        "LLVMR600CodeGen",
-        "LLVMR600Desc",
-        "LLVMR600Info",
         "LLVMRuntimeDyld",
         "LLVMScalarOpts",
         "LLVMSelectionDAG",
@@ -131,7 +131,6 @@ function AddClangDependencies(conf)
         "LLVMSystemZAsmPrinter",
         "LLVMSystemZCodeGen",
         "LLVMSystemZDesc",
-        "LLVMSystemZDisassembler",
         "LLVMSystemZInfo",
         "LLVMTableGen",
         "LLVMTarget",
@@ -148,9 +147,17 @@ function AddClangDependencies(conf)
         "LLVMXCoreCodeGen",
         "LLVMXCoreDesc",
         "LLVMXCoreDisassembler",
-        "LLVMXCoreInfo"
+        "LLVMXCoreInfo",
+        "LLVMSystemZDisassembler",
+        "LLVMR600AsmPrinter",
+        "LLVMR600CodeGen",
+        "LLVMR600Desc",
+        "LLVMR600Info"
     }
     for k, v in pairs(libs) do
+        links { v }
+    end
+    for k, v in pairs(clanglibs) do
         links { v }
     end
 end
@@ -166,6 +173,9 @@ function AddBoostDependencies(conf)
     }
     for k, v in pairs(boostlibs) do
         libdirs({ _OPTIONS["boost-path"] .. v})
+    end
+    if not os.is("windows") then
+        links { "boost_program_options" }
     end
 end
 
@@ -190,7 +200,7 @@ WideProjects = {
             return CheckLLVM(proj) and CheckBoost(proj)
         end, 
         action = function()
-            links { "Lexer", "Parser", "Semantic", "Codegen" }
+            links { "Codegen", "Util", "Lexer", "Parser", "Semantic" }
             kind ("ConsoleApp")
         end,
         configure = function(plat, conf)
@@ -199,7 +209,7 @@ WideProjects = {
             if os.is("windows") then
                 postbuildcommands ({ "copy /Y \"$(TargetDir)$(TargetName).exe\" \"$(SolutionDir)Deployment/Wide.exe\"" })
             else
-                postbuildcommands ({ "cp /Y \"../Build/" .. plat .. "/" .. conf .. "/CLI\" \"../Deployment/Wide\"" })
+                postbuildcommands ({ "cp -f \"../Build/" .. plat .. "/" .. conf .. "/CLI\" \"../Deployment/Wide/CLI\"" })
             end
         end,
     },
@@ -219,16 +229,30 @@ WideProjects = {
         configure = function(plat, conf)
             AddClangDependencies(conf)
             AddBoostDependencies(conf)
+        end,
+        action = function()
+            links { "Util" }
         end
     },
-    Parser = {},
-    Lexer = {},
+    Parser = {
+        action = function()
+            links { "Util" }
+        end
+    },
+    Lexer = {
+        action = function()
+            links { "Util" }
+        end
+    },
     Codegen = { 
         dependencies = function(proj)
             return CheckLLVM(proj)
         end, 
         configure = function(plat, conf)
             AddClangDependencies(conf)
+        end,
+        action = function()
+            links { "Util" }
         end
     },
     CAPI = {
@@ -238,22 +262,24 @@ WideProjects = {
         configure = function(plat, conf)
             AddClangDependencies(conf)
             AddBoostDependencies(conf)
-        end,            
+        end, 
         action = function()
             kind "SharedLib"
-            links { "Lexer", "Parser", "Semantic" }
+            links { "Util", "Lexer", "Parser", "Semantic" }
         end 
     },
     WideLibrary = {
         action = function()
             files ({ "Wide/WideLibrary/**.wide"})
-            postbuildcommands ({ "(robocopy /mir \"Standard\" \"../Deployment/WideLibrary/Standard\") ^& IF %ERRORLEVEL% LEQ 1 exit 0" })
+            if os.is("windows") then
+                postbuildcommands ({ "(robocopy /mir \"Standard\" \"../Deployment/WideLibrary/Standard\") ^& IF %ERRORLEVEL% LEQ 1 exit 0" })
+            end
         end
     },
     LexerTest = { 
         action = function() 
             kind("ConsoleApp")
-            links { "Lexer" }
+            links { "Util", "Lexer" }
         end,
         configure = function(plat, conf)
             if os.is("windows") then
@@ -267,7 +293,7 @@ WideProjects = {
         name = "SemanticTest",
         action = function()
             kind("ConsoleApp")
-            links { "Lexer", "Parser", "Semantic", "Codegen" }
+            links { "Util", "Lexer", "Parser", "Semantic", "Codegen" }
             files ({ "Wide/SemanticTest/**.wide" })
         end,
         dependencies = function(proj)
@@ -292,7 +318,7 @@ configurations(SupportedConfigurations)
 platforms(SupportedPlatforms)
 kind("StaticLib")
 if not os.is("Windows") then
-    buildoptions  {"-std=c++11", "-D __STDC_CONSTANT_MACROS"}
+    buildoptions  {"-std=c++11", "-D __STDC_CONSTANT_MACROS", "-D __STDC_LIMIT_MACROS" }
 else
     defines { "_SCL_SECURE_NO_WARNINGS" }
 end
@@ -303,7 +329,6 @@ for name, proj in pairs(WideProjects) do
         project(name)
         location("Wide/"..name)
         if proj.action then proj.action() end
-        if name ~= "Util" then links { "Util" } end
         files( { "Wide/" .. name .. "/**.cpp", "Wide/" .. name .. "/**.h" })
         for k, plat in pairs(SupportedPlatforms) do
             for k, conf in pairs(SupportedConfigurations) do

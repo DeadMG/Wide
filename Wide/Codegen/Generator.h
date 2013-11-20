@@ -2,6 +2,7 @@
 #include <functional>
 #include <vector>
 #include <string>
+#include <cstdint>
 
 namespace llvm {
     class Type;
@@ -97,7 +98,7 @@ namespace Wide {
             }
             virtual Nop* CreateNop() = 0;
             virtual FunctionValue* CreateFunctionValue(std::string) = 0;
-            virtual IntegralExpression* CreateIntegralExpression(unsigned long long val, bool is_signed, std::function<llvm::Type*(llvm::Module*)> ty) = 0;
+            virtual IntegralExpression* CreateIntegralExpression(std::uint64_t val, bool is_signed, std::function<llvm::Type*(llvm::Module*)> ty) = 0;
             virtual ChainExpression* CreateChainExpression(Statement*, Expression*) = 0;
             virtual FieldExpression* CreateFieldExpression(Expression*, unsigned) = 0;
             virtual FieldExpression* CreateFieldExpression(Expression*, std::function<unsigned()>) = 0;

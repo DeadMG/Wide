@@ -76,7 +76,7 @@ namespace Wide {
                 return CreateReturn([=] { return e; });
             }
             FunctionValue* CreateFunctionValue(std::string) override final;
-            IntegralExpression* CreateIntegralExpression(uint64_t val, bool is_signed, std::function<llvm::Type*(llvm::Module*)> ty) override final;
+            IntegralExpression* CreateIntegralExpression(std::uint64_t val, bool is_signed, std::function<llvm::Type*(llvm::Module*)> ty) override final;
             ChainExpression* CreateChainExpression(Codegen::Statement*, Codegen::Expression*) override final;
             FieldExpression* CreateFieldExpression(Codegen::Expression*, unsigned) override final;
             FieldExpression* CreateFieldExpression(Codegen::Expression*, std::function<unsigned()>) override final;

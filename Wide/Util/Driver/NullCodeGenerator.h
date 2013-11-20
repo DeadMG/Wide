@@ -84,7 +84,7 @@ namespace Wide {
                     return mockfunctions[val].get();
                 return (mockfunctions[val] = std::unique_ptr<NullFunctionValue>(new NullFunctionValue(std::move(val)))).get();
             }
-            virtual Codegen::IntegralExpression* CreateIntegralExpression(unsigned long long val, bool is_signed, std::function<llvm::Type*(llvm::Module*)> ty) { 
+            virtual Codegen::IntegralExpression* CreateIntegralExpression(std::uint64_t val, bool is_signed, std::function<llvm::Type*(llvm::Module*)> ty) { 
                 mockintegers.push_back(std::unique_ptr<NullIntegralExpression>(new NullIntegralExpression(val, is_signed)));
                 return mockintegers.back().get();
             }

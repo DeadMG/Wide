@@ -105,6 +105,10 @@ namespace Wide {
         };
 
         struct DeferredExpression {
+#ifndef _MSC_VER
+            DeferredExpression& operator=(DeferredExpression&& other) = default;
+            DeferredExpression& operator=(const DeferredExpression& other) = default;
+#endif
             template<typename X> DeferredExpression(
                 X&& other, 
                 typename std::enable_if<

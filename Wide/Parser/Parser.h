@@ -3,6 +3,7 @@
 #include <string>
 #include <unordered_map>
 #include <memory>
+#include <stdexcept>
 #include <Wide/Lexer/Token.h>
 #include <Wide/Parser/ParserError.h>
 #include <Wide/Util/Ranges/Optional.h>

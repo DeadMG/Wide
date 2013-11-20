@@ -16,9 +16,32 @@
 #include <llvm/Target/TargetOptions.h>
 #include <llvm/Target/TargetMachine.h>
 #include <llvm/Support/TargetRegistry.h>
+#include <llvm/Support/Host.h>
 #include <llvm/Support/FormattedStream.h>
 #include <llvm/Support/raw_os_ostream.h>
 #pragma warning(pop)
+
+/*
+ /usr/include/c++/4.7
+ /usr/include/c++/4.7/x86_64-linux-gnu
+ /usr/include/c++/4.7/backward
+ /usr/lib/gcc/x86_64-linux-gnu/4.7/include
+ /usr/local/include
+ /usr/lib/gcc/x86_64-linux-gnu/4.7/include-fixed
+ /usr/include/x86_64-linux-gnu
+ /usr/include
+*/
+/*
+Added include path: /usr/include/c++/4.7
+Added include path: /usr/include/c++/4.7/x86_64-linux-gnu
+Added include path: /usr/include/c++/4.7/backward
+Added include path: /usr/lib/gcc/x86_64-linux-gnu/4.7/include
+Added include path: /usr/local/include
+Added include path: /usr/lib/gcc/x86_64-linux-gnu/4.7/include-fixed
+Added include path: /usr/include/x86_64-linux-gnu
+Added include path: /usr/include
+*/
+// --include="/usr/include/c++/4.7" --include="/usr/include/c++/4.7/x86_64-linux-gnu" --include="/usr/include/c++/4.7/backward" --include="/usr/lib/gcc/x86_64-linux-gnu/4.7/include" --include="/usr/local/include" --include="/usr/lib/gcc/x86_64-linux-gnu/4.7/include-fixed" --include="/usr/include/x86_64-linux-gnu" --include="/usr/include" hello.wide
 
 int main(int argc, char** argv)
 {
@@ -29,7 +52,7 @@ int main(int argc, char** argv)
         ("mingw", boost::program_options::value<std::string>(), "The location of MinGW. Defaulted to \".\\MinGW\\\".")
 #endif
         ("output", boost::program_options::value<std::string>(), "The output file. Defaulted to \"a.o\".")
-        ("triple", boost::program_options::value<std::string>(), "The target triple. Defaulted to"
+        ("triple", boost::program_options::value<std::string>(), "The target triple. Defaulted to "
 #ifdef _MSC_VER
         "i686-pc-mingw32.")
 #else
@@ -62,7 +85,7 @@ int main(int argc, char** argv)
 #ifdef _MSC_VER
     ClangOpts.TargetOptions.Triple = input.count("triple") ? input["triple"].as<std::string>() : "i686-pc-mingw32";
 #else
-    ClangOpts.TargetOptions.Triple = input.count("triple") ? input["triple"].as<std::string>() : llvm::sys::GetDefaultTargetTriple();
+    ClangOpts.TargetOptions.Triple = input.count("triple") ? input["triple"].as<std::string>() : llvm::sys::getDefaultTargetTriple();
 #endif
 
     ClangOpts.FrontendOptions.OutputFile = input.count("output") ? input["output"].as<std::string>() : "a.o";
@@ -78,14 +101,22 @@ int main(int argc, char** argv)
     //LLVMOpts.Passes.push_back(Wide::Options::CreateDeadCodeElimination());
 
     std::vector<std::string> files;
-    if (input.count("input"))
+    if (input.count("input")) {
         files = input["input"].as<std::vector<std::string>>();
-    else {
+    } else {
         std::cout << "Didn't request any files to be compiled.\n";
         return 1;
     }
 
-    std::string stdlib = input.count("stdlib") ? input["stdlib"].as<std::string>() : ".\\WideLibrary\\";
+    if (input.count("include")) {
+        for(auto path : input["include"].as<std::vector<std::string>>()) {
+            std::cout << "Added include path: " << path << "\n";
+            ClangOpts.HeaderSearchOptions->AddPath(path, clang::frontend::IncludeDirGroup::CXXSystem, false, false);
+        }
+    }
+
+    std::cout << "Triple: " << ClangOpts.TargetOptions.Triple << "\n";
+    std::string stdlib = input.count("stdlib") ? input["stdlib"].as<std::string>() : "./WideLibrary/";
 
     files.push_back(stdlib + "Standard/Algorithm/All.wide");
     files.push_back(stdlib + "Standard/Algorithm/Any.wide");
@@ -111,29 +142,35 @@ int main(int argc, char** argv)
     files.push_back(stdlib + "Standard/Range/StreamInserter.wide");
     files.push_back(stdlib + "Standard/Utility/Move.wide");
     files.push_back(stdlib + "stdlib.wide");
-    Wide::LLVMCodegen::Generator Generator(LLVMOpts, ClangOpts.TargetOptions.Triple, [&](std::unique_ptr<llvm::Module> main) {
-        llvm::PassManager pm;
-        std::unique_ptr<llvm::TargetMachine> targetmachine;
-        llvm::TargetOptions targetopts;
-        std::string err;
-        const llvm::Target& target = *llvm::TargetRegistry::lookupTarget(ClangOpts.TargetOptions.Triple, err);
-        targetmachine = std::unique_ptr<llvm::TargetMachine>(target.createTargetMachine(ClangOpts.TargetOptions.Triple, llvm::Triple(ClangOpts.TargetOptions.Triple).getArchName(), "", targetopts));
-        std::ofstream file(ClangOpts.FrontendOptions.OutputFile, std::ios::trunc | std::ios::binary);
-        llvm::raw_os_ostream out(file);
-        llvm::formatted_raw_ostream format_out(out);
-        targetmachine->addPassesToEmitFile(pm, format_out, llvm::TargetMachine::CodeGenFileType::CGFT_ObjectFile);
-        pm.run(*main);
-    });
-    Wide::Driver::Compile(ClangOpts, [](Wide::Semantic::Analyzer& a, const Wide::AST::Module* root) {
-        static const Wide::Lexer::Range location = std::make_shared<std::string>("Analyzer entry point");
-        auto std = a.GetGlobalModule()->AccessMember("Standard", a, location);
-        if (!std)
-            throw std::runtime_error("Fuck.");
-        auto main = std->Resolve(nullptr).t->AccessMember("Main", a, location);
-        if (!main)
-            throw std::runtime_error("Fuck.");
-        main->Resolve(nullptr).BuildCall(a, location);
-    }, Generator, files);
-
+    try {
+        Wide::LLVMCodegen::Generator Generator(LLVMOpts, ClangOpts.TargetOptions.Triple, [&](std::unique_ptr<llvm::Module> main) {
+            llvm::PassManager pm;
+            std::unique_ptr<llvm::TargetMachine> targetmachine;
+            llvm::TargetOptions targetopts;
+            std::string err;
+            const llvm::Target& target = *llvm::TargetRegistry::lookupTarget(ClangOpts.TargetOptions.Triple, err);
+            targetmachine = std::unique_ptr<llvm::TargetMachine>(target.createTargetMachine(ClangOpts.TargetOptions.Triple, llvm::Triple(ClangOpts.TargetOptions.Triple).getArchName(), "", targetopts));
+            std::ofstream file(ClangOpts.FrontendOptions.OutputFile, std::ios::trunc | std::ios::binary);
+            llvm::raw_os_ostream out(file);
+            llvm::formatted_raw_ostream format_out(out);
+            targetmachine->addPassesToEmitFile(pm, format_out, llvm::TargetMachine::CodeGenFileType::CGFT_ObjectFile);
+            pm.run(*main);
+        });
+        Wide::Driver::Compile(ClangOpts, [](Wide::Semantic::Analyzer& a, const Wide::AST::Module* root) {
+            static const Wide::Lexer::Range location = std::make_shared<std::string>("Analyzer entry point");
+            Wide::Semantic::Context c(a, location, [](Wide::Semantic::ConcreteExpression e) {});
+            auto std = a.GetGlobalModule()->BuildValueConstruction(c).AccessMember("Standard", c);
+            if (!std)
+                throw std::runtime_error("Fuck.");
+            auto main = std->Resolve(nullptr).AccessMember("Main", c);
+            if (!main)
+                throw std::runtime_error("Fuck.");
+            main->Resolve(nullptr).BuildCall(c);
+        }, Generator, files);
+    } catch(std::exception& e) {
+        std::cout << "Error:\n";
+        std::cout << e.what() << "\n";
+        return 1;
+    }
     return 0;
 }

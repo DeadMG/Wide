@@ -1,6 +1,7 @@
 #include <Wide/CAPI/Lexer.h>
 #include <Wide/Parser/Parser.h>
 #include <Wide/Parser/Builder.h>
+#include <Wide/Util/DebugUtilities.h>
 
 namespace CEquivalents {
     struct LexerResult {
@@ -58,7 +59,7 @@ namespace CEquivalents {
 
 std::unordered_set<Wide::AST::Builder*> valid_builders;
 
-extern "C" __declspec(dllexport) Wide::AST::Builder* ParseWide(
+extern "C" DLLEXPORT Wide::AST::Builder* ParseWide(
     void* context,
     std::add_pointer<CEquivalents::LexerResult(void*)>::type TokenCallback,
     std::add_pointer<void(CEquivalents::Range, Wide::AST::OutliningType, void*)>::type OutliningCallback,
@@ -90,14 +91,14 @@ extern "C" __declspec(dllexport) Wide::AST::Builder* ParseWide(
     return &builder;
 }
 
-extern "C" __declspec(dllexport) void DestroyParser(Wide::AST::Builder* p) {
+extern "C" DLLEXPORT void DestroyParser(Wide::AST::Builder* p) {
     if (valid_builders.find(p) == valid_builders.end())
-        __debugbreak();
+        Wide::Util::DebugBreak();
     valid_builders.erase(p);
     delete p;
 }
 
-extern "C" __declspec(dllexport) Wide::AST::Combiner* CreateCombiner(
+extern "C" DLLEXPORT Wide::AST::Combiner* CreateCombiner(
     std::add_pointer<void(unsigned count, CEquivalents::CombinedError*, void*)>::type ErrorCallback,
     void* context
 ) {
@@ -120,33 +121,33 @@ extern "C" __declspec(dllexport) Wide::AST::Combiner* CreateCombiner(
     return new Wide::AST::Combiner(onerror);
 }
 
-extern "C" __declspec(dllexport) void DestroyCombiner(Wide::AST::Combiner* p) {
+extern "C" DLLEXPORT void DestroyCombiner(Wide::AST::Combiner* p) {
     delete p;
 }
 
-extern "C" __declspec(dllexport) void AddParser(Wide::AST::Combiner* c, Wide::AST::Builder* p) {
+extern "C" DLLEXPORT void AddParser(Wide::AST::Combiner* c, Wide::AST::Builder* p) {
     assert(valid_builders.find(p) != valid_builders.end());
     c->Add(p->GetGlobalModule());
 }
 
-extern "C" __declspec(dllexport) void RemoveParser(Wide::AST::Combiner* c, Wide::AST::Builder* p) {
+extern "C" DLLEXPORT void RemoveParser(Wide::AST::Combiner* c, Wide::AST::Builder* p) {
     assert(valid_builders.find(p) != valid_builders.end());
     c->Remove(p->GetGlobalModule());
 }
 
-extern "C" __declspec(dllexport) const char* GetParserErrorString(Wide::Parser::Error err) {
+extern "C" DLLEXPORT const char* GetParserErrorString(Wide::Parser::Error err) {
     if (Wide::Parser::ErrorStrings.find(err) == Wide::Parser::ErrorStrings.end())
         return "ICE: Failed to retrieve error string: unknown error.";
     return Wide::Parser::ErrorStrings.at(err).c_str();
 }
 
-extern "C" __declspec(dllexport) const char* GetParserWarningString(Wide::Parser::Warning err) {
+extern "C" DLLEXPORT const char* GetParserWarningString(Wide::Parser::Warning err) {
     if (Wide::Parser::WarningStrings.find(err) == Wide::Parser::WarningStrings.end())
         return "ICE: Failed to retrieve warning string: unknown warning.";
     return Wide::Parser::WarningStrings.at(err).c_str();
 }
 
-extern "C" __declspec(dllexport) void GetParserCombinedErrors(
+extern "C" DLLEXPORT void GetParserCombinedErrors(
     Wide::AST::Builder* b,
     std::add_pointer<void(unsigned count, CEquivalents::CombinedError*, void*)>::type callback,
     void* context

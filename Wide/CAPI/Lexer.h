@@ -2,6 +2,12 @@
 
 #include <Wide/Lexer/Lexer.h>
 
+#ifdef _MSC_VER
+#define DLLEXPORT __declspec(dllexport)
+#else
+#define DLLEXPORT
+#endif
+
 namespace CEquivalents {
     struct OptionalChar {
         char val;

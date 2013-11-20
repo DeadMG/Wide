@@ -1,7 +1,7 @@
 #pragma once
 
-#include "stdqueue.h"
-#include "../DebugUtilities.h"
+#include <Wide/Util/Concurrency/ConcurrentDetail/stdqueue.h>
+#include <Wide/Util/DebugUtilities.h>
 
 #include <algorithm>
 #include <thread>

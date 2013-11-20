@@ -1,6 +1,6 @@
 #include <Wide/CAPI/Lexer.h>
 
-extern "C" __declspec(dllexport) void LexWide(
+extern "C" DLLEXPORT void LexWide(
     void* con,
     std::add_pointer<CEquivalents::OptionalChar(void*)>::type curr,
     std::add_pointer<bool(CEquivalents::Range, const char*, Wide::Lexer::TokenType, void*)>::type token,
@@ -33,6 +33,6 @@ extern "C" __declspec(dllexport) void LexWide(
     }
 }
 
-extern "C" __declspec(dllexport) bool IsKeywordType(Wide::Lexer::TokenType ty) {
+extern "C" DLLEXPORT bool IsKeywordType(Wide::Lexer::TokenType ty) {
     return Wide::Lexer::Arguments::KeywordTypes.find(ty) != Wide::Lexer::Arguments::KeywordTypes.end();
 }

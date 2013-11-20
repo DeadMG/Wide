@@ -3,6 +3,7 @@
 #include <Wide/Lexer/Token.h>
 #include <unordered_map>
 #include <initializer_list>
+#include <vector>
 #include <string>
 
 namespace Wide {
@@ -161,7 +162,7 @@ namespace Wide {
                 : err(error), recoverloc(pos) { loc.push_back(pos); }
             ParserError(Lexer::Range pos, Lexer::Range recloc, Error error)
                 : err(error), recoverloc(recloc) { loc.push_back(pos); }
-            ParserError(Lexer::Range first, std::initializer_list<Lexer::Range> rest, Error error)
+            ParserError(Lexer::Range first, std::vector<Lexer::Range> rest, Error error)
                 : recoverloc(first), err(error)
             {
                 loc.push_back(first);

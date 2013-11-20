@@ -386,6 +386,7 @@ Type* ClangType::GetContext(Analyzer& a) {
 namespace std {
     template<> struct iterator_traits<clang::ADLResult::iterator> {
         typedef std::input_iterator_tag iterator_category;
+        typedef std::size_t difference_type;
     };
 }
 

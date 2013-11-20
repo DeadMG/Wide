@@ -4,10 +4,6 @@
 using namespace Wide;
 using namespace AST;
      
-std::initializer_list<Wide::Lexer::Range> InitListFromVector(const std::vector<Wide::Lexer::Range>& where) {
-    return std::initializer_list<Wide::Lexer::Range>(&where[0], &where[0] + where.size());
-}
-
 Builder::Builder(
     std::function<void(std::vector<Wide::Lexer::Range>, Parser::Error)> err, 
     std::function<void(Lexer::Range, Parser::Warning)> warn,
@@ -286,7 +282,7 @@ void Builder::AddTypeField(Type* t, Variable* decl) {
         std::vector<Wide::Lexer::Range> vec;
         for(auto&& x : t->Functions[decl->name]->functions)
             vec.push_back(x->where.front());
-        throw Parser::ParserError(decl->location, InitListFromVector(vec), Parser::Error::TypeVariableAlreadyFunction);
+        throw Parser::ParserError(decl->location, vec, Parser::Error::TypeVariableAlreadyFunction);
     }
     t->variables.push_back(decl); 
 }
