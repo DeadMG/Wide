@@ -8,8 +8,22 @@ newoption {
     value = "filepath",
     description = "The path of Boost on this machine."
 }
+if not os.is("Windows") then
+    newoption {
+        trigger = "llvm-conf",
+        value = "configuration",
+        description = "The configuration used to build LLVM."
+    }
+    newoption {
+        trigger = "boost-lib",
+        value = "library name",
+        description = "The name of the Boost library."
+    }
+end
+
 
 function AddClangDependencies(conf)
+    local llvmconf = (os.is("windows") and conf) or _OPTIONS["llvm-conf"] or conf
     local llvmincludes = {
         "tools/clang/include", 
         "build/tools/clang/include", 
@@ -20,12 +34,10 @@ function AddClangDependencies(conf)
     for k, v in pairs(llvmincludes) do
         includedirs({ _OPTIONS["llvm-path"] .. v })
     end
-    for k, v in pairs(llvmlibs) do
-        if os.is("windows") then
-            libdirs({ _OPTIONS["llvm-path"] .. "build/lib/" .. conf })
-        else
-            libdirs({ _OPTIONS["llvm-path"] .. "build/Release+Debug+Asserts/lib" })
-        end
+    if os.is("windows") then
+        libdirs({ _OPTIONS["llvm-path"] .. "build/lib/" .. llvmconf })
+    else
+        libdirs({ _OPTIONS["llvm-path"] .. "build/" .. llvmconf .. "/lib" })
     end
     local clanglibs = { 
         "clangFrontend",
@@ -47,7 +59,7 @@ function AddClangDependencies(conf)
         for k, v in pairs(clanglibs) do
             linkoptions { "-l" .. v }
         end
-        linkoptions { "`../../" .. _OPTIONS["llvm-path"] .. "build/Release+Debug+Asserts/bin/llvm-config --libs all`" }
+        linkoptions { "`../../" .. _OPTIONS["llvm-path"] .. "build/" .. llvmconf .. "/bin/llvm-config --libs all`" }
         linkoptions { "-ldl", "-lpthread" }
         return
     end
@@ -209,7 +221,7 @@ WideProjects = {
             if os.is("windows") then
                 postbuildcommands ({ "copy /Y \"$(TargetDir)$(TargetName).exe\" \"$(SolutionDir)Deployment/Wide.exe\"" })
             else
-                postbuildcommands ({ "cp -f \"../Build/" .. plat .. "/" .. conf .. "/CLI\" \"../Deployment/Wide/CLI\"" })
+                postbuildcommands ({ "mkdir -p ../Deployment" ,  "cp -f \"../Build/" .. plat .. "/" .. conf .. "/CLI\" \"../Deployment/CLI\"" })
             end
         end,
     },
@@ -273,6 +285,8 @@ WideProjects = {
             files ({ "Wide/WideLibrary/**.wide"})
             if os.is("windows") then
                 postbuildcommands ({ "(robocopy /mir \"Standard\" \"../Deployment/WideLibrary/Standard\") ^& IF %ERRORLEVEL% LEQ 1 exit 0" })
+            else
+                postbuildcommands ({ "cp -r ../WideLibrary ../Deployment/WideLibrary" })
             end
         end
     },
@@ -304,7 +318,7 @@ WideProjects = {
             if os.is("windows") then
                 postbuildcommands ({ "$(TargetPath)" })
             else
-                postbuildcommands ({ "SemanticTest" })
+                postbuildcommands ({ "../Build/x64/Debug/SemanticTest" })
             end
         end,
     }        
@@ -318,7 +332,7 @@ configurations(SupportedConfigurations)
 platforms(SupportedPlatforms)
 kind("StaticLib")
 if not os.is("Windows") then
-    buildoptions  {"-std=c++11", "-D __STDC_CONSTANT_MACROS", "-D __STDC_LIMIT_MACROS" }
+    buildoptions  {"-std=c++11", "-D __STDC_CONSTANT_MACROS", "-D __STDC_LIMIT_MACROS", "-fPIC" }
 else
     defines { "_SCL_SECURE_NO_WARNINGS" }
 end

@@ -5,6 +5,7 @@
 #include <Wide/Semantic/OverloadSet.h>
 #include <Wide/Semantic/ClangOptions.h>
 #include <Wide/Codegen/LLVMGenerator.h>
+#include <Wide/Util/DebugUtilities.h>
 #include <boost/program_options.hpp>
 
 #pragma warning(push, 0)
@@ -134,7 +135,7 @@ int main(int argc, char** argv) {
                 return 0;
             }
         }
-        __debugbreak();
+        return 1;
     }
     bool failure = false;
     auto run_test_process = [&](std::string file, std::string mode) {
@@ -143,8 +144,13 @@ int main(int argc, char** argv) {
         const char* args[] = { argv[0], arguments.c_str(), modearg.c_str(), nullptr };
         std::string err = "";
         bool failed = false;
+#ifdef _MSC_VER
         auto ret = llvm::sys::ExecuteAndWait(
             argv[0],
+#else
+        auto ret = llvm::sys::Program::ExecuteAndWait(
+            llvm::sys::Path(argv[0]),
+#endif
             args,
             nullptr,
             nullptr,
@@ -154,7 +160,7 @@ int main(int argc, char** argv) {
             &failed
         );
         if (failed)
-            __debugbreak();
+            return 1;
         if (ret) {
             failure = true;
             std::cout << mode << " failed: " << file << "\n";
@@ -213,7 +219,6 @@ int main(int argc, char** argv) {
     //atexit([] { __debugbreak(); });
     //std::set_terminate([] { __debugbreak(); });
     //Jit(clangopts, "Break.wide");
-
-    __debugbreak();
+    std::cin.get();
     return failure;
 }
