@@ -2,7 +2,7 @@ Lexer:
 Test @identifiers.
 Add floating-point literals.
 Add extra forms of integer literal like hex.
-Investigate that fucking close bracket.s
+Investigate that fucking close brackets
 Add tests.
 
 Parser:
@@ -16,23 +16,29 @@ Add tests.
 
 Builder:
 Change AST to owning.
-Change Combiner so that it does not duplicate some things unnecessarily now.
 
 Analyzer:
-Add support for the new parser directives.
-Add the ability to call destructors of stack-based objects implicitly.
-Add support for exceptions
+Add exceptions.
+Add polymorphic types.
+Add basic inheritance (no virtual functions or inheritance, just is-a and composition).
+Add unsafe pointer indexing.
+Add Malloc/Free to system.
+Add "this" being the member type.
+Add polymorphic integer operators.
+Add constant context.
+Add auto as function argument.
+Add static reflection.
+Consider constraints.
+
+Fix default arguments.
 Fix ExportName to create a trampoline instead of actually exporting.
 Add all primitive operators and types.
 Add metafunctions.
 Add ability for C++ to call into Wide public global functions without having to declare it.
 Add ability for C++ to understand Wide member functions, constructors, and destructors.
-Add exceptions.
 Add the ability for Wide to expose Wide generic functions as C++ templates
 Add the ability for Wide functions to refer to constant context.
 Add the ability to resolve one function from a C++ overload set.
-Fix default arguments.
-Add polymorphic types.
 Look into whether the UDT destructor code is modifying the AST.
 Add tests.
 
@@ -49,4 +55,5 @@ Add tests.
 Util/Driver:
 Change Compile so that the combiner errors are reported properly.
 
-
+CLI:
+Fix Standard includes to take respect of the current system.
