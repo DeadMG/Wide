@@ -19,7 +19,7 @@ namespace Wide {
         
             Wide::Util::optional<Expression> AccessMember(ConcreteExpression val, std::string name, Context c) override;
             Type* GetContext(Analyzer& a) override;
-            ClangUtil::ClangTU* GetTU();
+            ClangUtil::ClangTU* GetTU() { return from; }
         };
     }
 }

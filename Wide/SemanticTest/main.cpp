@@ -193,6 +193,7 @@ int main(int argc, char** argv) {
         "DeferredLambda.wide",
         "DecltypeNoDestruction.wide",
         "PrimitiveADL.wide", 
+        "IntegerMacro.wide",
         "SimpleRAII.wide",
         "IfConditionScope.wide",
         "DestructorAfterReturnExpression.wide",
@@ -201,7 +202,8 @@ int main(int argc, char** argv) {
         "Break.wide",
         "WhileScope.wide",
         "BreakScope.wide",
-        "WhileVariable.wide"
+        "WhileVariable.wide",
+        "BooleanMacro.wide"
     };
     std::sort(begin(jit_success), end(jit_success));
     for(auto file : jit_success)
@@ -218,7 +220,7 @@ int main(int argc, char** argv) {
     
     //atexit([] { __debugbreak(); });
     //std::set_terminate([] { __debugbreak(); });
-    //Jit(clangopts, "Break.wide");
+    //Jit(clangopts, "IntegerMacro.wide");
     std::cin.get();
     return failure;
 }

@@ -3,10 +3,13 @@
 #include <Wide/Semantic/ClangTU.h>
 #include <Wide/Semantic/ClangNamespace.h>
 #include <Wide/Semantic/FunctionType.h>
+#include <Wide/Semantic/IntegralType.h>
 #include <Wide/Codegen/Generator.h>
 
 #pragma warning(push, 0)
+#include <clang/Parse/Parser.h>
 #include <clang/AST/Type.h>
+#include <clang/AST/ASTConsumer.h>
 #include <clang/Sema/Sema.h>
 #include <clang/Lex/Preprocessor.h>
 #pragma warning(pop)
@@ -30,7 +33,6 @@ Wide::Util::optional<Expression> ClangIncludeEntity::AccessMember(ConcreteExpres
         };
         return c->arena.Allocate<ClangNameMangler>()->BuildValueConstruction(c);
     }
-    /*
     if (name == "macro") {
         struct ClangMacroHandler : public MetaType {
             Expression BuildCall(ConcreteExpression, std::vector<ConcreteExpression> args, Context c) override {
@@ -44,10 +46,45 @@ Wide::Util::optional<Expression> ClangIncludeEntity::AccessMember(ConcreteExpres
                 if (!str)
                     throw std::runtime_error("Attempted to access a macro, but the second argument was not a string literal.");
                 auto tu = gnamespace->GetTU();
-                
+                auto&& pp = tu->GetSema().getPreprocessor();
+                auto info = pp.getMacroInfo(tu->GetIdentifierInfo(str->GetContents()));
+                    
+                class SwallowConsumer : public clang::ASTConsumer {
+                public:
+                    SwallowConsumer() {}
+                    bool HandleTopLevelDecl(clang::DeclGroupRef arg) { return true; }
+                }; 
+
+                SwallowConsumer consumer;
+                clang::Sema s(pp, tu->GetASTContext(), consumer);
+                clang::Parser p(tu->GetSema().getPreprocessor(), s, true);
+                std::vector<clang::Token> tokens;
+                for(auto num = 0; num < info->getNumTokens(); ++num)
+                    tokens.push_back(info->getReplacementToken(num));
+                tokens.emplace_back();
+                clang::Token& eof = tokens.back();
+                eof.setKind(clang::tok::TokenKind::eof);
+                eof.setLocation(tu->GetFileEnd());
+                eof.setIdentifierInfo(nullptr);
+                pp.EnterTokenStream(tokens.data(), 2, false, false);
+                p.Initialize();
+                auto expr = p.ParseExpression();
+                if (expr.isUsable()) {
+                    if (expr.get()->isIntegerConstantExpr(tu->GetASTContext())) {
+                        llvm::APSInt out;
+                        if (expr.get()->EvaluateAsInt(out, tu->GetASTContext())) {
+                            if (out.getBitWidth() == 1)
+                                return ConcreteExpression(c->GetBooleanType(), c->gen->CreateIntegralExpression(out.getLimitedValue(1), false, c->GetBooleanType()->GetLLVMType(*c)));
+                            auto ty = c->GetIntegralType(out.getBitWidth(), out.isSigned());
+                            return ConcreteExpression(ty, c->gen->CreateIntegralExpression(out.getLimitedValue(), out.isSigned(), ty->GetLLVMType(*c)));
+                        }
+                    }
+                }
+                throw std::runtime_error("Only support constexpr integral macros right now.");
             }
         };
-    }*/
+        return c->arena.Allocate<ClangMacroHandler>()->BuildValueConstruction(c);
+    }
     return Wide::Util::none;
 }
 

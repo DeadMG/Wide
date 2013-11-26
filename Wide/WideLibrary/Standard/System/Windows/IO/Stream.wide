@@ -58,6 +58,7 @@ module Standard {
         Stream(std.string path) {
             return Stream(Utility.Move(path), Read());
         }*/
+
         Out(uint8 val) {
             byteswritten := uint32();
             Windows.WriteConsoleA(
@@ -67,7 +68,6 @@ module Standard {
                 &byteswritten,
                 null
             );
-
         }
     }
 }

@@ -138,7 +138,8 @@ public:
         sm.setMainFileID(fileid);
         engine.getClient()->BeginSourceFile(Options->LanguageOptions, &preproc);
         ParseAST(sema);
-        engine.getClient()->EndSourceFile();
+        
+        //engine.getClient()->EndSourceFile();
         HandleErrors();
     }
 
