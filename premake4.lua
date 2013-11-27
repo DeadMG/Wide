@@ -46,7 +46,7 @@ function AddClangDependencies(conf)
             libdirs({ _OPTIONS["llvm-path"] .. "build/" .. llvmconf .. "/lib" })
         end
     else
-        includedirs({ _OPTIONS["llvm-path"] })
+        includedirs({ "`llvm-config --includedir`" })
     end
     local clanglibs = { 
         "clangFrontend",
