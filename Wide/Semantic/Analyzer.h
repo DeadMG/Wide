@@ -30,7 +30,6 @@ namespace clang {
 }
 
 namespace Wide {
-    class Library;
     namespace ClangUtil {
         class ClangTU;
     }

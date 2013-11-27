@@ -1,0 +1,4 @@
+Main() {
+    if (var := true)
+        return var;
+}

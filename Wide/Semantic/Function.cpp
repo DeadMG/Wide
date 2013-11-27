@@ -316,20 +316,25 @@ void Function::ComputeBody(Analyzer& a) {
                 //     false
                 scope->children.push_back(Wide::Memory::MakeUnique<Scope>(scope));
                 auto condscope = current_scope = scope->children.back().get();
-                auto cond = a.AnalyzeExpression(this, if_stmt->condition, [=](ConcreteExpression e) { current_scope->needs_destruction.push_back(e); });
-                auto expr = cond.BuildBooleanConversion(Context(a, if_stmt->condition->location, [=](ConcreteExpression e) { current_scope->needs_destruction.push_back(e); }));
+                Context c(a, if_stmt->condition ? if_stmt->condition->location : if_stmt->var_condition->location, [=](ConcreteExpression e) { current_scope->needs_destruction.push_back(e); });
+                Expression cond = if_stmt->var_condition
+                    ? AnalyzeStatement(if_stmt->var_condition, condscope), condscope->named_variables.begin()->second.BuildBooleanConversion(c)
+                    : a.AnalyzeExpression(this, if_stmt->condition, [=](ConcreteExpression e) { current_scope->needs_destruction.push_back(e); }).BuildBooleanConversion(c);
+                auto expr = cond.BuildBooleanConversion(c);
                 condscope->children.push_back(Wide::Memory::MakeUnique<Scope>(condscope));
                 current_scope = condscope->children.back().get();
                 auto true_br = AnalyzeStatement(if_stmt->true_statement, current_scope);
                 // add any locals.
-                Context c(a, if_stmt->true_statement->location, [](ConcreteExpression e) {});
+                c.where = if_stmt->true_statement->location;
                 for(auto des = current_scope->needs_destruction.rbegin(); des != current_scope->needs_destruction.rend(); ++des)
                     true_br = a.gen->CreateChainStatement(true_br, des->AccessMember("~type", c)->BuildCall(c).Resolve(nullptr).Expr);
+                if (if_stmt->false_statement)
+                    c.where = if_stmt->false_statement->location;
                 condscope->children.push_back(Wide::Memory::MakeUnique<Scope>(condscope));
                 current_scope = condscope->children.back().get();
                 auto false_br = AnalyzeStatement(if_stmt->false_statement, current_scope);
                 // add any locals.
-                for(auto des = current_scope->needs_destruction.rbegin(); des != current_scope->needs_destruction.rend(); ++des)
+                for (auto des = current_scope->needs_destruction.rbegin(); des != current_scope->needs_destruction.rend(); ++des)
                     false_br = a.gen->CreateChainStatement(false_br, des->AccessMember("~type", c)->BuildCall(c).Resolve(nullptr).Expr);
                 current_scope = scope;
                 return expr.VisitContents(

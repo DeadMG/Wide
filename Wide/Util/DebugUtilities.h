@@ -6,7 +6,15 @@ namespace Wide {
 #ifdef _MSC_VER
             __debugbreak();
 #else
-            throw std::runtime_error("Internal Compiler Error: A problem occurred and the compiler requested the attention of the debugger.");
+#ifdef __clang__
+            __builtin_debugger();
+#else
+#ifdef __GNUC__
+            __asm__ volatile("int $0x03");
+#else
+#error "No implementation of DebugBreak() provided!"
+#endif
+#endif
 #endif
         }
     }

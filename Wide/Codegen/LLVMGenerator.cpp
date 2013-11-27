@@ -41,10 +41,10 @@ void Generator::operator()() {
 }
 
 Generator::Generator(const Options::LLVM& l, std::string trip, std::function<void(std::unique_ptr<llvm::Module>)> action)
-    : main(Wide::Memory::MakeUnique<llvm::Module>("Wide", context))
-    , llvmopts(l)
-    , func(std::move(action))
+    : func(std::move(action))
     , triple(std::move(trip))
+    , llvmopts(l)
+    , main(Wide::Memory::MakeUnique<llvm::Module>("Wide", context))
 {
     Codegen::InitializeLLVM();
     std::unique_ptr<llvm::TargetMachine> targetmachine;

@@ -1,3 +1,0 @@
-Main() {
-    return null == cpp("ClangADL.h").ClangADL.test();
-}

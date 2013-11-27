@@ -18,15 +18,17 @@ Builder:
 Change AST to owning.
 
 Analyzer:
-Add exceptions.
-Add polymorphic types.
+Add auto as function argument.
+Add "this" being the member type.
+Add Malloc/Free to system.
 Add basic inheritance (no virtual functions or inheritance, just is-a and composition).
 Add unsafe pointer indexing.
-Add Malloc/Free to system.
-Add "this" being the member type.
 Add polymorphic integer operators.
 Add constant context.
-Add auto as function argument.
+Add inheriting constructors.
+
+Add exceptions.
+Add polymorphic types.
 Add static reflection.
 Consider constraints.
 
@@ -40,6 +42,7 @@ Add the ability for Wide to expose Wide generic functions as C++ templates
 Add the ability for Wide functions to refer to constant context.
 Add the ability to resolve one function from a C++ overload set.
 Look into whether the UDT destructor code is modifying the AST.
+Consider parameterised destructors.
 Add tests.
 
 WideLibrary:

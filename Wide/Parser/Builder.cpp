@@ -185,6 +185,13 @@ If* Builder::CreateIf(Expression* cond, Statement* true_br, Statement* false_br,
 If* Builder::CreateIf(Expression* cond, Statement* true_br, Lexer::Range loc) 
 { return CreateIf(cond, true_br, nullptr, loc); }
 
+If* Builder::CreateIf(Variable* cond, Statement* true_br, Statement* false_br, Lexer::Range loc) {
+    return arena.Allocate<If>(cond, true_br, false_br, loc);
+}
+If* Builder::CreateIf(Variable* cond, Statement* true_br, Lexer::Range loc) {
+    return CreateIf(cond, true_br, nullptr, loc);
+}
+
 CompoundStatement* Builder::CreateCompoundStatement(std::vector<Statement*> true_br, Lexer::Range loc) 
 { return arena.Allocate<CompoundStatement>(std::move(true_br), loc); }
 

@@ -51,6 +51,7 @@ void Function::Declare(llvm::Module* mod, llvm::LLVMContext& con, Generator& g) 
     llvm::IRBuilder<> irbuilder(bb);
     
     auto fty = llvm::dyn_cast<llvm::FunctionType>(f->getType()->getElementType());
+
     auto ty = llvm::dyn_cast<llvm::FunctionType>(llvm::dyn_cast<llvm::PointerType>(Type(mod))->getElementType());
 
     // Always in sync except when Clang skips an empty type parameter.

@@ -72,10 +72,10 @@ namespace Wide {
         struct Position {
             Position(std::shared_ptr<std::string> where)
                 : line(1), column(1), offset(0), name(std::move(where)) {}
-            std::shared_ptr<std::string> name;
             unsigned line;
             unsigned column;
             unsigned offset;
+            std::shared_ptr<std::string> name;
             bool before(Position other) const {
                 return offset < other.offset;
             }

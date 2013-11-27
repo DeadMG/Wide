@@ -44,6 +44,8 @@ namespace Wide {
             BinaryExpression* CreateAssignment(Expression* lhs, Expression* rhs, Lexer::TokenType type);
             Integer* CreateInteger(std::string val, Lexer::Range r);
             BinaryExpression* CreateRightShift(Expression* lhs, Expression* rhs);
+            If* CreateIf(Variable* cond, Statement* true_br, Statement* false_br, Lexer::Range loc);
+            If* CreateIf(Variable* cond, Statement* true_br, Lexer::Range loc);
             If* CreateIf(Expression* cond, Statement* true_br, Statement* false_br, Lexer::Range loc);
             If* CreateIf(Expression* cond, Statement* true_br, Lexer::Range loc);
             CompoundStatement* CreateCompoundStatement(std::vector<Statement*> true_br, Lexer::Range loc);

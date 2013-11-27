@@ -1,0 +1,3 @@
+Main() {
+    return cpp.macro(cpp("JitSuccess/BooleanMacro.h"), "MACRO");
+}

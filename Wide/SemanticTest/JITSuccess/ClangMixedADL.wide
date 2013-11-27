@@ -1,4 +1,4 @@
-using clangtest := cpp("ClangADL.h").ClangADL.test;
+using clangtest := cpp("JitSuccess/ClangADL.h").ClangADL.test;
 module Test {
     type t {}
     operator==(t lhs, clangtest rhs) { return true; }

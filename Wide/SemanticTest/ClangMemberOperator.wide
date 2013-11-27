@@ -1,4 +1,0 @@
-using test := cpp("ClangMemberOperator.h").test;
-Main() {
-    return test() == test();
-}

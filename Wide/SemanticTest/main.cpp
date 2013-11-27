@@ -84,7 +84,6 @@ void Jit(const Wide::Options::Clang& copts, std::string file) {
     }, g, { file });
 }
 
-
 int main(int argc, char** argv) {
     Wide::Options::Clang clangopts;
     clangopts.TargetOptions.Triple = "i686-pc-mingw32";
@@ -92,52 +91,60 @@ int main(int argc, char** argv) {
     desc.add_options()
         ("input", boost::program_options::value<std::string>(), "One input file. May be specified multiple times.")
         ("mode", boost::program_options::value<std::string>(), "The testing mode.")
-    ;    
+        ("break", "Break when the tests are succeeded to view the output.")
+        ;
     boost::program_options::variables_map input;
     try {
         boost::program_options::store(boost::program_options::command_line_parser(argc, argv).options(desc).run(), input);
-    } catch(std::exception& e) {
+    } catch (std::exception& e) {
         std::cout << "Malformed command line.\n" << e.what();
         return 1;
     }
+    std::unordered_map<std::string, std::function<int()>> modes([&]() -> std::unordered_map<std::string, std::function<int()>> {
+        std::unordered_map<std::string, std::function<int()>> ret;
+        ret["CompileSuccess"] = [&] {
+            try {
+                Compile(clangopts, input["input"].as<std::string>());
+                return 0;
+            } catch (...) {
+                return 1;
+            }
+        };
+        ret["CompileFail"] = [&] {
+            try {
+                Compile(clangopts, input["input"].as<std::string>());
+                return 1;
+            } catch (...) {
+                return 0;
+            }
+        };
+        ret["JITSuccess"] = [&] {
+            try {
+                Jit(clangopts, input["input"].as<std::string>());
+                return 0;
+            } catch (...) {
+                return 1;
+            }
+        };
+        ret["JITFail"] = [&] {
+            try {
+                Jit(clangopts, input["input"].as<std::string>());
+                return 1;
+            } catch (...) {
+                return 0;
+            }
+        };
+        return ret;
+    }());
     if (input.count("input")) {
-        auto val = input["mode"].as<std::string>();
-        if (val == "compile-success") {
-            try {
-                Compile(clangopts, input["input"].as<std::string>());
-                return 0;
-            } catch(...) {
-                return 1;
-            }
-        }
-        if (val == "compile-fail") {
-            try {
-                Compile(clangopts, input["input"].as<std::string>());
-                return 1;
-            } catch(...) {
-                return 0;
-            }
-        }
-        //atexit([]{ __debugbreak(); });
-        if (val == "jit-success") {
-            try {
-                Jit(clangopts, input["input"].as<std::string>());
-                return 0;
-            } catch(...) {
-                return 1;
-            }
-        }
-        if (val == "jit-fail") {
-            try {
-                Jit(clangopts, input["input"].as<std::string>());
-                return 1;
-            } catch(...) {
-                return 0;
-            }
-        }
+        if (modes.find(input["mode"].as<std::string>()) != modes.end())
+            return modes[input["mode"].as<std::string>()]();
         return 1;
     }
-    bool failure = false;
+    unsigned tests_failed = 0;
+    unsigned tests_succeeded = 0;
+    unsigned total_failed = 0;
+    unsigned total_succeeded = 0;
     auto run_test_process = [&](std::string file, std::string mode) {
         auto modearg = "--mode=" + mode;
         std::string arguments = "--input=" + file;
@@ -158,69 +165,50 @@ int main(int argc, char** argv) {
             0,
             &err,
             &failed
-        );
-        if (failed)
-            return 1;
-        if (ret) {
-            failure = true;
+            );
+
+        if (failed || ret) {
+            tests_failed++;
             std::cout << mode << " failed: " << file << "\n";
-        } else
+        } else {
+            tests_succeeded++;
             std::cout << mode << " succeeded: " << file << "\n";
+        }
     };
 
     // Run with Image File Options attaching a debugger to debug a test.
     // Run without to see test results.
-
-    std::string compile_success[] = { 
-        "IntegerOperations.wide", 
-        "DeferredExpressionStatement.wide",
-        "BooleanOperations.wide"
-    };
-    for(auto file : compile_success)
-        run_test_process(file, "compile-success");
-    
-    std::string jit_success[] = {
-        "BooleanShortCircuit.wide",
-        "ClangADL.wide",
-        "ClangMixedADL.wide",
-        "ClangMemberFunction.wide",
-        "ClangMemberOperator.wide",
-        "RecursiveTypeInference.wide",
-        "CorecursiveTypeInference.wide",
-        "MemberCall.wide",
-        "MemberInitialization.wide",
-        "AcceptQualifiedThis.wide",
-        "DeferredLambda.wide",
-        "DecltypeNoDestruction.wide",
-        "PrimitiveADL.wide", 
-        "IntegerMacro.wide",
-        "SimpleRAII.wide",
-        "IfConditionScope.wide",
-        "DestructorAfterReturnExpression.wide",
-        "CompoundScope.wide",
-        "DeferredVariable.wide",
-        "Break.wide",
-        "WhileScope.wide",
-        "BreakScope.wide",
-        "WhileVariable.wide",
-        "BooleanMacro.wide"
-    };
-    std::sort(begin(jit_success), end(jit_success));
-    for(auto file : jit_success)
-        run_test_process(file, "jit-success");
-    
-    std::string compile_fail[] = {
-        "RejectNontypeFunctionArgumentExpression.wide",
-        "SubmoduleNoQualifiedLookup.wide",
-        "RejectLvalueQualifiedThis.wide",
-        "RejectRvalueQualifiedThis.wide"
-    };
-    for(auto file : compile_fail)
-        run_test_process(file, "compile-fail");
-    
+    for (auto mode : modes) {
+        auto end = llvm::sys::fs::directory_iterator();
+        llvm::error_code fuck_error_codes;
+        bool out = true;
+        fuck_error_codes = llvm::sys::fs::is_directory(mode.first, out);
+        if (!out || fuck_error_codes) {
+            std::cout << "Skipping " << mode.first << " as a directory by this name did not exist.\n";
+            continue;
+        }
+        auto begin = llvm::sys::fs::directory_iterator(mode.first, fuck_error_codes);
+        std::set<std::string> entries;
+        while (!fuck_error_codes && begin != end) {
+            entries.insert(begin->path());
+            begin.increment(fuck_error_codes);
+        }
+        for (auto file : entries) {
+            if (llvm::sys::fs::is_regular_file(file))
+                if (llvm::sys::path::extension(file) == ".wide")
+                    run_test_process(file, mode.first);
+        }
+        std::cout << mode.first << " succeeded: " << tests_succeeded << " failed: " << tests_failed << "\n";
+        total_succeeded += tests_succeeded;
+        total_failed += tests_failed;
+        tests_succeeded = 0;
+        tests_failed = 0;
+    }
+    std::cout << "Total succeeded: " << total_succeeded << " failed: " << total_failed;
     //atexit([] { __debugbreak(); });
     //std::set_terminate([] { __debugbreak(); });
-    //Jit(clangopts, "IntegerMacro.wide");
-    std::cin.get();
-    return failure;
+    //Jit(clangopts, "JitSuccess/ElseVariableScope.wide");
+    if (input.count("break"))
+        Wide::Util::DebugBreak();
+    return tests_failed != 0;
 }

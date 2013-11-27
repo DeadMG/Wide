@@ -1,0 +1,6 @@
+Main() {
+    if (var := false)
+        return var;
+    else
+        return ~var;
+}

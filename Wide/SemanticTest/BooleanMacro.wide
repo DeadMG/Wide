@@ -1,3 +1,0 @@
-Main() {
-    return cpp.macro(cpp("BooleanMacro.h"), "MACRO");
-}
