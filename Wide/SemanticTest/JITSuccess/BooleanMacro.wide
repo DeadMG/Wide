@@ -1,3 +1,7 @@
+// Checks that macros that test for booleans function correctly.
+f(bool b) {
+    return b;
+}
 Main() {
-    return cpp.macro(cpp("JitSuccess/BooleanMacro.h"), "MACRO");
+    return f(cpp.macro(cpp("JitSuccess/BooleanMacro.h"), "MACRO"));
 }

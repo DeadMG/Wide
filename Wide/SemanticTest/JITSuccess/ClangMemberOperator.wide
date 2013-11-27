@@ -1,3 +1,4 @@
+// Fails if calling this C++ member operator fails.
 using test := cpp("JitSuccess/ClangMemberOperator.h").test;
 Main() {
     return test() == test();

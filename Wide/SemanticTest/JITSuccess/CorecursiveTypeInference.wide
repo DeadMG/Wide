@@ -1,3 +1,4 @@
+// Fails if type inference fails to infer the type of the function.
 foo(x) {
     if (x > 5)
         return bar(x);

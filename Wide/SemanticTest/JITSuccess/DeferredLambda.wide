@@ -1,3 +1,4 @@
+// Fails if lambdas cannot handle deferred captures.
 f(x) {
     if (x > 5) {
         z := f(3) + 1;

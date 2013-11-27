@@ -1,3 +1,4 @@
+// Fails if qualified this lookup finds the wrong overload or fails to analyze.
 type t1 {
     operator()(t1->lvalue this) {
         return true;

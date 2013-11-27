@@ -1,0 +1,12 @@
+// Fails if decltype evaluates the argument.
+f(bool->pointer result) {
+    *result = false;
+}
+testfunc(bool->pointer result) {
+    decltype(f(result));
+}
+Main() {
+    result := true;
+    testfunc(&result);
+    return result;
+}

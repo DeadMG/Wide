@@ -1,3 +1,4 @@
+// Fails if the destructor is evaluated too soon.
 type testty {
     result := bool->pointer;
     ~type() {

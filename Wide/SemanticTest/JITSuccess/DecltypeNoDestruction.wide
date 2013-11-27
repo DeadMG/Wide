@@ -1,3 +1,4 @@
+// Fails if decltype destroys the argument.
 type testty {
     result := bool->pointer;
     ~type() {

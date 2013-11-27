@@ -1,3 +1,4 @@
+// Fails if the if condition scope is not correctly nested.
 type testty {
     result := bool->pointer;
     ~type() {

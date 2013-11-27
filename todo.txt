@@ -2,7 +2,7 @@ Lexer:
 Test @identifiers.
 Add floating-point literals.
 Add extra forms of integer literal like hex.
-Investigate that fucking close brackets
+Investigate that fucking close bracket
 Add tests.
 
 Parser:

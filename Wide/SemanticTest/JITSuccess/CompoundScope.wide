@@ -1,3 +1,4 @@
+// Fails if the compound scope does not correctly destroy the object.
 type testty {
     result := bool->pointer;
     ~type() {

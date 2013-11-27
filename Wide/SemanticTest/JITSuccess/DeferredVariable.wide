@@ -1,3 +1,4 @@
+// Fails if the variable cannot be of deferred type.
 f(x) {
     if (x > 5) {
         z := f(3) + 1;

@@ -1,4 +1,5 @@
-using clangtest := cpp("JitSuccess/ClangADL.h").ClangADL.test;
+// Fails if mixing C++ and Wide overload sets fails or resolves to the wrong overload.
+using clangtest := cpp("JitSuccess/ClangMixedADL.h").ClangADL.test;
 module Test {
     type t {}
     operator==(t lhs, clangtest rhs) { return true; }
