@@ -33,10 +33,9 @@ function AddClangDependencies(conf)
         "tools/clang/include", 
         "build/tools/clang/include", 
         "include", 
-        "tools/clang/lib", 
         "build/include"
     }
-    if not _OPTIONS["llvm-from-source"] then
+    if not _OPTIONS["llvm-from-package"] then
         for k, v in pairs(llvmincludes) do
             includedirs({ _OPTIONS["llvm-path"] .. v })
         end

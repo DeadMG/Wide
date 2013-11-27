@@ -19,7 +19,7 @@
 #include <clang/Lex/Preprocessor.h>
 #include <clang/AST/ASTContext.h>
 #include <llvm/IR/DataLayout.h>
-#include <CodeGen/CodeGenModule.h>
+#include <clang/CodeGen/CodeGenModule.h>
 #include <llvm/Support/TargetSelect.h>
 #include <llvm/Target/TargetOptions.h>
 #include <llvm/Target/TargetMachine.h>
@@ -29,8 +29,8 @@
 #include <clang/Frontend/Utils.h>
 #include <clang/Basic/TargetInfo.h>
 #include <clang/Parse/ParseAST.h>
-#include <CodeGen/CGCXXABI.h>
-#include <CodeGen/CGRecordLayout.h>
+#include <clang/CodeGen/CGCXXABI.h>
+#include <clang/CodeGen/CGRecordLayout.h>
 #include <llvm/Linker.h>
 #include <clang/AST/RecursiveASTVisitor.h>
 #include <clang/AST/ASTConsumer.h>
