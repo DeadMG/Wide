@@ -19,6 +19,11 @@ if not os.is("Windows") then
         value = "library name",
         description = "The name of the Boost library."
     }
+    newoption {
+        trigger = "llvm-from-source",
+        value = "boolean",
+        description = "If LLVM was built from source"
+    }
 end
 
 
@@ -31,13 +36,17 @@ function AddClangDependencies(conf)
         "tools/clang/lib", 
         "build/include"
     }
-    for k, v in pairs(llvmincludes) do
-        includedirs({ _OPTIONS["llvm-path"] .. v })
-    end
-    if os.is("windows") then
-        libdirs({ _OPTIONS["llvm-path"] .. "build/lib/" .. llvmconf })
+    if not _OPTIONS["llvm-from-source"] then
+        for k, v in pairs(llvmincludes) do
+            includedirs({ _OPTIONS["llvm-path"] .. v })
+        end
+        if os.is("windows") then
+            libdirs({ _OPTIONS["llvm-path"] .. "build/lib/" .. llvmconf })
+        else
+            libdirs({ _OPTIONS["llvm-path"] .. "build/" .. llvmconf .. "/lib" })
+        end
     else
-        libdirs({ _OPTIONS["llvm-path"] .. "build/" .. llvmconf .. "/lib" })
+        includedirs({ _OPTIONS["llvm-path"] })
     end
     local clanglibs = { 
         "clangFrontend",
