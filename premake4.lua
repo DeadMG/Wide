@@ -20,7 +20,7 @@ if not os.is("Windows") then
         description = "The name of the Boost library."
     }
     newoption {
-        trigger = "llvm-from-source",
+        trigger = "llvm-from-package",
         value = "boolean",
         description = "If LLVM was built from source"
     }
