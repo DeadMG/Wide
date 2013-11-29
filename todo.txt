@@ -7,8 +7,6 @@ Add tests.
 
 Parser:
 Add local using statements.
-Add module X.Y {}
-Add X.Y.Z() {}
 Add type X.Y.Z {}
 Add short-form lambdas.
 Cleanup some of the old parsing style that required construct with all parameters for concurrency.

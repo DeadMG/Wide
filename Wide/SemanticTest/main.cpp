@@ -207,7 +207,7 @@ int main(int argc, char** argv) {
     std::cout << "Total succeeded: " << total_succeeded << " failed: " << total_failed;
     //atexit([] { __debugbreak(); });
     //std::set_terminate([] { __debugbreak(); });
-    //Jit(clangopts, "JitSuccess/ElseVariableScope.wide");
+    //Compile(clangopts, "CompileSuccess/BooleanOperations.wide");
     if (input.count("break"))
         Wide::Util::DebugBreak();
     return tests_failed != 0;

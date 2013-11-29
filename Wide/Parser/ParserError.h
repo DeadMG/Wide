@@ -61,7 +61,8 @@ namespace Wide {
             TypeFunctionAlreadyVariable, 
             TypeVariableAlreadyFunction,
             BreakNoSemicolon,
-            ContinueNoSemicolon
+            ContinueNoSemicolon,
+            QualifiedNameNoIdentifier,
         };         
 
         enum class Warning : int {
@@ -141,6 +142,7 @@ namespace Wide {
                 std::make_pair(Error::TypeVariableAlreadyFunction, "Attempted to add a variable to a type, but that identifier was already used to denote a function."),
                 std::make_pair(Error::BreakNoSemicolon, "Found a break, but no semicolon afterwards."),
                 std::make_pair(Error::ContinueNoSemicolon, "Found a continue, but no semicolon afterwards."),
+                std::make_pair(Error::QualifiedNameNoIdentifier, "Found identifier. but did not find another identifier to continue a qualified name"),
             };
             return std::unordered_map<Error, std::string>(std::begin(strings), std::end(strings));
         }());

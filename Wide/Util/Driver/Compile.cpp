@@ -61,7 +61,10 @@ void Wide::Driver::Compile(const Wide::Options::Clang& copts, std::function<void
         };
         try {
             auto builder = std::make_shared<Wide::AST::Builder>(parsererrorhandler, parserwarninghandler, [](Wide::Lexer::Range, Wide::AST::OutliningType){});
-            Wide::Parser::ParseGlobalModuleContents(lex, *builder, builder->GetGlobalModule());
+            Wide::Parser::AssumeLexer<decltype(lex)> lexer;
+            lexer.lex = &lex;
+            Wide::Parser::Parser<decltype(lexer), decltype(*builder)> parser(lexer, *builder);
+            parser.ParseGlobalModuleContents(builder->GetGlobalModule());
             builders.push_back(std::move(builder));
         } catch(Wide::Parser::ParserError& e) {
             parsererrorhandler(e.where(), e.error());

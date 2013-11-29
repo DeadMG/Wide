@@ -298,6 +298,19 @@ WideProjects = {
             end
         end
     },
+    ParserTest = { 
+        action = function() 
+            kind("ConsoleApp")
+            links { "Util", "Lexer", "Parser" }
+        end,
+        configure = function(plat, conf)
+            if os.is("windows") then
+                postbuildcommands ({ "$(TargetPath)" })
+            else
+                postbuildcommands ({ "ParserTest" })
+            end
+        end,
+    },
     LexerTest = { 
         action = function() 
             kind("ConsoleApp")
@@ -329,7 +342,7 @@ WideProjects = {
                 postbuildcommands ({ "../Build/x64/Debug/SemanticTest" })
             end
         end,
-    }        
+    }
 }
 
 local SupportedConfigurations = { "Debug", "Release" }
