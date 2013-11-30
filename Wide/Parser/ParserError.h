@@ -63,6 +63,7 @@ namespace Wide {
             BreakNoSemicolon,
             ContinueNoSemicolon,
             QualifiedNameNoIdentifier,
+            LambdaNoIntroducer,
         };         
 
         enum class Warning : int {
@@ -143,6 +144,7 @@ namespace Wide {
                 std::make_pair(Error::BreakNoSemicolon, "Found a break, but no semicolon afterwards."),
                 std::make_pair(Error::ContinueNoSemicolon, "Found a continue, but no semicolon afterwards."),
                 std::make_pair(Error::QualifiedNameNoIdentifier, "Found identifier. but did not find another identifier to continue a qualified name"),
+                std::make_pair(Error::LambdaNoIntroducer, "Found (), expected => to introduce nullary short-form lambda."),
             };
             return std::unordered_map<Error, std::string>(std::begin(strings), std::end(strings));
         }());

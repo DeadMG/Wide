@@ -54,6 +54,7 @@ const std::unordered_map<char, std::unordered_map<char, TokenType>> Arguments::d
     doubles['<']['='] = TokenType::LTE;    
     doubles['>']['='] = TokenType::GTE;    
     doubles[':']['='] = TokenType::VarCreate;    
+    doubles['=']['>'] = TokenType::Lambda;
     return doubles;
 }();
 

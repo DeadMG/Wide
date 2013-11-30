@@ -160,6 +160,15 @@ namespace Wide {
                     throw ParserError(lex.GetLastPosition(), Error::ExpressionNoBeginning);
                 auto t = lex();
                 if(t.GetType() == Lexer::TokenType::OpenBracket) {
+                    auto tok = lex();
+                    if(tok.GetType() == Lexer::TokenType::CloseBracket) {
+                        Check(Error::LambdaNoIntroducer, Lexer::TokenType::Lambda);
+                        auto expr = ParseExpression();
+                        auto stmts = sema.CreateStatementGroup();
+                        sema.AddStatementToGroup(stmts, sema.CreateReturn(expr, sema.GetLocation(expr)));
+                        return sema.CreateLambda(sema.CreateFunctionArgumentGroup(), std::move(stmts), t.GetLocation() + sema.GetLocation(expr), false, sema.CreateCaptureGroup());
+                    }
+
                     try {
                         auto expr = ParseExpression();
                         Check(Error::ParenthesisedExpressionNoCloseBracket, Lexer::TokenType::CloseBracket);
@@ -176,8 +185,19 @@ namespace Wide {
                         throw;
                     }
                 }
-                if(t.GetType() == Lexer::TokenType::Identifier)
-                    return sema.CreateIdentifier(t.GetValue(), t.GetLocation());
+                if(t.GetType() == Lexer::TokenType::Identifier) {
+                    auto maybe_lambda = lex();
+                    if(maybe_lambda.GetType() != Lexer::TokenType::Lambda) {
+                        lex(maybe_lambda);
+                        return sema.CreateIdentifier(t.GetValue(), t.GetLocation());
+                    }
+                    auto expr = ParseExpression();
+                    auto stmts = sema.CreateStatementGroup();
+                    sema.AddStatementToGroup(stmts, sema.CreateReturn(expr, sema.GetLocation(expr)));
+                    auto args = sema.CreateFunctionArgumentGroup();
+                    sema.AddArgumentToFunctionGroup(args, t.GetValue(), t.GetLocation());
+                    return sema.CreateLambda(std::move(args), std::move(stmts), t.GetLocation() + sema.GetLocation(expr), false, sema.CreateCaptureGroup());
+                }
                 if(t.GetType() == Lexer::TokenType::String)
                     return sema.CreateString(t.GetValue(), t.GetLocation());
                 if(t.GetType() == Lexer::TokenType::Integer)
