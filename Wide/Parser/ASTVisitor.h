@@ -34,6 +34,7 @@ namespace Wide {
                 if (auto dec = dynamic_cast<const Decrement*>(e)) { return crtp_cast().VisitDecrement(dec); }
                 if (auto bin = dynamic_cast<const BinaryExpression*>(e)) { return crtp_cast().VisitBinaryExpression(bin); }
                 if (auto addr = dynamic_cast<const AddressOf*>(e)) { return crtp_cast().VisitAddressOf(addr); }
+                if (auto ty = dynamic_cast<const Type*>(e)) { return crtp_cast().VisitType(ty); }
                 assert(false && "Internal Compiler Error: Encountered unknown expression node in AST::Visitor.");
             }            
 
@@ -93,6 +94,7 @@ namespace Wide {
             void VisitThis(const This* expr) {}
             void VisitDecrement(const Decrement* d) { return crtp_cast().VisitExpression(d->ex); }
             void VisitAddressOf(const AddressOf* e) { return crtp_cast().VisitExpression(e->ex); }
+            void VisitType(const Type* t) { }
         };
     }
 }

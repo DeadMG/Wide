@@ -1,0 +1,6 @@
+type t {
+    type() : oops() {}
+}
+Main() {
+    var := t();
+}

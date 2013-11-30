@@ -71,6 +71,9 @@ bool operator==(const Wide::AST::Module* m, const TestModule& rhs) {
 }
 
 int main() {
+    // Need additional tests for:
+    // type() : obj() {}
+    // short-form lambdas.
     std::unordered_map<std::string, std::pair<std::string, TestModule>> tests = []()->std::unordered_map<std::string, std::pair<std::string, TestModule>> {
         std::unordered_map<std::string, std::pair<std::string, TestModule>> ret;
         ret["ModuleShortForm"] = std::make_pair("module X.Y.Z {}", TestModule()("X", TestModule()("Y", TestModule()("Z", TestModule()))));

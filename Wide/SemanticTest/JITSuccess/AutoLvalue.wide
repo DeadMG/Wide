@@ -1,0 +1,8 @@
+f(auto->decay->lvalue arg) { return true; }
+f(auto->decay->rvalue arg) { return false; }
+Main() {
+    t := type {}();
+    x := 5;
+    var := f;
+    return f(t) & f(x) & f(var);
+}

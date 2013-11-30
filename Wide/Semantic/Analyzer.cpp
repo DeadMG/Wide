@@ -181,10 +181,12 @@ Expression Analyzer::AnalyzeExpression(Type* t, const AST::Expression* e, std::f
         }
         void VisitThis(const AST::This* loc) {
             auto fun = dynamic_cast<Function*>(t);
-            if (!fun) throw std::runtime_error("Attempted to access \"this\" outside of a function.");            
-            auto mem = fun->LookupLocal("this", Context(*self, loc->location, handler));
-            if (!mem) throw std::runtime_error("Attempted to access \"this\", but it was not found, probably because you were not in a member function.");
-            out = *mem;
+            if (fun) {
+                auto mem = fun->LookupLocal("this", Context(*self, loc->location, handler));
+                if (!mem) throw std::runtime_error("Attempted to access \"this\", but it was not found, probably because you were not in a member function.");
+                out = *mem;
+            } else
+                out = self->LookupIdentifier(t, self->arena.Allocate<Wide::AST::Identifier>("this", loc->location));
         }
         void VisitNegate(const AST::Negate* ne) {
             out = self->AnalyzeExpression(t, ne->ex, handler).BuildNegate(Context(*self, ne->location, handler));
@@ -618,7 +620,6 @@ Wide::Util::optional<Expression> Analyzer::LookupIdentifier(Type* context, const
     if (auto udt = dynamic_cast<UserDefinedType*>(context)) {
         return LookupIdentifier(context->GetContext(*this), ident);
     }
-    Wide::Util::DebugBreak();
     auto value = context->AccessMember(context->BuildValueConstruction(c), ident->val, c);
     if (value)
         return value;

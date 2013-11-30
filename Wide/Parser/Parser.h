@@ -851,6 +851,7 @@ namespace Wide {
                         if(next.GetType() == Lexer::TokenType::CloseBracket) {
                             // Empty initializer- e.g. : x()
                             sema.AddInitializerToGroup(initializers, sema.CreateVariable(name.GetValue(), t.GetLocation() + next.GetLocation()));
+                            t = lex();
                             continue;
                         }
                         lex(next);

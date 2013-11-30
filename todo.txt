@@ -2,7 +2,6 @@ Lexer:
 Test @identifiers.
 Add floating-point literals.
 Add extra forms of integer literal like hex.
-Investigate that fucking close bracket
 Add tests.
 
 Parser:
@@ -16,8 +15,6 @@ Builder:
 Change AST to owning.
 
 Analyzer:
-Add auto as function argument.
-Add "this" being the member type.
 Add Malloc/Free to system.
 Add basic inheritance (no virtual functions or inheritance, just is-a and composition).
 Add unsafe pointer indexing.

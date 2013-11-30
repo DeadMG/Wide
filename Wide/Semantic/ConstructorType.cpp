@@ -31,6 +31,8 @@ Expression ConstructorType::BuildCall(ConcreteExpression self, std::vector<Concr
 }
 Wide::Util::optional<Expression> ConstructorType::AccessMember(ConcreteExpression self, std::string name, Context c) {
     assert(self.t->Decay() == this);
+    if (name == "~type")
+        return Type::AccessMember(self, name, c);
     return t->AccessStaticMember(name, c);
 }
 

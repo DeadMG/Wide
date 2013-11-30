@@ -157,6 +157,9 @@ void Function::ComputeBody(Analyzer& a) {
                     exprs.push_back(x.t->BuildInplaceConstruction(mem, std::move(args), c));
                 }
             }
+            for(auto&& x : fun->initializers)
+                if (std::find_if(members.begin(), members.end(), [&](decltype(*members.begin())& ref) { return ref.name == x->name; }) == members.end())
+                    throw std::runtime_error("Attempted to initialize a member that did not exist.");
         }
         // Now the body.
         root_scope.children.push_back(Wide::Memory::MakeUnique<Scope>(&root_scope));

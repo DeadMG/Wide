@@ -145,9 +145,31 @@ Callable* OverloadSet::Resolve(std::vector<Type*> f_args, Analyzer& a) {
             }
             if (args.size() != candidate.second->args.size())
                 return true;
+            struct OverloadSetLookupContext : public MetaType {
+                Type* context;
+                Type* member;
+                Type* argument;
+                Wide::Util::optional<Expression> AccessMember(ConcreteExpression, std::string name, Context c) override final {
+                    if(name == "this") {
+                        if(member)
+                            return c->GetConstructorType(member)->BuildValueConstruction(c);
+                        throw std::runtime_error("Attempt to access this in a non-member.");
+                    }
+                    if(name == "auto")
+                        return c->GetConstructorType(argument)->BuildValueConstruction(c);
+                    return Wide::Util::none;
+                }
+                Type* GetContext(Analyzer& a) override final {
+                    return context;
+                }
+            };
             for(std::size_t i = 0; i < args.size(); ++i) {
+                OverloadSetLookupContext lc;
+                lc.argument = args[i];
+                lc.context = candidate.first;
+                lc.member = dynamic_cast<UserDefinedType*>(candidate.first->Decay()) ? candidate.first->Decay() : nullptr;
                 auto takety = candidate.second->args[i].type ? 
-                    dynamic_cast<ConstructorType*>(a.AnalyzeExpression(candidate.first, candidate.second->args[i].type, [](ConcreteExpression e) {}).Resolve(nullptr).t->Decay()) :
+                    dynamic_cast<ConstructorType*>(a.AnalyzeExpression(&lc, candidate.second->args[i].type, [](ConcreteExpression e) {}).Resolve(nullptr).t->Decay()) :
                     a.GetConstructorType(args[i]->Decay());
                 if (!takety)
                     throw Wide::Semantic::SemanticError(candidate.second->args[i].location, Wide::Semantic::Error::ExpressionNoType);
