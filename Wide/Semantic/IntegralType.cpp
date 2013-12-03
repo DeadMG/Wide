@@ -89,7 +89,7 @@ std::size_t IntegralType::size(Analyzer& a) {
 std::size_t IntegralType::alignment(Analyzer& a) {
     return a.gen->GetDataLayout().getABIIntegerTypeAlignment(bits);
 }
-OverloadSet* IntegralType::AccessMember(ConcreteExpression expr, Lexer::TokenType name, Context c) {
+OverloadSet* IntegralType::PerformADL(Lexer::TokenType name, Type* lhs, Type* rhs, Context c) {
     if (callables.find(name) != callables.end())
         return callables[name];
     switch(name) {
@@ -143,4 +143,15 @@ OverloadSet* IntegralType::AccessMember(ConcreteExpression expr, Lexer::TokenTyp
         }, this, c));
     }
     return c->GetOverloadSet();
+}
+bool IntegralType::IsA(Type* other) {
+    if (this == other) return true;
+    auto otherint = dynamic_cast<IntegralType*>(other->Decay());
+    if (!otherint)
+        return false;
+    if (is_signed == otherint->is_signed && otherint->bits > bits)
+        return true;
+    if (!is_signed && otherint->is_signed && otherint->bits > bits)
+        return true;
+    return false;
 }

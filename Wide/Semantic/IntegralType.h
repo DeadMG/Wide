@@ -13,14 +13,15 @@ namespace Wide {
             IntegralType(unsigned bit, bool sign)
                 : bits(bit), is_signed(sign) {}
             
-            clang::QualType GetClangType(ClangUtil::ClangTU& TU, Analyzer& a) override;
-            std::function<llvm::Type*(llvm::Module*)> GetLLVMType(Analyzer& a) override;
+            clang::QualType GetClangType(ClangUtil::ClangTU& TU, Analyzer& a) override final;
+            std::function<llvm::Type*(llvm::Module*)> GetLLVMType(Analyzer& a) override final;
             
-            OverloadSet* AccessMember(ConcreteExpression expr, Lexer::TokenType name, Context c) override;
-            ConcreteExpression BuildIncrement(ConcreteExpression obj, bool postfix, Context c) override;
-            Codegen::Expression* BuildInplaceConstruction(Codegen::Expression* mem, std::vector<ConcreteExpression> args, Context c) override;
-            std::size_t size(Analyzer& a) override;
-            std::size_t alignment(Analyzer& a) override;
+            OverloadSet* PerformADL(Lexer::TokenType what, Type* lhs, Type* rhs, Context c) override final;
+            ConcreteExpression BuildIncrement(ConcreteExpression obj, bool postfix, Context c) override final;
+            Codegen::Expression* BuildInplaceConstruction(Codegen::Expression* mem, std::vector<ConcreteExpression> args, Context c) override final;
+            std::size_t size(Analyzer& a) override final;
+            std::size_t alignment(Analyzer& a) override final;
+            bool IsA(Type* other) override final;
         };
     }
 }

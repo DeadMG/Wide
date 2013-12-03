@@ -103,37 +103,6 @@ Callable* OverloadSet::Resolve(std::vector<Type*> f_args, Analyzer& a) {
     for(auto&& x : functions)
         for(auto func : x.second)
             ViableCandidates.emplace_back(x.first, func);
-    auto is_compatible = [](Type* takety, Type* argty) -> bool {
-        if (takety->Decay() != argty->Decay())
-            return false;
-
-        //      argument:  T       T&        T&&
-        // takes:
-        //   T           accept IsCopyable IsMovable
-        //  T&           reject   accept    reject
-        // T&&           accept   reject    accept
-        // T T can only come up if T is primitive, so we know in advance if T is copyable or not.
-          
-        if (takety == argty)
-            return true;
-        if (IsRvalueType(takety)) {
-            if (IsLvalueType(argty))
-                return false;
-            return true;
-        }
-        if (IsLvalueType(takety)) {
-            // Already accepted T& T&, and both other cases are rejection.
-            return false;
-        }
-        if (IsLvalueType(argty))
-            if (takety->IsCopyable())
-                return true;
-        if (IsRvalueType(argty))
-            if (takety->IsMovable())
-                return true;
-        // Should have covered all nine cases here.
-        Wide::Util::DebugBreak();
-    };
     ViableCandidates.erase(
         std::remove_if(ViableCandidates.begin(), ViableCandidates.end(), [&](std::pair<Type*, const AST::Function*> candidate) {
             auto args = f_args;
@@ -174,7 +143,7 @@ Callable* OverloadSet::Resolve(std::vector<Type*> f_args, Analyzer& a) {
                 if (!takety)
                     throw Wide::Semantic::SemanticError(candidate.second->args[i].location, Wide::Semantic::Error::ExpressionNoType);
                 // We don't accept any U here right now.
-                if (is_compatible(takety->GetConstructedType(), args[i]))
+                if (args[i]->IsA(takety->GetConstructedType()))
                     continue;
                 return true;
             }
@@ -192,7 +161,7 @@ Callable* OverloadSet::Resolve(std::vector<Type*> f_args, Analyzer& a) {
         }
         for(std::size_t i = 0; i < args.size(); ++i) {
             auto ty = args[i] ? args[i] : f_args[i]->Decay();
-            if (is_compatible(ty, f_args[i]))
+            if (f_args[i]->IsA(ty))
                 continue;
             it = call.erase(it);
             break;

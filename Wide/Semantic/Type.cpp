@@ -675,3 +675,7 @@ ConcreteExpression MetaType::BuildValueConstruction(std::vector<ConcreteExpressi
         throw std::runtime_error("Attempt to construct a type object with something other than another instance of that type.");
     return ConcreteExpression(this, args.size() == 0 ? (Codegen::Expression*)c->gen->CreateNull(GetLLVMType(*c)) : c->gen->CreateChainExpression(args[0].Expr, c->gen->CreateNull(GetLLVMType(*c))));
 }
+
+bool Type::IsA(Type* other) {
+    return other == this;
+}

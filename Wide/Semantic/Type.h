@@ -329,6 +329,8 @@ namespace Wide {
             virtual Expression BuildBinaryExpression(ConcreteExpression lhs, ConcreteExpression rhs, std::vector<ConcreteExpression> destructors, Lexer::TokenType type, Context c);
             
             virtual OverloadSet* PerformADL(Lexer::TokenType what, Type* lhs, Type* rhs, Context c);
+
+            virtual bool IsA(Type* other);
                                                 
             virtual ~Type() {}
         };
@@ -377,8 +379,11 @@ namespace Wide {
                 Expression BuildCall(ConcreteExpression lhs, std::vector<ConcreteExpression> args, Context c) override {
                     // Overload resolution should not pick us unless the args are a fit. Assert if we are picked and it's not correct.
                     assert(args.size() == 2);
-                    assert(args[0].BuildValue(c).t == args[1].BuildValue(c).t);
-                    assert(args[0].BuildValue(c).t == self);
+                    // It's now possible for us to have U instead of T. If the type is not T, build one from the argument.
+                    if (args[0].t->Decay() != self)
+                        args[0] = self->BuildValueConstruction(args[0], c);
+                    if (args[1].t->Decay() != self)
+                        args[1] = self->BuildValueConstruction(args[1], c);
                     return action(args[0].BuildValue(c), args[1].BuildValue(c), c, self);
                 }
                 std::vector<Type*> GetArgumentTypes(Analyzer& a) override {

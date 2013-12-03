@@ -38,11 +38,13 @@ namespace Wide {
         public:
             LvalueType(Type* t) : Reference(t) {}
             clang::QualType GetClangType(ClangUtil::ClangTU& tu, Analyzer& a) override;
+            bool IsA(Type* other) override final;
         };
         class RvalueType : public Reference {
         public:
             RvalueType(Type* t) : Reference(t) {}
             clang::QualType GetClangType(ClangUtil::ClangTU& tu, Analyzer& a) override;
+            bool IsA(Type* other) override final;
         };
     }
 }
