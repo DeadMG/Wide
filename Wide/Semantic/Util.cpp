@@ -3,7 +3,7 @@
 #include <unordered_map>
 
 #pragma warning(push, 0)
-#include <clang/CodeGen/CodeGenModule.h>
+#include <CodeGen/CodeGenModule.h>
 #include <clang/Frontend/CodeGenOptions.h>
 #include <clang/Basic/TargetOptions.h>
 #include <clang/Basic/TargetInfo.h>

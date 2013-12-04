@@ -33,6 +33,7 @@ function AddClangDependencies(conf)
         "tools/clang/include", 
         "build/tools/clang/include", 
         "include", 
+        "tools/clang/lib",
         "build/include"
     }
     if not _OPTIONS["llvm-from-package"] then
