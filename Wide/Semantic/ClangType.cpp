@@ -55,7 +55,8 @@ ClangType::ClangType(ClangUtil::ClangTU* src, clang::QualType t)
         if (needs()) {
             auto decl = declare();
             from->GetSema().EvaluateImplicitExceptionSpec(clang::SourceLocation(), decl);
-            define(decl);
+            if (!decl->isDeleted())
+                define(decl);
         } else {
             auto decl = lookup();
             if (decl && decl->isDefaulted() && !decl->isDeleted()) {                
@@ -423,8 +424,10 @@ OverloadSet* ClangType::AccessMember(ConcreteExpression self, Lexer::TokenType n
 bool ClangType::IsCopyable(Analyzer& a) {
     clang::Qualifiers quals;
     quals.addConst();
-    return from->GetSema().LookupCopyingConstructor(type->getAsCXXRecordDecl(), quals.getCVRQualifiers());
+    auto decl = from->GetSema().LookupCopyingConstructor(type->getAsCXXRecordDecl(), quals.getCVRQualifiers());
+    return decl && !decl->isDeleted();
 }
 bool ClangType::IsMovable(Analyzer& a) {
-    return from->GetSema().LookupMovingConstructor(type->getAsCXXRecordDecl(), 0);
+    auto decl = from->GetSema().LookupMovingConstructor(type->getAsCXXRecordDecl(), 0);
+    return decl && !decl->isDeleted();
 }

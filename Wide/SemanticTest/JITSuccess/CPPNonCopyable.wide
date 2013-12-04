@@ -1,0 +1,11 @@
+using movable := cpp("JitSuccess/CPPNonCopyable.h").test;
+f(movable x) {
+    return false;
+}
+f(auto->lvalue x) {
+    return true;
+}
+Main() {
+    var := movable();
+    return f(var);
+}
