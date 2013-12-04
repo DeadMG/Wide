@@ -21,7 +21,7 @@ namespace Wide {
             Codegen::Expression* BuildInplaceConstruction(Codegen::Expression* mem, std::vector<ConcreteExpression> args, Context c) override final;
             std::size_t size(Analyzer& a) override final;
             std::size_t alignment(Analyzer& a) override final;
-            bool IsA(Type* other) override final;
+            bool IsA(Type* other, Analyzer& a) override final;
         };
     }
 }

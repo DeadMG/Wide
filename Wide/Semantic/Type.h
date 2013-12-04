@@ -256,8 +256,8 @@ namespace Wide {
                 throw std::runtime_error("This type has no LLVM counterpart.");
             }
 
-            virtual bool IsMovable() { return true; }
-            virtual bool IsCopyable() { return true; }
+            virtual bool IsMovable(Analyzer& a) { return !IsComplexType(); }
+            virtual bool IsCopyable(Analyzer& a) { return !IsComplexType(); }
 
             virtual std::size_t size(Analyzer& a) { throw std::runtime_error("Attempted to size a type that does not have a run-time size."); }
             virtual std::size_t alignment(Analyzer& a) { throw std::runtime_error("Attempted to align a type that does not have a run-time alignment."); }
@@ -330,7 +330,7 @@ namespace Wide {
             
             virtual OverloadSet* PerformADL(Lexer::TokenType what, Type* lhs, Type* rhs, Context c);
 
-            virtual bool IsA(Type* other);
+            virtual bool IsA(Type* other, Analyzer& a);
                                                 
             virtual ~Type() {}
         };

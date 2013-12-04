@@ -419,3 +419,12 @@ OverloadSet* ClangType::AccessMember(ConcreteExpression self, Lexer::TokenType n
     std::unordered_set<clang::NamedDecl*> decls(lr.begin(), lr.end());
     return c->GetOverloadSet(std::move(decls), from, self.t);
 }
+
+bool ClangType::IsCopyable(Analyzer& a) {
+    clang::Qualifiers quals;
+    quals.addConst();
+    return from->GetSema().LookupCopyingConstructor(type->getAsCXXRecordDecl(), quals.getCVRQualifiers());
+}
+bool ClangType::IsMovable(Analyzer& a) {
+    return from->GetSema().LookupMovingConstructor(type->getAsCXXRecordDecl(), 0);
+}

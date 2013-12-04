@@ -139,7 +139,10 @@ UserDefinedType::UserDefinedType(const AST::Type* t, Analyzer& a, Type* higher)
         std::vector<Type*> self;
         self.push_back(a.GetLvalueType(this));
         self.push_back(a.GetLvalueType(this));
-        iscomplex = iscomplex || a.GetOverloadSet(type->Functions.at("type"), a.GetLvalueType(this))->Resolve(std::move(self), a);
+        iscomplex = iscomplex || a.GetOverloadSet(type->Functions.at("type"), a.GetLvalueType(this))->Resolve(self, a);
+        self.pop_back();
+        self.push_back(a.GetRvalueType(this));
+        iscomplex = iscomplex || a.GetOverloadSet(type->Functions.at("type"), a.GetLvalueType(this))->Resolve(self, a);
     }
     
     std::unordered_set<const AST::Function*> cons;
@@ -353,7 +356,7 @@ AST::Function* UserDefinedType::AddCopyConstructor(Analyzer& a) {
 
     auto should = true;
     for(auto&& m : llvmtypes) {
-        should = should && m.t->IsCopyable();
+        should = should && m.t->IsCopyable(a);
     }
     if (!should) return nullptr;
     std::vector<AST::FunctionArgument> args;
@@ -380,7 +383,7 @@ AST::Function* UserDefinedType::AddMoveConstructor(Analyzer& a) {
 
     auto should = true;
     for(auto&& m : llvmtypes) {
-        should = should && m.t->IsMovable();
+        should = should && m.t->IsMovable(a);
     }
     if (!should) return nullptr;
     std::vector<AST::FunctionArgument> args;
@@ -403,4 +406,17 @@ AST::Function* UserDefinedType::AddDefaultConstructor(Analyzer& a) {
     std::vector<AST::FunctionArgument> args;
     std::vector<AST::Variable*> initializers;
     return a.arena.Allocate<AST::Function>("type", std::vector<AST::Statement*>(), std::vector<AST::Statement*>(), type->location, std::move(args), std::move(initializers));
+}
+
+bool UserDefinedType::IsCopyable(Analyzer& a) {
+    std::vector<Type*> types;
+    types.push_back(a.GetLvalueType(this));
+    types.push_back(a.GetLvalueType(this));
+    return !iscomplex || constructor->Resolve(std::move(types), a);
+}
+bool UserDefinedType::IsMovable(Analyzer& a) {
+    std::vector<Type*> types;
+    types.push_back(a.GetLvalueType(this));
+    types.push_back(a.GetRvalueType(this));
+    return !iscomplex || constructor->Resolve(std::move(types), a);
 }

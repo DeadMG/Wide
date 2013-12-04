@@ -676,6 +676,6 @@ ConcreteExpression MetaType::BuildValueConstruction(std::vector<ConcreteExpressi
     return ConcreteExpression(this, args.size() == 0 ? (Codegen::Expression*)c->gen->CreateNull(GetLLVMType(*c)) : c->gen->CreateChainExpression(args[0].Expr, c->gen->CreateNull(GetLLVMType(*c))));
 }
 
-bool Type::IsA(Type* other) {
+bool Type::IsA(Type* other, Analyzer& a) {
     return other == this;
 }

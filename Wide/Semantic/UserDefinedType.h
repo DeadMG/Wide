@@ -56,19 +56,21 @@ namespace Wide {
             std::vector<member> GetMembers() { return llvmtypes; }
             UserDefinedType(const AST::Type* t, Analyzer& a, Type* context);
            
-            Type* GetContext(Analyzer& a) override { return context; }
+            Type* GetContext(Analyzer& a) override final { return context; }
 
             bool HasMember(std::string name);
 
-            bool IsComplexType() override;
-            std::function<llvm::Type*(llvm::Module*)> GetLLVMType(Analyzer& a) override;
+            bool IsComplexType() override final;
+            std::function<llvm::Type*(llvm::Module*)> GetLLVMType(Analyzer& a) override final;
 
-            clang::QualType GetClangType(ClangUtil::ClangTU& TU, Analyzer& a) override;  
-            Codegen::Expression* BuildInplaceConstruction(Codegen::Expression* mem, std::vector<ConcreteExpression> args, Context c) override;
-            Wide::Util::optional<Expression> AccessMember(ConcreteExpression, std::string name, Context c) override;
-            Expression BuildCall(ConcreteExpression val, std::vector<ConcreteExpression> args, Context c) override;
-            std::size_t size(Analyzer& a) override;
-            std::size_t alignment(Analyzer& a) override;
+            clang::QualType GetClangType(ClangUtil::ClangTU& TU, Analyzer& a) override final;
+            Codegen::Expression* BuildInplaceConstruction(Codegen::Expression* mem, std::vector<ConcreteExpression> args, Context c) override final;
+            Wide::Util::optional<Expression> AccessMember(ConcreteExpression, std::string name, Context c) override final;
+            Expression BuildCall(ConcreteExpression val, std::vector<ConcreteExpression> args, Context c) override final;
+            std::size_t size(Analyzer& a) override final;
+            std::size_t alignment(Analyzer& a) override final;
+            bool IsCopyable(Analyzer& a) override final;
+            bool IsMovable(Analyzer& a) override final;
         };
     }
 }

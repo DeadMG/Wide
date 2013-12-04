@@ -143,7 +143,19 @@ Callable* OverloadSet::Resolve(std::vector<Type*> f_args, Analyzer& a) {
                 if (!takety)
                     throw Wide::Semantic::SemanticError(candidate.second->args[i].location, Wide::Semantic::Error::ExpressionNoType);
                 // We don't accept any U here right now.
-                if (args[i]->IsA(takety->GetConstructedType()))
+                // If we are resolving a constructor, special-case it to prevent infinite recursion.
+                if (candidate.second->name == "type") {
+                    // Only special-case it if the argument is T, T&, T&&
+                    if (candidate.first->Decay() == args[i]->Decay()) {
+                        // Treat T as T&&
+                        auto ty = args[i] == candidate.first->Decay() ? a.GetRvalueType(args[i]) : args[i];
+                        // Has to be an exact match, else reject.
+                        if (ty == takety->GetConstructedType())
+                            continue;
+                        return true;
+                    }
+                }
+                if (args[i]->IsA(takety->GetConstructedType(), a))
                     continue;
                 return true;
             }
@@ -161,7 +173,7 @@ Callable* OverloadSet::Resolve(std::vector<Type*> f_args, Analyzer& a) {
         }
         for(std::size_t i = 0; i < args.size(); ++i) {
             auto ty = args[i] ? args[i] : f_args[i]->Decay();
-            if (f_args[i]->IsA(ty))
+            if (f_args[i]->IsA(ty, a))
                 continue;
             it = call.erase(it);
             break;

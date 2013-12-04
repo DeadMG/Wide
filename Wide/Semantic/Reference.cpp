@@ -56,17 +56,17 @@ ConcreteExpression Reference::BuildLvalueConstruction(std::vector<ConcreteExpres
         return ConcreteExpression(this, args[0].Expr);
     throw std::runtime_error("Attempt to construct a reference from something it could not be.");
 }
-bool RvalueType::IsA(Type* other) {
+bool RvalueType::IsA(Type* other, Analyzer& a) {
     if (other == this)
         return true;
-    if (IsMovable())
-        return Decay()->IsA(other);
+    if (Decay()->IsMovable(a))
+        return Decay()->IsA(other, a);
     return false;
 }
-bool LvalueType::IsA(Type* other) {
+bool LvalueType::IsA(Type* other, Analyzer& a) {
     if (other == this)
         return true;
-    if (IsCopyable())
-        return Decay()->IsA(other);
+    if (Decay()->IsCopyable(a))
+        return Decay()->IsA(other, a);
     return false;
 }

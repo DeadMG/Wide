@@ -33,18 +33,19 @@ namespace Wide {
 
             std::size_t size(Analyzer& a) override;
             std::size_t alignment(Analyzer& a) override;
+            bool IsA(Type* other, Analyzer& a) override = 0;
         };
         class LvalueType : public Reference {
         public:
             LvalueType(Type* t) : Reference(t) {}
             clang::QualType GetClangType(ClangUtil::ClangTU& tu, Analyzer& a) override;
-            bool IsA(Type* other) override final;
+            bool IsA(Type* other, Analyzer& a) override final;
         };
         class RvalueType : public Reference {
         public:
             RvalueType(Type* t) : Reference(t) {}
             clang::QualType GetClangType(ClangUtil::ClangTU& tu, Analyzer& a) override;
-            bool IsA(Type* other) override final;
+            bool IsA(Type* other, Analyzer& a) override final;
         };
     }
 }
