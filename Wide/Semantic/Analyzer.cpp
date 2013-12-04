@@ -339,10 +339,12 @@ Expression Analyzer::AnalyzeExpression(Type* t, const AST::Expression* e, std::f
                     args.push_back(cap_expressions[num].Resolve(nullptr));
                     ++num;
                 }
-                auto conoverset = self->arena.Allocate<AST::FunctionOverloadSet>();
-                conoverset->functions.insert(self->arena.Allocate<AST::Function>("type", std::vector<AST::Statement*>(), std::vector<AST::Statement*>(), lam->location, std::move(funargs), std::move(initializers)));
-                ty->Functions["type"] = conoverset;
-                auto lamty = self->GetUDT(ty, t);
+                if (ty->variables.size() != 0) {
+                    auto conoverset = self->arena.Allocate<AST::FunctionOverloadSet>();
+                    conoverset->functions.insert(self->arena.Allocate<AST::Function>("type", std::vector<AST::Statement*>(), std::vector<AST::Statement*>(), lam->location, std::move(funargs), std::move(initializers)));
+                    ty->Functions["type"] = conoverset;
+                }
+                auto lamty = self->GetUDT(ty, t->GetConstantContext(*self) ? t->GetConstantContext(*self) : t);
                 return lamty->BuildRvalueConstruction(std::move(args), Context(*self, lam->location, handler));
             };
             if (defer) {
@@ -360,7 +362,7 @@ Expression Analyzer::AnalyzeExpression(Type* t, const AST::Expression* e, std::f
             out = lhs.BuildIncrement(inc->postfix, Context(*self, inc->location, handler));
         }
         void VisitType(const AST::Type* ty) {
-            auto udt = self->GetUDT(ty, t);
+            auto udt = self->GetUDT(ty, t->GetConstantContext(*self) ? t->GetConstantContext(*self) : t);
             out = self->GetConstructorType(udt)->BuildValueConstruction(Context(*self, ty->location, handler));
         }
         void VisitPointerAccess(const AST::PointerMemberAccess* ptr) {

@@ -151,6 +151,7 @@ int main(int argc, char** argv) {
         const char* args[] = { argv[0], arguments.c_str(), modearg.c_str(), nullptr };
         std::string err = "";
         bool failed = false;
+        auto timeout = input.count("break") ? 0 : 5;
 #ifdef _MSC_VER
         auto ret = llvm::sys::ExecuteAndWait(
             argv[0],
@@ -161,7 +162,7 @@ int main(int argc, char** argv) {
             args,
             nullptr,
             nullptr,
-            0,
+            timeout,
             0,
             &err,
             &failed
@@ -207,7 +208,7 @@ int main(int argc, char** argv) {
     std::cout << "Total succeeded: " << total_succeeded << " failed: " << total_failed;
     //atexit([] { __debugbreak(); });
     //std::set_terminate([] { __debugbreak(); });
-    //Jit(clangopts, "JITSuccess/CPPNonCopyable.wide");
+    //Jit(clangopts, "JITSuccess/UserDefinedConstantContext.wide");
     if (input.count("break"))
         Wide::Util::DebugBreak();
     return tests_failed != 0;

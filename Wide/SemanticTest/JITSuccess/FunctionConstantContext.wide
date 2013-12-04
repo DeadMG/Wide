@@ -1,0 +1,13 @@
+f(x) {
+    return type {
+        operator()() {
+            return x();
+        }
+    };
+}
+z() {
+    return true;
+}
+Main() {
+    return f(z)()();
+}

@@ -57,19 +57,19 @@ namespace Wide {
             bool HasLocalVariable(std::string name);
             Function(std::vector<Type*> args, const AST::Function* astfun, Analyzer& a, Type* container);        
 
-            clang::QualType GetClangType(ClangUtil::ClangTU& where, Analyzer& a) override;       
+            clang::QualType GetClangType(ClangUtil::ClangTU& where, Analyzer& a) override final;
      
-            Expression BuildCall(ConcreteExpression, std::vector<ConcreteExpression> args, Context c) override;
-            using Type::AccessMember;
+            Expression BuildCall(ConcreteExpression, std::vector<ConcreteExpression> args, Context c) override final;
             std::string GetName();
-            Type* GetContext(Analyzer& a) override { return context; }
+            Type* GetContext(Analyzer& a) override final { return context; }
 
             FunctionType* GetSignature(Analyzer& a);
-            std::vector<Type*> GetArgumentTypes(Analyzer& a) override {
+            std::vector<Type*> GetArgumentTypes(Analyzer& a) override final {
                 return Args;
             }
-            bool AddThis() override;
+            bool AddThis() override final;
             Wide::Util::optional<Expression> LookupLocal(std::string name, Context c);
+            Type* GetConstantContext(Analyzer& a) override final;
         };
     }
 }

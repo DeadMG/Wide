@@ -421,3 +421,8 @@ OverloadSet::OverloadSet(std::unordered_set<clang::NamedDecl*> clangdecls, Clang
     if(dynamic_cast<ClangType*>(context->Decay()))
         nonstatic = context;
 }
+
+Type* OverloadSet::GetConstantContext(Analyzer& a) {
+    if (!nonstatic) return this;
+    return nullptr;
+}

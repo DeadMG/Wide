@@ -509,3 +509,43 @@ bool Function::HasLocalVariable(std::string name) {
 bool Function::AddThis() {
     return dynamic_cast<UserDefinedType*>(context->Decay());
 }
+Type* Function::GetConstantContext(Analyzer& a) {
+    struct FunctionConstantContext : public MetaType {
+        Type* context;
+        std::unordered_map<std::string, Expression> constant;
+        Type* GetContext(Analyzer& a) override final {
+            return context;
+        }
+        Wide::Util::optional<Expression> AccessMember(ConcreteExpression e, std::string member, Context c) override final {
+            if (constant.find(member) == constant.end())
+                return Wide::Util::none;
+            return constant.at(member).VisitContents(
+                [&](ConcreteExpression& e) -> Wide::Util::optional<Expression> {
+                    return e.t->Decay()->GetConstantContext(*c)->BuildValueConstruction(c);
+                },
+                [&](DeferredExpression& e) {
+                    auto expr = e(nullptr);
+                    return expr.t->GetConstantContext(*c) ? Wide::Util::optional<Expression>(expr.t->GetConstantContext(*c)->BuildValueConstruction(c)) : Wide::Util::none;
+                }
+            );
+        }
+    };
+    auto context = a.arena.Allocate<FunctionConstantContext>();
+    context->context = GetContext(a);
+    for(auto scope = current_scope; scope; scope = scope->parent) {
+        for (auto&& var : scope->named_variables) {
+            if (context->constant.find(var.first) == context->constant.end()) {
+                var.second.VisitContents(
+                    [&](ConcreteExpression& e) {
+                        if (e.t->Decay()->GetConstantContext(a))
+                            context->constant.insert(std::make_pair(var.first, e));
+                    },
+                    [&](DeferredExpression& e) {
+                        context->constant.insert(std::make_pair(var.first, e));
+                    }
+                 );
+             }
+        }
+    }
+    return context;
+}

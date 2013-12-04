@@ -1,0 +1,10 @@
+f(x) {
+    return type {
+        operator()() {
+            return x();
+        }
+    };
+}
+Main() {
+    return f(() => true)()();
+}

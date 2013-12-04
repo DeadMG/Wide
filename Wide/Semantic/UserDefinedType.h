@@ -71,6 +71,7 @@ namespace Wide {
             std::size_t alignment(Analyzer& a) override final;
             bool IsCopyable(Analyzer& a) override final;
             bool IsMovable(Analyzer& a) override final;
+            Type* GetConstantContext(Analyzer& a) override final;
         };
     }
 }

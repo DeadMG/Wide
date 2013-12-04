@@ -331,6 +331,9 @@ namespace Wide {
             virtual OverloadSet* PerformADL(Lexer::TokenType what, Type* lhs, Type* rhs, Context c);
 
             virtual bool IsA(Type* other, Analyzer& a);
+            virtual Type* GetConstantContext(Analyzer& a) {
+                return nullptr;
+            }
                                                 
             virtual ~Type() {}
         };
@@ -346,6 +349,9 @@ namespace Wide {
             std::size_t size(Analyzer& a) override;
             std::size_t alignment(Analyzer& a) override;
             ConcreteExpression BuildValueConstruction(std::vector<ConcreteExpression> args, Context c) override;
+            Type* GetConstantContext(Analyzer& a) override {
+                return this;
+            }
         };
         template<typename F, typename T> Callable* make_assignment_callable(F f, T* self,  Context c) {            
             struct assign : public Callable, public MetaType {

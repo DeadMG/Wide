@@ -151,8 +151,10 @@ UserDefinedType::UserDefinedType(const AST::Type* t, Analyzer& a, Type* higher)
             cons.insert(AddDefaultConstructor(a));
         cons.insert(AddMoveConstructor(a));
         cons.insert(AddCopyConstructor(a));
-        for(auto x : type->Functions.at("type")->functions)
-            cons.insert(x);
+        // Occurs if the lambda has captures- else, it has no constructors and we fill in all defaults.
+        if (type->Functions.find("type") != type->Functions.end())
+            for(auto x : type->Functions.at("type")->functions)
+                cons.insert(x);
         cons.erase(nullptr);
     } else {
         if (type->Functions.find("type") == type->Functions.end()) {
@@ -419,4 +421,15 @@ bool UserDefinedType::IsMovable(Analyzer& a) {
     types.push_back(a.GetLvalueType(this));
     types.push_back(a.GetRvalueType(this));
     return !iscomplex || constructor->Resolve(std::move(types), a);
+}
+Type* UserDefinedType::GetConstantContext(Analyzer& a) {
+    for (auto mem : llvmtypes) {
+        if (!mem.t->GetConstantContext(a))
+            return nullptr;
+    }
+    if (type->Functions.find("type") != type->Functions.end())
+        return nullptr;
+    if (type->Functions.find("~") != type->Functions.end())
+        return nullptr;
+    return this;
 }

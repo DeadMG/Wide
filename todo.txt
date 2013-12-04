@@ -16,9 +16,9 @@ Change AST to owning.
 
 Analyzer:
 Add Malloc/Free to system.
+
 Add basic inheritance (no virtual functions or inheritance, just is-a and composition).
 Add unsafe pointer indexing.
-Add constant context.
 
 Add inheriting constructors.
 
