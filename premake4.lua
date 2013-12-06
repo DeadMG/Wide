@@ -24,6 +24,11 @@ if not os.is("Windows") then
         value = "boolean",
         description = "If LLVM was built from source"
     }
+    newoption {
+        trigger = "llvm-build",
+        value = "filepath",
+        description = "The build directory for LLVM",
+    }
 end
 
 local oldjoin = path.join
@@ -38,21 +43,22 @@ end
 
 function AddClangDependencies(conf)
     local llvmconf = (os.is("windows") and conf) or _OPTIONS["llvm-conf"] or conf
+    local llvmbuild = _OPTIONS["llvm-build"] or "build"
     local llvmincludes = {
         "tools/clang/include", 
-        "build/tools/clang/include", 
+        path.join(llvmbuild, "tools/clang/include"), 
         "include", 
         "tools/clang/lib",
-        "build/include"
+        path.join(llvmbuild, "include")
     }
     if not _OPTIONS["llvm-from-package"] then
         for k, v in pairs(llvmincludes) do
             includedirs({ path.join(_OPTIONS["llvm-path"], v) })
         end
         if os.is("windows") then
-            libdirs({ path.join(_OPTIONS["llvm-path"], "build/lib", llvmconf) })
+            libdirs({ path.join(_OPTIONS["llvm-path"], llvmbuild, "lib", llvmconf) })
         else
-            libdirs({ path.join(_OPTIONS["llvm-path"], "build", llvmconf, "lib") })
+            libdirs({ path.join(_OPTIONS["llvm-path"], llvmbuild, llvmconf, "lib") })
         end
     else
         includedirs({ _OPTIONS["llvm-path"] })
