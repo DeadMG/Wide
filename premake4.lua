@@ -347,7 +347,7 @@ WideProjects = {
             if os.is("windows") then
                 postbuildcommands ({ "$(TargetPath)" })
             else
-                postbuildcommands ({ "../Build/x64/Debug/SemanticTest" })
+                postbuildcommands ({ path.join("Wide/Build", plat, conf, "SemanticTest") })
             end
         end,
     }
