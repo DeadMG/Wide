@@ -38,12 +38,12 @@ function AddClangDependencies(conf)
     }
     if not _OPTIONS["llvm-from-package"] then
         for k, v in pairs(llvmincludes) do
-            includedirs({ _OPTIONS["llvm-path"] .. v })
+            includedirs({ path.join(_OPTIONS["llvm-path"], v) })
         end
         if os.is("windows") then
-            libdirs({ _OPTIONS["llvm-path"] .. "build/lib/" .. llvmconf })
+            libdirs({ path.join(_OPTIONS["llvm-path"], "build/lib", llvmconf) })
         else
-            libdirs({ _OPTIONS["llvm-path"] .. "build/" .. llvmconf .. "/lib" })
+            libdirs({ path.join(_OPTIONS["llvm-path"], "build", llvmconf, "lib" })
         end
     else
         includedirs({ _OPTIONS["llvm-path"] })
@@ -68,7 +68,7 @@ function AddClangDependencies(conf)
         for k, v in pairs(clanglibs) do
             linkoptions { "-l" .. v }
         end
-        linkoptions { "`../../" .. _OPTIONS["llvm-path"] .. "build/" .. llvmconf .. "/bin/llvm-config --libs all`" }
+        linkoptions { "`" .. path.join(_OPTIONS["llvm-path"], "build", llvmconf, "bin/llvm-config --libs all") .. "`" }
         linkoptions { "-ldl", "-lpthread" }
         return
     end
@@ -187,13 +187,13 @@ function AddBoostDependencies(conf)
         ""
     }
     for k, v in pairs(boostincludes) do
-        includedirs({ _OPTIONS["boost-path"] .. v})
+        includedirs({ path.join(_OPTIONS["boost-path"], v) })
     end
     local boostlibs = {
         "stage/lib"
     }
     for k, v in pairs(boostlibs) do
-        libdirs({ _OPTIONS["boost-path"] .. v})
+        libdirs({ path.join(_OPTIONS["boost-path"], v) })
     end
     if not os.is("windows") then
         links { "boost_program_options" }
@@ -363,21 +363,21 @@ location("Wide")
 for name, proj in pairs(WideProjects) do
     if (not proj.dependencies) or proj.dependencies(name) then 
         project(name)
-        location("Wide/"..name)
+        location(path.join("Wide", name))
         if proj.action then proj.action() end
-        files( { "Wide/" .. name .. "/**.cpp", "Wide/" .. name .. "/**.h" })
+        files( { path.join("Wide", name, "/**.cpp"), path.join("Wide", name, "/**.h") })
         for k, plat in pairs(SupportedPlatforms) do
             for k, conf in pairs(SupportedConfigurations) do
                 configuration { plat, conf }
                 if plat == "x32" then plat = "x86" end
                 if proj.configure then proj.configure(plat, conf) end
-                objdir("Wide/Obj/" .. plat .. "/" .. conf .. "/")
+                objdir(path.join("Wide/Obj", plat, conf))
                 if conf == "Debug" then 
                     flags("Symbols")
                 else
                     flags("Optimize")
                 end
-                targetdir("Wide/Build/" .. plat .. "/" .. conf .. "/")
+                targetdir(path.join("Wide/Build", plat, conf))
             end
         end        
     end

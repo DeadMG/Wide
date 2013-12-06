@@ -208,7 +208,7 @@ int main(int argc, char** argv) {
     std::cout << "Total succeeded: " << total_succeeded << " failed: " << total_failed;
     //atexit([] { __debugbreak(); });
     //std::set_terminate([] { __debugbreak(); });
-    //Jit(clangopts, "JITSuccess/UserDefinedConstantContext.wide");
+    //Jit(clangopts, "JITSuccess/MixedCPPMemberFree.wide");
     if (input.count("break"))
         Wide::Util::DebugBreak();
     return tests_failed != 0;

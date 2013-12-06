@@ -267,7 +267,7 @@ bool ClangTU::IsComplexType(clang::CXXRecordDecl* decl) {
 }
 
 std::string ClangTU::MangleName(clang::NamedDecl* D) {    
-    auto MarkFunction = [&](clang::FunctionDecl* d) {
+    /*auto MarkFunction = [&](clang::FunctionDecl* d) {
         struct GeneratingVisitor : public clang::RecursiveASTVisitor<GeneratingVisitor> {
             clang::ASTContext* astcon;
             clang::Sema* sema;
@@ -395,6 +395,34 @@ std::string ClangTU::MangleName(clang::NamedDecl* D) {
         MarkFunction(funcdecl);
         auto name = impl->codegenmod.getMangledName(funcdecl);
         return name;
+    }*/
+    if (D->hasAttrs()) {
+        D->addAttr(new (impl->astcon) clang::UsedAttr(clang::SourceLocation(), impl->astcon));
+    } else {
+        clang::AttrVec v;
+        v.push_back(new (impl->astcon) clang::UsedAttr(clang::SourceLocation(), impl->astcon));
+        D->setAttrs(v);
+    }
+    impl->sema.MarkAnyDeclReferenced(clang::SourceLocation(), D, true);
+    if (auto desdecl = llvm::dyn_cast<clang::CXXDestructorDecl>(D)) {
+        auto gd = clang::GlobalDecl(desdecl, clang::CXXDtorType::Dtor_Complete);
+        impl->codegenmod.GetAddrOfGlobal(gd);
+        return impl->codegenmod.getMangledName(gd);
+    }
+    if (auto condecl = llvm::dyn_cast<clang::CXXConstructorDecl>(D)) {
+        auto gd = clang::GlobalDecl(condecl, clang::CXXCtorType::Ctor_Complete);
+        impl->codegenmod.GetAddrOfGlobal(gd);
+        return impl->codegenmod.getMangledName(gd);
+    }
+    if (auto vardecl = llvm::dyn_cast<clang::VarDecl>(D)) {
+        impl->codegenmod.GetAddrOfGlobal(vardecl);
+        return impl->codegenmod.getMangledName(vardecl);
+    }
+    if (auto funcdecl = llvm::dyn_cast<clang::FunctionDecl>(D)) {
+        //funcdecl->setInlineSpecified(false);
+        //funcdecl->setLateTemplateParsed(false);
+        impl->codegenmod.GetAddrOfGlobal(funcdecl);
+        return impl->codegenmod.getMangledName(funcdecl);
     }
     throw std::runtime_error("Attempted to mangle a name that could not be mangled.");
 }

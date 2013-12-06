@@ -3,6 +3,6 @@ struct test {
         return true;
     }
 };
-bool operator==(test lhs, const char* rhs) {
+inline bool operator==(test lhs, const char* rhs) {
     return false;
 }

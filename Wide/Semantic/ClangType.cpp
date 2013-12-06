@@ -45,8 +45,9 @@ ClangType::ClangType(ClangUtil::ClangTU* src, clang::QualType t)
     // Also fix up their exception spec because for some reason Clang doesn't until you ask it.
     auto recdecl = type->getAsCXXRecordDecl();
     if (!recdecl) return;
+    //from->GetSema().MarkDeclarationsReferencedInType(clang::SourceLocation(), type);
 
-    auto ProcessImplicitSpecialMember = [this](
+    /*auto ProcessImplicitSpecialMember = [this](
         std::function<bool()> needs,
         std::function<clang::CXXMethodDecl*()> declare, 
         std::function<void(clang::CXXMethodDecl*)> define,
@@ -115,7 +116,7 @@ ClangType::ClangType(ClangUtil::ClangTU* src, clang::QualType t)
         [&]{ return from->GetSema().DeclareImplicitDefaultConstructor(recdecl); },
         [&](clang::CXXMethodDecl* decl) { return from->GetSema().DefineImplicitDefaultConstructor(clang::SourceLocation(), static_cast<clang::CXXConstructorDecl*>(decl)); },
         [&]{ return from->GetSema().LookupDefaultConstructor(recdecl); }
-    );
+    );*/
 }
 clang::QualType ClangType::GetClangType(ClangUtil::ClangTU& tu, Analyzer& a) {
     if (&tu != from)
@@ -191,7 +192,8 @@ Codegen::Expression* ClangType::BuildInplaceConstruction(Codegen::Expression* me
         throw std::runtime_error("Attempted to in-place construct a type that was not a CXXRecordDecl. Maybe a union or something. This is not supported.");
     }
 
-    for(auto begin = recdecl->ctor_begin(); begin != recdecl->ctor_end(); ++begin) {
+    auto cons = from->GetSema().LookupConstructors(recdecl);
+    for (auto begin = cons.begin(); begin != cons.end(); ++begin) {
         us.addDecl(*begin);
     }
     std::vector<clang::OpaqueValueExpr> exprs;

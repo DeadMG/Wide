@@ -82,6 +82,7 @@ extern "C" DLLEXPORT Wide::AST::Builder* ParseWide(
     pl.context = context;
     pl.TokenCallback = TokenCallback;
     try {
+
         Wide::Parser::ParseGlobalModuleContents(pl, builder, builder.GetGlobalModule());
     } catch(Wide::Parser::ParserError& e) {
         onerror(e.where(), e.error());
