@@ -195,7 +195,9 @@ int main(int argc, char** argv) {
             begin.increment(fuck_error_codes);
         }
         for (auto file : entries) {
-            if (llvm::sys::fs::is_regular_file(file))
+            bool isfile = false;
+            llvm::sys::fs::is_regular_file(file, isfile);
+            if (isfile)
                 if (llvm::sys::path::extension(file) == ".wide")
                     run_test_process(file, mode.first);
         }
