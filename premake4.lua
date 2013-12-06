@@ -26,6 +26,15 @@ if not os.is("Windows") then
     }
 end
 
+local oldjoin = path.join
+path.join = function(first, second, ...)
+    if first and second then
+        return path.join(oldjoin(first, second), ...)
+    elseif first and not second then
+        return first
+    end
+    error("Must provide at least one argument to path.join!")
+end
 
 function AddClangDependencies(conf)
     local llvmconf = (os.is("windows") and conf) or _OPTIONS["llvm-conf"] or conf
@@ -43,7 +52,7 @@ function AddClangDependencies(conf)
         if os.is("windows") then
             libdirs({ path.join(_OPTIONS["llvm-path"], "build/lib", llvmconf) })
         else
-            libdirs({ path.join(_OPTIONS["llvm-path"], "build", llvmconf, "lib" })
+            libdirs({ path.join(_OPTIONS["llvm-path"], "build", llvmconf, "lib") })
         end
     else
         includedirs({ _OPTIONS["llvm-path"] })
@@ -365,7 +374,7 @@ for name, proj in pairs(WideProjects) do
         project(name)
         location(path.join("Wide", name))
         if proj.action then proj.action() end
-        files( { path.join("Wide", name, "/**.cpp"), path.join("Wide", name, "/**.h") })
+        files( { path.join("Wide", name) .. "/**.cpp", path.join("Wide", name) .. "/**.h" })
         for k, plat in pairs(SupportedPlatforms) do
             for k, conf in pairs(SupportedConfigurations) do
                 configuration { plat, conf }
