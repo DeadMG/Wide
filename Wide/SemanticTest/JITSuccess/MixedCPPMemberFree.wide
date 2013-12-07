@@ -1,4 +1,4 @@
-using test := cpp("JitSuccess/MixedCPPMemberFree.h").test;
+using test := cpp("JITSuccess/MixedCPPMemberFree.h").test;
 Main() {
     return test() == 0;
 }

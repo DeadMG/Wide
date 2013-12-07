@@ -1,4 +1,4 @@
 // Fails if calling this C++ member function fails.
 Main() {
-    return cpp("JitSuccess/ClangMemberFunction.h").test().f();
+    return cpp("JITSuccess/ClangMemberFunction.h").test().f();
 }
