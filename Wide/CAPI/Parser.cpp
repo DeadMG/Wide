@@ -79,11 +79,13 @@ extern "C" DLLEXPORT Wide::AST::Builder* ParseWide(
          [=](Wide::Lexer::Range r, Wide::AST::OutliningType t) { return OutliningCallback(r, t, context); }
     );
     CEquivalents::ParserLexer pl(std::make_shared<std::string>(filename));
+    Wide::Parser::AssumeLexer<decltype(pl)> lexer;
+    lexer.lex = &pl;
+    Wide::Parser::Parser<decltype(lexer), decltype(builder)> parser(lexer, builder);
     pl.context = context;
     pl.TokenCallback = TokenCallback;
     try {
-
-        Wide::Parser::ParseGlobalModuleContents(pl, builder, builder.GetGlobalModule());
+        parser.ParseGlobalModuleContents(builder.GetGlobalModule());
     } catch(Wide::Parser::ParserError& e) {
         onerror(e.where(), e.error());
     } catch(...) {
