@@ -315,7 +315,7 @@ WideProjects = {
             if os.is("windows") then
                 postbuildcommands ({ "$(TargetPath)" })
             else
-                postbuildcommands ({ "ParserTest" })
+                postbuildcommands ({ "$@" })
             end
         end,
     },
@@ -328,7 +328,7 @@ WideProjects = {
             if os.is("windows") then
                 postbuildcommands ({ "$(TargetPath)" })
             else
-                postbuildcommands ({ "LexerTest" })
+                postbuildcommands ({ "$@" })
             end
         end,
     },
