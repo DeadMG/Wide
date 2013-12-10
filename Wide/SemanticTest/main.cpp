@@ -151,7 +151,7 @@ int main(int argc, char** argv) {
         const char* args[] = { argv[0], arguments.c_str(), modearg.c_str(), nullptr };
         std::string err = "";
         bool failed = false;
-        auto timeout = input.count("break") ? 0 : 5;
+        auto timeout = input.count("break") ? 0 : 1;
 #ifdef _MSC_VER
         auto ret = llvm::sys::ExecuteAndWait(
             argv[0],

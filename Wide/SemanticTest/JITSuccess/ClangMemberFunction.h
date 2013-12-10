@@ -1,3 +1,6 @@
 struct test {
-    bool f() { return true; }
+    bool f();
 };
+bool test::f() {
+    return true;
+}
