@@ -15,15 +15,17 @@ Builder:
 Change AST to owning.
 
 Analyzer:
+Add unsafe pointer indexing.
+Add library is-a.
+Add polymorphic types.
+
 Add Malloc/Free to system.
 
 Add basic inheritance (no virtual functions or inheritance, just is-a and composition).
-Add unsafe pointer indexing.
 
 Add inheriting constructors.
 
 Add exceptions.
-Add polymorphic types.
 Add static reflection.
 Consider constraints.
 

@@ -1,0 +1,6 @@
+f(int16 i) {
+    return decltype(i)->decay->size == 2;
+}
+Main() {
+    return f(int8(32));
+}

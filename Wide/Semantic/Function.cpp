@@ -227,21 +227,24 @@ void Function::ComputeBody(Analyzer& a) {
                         }
                     };
                     return expr.VisitContents(
-                        [&](ConcreteExpression& expr) { return a.gen->CreateReturn(handle_result(expr)); }, 
+                        [&](ConcreteExpression& expr) { 
+                            return a.gen->CreateReturn(handle_result(expr)); 
+                        }, 
                         [&, handle_result](DeferredExpression& expr) {
-                        if (returnstate == ReturnState::NoReturnSeen)
-                            returnstate = ReturnState::DeferredReturnSeen;
-                        auto curr = *expr.delay;
-                        *expr.delay = [=, &a](Type* t) {
-                            auto f = curr(t);
-                            if (s != State::AnalyzeCompleted)
-                                CompleteAnalysis(t, a);
-                            return f;
-                        };
-                        return a.gen->CreateReturn([=]() mutable {
-                            return handle_result(expr(nullptr));
-                        });
-                    });
+                            if (returnstate == ReturnState::NoReturnSeen)
+                                returnstate = ReturnState::DeferredReturnSeen;
+                            auto curr = *expr.delay;
+                            *expr.delay = [=, &a](Type* t) {
+                                auto f = curr(t);
+                                if (s != State::AnalyzeCompleted)
+                                    CompleteAnalysis(f.t, a);
+                                return f;
+                            };
+                            return a.gen->CreateReturn([=]() mutable {
+                                return handle_result(expr(nullptr));
+                            });
+                        }
+                    );
                 }
             }
             if (auto var = dynamic_cast<const AST::Variable*>(stmt)) {
@@ -438,8 +441,11 @@ void Function::CompleteAnalysis(Type* ret, Analyzer& a) {
         if (ret != ReturnType)
             throw std::runtime_error("Attempted to resolve a function with a return type, but it was already resolved with a different return type.");
     ReturnType = ret;
-    if (!ReturnType)
+    if (returnstate == ReturnState::NoReturnSeen)
         ReturnType = a.GetVoidType();
+    else
+        if (!ReturnType)
+            throw std::runtime_error("Deferred return type was not evaluated prior to completing analysis.");
     if (ReturnType == a.GetVoidType() && !dynamic_cast<Codegen::ReturnStatement*>(exprs.empty() ? nullptr : exprs.back())) {
         Context c(a, fun->where.front(), [](ConcreteExpression e) { assert(false); });
         auto currscope = current_scope;

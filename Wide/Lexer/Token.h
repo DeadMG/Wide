@@ -68,7 +68,10 @@ namespace Wide {
             DivAssign,
             XorAssign,
             Ellipsis,
-            Lambda
+            Lambda,
+            Template,
+            Concept,
+            ConceptMap
         };    
         struct Position {
             Position(std::shared_ptr<std::string> where)

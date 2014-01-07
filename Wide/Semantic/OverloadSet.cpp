@@ -103,13 +103,16 @@ Callable* OverloadSet::Resolve(std::vector<Type*> f_args, Analyzer& a) {
     for(auto&& x : functions)
         for(auto func : x.second)
             ViableCandidates.emplace_back(x.first, func);
+    std::unordered_map<const AST::Function*, std::vector<Type*>> declared_parameter_types;
     ViableCandidates.erase(
         std::remove_if(ViableCandidates.begin(), ViableCandidates.end(), [&](std::pair<Type*, const AST::Function*> candidate) {
             auto args = f_args;
             // If a this was added, and we're not in a context that calls for resolving it, then erase it from the list.
+            // Add "this" to declared.
             if (nonstatic) {
                 if (candidate.second->args.size() == 0 || candidate.second->args[0].name != "this" || !dynamic_cast<UserDefinedType*>(candidate.first->Decay())) {
                     args.erase(args.begin());
+                    declared_parameter_types[candidate.second].push_back(candidate.first);
                 }
             }
             if (args.size() != candidate.second->args.size())
@@ -150,13 +153,17 @@ Callable* OverloadSet::Resolve(std::vector<Type*> f_args, Analyzer& a) {
                         // Treat T as T&&
                         auto ty = args[i] == candidate.first->Decay() ? a.GetRvalueType(args[i]) : args[i];
                         // Has to be an exact match, else reject.
-                        if (ty == takety->GetConstructedType())
+                        if (ty == takety->GetConstructedType()) {
+                            declared_parameter_types[candidate.second].push_back(takety->GetConstructedType());
                             continue;
+                        }
                         return true;
                     }
                 }
-                if (args[i]->IsA(takety->GetConstructedType(), a))
+                if (args[i]->IsA(takety->GetConstructedType(), a)) {
+                    declared_parameter_types[candidate.second].push_back(takety->GetConstructedType());
                     continue;
+                }
                 return true;
             }
             return false;
@@ -185,7 +192,7 @@ Callable* OverloadSet::Resolve(std::vector<Type*> f_args, Analyzer& a) {
         if (ViableCandidates.size() + call.size() != 1)
             return nullptr;
         if (ViableCandidates.size() == 1)
-            return a.GetWideFunction(ViableCandidates[0].second, ViableCandidates[0].first, f_args);
+            return a.GetWideFunction(ViableCandidates[0].second, ViableCandidates[0].first, declared_parameter_types[ViableCandidates[0].second]);
         return *call.begin();
     };
 

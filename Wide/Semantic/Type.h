@@ -171,6 +171,7 @@ namespace Wide {
                         return (*b)(expr);
                     }
                 };
+                
                 visitation v;
                 v.a = &a;
                 v.b = &b;
@@ -401,5 +402,6 @@ namespace Wide {
             };
             return c->arena.Allocate<assign>(self, std::move(f));
         }
+
     }
 }

@@ -90,6 +90,9 @@ const std::unordered_map<std::string, TokenType> Arguments::keywords = []() -> s
     keywords["function"] = TokenType::Function;
     keywords["break"] = TokenType::Break;
     keywords["continue"] = TokenType::Continue;
+    keywords["concept"] = TokenType::Concept;
+    keywords["template"] = TokenType::Template;
+    keywords["concept_map"] = TokenType::ConceptMap;
     return keywords;
 }();
 
