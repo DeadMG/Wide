@@ -17,10 +17,10 @@
 using namespace Wide;
 using namespace Semantic;
 
-Wide::Util::optional<Expression> ClangIncludeEntity::AccessMember(ConcreteExpression, std::string name, Context c) {
+Wide::Util::optional<ConcreteExpression> ClangIncludeEntity::AccessMember(ConcreteExpression, std::string name, Context c) {
     if (name == "mangle") {
         struct ClangNameMangler : public MetaType {
-            Expression BuildCall(ConcreteExpression, std::vector<ConcreteExpression> args, Context c) override {
+            ConcreteExpression BuildCall(ConcreteExpression, std::vector<ConcreteExpression> args, Context c) override {
                 if (args.size() != 1)
                     throw std::runtime_error("Attempt to mangle name but passed more than one object.");
                 auto ty = dynamic_cast<FunctionType*>(args[0].t);
@@ -35,7 +35,7 @@ Wide::Util::optional<Expression> ClangIncludeEntity::AccessMember(ConcreteExpres
     }
     if (name == "macro") {
         struct ClangMacroHandler : public MetaType {
-            Expression BuildCall(ConcreteExpression, std::vector<ConcreteExpression> args, Context c) override {
+            ConcreteExpression BuildCall(ConcreteExpression, std::vector<ConcreteExpression> args, Context c) override {
                 if (args.size() < 2)
                     throw std::runtime_error("Attempt to access a macro but no TU or macro name was passed.");
                 // Should be a ClangNamespace as first argument.
@@ -88,7 +88,7 @@ Wide::Util::optional<Expression> ClangIncludeEntity::AccessMember(ConcreteExpres
     return Wide::Util::none;
 }
 
-Expression ClangIncludeEntity::BuildCall(ConcreteExpression e, std::vector<ConcreteExpression> args, Context c) {
+ConcreteExpression ClangIncludeEntity::BuildCall(ConcreteExpression e, std::vector<ConcreteExpression> args, Context c) {
     if (args.size() != 1)
         throw std::runtime_error("Attempted to call the Clang Include Entity with the wrong number of arguments.");
     auto expr = dynamic_cast<Codegen::StringExpression*>(args[0].Expr);

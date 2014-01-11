@@ -8,8 +8,8 @@ namespace Wide {
         public:
             ClangIncludeEntity() {}
                 
-            Wide::Util::optional<Expression> AccessMember(ConcreteExpression, std::string name, Context c) override;
-            Expression BuildCall(ConcreteExpression e, std::vector<ConcreteExpression> args, Context c) override;
+            Wide::Util::optional<ConcreteExpression> AccessMember(ConcreteExpression, std::string name, Context c) override;
+            ConcreteExpression BuildCall(ConcreteExpression e, std::vector<ConcreteExpression> args, Context c) override;
         };
     }
 }

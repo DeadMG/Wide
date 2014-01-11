@@ -47,14 +47,14 @@ Analyzer::Analyzer(const Options::Clang& opts, Codegen::Generator& g, const AST:
 {
     LiteralStringType = arena.Allocate<StringType>();
     struct NothingCall : public MetaType {
-        Expression BuildCall(ConcreteExpression val, std::vector<ConcreteExpression> args, Context c) override {
+        ConcreteExpression BuildCall(ConcreteExpression val, std::vector<ConcreteExpression> args, Context c) override {
             return val;
         }
     };
     null = arena.Allocate<NullType>();
     NothingFunctor = arena.Allocate<NothingCall>();
     struct decltypetype : public MetaType { 
-        Expression BuildCall(ConcreteExpression obj, std::vector<ConcreteExpression> args, std::vector<ConcreteExpression> destructors, Context c) override {
+        ConcreteExpression BuildCall(ConcreteExpression obj, std::vector<ConcreteExpression> args, std::vector<ConcreteExpression> destructors, Context c) override {
             if (args.size() != 1)
                 throw std::runtime_error("Attempt to call decltype with more or less than 1 argument.");
 
@@ -68,7 +68,7 @@ Analyzer::Analyzer(const Options::Clang& opts, Codegen::Generator& g, const AST:
     };
 
     struct PointerCastType : public MetaType {
-        Expression BuildCall(ConcreteExpression obj, std::vector<ConcreteExpression> args, Context c) override {
+        ConcreteExpression BuildCall(ConcreteExpression obj, std::vector<ConcreteExpression> args, Context c) override {
             if (args.size() != 2)
                 throw std::runtime_error("Attempted to call reinterpret_cast with a number of arguments that was not two.");
             auto conty = dynamic_cast<ConstructorType*>(args[0].t->Decay());
@@ -80,7 +80,7 @@ Analyzer::Analyzer(const Options::Clang& opts, Codegen::Generator& g, const AST:
     };
 
     struct MoveType : public MetaType {
-        Expression BuildCall(ConcreteExpression obj, std::vector<ConcreteExpression> args, Context c) override {
+        ConcreteExpression BuildCall(ConcreteExpression obj, std::vector<ConcreteExpression> args, Context c) override {
             if (args.size() != 1)
                 throw std::runtime_error("Attempt to call move with a number of arguments that was not one.");
             return ConcreteExpression(c->GetRvalueType(args[0].t->Decay()), args[0].Expr);
@@ -124,7 +124,7 @@ Analyzer::Analyzer(const Options::Clang& opts, Codegen::Generator& g, const AST:
     //GetWideModule(GlobalModule)->AddSpecialMember("move", arena.Allocate<MoveType>()->BuildValueConstruction(std::vector<Expression>(), *this));
 }
 
-Expression Analyzer::AnalyzeExpression(Type* t, const AST::Expression* e, std::function<void(ConcreteExpression)> handler) {
+ConcreteExpression Analyzer::AnalyzeExpression(Type* t, const AST::Expression* e, std::function<void(ConcreteExpression)> handler) {
     if (auto semexpr = dynamic_cast<const SemanticExpression*>(e)) {
         return semexpr->e;
     }
@@ -132,7 +132,7 @@ Expression Analyzer::AnalyzeExpression(Type* t, const AST::Expression* e, std::f
     struct AnalyzerVisitor : public AST::Visitor<AnalyzerVisitor> {
         Type* t;
         Analyzer* self;
-        Wide::Util::optional<Expression> out;
+        Wide::Util::optional<ConcreteExpression> out;
         std::function<void(ConcreteExpression)> handler;
 
         void VisitString(const AST::String* str) {
@@ -150,7 +150,7 @@ Expression Analyzer::AnalyzeExpression(Type* t, const AST::Expression* e, std::f
         void VisitCall(const AST::FunctionCall* funccall) {
             std::vector<ConcreteExpression> destructors;
             auto fun = self->AnalyzeExpression(t, funccall->callee, handler);
-            std::vector<Expression> args;
+            std::vector<ConcreteExpression> args;
             for(auto&& arg : funccall->args) {
                 args.push_back(self->AnalyzeExpression(t, arg, [&](ConcreteExpression e) { destructors.push_back(e); }));
             }
@@ -170,7 +170,7 @@ Expression Analyzer::AnalyzeExpression(Type* t, const AST::Expression* e, std::f
         }
         void VisitMetaCall(const AST::MetaCall* mcall) {
             auto fun = self->AnalyzeExpression(t, mcall->callee, handler);
-            std::vector<Expression> args;
+            std::vector<ConcreteExpression> args;
             for(auto&& arg : mcall->args)
                 args.push_back(self->AnalyzeExpression(t, arg, handler));
             
@@ -284,20 +284,13 @@ Expression Analyzer::AnalyzeExpression(Type* t, const AST::Expression* e, std::f
             for(auto&& arg : lam->Captures)
                 caps.erase(arg->name);
 
-            std::vector<Expression> cap_expressions;
-            bool defer = false;
+            std::vector<ConcreteExpression> cap_expressions;
             for(auto&& arg : lam->Captures) {
-                auto expr = self->AnalyzeExpression(t, arg->initializer, handler);
-                if (expr.contents.type() == typeid(DeferredExpression))
-                    defer = true;
-                cap_expressions.push_back(expr);
+                cap_expressions.push_back(self->AnalyzeExpression(t, arg->initializer, handler));
             }
             for(auto&& name : captures) {                
                 AST::Identifier ident(name, lam->location);
-                auto expr = self->AnalyzeExpression(t, &ident, handler);
-                if (expr.contents.type() == typeid(DeferredExpression))
-                    defer = true;
-                cap_expressions.push_back(expr);
+                cap_expressions.push_back(self->AnalyzeExpression(t, &ident, handler));
             }
 
             auto lamself = self;
@@ -314,7 +307,7 @@ Expression Analyzer::AnalyzeExpression(Type* t, const AST::Expression* e, std::f
                 for(auto&& arg : lam->Captures) {
                     std::stringstream str;
                     str << "__param" << num;
-                    auto init = cap_expressions[num].Resolve(nullptr);
+                    auto init = cap_expressions[num];
                     AST::FunctionArgument f(lam->location);
                     f.name = str.str();
                     f.type = self->arena.Allocate<SemanticExpression>(ConcreteExpression(self->GetConstructorType(init.t), nullptr), lam->location);
@@ -327,7 +320,7 @@ Expression Analyzer::AnalyzeExpression(Type* t, const AST::Expression* e, std::f
                 for(auto&& name : captures) {
                     std::stringstream str;
                     str << "__param" << num;
-                    auto capty = cap_expressions[num].Resolve(nullptr).t;
+                    auto capty = cap_expressions[num].t;
                     initializers.push_back(self->arena.Allocate<AST::Variable>(name, self->arena.Allocate<AST::Identifier>(str.str(), lam->location), lam->location));
                     AST::FunctionArgument f(lam->location);
                     f.name = str.str();
@@ -336,7 +329,7 @@ Expression Analyzer::AnalyzeExpression(Type* t, const AST::Expression* e, std::f
                     if (!lam->defaultref)
                         capty = capty->Decay();
                     ty->variables.push_back(self->arena.Allocate<AST::Variable>(name, self->arena.Allocate<SemanticExpression>(ConcreteExpression(self->GetConstructorType(capty), nullptr), lam->location), lam->location));
-                    args.push_back(cap_expressions[num].Resolve(nullptr));
+                    args.push_back(cap_expressions[num]);
                     ++num;
                 }
                 if (ty->variables.size() != 0) {
@@ -347,11 +340,6 @@ Expression Analyzer::AnalyzeExpression(Type* t, const AST::Expression* e, std::f
                 auto lamty = self->GetUDT(ty, t->GetConstantContext(*self) ? t->GetConstantContext(*self) : t);
                 return lamty->BuildRvalueConstruction(std::move(args), Context(*self, lam->location, handler));
             };
-            if (defer) {
-                DeferredExpression d(std::move(process_lambda));
-                out = d;
-                return;
-            }
             out = process_lambda(nullptr);
         }
         void VisitDereference(const AST::Dereference* deref) {
@@ -586,7 +574,7 @@ FloatType* Analyzer::GetFloatType(unsigned bits) {
         return FloatTypes[bits];
     return FloatTypes[bits] = arena.Allocate<FloatType>(bits);
 }
-Wide::Util::optional<Expression> Analyzer::LookupIdentifier(Type* context, const AST::Identifier* ident) {
+Wide::Util::optional<ConcreteExpression> Analyzer::LookupIdentifier(Type* context, const AST::Identifier* ident) {
     if (context == nullptr)
         return Wide::Util::none;
     Context c(*this, ident->location, [](ConcreteExpression e) {
@@ -610,13 +598,13 @@ Wide::Util::optional<Expression> Analyzer::LookupIdentifier(Type* context, const
         auto lookup = mod->AccessMember(mod->BuildValueConstruction(c), ident->val, c);
         if (!lookup)
             return LookupIdentifier(mod->GetContext(*this), ident);
-        if (!dynamic_cast<OverloadSet*>(lookup->Resolve(nullptr).t))
+        if (!dynamic_cast<OverloadSet*>(lookup->t))
             return lookup;
         auto lookup2 = LookupIdentifier(mod->GetContext(*this), ident);
         if (!lookup2)
             return lookup;
-        if (dynamic_cast<OverloadSet*>(lookup2->Resolve(nullptr).t))
-            return GetOverloadSet(dynamic_cast<OverloadSet*>(lookup->Resolve(nullptr).t), dynamic_cast<OverloadSet*>(lookup2->Resolve(nullptr).t))->BuildValueConstruction(c);
+        if (dynamic_cast<OverloadSet*>(lookup2->t))
+            return GetOverloadSet(dynamic_cast<OverloadSet*>(lookup->t), dynamic_cast<OverloadSet*>(lookup2->t))->BuildValueConstruction(c);
         return lookup;
     }
     if (auto udt = dynamic_cast<UserDefinedType*>(context)) {

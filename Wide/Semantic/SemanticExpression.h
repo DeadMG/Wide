@@ -6,8 +6,8 @@
 namespace Wide {
     namespace Semantic {
         struct SemanticExpression : public AST::Expression {
-            Semantic::Expression e;
-            SemanticExpression(Semantic::Expression expr, Lexer::Range where)
+            Semantic::ConcreteExpression e;
+            SemanticExpression(Semantic::ConcreteExpression expr, Lexer::Range where)
                 : e(expr), AST::Expression(std::move(where)) {}
         };
     }

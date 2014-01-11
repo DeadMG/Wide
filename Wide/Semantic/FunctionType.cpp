@@ -44,7 +44,7 @@ clang::QualType FunctionType::GetClangType(ClangUtil::ClangTU& from, Analyzer& a
     return from.GetASTContext().getFunctionType(ReturnType->GetClangType(from, a), types, clang::FunctionProtoType::ExtProtoInfo());
 }
 
-Expression FunctionType::BuildCall(ConcreteExpression val, std::vector<ConcreteExpression> args, Context c) {
+ConcreteExpression FunctionType::BuildCall(ConcreteExpression val, std::vector<ConcreteExpression> args, Context c) {
     ConcreteExpression out(ReturnType, nullptr);
     if (Args.size() != args.size())
         throw std::runtime_error("Attempt to call the function with the wrong number of arguments.");

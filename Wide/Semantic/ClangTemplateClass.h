@@ -16,7 +16,7 @@ namespace Wide {
             ClangTemplateClass(clang::ClassTemplateDecl* decl, ClangUtil::ClangTU* ptr)
                 : tempdecl(decl), from(ptr) {}
 
-            Expression BuildCall(ConcreteExpression, std::vector<ConcreteExpression>, Context c) override;
+            ConcreteExpression BuildCall(ConcreteExpression, std::vector<ConcreteExpression>, Context c) override;
         };
     }
 }

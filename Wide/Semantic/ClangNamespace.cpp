@@ -21,7 +21,7 @@
 using namespace Wide;
 using namespace Semantic;
 
-Wide::Util::optional<Expression> ClangNamespace::AccessMember(ConcreteExpression val, std::string name, Context c) {
+Wide::Util::optional<ConcreteExpression> ClangNamespace::AccessMember(ConcreteExpression val, std::string name, Context c) {
     clang::LookupResult lr(
         from->GetSema(), 
         clang::DeclarationNameInfo(clang::DeclarationName(from->GetIdentifierInfo(name)), clang::SourceLocation()),

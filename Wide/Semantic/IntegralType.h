@@ -8,7 +8,7 @@ namespace Wide {
             unsigned bits;
             bool is_signed;
 
-            void Extend(Expression& lhs, Expression& rhs, Analyzer& a);
+            void Extend(ConcreteExpression& lhs, ConcreteExpression& rhs, Analyzer& a);
         public:
             IntegralType(unsigned bit, bool sign)
                 : bits(bit), is_signed(sign) {}

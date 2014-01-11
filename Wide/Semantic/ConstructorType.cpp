@@ -14,7 +14,7 @@ struct EmplaceType : public MetaType {
         : t(con) {}
     Type* t;
 
-    Expression BuildCall(ConcreteExpression obj, std::vector<ConcreteExpression> args, Context c) override {
+    ConcreteExpression BuildCall(ConcreteExpression obj, std::vector<ConcreteExpression> args, Context c) override {
         if (args.size() == 0)
             throw std::runtime_error("Attempted to emplace a type without providing any memory into which to emplace it.");
         if (args[0].t->Decay() != c->GetPointerType(t))
@@ -25,18 +25,18 @@ struct EmplaceType : public MetaType {
     }
 };
 
-Expression ConstructorType::BuildCall(ConcreteExpression self, std::vector<ConcreteExpression> args, Context c) {
+ConcreteExpression ConstructorType::BuildCall(ConcreteExpression self, std::vector<ConcreteExpression> args, Context c) {
     assert(self.t->Decay() == this);
     return t->BuildRvalueConstruction(std::move(args), c);
 }
-Wide::Util::optional<Expression> ConstructorType::AccessMember(ConcreteExpression self, std::string name, Context c) {
+Wide::Util::optional<ConcreteExpression> ConstructorType::AccessMember(ConcreteExpression self, std::string name, Context c) {
     assert(self.t->Decay() == this);
     if (name == "~type")
         return Type::AccessMember(self, name, c);
     return t->AccessStaticMember(name, c);
 }
 
-Wide::Util::optional<Expression> ConstructorType::PointerAccessMember(ConcreteExpression obj, std::string name, Context c) {
+Wide::Util::optional<ConcreteExpression> ConstructorType::PointerAccessMember(ConcreteExpression obj, std::string name, Context c) {
     assert(obj.t->Decay() == this);
     if (name == "decay")
         return c->GetConstructorType(t->Decay())->BuildValueConstruction(c);

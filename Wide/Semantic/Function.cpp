@@ -81,7 +81,7 @@ Function::Function(std::vector<Type*> args, const AST::Function* astfun, Analyze
         auto ident = dynamic_cast<const AST::Identifier*>(ass->lhs);
         if (!ident)
             throw std::runtime_error("Prolog assignment expressions must have a plain identifier on the left-hand-side right now!");
-        auto expr = a.AnalyzeExpression(this, ass->rhs, [](ConcreteExpression e) {}).Resolve(nullptr);
+        auto expr = a.AnalyzeExpression(this, ass->rhs, [](ConcreteExpression e) {});
         if (ident->val == "ExportName") {
             auto str = dynamic_cast<Codegen::StringExpression*>(expr.Expr);
             if (!str)
@@ -106,7 +106,7 @@ clang::QualType Function::GetClangType(ClangUtil::ClangTU& where, Analyzer& a) {
     return GetSignature(a)->GetClangType(where, a);
 }
 
-Expression check(Wide::Util::optional<Expression> e) {
+ConcreteExpression check(Wide::Util::optional<ConcreteExpression> e) {
     if (!e)
         assert(false && "Expected to find this thing for sure, but it didn't exist! Check call stack for trigger.");
     return *e;
@@ -134,7 +134,7 @@ void Function::ComputeBody(Analyzer& a) {
                     auto mem = a.gen->CreateFieldExpression(self.Expr, x.num);
                     std::vector<ConcreteExpression> args;
                     if (init->initializer)
-                        args.push_back(a.AnalyzeExpression(this, init->initializer, [](ConcreteExpression e) {}).Resolve(nullptr));
+                        args.push_back(a.AnalyzeExpression(this, init->initializer, [](ConcreteExpression e) {}));
                     exprs.push_back(x.t->BuildInplaceConstruction(mem, std::move(args), c));
                 }
                 else {
@@ -142,8 +142,8 @@ void Function::ComputeBody(Analyzer& a) {
                     if (x.InClassInitializer)
                     {
                         Context c(a, x.InClassInitializer->location, [](ConcreteExpression e) {});
-                        auto expr = a.AnalyzeExpression(this, x.InClassInitializer, [](ConcreteExpression e) {}).Resolve(nullptr);
-                        auto mem = check(self.t->AccessMember(self, x.name, c)).Resolve(nullptr);
+                        auto expr = a.AnalyzeExpression(this, x.InClassInitializer, [](ConcreteExpression e) {});
+                        auto mem = check(self.t->AccessMember(self, x.name, c));
                         std::vector<ConcreteExpression> args;
                         args.push_back(expr);
                         exprs.push_back(x.t->BuildInplaceConstruction(mem.Expr, std::move(args), c));
@@ -167,7 +167,7 @@ void Function::ComputeBody(Analyzer& a) {
             Codegen::Expression* destructors = c->gen->CreateNop();
             while(scope) {
                 for(auto var = scope->needs_destruction.rbegin(); var != scope->needs_destruction.rend(); ++var) {
-                    destructors = c->gen->CreateChainExpression(destructors, var->AccessMember("~type", c)->BuildCall(c).Resolve(nullptr).Expr);
+                    destructors = c->gen->CreateChainExpression(destructors, var->AccessMember("~type", c)->BuildCall(c).Expr);
                 }
                 scope = scope->parent;
             }
@@ -182,16 +182,7 @@ void Function::ComputeBody(Analyzer& a) {
                 return nullptr;
         
             if (auto e = dynamic_cast<const AST::Expression*>(stmt))
-                return analyzer.AnalyzeExpression(this, e, register_local_destructor).VisitContents(
-                    [](ConcreteExpression& expr) {
-                        return expr.Expr;
-                    },
-                    [&](DeferredExpression& delay) {
-                        return a.gen->CreateDeferredExpression([=] {
-                            return delay(nullptr).Expr;
-                        });
-                    }
-               );
+                return analyzer.AnalyzeExpression(this, e, register_local_destructor).Expr;
         
             if (auto ret = dynamic_cast<const AST::Return*>(stmt)) {                
                 if (!ret->RetExpr) {
@@ -226,25 +217,7 @@ void Function::ComputeBody(Analyzer& a) {
                             return a.gen->CreateChainExpression(a.gen->CreateChainExpression(ret, call_destructors(c, scope)), ret);
                         }
                     };
-                    return expr.VisitContents(
-                        [&](ConcreteExpression& expr) { 
-                            return a.gen->CreateReturn(handle_result(expr)); 
-                        }, 
-                        [&, handle_result](DeferredExpression& expr) {
-                            if (returnstate == ReturnState::NoReturnSeen)
-                                returnstate = ReturnState::DeferredReturnSeen;
-                            auto curr = *expr.delay;
-                            *expr.delay = [=, &a](Type* t) {
-                                auto f = curr(t);
-                                if (s != State::AnalyzeCompleted)
-                                    CompleteAnalysis(f.t, a);
-                                return f;
-                            };
-                            return a.gen->CreateReturn([=]() mutable {
-                                return handle_result(expr(nullptr));
-                            });
-                        }
-                    );
+                    return a.gen->CreateReturn(handle_result(expr));
                 }
             }
             if (auto var = dynamic_cast<const AST::Variable*>(stmt)) {
@@ -262,6 +235,8 @@ void Function::ComputeBody(Analyzer& a) {
                     args.push_back(result);
                     Context c(a, var->location, register_local_destructor);
                     if (result.t->IsReference()) {
+                        // If it's a function call, and it returns a complex T, then the return expression already points to
+                        // a memory variable of type T. Just use that.
                         if (!result.steal) {
                             result.t = a.GetLvalueType(result.t);
                             return result.t->Decay()->BuildLvalueConstruction(args, c);
@@ -279,25 +254,9 @@ void Function::ComputeBody(Analyzer& a) {
                     }
                 };
 
-                return result.VisitContents(
-                    [&, handle_variable_expression, scope](ConcreteExpression& result) {
-                        auto expr = handle_variable_expression(result);
-                        scope->named_variables.insert(std::make_pair(var->name, expr));
-                        return expr.Expr;
-                    }, 
-                    [&, handle_variable_expression, scope](DeferredExpression& result) {
-                        auto defexpr = DeferredExpression([result, handle_variable_expression](Type* t) {
-                            return handle_variable_expression(result(t));
-                        });
-                        scope->named_variables.insert(std::make_pair(var->name, defexpr));
-                        return a.gen->CreateDeferredExpression([=] {
-                            return defexpr(nullptr).Expr;
-                        });
-                    }
-                );
-        
-                // If it's a function call, and it returns a complex T, then the return expression already points to
-                // a memory variable of type T. Just use that.
+                auto expr = handle_variable_expression(result);
+                scope->named_variables.insert(std::make_pair(var->name, expr));
+                return expr.Expr;        
             }
         
             if (auto comp = dynamic_cast<const AST::CompoundStatement*>(stmt)) {
@@ -311,7 +270,7 @@ void Function::ComputeBody(Analyzer& a) {
                     chain = a.gen->CreateChainStatement(chain, AnalyzeStatement(x, current_scope));
                 }
                 for(auto des = current_scope->needs_destruction.rbegin(); des != current_scope->needs_destruction.rend(); ++des)
-                    chain = a.gen->CreateChainStatement(chain, des->AccessMember("~type", c)->BuildCall(c).Resolve(nullptr).Expr);
+                    chain = a.gen->CreateChainStatement(chain, des->AccessMember("~type", c)->BuildCall(c).Expr);
                 current_scope = scope;
                 return chain;
             }
@@ -323,9 +282,9 @@ void Function::ComputeBody(Analyzer& a) {
                 scope->children.push_back(Wide::Memory::MakeUnique<Scope>(scope));
                 auto condscope = current_scope = scope->children.back().get();
                 Context c(a, if_stmt->condition ? if_stmt->condition->location : if_stmt->var_condition->location, [=](ConcreteExpression e) { current_scope->needs_destruction.push_back(e); });
-                Expression cond = if_stmt->var_condition
-                    ? AnalyzeStatement(if_stmt->var_condition, condscope), condscope->named_variables.begin()->second.BuildBooleanConversion(c)
-                    : a.AnalyzeExpression(this, if_stmt->condition, [=](ConcreteExpression e) { current_scope->needs_destruction.push_back(e); }).BuildBooleanConversion(c);
+                ConcreteExpression cond = if_stmt->var_condition
+                    ? AnalyzeStatement(if_stmt->var_condition, condscope), condscope->named_variables.begin()->second
+                    : a.AnalyzeExpression(this, if_stmt->condition, [=](ConcreteExpression e) { current_scope->needs_destruction.push_back(e); });
                 auto expr = cond.BuildBooleanConversion(c);
                 condscope->children.push_back(Wide::Memory::MakeUnique<Scope>(condscope));
                 current_scope = condscope->children.back().get();
@@ -333,7 +292,7 @@ void Function::ComputeBody(Analyzer& a) {
                 // add any locals.
                 c.where = if_stmt->true_statement->location;
                 for(auto des = current_scope->needs_destruction.rbegin(); des != current_scope->needs_destruction.rend(); ++des)
-                    true_br = a.gen->CreateChainStatement(true_br, des->AccessMember("~type", c)->BuildCall(c).Resolve(nullptr).Expr);
+                    true_br = a.gen->CreateChainStatement(true_br, des->AccessMember("~type", c)->BuildCall(c).Expr);
                 if (if_stmt->false_statement)
                     c.where = if_stmt->false_statement->location;
                 condscope->children.push_back(Wide::Memory::MakeUnique<Scope>(condscope));
@@ -341,57 +300,33 @@ void Function::ComputeBody(Analyzer& a) {
                 auto false_br = AnalyzeStatement(if_stmt->false_statement, current_scope);
                 // add any locals.
                 for (auto des = current_scope->needs_destruction.rbegin(); des != current_scope->needs_destruction.rend(); ++des)
-                    false_br = a.gen->CreateChainStatement(false_br, des->AccessMember("~type", c)->BuildCall(c).Resolve(nullptr).Expr);
+                    false_br = a.gen->CreateChainStatement(false_br, des->AccessMember("~type", c)->BuildCall(c).Expr);
                 current_scope = scope;
-                return expr.VisitContents(
-                    [&](ConcreteExpression& expr) {
-                        auto cleanup = (Codegen::Statement*)a.gen->CreateNop();
-                        for(auto des = condscope->needs_destruction.rbegin(); des != condscope->needs_destruction.rend(); ++des)
-                            cleanup = a.gen->CreateChainStatement(cleanup, des->AccessMember("~type", c)->BuildCall(c).Resolve(nullptr).Expr);
+                auto cleanup = (Codegen::Statement*)a.gen->CreateNop();
+                for (auto des = condscope->needs_destruction.rbegin(); des != condscope->needs_destruction.rend(); ++des)
+                    cleanup = a.gen->CreateChainStatement(cleanup, des->AccessMember("~type", c)->BuildCall(c).Expr);
 
-                        return a.gen->CreateChainStatement(a.gen->CreateIfStatement(expr.Expr, true_br, false_br), cleanup);
-                    },
-                    [&](DeferredExpression& expr) {
-                        return a.gen->CreateChainStatement(
-                            a.gen->CreateIfStatement([=] { return expr(nullptr).Expr; }, true_br, false_br), 
-                            a.gen->CreateDeferredStatement([=, &a] {
-                                auto cleanup = (Codegen::Statement*)a.gen->CreateNop();
-                                for(auto des = condscope->needs_destruction.rbegin(); des != condscope->needs_destruction.rend(); ++des)
-                                    cleanup = a.gen->CreateChainStatement(cleanup, des->AccessMember("~type", c)->BuildCall(c).Resolve(nullptr).Expr);
-                                return cleanup;
-                            })
-                        );
-                    }
-                );                
+                return a.gen->CreateChainStatement(a.gen->CreateIfStatement(expr, true_br, false_br), cleanup);
             }
         
             if (auto while_stmt = dynamic_cast<const AST::While*>(stmt)) {
                 Context c(a, while_stmt->condition ? while_stmt->condition->location : while_stmt->var_condition->location, [=](ConcreteExpression e) { current_scope->needs_destruction.push_back(e); });
                 scope->children.push_back(Wide::Memory::MakeUnique<Scope>(scope));
                 auto condscope = current_scope = scope->children.back().get();
-                Expression cond = while_stmt->var_condition
-                    ? AnalyzeStatement(while_stmt->var_condition, condscope), condscope->named_variables.begin()->second.BuildBooleanConversion(c)
-                    : a.AnalyzeExpression(this, while_stmt->condition, [=](ConcreteExpression e) { current_scope->needs_destruction.push_back(e); }).BuildBooleanConversion(c) ;
-                auto ret = condscope->current_while = cond.VisitContents(
-                    [&](ConcreteExpression& expr) {
-                        return a.gen->CreateWhile(expr.Expr);
-                    },
-                    [&](DeferredExpression& expr) {
-                        return a.gen->CreateWhile([=] { return expr(nullptr).Expr; });
-                    }
-                );    
+                ConcreteExpression cond = while_stmt->var_condition
+                    ? AnalyzeStatement(while_stmt->var_condition, condscope), condscope->named_variables.begin()->second
+                    : a.AnalyzeExpression(this, while_stmt->condition, [=](ConcreteExpression e) { current_scope->needs_destruction.push_back(e); });
+                auto ret = condscope->current_while = a.gen->CreateWhile(cond.BuildBooleanConversion(c));
                 condscope->children.push_back(Wide::Memory::MakeUnique<Scope>(condscope));
                 current_scope = condscope->children.back().get();
                 auto body = AnalyzeStatement(while_stmt->body, current_scope);  
                 current_scope = scope;
                 condscope->current_while = nullptr;
                 ret->SetBody(body);
-                return a.gen->CreateChainStatement(ret, a.gen->CreateDeferredStatement([=, &a] {
-                    Codegen::Statement* cleanup = a.gen->CreateNop();
-                    for(auto des = condscope->needs_destruction.rbegin(); des != condscope->needs_destruction.rend(); ++des)
-                        cleanup = a.gen->CreateChainStatement(cleanup, des->AccessMember("~type", c)->BuildCall(c).Resolve(nullptr).Expr);
-                    return cleanup;
-                }));
+                Codegen::Statement* cleanup = a.gen->CreateNop();
+                for (auto des = condscope->needs_destruction.rbegin(); des != condscope->needs_destruction.rend(); ++des)
+                    cleanup = a.gen->CreateChainStatement(cleanup, des->AccessMember("~type", c)->BuildCall(c).Expr);
+                return a.gen->CreateChainStatement(ret, cleanup);
             }
 
             if (auto break_stmt = dynamic_cast<const AST::Break*>(stmt)) {
@@ -400,7 +335,7 @@ void Function::ComputeBody(Analyzer& a) {
                 Context c(a, break_stmt->location, [](ConcreteExpression e) {});
                 while(currscope) {
                     for(auto var = currscope->needs_destruction.rbegin(); var != currscope->needs_destruction.rend(); ++var)
-                        des = a.gen->CreateChainStatement(des, var->AccessMember("~type", c)->BuildCall(c).Resolve(nullptr).Expr);
+                        des = a.gen->CreateChainStatement(des, var->AccessMember("~type", c)->BuildCall(c).Expr);
                     if (currscope->current_while)
                         return a.gen->CreateChainStatement(des, a.gen->CreateBreak(currscope->current_while));
                     currscope = currscope->parent;
@@ -414,7 +349,7 @@ void Function::ComputeBody(Analyzer& a) {
                 Context c(a, continue_stmt->location, [](ConcreteExpression e) {});
                 while(currscope) {
                     for(auto var = currscope->needs_destruction.rbegin(); var != currscope->needs_destruction.rend(); ++var)
-                        des = a.gen->CreateChainStatement(des, var->AccessMember("~type", c)->BuildCall(c).Resolve(nullptr).Expr);
+                        des = a.gen->CreateChainStatement(des, var->AccessMember("~type", c)->BuildCall(c).Expr);
                     if (currscope->current_while)
                         return a.gen->CreateChainStatement(des, a.gen->CreateContinue(currscope->current_while));
                     currscope = currscope->parent;
@@ -451,7 +386,7 @@ void Function::CompleteAnalysis(Type* ret, Analyzer& a) {
         auto currscope = current_scope;
         while(currscope) {
             for(auto var = currscope->needs_destruction.rbegin(); var != currscope->needs_destruction.rend(); ++var) {
-                exprs.push_back(var->AccessMember("~type", c)->BuildCall(c).Resolve(nullptr).Expr);
+                exprs.push_back(var->AccessMember("~type", c)->BuildCall(c).Expr);
             }
             currscope = currscope->parent;
         }
@@ -463,7 +398,7 @@ void Function::CompleteAnalysis(Type* ret, Analyzer& a) {
     for (auto&& x : exprs)
         codefun->AddStatement(x);
 }
-Expression Function::BuildCall(ConcreteExpression ex, std::vector<ConcreteExpression> args, Context c) {
+ConcreteExpression Function::BuildCall(ConcreteExpression ex, std::vector<ConcreteExpression> args, Context c) {
     if (s == State::AnalyzeCompleted) {
         ConcreteExpression val(this, c->gen->CreateFunctionValue(name));
         return GetSignature(*c)->BuildCall(val, std::move(args), c);
@@ -472,14 +407,9 @@ Expression Function::BuildCall(ConcreteExpression ex, std::vector<ConcreteExpres
         ComputeBody(*c);
         return BuildCall(ex, std::move(args), c);
     }
-    return DeferredExpression([this, c, args](Type* t) {
-        if (s != State::AnalyzeCompleted)
-            CompleteAnalysis(t, *c);
-        ConcreteExpression val(this, c->gen->CreateFunctionValue(name));
-        return GetSignature(*c)->BuildCall(val, std::move(args), c).Resolve(t);
-    });    
+    throw std::runtime_error("Attempted to call a function, but the analysis was not yet completed. This means that you used recursion that the type system cannot handle.");
 }
-Wide::Util::optional<Expression> Function::LookupLocal(std::string name, Context c) {
+Wide::Util::optional<ConcreteExpression> Function::LookupLocal(std::string name, Context c) {
     auto currscope = current_scope;
     while(currscope) {
         if (currscope->named_variables.find(name) != currscope->named_variables.end()) {
@@ -518,22 +448,14 @@ bool Function::AddThis() {
 Type* Function::GetConstantContext(Analyzer& a) {
     struct FunctionConstantContext : public MetaType {
         Type* context;
-        std::unordered_map<std::string, Expression> constant;
+        std::unordered_map<std::string, ConcreteExpression> constant;
         Type* GetContext(Analyzer& a) override final {
             return context;
         }
-        Wide::Util::optional<Expression> AccessMember(ConcreteExpression e, std::string member, Context c) override final {
+        Wide::Util::optional<ConcreteExpression> AccessMember(ConcreteExpression e, std::string member, Context c) override final {
             if (constant.find(member) == constant.end())
                 return Wide::Util::none;
-            return constant.at(member).VisitContents(
-                [&](ConcreteExpression& e) -> Wide::Util::optional<Expression> {
-                    return e.t->Decay()->GetConstantContext(*c)->BuildValueConstruction(c);
-                },
-                [&](DeferredExpression& e) {
-                    auto expr = e(nullptr);
-                    return expr.t->GetConstantContext(*c) ? Wide::Util::optional<Expression>(expr.t->GetConstantContext(*c)->BuildValueConstruction(c)) : Wide::Util::none;
-                }
-            );
+            return constant.at(member).t->Decay()->GetConstantContext(*c)->BuildValueConstruction(c);
         }
     };
     auto context = a.arena.Allocate<FunctionConstantContext>();
@@ -541,15 +463,9 @@ Type* Function::GetConstantContext(Analyzer& a) {
     for(auto scope = current_scope; scope; scope = scope->parent) {
         for (auto&& var : scope->named_variables) {
             if (context->constant.find(var.first) == context->constant.end()) {
-                var.second.VisitContents(
-                    [&](ConcreteExpression& e) {
-                        if (e.t->Decay()->GetConstantContext(a))
-                            context->constant.insert(std::make_pair(var.first, e));
-                    },
-                    [&](DeferredExpression& e) {
-                        context->constant.insert(std::make_pair(var.first, e));
-                    }
-                 );
+                auto& e = var.second;
+                if (e.t->Decay()->GetConstantContext(a))
+                    context->constant.insert(std::make_pair(var.first, e));
              }
         }
     }

@@ -73,7 +73,7 @@ void Jit(const Wide::Options::Clang& copts, std::string file) {
         auto m = a.GetGlobalModule()->AccessMember(a.GetGlobalModule()->BuildValueConstruction(c), "Main", c);
         if (!m)
             throw std::runtime_error("No Main() found for test!");
-        auto func = dynamic_cast<Wide::Semantic::OverloadSet*>(m->Resolve(nullptr).t);
+        auto func = dynamic_cast<Wide::Semantic::OverloadSet*>(m->t);
         if (!func)
             throw std::runtime_error("Main was not an overload set.");
         auto f = dynamic_cast<Wide::Semantic::Function*>(func->Resolve(std::vector<Wide::Semantic::Type*>(), a));
@@ -141,45 +141,46 @@ int main(int argc, char** argv) {
             return modes[input["mode"].as<std::string>()]();
         return 1;
     }
-    unsigned tests_failed = 0;
-    unsigned tests_succeeded = 0;
     unsigned total_failed = 0;
     unsigned total_succeeded = 0;
-    auto run_test_process = [&](std::string file, std::string mode) {
-        auto modearg = "--mode=" + mode;
-        std::string arguments = "--input=" + file;
-        const char* args[] = { argv[0], arguments.c_str(), modearg.c_str(), nullptr };
-        std::string err = "";
-        bool failed = false;
-        auto timeout = input.count("break") ? 0 : 1;
-#ifdef _MSC_VER
-        auto ret = llvm::sys::ExecuteAndWait(
-            argv[0],
-#else
-        auto ret = llvm::sys::Program::ExecuteAndWait(
-            llvm::sys::Path(argv[0]),
-#endif
-            args,
-            nullptr,
-            nullptr,
-            timeout,
-            0,
-            &err,
-            &failed
-            );
-
-        if (failed || ret) {
-            tests_failed++;
-            std::cout << mode << " failed: " << file << "\n";
-        } else {
-            tests_succeeded++;
-            std::cout << mode << " succeeded: " << file << "\n";
-        }
-    };
 
     // Run with Image File Options attaching a debugger to debug a test.
     // Run without to see test results.
     for (auto mode : modes) {
+        unsigned tests_failed = 0;
+        unsigned tests_succeeded = 0;
+        auto run_test_process = [&](std::string file, std::string mode) {
+            auto modearg = "--mode=" + mode;
+            std::string arguments = "--input=" + file;
+            const char* args[] = { argv[0], arguments.c_str(), modearg.c_str(), nullptr };
+            std::string err = "";
+            bool failed = false;
+            auto timeout = input.count("break") ? 0 : 1;
+#ifdef _MSC_VER
+            auto ret = llvm::sys::ExecuteAndWait(
+                argv[0],
+#else
+            auto ret = llvm::sys::Program::ExecuteAndWait(
+                llvm::sys::Path(argv[0]),
+#endif
+                args,
+                nullptr,
+                nullptr,
+                timeout,
+                0,
+                &err,
+                &failed
+                );
+
+            if (failed || ret) {
+                tests_failed++;
+                std::cout << mode << " failed: " << file << "\n";
+            } else {
+                tests_succeeded++;
+                std::cout << mode << " succeeded: " << file << "\n";
+            }
+        };
+
         auto end = llvm::sys::fs::directory_iterator();
         llvm::error_code fuck_error_codes;
         bool out = true;
@@ -204,14 +205,12 @@ int main(int argc, char** argv) {
         std::cout << mode.first << " succeeded: " << tests_succeeded << " failed: " << tests_failed << "\n";
         total_succeeded += tests_succeeded;
         total_failed += tests_failed;
-        tests_succeeded = 0;
-        tests_failed = 0;
     }
     std::cout << "Total succeeded: " << total_succeeded << " failed: " << total_failed;
     //atexit([] { __debugbreak(); });
     //std::set_terminate([] { __debugbreak(); });
-    //Jit(clangopts, "JITSuccess/CorecursiveTypeInference.wide");
+    //Jit(clangopts, "JITSuccess/SimpleRAII.wide");
     if (input.count("break"))
         Wide::Util::DebugBreak();
-    return tests_failed != 0;
+    return total_failed != 0;
 }

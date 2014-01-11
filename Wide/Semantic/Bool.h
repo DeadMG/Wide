@@ -10,7 +10,7 @@ namespace Wide {
             std::function<llvm::Type*(llvm::Module*)> GetLLVMType(Analyzer& a) override;
             clang::QualType GetClangType(ClangUtil::ClangTU&, Analyzer& a) override;
             
-            Expression BuildBinaryExpression(ConcreteExpression lhs, ConcreteExpression rhs, std::vector<ConcreteExpression> destructors, Lexer::TokenType type, Context c) override;
+            ConcreteExpression BuildBinaryExpression(ConcreteExpression lhs, ConcreteExpression rhs, std::vector<ConcreteExpression> destructors, Lexer::TokenType type, Context c) override;
 
             OverloadSet* AccessMember(ConcreteExpression expr, Lexer::TokenType name, Context c) override;
             Codegen::Expression* BuildBooleanConversion(ConcreteExpression, Context c) override;

@@ -20,8 +20,8 @@ namespace Wide {
             std::function<llvm::Type*(llvm::Module*)> GetLLVMType(Analyzer& a) override final;            
             clang::QualType GetClangType(ClangUtil::ClangTU& tu, Analyzer& a) override final;
 
-            Wide::Util::optional<Expression> AccessMember(ConcreteExpression val, std::string name, Context c) override final;
-            Expression BuildCall(ConcreteExpression val, std::vector<ConcreteExpression> args, Context c) override final;
+            Wide::Util::optional<ConcreteExpression> AccessMember(ConcreteExpression val, std::string name, Context c) override final;
+            ConcreteExpression BuildCall(ConcreteExpression val, std::vector<ConcreteExpression> args, Context c) override final;
             
             Wide::Codegen::Expression* BuildBooleanConversion(ConcreteExpression self, Context c) override final;
 

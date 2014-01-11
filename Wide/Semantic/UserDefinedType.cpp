@@ -31,7 +31,6 @@ bool UserDefinedType::IsComplexType() {
     return iscomplex;
 }
 
-
 UserDefinedType::UserDefinedType(const AST::Type* t, Analyzer& a, Type* higher)
 : context(higher) {
     iscomplex = false;
@@ -44,7 +43,7 @@ UserDefinedType::UserDefinedType(const AST::Type* t, Analyzer& a, Type* higher)
     llvmname = stream.str();
 
     for (auto&& var : t->variables) {
-        auto expr = a.AnalyzeExpression(context, var->initializer, [](ConcreteExpression e) {}).Resolve(nullptr);
+        auto expr = a.AnalyzeExpression(context, var->initializer, [](ConcreteExpression e) {});
         expr.t = expr.t->Decay();
         member m;
         if (auto con = dynamic_cast<ConstructorType*>(expr.t)) {
@@ -128,7 +127,7 @@ UserDefinedType::UserDefinedType(const AST::Type* t, Analyzer& a, Type* higher)
         des->statements.push_back(a.arena.Allocate<SemanticExpression>(ConcreteExpression(nullptr, 
             ConcreteExpression(a.GetLvalueType(x->t), a.gen->CreateFieldExpression(a.gen->CreateParameterExpression(0), x->num))
             .AccessMember("~type", c)
-            ->BuildCall(c).Resolve(a.GetVoidType()).Expr), t->location));
+            ->BuildCall(c).Expr), t->location));
     }
     std::unordered_set<const AST::Function*> funcs;
     funcs.insert(des);
@@ -180,10 +179,10 @@ Codegen::Expression* UserDefinedType::BuildInplaceConstruction(Codegen::Expressi
     }
     return constructor
         ->BuildValueConstruction(ConcreteExpression(c->GetLvalueType(this), mem), c)
-        .BuildCall(std::move(args), c).Resolve(nullptr).Expr;
+        .BuildCall(std::move(args), c).Expr;
 }
 
-Wide::Util::optional<Expression> UserDefinedType::AccessMember(ConcreteExpression expr, std::string name, Context c) {
+Wide::Util::optional<ConcreteExpression> UserDefinedType::AccessMember(ConcreteExpression expr, std::string name, Context c) {
     if (name == "~type") {
         if (!expr.t->IsReference())
             expr = expr.t->BuildLvalueConstruction(expr, c);
@@ -333,7 +332,7 @@ bool UserDefinedType::HasMember(std::string name) {
     return type->Functions.find(name) != type->Functions.end() || members.find(name) != members.end();
 }
 
-Expression UserDefinedType::BuildCall(ConcreteExpression val, std::vector<ConcreteExpression> args, Context c) {
+ConcreteExpression UserDefinedType::BuildCall(ConcreteExpression val, std::vector<ConcreteExpression> args, Context c) {
     auto self = val.t == this ? BuildRvalueConstruction(val, c) : val;
     if (type->opcondecls.find(Lexer::TokenType::OpenBracket) != type->opcondecls.end())
         return c->GetOverloadSet(type->opcondecls.at(Lexer::TokenType::OpenBracket), self.t)->BuildValueConstruction(self, c).BuildCall(std::move(args), c);

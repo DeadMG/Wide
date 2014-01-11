@@ -25,13 +25,13 @@
 using namespace Wide;
 using namespace Semantic;
 
-Expression GetOverloadSet(clang::NamedDecl* d, ClangUtil::ClangTU* from, ConcreteExpression self, Context c) {
+ConcreteExpression GetOverloadSet(clang::NamedDecl* d, ClangUtil::ClangTU* from, ConcreteExpression self, Context c) {
     std::unordered_set<clang::NamedDecl*> decls;
     if (d)
         decls.insert(d);
     return c->GetOverloadSet(std::move(decls), from, self.t)->BuildValueConstruction(self, c);
 }
-Expression GetOverloadSet(clang::LookupResult& lr, ClangUtil::ClangTU* from, ConcreteExpression self, Context c) {
+ConcreteExpression GetOverloadSet(clang::LookupResult& lr, ClangUtil::ClangTU* from, ConcreteExpression self, Context c) {
     std::unordered_set<clang::NamedDecl*> decls;
     decls.insert(lr.begin(), lr.end());
     return c->GetOverloadSet(std::move(decls), from, self.t)->BuildValueConstruction(self, c);
@@ -124,7 +124,7 @@ clang::QualType ClangType::GetClangType(ClangUtil::ClangTU& tu, Analyzer& a) {
     return type;
 }
 
-Wide::Util::optional<Expression> ClangType::AccessMember(ConcreteExpression val, std::string name, Context c) {
+Wide::Util::optional<ConcreteExpression> ClangType::AccessMember(ConcreteExpression val, std::string name, Context c) {
     if (name == "~type") {
         if (!IsComplexType())
             return c->GetNothingFunctorType()->BuildValueConstruction(c);
@@ -162,7 +162,7 @@ Wide::Util::optional<Expression> ClangType::AccessMember(ConcreteExpression val,
     return GetOverloadSet(lr, from, val, c);
 }
 
-Expression ClangType::BuildCall(ConcreteExpression self, std::vector<ConcreteExpression> args, Context c) {
+ConcreteExpression ClangType::BuildCall(ConcreteExpression self, std::vector<ConcreteExpression> args, Context c) {
     if (self.t->Decay() == self.t)
         self = BuildRvalueConstruction(self, c);
     clang::OpaqueValueExpr ope(clang::SourceLocation(), type.getNonLValueExprType(from->GetASTContext()), Semantic::GetKindOfType(self.t));
@@ -261,7 +261,7 @@ Codegen::Expression* ClangType::BuildInplaceConstruction(Codegen::Expression* me
     auto rty = c->GetClangType(*from, fun->getResultType());
     auto funty = c->GetFunctionType(rty, types);
     ConcreteExpression obj(funty, c->gen->CreateFunctionValue(from->MangleName(fun)));
-    return funty->BuildCall(obj, args, c).Resolve(nullptr).Expr;
+    return funty->BuildCall(obj, args, c).Expr;
 }
 
 bool ClangType::IsComplexType() {
@@ -332,7 +332,7 @@ Wide::Codegen::Expression* ClangType::BuildBooleanConversion(ConcreteExpression 
     ConcreteExpression clangfunc(funty, c->gen->CreateFunctionValue(from->MangleName(fun)));
     std::vector<ConcreteExpression> expressions;
     expressions.push_back(self);
-    auto e = funty->BuildCall(clangfunc, std::move(expressions), c).Resolve(nullptr);
+    auto e = funty->BuildCall(clangfunc, std::move(expressions), c);
 
     // The return type should be bool.
     // If the function really returns an i1, the code generator will implicitly patch it up for us.
@@ -350,7 +350,7 @@ ConcreteExpression ClangType::BuildDereference(ConcreteExpression self, Context 
     auto result = from->GetSema().LookupQualifiedName(lr, type->getAsCXXRecordDecl(), false);
     if (!result)
         throw std::runtime_error("Attempted to de-reference a Clang type, but Clang said that it could not find the member.");
-    return GetOverloadSet(lr, from, self, c).BuildCall(c).Resolve(nullptr);
+    return GetOverloadSet(lr, from, self, c).BuildCall(c);
 }
 
 ConcreteExpression ClangType::BuildIncrement(ConcreteExpression self, bool postfix, Context c) {
@@ -371,7 +371,7 @@ ConcreteExpression ClangType::BuildIncrement(ConcreteExpression self, bool postf
     auto result = from->GetSema().LookupQualifiedName(lr, type->getAsCXXRecordDecl(), false);
     if (!result)
         throw std::runtime_error("Attempted to de-reference a Clang type, but Clang said that it could not find the member.");
-    return GetOverloadSet(lr, from, self, c).BuildCall(c).Resolve(nullptr);
+    return GetOverloadSet(lr, from, self, c).BuildCall(c);
 }
 
 #pragma warning(disable : 4244)

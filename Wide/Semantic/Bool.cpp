@@ -65,12 +65,12 @@ OverloadSet* Bool::AccessMember(ConcreteExpression expr, Lexer::TokenType name, 
     }
     return c->GetOverloadSet();
 }
-Expression Bool::BuildBinaryExpression(ConcreteExpression lhs, ConcreteExpression rhs, std::vector<ConcreteExpression> destructors, Lexer::TokenType type, Context c) {
+ConcreteExpression Bool::BuildBinaryExpression(ConcreteExpression lhs, ConcreteExpression rhs, std::vector<ConcreteExpression> destructors, Lexer::TokenType type, Context c) {
     // Special-case this short-circuit.
     auto get_destructor_expression = [&] {
         auto start = (Codegen::Expression*)c->gen->CreateNop();
         for(auto var : destructors)
-            start = c->gen->CreateChainExpression(start, var.AccessMember("~type", c)->BuildCall(c).Resolve(nullptr).Expr);
+            start = c->gen->CreateChainExpression(start, var.AccessMember("~type", c)->BuildCall(c).Expr);
         return start;
     };
     switch(type) {

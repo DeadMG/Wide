@@ -1,8 +1,0 @@
-f(x) {
-    if (x > 5)
-        return f(3) + 1;
-    return x;
-}
-Main() {
-    return f(6) == 4;
-}

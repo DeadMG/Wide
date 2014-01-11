@@ -79,7 +79,7 @@ std::function<llvm::Type*(llvm::Module*)> OverloadSet::GetLLVMType(Analyzer& a) 
         return t;
     };    
 }
-Expression OverloadSet::BuildCall(ConcreteExpression e, std::vector<ConcreteExpression> args, Context c) {
+ConcreteExpression OverloadSet::BuildCall(ConcreteExpression e, std::vector<ConcreteExpression> args, Context c) {
     std::vector<Type*> targs;
     if (nonstatic)
         targs.push_back(nonstatic);
@@ -121,7 +121,7 @@ Callable* OverloadSet::Resolve(std::vector<Type*> f_args, Analyzer& a) {
                 Type* context;
                 Type* member;
                 Type* argument;
-                Wide::Util::optional<Expression> AccessMember(ConcreteExpression, std::string name, Context c) override final {
+                Wide::Util::optional<ConcreteExpression> AccessMember(ConcreteExpression, std::string name, Context c) override final {
                     if(name == "this") {
                         if(member)
                             return c->GetConstructorType(member)->BuildValueConstruction(c);
@@ -141,7 +141,7 @@ Callable* OverloadSet::Resolve(std::vector<Type*> f_args, Analyzer& a) {
                 lc.context = candidate.first;
                 lc.member = dynamic_cast<UserDefinedType*>(candidate.first->Decay()) ? candidate.first->Decay() : nullptr;
                 auto takety = candidate.second->args[i].type ? 
-                    dynamic_cast<ConstructorType*>(a.AnalyzeExpression(&lc, candidate.second->args[i].type, [](ConcreteExpression e) {}).Resolve(nullptr).t->Decay()) :
+                    dynamic_cast<ConstructorType*>(a.AnalyzeExpression(&lc, candidate.second->args[i].type, [](ConcreteExpression e) {}).t->Decay()) :
                     a.GetConstructorType(args[i]->Decay());
                 if (!takety)
                     throw Wide::Semantic::SemanticError(candidate.second->args[i].location, Wide::Semantic::Error::ExpressionNoType);
@@ -243,7 +243,7 @@ Callable* OverloadSet::Resolve(std::vector<Type*> f_args, Analyzer& a) {
                     types.push_back(a.GetClangType(*from, fun->getParamDecl(i)->getType()));
                 return types;
             }
-            Expression BuildCall(ConcreteExpression, std::vector<ConcreteExpression> args, Context c) override {
+            ConcreteExpression BuildCall(ConcreteExpression, std::vector<ConcreteExpression> args, Context c) override {
                 return ConcreteExpression(c->GetFunctionType(c->GetClangType(*from, fun->getResultType()), GetArgumentTypes(*c)), c->gen->CreateFunctionValue(from->MangleName(fun))).BuildCall(args, c);
             }
             bool AddThis() override {

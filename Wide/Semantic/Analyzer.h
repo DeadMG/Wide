@@ -48,7 +48,6 @@ namespace Wide {
     };
     namespace Semantic {
         struct Callable;
-        struct Expression;
         class Function;
         class Module;
         class ClangNamespace;
@@ -144,8 +143,8 @@ namespace Wide {
             FloatType* GetFloatType(unsigned);
             Module* GetGlobalModule();
             
-            Expression AnalyzeExpression(Type* t, const AST::Expression* e, std::function<void(ConcreteExpression)>);
-            Wide::Util::optional<Expression> LookupIdentifier(Type* context, const AST::Identifier* ident);
+            ConcreteExpression AnalyzeExpression(Type* t, const AST::Expression* e, std::function<void(ConcreteExpression)>);
+            Wide::Util::optional<ConcreteExpression> LookupIdentifier(Type* context, const AST::Identifier* ident);
 
             Analyzer(const Options::Clang&, Codegen::Generator&, const AST::Module*);     
 

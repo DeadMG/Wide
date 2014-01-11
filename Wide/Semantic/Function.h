@@ -46,8 +46,8 @@ namespace Wide {
                 Scope(Scope* s) : parent(s), current_while(nullptr) {}
                 Scope* parent;
                 std::vector<std::unique_ptr<Scope>> children;
-                std::unordered_map<std::string, Expression> named_variables;
-                std::vector<Expression> needs_destruction;
+                std::unordered_map<std::string, ConcreteExpression> named_variables;
+                std::vector<ConcreteExpression> needs_destruction;
                 Codegen::WhileStatement* current_while;
             };
             Scope root_scope;
@@ -59,7 +59,7 @@ namespace Wide {
 
             clang::QualType GetClangType(ClangUtil::ClangTU& where, Analyzer& a) override final;
      
-            Expression BuildCall(ConcreteExpression, std::vector<ConcreteExpression> args, Context c) override final;
+            ConcreteExpression BuildCall(ConcreteExpression, std::vector<ConcreteExpression> args, Context c) override final;
             std::string GetName();
             Type* GetContext(Analyzer& a) override final { return context; }
 
@@ -68,7 +68,7 @@ namespace Wide {
                 return Args;
             }
             bool AddThis() override final;
-            Wide::Util::optional<Expression> LookupLocal(std::string name, Context c);
+            Wide::Util::optional<ConcreteExpression> LookupLocal(std::string name, Context c);
             Type* GetConstantContext(Analyzer& a) override final;
         };
     }

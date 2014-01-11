@@ -39,7 +39,7 @@ namespace Wide {
                                 continue;
                             Try([&] {
                                 auto ty = a.AnalyzeExpression(mod, arg.type, swallow_raii);
-                                if (auto conty = dynamic_cast<Wide::Semantic::ConstructorType*>(ty.Resolve(nullptr).t->Decay())) 
+                                if (auto conty = dynamic_cast<Wide::Semantic::ConstructorType*>(ty.t->Decay())) 
                                     concexpr.push_back(Wide::Semantic::ConcreteExpression(conty->GetConstructedType(), mockgen.CreateNop()));
                             }, errorfunc, swallow);
                         }

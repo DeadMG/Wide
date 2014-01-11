@@ -32,11 +32,12 @@ namespace Wide {
                 LanguageOptions.WChar = true;
                 LanguageOptions.CPlusPlus = true;
                 LanguageOptions.CPlusPlus11 = true;
+                LanguageOptions.CPlusPlus1y = true;
                 LanguageOptions.Bool = true;
                 LanguageOptions.GNUKeywords = true;
                 LanguageOptions.Exceptions = true;
                 LanguageOptions.CXXExceptions = true;
-        
+
                 // Default CodegenOptions:            
                 CodegenOptions.CXAAtExit = false;
         
