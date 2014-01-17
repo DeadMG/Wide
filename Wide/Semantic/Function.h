@@ -49,7 +49,13 @@ namespace Wide {
                 std::unordered_map<std::string, ConcreteExpression> named_variables;
                 std::vector<ConcreteExpression> needs_destruction;
                 Codegen::WhileStatement* current_while;
+
+                Codegen::Expression* GetCleanupExpression(Analyzer& a, Lexer::Range where);
+                Codegen::Expression* GetCleanupAllExpression(Analyzer& a, Lexer::Range where);
+
+                Wide::Util::optional<ConcreteExpression> LookupName(std::string name);
             };
+            struct LocalScope;
             Scope root_scope;
             Scope* current_scope;
             std::string name;

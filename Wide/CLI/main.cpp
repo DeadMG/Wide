@@ -162,10 +162,10 @@ int main(int argc, char** argv)
             auto std = a.GetGlobalModule()->BuildValueConstruction(c).AccessMember("Standard", c);
             if (!std)
                 throw std::runtime_error("Fuck.");
-            auto main = std->Resolve(nullptr).AccessMember("Main", c);
+            auto main = std->AccessMember("Main", c);
             if (!main)
                 throw std::runtime_error("Fuck.");
-            main->Resolve(nullptr).BuildCall(c);
+            main->BuildCall(c);
         }, Generator, files);
     } catch(std::exception& e) {
         std::cout << "Error:\n";

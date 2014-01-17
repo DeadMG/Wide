@@ -24,6 +24,48 @@
 using namespace Wide;
 using namespace Semantic;
 
+struct Function::LocalScope {
+    Scope* parent;
+    Scope* oldcurrent;
+    Scope* self;
+    Function* func;
+    LocalScope(Scope* p, Function* f)
+        : parent(p), oldcurrent(f->current_scope), func(f)
+    {
+        parent->children.push_back(Wide::Memory::MakeUnique<Scope>(parent));
+        self = parent->children.back().get();
+        f->current_scope = self;        
+    }
+    Scope* operator->() {
+        return self;
+    }
+    Scope* get() {
+        return self;
+    }
+    ~LocalScope() {
+        func->current_scope = oldcurrent;
+    }
+};
+Codegen::Expression* Function::Scope::GetCleanupExpression(Analyzer& a, Lexer::Range where) {
+    Context c(a, where, [](ConcreteExpression x) {});
+    Codegen::Expression* chain = a.gen->CreateNop();
+    for (auto des = needs_destruction.rbegin(); des != needs_destruction.rend(); ++des)
+        chain = a.gen->CreateChainExpression(chain, des->AccessMember("~type", c)->BuildCall(c).Expr);
+    return chain;
+}
+Codegen::Expression* Function::Scope::GetCleanupAllExpression(Analyzer& a, Lexer::Range where) {
+    if (parent)
+        return a.gen->CreateChainExpression(GetCleanupExpression(a, where), parent->GetCleanupAllExpression(a, where));
+    return GetCleanupExpression(a, where);
+}
+Wide::Util::optional<ConcreteExpression> Function::Scope::LookupName(std::string name) {
+    if (named_variables.find(name) != named_variables.end())
+        return named_variables.at(name);
+    if (parent)
+        return parent->LookupName(name);
+    return Wide::Util::none;
+}
+
 Function::Function(std::vector<Type*> args, const AST::Function* astfun, Analyzer& a, Type* mem)
 : analyzer(a)
 , ReturnType(nullptr)
@@ -162,22 +204,10 @@ void Function::ComputeBody(Analyzer& a) {
                     throw std::runtime_error("Attempted to initialize a member that did not exist.");
         }
         // Now the body.
-        root_scope.children.push_back(Wide::Memory::MakeUnique<Scope>(&root_scope));
-        auto destroy_locals = [](Context c, Scope* scope) {
-            Codegen::Expression* destructors = c->gen->CreateNop();
-            while(scope) {
-                for(auto var = scope->needs_destruction.rbegin(); var != scope->needs_destruction.rend(); ++var) {
-                    destructors = c->gen->CreateChainExpression(destructors, var->AccessMember("~type", c)->BuildCall(c).Expr);
-                }
-                scope = scope->parent;
-            }
-            return destructors;
-        };
+        LocalScope base_scope(&root_scope, this);
         std::function<Codegen::Statement*(const AST::Statement*, Scope*)> AnalyzeStatement;
         AnalyzeStatement = [&](const AST::Statement* stmt, Scope* scope) -> Codegen::Statement* {
-            auto call_destructors = [destroy_locals](Context c, Scope* scope) { return c->gen->CreateDeferredExpression([c, scope, destroy_locals] { return destroy_locals(c, scope); }); };
-
-            auto register_local_destructor = [scope](ConcreteExpression obj) { scope->needs_destruction.push_back(obj); };
+            auto register_local_destructor = [this](ConcreteExpression obj) { current_scope->needs_destruction.push_back(obj); };
             if (!stmt)
                 return nullptr;
         
@@ -193,42 +223,35 @@ void Function::ComputeBody(Analyzer& a) {
                 else {
                     // When returning an lvalue or rvalue, decay them.
                     // Destroy all temporaries involved.
-                    auto expr = a.AnalyzeExpression(this, ret->RetExpr, register_local_destructor);
-                    auto handle_result = [this, ret, &a, call_destructors, scope](ConcreteExpression result) {
-                        if (returnstate == ReturnState::ConcreteReturnSeen) {
-                            if (ReturnType != result.t->Decay()) {
-                                throw std::runtime_error("Return mismatch: In a deduced function, all returns must return the same type.");
-                            }
+                    auto result = a.AnalyzeExpression(this, ret->RetExpr, register_local_destructor);
+                    if (returnstate == ReturnState::ConcreteReturnSeen) {
+                        if (ReturnType != result.t->Decay()) {
+                            throw std::runtime_error("Return mismatch: In a deduced function, all returns must return the same type.");
                         }
-                        returnstate = ReturnState::ConcreteReturnSeen;                        
-                        if (!ReturnType)
-                            ReturnType = result.t->Decay();
+                    }
+                    returnstate = ReturnState::ConcreteReturnSeen;                        
+                    if (!ReturnType)
+                        ReturnType = result.t->Decay();
         
-                        // Deal with emplacing the result
-                        // If we emplace a complex result, don't destruct it, because that's the callee's job.
-                        Context c(a, ret->location, [](ConcreteExpression e) {});
-                        if (ReturnType->IsComplexType()) {
-                            std::vector<ConcreteExpression> args;
-                            args.push_back(result);
-                            auto retexpr = ReturnType->BuildInplaceConstruction(a.gen->CreateParameterExpression(0), std::move(args), c);
-                            return a.gen->CreateChainExpression(a.gen->CreateChainExpression(retexpr, call_destructors(c, scope)), retexpr);
-                        } else {
-                            auto ret = result.t->BuildValue(result, c).Expr;
-                            return a.gen->CreateChainExpression(a.gen->CreateChainExpression(ret, call_destructors(c, scope)), ret);
-                        }
-                    };
-                    return a.gen->CreateReturn(handle_result(expr));
+                    // Deal with emplacing the result
+                    // If we emplace a complex result, don't destruct it, because that's the callee's job.
+                    Context c(a, ret->location, [](ConcreteExpression e) {});
+                    if (ReturnType->IsComplexType()) {
+                        std::vector<ConcreteExpression> args;
+                        args.push_back(result);
+                        auto retexpr = ReturnType->BuildInplaceConstruction(a.gen->CreateParameterExpression(0), std::move(args), c);
+                        return a.gen->CreateReturn(a.gen->CreateChainExpression(a.gen->CreateChainExpression(retexpr, scope->GetCleanupAllExpression(*c, ret->location)), retexpr));
+                    } else {
+                        auto retval = result.t->BuildValue(result, c).Expr;
+                        return a.gen->CreateReturn(a.gen->CreateChainExpression(a.gen->CreateChainExpression(retval , scope->GetCleanupAllExpression(*c, ret->location)), retval));
+                    }
                 }
             }
             if (auto var = dynamic_cast<const AST::Variable*>(stmt)) {
                 auto result = a.AnalyzeExpression(this, var->initializer, register_local_destructor);
         
-                auto currscope = scope;
-                while(currscope) {
-                    if (currscope->named_variables.find(var->name) != currscope->named_variables.end())
-                        throw std::runtime_error("Error: variable shadowing " + var->name);
-                    currscope = currscope->parent;
-                }
+                if (auto expr = scope->LookupName(var->name))
+                    throw std::runtime_error("Error: variable shadowing " + var->name);
 
                 auto handle_variable_expression = [var, register_local_destructor, &a](ConcreteExpression result) {
                     std::vector<ConcreteExpression> args;
@@ -260,84 +283,58 @@ void Function::ComputeBody(Analyzer& a) {
             }
         
             if (auto comp = dynamic_cast<const AST::CompoundStatement*>(stmt)) {
-                scope->children.push_back(Wide::Memory::MakeUnique<Scope>(scope));
-                current_scope = scope->children.back().get();
+                LocalScope ls(scope, this);
                 Context c(a, comp->location, [](ConcreteExpression e) {});
-                if (comp->stmts.size() == 0)
-                    return a.gen->CreateNop();
                 Codegen::Statement* chain = a.gen->CreateNop();
                 for (auto&& x : comp->stmts) {
                     chain = a.gen->CreateChainStatement(chain, AnalyzeStatement(x, current_scope));
                 }
-                for(auto des = current_scope->needs_destruction.rbegin(); des != current_scope->needs_destruction.rend(); ++des)
-                    chain = a.gen->CreateChainStatement(chain, des->AccessMember("~type", c)->BuildCall(c).Expr);
-                current_scope = scope;
-                return chain;
+                return a.gen->CreateChainStatement(chain, ls->GetCleanupExpression(a, comp->location));
             }
         
             if (auto if_stmt = dynamic_cast<const AST::If*>(stmt)) {
-                // condition
-                //     true
-                //     false
-                scope->children.push_back(Wide::Memory::MakeUnique<Scope>(scope));
-                auto condscope = current_scope = scope->children.back().get();
-                Context c(a, if_stmt->condition ? if_stmt->condition->location : if_stmt->var_condition->location, [=](ConcreteExpression e) { current_scope->needs_destruction.push_back(e); });
+                LocalScope condscope(scope, this);
+                Context c(a, if_stmt->condition ? if_stmt->condition->location : if_stmt->var_condition->location, register_local_destructor);
                 ConcreteExpression cond = if_stmt->var_condition
-                    ? AnalyzeStatement(if_stmt->var_condition, condscope), condscope->named_variables.begin()->second
-                    : a.AnalyzeExpression(this, if_stmt->condition, [=](ConcreteExpression e) { current_scope->needs_destruction.push_back(e); });
+                    ? AnalyzeStatement(if_stmt->var_condition, condscope.get()), condscope->named_variables.begin()->second
+                    : a.AnalyzeExpression(this, if_stmt->condition, register_local_destructor);
                 auto expr = cond.BuildBooleanConversion(c);
-                condscope->children.push_back(Wide::Memory::MakeUnique<Scope>(condscope));
-                current_scope = condscope->children.back().get();
-                auto true_br = AnalyzeStatement(if_stmt->true_statement, current_scope);
-                // add any locals.
-                c.where = if_stmt->true_statement->location;
-                for(auto des = current_scope->needs_destruction.rbegin(); des != current_scope->needs_destruction.rend(); ++des)
-                    true_br = a.gen->CreateChainStatement(true_br, des->AccessMember("~type", c)->BuildCall(c).Expr);
-                if (if_stmt->false_statement)
-                    c.where = if_stmt->false_statement->location;
-                condscope->children.push_back(Wide::Memory::MakeUnique<Scope>(condscope));
-                current_scope = condscope->children.back().get();
-                auto false_br = AnalyzeStatement(if_stmt->false_statement, current_scope);
-                // add any locals.
-                for (auto des = current_scope->needs_destruction.rbegin(); des != current_scope->needs_destruction.rend(); ++des)
-                    false_br = a.gen->CreateChainStatement(false_br, des->AccessMember("~type", c)->BuildCall(c).Expr);
-                current_scope = scope;
-                auto cleanup = (Codegen::Statement*)a.gen->CreateNop();
-                for (auto des = condscope->needs_destruction.rbegin(); des != condscope->needs_destruction.rend(); ++des)
-                    cleanup = a.gen->CreateChainStatement(cleanup, des->AccessMember("~type", c)->BuildCall(c).Expr);
-
-                return a.gen->CreateChainStatement(a.gen->CreateIfStatement(expr, true_br, false_br), cleanup);
+                LocalScope true_scope(condscope.get(), this);
+                auto true_br = AnalyzeStatement(if_stmt->true_statement, true_scope.get());
+                true_br = a.gen->CreateChainStatement(true_br, true_scope->GetCleanupExpression(a, if_stmt->true_statement->location));
+                Codegen::Statement* false_br = nullptr;
+                if (if_stmt->false_statement) {
+                    LocalScope false_scope(condscope.get(), this);
+                    false_br = AnalyzeStatement(if_stmt->false_statement, false_scope.get());
+                    false_br = a.gen->CreateChainStatement(false_br, false_scope->GetCleanupExpression(a, if_stmt->false_statement->location));
+                }
+                return a.gen->CreateChainStatement(a.gen->CreateIfStatement(expr, true_br, false_br), condscope->GetCleanupExpression(a, c.where));
             }
         
             if (auto while_stmt = dynamic_cast<const AST::While*>(stmt)) {
-                Context c(a, while_stmt->condition ? while_stmt->condition->location : while_stmt->var_condition->location, [=](ConcreteExpression e) { current_scope->needs_destruction.push_back(e); });
-                scope->children.push_back(Wide::Memory::MakeUnique<Scope>(scope));
-                auto condscope = current_scope = scope->children.back().get();
+                Context c(a, while_stmt->condition ? while_stmt->condition->location : while_stmt->var_condition->location, register_local_destructor);
+                LocalScope condscope(scope, this);
                 ConcreteExpression cond = while_stmt->var_condition
-                    ? AnalyzeStatement(while_stmt->var_condition, condscope), condscope->named_variables.begin()->second
-                    : a.AnalyzeExpression(this, while_stmt->condition, [=](ConcreteExpression e) { current_scope->needs_destruction.push_back(e); });
+                    ? AnalyzeStatement(while_stmt->var_condition, condscope.get()), condscope->named_variables.begin()->second
+                    : a.AnalyzeExpression(this, while_stmt->condition, register_local_destructor);
                 auto ret = condscope->current_while = a.gen->CreateWhile(cond.BuildBooleanConversion(c));
-                condscope->children.push_back(Wide::Memory::MakeUnique<Scope>(condscope));
-                current_scope = condscope->children.back().get();
-                auto body = AnalyzeStatement(while_stmt->body, current_scope);  
-                current_scope = scope;
+                LocalScope bodyscope(condscope.get(), this);
+                auto body = AnalyzeStatement(while_stmt->body, bodyscope.get());
+                body = a.gen->CreateChainStatement(body, bodyscope->GetCleanupExpression(a, while_stmt->body->location));
+                body = a.gen->CreateChainStatement(body, condscope->GetCleanupExpression(a, c.where));
                 condscope->current_while = nullptr;
                 ret->SetBody(body);
-                Codegen::Statement* cleanup = a.gen->CreateNop();
-                for (auto des = condscope->needs_destruction.rbegin(); des != condscope->needs_destruction.rend(); ++des)
-                    cleanup = a.gen->CreateChainStatement(cleanup, des->AccessMember("~type", c)->BuildCall(c).Expr);
-                return a.gen->CreateChainStatement(ret, cleanup);
+                return a.gen->CreateChainStatement(ret, condscope->GetCleanupExpression(a, c.where));
             }
 
             if (auto break_stmt = dynamic_cast<const AST::Break*>(stmt)) {
                 Codegen::Statement* des = a.gen->CreateNop();
                 auto currscope = scope;
                 Context c(a, break_stmt->location, [](ConcreteExpression e) {});
-                while(currscope) {
-                    for(auto var = currscope->needs_destruction.rbegin(); var != currscope->needs_destruction.rend(); ++var)
-                        des = a.gen->CreateChainStatement(des, var->AccessMember("~type", c)->BuildCall(c).Expr);
+                while (currscope) {
                     if (currscope->current_while)
                         return a.gen->CreateChainStatement(des, a.gen->CreateBreak(currscope->current_while));
+                    des = a.gen->CreateChainStatement(des, currscope->GetCleanupExpression(a, break_stmt->location));
                     currscope = currscope->parent;
                 }
                 throw std::runtime_error("Used a break but could not find a control flow statement to break out of.");
@@ -347,9 +344,8 @@ void Function::ComputeBody(Analyzer& a) {
                 Codegen::Statement* des = a.gen->CreateNop();
                 auto currscope = scope;
                 Context c(a, continue_stmt->location, [](ConcreteExpression e) {});
-                while(currscope) {
-                    for(auto var = currscope->needs_destruction.rbegin(); var != currscope->needs_destruction.rend(); ++var)
-                        des = a.gen->CreateChainStatement(des, var->AccessMember("~type", c)->BuildCall(c).Expr);
+                while (currscope) {
+                    des = a.gen->CreateChainStatement(des, currscope->GetCleanupExpression(a, continue_stmt->location));
                     if (currscope->current_while)
                         return a.gen->CreateChainStatement(des, a.gen->CreateContinue(currscope->current_while));
                     currscope = currscope->parent;
@@ -360,7 +356,7 @@ void Function::ComputeBody(Analyzer& a) {
             throw std::runtime_error("Unsupported statement.");
         };
         for (std::size_t i = 0; i < fun->statements.size(); ++i) {
-            exprs.push_back(AnalyzeStatement(fun->statements[i], current_scope));
+            exprs.push_back(AnalyzeStatement(fun->statements[i], base_scope.get()));
         }        
         // Prevent infinite recursion by setting this variable as soon as the return type is ready
         // Else GetLLVMType() will call us again to prepare the return type.
@@ -382,14 +378,7 @@ void Function::CompleteAnalysis(Type* ret, Analyzer& a) {
         if (!ReturnType)
             throw std::runtime_error("Deferred return type was not evaluated prior to completing analysis.");
     if (ReturnType == a.GetVoidType() && !dynamic_cast<Codegen::ReturnStatement*>(exprs.empty() ? nullptr : exprs.back())) {
-        Context c(a, fun->where.front(), [](ConcreteExpression e) { assert(false); });
-        auto currscope = current_scope;
-        while(currscope) {
-            for(auto var = currscope->needs_destruction.rbegin(); var != currscope->needs_destruction.rend(); ++var) {
-                exprs.push_back(var->AccessMember("~type", c)->BuildCall(c).Expr);
-            }
-            currscope = currscope->parent;
-        }
+        exprs.push_back(current_scope->GetCleanupAllExpression(a, fun->where.front()));
         exprs.push_back(a.gen->CreateReturn()); 
     }
     s = State::AnalyzeCompleted;
@@ -410,16 +399,9 @@ ConcreteExpression Function::BuildCall(ConcreteExpression ex, std::vector<Concre
     throw std::runtime_error("Attempted to call a function, but the analysis was not yet completed. This means that you used recursion that the type system cannot handle.");
 }
 Wide::Util::optional<ConcreteExpression> Function::LookupLocal(std::string name, Context c) {
-    auto currscope = current_scope;
-    while(currscope) {
-        if (currscope->named_variables.find(name) != currscope->named_variables.end()) {
-            return currscope->named_variables.at(name);
-        }
-        currscope = currscope->parent;
-    }
     if (name == "this" && dynamic_cast<UserDefinedType*>(context->Decay()))
         return ConcreteExpression(c->GetLvalueType(context->Decay()), c->gen->CreateParameterExpression([this] { return ReturnType->IsComplexType(); }));
-    return Wide::Util::none;
+    return current_scope->LookupName(name);
 }
 std::string Function::GetName() {
     return name;
@@ -432,14 +414,7 @@ FunctionType* Function::GetSignature(Analyzer& a) {
     return a.GetFunctionType(ReturnType, Args);
 }
 bool Function::HasLocalVariable(std::string name) {
-    auto currscope = current_scope;
-    while(currscope) {
-        if (currscope->named_variables.find(name) != currscope->named_variables.end()) {
-            return true;
-        }
-        currscope = currscope->parent;
-    }
-    return false;
+    return current_scope->LookupName(name);
 }
 
 bool Function::AddThis() {

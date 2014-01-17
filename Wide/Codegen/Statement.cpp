@@ -38,6 +38,7 @@ void ReturnStatement::Build(llvm::IRBuilder<>& bb, Generator& g) {
         else
             bb.CreateRetVoid();
     }
+    bb.SetInsertPoint(llvm::BasicBlock::Create(bb.getContext(), "nop_bb", bb.GetInsertBlock()->getParent()));
 }
 
 Codegen::Expression* ReturnStatement::GetReturnExpression() {
@@ -91,8 +92,10 @@ void WhileStatement::Build(llvm::IRBuilder<>& bb, Generator& g) {
 
 void ContinueStatement::Build(llvm::IRBuilder<>& bb, Generator& g) {
     bb.CreateBr(cont->GetCheckBlock());
+    bb.SetInsertPoint(llvm::BasicBlock::Create(bb.getContext(), "nop_bb", bb.GetInsertBlock()->getParent()));
 }
 
 void BreakStatement::Build(llvm::IRBuilder<>& bb, Generator& g) {
     bb.CreateBr(cont->GetContinueBlock());
+    bb.SetInsertPoint(llvm::BasicBlock::Create(bb.getContext(), "nop_bb", bb.GetInsertBlock()->getParent()));
 }
