@@ -145,7 +145,10 @@ llvm::Value* StoreExpression::ComputeValue(llvm::IRBuilder<>& builder, Generator
     std::cout << "\n";
     llvmlhs->dump();*/
 
-    builder.CreateStore(val->GetValue(builder, g), obj->GetValue(builder, g), false);  
+    auto value = val->GetValue(builder, g);
+    if (value->getType() == llvm::IntegerType::getInt1Ty(builder.getContext()))
+        value = builder.CreateZExt(value, llvm::IntegerType::getInt8Ty(builder.getContext()));
+    builder.CreateStore(value, obj->GetValue(builder, g), false);  
     return obj->GetValue(builder, g);
 }
 

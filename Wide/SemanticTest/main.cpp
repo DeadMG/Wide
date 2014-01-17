@@ -209,7 +209,7 @@ int main(int argc, char** argv) {
     std::cout << "Total succeeded: " << total_succeeded << " failed: " << total_failed;
     //atexit([] { __debugbreak(); });
     //std::set_terminate([] { __debugbreak(); });
-    //Jit(clangopts, "JITSuccess/WhileScope.wide");
+    //Jit(clangopts, "JITSuccess/WhileConditionRepeatDestruction.wide");
     if (input.count("break"))
         Wide::Util::DebugBreak();
     return total_failed != 0;

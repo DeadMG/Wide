@@ -170,6 +170,7 @@ namespace Wide {
                     }
 
                     try {
+                        lex(tok);
                         auto expr = ParseExpression();
                         Check(Error::ParenthesisedExpressionNoCloseBracket, Lexer::TokenType::CloseBracket);
                         return std::move(expr);

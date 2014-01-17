@@ -1,0 +1,17 @@
+type testty {
+    result := bool->pointer;
+    ~type() {
+         *result = true;
+    }
+    f() {
+        return true;
+    }
+    type(bool->pointer arg)
+        : result(arg) {}
+}
+Main() {
+    result := false;
+    while(~result)
+        var := testty(&result);
+    return result;
+}

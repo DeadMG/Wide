@@ -54,7 +54,7 @@ ConcreteExpression IntegralType::BuildIncrement(ConcreteExpression obj, bool pos
         } else
             throw std::runtime_error("Attempted to postfix increment a non-lvalue integer.");
     }
-    if (obj.steal || obj.t == this)
+    if (obj.t == this)
         throw std::runtime_error("Attempted to prefix increment a stealable integer.");
     auto curr = c->gen->CreateLoad(obj.Expr);
     auto next = c->gen->CreatePlusExpression(curr, c->gen->CreateIntegralExpression(1, false, GetLLVMType(*c)));
