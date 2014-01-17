@@ -48,10 +48,7 @@ namespace Wide {
         public:
             ChainStatement(LLVMCodegen::Statement* l, LLVMCodegen::Statement* r)
                 : lhs(l), rhs(r) {}
-            void Build(llvm::IRBuilder<>& bb, Generator& g) override final {
-                lhs->Build(bb, g);
-                rhs->Build(bb, g);
-            }
+            void Build(llvm::IRBuilder<>& bb, Generator& g) override final;
         };
         class WhileStatement : public Statement, public Codegen::WhileStatement {
             std::function<LLVMCodegen::Expression*()> cond;
@@ -83,6 +80,14 @@ namespace Wide {
         public:
             BreakStatement(WhileStatement* where)
                 : cont(where) {}
+            void Build(llvm::IRBuilder<>& b, Generator& g) override final;
+        };
+
+        class LifetimeEnd : public Statement, public Codegen::LifetimeEnd {
+            LLVMCodegen::Expression* pointer;
+        public:
+            LifetimeEnd(LLVMCodegen::Expression* ptr)
+                : pointer(ptr) {}
             void Build(llvm::IRBuilder<>& b, Generator& g) override final;
         };
     }

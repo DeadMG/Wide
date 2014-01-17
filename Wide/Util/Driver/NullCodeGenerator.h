@@ -88,6 +88,7 @@ namespace Wide {
                 mockintegers.push_back(std::unique_ptr<NullIntegralExpression>(new NullIntegralExpression(val, is_signed)));
                 return mockintegers.back().get();
             }
+            virtual Codegen::LifetimeEnd* CreateLifetimeEnd(Codegen::Expression* ptr) { return nullptr; }
             virtual Codegen::Continue* CreateContinue(Codegen::WhileStatement* s) { return nullptr; }
             virtual Codegen::Break* CreateBreak(Codegen::WhileStatement* s) { return nullptr; }
             virtual Codegen::ChainExpression* CreateChainExpression(Codegen::Statement*, Codegen::Expression*) { return nullptr; }

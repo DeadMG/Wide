@@ -10,6 +10,17 @@
 using namespace Wide;
 using namespace LLVMCodegen;
 
+bool is_terminated(llvm::BasicBlock* bb) {
+    return !bb->empty() && bb->back().isTerminator();
+}
+
+void ChainStatement::Build(llvm::IRBuilder<>& bb, Generator& g) {
+    if (!is_terminated(bb.GetInsertBlock()))
+        lhs->Build(bb, g);
+    if (!is_terminated(bb.GetInsertBlock()))
+        rhs->Build(bb, g);
+}
+
 llvm::Value* ProcessBool(llvm::Value* val, llvm::IRBuilder<>& bb) {
     if (val->getType() == llvm::IntegerType::getInt1Ty(bb.getContext()))
         return val;
@@ -38,7 +49,7 @@ void ReturnStatement::Build(llvm::IRBuilder<>& bb, Generator& g) {
         else
             bb.CreateRetVoid();
     }
-    bb.SetInsertPoint(llvm::BasicBlock::Create(bb.getContext(), "nop_bb", bb.GetInsertBlock()->getParent()));
+    //bb.SetInsertPoint(llvm::BasicBlock::Create(bb.getContext(), "nop_bb", bb.GetInsertBlock()->getParent()));
 }
 
 Codegen::Expression* ReturnStatement::GetReturnExpression() {
@@ -63,13 +74,13 @@ void IfStatement::Build(llvm::IRBuilder<>& bb, Generator& g) {
     bb.SetInsertPoint(true_bb);
     // May have caused it's own branches to other basic blocks.
     true_br->Build(bb, g);
-    if (!bb.GetInsertBlock()->back().isTerminator())
+    if (!is_terminated(bb.GetInsertBlock()))
         bb.CreateBr(continue_bb);
     
     if (false_br) {
         bb.SetInsertPoint(else_bb);
         false_br->Build(bb, g);
-        if (!bb.GetInsertBlock()->back().isTerminator())
+        if (!is_terminated(bb.GetInsertBlock()))
             bb.CreateBr(continue_bb);
     }
 
@@ -85,17 +96,23 @@ void WhileStatement::Build(llvm::IRBuilder<>& bb, Generator& g) {
     bb.CreateCondBr(ProcessBool(cond()->GetValue(bb, g), bb), loop_bb, continue_bb);
     bb.SetInsertPoint(loop_bb);
     body->Build(bb, g);
-    if (!bb.GetInsertBlock()->back().isTerminator())
+    if (!is_terminated(bb.GetInsertBlock()))
         bb.CreateBr(check_bb);
     bb.SetInsertPoint(continue_bb);
 }
 
 void ContinueStatement::Build(llvm::IRBuilder<>& bb, Generator& g) {
     bb.CreateBr(cont->GetCheckBlock());
-    bb.SetInsertPoint(llvm::BasicBlock::Create(bb.getContext(), "nop_bb", bb.GetInsertBlock()->getParent()));
+    //bb.SetInsertPoint(llvm::BasicBlock::Create(bb.getContext(), "nop_bb", bb.GetInsertBlock()->getParent()));
 }
 
 void BreakStatement::Build(llvm::IRBuilder<>& bb, Generator& g) {
     bb.CreateBr(cont->GetContinueBlock());
-    bb.SetInsertPoint(llvm::BasicBlock::Create(bb.getContext(), "nop_bb", bb.GetInsertBlock()->getParent()));
+    //bb.SetInsertPoint(llvm::BasicBlock::Create(bb.getContext(), "nop_bb", bb.GetInsertBlock()->getParent()));
+}
+
+void LifetimeEnd::Build(llvm::IRBuilder<>& b, Generator& g) {
+    auto ptr = pointer->GetValue(b, g);
+    auto size = llvm::dyn_cast<llvm::PointerType>(ptr->getType())->getElementType()->getPrimitiveSizeInBits();
+    b.CreateLifetimeEnd(ptr, b.getInt64(size));
 }

@@ -73,6 +73,7 @@ namespace Wide {
         class DeferredExpr : public Expression {};
         class Continue : public Statement {};
         class Break : public Statement {};
+        class LifetimeEnd : public Statement {};
         class Function {
         public:
             virtual ~Function() {}
@@ -80,6 +81,7 @@ namespace Wide {
         };
         class Generator {
         public:
+            virtual LifetimeEnd* CreateLifetimeEnd(Codegen::Expression* pointer) = 0;
             virtual Function* CreateFunction(std::function<llvm::Type*(llvm::Module*)>, std::string, Semantic::Function* debug, bool trampoline = false) = 0;
             virtual Variable* CreateVariable(std::function<llvm::Type*(llvm::Module*)>, unsigned alignment) = 0;
             virtual FunctionCall* CreateFunctionCall(Expression*, std::vector<Expression*>, std::function<llvm::Type*(llvm::Module*)> = std::function<llvm::Type*(llvm::Module*)>()) = 0;

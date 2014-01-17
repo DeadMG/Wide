@@ -7,6 +7,7 @@
 
 #pragma warning(push, 0)
 #include <llvm/IR/IRBuilder.h>
+#include <llvm/IR/Intrinsics.h>
 #include <llvm/IR/Module.h>
 #pragma warning(pop)
 
@@ -144,7 +145,6 @@ llvm::Value* StoreExpression::ComputeValue(llvm::IRBuilder<>& builder, Generator
     el->dump();
     std::cout << "\n";
     llvmlhs->dump();*/
-
     auto value = val->GetValue(builder, g);
     if (value->getType() == llvm::IntegerType::getInt1Ty(builder.getContext()))
         value = builder.CreateZExt(value, llvm::IntegerType::getInt8Ty(builder.getContext()));
@@ -318,7 +318,8 @@ llvm::Value* FPLT::ComputeValue(llvm::IRBuilder<>& builder, Generator& g) {
 }
 llvm::Value* Nop::ComputeValue(llvm::IRBuilder<>& builder, Generator& g) {
     // Must create at least 1 actual instruction.
-    return builder.CreateAlloca(llvm::IntegerType::getInt1Ty(builder.getContext()), nullptr, "nop");
+    return builder.getInt1(true);
+    //return builder.CreateAlloca(llvm::IntegerType::getInt1Ty(builder.getContext()), nullptr, "nop");
 }
 llvm::Value* DeferredExpr::ComputeValue(llvm::IRBuilder<>& b, Generator& g) {
     auto expr = dynamic_cast<LLVMCodegen::Expression*>(func());

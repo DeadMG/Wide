@@ -1,0 +1,4 @@
+// Fails if ADL does not find the operator.
+Main() {
+    return null == cpp("JITSuccess/CPPInterop/ClangADL.h").ClangADL.test();
+}

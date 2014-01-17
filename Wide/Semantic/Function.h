@@ -50,8 +50,8 @@ namespace Wide {
                 std::vector<ConcreteExpression> needs_destruction;
                 Codegen::WhileStatement* current_while;
 
-                Codegen::Expression* GetCleanupExpression(Analyzer& a, Lexer::Range where);
-                Codegen::Expression* GetCleanupAllExpression(Analyzer& a, Lexer::Range where);
+                Codegen::Statement* GetCleanupExpression(Analyzer& a, Lexer::Range where);
+                Codegen::Statement* GetCleanupAllExpression(Analyzer& a, Lexer::Range where);
 
                 Wide::Util::optional<ConcreteExpression> LookupName(std::string name);
             };

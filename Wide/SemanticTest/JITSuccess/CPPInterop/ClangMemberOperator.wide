@@ -1,5 +1,5 @@
 // Fails if calling this C++ member operator fails.
-using test := cpp("JITSuccess/ClangMemberOperator.h").test;
+using test := cpp("JITSuccess/CPPInterop/ClangMemberOperator.h").test;
 Main() {
     return test() == test();
 }

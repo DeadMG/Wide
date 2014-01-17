@@ -1,4 +1,0 @@
-// Fails if parsing this macro with Clang fails.
-Main() {
-    return cpp.macro(cpp("JITSuccess/IntegerMacro.h"), "FUCK_CLANG") == int32(5);
-}

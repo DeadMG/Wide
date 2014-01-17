@@ -84,6 +84,80 @@ void Jit(const Wide::Options::Clang& copts, std::string file) {
     }, g, { file });
 }
 
+struct results {
+    unsigned passes;
+    unsigned fails;
+};
+
+results TestDirectory(std::string path, std::string mode, std::string program, bool debugbreak) {
+    unsigned tests_failed = 0;
+    unsigned tests_succeeded = 0;
+    auto run_test_process = [&](std::string file) {
+        auto modearg = "--mode=" + mode;
+        std::string arguments = "--input=" + file;
+        const char* args[] = { program.c_str(), arguments.c_str(), modearg.c_str(), nullptr };
+        std::string err = "";
+        bool failed = false;
+        auto timeout = debugbreak ? 0 : 1;
+#ifdef _MSC_VER
+        auto ret = llvm::sys::ExecuteAndWait(
+            args[0],
+#else
+        auto ret = llvm::sys::Program::ExecuteAndWait(
+            llvm::sys::Path(args[0]),
+#endif
+            args,
+            nullptr,
+            nullptr,
+            timeout,
+            0,
+            &err,
+            &failed
+            );
+
+        if (failed || ret) {
+            tests_failed++;
+            std::cout << mode << " failed: " << file << "\n";
+        } else {
+            tests_succeeded++;
+            std::cout << mode << " succeeded: " << file << "\n";
+        }
+    };
+
+    auto end = llvm::sys::fs::directory_iterator();
+    llvm::error_code fuck_error_codes;
+    bool out = true;
+    fuck_error_codes = llvm::sys::fs::is_directory(path, out);
+    if (!out || fuck_error_codes) {
+        std::cout << "Skipping " << path << " as a directory by this name did not exist.\n";
+        results r = { 0, 0 };
+        return r;
+    }
+    auto begin = llvm::sys::fs::directory_iterator(path, fuck_error_codes);
+    std::set<std::string> entries;
+    while (!fuck_error_codes && begin != end) {
+        entries.insert(begin->path());
+        begin.increment(fuck_error_codes);
+    }
+    for (auto file : entries) {
+        bool isfile = false;
+        llvm::sys::fs::is_regular_file(file, isfile);
+        if (isfile) {
+            if (llvm::sys::path::extension(file) == ".wide")
+                run_test_process(file);
+        }
+        llvm::sys::fs::is_directory(file, isfile);
+        if (isfile) {
+            auto result = TestDirectory(file, mode, program, debugbreak);
+            tests_succeeded += result.passes;
+            tests_failed += result.fails;
+        }
+    }
+    std::cout << path << " succeeded: " << tests_succeeded << " failed: " << tests_failed << "\n";
+    results r = { tests_succeeded, tests_failed };
+    return r;
+}
+
 int main(int argc, char** argv) {
     Wide::Options::Clang clangopts;
     clangopts.TargetOptions.Triple = "i686-pc-mingw32";
@@ -147,69 +221,14 @@ int main(int argc, char** argv) {
     // Run with Image File Options attaching a debugger to debug a test.
     // Run without to see test results.
     for (auto mode : modes) {
-        unsigned tests_failed = 0;
-        unsigned tests_succeeded = 0;
-        auto run_test_process = [&](std::string file, std::string mode) {
-            auto modearg = "--mode=" + mode;
-            std::string arguments = "--input=" + file;
-            const char* args[] = { argv[0], arguments.c_str(), modearg.c_str(), nullptr };
-            std::string err = "";
-            bool failed = false;
-            auto timeout = input.count("break") ? 0 : 1;
-#ifdef _MSC_VER
-            auto ret = llvm::sys::ExecuteAndWait(
-                argv[0],
-#else
-            auto ret = llvm::sys::Program::ExecuteAndWait(
-                llvm::sys::Path(argv[0]),
-#endif
-                args,
-                nullptr,
-                nullptr,
-                timeout,
-                0,
-                &err,
-                &failed
-                );
-
-            if (failed || ret) {
-                tests_failed++;
-                std::cout << mode << " failed: " << file << "\n";
-            } else {
-                tests_succeeded++;
-                std::cout << mode << " succeeded: " << file << "\n";
-            }
-        };
-
-        auto end = llvm::sys::fs::directory_iterator();
-        llvm::error_code fuck_error_codes;
-        bool out = true;
-        fuck_error_codes = llvm::sys::fs::is_directory(mode.first, out);
-        if (!out || fuck_error_codes) {
-            std::cout << "Skipping " << mode.first << " as a directory by this name did not exist.\n";
-            continue;
-        }
-        auto begin = llvm::sys::fs::directory_iterator(mode.first, fuck_error_codes);
-        std::set<std::string> entries;
-        while (!fuck_error_codes && begin != end) {
-            entries.insert(begin->path());
-            begin.increment(fuck_error_codes);
-        }
-        for (auto file : entries) {
-            bool isfile = false;
-            llvm::sys::fs::is_regular_file(file, isfile);
-            if (isfile)
-                if (llvm::sys::path::extension(file) == ".wide")
-                    run_test_process(file, mode.first);
-        }
-        std::cout << mode.first << " succeeded: " << tests_succeeded << " failed: " << tests_failed << "\n";
-        total_succeeded += tests_succeeded;
-        total_failed += tests_failed;
+        auto result = TestDirectory(mode.first, mode.first, argv[0], input.count("break"));
+        total_succeeded += result.passes;
+        total_failed += result.fails;
     }
     std::cout << "Total succeeded: " << total_succeeded << " failed: " << total_failed;
     //atexit([] { __debugbreak(); });
     //std::set_terminate([] { __debugbreak(); });
-    //Jit(clangopts, "JITSuccess/WhileConditionRepeatDestruction.wide");
+    //Jit(clangopts, "JITSuccess/While/VariableCondition.wide");
     if (input.count("break"))
         Wide::Util::DebugBreak();
     return total_failed != 0;

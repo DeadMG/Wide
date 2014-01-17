@@ -114,7 +114,7 @@ namespace Wide {
             FPLT* CreateFPLT(Codegen::Expression* r, Codegen::Expression* l) override final;
             ContinueStatement* CreateContinue(Codegen::WhileStatement* s) override final;
             BreakStatement* CreateBreak(Codegen::WhileStatement* s) override final;
-
+            LifetimeEnd* CreateLifetimeEnd(Codegen::Expression* e) override final;
             llvm::DataLayout GetDataLayout() override final;
             void AddClangTU(std::function<void(llvm::Module* m)>) override final;
             llvm::LLVMContext& GetContext() override final;

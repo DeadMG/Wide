@@ -11,6 +11,8 @@ type testty {
 }
 Main() {
     result := false;
-    true & testty(result);
+    {
+        true & testty(&result).f();
+    }
     return result;
 }

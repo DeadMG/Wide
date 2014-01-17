@@ -305,3 +305,7 @@ ContinueStatement* Generator::CreateContinue(Codegen::WhileStatement* s) {
 BreakStatement* Generator::CreateBreak(Codegen::WhileStatement* s) {
     return arena.Allocate<BreakStatement>(AssertStatement<LLVMCodegen::WhileStatement>(s));
 }
+
+LifetimeEnd* Generator::CreateLifetimeEnd(Codegen::Expression* e) {
+    return arena.Allocate<LifetimeEnd>(AssertExpression(e));
+}

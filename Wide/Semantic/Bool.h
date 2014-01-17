@@ -6,7 +6,9 @@ namespace Wide {
     namespace Semantic {
         class Bool : public Type {
             std::unordered_map<Lexer::TokenType, OverloadSet*> callables;
+            Type* shortcircuit_destructor_type;
         public:
+            Bool() : shortcircuit_destructor_type(nullptr) {}
             std::function<llvm::Type*(llvm::Module*)> GetLLVMType(Analyzer& a) override;
             clang::QualType GetClangType(ClangUtil::ClangTU&, Analyzer& a) override;
             

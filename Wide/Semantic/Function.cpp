@@ -46,16 +46,20 @@ struct Function::LocalScope {
         func->current_scope = oldcurrent;
     }
 };
-Codegen::Expression* Function::Scope::GetCleanupExpression(Analyzer& a, Lexer::Range where) {
+Codegen::Statement* Function::Scope::GetCleanupExpression(Analyzer& a, Lexer::Range where) {
     Context c(a, where, [](ConcreteExpression x) {});
-    Codegen::Expression* chain = a.gen->CreateNop();
-    for (auto des = needs_destruction.rbegin(); des != needs_destruction.rend(); ++des)
-        chain = a.gen->CreateChainExpression(chain, des->AccessMember("~type", c)->BuildCall(c).Expr);
+    Codegen::Statement* chain = a.gen->CreateNop();
+    for (auto des = needs_destruction.rbegin(); des != needs_destruction.rend(); ++des) {
+        if (dynamic_cast<MetaType*>(des->t))
+            continue;
+        chain = a.gen->CreateChainStatement(chain, des->AccessMember("~type", c)->BuildCall(c).Expr);
+        chain = a.gen->CreateChainStatement(chain, a.gen->CreateLifetimeEnd(des->Expr));
+    }
     return chain;
 }
-Codegen::Expression* Function::Scope::GetCleanupAllExpression(Analyzer& a, Lexer::Range where) {
+Codegen::Statement* Function::Scope::GetCleanupAllExpression(Analyzer& a, Lexer::Range where) {
     if (parent)
-        return a.gen->CreateChainExpression(GetCleanupExpression(a, where), parent->GetCleanupAllExpression(a, where));
+        return a.gen->CreateChainStatement(GetCleanupExpression(a, where), parent->GetCleanupAllExpression(a, where));
     return GetCleanupExpression(a, where);
 }
 Wide::Util::optional<ConcreteExpression> Function::Scope::LookupName(std::string name) {
@@ -207,7 +211,9 @@ void Function::ComputeBody(Analyzer& a) {
         LocalScope base_scope(&root_scope, this);
         std::function<Codegen::Statement*(const AST::Statement*, Scope*)> AnalyzeStatement;
         AnalyzeStatement = [&](const AST::Statement* stmt, Scope* scope) -> Codegen::Statement* {
-            auto register_local_destructor = [this](ConcreteExpression obj) { current_scope->needs_destruction.push_back(obj); };
+            auto register_local_destructor = [this](ConcreteExpression obj) { 
+                current_scope->needs_destruction.push_back(obj); 
+            };
             if (!stmt)
                 return nullptr;
         
@@ -240,10 +246,10 @@ void Function::ComputeBody(Analyzer& a) {
                         std::vector<ConcreteExpression> args;
                         args.push_back(result);
                         auto retexpr = ReturnType->BuildInplaceConstruction(a.gen->CreateParameterExpression(0), std::move(args), c);
-                        return a.gen->CreateReturn(a.gen->CreateChainExpression(a.gen->CreateChainExpression(retexpr, scope->GetCleanupAllExpression(*c, ret->location)), retexpr));
+                        return a.gen->CreateReturn(a.gen->CreateChainExpression(a.gen->CreateChainStatement(retexpr, scope->GetCleanupAllExpression(*c, ret->location)), retexpr));
                     } else {
                         auto retval = result.t->BuildValue(result, c).Expr;
-                        return a.gen->CreateReturn(a.gen->CreateChainExpression(a.gen->CreateChainExpression(retval , scope->GetCleanupAllExpression(*c, ret->location)), retval));
+                        return a.gen->CreateReturn(a.gen->CreateChainExpression(a.gen->CreateChainStatement(retval, scope->GetCleanupAllExpression(*c, ret->location)), retval));
                     }
                 }
             }
