@@ -19,7 +19,7 @@ using namespace Semantic;
 AggregateType::AggregateType(std::vector<Type*> types, Wide::Semantic::Analyzer& a)
 : contents(std::move(types))
 , allocsize(0)
-, align(0)
+, align(1)
 , IsComplex(false)
 , copyassignable(true)
 , copyconstructible(true)

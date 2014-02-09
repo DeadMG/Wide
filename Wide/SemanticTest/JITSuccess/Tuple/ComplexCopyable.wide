@@ -1,0 +1,12 @@
+type t {
+    value := bool;
+    type(bool val) : value(val) {}
+    type(t->lvalue copy) : value(copy.value) {}
+    type(t->rvalue move) : value(move.value) {}
+}
+Main() {
+    var := { true, t(true) };
+    copy := var;
+    left, right := copy;
+    return left & right.value;
+}

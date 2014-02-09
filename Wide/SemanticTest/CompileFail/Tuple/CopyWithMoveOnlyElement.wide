@@ -1,0 +1,8 @@
+type t {
+    type() {}
+    type(t->rvalue r) {}
+}
+Main() {
+    var := { t(), t() };
+    copy := var;
+}
