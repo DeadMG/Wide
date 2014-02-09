@@ -30,7 +30,6 @@ namespace Wide {
 
             std::size_t size(Analyzer& a) override final;
             std::size_t alignment(Analyzer& a) override final;
-            bool IsComplexType() override final;
             Type* GetConstantContext(Analyzer& a) override final;
             std::function<llvm::Type*(llvm::Module*)> GetLLVMType(Analyzer& a) override final;
             
@@ -42,6 +41,7 @@ namespace Wide {
             bool IsMoveConstructible(Analyzer& a) override;
             bool IsCopyAssignable(Analyzer& a) override;
             bool IsMoveAssignable(Analyzer& a) override;
+            bool IsComplexType() override final;
         };
     }
 }
