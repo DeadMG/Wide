@@ -21,7 +21,7 @@ namespace Wide {
             using Type::AccessMember;
 
             Wide::Util::optional<ConcreteExpression> AccessMember(ConcreteExpression val, std::string name, Context c) override;
-            OverloadSet* AccessMember(ConcreteExpression val, Wide::Lexer::TokenType, Context c) override;
+            OverloadSet* CreateOperatorOverloadSet(Type* t, Wide::Lexer::TokenType, Analyzer& a) override;
         };
     }
 }

@@ -118,9 +118,9 @@ namespace Wide {
             Expression* RetExpr;
         };
         struct Variable : public Statement {
-            Variable(std::string nam, Expression* expr, Lexer::Range r)
+            Variable(std::vector<std::string> nam, Expression* expr, Lexer::Range r)
                 : Statement(r), name(std::move(nam)), initializer(expr) {}
-            std::string name;
+            std::vector<std::string> name;
             Expression* initializer;
         };
         struct Integer : public Expression {
@@ -205,6 +205,12 @@ namespace Wide {
             bool postfix;
             Decrement(Expression* ex, Lexer::Range r, bool post)
                 : UnaryExpression(ex, r), postfix(post) {}
+        };
+        struct Tuple : public Expression {
+            std::vector<Expression*> expressions;
+
+            Tuple(std::vector<Expression*> exprs, Lexer::Range where)
+                : expressions(std::move(exprs)), Expression(where) {}
         };
         static const std::shared_ptr<std::string> global_module_location;
     }

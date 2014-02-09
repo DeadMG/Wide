@@ -93,7 +93,7 @@ Analyzer::Analyzer(const Options::Clang& opts, Codegen::Generator& g, const AST:
     });
     global = GetWideModule(GlobalModule, nullptr);
     auto global_val = global->BuildValueConstruction(c);
-    EmptyOverloadSet = arena.Allocate<OverloadSet>(std::unordered_set<const AST::Function*>(), global);
+    EmptyOverloadSet = arena.Allocate<OverloadSet>(std::unordered_set<OverloadResolvable*>(), nullptr);
     global->AddSpecialMember("cpp", ConcreteExpression(arena.Allocate<ClangIncludeEntity>(), nullptr));
     global->AddSpecialMember("void", ConcreteExpression(GetConstructorType(Void = arena.Allocate<VoidType>()), nullptr));
     global->AddSpecialMember("global", ConcreteExpression(global, nullptr));
@@ -210,10 +210,12 @@ ConcreteExpression Analyzer::AnalyzeExpression(Type* t, const AST::Expression* e
                 std::vector<std::unordered_set<std::string>>* lambda_locals;
                 std::unordered_set<std::string>* captures;
                 void VisitVariableStatement(const AST::Variable* v) {
-                    lambda_locals->back().insert(v->name);
+                    for(auto&& name : v->name)
+                        lambda_locals->back().insert(name);
                 }
                 void VisitLambdaCapture(const AST::Variable* v) {
-                    lambda_locals->back().insert(v->name);
+                    for (auto&& name : v->name)
+                        lambda_locals->back().insert(name);
                 }
                 void VisitLambdaArgument(const AST::FunctionArgument* arg) {
                     lambda_locals->back().insert(arg->name);
@@ -282,7 +284,8 @@ ConcreteExpression Analyzer::AnalyzeExpression(Type* t, const AST::Expression* e
             // Just as a double-check, eliminate all explicit captures from the list. This should never have any effect
             // but I'll hunt down any bugs caused by eliminating it later.
             for(auto&& arg : lam->Captures)
-                caps.erase(arg->name);
+                for(auto&& name : arg->name)
+                    caps.erase(name);
 
             std::vector<ConcreteExpression> cap_expressions;
             for(auto&& arg : lam->Captures) {
@@ -321,14 +324,16 @@ ConcreteExpression Analyzer::AnalyzeExpression(Type* t, const AST::Expression* e
                     std::stringstream str;
                     str << "__param" << num;
                     auto capty = cap_expressions[num].t;
-                    initializers.push_back(self->arena.Allocate<AST::Variable>(name, self->arena.Allocate<AST::Identifier>(str.str(), lam->location), lam->location));
+                    std::vector<std::string> names;
+                    names.push_back(name);
+                    initializers.push_back(self->arena.Allocate<AST::Variable>(names, self->arena.Allocate<AST::Identifier>(str.str(), lam->location), lam->location));
                     AST::FunctionArgument f(lam->location);
                     f.name = str.str();
                     f.type = self->arena.Allocate<SemanticExpression>(ConcreteExpression(self->GetConstructorType(capty), nullptr), lam->location);
                     funargs.push_back(f);
                     if (!lam->defaultref)
                         capty = capty->Decay();
-                    ty->variables.push_back(self->arena.Allocate<AST::Variable>(name, self->arena.Allocate<SemanticExpression>(ConcreteExpression(self->GetConstructorType(capty), nullptr), lam->location), lam->location));
+                    ty->variables.push_back(self->arena.Allocate<AST::Variable>(names, self->arena.Allocate<SemanticExpression>(ConcreteExpression(self->GetConstructorType(capty), nullptr), lam->location), lam->location));
                     args.push_back(cap_expressions[num]);
                     ++num;
                 }
@@ -458,9 +463,9 @@ LvalueType* Analyzer::GetLvalueType(Type* t) {
         return LvalueTypes[t];
 
     // Prefer hash lookup to dynamic_cast.
-    if (auto lval = dynamic_cast<LvalueType*>(t)) {
-        return LvalueTypes[t] = lval;
-    }
+    // if (auto lval = dynamic_cast<LvalueType*>(t)) {
+    //     return LvalueTypes[t] = lval;
+    // }
     
     // This implements "named rvalue ref is an lvalue", and static_cast<T&&>(T&).
     // by permitting T&& & to become T&.
@@ -501,20 +506,25 @@ ClangTemplateClass* Analyzer::GetClangTemplateClass(ClangUtil::ClangTU& from, cl
 }
 
 OverloadSet* Analyzer::GetOverloadSet(const AST::FunctionOverloadSet* set, Type* t) {
-    if (OverloadSets.find(set) != OverloadSets.end())
-        if (OverloadSets[set].find(t) != OverloadSets[set].end())
-            return OverloadSets[set][t];
-    return OverloadSets[set][t] = arena.Allocate<OverloadSet>(set, t);
+    std::unordered_set<OverloadResolvable*> resolvable;
+    for (auto x : set->functions)
+        resolvable.insert(GetCallableForFunction(x, t));
+    return GetOverloadSet(resolvable, t);
 }
 OverloadSet* Analyzer::GetOverloadSet() {
     return EmptyOverloadSet;
 }
-OverloadSet* Analyzer::GetOverloadSet(Callable* c) {
-    std::unordered_set<Callable*> set;
+OverloadSet* Analyzer::GetOverloadSet(OverloadResolvable* c) {
+    std::unordered_set<OverloadResolvable*> set;
     set.insert(c);
+    return GetOverloadSet(set);
+}
+OverloadSet* Analyzer::GetOverloadSet(std::unordered_set<OverloadResolvable*> set, Type* nonstatic) {
     if (callable_overload_sets.find(set) != callable_overload_sets.end())
         return callable_overload_sets[set];
-    return callable_overload_sets[set] = arena.Allocate<OverloadSet>(set);
+    if (nonstatic && (dynamic_cast<UserDefinedType*>(nonstatic->Decay()) || dynamic_cast<ClangType*>(nonstatic->Decay())))
+        return callable_overload_sets[set] = arena.Allocate<OverloadSet>(set, nonstatic);
+    return callable_overload_sets[set] = arena.Allocate<OverloadSet>(set, nullptr);
 }
 void Analyzer::AddClangType(clang::QualType t, Type* match) {
     if (ClangTypes.find(t) != ClangTypes.end())
@@ -623,4 +633,91 @@ OverloadSet* Analyzer::GetOverloadSet(std::unordered_set<clang::NamedDecl*> decl
         if (clang_overload_sets[decls].find(context) != clang_overload_sets[decls].end())
             return clang_overload_sets[decls][context];
     return clang_overload_sets[decls][context] = arena.Allocate<OverloadSet>(std::move(decls), from, context);
+}
+OverloadResolvable* Analyzer::GetCallableForFunction(const AST::Function* f, Type* context) {
+    if (FunctionCallables.find(f) != FunctionCallables.end())
+        return FunctionCallables.at(f);
+
+    struct FunctionCallable : public OverloadResolvable {
+        FunctionCallable(const AST::Function* f, Type* con)
+            : func(f), context(con) {}
+        const AST::Function* func;
+        Type* context;
+
+        bool HasImplicitThis() {
+            // If we are a member without an explicit this, then we have an implicit this.
+            if (!dynamic_cast<UserDefinedType*>(context->Decay()))
+                return false;
+            if (func->args.size() > 0) {
+                if (func->args[0].name == "this") {
+                    return false;
+                }
+            }
+            return true;
+        }
+        
+        unsigned GetArgumentCount() override final {
+            if (HasImplicitThis())
+                return func->args.size() + 1;
+            return func->args.size();
+        }
+
+        Type* MatchParameter(Type* argument, unsigned num, Analyzer& a) override final {
+            assert(num <= GetArgumentCount());
+
+            // If we are a member and we have an explicit this then treat the first normally.
+            // Else if we are a member, blindly accept whatever is given for argument 0 as long as it's the member type.
+            // Else, treat the first argument normally.
+            
+            if (HasImplicitThis()) {
+                if (num == 0) {
+                    if (argument->Decay() == context->Decay()) {
+                        return argument;
+                    }
+                    return nullptr;
+                }
+                --num;
+            }
+
+            struct OverloadSetLookupContext : public MetaType {
+                Type* context;
+                Type* member;
+                Type* argument;
+                Wide::Util::optional<ConcreteExpression> AccessMember(ConcreteExpression, std::string name, Context c) override final {
+                    if (name == "this") {
+                        if (member)
+                            return c->GetConstructorType(member->Decay())->BuildValueConstruction(c);
+                        throw std::runtime_error("Attempt to access this in a non-member.");
+                    }
+                    if (name == "auto")
+                        return c->GetConstructorType(argument->Decay())->BuildValueConstruction(c);
+                    return Wide::Util::none;
+                }
+                Type* GetContext(Analyzer& a) override final {
+                    return context;
+                }
+            };
+
+            OverloadSetLookupContext lc;
+            lc.argument = argument;
+            lc.context = context;
+            lc.member = dynamic_cast<UserDefinedType*>(context->Decay());
+            
+            auto parameter_type = func->args[num].type ? 
+                dynamic_cast<ConstructorType*>(a.AnalyzeExpression(&lc, func->args[num].type, [](ConcreteExpression e) {}).t->Decay()) :
+                a.GetConstructorType(argument->Decay());
+
+            if (!parameter_type)
+                throw Wide::Semantic::SemanticError(func->args[num].location, Wide::Semantic::Error::ExpressionNoType);
+
+            if (argument->IsA(parameter_type->GetConstructedType(), a))
+                return parameter_type->GetConstructedType();
+            return nullptr;
+        }
+
+        Callable* GetCallableForResolution(std::vector<Type*> types, Analyzer& a) override final {
+            return a.GetWideFunction(func, context, std::move(types));
+        }
+    };
+    return FunctionCallables[f] = arena.Allocate<FunctionCallable>(f, context);
 }

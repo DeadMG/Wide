@@ -18,10 +18,10 @@ Module::Module(const AST::Module* p, Module* higher)
 void Module::AddSpecialMember(std::string name, ConcreteExpression t){
     SpecialMembers.insert(std::make_pair(std::move(name), t));
 }
-OverloadSet* Module::AccessMember(ConcreteExpression val, Wide::Lexer::TokenType ty, Context c) {
+OverloadSet* Module::CreateOperatorOverloadSet(Type* t, Wide::Lexer::TokenType ty, Analyzer& a) {
     if (m->opcondecls.find(ty) != m->opcondecls.end())
-        return c->GetOverloadSet(m->opcondecls.find(ty)->second, this);
-    return c->GetOverloadSet();
+        return a.GetOverloadSet(m->opcondecls.find(ty)->second, this);
+    return PrimitiveType::CreateOperatorOverloadSet(t, ty, a);
 }
 Wide::Util::optional<ConcreteExpression> Module::AccessMember(ConcreteExpression val, std::string name, Context c) {
     if (m->decls.find(name) != m->decls.end()) {

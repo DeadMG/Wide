@@ -1,9 +1,7 @@
-module RejectLvalueQualifiedThis {
-    type t1 {
-        operator()(t1->lvalue this) {
-        }
+type t1 {
+    operator()(t1->lvalue this) {
     }
-    Main() {
-        t1()();
-    }
+}
+Main() {
+    t1()();
 }

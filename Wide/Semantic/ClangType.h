@@ -26,16 +26,15 @@ namespace Wide {
             Wide::Codegen::Expression* BuildBooleanConversion(ConcreteExpression self, Context c) override final;
 
             bool IsComplexType() override final;
-            Codegen::Expression* BuildInplaceConstruction(Codegen::Expression* mem, std::vector<ConcreteExpression> args, Context c) override final;
             ConcreteExpression BuildDereference(ConcreteExpression obj, Context c) override final;
             ConcreteExpression BuildIncrement(ConcreteExpression obj, bool postfix, Context c) override final;
             std::size_t size(Analyzer& a) override final;
             std::size_t alignment(Analyzer& a) override final;
             Type* GetContext(Analyzer& a) override final;
-            OverloadSet* PerformADL(Lexer::TokenType what, Type* lhs, Type* rhs, Context c) override final;
-            OverloadSet* AccessMember(ConcreteExpression self, Lexer::TokenType name, Context c) override final;
-            bool IsCopyable(Analyzer& a) override final;
-            bool IsMovable(Analyzer& a) override final;
+            OverloadSet* CreateADLOverloadSet(Lexer::TokenType what, Type* lhs, Type* rhs, Analyzer& a) override final;
+            OverloadSet* CreateOperatorOverloadSet(Type* self, Lexer::TokenType name, Analyzer& a) override final;
+            OverloadSet* CreateConstructorOverloadSet(Wide::Semantic::Analyzer&) override final;
+            OverloadSet* CreateDestructorOverloadSet(Wide::Semantic::Analyzer&) override final;
         };
     }
 }

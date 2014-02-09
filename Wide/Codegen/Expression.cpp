@@ -242,10 +242,12 @@ llvm::Value* OrExpression::ComputeValue(llvm::IRBuilder<>& builder, Generator& g
 llvm::Value* EqualityExpression::ComputeValue(llvm::IRBuilder<>& builder, Generator& g) {
     auto lhsval = lhs->GetValue(builder, g);
     auto rhsval = rhs->GetValue(builder, g);
+    llvm::Value* result;
     if (lhsval->getType()->isFloatingPointTy())
-        return builder.CreateFCmpOEQ(lhsval, rhsval);
+        result = builder.CreateFCmpOEQ(lhsval, rhsval);
     else
-        return builder.CreateICmpEQ(lhsval, rhsval);
+        result = builder.CreateICmpEQ(lhsval, rhsval);
+    return builder.CreateZExt(result, llvm::IntegerType::getInt8Ty(builder.getContext()));
 }
 
 llvm::Value* PlusExpression::ComputeValue(llvm::IRBuilder<>& builder, Generator& g) {

@@ -18,7 +18,7 @@ namespace Wide {
     namespace Semantic {
         class FunctionType;
         class UserDefinedType;
-        class Function : public Callable, public MetaType {
+        class Function : public MetaType, public Callable {
             enum class State {
                 NotYetAnalyzed,
                 AnalyzeInProgress,
@@ -59,6 +59,13 @@ namespace Wide {
             Scope root_scope;
             Scope* current_scope;
             std::string name;
+
+            std::vector<ConcreteExpression> AdjustArguments(std::vector<ConcreteExpression> args, Context c) override final {
+                return AdjustArgumentsForTypes(args, Args, c);
+            }
+            ConcreteExpression CallFunction(std::vector<ConcreteExpression> exprs, Context c) override final {
+                return BuildCall(BuildValueConstruction(c), std::move(exprs), c);
+            }
         public:
             bool HasLocalVariable(std::string name);
             Function(std::vector<Type*> args, const AST::Function* astfun, Analyzer& a, Type* container);        
@@ -70,10 +77,6 @@ namespace Wide {
             Type* GetContext(Analyzer& a) override final { return context; }
 
             FunctionType* GetSignature(Analyzer& a);
-            std::vector<Type*> GetArgumentTypes(Analyzer& a) override final {
-                return Args;
-            }
-            bool AddThis() override final;
             Wide::Util::optional<ConcreteExpression> LookupLocal(std::string name, Context c);
             Type* GetConstantContext(Analyzer& a) override final;
         };

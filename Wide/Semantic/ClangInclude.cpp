@@ -59,7 +59,7 @@ Wide::Util::optional<ConcreteExpression> ClangIncludeEntity::AccessMember(Concre
                 clang::Sema s(pp, tu->GetASTContext(), consumer);
                 clang::Parser p(tu->GetSema().getPreprocessor(), s, true);
                 std::vector<clang::Token> tokens;
-                for(auto num = 0; num < info->getNumTokens(); ++num)
+                for(std::size_t num = 0; num < info->getNumTokens(); ++num)
                     tokens.push_back(info->getReplacementToken(num));
                 tokens.emplace_back();
                 clang::Token& eof = tokens.back();

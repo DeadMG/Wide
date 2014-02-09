@@ -1,5 +1,6 @@
 #include <Wide/Parser/Builder.h>
 #include <Wide/Parser/ParserError.h>
+#include <Wide/Util/DebugUtilities.h>
 
 using namespace Wide;
 using namespace AST;
@@ -68,7 +69,7 @@ void Builder::CreateFunction(
     std::vector<Variable*> caps
 ) {
     for(auto var : p->variables)
-        if (var->name == name) {
+        if (std::find(var->name.begin(), var->name.end(), name) != var->name.end()) {
             std::vector<Lexer::Range> err;
             err.push_back(var->location);
             RaiseError(*this, where, err, Parser::Error::TypeFunctionAlreadyVariable);
@@ -165,7 +166,7 @@ Return* Builder::CreateReturn(Lexer::Range r)
 { return arena.Allocate<Return>(r); }
 
 Variable* Builder::CreateVariable(std::string name, Expression* value, Lexer::Range r) 
-{ return arena.Allocate<Variable>(std::move(name), value, r); }
+{ std::vector<std::string> names; names.push_back(name); return CreateVariable(std::move(names), value, r); }
 
 Variable* Builder::CreateVariable(std::string name, Lexer::Range r) 
 { return CreateVariable(std::move(name), nullptr, r); }
@@ -185,12 +186,11 @@ If* Builder::CreateIf(Expression* cond, Statement* true_br, Statement* false_br,
 If* Builder::CreateIf(Expression* cond, Statement* true_br, Lexer::Range loc) 
 { return CreateIf(cond, true_br, nullptr, loc); }
 
-If* Builder::CreateIf(Variable* cond, Statement* true_br, Statement* false_br, Lexer::Range loc) {
-    return arena.Allocate<If>(cond, true_br, false_br, loc);
-}
-If* Builder::CreateIf(Variable* cond, Statement* true_br, Lexer::Range loc) {
-    return CreateIf(cond, true_br, nullptr, loc);
-}
+If* Builder::CreateIf(Variable* cond, Statement* true_br, Statement* false_br, Lexer::Range loc)
+{ return arena.Allocate<If>(cond, true_br, false_br, loc); }
+
+If* Builder::CreateIf(Variable* cond, Statement* true_br, Lexer::Range loc) 
+{ return CreateIf(cond, true_br, nullptr, loc); }
 
 CompoundStatement* Builder::CreateCompoundStatement(std::vector<Statement*> true_br, Lexer::Range loc) 
 { return arena.Allocate<CompoundStatement>(std::move(true_br), loc); }
@@ -284,12 +284,14 @@ void Builder::SetModuleEndLocation(Module* m, Lexer::Range loc) { outlining(loc,
 
 std::vector<FunctionArgument> Builder::CreateFunctionArgumentGroup() { return std::vector<FunctionArgument>(); }
 
-void Builder::AddTypeField(Type* t, Variable* decl) { 
-    if (t->Functions.find(decl->name) != t->Functions.end()) {
-        std::vector<Wide::Lexer::Range> vec;
-        for(auto&& x : t->Functions[decl->name]->functions)
-            vec.push_back(x->where.front());
-        throw Parser::ParserError(decl->location, vec, Parser::Error::TypeVariableAlreadyFunction);
+void Builder::AddTypeField(Type* t, Variable* decl) {
+    for (auto&& name : decl->name) {
+        if (t->Functions.find(name) != t->Functions.end()) {
+            std::vector<Wide::Lexer::Range> vec;
+            for (auto&& x : t->Functions[name]->functions)
+                vec.push_back(x->where.front());
+            throw Parser::ParserError(decl->location, vec, Parser::Error::TypeVariableAlreadyFunction);
+        }
     }
     t->variables.push_back(decl); 
 }
@@ -299,12 +301,23 @@ void Builder::AddArgumentToFunctionGroup(std::vector<FunctionArgument>& args, st
     arg.type = expr;
     args.push_back(arg);
 }
+
 void Builder::AddArgumentToFunctionGroup(std::vector<FunctionArgument>& args, std::string name, Lexer::Range r) { return AddArgumentToFunctionGroup(args, std::move(name), r, nullptr); }
 void Builder::AddCaptureToGroup(std::vector<Variable*>& l, Variable* cap) { return l.push_back(cap); }
 void Builder::AddInitializerToGroup(std::vector<Variable*>& l, Variable* b) { return AddCaptureToGroup(l, b); }
 void Builder::AddStatementToGroup(std::vector<Statement*>& grp, Statement* stmt) { return grp.push_back(stmt); }
 void Builder::AddExpressionToGroup(std::vector<Expression*>& grp, Expression* expr) { return grp.push_back(expr); }
+void Builder::AddNameToGroup(std::vector<std::string>& grp, std::string str) { return grp.push_back(std::move(str)); }
 
+std::vector<std::string> Builder::CreateVariableNameGroup() {
+    return std::vector<std::string>();
+}
+
+Variable* Builder::CreateVariable(std::vector<std::string> names, Expression* init, Lexer::Range r) {
+    if (names.size() == 0)
+        Wide::Util::DebugBreak();
+    return arena.Allocate<Variable>(std::move(names), init, r);
+}
 Lexer::Range Builder::GetLocation(Statement* s) {
     return s->location;
 }
@@ -361,4 +374,8 @@ Continue* Builder::CreateContinue(Lexer::Range r) {
 
 While* Builder::CreateWhile(Variable* cond, Statement* body, Lexer::Range loc) {
     return arena.Allocate<While>(body, cond, loc);
+}
+
+Tuple* Builder::CreateTuple(std::vector<Expression*> exprs, Lexer::Range where) {
+    return arena.Allocate<Tuple>(std::move(exprs), where);
 }

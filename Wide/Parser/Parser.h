@@ -155,10 +155,29 @@ namespace Wide {
             ExpressionType ParsePrimaryExpression() {
                 // ident
                 // string
+                // { expressions }
                 // ( expression )
                 if(!lex)
                     throw ParserError(lex.GetLastPosition(), Error::ExpressionNoBeginning);
                 auto t = lex();
+                if (t.GetType() == Lexer::TokenType::OpenCurlyBracket) {
+                    auto group = sema.CreateExpressionGroup();
+                    auto terminator = lex();
+                    while (terminator.GetType() != Lexer::TokenType::CloseCurlyBracket) {
+                        lex(terminator);
+                        sema.AddExpressionToGroup(group, ParseExpression());
+                        terminator = Check(Error::TupleCommaOrClose, [](decltype(lex())& tok) {
+                            if (tok.GetType() == Lexer::TokenType::Comma)
+                                return true;
+                            if (tok.GetType() == Lexer::TokenType::CloseCurlyBracket)
+                                return true;
+                            return false;
+                        });
+                        if (terminator.GetType() == Lexer::TokenType::Comma)
+                            terminator = lex();
+                    }
+                    return sema.CreateTuple(std::move(group), t.GetLocation() + terminator.GetLocation());
+                }
                 if(t.GetType() == Lexer::TokenType::OpenBracket) {
                     auto tok = lex();
                     if(tok.GetType() == Lexer::TokenType::CloseBracket) {
@@ -676,14 +695,26 @@ namespace Wide {
                     auto body = ParseStatement();
                     return sema.CreateWhile(cond, body, t.GetLocation() + sema.GetLocation(body));
                 }
-                // If identifier, check the next for :=
+                // If identifier, check the next for := or ,
                 if(t.GetType() == Lexer::TokenType::Identifier) {
+                    auto group = sema.CreateVariableNameGroup();
+                    sema.AddNameToGroup(group, t.GetValue());
                     auto next = lex();
-                    if(next.GetType() == Lexer::TokenType::VarCreate) {
-                        return ParseVariableStatement(t);
+                    if (next.GetType() != Lexer::TokenType::VarCreate && next.GetType() != Lexer::TokenType::Comma)
+                        // If it's not := or , then we're probably just looking at expression statement so put it back.
+                        lex(next);
+                    else {
+                        while (next.GetType() == Lexer::TokenType::Comma) {
+                            auto ident = Check(Error::VariableListNoIdentifier, Lexer::TokenType::Identifier);
+                            sema.AddNameToGroup(group, ident.GetValue());
+                            next = lex();
+                        }
+                        lex(next);
+                        Check(Error::VariableListNoInitializer, Lexer::TokenType::VarCreate);
+                        auto init = ParseExpression();
+                        auto semi = Check(Error::VariableStatementNoSemicolon, Lexer::TokenType::Semicolon);
+                        return sema.CreateVariable(std::move(group), init, t.GetLocation() + semi.GetLocation());
                     }
-                    // If it's not := then we're probably just looking at expression statement so put it back.
-                    lex(next);
                 }
                 // If continue or break, we're good.
                 if(t.GetType() == Lexer::TokenType::Break) {

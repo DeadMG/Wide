@@ -8,6 +8,8 @@
 #include <Wide/Semantic/ConstructorType.h>
 #include <Wide/Semantic/UserDefinedType.h>
 #include <Wide/Semantic/Reference.h>
+#include <Wide/Semantic/OverloadSet.h>
+#include <Wide/Semantic/TupleType.h>
 #include <unordered_set>
 #include <sstream>
 #include <iostream>
@@ -50,9 +52,9 @@ Codegen::Statement* Function::Scope::GetCleanupExpression(Analyzer& a, Lexer::Ra
     Context c(a, where, [](ConcreteExpression x) {});
     Codegen::Statement* chain = a.gen->CreateNop();
     for (auto des = needs_destruction.rbegin(); des != needs_destruction.rend(); ++des) {
-        if (dynamic_cast<MetaType*>(des->t))
-            continue;
-        chain = a.gen->CreateChainStatement(chain, des->AccessMember("~type", c)->BuildCall(c).Expr);
+        std::vector<Type*> types;
+        types.push_back(des->t);
+        chain = a.gen->CreateChainStatement(chain, des->t->Decay()->GetDestructorOverloadSet(*c)->Resolve(types, *c)->Call(*des, c).Expr);
         chain = a.gen->CreateChainStatement(chain, a.gen->CreateLifetimeEnd(des->Expr));
     }
     return chain;
@@ -101,13 +103,18 @@ Function::Function(std::vector<Type*> args, const AST::Function* astfun, Analyze
         if (ty->IsComplexType()) {
             var.Expr = a.gen->CreateParameterExpression(param);
         } else {
-            std::vector<ConcreteExpression> args;
-            ConcreteExpression copy(ty, a.gen->CreateParameterExpression(param));
-            args.push_back(copy);
-            if (copy.t->IsReference())
-                var.Expr = copy.Expr;
-            else
-                var.Expr = ty->BuildLvalueConstruction(args, c).Expr;
+            if (ty->IsReference()) {
+                var.Expr = a.gen->CreateParameterExpression(param);
+                var.t = ty;
+            } else {
+                std::vector<ConcreteExpression> args;
+                ConcreteExpression copy(ty, a.gen->CreateParameterExpression(param));
+                args.push_back(copy);
+                if (copy.t->IsReference())
+                    var.Expr = copy.Expr;
+                else
+                    var.Expr = ty->BuildLvalueConstruction(args, c).Expr;
+            }
         }
         ++num;
         current_scope->named_variables.insert(std::make_pair(arg.name, var));
@@ -167,9 +174,12 @@ void Function::ComputeBody(Analyzer& a) {
             auto members = member->GetMembers();
             for (auto&& x : members) {
                 auto has_initializer = [&](std::string name) -> const AST::Variable* {
-                    for (auto&& x : fun->initializers)
-                    if (x->name == name)
-                        return x;
+                    for (auto&& x : fun->initializers) {
+                        // Can only have 1 name- AST restriction
+                        assert(x->name.size() == 1);
+                        if (x->name.front() == name)
+                            return x;
+                    }
                     return nullptr;
                 };
                 // For member variables, don't add them to the list, the destructor will handle them.
@@ -185,7 +195,7 @@ void Function::ComputeBody(Analyzer& a) {
                 }
                 else {
                     // Don't care about if x.t is ref because refs can't be default-constructed anyway.
-                    if (x.InClassInitializer)
+                    /*if (x.InClassInitializer)
                     {
                         Context c(a, x.InClassInitializer->location, [](ConcreteExpression e) {});
                         auto expr = a.AnalyzeExpression(this, x.InClassInitializer, [](ConcreteExpression e) {});
@@ -194,7 +204,7 @@ void Function::ComputeBody(Analyzer& a) {
                         args.push_back(expr);
                         exprs.push_back(x.t->BuildInplaceConstruction(mem.Expr, std::move(args), c));
                         continue;
-                    }
+                    }*/
                     if (x.t->IsReference())
                         throw std::runtime_error("Failed to initialize a reference member.");
                     auto mem = a.gen->CreateFieldExpression(self.Expr, x.num);
@@ -204,7 +214,7 @@ void Function::ComputeBody(Analyzer& a) {
                 }
             }
             for(auto&& x : fun->initializers)
-                if (std::find_if(members.begin(), members.end(), [&](decltype(*members.begin())& ref) { return ref.name == x->name; }) == members.end())
+                if (std::find_if(members.begin(), members.end(), [&](decltype(*members.begin())& ref) { return ref.name == x->name.front(); }) == members.end())
                     throw std::runtime_error("Attempted to initialize a member that did not exist.");
         }
         // Now the body.
@@ -255,9 +265,11 @@ void Function::ComputeBody(Analyzer& a) {
             }
             if (auto var = dynamic_cast<const AST::Variable*>(stmt)) {
                 auto result = a.AnalyzeExpression(this, var->initializer, register_local_destructor);
-        
-                if (auto expr = scope->LookupName(var->name))
-                    throw std::runtime_error("Error: variable shadowing " + var->name);
+                
+                for (auto name : var->name) {
+                    if (auto expr = scope->LookupName(name))
+                        throw std::runtime_error("Error: variable shadowing " + name);
+                }
 
                 auto handle_variable_expression = [var, register_local_destructor, &a](ConcreteExpression result) {
                     std::vector<ConcreteExpression> args;
@@ -267,15 +279,11 @@ void Function::ComputeBody(Analyzer& a) {
                         // If it's a function call, and it returns a complex T, then the return expression already points to
                         // a memory variable of type T. Just use that.
                         if (!result.steal) {
-                            result.t = a.GetLvalueType(result.t);
                             return result.t->Decay()->BuildLvalueConstruction(args, c);
                         } else {
                             result.steal = false;
-                            // If I've been asked to steal an lvalue, it's because I rvalue constructed an lvalue reference
-                            // So the expr will be T** whereas I want just T*
-                            //if (dynamic_cast<LvalueType*>(result.t))
-                            //    result.Expr = a.gen->CreateLoad(result.Expr);
-                            result.t = a.GetLvalueType(result.t);
+                            if (result.t == a.GetRvalueType(result.t->Decay()))
+                                result.t = a.GetLvalueType(result.t->Decay());
                             return result;
                         }
                     } else {
@@ -283,9 +291,25 @@ void Function::ComputeBody(Analyzer& a) {
                     }
                 };
 
-                auto expr = handle_variable_expression(result);
-                scope->named_variables.insert(std::make_pair(var->name, expr));
-                return expr.Expr;        
+                if (var->name.size() == 1) {
+                    auto expr = handle_variable_expression(result);
+                    scope->named_variables.insert(std::make_pair(var->name.front(), expr));
+                    return expr.Expr;
+                }
+                auto tupty = dynamic_cast<TupleType*>(result.t->Decay());
+                // Each name refers to each member in order.
+                auto members = tupty->GetMembers();
+                if (members.size() != var->name.size())
+                    throw std::runtime_error("Attempted to unpack a tuple, but the number of elements was wrong.");
+
+                // The number of elements has gotta be >0 for this to parse so don't need a nop.
+                Codegen::Statement* stmt = nullptr;
+                for (unsigned index = 0; index < members.size(); ++index) {
+                    auto expr = handle_variable_expression(tupty->PrimitiveAccessMember(result, index, a));
+                    scope->named_variables.insert(std::make_pair(var->name[index], expr));
+                    stmt = stmt ? a.gen->CreateChainExpression(stmt, expr.Expr) : expr.Expr;
+                }
+                return stmt;
             }
         
             if (auto comp = dynamic_cast<const AST::CompoundStatement*>(stmt)) {
@@ -423,9 +447,6 @@ bool Function::HasLocalVariable(std::string name) {
     return current_scope->LookupName(name);
 }
 
-bool Function::AddThis() {
-    return dynamic_cast<UserDefinedType*>(context->Decay());
-}
 Type* Function::GetConstantContext(Analyzer& a) {
     struct FunctionConstantContext : public MetaType {
         Type* context;

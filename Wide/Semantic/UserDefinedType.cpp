@@ -27,188 +27,46 @@
 using namespace Wide;
 using namespace Semantic;
 
-bool UserDefinedType::IsComplexType() {
-    return iscomplex;
-}
-
-UserDefinedType::UserDefinedType(const AST::Type* t, Analyzer& a, Type* higher)
-: context(higher) {
-    iscomplex = false;
-    std::unordered_map<std::string, unsigned> mem;
-    type = t;
-    allocsize = 0;
-    align = 0;
-    std::stringstream stream;
-    stream << "struct.__" << this;
-    llvmname = stream.str();
-
+std::vector<Type*> GetTypesFromType(const AST::Type* t, Analyzer& a, Type* context) {
+    std::vector<Type*> out;
     for (auto&& var : t->variables) {
         auto expr = a.AnalyzeExpression(context, var->initializer, [](ConcreteExpression e) {});
         expr.t = expr.t->Decay();
+        if (auto con = dynamic_cast<ConstructorType*>(expr.t))
+            out.push_back(con->GetConstructedType());
+        else
+            throw std::runtime_error("No longer support in-class member initializers.");
+    }
+    return out;
+}
+
+UserDefinedType::UserDefinedType(const AST::Type* t, Analyzer& a, Type* higher)
+: AggregateType(GetTypesFromType(t, a, higher), a)
+, context(higher) {
+    std::unordered_map<std::string, unsigned> mem;
+    type = t;
+    {
+        unsigned i = 0;
+        for (auto&& var : type->variables)
+            members[var->name.front()] = i++;
+    }
+}
+
+std::vector<UserDefinedType::member> UserDefinedType::GetMembers() {
+    std::vector<UserDefinedType::member> out;
+    for (unsigned i = 0; i < type->variables.size(); ++i) {
         member m;
-        if (auto con = dynamic_cast<ConstructorType*>(expr.t)) {
-            expr.t = con->GetConstructedType();
-            m.InClassInitializer = nullptr;
-        }
-        else {
-            m.InClassInitializer = var->initializer;
-        }
-        m.t = expr.t;
-        auto talign = m.t->alignment(a);
-        if (allocsize % talign != 0) {
-            auto adjustment = align - (allocsize % talign);
-            allocsize += adjustment;
-            types.push_back([&a, adjustment](llvm::Module* mod) {
-                return llvm::ArrayType::get(llvm::IntegerType::getInt8Ty(mod->getContext()), adjustment);
-            });
-        }
-        align = std::max(align, talign);
-        allocsize += m.t->size(a);
-
-        m.num = types.size();
-        m.name = var->name;
-        mem[var->name] = llvmtypes.size();
-        types.push_back(m.t->GetLLVMType(a));
-        llvmtypes.push_back(m);
-        iscomplex = iscomplex || expr.t->IsComplexType();
+        m.t = AggregateType::GetMembers()[i];
+        m.name = type->variables[i]->name.front();
+        m.num = AggregateType::GetFieldIndex(i);
+        out.push_back(m);
     }
-    if (t->variables.empty()) {
-        allocsize = a.gen->GetInt8AllocSize();
-        align = llvm::DataLayout(a.gen->GetDataLayout()).getABIIntegerTypeAlignment(8);
-    }
-    if (allocsize % align != 0) {
-        auto adjustment = align - (allocsize % align);
-        allocsize += adjustment;
-        types.push_back([&a, adjustment](llvm::Module* mod) {
-            return llvm::ArrayType::get(llvm::IntegerType::getInt8Ty(mod->getContext()), adjustment);
-        });
-    }
-
-    ty = [&](llvm::Module* m) -> llvm::Type* {
-        if (m->getTypeByName(llvmname)) {
-            if (llvmtypes.empty())
-                a.gen->AddEliminateType(m->getTypeByName(llvmname));
-            return m->getTypeByName(llvmname);
-        }
-        std::vector<llvm::Type*> llvmtypes;
-        for (auto&& x : types)
-            llvmtypes.push_back(x(m));
-        if (llvmtypes.empty()) {
-            llvmtypes.push_back(llvm::IntegerType::getInt8Ty(m->getContext()));
-        }
-        auto ty = llvm::StructType::create(llvmtypes, llvmname);
-        if (llvmtypes.empty())
-            a.gen->AddEliminateType(ty);
-        return ty;
-    };
-    // Enable member lookup
-    members = std::move(mem);
-
-    AST::Function* des;
-    // Generate destructors    
-    if (type->Functions.find("~") != type->Functions.end()) {
-        des = *type->Functions.at("~")->functions.begin();
-    } else {
-        des = a.arena.Allocate<AST::Function>(
-            "~",
-            std::vector<AST::Statement*>(),
-            std::vector<AST::Statement*>(),
-            t->location,
-            std::vector<AST::FunctionArgument>(),
-            std::vector<AST::Variable*>()
-        );
-    }
-
-    Context c(a, t->location, [](ConcreteExpression e) {
-        assert(false);
-    });
-    for(auto x = llvmtypes.rbegin(); x != llvmtypes.rend(); ++x) {
-        if (x->t->IsReference()) continue;
-        des->statements.push_back(a.arena.Allocate<SemanticExpression>(ConcreteExpression(nullptr, 
-            ConcreteExpression(a.GetLvalueType(x->t), a.gen->CreateFieldExpression(a.gen->CreateParameterExpression(0), x->num))
-            .AccessMember("~type", c)
-            ->BuildCall(c).Expr), t->location));
-    }
-    std::unordered_set<const AST::Function*> funcs;
-    funcs.insert(des);
-    destructor = a.arena.Allocate<OverloadSet>(std::move(funcs), a.GetLvalueType(this));
-
-    iscomplex = iscomplex || type->Functions.find("~type") != type->Functions.end();
-    if (type->Functions.find("type") != type->Functions.end()) {
-        std::vector<Type*> self;
-        self.push_back(a.GetLvalueType(this));
-        self.push_back(a.GetLvalueType(this));
-        iscomplex = iscomplex || a.GetOverloadSet(type->Functions.at("type"), a.GetLvalueType(this))->Resolve(self, a);
-        self.pop_back();
-        self.push_back(a.GetRvalueType(this));
-        iscomplex = iscomplex || a.GetOverloadSet(type->Functions.at("type"), a.GetLvalueType(this))->Resolve(self, a);
-    }
-    
-    std::unordered_set<const AST::Function*> cons;
-    if (type->name == "__lambda") {
-        if (type->variables.size() == 0)
-            cons.insert(AddDefaultConstructor(a));
-        cons.insert(AddMoveConstructor(a));
-        cons.insert(AddCopyConstructor(a));
-        // Occurs if the lambda has captures- else, it has no constructors and we fill in all defaults.
-        if (type->Functions.find("type") != type->Functions.end())
-            for(auto x : type->Functions.at("type")->functions)
-                cons.insert(x);
-        cons.erase(nullptr);
-    } else {
-        if (type->Functions.find("type") == type->Functions.end()) {
-            cons.insert(AddDefaultConstructor(a));
-            cons.insert(AddCopyConstructor(a));
-            cons.insert(AddMoveConstructor(a));
-            cons.erase(nullptr);
-        } else {
-            for(auto x : type->Functions.at("type")->functions)
-                cons.insert(x);
-        }
-    }
-    constructor = a.arena.Allocate<OverloadSet>(cons, a.GetLvalueType(this));
-}
-
-std::function<llvm::Type*(llvm::Module*)> UserDefinedType::GetLLVMType(Analyzer& a) {
-    return ty;
-}
-
-Codegen::Expression* UserDefinedType::BuildInplaceConstruction(Codegen::Expression* mem, std::vector<ConcreteExpression> args, Context c) {
-    if (!IsComplexType() && args.size() == 1 && args[0].t->Decay() == this) {
-        return c->gen->CreateStore(mem, args[0].BuildValue(c).Expr);
-    }
-    return constructor
-        ->BuildValueConstruction(ConcreteExpression(c->GetLvalueType(this), mem), c)
-        .BuildCall(std::move(args), c).Expr;
+    return out;
 }
 
 Wide::Util::optional<ConcreteExpression> UserDefinedType::AccessMember(ConcreteExpression expr, std::string name, Context c) {
-    if (name == "~type") {
-        if (!expr.t->IsReference())
-            expr = expr.t->BuildLvalueConstruction(expr, c);
-        else if (IsRvalueType(expr.t))
-            expr.t = c->GetLvalueType(expr.t->Decay());
-        return destructor->BuildValueConstruction(expr, c);
-    }
-    if (members.find(name) != members.end()) {
-        auto member = llvmtypes[members[name]];
-        if (expr.t->IsReference()) {
-            auto ty = IsLvalueType(expr.t) ? c->GetLvalueType(member.t) : c->GetRvalueType(member.t);
-            ConcreteExpression out(ty, c->gen->CreateFieldExpression(expr.Expr, member.num));
-            if (IsLvalueType(expr.t)) {
-                out.t = c->GetLvalueType(member.t);
-            } else {
-                out.t = c->GetRvalueType(member.t);
-            }
-            // Need to collapse the pointers here- if member is a T* under the hood, then it'll be a T** when accessed
-            // So load it to become a T* like the reference type expects.
-            if (member.t->IsReference())
-                out.Expr = c->gen->CreateLoad(out.Expr);
-            return out;
-        } else {
-            return ConcreteExpression(member.t, c->gen->CreateFieldExpression(expr.Expr, member.num));
-        }
-    }
+    if (members.find(name) != members.end())
+        return PrimitiveAccessMember(expr, members[name], *c);
     if (type->Functions.find(name) != type->Functions.end()) {
         auto self = expr.t == this ? BuildRvalueConstruction(expr, c) : expr;
         return c->GetOverloadSet(type->Functions.at(name), self.t)->BuildValueConstruction(self, c);
@@ -226,19 +84,19 @@ clang::QualType UserDefinedType::GetClangType(ClangUtil::ClangTU& TU, Analyzer& 
     recdecl->startDefinition();
     clangtypes[&TU] = TU.GetASTContext().getTypeDeclType(recdecl);
 
-    for(auto&& x : llvmtypes) {
+    for (std::size_t i = 0; i < type->variables.size(); ++i) {
         auto var = clang::FieldDecl::Create(
             TU.GetASTContext(),
             recdecl,
             clang::SourceLocation(),
             clang::SourceLocation(),
-            TU.GetIdentifierInfo(x.name),
-            x.t->GetClangType(TU, a),
+            TU.GetIdentifierInfo(type->variables[i]->name.front()),
+            AggregateType::GetMembers()[i]->GetClangType(TU, a),
             nullptr,
             nullptr,
             false,
             clang::InClassInitStyle::ICIS_NoInit
-        );
+            );
         var->setAccess(clang::AccessSpecifier::AS_public);
         recdecl->addDecl(var);
     }
@@ -339,96 +197,59 @@ ConcreteExpression UserDefinedType::BuildCall(ConcreteExpression val, std::vecto
     throw std::runtime_error("Attempt to call a user-defined type with no operator() defined.");
 }
 
-std::size_t UserDefinedType::size(Analyzer& a) {
-    return allocsize;
-}
-std::size_t UserDefinedType::alignment(Analyzer& a) {
-    return align;
-}
-unsigned UserDefinedType::AdjustFieldOffset(unsigned index) {
-    return index;
-    /*if (clangtypes.empty()) return index;
-    return clangtypes.begin()->first->GetFieldNumber(*std::next(clangtypes.begin()->second->getAsCXXRecordDecl()->field_begin(), index));*/
+OverloadSet* UserDefinedType::CreateConstructorOverloadSet(Analyzer& a) {
+    if (type->Functions.find("type") == type->Functions.end())
+        return AggregateType::CreateConstructorOverloadSet(a);
+    return a.GetOverloadSet(type->Functions.at("type"), a.GetLvalueType(this));
 }
 
-AST::Function* UserDefinedType::AddCopyConstructor(Analyzer& a) {
-    // If non-complex, we just use a load/store, no need for explicit.
-    if (!IsComplexType()) return nullptr;
-
-    auto should = true;
-    for(auto&& m : llvmtypes) {
-        should = should && m.t->IsCopyable(a);
-    }
-    if (!should) return nullptr;
-    std::vector<AST::FunctionArgument> args;
-    AST::FunctionArgument self(type->location);
-    self.name = "other";
-    self.type = a.arena.Allocate<SemanticExpression>(ConcreteExpression(a.GetConstructorType(a.GetLvalueType(this)), nullptr), type->location);
-    args.push_back(self);
-    auto other = ConcreteExpression(a.GetLvalueType(this), a.gen->CreateParameterExpression(1));
-    
-    std::vector<AST::Variable*> initializers;
-    Context c(a, type->location, [](ConcreteExpression e) {
-        assert(false);
-    });
-    for(auto&& m : llvmtypes) {
-        initializers.push_back(
-            a.arena.Allocate<AST::Variable>(m.name, a.arena.Allocate<SemanticExpression>(*other.t->AccessMember(other, m.name, c), type->location), type->location)
-        );
-    }
-    return a.arena.Allocate<AST::Function>("type", std::vector<AST::Statement*>(), std::vector<AST::Statement*>(), type->location, std::move(args), std::move(initializers));
-}
-AST::Function* UserDefinedType::AddMoveConstructor(Analyzer& a) {
-    // If non-complex, we just use a load/store, no need for explicit.
-    if (!IsComplexType()) return nullptr;
-
-    auto should = true;
-    for(auto&& m : llvmtypes) {
-        should = should && m.t->IsMovable(a);
-    }
-    if (!should) return nullptr;
-    std::vector<AST::FunctionArgument> args;
-    AST::FunctionArgument self(type->location);
-    self.name = "other";
-    self.type = a.arena.Allocate<SemanticExpression>(ConcreteExpression(a.GetConstructorType(a.GetRvalueType(this)), nullptr), type->location);
-    args.push_back(self);
-    
-    std::vector<AST::Variable*> initializers;
-    auto other = ConcreteExpression(a.GetRvalueType(this), a.gen->CreateParameterExpression(1));
-    Context c(a, type->location, [](ConcreteExpression e) {
-        assert(false);
-    });
-    for(auto&& m : llvmtypes) {
-        initializers.push_back(a.arena.Allocate<AST::Variable>(m.name, a.arena.Allocate<SemanticExpression>(*other.t->AccessMember(other, m.name, c), type->location), type->location));
-    }
-    return a.arena.Allocate<AST::Function>("type", std::vector<AST::Statement*>(), std::vector<AST::Statement*>(), type->location, std::move(args), std::move(initializers));
-}
-AST::Function* UserDefinedType::AddDefaultConstructor(Analyzer& a) {
-    std::vector<AST::FunctionArgument> args;
-    std::vector<AST::Variable*> initializers;
-    return a.arena.Allocate<AST::Function>("type", std::vector<AST::Statement*>(), std::vector<AST::Statement*>(), type->location, std::move(args), std::move(initializers));
+OverloadSet* UserDefinedType::CreateOperatorOverloadSet(Type* self, Lexer::TokenType name, Analyzer& a) {
+    if (type->opcondecls.find(name) != type->opcondecls.end())
+        return a.GetOverloadSet(type->opcondecls.at(name), self);
+    return AggregateType::CreateOperatorOverloadSet(self, name, a);
 }
 
-bool UserDefinedType::IsCopyable(Analyzer& a) {
-    std::vector<Type*> types;
-    types.push_back(a.GetLvalueType(this));
-    types.push_back(a.GetLvalueType(this));
-    return !iscomplex || constructor->Resolve(std::move(types), a);
-}
-bool UserDefinedType::IsMovable(Analyzer& a) {
-    std::vector<Type*> types;
-    types.push_back(a.GetLvalueType(this));
-    types.push_back(a.GetRvalueType(this));
-    return !iscomplex || constructor->Resolve(std::move(types), a);
-}
-Type* UserDefinedType::GetConstantContext(Analyzer& a) {
-    for (auto mem : llvmtypes) {
-        if (!mem.t->GetConstantContext(a))
-            return nullptr;
+OverloadSet* UserDefinedType::CreateDestructorOverloadSet(Analyzer& a) {
+    auto aggset = AggregateType::CreateDestructorOverloadSet(a);
+    if (type->Functions.find("~") != type->Functions.end()) {
+        struct Destructor : OverloadResolvable, Callable {
+            Destructor(UserDefinedType* ty, OverloadSet* base) : self(ty), aggset(base) {}
+            UserDefinedType* self;
+            OverloadSet* aggset;
+
+            unsigned GetArgumentCount() override final { return 1; }
+            Type* MatchParameter(Type* t, unsigned num, Analyzer& a) override final { if (num == 0) return t; assert(false); }
+            Callable* GetCallableForResolution(std::vector<Type*> tys, Analyzer& a) override final { return this; }
+            std::vector<ConcreteExpression> AdjustArguments(std::vector<ConcreteExpression> args, Context c) override final { return args; }
+            ConcreteExpression CallFunction(std::vector<ConcreteExpression> args, Context c) override final { 
+                std::vector<Type*> types;
+                types.push_back(args[0].t);
+                auto userdestructor = c->GetOverloadSet(self->type->Functions.at("~"), args[0].t)->Resolve(types, *c)->Call(args[0], c).Expr;
+                auto autodestructor = aggset->Resolve(types, *c)->Call(args[0], c).Expr;
+                return ConcreteExpression(c->GetLvalueType(self), c->gen->CreateChainExpression(userdestructor, autodestructor));
+            }
+        };
+        return a.GetOverloadSet(a.arena.Allocate<Destructor>(this, aggset));
     }
+    return aggset;
+}
+bool UserDefinedType::IsCopyConstructible(Analyzer& a) {
     if (type->Functions.find("type") != type->Functions.end())
-        return nullptr;
-    if (type->Functions.find("~") != type->Functions.end())
-        return nullptr;
-    return this;
+        return Type::IsCopyConstructible(a);
+    return AggregateType::IsCopyConstructible(a);
+}
+bool UserDefinedType::IsMoveConstructible(Analyzer& a) {
+    if (type->Functions.find("type") != type->Functions.end())
+        return Type::IsMoveConstructible(a);
+    return AggregateType::IsMoveConstructible(a);
+}
+bool UserDefinedType::IsCopyAssignable(Analyzer& a) {
+    if (type->opcondecls.find(Lexer::TokenType::Assignment) != type->opcondecls.end())
+        return Type::IsCopyAssignable(a);
+    return AggregateType::IsCopyAssignable(a);
+}
+bool UserDefinedType::IsMoveAssignable(Analyzer& a) {
+    if (type->opcondecls.find(Lexer::TokenType::Assignment) != type->opcondecls.end())
+        return Type::IsMoveAssignable(a);
+    return AggregateType::IsMoveAssignable(a);
 }

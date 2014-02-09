@@ -5,7 +5,7 @@
 
 namespace Wide {
     namespace Semantic {
-        class FunctionType : public Type {
+        class FunctionType : public PrimitiveType {
             Type* ReturnType;
             std::vector<Type*> Args;
         public:

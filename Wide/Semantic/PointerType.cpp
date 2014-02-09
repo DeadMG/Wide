@@ -42,7 +42,7 @@ ConcreteExpression PointerType::BuildDereference(ConcreteExpression val, Context
     return ConcreteExpression(c->GetLvalueType(pointee), val.BuildValue(c).Expr);
 }
 
-Codegen::Expression* PointerType::BuildInplaceConstruction(Codegen::Expression* mem, std::vector<ConcreteExpression> args, Context c) {
+/*Codegen::Expression* PointerType::BuildInplaceConstruction(Codegen::Expression* mem, std::vector<ConcreteExpression> args, Context c) {
     if (args.size() > 1)
         throw std::runtime_error("Attempted to construct a pointer from more than one argument.");
     if (args.size() == 0)
@@ -53,6 +53,17 @@ Codegen::Expression* PointerType::BuildInplaceConstruction(Codegen::Expression* 
     if (args[0].t->Decay() == c->GetNullType())
         return c->gen->CreateStore(mem, c->gen->CreateChainExpression(args[0].Expr, c->gen->CreateNull(GetLLVMType(*c))));
     throw std::runtime_error("Attempted to construct a pointer from something that was not a pointer of the same type or null.");
+}*/
+
+OverloadSet* PointerType::CreateConstructorOverloadSet(Analyzer& a) {
+    auto usual = PrimitiveType::CreateConstructorOverloadSet(a);
+    std::vector<Type*> types;
+    types.push_back(a.GetLvalueType(this));
+    types.push_back(a.GetNullType());
+    auto null = make_resolvable([this](std::vector<ConcreteExpression> args, Context c) {
+        return ConcreteExpression(args[0].t, c->gen->CreateStore(args[0].Expr, c->gen->CreateNull(GetLLVMType(*c))));
+    }, types, a);
+    return a.GetOverloadSet(usual, a.GetOverloadSet(null)); 
 }
 
 Codegen::Expression* PointerType::BuildBooleanConversion(ConcreteExpression obj, Context c) {

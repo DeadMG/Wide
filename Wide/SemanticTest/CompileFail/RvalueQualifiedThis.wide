@@ -1,10 +1,8 @@
-module RejectRvalueQualifiedThis {
-    type t2 {
-        operator()(t2->rvalue this) {
-        }
+type t2 {
+    operator()(t2->rvalue this) {
     }
-    Main() {
-        x := t2();
-        x();
-    }
+}
+Main() {
+    x := t2();
+    x();
 }

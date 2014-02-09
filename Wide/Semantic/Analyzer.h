@@ -63,6 +63,7 @@ namespace Wide {
         class UserDefinedType;
         class IntegralType;
         class PointerType;
+        struct OverloadResolvable;
         class FloatType;
         struct NullType;
         struct Result;
@@ -79,7 +80,7 @@ namespace Wide {
         };
         class Analyzer {
             Module* global;
-            std::unordered_map<std::unordered_set<Callable*>, OverloadSet*, SetTypeHasher> callable_overload_sets;
+            std::unordered_map<std::unordered_set<OverloadResolvable*>, OverloadSet*, SetTypeHasher> callable_overload_sets;
             std::unordered_map<std::string, ClangUtil::ClangTU> headers;
             std::unordered_map<clang::QualType, Type*, ClangUtil::ClangTypeHasher> ClangTypes;
             std::unordered_map<clang::DeclContext*, ClangNamespace*> ClangNamespaces;
@@ -98,6 +99,7 @@ namespace Wide {
             std::unordered_map<unsigned, std::unordered_map<bool, IntegralType*>> integers;
             std::unordered_map<Type*, PointerType*> Pointers;
             std::unordered_map<OverloadSet*, std::unordered_map<OverloadSet*, OverloadSet*>> CombinedOverloadSets;
+            std::unordered_map<const AST::Function*, OverloadResolvable*> FunctionCallables;
 
             const Options::Clang* clangopts;
 
@@ -133,7 +135,8 @@ namespace Wide {
             ConstructorType* GetConstructorType(Type* t);
             ClangTemplateClass* GetClangTemplateClass(ClangUtil::ClangTU& from, clang::ClassTemplateDecl*);
             OverloadSet* GetOverloadSet();
-            OverloadSet* GetOverloadSet(Callable* c);
+            OverloadSet* GetOverloadSet(std::unordered_set<OverloadResolvable*> c, Type* nonstatic = nullptr);
+            OverloadSet* GetOverloadSet(OverloadResolvable* c);
             OverloadSet* GetOverloadSet(const AST::FunctionOverloadSet* set, Type* nonstatic);
             OverloadSet* GetOverloadSet(OverloadSet*, OverloadSet*);
             OverloadSet* GetOverloadSet(std::unordered_set<clang::NamedDecl*> decls, ClangUtil::ClangTU* from, Type* context);
@@ -142,6 +145,7 @@ namespace Wide {
             PointerType* GetPointerType(Type* to);
             FloatType* GetFloatType(unsigned);
             Module* GetGlobalModule();
+            OverloadResolvable* GetCallableForFunction(const AST::Function* f, Type* context);
             
             ConcreteExpression AnalyzeExpression(Type* t, const AST::Expression* e, std::function<void(ConcreteExpression)>);
             Wide::Util::optional<ConcreteExpression> LookupIdentifier(Type* context, const AST::Identifier* ident);

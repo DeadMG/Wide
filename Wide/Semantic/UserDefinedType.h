@@ -1,6 +1,6 @@
 #pragma once
 
-#include <Wide/Semantic/Type.h>
+#include <Wide/Semantic/AggregateType.h>
 #include <unordered_map>
 #include <functional>
 #include <string>
@@ -22,56 +22,35 @@ namespace Wide {
         class Function;
         class OverloadSet;
         class Module;
-        class UserDefinedType : public Type {
-            std::size_t align;
-            std::size_t allocsize;
+        class UserDefinedType : public AggregateType {
             const AST::Type* type;
-            bool iscomplex;
-            struct member {
-                Type* t;
-                // ONLY LLVM Field index, NOT index into llvmtypes
-                unsigned num;
-                std::string name;
-                AST::Expression* InClassInitializer;
-            };
-
-            // Actually an ordered list of all members
-            std::vector<member> llvmtypes;
-            OverloadSet* destructor;
-            OverloadSet* constructor;
 
             // Actually a list of member variables
             std::unordered_map<std::string, unsigned> members;
-            std::function<llvm::Type*(llvm::Module*)> ty;
-            std::string llvmname;
             std::unordered_map<ClangUtil::ClangTU*, clang::QualType> clangtypes;
-            std::vector<std::function<llvm::Type*(llvm::Module*)>> types;
             Type* context;
-
-            unsigned AdjustFieldOffset(unsigned);
-            AST::Function* AddCopyConstructor(Analyzer& a);
-            AST::Function* AddMoveConstructor(Analyzer& a);
-            AST::Function* AddDefaultConstructor(Analyzer& a);
+            struct member {
+                std::string name;
+                Type* t;
+                unsigned num;
+            };
         public:
-            std::vector<member> GetMembers() { return llvmtypes; }
-            UserDefinedType(const AST::Type* t, Analyzer& a, Type* context);
-           
+            std::vector<member> GetMembers();
+            UserDefinedType(const AST::Type* t, Analyzer& a, Type* context);           
             Type* GetContext(Analyzer& a) override final { return context; }
-
-            bool HasMember(std::string name);
-
-            bool IsComplexType() override final;
-            std::function<llvm::Type*(llvm::Module*)> GetLLVMType(Analyzer& a) override final;
-
+            bool HasMember(std::string name);            
             clang::QualType GetClangType(ClangUtil::ClangTU& TU, Analyzer& a) override final;
-            Codegen::Expression* BuildInplaceConstruction(Codegen::Expression* mem, std::vector<ConcreteExpression> args, Context c) override final;
             Wide::Util::optional<ConcreteExpression> AccessMember(ConcreteExpression, std::string name, Context c) override final;
             ConcreteExpression BuildCall(ConcreteExpression val, std::vector<ConcreteExpression> args, Context c) override final;
-            std::size_t size(Analyzer& a) override final;
-            std::size_t alignment(Analyzer& a) override final;
-            bool IsCopyable(Analyzer& a) override final;
-            bool IsMovable(Analyzer& a) override final;
-            Type* GetConstantContext(Analyzer& a) override final;
+
+            OverloadSet* CreateConstructorOverloadSet(Wide::Semantic::Analyzer&) override final;
+            OverloadSet* CreateOperatorOverloadSet(Type* self, Lexer::TokenType member, Analyzer& a) override final;
+            OverloadSet* CreateDestructorOverloadSet(Analyzer& a) override final;
+
+            bool IsCopyConstructible(Analyzer& a) override final;
+            bool IsMoveConstructible(Analyzer& a) override final;
+            bool IsCopyAssignable(Analyzer& a) override final;
+            bool IsMoveAssignable(Analyzer& a) override final;
         };
     }
 }

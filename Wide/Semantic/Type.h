@@ -5,6 +5,7 @@
 #include <boost/variant.hpp>
 #include <vector>
 #include <stdexcept>
+#include <unordered_map>
 #include <functional>
 #include <string>
 #include <cassert>
@@ -94,7 +95,18 @@ namespace Wide {
         };
         
         struct Type  {
+            OverloadSet* ConstructorOverloadSet;
+            std::unordered_map<Type*, std::unordered_map<Lexer::TokenType, OverloadSet*>> OperatorOverloadSets;
+            OverloadSet* DestructorOverloadSet;
+            std::unordered_map<Type*, std::unordered_map<Type*, std::unordered_map<Lexer::TokenType, OverloadSet*>>> ADLResults;
+
+            virtual OverloadSet* CreateOperatorOverloadSet(Type* self, Lexer::TokenType what, Analyzer& a);
+            virtual OverloadSet* CreateConstructorOverloadSet(Analyzer& a) = 0;
+            virtual OverloadSet* CreateDestructorOverloadSet(Analyzer& a);
+            virtual OverloadSet* CreateADLOverloadSet(Lexer::TokenType name, Type* lhs, Type* rhs, Analyzer& a);
         public:
+            Type() : ConstructorOverloadSet(nullptr), DestructorOverloadSet(nullptr) {}
+
             virtual bool IsReference(Type* to) {
                 return false;
             }
@@ -113,8 +125,22 @@ namespace Wide {
                 throw std::runtime_error("This type has no LLVM counterpart.");
             }
 
-            virtual bool IsMovable(Analyzer& a) { return !IsComplexType(); }
-            virtual bool IsCopyable(Analyzer& a) { return !IsComplexType(); }
+            OverloadSet* GetConstructorOverloadSet(Analyzer& a) {
+                if (!ConstructorOverloadSet)
+                    ConstructorOverloadSet = CreateConstructorOverloadSet(a);
+                return ConstructorOverloadSet;
+            }
+            OverloadSet* GetDestructorOverloadSet(Analyzer& a) {
+                if (!DestructorOverloadSet)
+                    DestructorOverloadSet = CreateDestructorOverloadSet(a);
+                return DestructorOverloadSet;
+            }
+
+            virtual bool IsMoveConstructible(Analyzer& a);
+            virtual bool IsCopyConstructible(Analyzer& a);
+
+            virtual bool IsMoveAssignable(Analyzer& a);
+            virtual bool IsCopyAssignable(Analyzer& a);
 
             virtual std::size_t size(Analyzer& a) { throw std::runtime_error("Attempted to size a type that does not have a run-time size."); }
             virtual std::size_t alignment(Analyzer& a) { throw std::runtime_error("Attempted to align a type that does not have a run-time alignment."); }
@@ -140,11 +166,11 @@ namespace Wide {
                 throw std::runtime_error("This type does not have any static members.");
             }
             virtual Wide::Util::optional<ConcreteExpression> AccessMember(ConcreteExpression, std::string name, Context c);
-            virtual OverloadSet* AccessMember(ConcreteExpression e, Lexer::TokenType type, Context c);
+            OverloadSet* AccessMember(Type* t, Lexer::TokenType type, Analyzer& a);
             
-            virtual OverloadSet* AccessStaticMember(Lexer::TokenType type, Context c) {
+            /*virtual OverloadSet* AccessStaticMember(Lexer::TokenType type, Context c) {
                 throw std::runtime_error("This type does not have any static members.");
-            }
+            }*/
             virtual ConcreteExpression BuildCall(ConcreteExpression val, std::vector<ConcreteExpression> args, std::vector<ConcreteExpression> destructors, Context c) {
                 for(auto x : destructors)
                     c(x);
@@ -185,79 +211,52 @@ namespace Wide {
             virtual ConcreteExpression BuildBinaryExpression(ConcreteExpression lhs, ConcreteExpression rhs, Lexer::TokenType type, Context c);
             virtual ConcreteExpression BuildBinaryExpression(ConcreteExpression lhs, ConcreteExpression rhs, std::vector<ConcreteExpression> destructors, Lexer::TokenType type, Context c);
             
-            virtual OverloadSet* PerformADL(Lexer::TokenType what, Type* lhs, Type* rhs, Context c);
+            virtual OverloadSet* PerformADL(Lexer::TokenType what, Type* lhs, Type* rhs, Analyzer& a);
 
             virtual bool IsA(Type* other, Analyzer& a);
             virtual Type* GetConstantContext(Analyzer& a) {
                 return nullptr;
             }
-                                                
+                                
             virtual ~Type() {}
         };
-        struct Callable : public virtual Type {
-            virtual std::vector<Type*> GetArgumentTypes(Analyzer& a) = 0;
-            virtual bool AddThis() { return false; }
-        };
-        class MetaType : public virtual Type {
+
+        struct Callable {
+            virtual ~Callable() {}
         public:
+            ConcreteExpression Call(Context c);
+            ConcreteExpression Call(ConcreteExpression arg, Context c);
+            ConcreteExpression Call(ConcreteExpression arg1, ConcreteExpression arg2, Context c);
+            ConcreteExpression Call(std::vector<ConcreteExpression> args, Context c);
+        private:
+            virtual ConcreteExpression CallFunction(std::vector<ConcreteExpression> args, Context c) = 0;
+            virtual std::vector<ConcreteExpression> AdjustArguments(std::vector<ConcreteExpression> args, Context c) = 0;
+        };
+        struct OverloadResolvable {
+            virtual unsigned GetArgumentCount() = 0;
+            virtual Type* MatchParameter(Type*, unsigned, Analyzer& a) = 0;
+            virtual Callable* GetCallableForResolution(std::vector<Type*>, Analyzer& a) = 0;
+        };
+
+        class PrimitiveType : public Type {
+        protected:
+            PrimitiveType() {}
+        public:
+            OverloadSet* CreateConstructorOverloadSet(Analyzer& a) override;
+            OverloadSet* CreateOperatorOverloadSet(Type* t, Lexer::TokenType what, Analyzer& a) override;
+            OverloadSet* PerformADL(Lexer::TokenType what, Type* lhs, Type* rhs, Analyzer& a) override final;
+        };
+        class MetaType : public PrimitiveType {
+        public:
+            MetaType() {}
             using Type::BuildValueConstruction;
             std::function<llvm::Type*(llvm::Module*)> GetLLVMType(Analyzer& a) override;            
-            Codegen::Expression* BuildInplaceConstruction(Codegen::Expression* mem, std::vector<ConcreteExpression> args, Context c) override;
             std::size_t size(Analyzer& a) override;
             std::size_t alignment(Analyzer& a) override;
-            ConcreteExpression BuildValueConstruction(std::vector<ConcreteExpression> args, Context c) override;
-            Type* GetConstantContext(Analyzer& a) override {
-                return this;
-            }
+            Type* GetConstantContext(Analyzer& a) override;
+            OverloadSet* CreateConstructorOverloadSet(Analyzer& a) override final;
         };
-        template<typename F, typename T> Callable* make_assignment_callable(F f, T* self,  Context c) {            
-            struct assign : public Callable, public MetaType {
-                T* self;
-                F action;
-                assign(T* obj, F func)
-                    : self(obj), action(std::move(func)) {}
-
-                ConcreteExpression BuildCall(ConcreteExpression lhs, std::vector<ConcreteExpression> args, Context c) override {
-                    // Overload resolution should not pick us unless the args are a fit. Assert if we are picked and it's not correct.
-                    assert(args.size() == 2);
-                    assert(args[0].t = c->GetLvalueType(self));
-                    assert(args[1].t->Decay() == self);
-                    return action(args[0], args[1].BuildValue(c), c, self);
-                }
-                std::vector<Type*> GetArgumentTypes(Analyzer& a) override {
-                    std::vector<Type*> out;
-                    out.push_back(a.GetLvalueType(self));
-                    out.push_back(self);
-                    return out;
-                }
-            };
-            return c->arena.Allocate<assign>(self, std::move(f));
-        }
-        template<typename F, typename T> Callable* make_value_callable(F f, T* self, Context c) {            
-            struct assign : public Callable, public MetaType {
-                T* self;
-                F action;
-                assign(T* obj, F func)
-                    : self(obj), action(std::move(func)) {}
-                ConcreteExpression BuildCall(ConcreteExpression lhs, std::vector<ConcreteExpression> args, Context c) override {
-                    // Overload resolution should not pick us unless the args are a fit. Assert if we are picked and it's not correct.
-                    assert(args.size() == 2);
-                    // It's now possible for us to have U instead of T. If the type is not T, build one from the argument.
-                    if (args[0].t->Decay() != self)
-                        args[0] = self->BuildValueConstruction(args[0], c);
-                    if (args[1].t->Decay() != self)
-                        args[1] = self->BuildValueConstruction(args[1], c);
-                    return action(args[0].BuildValue(c), args[1].BuildValue(c), c, self);
-                }
-                std::vector<Type*> GetArgumentTypes(Analyzer& a) override {
-                    std::vector<Type*> out;
-                    out.push_back(self);
-                    out.push_back(self);
-                    return out;
-                }
-            };
-            return c->arena.Allocate<assign>(self, std::move(f));
-        }
-
+        std::vector<ConcreteExpression> AdjustArgumentsForTypes(std::vector<ConcreteExpression>, std::vector<Type*>, Context c);
+        OverloadResolvable* make_resolvable(std::function<ConcreteExpression(std::vector<ConcreteExpression>, Context)> f, std::vector<Type*> types, Analyzer& a);
     }
 }

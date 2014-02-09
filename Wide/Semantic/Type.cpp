@@ -8,6 +8,7 @@
 #include <Wide/Lexer/Token.h>
 #include <Wide/Semantic/UserDefinedType.h>
 #include <Wide/Semantic/OverloadSet.h>
+#include <Wide/Util/DebugUtilities.h>
 #include <sstream>
 
 using namespace Wide;
@@ -133,8 +134,6 @@ Codegen::Expression* Type::BuildInplaceConstruction(Codegen::Expression* mem, Co
 Wide::Util::optional<ConcreteExpression> Type::AccessMember(ConcreteExpression e, std::string name, Context c) {
     if (IsReference())
         return Decay()->AccessMember(e, std::move(name), c);
-    if (name == "~type")
-        return c->GetNothingFunctorType()->BuildValueConstruction(c);
     return Wide::Util::none;
 }
 ConcreteExpression Type::BuildValue(ConcreteExpression lhs, Context c) {
@@ -166,7 +165,7 @@ static const std::unordered_map<Lexer::TokenType, Lexer::TokenType> Assign = [](
 }();
 
 OverloadSet* ConcreteExpression::AccessMember(Lexer::TokenType name, Context c) {
-    return t->Decay()->AccessMember(*this, name, c);
+    return t->Decay()->AccessMember(t, name, *c);
 }
 
 ConcreteExpression Type::BuildBinaryExpression(ConcreteExpression lhs, ConcreteExpression rhs, std::vector<ConcreteExpression> destructors, Lexer::TokenType type, Context c) {
@@ -181,12 +180,12 @@ ConcreteExpression Type::BuildBinaryExpression(ConcreteExpression lhs, ConcreteE
 
     // If this function is entered, it's because the type-specific logic could not resolve the operator.
     // So let us attempt ADL.
-    auto adlset = c->GetOverloadSet(lhs.AccessMember(type, c), c->GetOverloadSet(lhs.t->PerformADL(type, lhs.t, rhs.t, c), rhs.t->PerformADL(type, lhs.t, rhs.t, c)));
+    auto adlset = c->GetOverloadSet(lhs.AccessMember(type, c), c->GetOverloadSet(lhs.t->PerformADL(type, lhs.t, rhs.t, *c), rhs.t->PerformADL(type, lhs.t, rhs.t, *c)));
     std::vector<Type*> arguments;
     arguments.push_back(lhs.t);
     arguments.push_back(rhs.t);
     if (auto call = adlset->Resolve(arguments, *c)) {
-        return call->BuildValueConstruction(c).BuildCall(lhs, rhs, c);
+        return call->Call(lhs, rhs, c);
     }
     
     // ADL has failed to find us a suitable operator, so fall back to defaults.
@@ -210,10 +209,10 @@ ConcreteExpression Type::BuildBinaryExpression(ConcreteExpression lhs, ConcreteE
         return rhs.BuildBinaryExpression(lhs, Lexer::TokenType::LT, c);
     case Lexer::TokenType::GTE:
         return lhs.BuildBinaryExpression(rhs, Lexer::TokenType::LT, c).BuildNegate(c);
-    case Lexer::TokenType::Assignment:
-        if (!IsComplexType() && lhs.t->Decay() == rhs.t->Decay() && IsLvalueType(lhs.t))
-            return ConcreteExpression(lhs.t, c->gen->CreateStore(lhs.Expr, rhs.BuildValue(c).Expr));
-        break;
+    //case Lexer::TokenType::Assignment:
+    //    if (!IsComplexType() && lhs.t->Decay() == rhs.t->Decay() && IsLvalueType(lhs.t))
+    //        return ConcreteExpression(lhs.t, c->gen->CreateStore(lhs.Expr, rhs.BuildValue(c).Expr));
+    //    break;
     case Lexer::TokenType::Or:
         return ConcreteExpression(c->GetBooleanType(), lhs.BuildBooleanConversion(c)).BuildBinaryExpression(ConcreteExpression(c->GetBooleanType(), rhs.BuildBooleanConversion(c)), Wide::Lexer::TokenType::Or, c);
     case Lexer::TokenType::And:
@@ -224,11 +223,7 @@ ConcreteExpression Type::BuildBinaryExpression(ConcreteExpression lhs, ConcreteE
 
 ConcreteExpression Type::BuildRvalueConstruction(std::vector<ConcreteExpression> args, Context c) {
     Codegen::Expression* mem = c->gen->CreateVariable(GetLLVMType(*c), alignment(*c));
-    if (!IsComplexType() && args.size() == 1 && args[0].t->Decay() == this) {
-        args[0] = args[0].t->BuildValue(args[0], c);
-        mem = c->gen->CreateChainExpression(c->gen->CreateStore(mem, args[0].Expr), mem);
-    } else
-        mem = c->gen->CreateChainExpression(BuildInplaceConstruction(mem, args, c), mem);
+    mem = c->gen->CreateChainExpression(BuildInplaceConstruction(mem, args, c), mem);
     ConcreteExpression out(c->GetRvalueType(this), mem);
     c(out);
     out.steal = true;
@@ -242,21 +237,22 @@ void Context::operator()(ConcreteExpression e) {
 
 ConcreteExpression Type::BuildLvalueConstruction(std::vector<ConcreteExpression> args, Context c) {
     Codegen::Expression* mem = c->gen->CreateVariable(GetLLVMType(*c), alignment(*c));
-    if (!IsComplexType() && args.size() == 1 && args[0].t->Decay() == this) {
-        args[0] = args[0].BuildValue(c);
-        mem = c->gen->CreateChainExpression(c->gen->CreateStore(mem, args[0].Expr), mem);
-    } else
-        mem = c->gen->CreateChainExpression(BuildInplaceConstruction(mem, args, c), mem);
-
+    mem = c->gen->CreateChainExpression(BuildInplaceConstruction(mem, args, c), mem);
     ConcreteExpression out(c->GetLvalueType(this), mem);
     c(out);
     out.steal = true;
     return out;
 }            
 Codegen::Expression* Type::BuildInplaceConstruction(Codegen::Expression* mem, std::vector<ConcreteExpression> args, Context c) {
-    if (!IsReference() && !IsComplexType() && args.size() == 1 && args[0].t->Decay() == this)
-        return c->gen->CreateStore(mem, args[0].BuildValue(c).Expr);
-    throw std::runtime_error("Could not inplace construct this type.");
+    std::vector<Type*> types;
+    args.insert(args.begin(), ConcreteExpression(c->GetLvalueType(this), mem));
+    for (auto arg : args)
+        types.push_back(arg.t);
+    auto set = GetConstructorOverloadSet(*c);
+    auto call = set->Resolve(types, *c);
+    if (!call)
+        throw std::runtime_error("Attempted to construct a type, but no constructor could be called.");
+    return c->gen->CreateChainExpression(call->Call(std::move(args), c).Expr, mem);
 }
 
 ConcreteExpression Type::BuildValueConstruction(std::vector<ConcreteExpression> args, Context c) {
@@ -274,19 +270,37 @@ ConcreteExpression Type::AddressOf(ConcreteExpression obj, Context c) {
     return ConcreteExpression(c->GetPointerType(obj.t->Decay()), obj.Expr);
 }
 
-OverloadSet* Type::PerformADL(Lexer::TokenType what, Type* lhs, Type* rhs, Context c) {
+OverloadSet* Type::CreateADLOverloadSet(Lexer::TokenType what, Type* lhs, Type* rhs, Analyzer& a) {
     if (IsReference())
-        return Decay()->PerformADL(what, lhs, rhs, c);
-    auto context = GetContext(*c);
+        return Decay()->CreateADLOverloadSet(what, lhs, rhs, a);
+    auto context = GetContext(a);
     if (!context)
-        return c->GetOverloadSet();
-    return GetContext(*c)->AccessMember(GetContext(*c)->BuildValueConstruction(c), what, c);
+        return a.GetOverloadSet();
+    return GetContext(a)->AccessMember(GetContext(a), what, a);
 }
 
-OverloadSet* Type::AccessMember(ConcreteExpression e, Lexer::TokenType type, Context c) {
+OverloadSet* Type::PerformADL(Lexer::TokenType what, Type* lhs, Type* rhs, Analyzer& a) {
     if (IsReference())
-        return Decay()->AccessMember(e, type, c);
-    return c->GetOverloadSet();
+        return Decay()->PerformADL(what, lhs, rhs, a);
+    if (ADLResults.find(lhs) != ADLResults.end()) {
+        if (ADLResults[lhs].find(rhs) != ADLResults[lhs].end())
+            if (ADLResults[lhs][rhs].find(what) != ADLResults[lhs][rhs].end())
+                return ADLResults[lhs][rhs][what];
+    }
+    return ADLResults[lhs][rhs][what] = CreateADLOverloadSet(what, lhs, rhs, a);
+}
+
+OverloadSet* Type::CreateOperatorOverloadSet(Type* t, Lexer::TokenType type, Analyzer& a) {
+    if (IsReference())
+        return Decay()->AccessMember(t, type, a);
+    return a.GetOverloadSet();
+}
+
+OverloadSet* Type::AccessMember(Type* t, Lexer::TokenType type, Analyzer& a) {
+    if (this->OperatorOverloadSets.find(t) != OperatorOverloadSets.end())
+        if (OperatorOverloadSets[t].find(type) != OperatorOverloadSets[t].end())
+            return OperatorOverloadSets[t][type];
+    return OperatorOverloadSets[t][type] = CreateOperatorOverloadSet(t, type, a);
 }
 
 std::size_t MetaType::size(Analyzer& a) { return a.gen->GetInt8AllocSize(); }
@@ -302,23 +316,156 @@ std::function<llvm::Type*(llvm::Module*)> MetaType::GetLLVMType(Analyzer& a) {
         return llvm::StructType::create(nam, llvm::IntegerType::getInt8Ty(mod->getContext()), nullptr);
     };
 }
-
-Codegen::Expression* MetaType::BuildInplaceConstruction(Codegen::Expression* mem, std::vector<ConcreteExpression> args, Context c) {
-    if (args.size() > 1)
-        throw std::runtime_error("Attempt to construct a type object with too many arguments.");
-    if (args.size() == 1 && args[0].t->Decay() != this)
-        throw std::runtime_error("Attempt to construct a type object with something other than another instance of that type.");
-    return args.size() == 0 ? mem : c->gen->CreateChainExpression(args[0].Expr, mem);
-}
-
-ConcreteExpression MetaType::BuildValueConstruction(std::vector<ConcreteExpression> args, Context c) {
-    if (args.size() > 1)
-        throw std::runtime_error("Attempt to construct a type object with too many arguments.");
-    if (args.size() == 1 && args[0].t->Decay() != this)
-        throw std::runtime_error("Attempt to construct a type object with something other than another instance of that type.");
-    return ConcreteExpression(this, args.size() == 0 ? (Codegen::Expression*)c->gen->CreateNull(GetLLVMType(*c)) : c->gen->CreateChainExpression(args[0].Expr, c->gen->CreateNull(GetLLVMType(*c))));
-}
-
 bool Type::IsA(Type* other, Analyzer& a) {
-    return other == this;
+    return other == this || other == a.GetRvalueType(this);
+}
+
+#pragma warning(disable : 4800)
+
+bool Type::IsMoveConstructible(Analyzer& a) {
+    auto set = GetConstructorOverloadSet(a);
+    std::vector<Type*> arguments;
+    arguments.push_back(a.GetLvalueType(this));
+    arguments.push_back(a.GetRvalueType(this));
+    return set->Resolve(std::move(arguments), a);
+}
+
+bool Type::IsCopyConstructible(Analyzer& a) {
+    // A Clang struct with a deleted copy constructor can be both noncomplex and non-copyable at the same time.
+    auto set = GetConstructorOverloadSet(a);
+    std::vector<Type*> arguments;
+    arguments.push_back(a.GetLvalueType(this));
+    arguments.push_back(a.GetLvalueType(this));
+    return set->Resolve(std::move(arguments), a);
+}
+
+bool Type::IsCopyAssignable(Analyzer& a) {
+    auto set = AccessMember(a.GetLvalueType(this), Lexer::TokenType::Assignment, a);
+    std::vector<Type*> arguments;
+    arguments.push_back(a.GetLvalueType(this));
+    arguments.push_back(a.GetLvalueType(this));
+    return set->Resolve(std::move(arguments), a);
+}
+
+bool Type::IsMoveAssignable(Analyzer& a) {
+    auto set = AccessMember(a.GetLvalueType(this), Lexer::TokenType::Assignment, a);
+    std::vector<Type*> arguments;
+    arguments.push_back(a.GetLvalueType(this));
+    arguments.push_back(a.GetRvalueType(this));
+    return set->Resolve(std::move(arguments), a);
+}
+
+Type* MetaType::GetConstantContext(Wide::Semantic::Analyzer& a) {
+    return this;
+}
+
+OverloadSet* PrimitiveType::CreateOperatorOverloadSet(Type* t, Lexer::TokenType what, Analyzer& a) {
+    if (what != Lexer::TokenType::Assignment)
+        return Type::CreateOperatorOverloadSet(t, what, a);
+
+    if (t != a.GetLvalueType(this))
+        return a.GetOverloadSet();
+        
+    std::vector<Type*> types;
+    types.push_back(a.GetLvalueType(this));
+    types.push_back(this);
+    return a.GetOverloadSet(make_resolvable([](std::vector<ConcreteExpression> args, Context c) {
+        return ConcreteExpression(args[0].t, c->gen->CreateStore(args[0].Expr, args[1].Expr));
+    }, types, a));
+}
+
+OverloadSet* PrimitiveType::CreateConstructorOverloadSet(Analyzer& a) {
+    std::unordered_set<OverloadResolvable*> callables;
+    auto construct_from_ref = [](std::vector<ConcreteExpression> args, Context c) {
+        return ConcreteExpression(args[0].t, c->gen->CreateStore(args[0].Expr, c->gen->CreateLoad(args[1].Expr)));
+    };
+    std::vector<Type*> types;
+    types.push_back(a.GetLvalueType(this));
+    types.push_back(a.GetLvalueType(this));
+    callables.insert(make_resolvable(construct_from_ref, types, a));
+    types[1] = a.GetRvalueType(this);
+    callables.insert(make_resolvable(construct_from_ref, types, a));
+    return a.GetOverloadSet(callables);
+}
+
+OverloadSet* MetaType::CreateConstructorOverloadSet(Analyzer& a) {
+    std::vector<Type*> types;
+    types.push_back(a.GetLvalueType(this));
+    auto default_constructor = make_resolvable([](std::vector<ConcreteExpression> args, Context){ return args[0]; }, types, a);
+    return a.GetOverloadSet(PrimitiveType::CreateConstructorOverloadSet(a), a.GetOverloadSet(default_constructor));
+}
+
+ConcreteExpression Callable::Call(Context c) {
+    return Call(std::vector<ConcreteExpression>(), c);
+}
+ConcreteExpression Callable::Call(ConcreteExpression arg, Context c) {
+    std::vector<ConcreteExpression> e;
+    e.push_back(arg);
+    return Call(e, c);
+}
+ConcreteExpression Callable::Call(ConcreteExpression arg1, ConcreteExpression arg2, Context c) {
+    std::vector<ConcreteExpression> e;
+    e.push_back(arg1);
+    e.push_back(arg2);
+    return Call(e, c);
+}
+
+ConcreteExpression Callable::Call(std::vector<ConcreteExpression> args, Context c) {
+    return CallFunction(AdjustArguments(std::move(args), c), c);
+}
+
+std::vector<ConcreteExpression> Semantic::AdjustArgumentsForTypes(std::vector<ConcreteExpression> args, std::vector<Type*> types, Context c) {
+    if (args.size() != types.size())
+        Wide::Util::DebugBreak();
+    std::vector<ConcreteExpression> out;
+    for (std::size_t i = 0; i < types.size(); ++i) {
+        if (!args[i].t->IsA(types[i], *c))
+            Wide::Util::DebugBreak();
+        out.push_back(types[i]->BuildValueConstruction(args[i], c));
+    }
+    return out;
+}
+
+OverloadSet* Type::CreateDestructorOverloadSet(Analyzer& a) {
+    struct DestructNothing : OverloadResolvable, Callable {
+        unsigned GetArgumentCount() override final { return 1; }
+        Type* MatchParameter(Type* t, unsigned num, Analyzer& a) override final { if (num == 0) return t; assert(false); }
+        Callable* GetCallableForResolution(std::vector<Type*> tys, Analyzer& a) override final { return this; }
+        std::vector<ConcreteExpression> AdjustArguments(std::vector<ConcreteExpression> args, Context c) override final { return args; }
+        ConcreteExpression CallFunction(std::vector<ConcreteExpression> args, Context c) override final { return args[0]; }
+    };
+    return a.GetOverloadSet(a.arena.Allocate<DestructNothing>());
+}
+struct assign : OverloadResolvable, Callable {
+    std::vector<Type*> types;
+    std::function<ConcreteExpression(std::vector<ConcreteExpression>, Context)> action;
+
+    assign(std::vector<Type*> tys, std::function<ConcreteExpression(std::vector<ConcreteExpression>, Context)> func)
+        : types(tys), action(std::move(func)) {}
+
+    unsigned GetArgumentCount() override final { return types.size(); }
+    Type* MatchParameter(Type* t, unsigned num, Analyzer& a) override final {
+        if (t->IsA(types[num], a))
+            return types[num];
+        return nullptr;
+    }
+    Callable* GetCallableForResolution(std::vector<Type*> tys, Analyzer& a) override final {
+        assert(types == tys);
+        return this;
+    }
+    ConcreteExpression CallFunction(std::vector<ConcreteExpression> args, Context c) override final {
+        assert(types.size() == args.size());
+        for (std::size_t num = 0; num < types.size(); ++num)
+            assert(types[num] == args[num].t);
+        return action(args, c);
+    }
+    std::vector<ConcreteExpression> AdjustArguments(std::vector<ConcreteExpression> args, Context c) override final {
+        return AdjustArgumentsForTypes(args, types, c);
+    }
+};
+OverloadResolvable* Semantic::make_resolvable(std::function<ConcreteExpression(std::vector<ConcreteExpression>, Context)> f, std::vector<Type*> types, Analyzer& a) {
+    return a.arena.Allocate<assign>(types, std::move(f));
+}
+OverloadSet* PrimitiveType::PerformADL(Lexer::TokenType what, Type* lhs, Type* rhs, Analyzer& a) {
+    return Type::PerformADL(what, lhs->Decay(), rhs->Decay(), a);
 }

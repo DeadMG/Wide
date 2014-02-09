@@ -32,6 +32,7 @@ namespace Wide {
                 std::function<void(Lexer::Range, OutliningType)>
             );
 
+            Tuple* CreateTuple(std::vector<Expression*> expressions, Lexer::Range r);
             Identifier* CreateIdentifier(std::string name, Lexer::Range r);
             String* CreateString(std::string val, Lexer::Range r);
             MemberAccess* CreateMemberAccess(std::string mem, Expression* e, Lexer::Range r);
@@ -39,6 +40,7 @@ namespace Wide {
             FunctionCall* CreateFunctionCall(Expression* e, std::vector<Expression*> args, Lexer::Range r);
             Return* CreateReturn(Expression* expr, Lexer::Range r);
             Return* CreateReturn(Lexer::Range r);
+            Variable* CreateVariable(std::vector<std::string> name, Expression* value, Lexer::Range r);
             Variable* CreateVariable(std::string name, Expression* value, Lexer::Range r);
             Variable* CreateVariable(std::string name, Lexer::Range r);
             BinaryExpression* CreateAssignment(Expression* lhs, Expression* rhs, Lexer::TokenType type);
@@ -104,6 +106,8 @@ namespace Wide {
             void AddExpressionToGroup(std::vector<Expression*>& grp, Expression* expr);
             Lexer::Range GetLocation(Statement* s);
             void OutlineFunction(Lexer::Range r);
+            std::vector<std::string> CreateVariableNameGroup();
+            void AddNameToGroup(std::vector<std::string>&, std::string);
 
             void Error(std::vector<Wide::Lexer::Range>, Parser::Error);
             void Error(Wide::Lexer::Range, Parser::Error);

@@ -3,6 +3,7 @@
 #include <Wide/Semantic/Analyzer.h>
 #include <Wide/Codegen/Generator.h>
 #include <Wide/Semantic/Reference.h>
+#include <Wide/Semantic/OverloadSet.h>
 #include <Wide/Lexer/Token.h>
 
 #pragma warning(push, 0)
@@ -35,36 +36,46 @@ Codegen::Expression* Bool::BuildBooleanConversion(ConcreteExpression e, Context 
     return e.BuildValue(c).Expr;
 }
 
-OverloadSet* Bool::AccessMember(ConcreteExpression expr, Lexer::TokenType name, Context c) {
-    if (callables.find(name) != callables.end())
-        return callables[name];
-    switch(name) {       
-    case Lexer::TokenType::OrAssign:
-        return callables[name] = c->GetOverloadSet(make_assignment_callable([](ConcreteExpression lhs, ConcreteExpression rhs, Context c, Bool* self) {
-            auto stmt = c->gen->CreateIfStatement(lhs.BuildValue(c).BuildNegate(c).Expr, c->gen->CreateStore(lhs.Expr, rhs.Expr), nullptr);
-            return ConcreteExpression(lhs.t, c->gen->CreateChainExpression(stmt, lhs.Expr));
-        }, this, c));
-    case Lexer::TokenType::AndAssign:
-        return callables[name] = c->GetOverloadSet(make_assignment_callable([](ConcreteExpression lhs, ConcreteExpression rhs, Context c, Bool* self) {
-            auto stmt = c->gen->CreateIfStatement(lhs.BuildValue(c).Expr, c->gen->CreateStore(lhs.Expr, rhs.Expr), nullptr);
-            return ConcreteExpression(lhs.t, c->gen->CreateChainExpression(stmt, lhs.Expr));
-        }, this, c));
-
-    case Lexer::TokenType::XorAssign:
-        return callables[name] = c->GetOverloadSet(make_assignment_callable([](ConcreteExpression lhs, ConcreteExpression rhs, Context c, Bool* self) {
-            return ConcreteExpression(lhs.t, c->gen->CreateStore(lhs.Expr, c->gen->CreateXorExpression(c->gen->CreateLoad(lhs.Expr), rhs.Expr)));
-        }, this, c));
-    case Lexer::TokenType::LT:
-        return callables[name] = c->GetOverloadSet(make_value_callable([](ConcreteExpression lhs, ConcreteExpression rhs, Context c, Bool* self) {
-            return ConcreteExpression(c->GetBooleanType(), c->gen->CreateLT(lhs.Expr, rhs.Expr, false));
-        }, this, c));
-    case Lexer::TokenType::EqCmp:
-        return callables[name] = c->GetOverloadSet(make_value_callable([](ConcreteExpression lhs, ConcreteExpression rhs, Context c, Bool* self) {
-            return ConcreteExpression(c->GetBooleanType(), c->gen->CreateEqualityExpression(lhs.Expr, rhs.Expr));
-        }, this, c));
+OverloadSet* Bool::CreateOperatorOverloadSet(Type* t, Lexer::TokenType name, Analyzer& a) {
+    if (t == a.GetLvalueType(this)) {
+        std::vector<Type*> types;
+        types.push_back(a.GetLvalueType(this));
+        types.push_back(this);
+        switch (name) {
+        case Lexer::TokenType::OrAssign:
+            return a.GetOverloadSet(make_resolvable([](std::vector<ConcreteExpression> args, Context c) {
+                auto stmt = c->gen->CreateStore(args[0].Expr, c->gen->CreateOrExpression(args[0].BuildValue(c).Expr, args[1].BuildValue(c).Expr));                
+                return ConcreteExpression(args[0].t, c->gen->CreateChainExpression(stmt, args[0].Expr));
+            }, types, a));
+        case Lexer::TokenType::AndAssign:
+            return a.GetOverloadSet(make_resolvable([](std::vector<ConcreteExpression> args, Context c) {
+                auto stmt = c->gen->CreateStore(args[0].Expr, c->gen->CreateAndExpression(args[0].BuildValue(c).Expr, args[1].BuildValue(c).Expr));
+                return ConcreteExpression(args[0].t, c->gen->CreateChainExpression(stmt, args[0].Expr));
+            }, types, a));
+        case Lexer::TokenType::XorAssign:
+            return a.GetOverloadSet(make_resolvable([](std::vector<ConcreteExpression> args, Context c) {
+                return ConcreteExpression(args[0].t, c->gen->CreateStore(args[0].Expr, c->gen->CreateXorExpression(c->gen->CreateLoad(args[0].Expr), args[1].Expr)));
+            }, types, a));
+        }
+        return PrimitiveType::CreateOperatorOverloadSet(t, name, a);
     }
-    return c->GetOverloadSet();
+    std::vector<Type*> types;
+    types.push_back(this);
+    types.push_back(this);
+    switch(name) {
+    case Lexer::TokenType::LT:
+        return a.GetOverloadSet(make_resolvable([](std::vector<ConcreteExpression> args, Context c) {
+            return ConcreteExpression(c->GetBooleanType(), c->gen->CreateLT(args[0].Expr, args[1].Expr, false));
+        }, types, a));
+    case Lexer::TokenType::EqCmp:
+        return a.GetOverloadSet(make_resolvable([](std::vector<ConcreteExpression> args, Context c) {
+            return ConcreteExpression(c->GetBooleanType(), c->gen->CreateEqualityExpression(args[0].Expr, args[1].Expr));
+        }, types, a));
+    }
+    return a.GetOverloadSet();
 }
+
+/*#pragma warning(disable : 4715)
 ConcreteExpression Bool::BuildBinaryExpression(ConcreteExpression lhs, ConcreteExpression rhs, std::vector<ConcreteExpression> destructors, Lexer::TokenType type, Context c) {
     // Special-case this short-circuit.
     // Left-hand-side's destructors already been registered.
@@ -95,12 +106,14 @@ ConcreteExpression Bool::BuildBinaryExpression(ConcreteExpression lhs, ConcreteE
         for (auto it = destructors.rbegin(); it != destructors.rend(); ++it) {
             if (dynamic_cast<MetaType*>(it->t))
                 continue;
-            des = c->gen->CreateChainStatement(des, it->AccessMember("~type", c)->BuildCall(c).Expr);
+            std::vector<Type*> types;
+            types.push_back(it->t);
+            des = c->gen->CreateChainStatement(des, it->t->GetDestructorOverloadSet(*c)->Resolve(types, *c)->Call(*it, c).Expr);
             des = c->gen->CreateChainStatement(des, c->gen->CreateLifetimeEnd(it->Expr));
         }
         if (dynamic_cast<Codegen::Nop*>(des))
             return;
-        c(ConcreteExpression(shortcircuit_destructor_type, c->gen->CreateChainExpression(c->gen->CreateIfStatement(destruct_rhs, des, nullptr), c->gen->CreateNop())));
+        c(ConcreteExpression(shortcircuit_destructor_type, c->gen->CreateChainExpression(c->gen->CreateIfStatement(destruct_rhs, des, nullptr), var)));
     };
 
     switch(type) {
@@ -112,7 +125,6 @@ ConcreteExpression Bool::BuildBinaryExpression(ConcreteExpression lhs, ConcreteE
         ~a();
         if (~var)
             ~b();
-        */
         case Lexer::TokenType::Or: {
             auto result = c->gen->CreateChainExpression(c->gen->CreateIfStatement(c->gen->CreateNegateExpression(destruct_rhs), c->gen->CreateStore(var, rhs.BuildBooleanConversion(c)), nullptr), c->gen->CreateLoad(var));
             register_destructor_expression();
@@ -124,4 +136,4 @@ ConcreteExpression Bool::BuildBinaryExpression(ConcreteExpression lhs, ConcreteE
             return ConcreteExpression(this, result);
         }
     }
-}
+}*/

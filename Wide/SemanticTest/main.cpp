@@ -7,6 +7,7 @@
 #include <Wide/Codegen/LLVMGenerator.h>
 #include <Wide/Util/DebugUtilities.h>
 #include <boost/program_options.hpp>
+#include <signal.h>
 
 #pragma warning(push, 0)
 #include <llvm/ExecutionEngine/GenericValue.h>
@@ -219,7 +220,7 @@ int main(int argc, char** argv) {
     unsigned total_succeeded = 0;
 
     // Run with Image File Options attaching a debugger to debug a test.
-    // Run without to see test results.
+    //// Run without to see test results.
     for (auto mode : modes) {
         auto result = TestDirectory(mode.first, mode.first, argv[0], input.count("break"));
         total_succeeded += result.passes;
@@ -228,7 +229,8 @@ int main(int argc, char** argv) {
     std::cout << "Total succeeded: " << total_succeeded << " failed: " << total_failed;
     //atexit([] { __debugbreak(); });
     //std::set_terminate([] { __debugbreak(); });
-    //Jit(clangopts, "JITSuccess/While/VariableCondition.wide");
+    //signal(SIGABRT, [](int i) { __debugbreak();  });
+    //Jit(clangopts, "JITSuccess/While/ConditionRepeatDestruction.wide");
     if (input.count("break"))
         Wide::Util::DebugBreak();
     return total_failed != 0;

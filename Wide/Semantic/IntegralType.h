@@ -3,8 +3,7 @@
 
 namespace Wide {
     namespace Semantic {
-        class IntegralType : public Type {
-            std::unordered_map<Lexer::TokenType, OverloadSet*> callables;
+        class IntegralType : public PrimitiveType {
             unsigned bits;
             bool is_signed;
 
@@ -15,13 +14,13 @@ namespace Wide {
             
             clang::QualType GetClangType(ClangUtil::ClangTU& TU, Analyzer& a) override final;
             std::function<llvm::Type*(llvm::Module*)> GetLLVMType(Analyzer& a) override final;
-            
-            OverloadSet* PerformADL(Lexer::TokenType what, Type* lhs, Type* rhs, Context c) override final;
+
+            OverloadSet* CreateADLOverloadSet(Lexer::TokenType name, Type* lhs, Type* rhs, Analyzer& a) override final;
             ConcreteExpression BuildIncrement(ConcreteExpression obj, bool postfix, Context c) override final;
-            Codegen::Expression* BuildInplaceConstruction(Codegen::Expression* mem, std::vector<ConcreteExpression> args, Context c) override final;
             std::size_t size(Analyzer& a) override final;
             std::size_t alignment(Analyzer& a) override final;
             bool IsA(Type* other, Analyzer& a) override final;
+            OverloadSet* CreateConstructorOverloadSet(Wide::Semantic::Analyzer&) override final;
         };
     }
 }

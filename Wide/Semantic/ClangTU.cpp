@@ -396,6 +396,11 @@ std::string ClangTU::MangleName(clang::NamedDecl* D) {
         auto name = impl->codegenmod.getMangledName(funcdecl);
         return name;
     }*/
+    if (auto funcdecl = llvm::dyn_cast<clang::CXXMethodDecl>(D)) {
+        if (funcdecl->getType()->getAs<clang::FunctionProtoType>()->getExtProtoInfo().ExceptionSpecType == clang::ExceptionSpecificationType::EST_Unevaluated) {
+            GetSema().EvaluateImplicitExceptionSpec(clang::SourceLocation(), funcdecl);
+        }        
+    }
     if (D->hasAttrs()) {
         D->addAttr(new (impl->astcon) clang::UsedAttr(clang::SourceLocation(), impl->astcon));
     } else {
@@ -404,6 +409,7 @@ std::string ClangTU::MangleName(clang::NamedDecl* D) {
         D->setAttrs(v);
     }
     impl->sema.MarkAnyDeclReferenced(clang::SourceLocation(), D, true);
+
     if (auto desdecl = llvm::dyn_cast<clang::CXXDestructorDecl>(D)) {
         auto gd = clang::GlobalDecl(desdecl, clang::CXXDtorType::Dtor_Complete);
         impl->codegenmod.GetAddrOfGlobal(gd);

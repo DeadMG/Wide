@@ -2,7 +2,6 @@
 
 #include <Wide/Lexer/Token.h>
 #include <unordered_map>
-#include <initializer_list>
 #include <vector>
 #include <string>
 
@@ -64,6 +63,9 @@ namespace Wide {
             ContinueNoSemicolon,
             QualifiedNameNoIdentifier,
             LambdaNoIntroducer,
+            TupleCommaOrClose,
+            VariableListNoIdentifier,
+            VariableListNoInitializer
         };         
 
         enum class Warning : int {
@@ -99,12 +101,12 @@ namespace Wide {
                 std::make_pair(Error::ModuleScopeTypeNoIdentifier, "Expected identifier after type, to denote a type at module scope."),
                 std::make_pair(Error::ModuleScopeTypeNoCurlyBrace, "Expected { after type identifier at module scope, to denote a type at module scope."),
                 std::make_pair(Error::ModuleScopeTypeIdentifierButFunction, "Expected identifier { after type, to denote a type at module scope."),
-                std::make_pair(Error::ModuleRequiresTerminatingCurly, "Expected } to terminate a module." ),
+                std::make_pair(Error::ModuleRequiresTerminatingCurly, "Expected } to terminate a module."),
                 std::make_pair(Error::ModuleScopeTypeExpectedMemberOrTerminate, "Expected }, operator, type, ~  or identifier to terminate or define within a type."),
                 std::make_pair(Error::TypeScopeExpectedMemberAfterIdentifier, "Expected := or ( after identifier, to denote a member variable or function at type scope."),
                 std::make_pair(Error::ModuleScopeUsingNoIdentifier, "Expected an identifier after using, to denote a using at module scope."),
                 std::make_pair(Error::ModuleNoIdentifier, "Expected identifier after module, to denote a module at module scope."),
-                std::make_pair(Error::ModuleNoOpeningBrace, "Expected { after identifier to denote a module at module scope."),                
+                std::make_pair(Error::ModuleNoOpeningBrace, "Expected { after identifier to denote a module at module scope."),
                 std::make_pair(Error::ModuleScopeUsingNoVarCreate, "Expected := after identifier to denote a using at module scope."),
                 std::make_pair(Error::ModuleScopeUsingNoSemicolon, "Expected ; after expression to denote a using at module scope."),
                 std::make_pair(Error::ConstructorNoIdentifierAfterColon, "Expected an identifier after : to indicate a member for initialization in a constructor initializer list."),
@@ -112,7 +114,7 @@ namespace Wide {
                 std::make_pair(Error::ConstructorNoBracketClosingInitializer, "Expected ) to close a member initializer in constructor initializer list."),
                 std::make_pair(Error::FunctionNoCurlyToIntroduceBody, "Expected { to introduce a function body after prolog, arguments, or initializer list."),
                 std::make_pair(Error::FunctionNoClosingCurly, "Expected } to terminate function body."),
-                std::make_pair(Error::ConstructorNoBracketOrExpressionAfterMemberName, "Expected expression or ) to terminate a member initializer."),                
+                std::make_pair(Error::ConstructorNoBracketOrExpressionAfterMemberName, "Expected expression or ) to terminate a member initializer."),
                 std::make_pair(Error::OperatorNoCurlyToIntroduceBody, "Expected { to introduce a function body after prolog or arguments when parsing overloaded operator"),
                 std::make_pair(Error::OperatorNoCloseBracketAfterOpen, "Expected ) after operator( to denote an operator overload at type scope."),
                 std::make_pair(Error::TypeScopeOperatorNoOpenBracket, "Expected ( after identifier, to denote an operator overload at type scope."),
@@ -145,6 +147,9 @@ namespace Wide {
                 std::make_pair(Error::ContinueNoSemicolon, "Found a continue, but no semicolon afterwards."),
                 std::make_pair(Error::QualifiedNameNoIdentifier, "Found identifier. but did not find another identifier to continue a qualified name"),
                 std::make_pair(Error::LambdaNoIntroducer, "Found (), expected => to introduce nullary short-form lambda."),
+                std::make_pair(Error::TupleCommaOrClose, "Expected , or } to continue or close a tuple literal"),
+                std::make_pair(Error::VariableListNoIdentifier, "Expected an identifier after , to continue a list of variables."),
+                std::make_pair(Error::VariableListNoInitializer, "Expected to find := after identifier [, identifier]* to create a variable statement.")
             };
             return std::unordered_map<Error, std::string>(std::begin(strings), std::end(strings));
         }());

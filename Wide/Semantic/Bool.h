@@ -4,20 +4,17 @@
 
 namespace Wide {
     namespace Semantic {
-        class Bool : public Type {
-            std::unordered_map<Lexer::TokenType, OverloadSet*> callables;
+        class Bool : public PrimitiveType {
             Type* shortcircuit_destructor_type;
         public:
             Bool() : shortcircuit_destructor_type(nullptr) {}
-            std::function<llvm::Type*(llvm::Module*)> GetLLVMType(Analyzer& a) override;
-            clang::QualType GetClangType(ClangUtil::ClangTU&, Analyzer& a) override;
+            std::function<llvm::Type*(llvm::Module*)> GetLLVMType(Analyzer& a) override final;
+            clang::QualType GetClangType(ClangUtil::ClangTU&, Analyzer& a) override final;
             
-            ConcreteExpression BuildBinaryExpression(ConcreteExpression lhs, ConcreteExpression rhs, std::vector<ConcreteExpression> destructors, Lexer::TokenType type, Context c) override;
-
-            OverloadSet* AccessMember(ConcreteExpression expr, Lexer::TokenType name, Context c) override;
-            Codegen::Expression* BuildBooleanConversion(ConcreteExpression, Context c) override;
-            std::size_t size(Analyzer& a) override;
-            std::size_t alignment(Analyzer& a) override;
+            OverloadSet* CreateOperatorOverloadSet(Type* t, Lexer::TokenType name, Analyzer& a) override final;
+            Codegen::Expression* BuildBooleanConversion(ConcreteExpression, Context c) override final;
+            std::size_t size(Analyzer& a) override final;
+            std::size_t alignment(Analyzer& a) override final;
         };
     }
 }
