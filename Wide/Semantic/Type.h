@@ -176,11 +176,7 @@ namespace Wide {
                     c(x);
                 return BuildCall(val, std::move(args), c);
             }
-            virtual ConcreteExpression BuildCall(ConcreteExpression val, std::vector<ConcreteExpression> args, Context c) {
-                if (IsReference())
-                    return Decay()->BuildCall(val, std::move(args), c);
-                throw std::runtime_error("Attempted to call a type that did not support it.");
-            }
+            virtual ConcreteExpression BuildCall(ConcreteExpression val, std::vector<ConcreteExpression> args, Context c);
             virtual ConcreteExpression BuildMetaCall(ConcreteExpression val, std::vector<ConcreteExpression> args, Context c) {
                 throw std::runtime_error("Attempted to call a type that did not support it.");
             }

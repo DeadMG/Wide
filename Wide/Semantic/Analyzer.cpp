@@ -25,6 +25,7 @@
 #include <Wide/Semantic/SemanticExpression.h>
 #include <Wide/Semantic/FloatType.h>
 #include <Wide/Semantic/TupleType.h>
+#include <Wide/Semantic/LambdaType.h>
 #include <Wide/Util/DebugUtilities.h>
 #include <sstream>
 #include <iostream>
@@ -204,13 +205,6 @@ ConcreteExpression Analyzer::AnalyzeExpression(Type* t, const AST::Expression* e
         // Ugly to perform an AST-level transformation in the analyzer
         // But hey- the AST exists to represent the exact source.
         void VisitLambda(const AST::Lambda* lam) {
-            auto ty = self->arena.Allocate<AST::Type>("__lambda", lam->location);
-            auto ovr = self->arena.Allocate<AST::FunctionOverloadSet>();
-            auto fargs = lam->args;
-            auto fun = self->arena.Allocate<AST::Function>("()", lam->statements, std::vector<AST::Statement*>(), lam->location, std::move(fargs), std::vector<AST::Variable*>());
-            ovr->functions.insert(fun);
-            ty->opcondecls[Lexer::TokenType::OpenBracket] = ovr;
-            
             // Need to not-capture things that would be available anyway.
             
             std::vector<std::unordered_set<std::string>> lambda_locals;
@@ -276,17 +270,19 @@ ConcreteExpression Analyzer::AnalyzeExpression(Type* t, const AST::Expression* e
             l.captures = &captures;
             l.lambda_locals = &lambda_locals;
             l.VisitLambda(lam);
-                    
+
             // We obviously don't want to capture module-scope names.
             // Only capture from the local scope, and from "this".
-            auto caps = std::move(captures);
-            for(auto&& name : caps) {
-                if (auto fun = dynamic_cast<Function*>(t)) {
-                    if (fun->HasLocalVariable(name))
-                        captures.insert(name);
-                    if (auto udt = dynamic_cast<UserDefinedType*>(fun->GetContext(*self))) {
-                        if (udt->HasMember(name))
+            {
+                auto caps = std::move(captures);
+                for (auto&& name : caps) {
+                    if (auto fun = dynamic_cast<Function*>(t)) {
+                        if (fun->HasLocalVariable(name))
                             captures.insert(name);
+                        if (auto udt = dynamic_cast<UserDefinedType*>(fun->GetContext(*self))) {
+                            if (udt->HasMember(name))
+                                captures.insert(name);
+                        }
                     }
                 }
             }
@@ -295,7 +291,7 @@ ConcreteExpression Analyzer::AnalyzeExpression(Type* t, const AST::Expression* e
             // but I'll hunt down any bugs caused by eliminating it later.
             for(auto&& arg : lam->Captures)
                 for(auto&& name : arg->name)
-                    caps.erase(name);
+                    captures.erase(name);
 
             std::vector<ConcreteExpression> cap_expressions;
             for(auto&& arg : lam->Captures) {
@@ -305,8 +301,13 @@ ConcreteExpression Analyzer::AnalyzeExpression(Type* t, const AST::Expression* e
                 AST::Identifier ident(name, lam->location);
                 cap_expressions.push_back(self->AnalyzeExpression(t, &ident, handler));
             }
+            std::vector<Type*> types;
+            for (auto cap : cap_expressions)
+                types.push_back(cap.t);
+            auto type = self->arena.Allocate<LambdaType>(types, lam, *self);
+            out = type->BuildLambdaFromCaptures(cap_expressions, Context(*self, lam->location, handler));
 
-            auto lamself = self;
+            /*auto lamself = self;
             auto lamt = t;
             auto handlercopy = handler;
             auto handler = handlercopy;
@@ -355,7 +356,7 @@ ConcreteExpression Analyzer::AnalyzeExpression(Type* t, const AST::Expression* e
                 auto lamty = self->GetUDT(ty, t->GetConstantContext(*self) ? t->GetConstantContext(*self) : t);
                 return lamty->BuildRvalueConstruction(std::move(args), Context(*self, lam->location, handler));
             };
-            out = process_lambda(nullptr);
+            out = process_lambda(nullptr);*/
         }
         void VisitDereference(const AST::Dereference* deref) {
             out = self->AnalyzeExpression(t, deref->ex, handler).BuildDereference(Context(*self, deref->location, handler));
@@ -452,7 +453,7 @@ FunctionType* Analyzer::GetFunctionType(Type* ret, const std::vector<Type*>& t) 
     return FunctionTypes[ret][t] = arena.Allocate<FunctionType>(ret, t);
 }
 
-Function* Analyzer::GetWideFunction(const AST::Function* p, Type* context, const std::vector<Type*>& types) {
+Function* Analyzer::GetWideFunction(const AST::FunctionBase* p, Type* context, const std::vector<Type*>& types) {
     if (WideFunctions.find(p) != WideFunctions.end())
         if (WideFunctions[p].find(types) != WideFunctions[p].end())
             return WideFunctions[p][types];
@@ -649,19 +650,19 @@ OverloadSet* Analyzer::GetOverloadSet(std::unordered_set<clang::NamedDecl*> decl
             return clang_overload_sets[decls][context];
     return clang_overload_sets[decls][context] = arena.Allocate<OverloadSet>(std::move(decls), from, context);
 }
-OverloadResolvable* Analyzer::GetCallableForFunction(const AST::Function* f, Type* context) {
+OverloadResolvable* Analyzer::GetCallableForFunction(const AST::FunctionBase* f, Type* context) {
     if (FunctionCallables.find(f) != FunctionCallables.end())
         return FunctionCallables.at(f);
 
     struct FunctionCallable : public OverloadResolvable {
-        FunctionCallable(const AST::Function* f, Type* con)
+        FunctionCallable(const AST::FunctionBase* f, Type* con)
             : func(f), context(con) {}
-        const AST::Function* func;
+        const AST::FunctionBase* func;
         Type* context;
 
         bool HasImplicitThis() {
             // If we are a member without an explicit this, then we have an implicit this.
-            if (!dynamic_cast<UserDefinedType*>(context->Decay()))
+            if (!dynamic_cast<UserDefinedType*>(context->Decay()) && !dynamic_cast<LambdaType*>(context->Decay()))
                 return false;
             if (func->args.size() > 0) {
                 if (func->args[0].name == "this") {

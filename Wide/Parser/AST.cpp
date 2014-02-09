@@ -31,18 +31,18 @@ void Combiner::Add(Module* m) {
             if (auto nested = dynamic_cast<AST::Module*>(entry.second)) {
                 Module* next;
                 if (to->functions.find(entry.first) != to->functions.end()) {
-                    errors[to].insert(nested);
+                    errors[to][entry.first].insert(nested);
                     continue;
                 }
                 if (to->decls.find(entry.first) != to->decls.end())
                     if (auto mod = dynamic_cast<AST::Module*>(to->decls[entry.first]))
                         next = mod;
                     else {
-                        errors[to].insert(nested);
+                        errors[to][entry.first].insert(nested);
                         continue;
                     }
                 else {
-                    auto new_mod = Wide::Memory::MakeUnique<Module>(entry.first, nested->where.front());
+                    auto new_mod = Wide::Memory::MakeUnique<Module>(nested->where.front());
                     new_mod->where = nested->where;
                     to->decls[entry.first] = owned_decl_contexts.insert(std::make_pair(next = new_mod.get(), std::move(new_mod))).first->first;
                 }
@@ -50,24 +50,24 @@ void Combiner::Add(Module* m) {
                 continue;
             }
             if (auto use = dynamic_cast<AST::Using*>(entry.second)) {
-                if (to->decls.find(use->name) != to->decls.end()) {
-                    errors[to].insert(use);
+                if (to->decls.find(entry.first) != to->decls.end()) {
+                    errors[to][entry.first].insert(use);
                     continue;
                 }
-                if (to->functions.find(use->name) != to->functions.end()) {
-                    errors[to].insert(use);
+                if (to->functions.find(entry.first) != to->functions.end()) {
+                    errors[to][entry.first].insert(use);
                     continue;
                 }
-                to->decls[use->name] = use;
+                to->decls[entry.first] = use;
                 continue;
             }
             if (auto ty = dynamic_cast<AST::Type*>(entry.second)) {
                 if (to->decls.find(entry.first) != to->decls.end()) {
-                    errors[to].insert(ty);
+                    errors[to][entry.first].insert(ty);
                     continue;
                 }
                 if (to->functions.find(entry.first) != to->functions.end()) {
-                    errors[to].insert(ty);
+                    errors[to][entry.first].insert(ty);
                     continue;
                 }
 
@@ -84,7 +84,7 @@ void Combiner::Add(Module* m) {
             FunctionOverloadSet* InsertPoint = nullptr;
             if (to->decls.find(entry.first) != to->decls.end()) {
                 for(auto x : overset->functions)
-                    errors[to].insert(x);
+                    errors[to][entry.first].insert(x);
                 continue;
             }
             if (to->functions.find(entry.first) != to->functions.end()) {
@@ -104,12 +104,12 @@ void Combiner::Add(Module* m) {
         std::unordered_map<std::string, std::unordered_set<DeclContext*>> contexts;
         // Sort them by name, and grab the dest.
         for(auto con : x.second) {
-            if (x.first->decls.find(con->name) != x.first->decls.end())
-                contexts[con->name].insert(x.first->decls.at(con->name));
-            if (x.first->functions.find(con->name) != x.first->functions.end())
-                for(auto fun : x.first->functions.at(con->name)->functions)
-                    contexts[con->name].insert(fun);
-            contexts[con->name].insert(con);
+            if (x.first->decls.find(con.first) != x.first->decls.end())
+                contexts[con.first].insert(x.first->decls.at(con.first));
+            if (x.first->functions.find(con.first) != x.first->functions.end())
+                for (auto fun : x.first->functions.at(con.first)->functions)
+                    contexts[con.first].insert(fun);
+            contexts[con.first].insert(con.second.begin(), con.second.end());
         }
         
         // Issue each name as a separate list of errors.
@@ -149,7 +149,7 @@ void Combiner::Remove(Module* m) {
             assert(owned_overload_sets.find(to_overset) != owned_overload_sets.end());
             for(auto&& fun : overset->functions) {
                 if (errors.find(to) != errors.end())
-                    errors.at(to).erase(fun);
+                    errors.at(to).at(entry.first).erase(fun);
                 to_overset->functions.erase(fun);
             }
             if (to_overset->functions.empty()) {
@@ -172,7 +172,7 @@ void Combiner::Remove(Module* m) {
             }
             to->decls.erase(entry.first);
             if (errors.find(to) != errors.end())
-                errors.at(to).erase(entry.second);
+                errors.at(to).at(entry.first).erase(entry.second);
         }
         if (errors.find(to) != errors.end())
             if (errors.at(to).size() == 0)

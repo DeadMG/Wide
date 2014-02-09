@@ -10,7 +10,7 @@ namespace llvm {
 }
 namespace Wide {
     namespace AST {
-        struct Function;
+        struct FunctionBase;
     }
     namespace Codegen {
         class Function;
@@ -33,7 +33,7 @@ namespace Wide {
             Type* ReturnType;
             std::vector<Type*> Args;
             Analyzer& analyzer;
-            const AST::Function* fun;
+            const AST::FunctionBase* fun;
             Codegen::Function* codefun;
             ReturnState returnstate;
             void ComputeBody(Analyzer& a);
@@ -68,7 +68,7 @@ namespace Wide {
             }
         public:
             bool HasLocalVariable(std::string name);
-            Function(std::vector<Type*> args, const AST::Function* astfun, Analyzer& a, Type* container);        
+            Function(std::vector<Type*> args, const AST::FunctionBase* astfun, Analyzer& a, Type* container);        
 
             clang::QualType GetClangType(ClangUtil::ClangTU& where, Analyzer& a) override final;
      

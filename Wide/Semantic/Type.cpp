@@ -110,6 +110,11 @@ ConcreteExpression Type::BuildLvalueConstruction(ConcreteExpression arg, Context
     args.push_back(arg);
     return BuildLvalueConstruction(std::move(args), c);
 }
+ConcreteExpression Type::BuildCall(ConcreteExpression val, std::vector<ConcreteExpression> args, Context c) {
+    if (IsReference())
+        return Decay()->BuildCall(val, std::move(args), c);
+    throw std::runtime_error("Attempted to call a type that did not support it.");
+}
 Codegen::Expression* Type::BuildInplaceConstruction(Codegen::Expression* mem, ConcreteExpression arg, Context c){
     std::vector<ConcreteExpression> args;
     args.push_back(arg);

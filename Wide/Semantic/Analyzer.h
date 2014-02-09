@@ -38,7 +38,7 @@ namespace Wide {
     }
     namespace AST {
         struct Module;
-        struct Function;
+        struct FunctionBase;
         struct Expression;
         struct ModuleLevelDeclaration;
         struct FunctionOverloadSet;
@@ -86,7 +86,7 @@ namespace Wide {
             std::unordered_map<clang::QualType, Type*, ClangUtil::ClangTypeHasher> ClangTypes;
             std::unordered_map<clang::DeclContext*, ClangNamespace*> ClangNamespaces;
             std::unordered_map<Type*, std::unordered_map<std::vector<Type*>, FunctionType*, VectorTypeHasher>> FunctionTypes;
-            std::unordered_map<const AST::Function*, std::unordered_map<std::vector<Type*>, Function*, VectorTypeHasher>> WideFunctions;
+            std::unordered_map<const AST::FunctionBase*, std::unordered_map<std::vector<Type*>, Function*, VectorTypeHasher>> WideFunctions;
             std::unordered_map<Type*, LvalueType*> LvalueTypes;
             std::unordered_map<Type*, Type*> RvalueTypes;
             std::unordered_map<Type*, ConstructorType*> ConstructorTypes;
@@ -99,7 +99,7 @@ namespace Wide {
             std::unordered_map<unsigned, std::unordered_map<bool, IntegralType*>> integers;
             std::unordered_map<Type*, PointerType*> Pointers;
             std::unordered_map<OverloadSet*, std::unordered_map<OverloadSet*, OverloadSet*>> CombinedOverloadSets;
-            std::unordered_map<const AST::Function*, OverloadResolvable*> FunctionCallables;
+            std::unordered_map<const AST::FunctionBase*, OverloadResolvable*> FunctionCallables;
             std::unordered_map<std::vector<Type*>, TupleType*, VectorTypeHasher> tupletypes;
 
             const Options::Clang* clangopts;
@@ -130,7 +130,7 @@ namespace Wide {
             ClangNamespace* GetClangNamespace(ClangUtil::ClangTU& from, clang::DeclContext* dc);
             FunctionType* GetFunctionType(Type* ret, const std::vector<Type*>& t);
             Module* GetWideModule(const AST::Module* m, Module* higher);
-            Function* GetWideFunction(const AST::Function* p, Type* context, const std::vector<Type*>& = std::vector<Type*>());
+            Function* GetWideFunction(const AST::FunctionBase* p, Type* context, const std::vector<Type*>& = std::vector<Type*>());
             LvalueType* GetLvalueType(Type* t);
             Type* GetRvalueType(Type* t);
             ConstructorType* GetConstructorType(Type* t);
@@ -146,7 +146,7 @@ namespace Wide {
             PointerType* GetPointerType(Type* to);
             FloatType* GetFloatType(unsigned);
             Module* GetGlobalModule();
-            OverloadResolvable* GetCallableForFunction(const AST::Function* f, Type* context);
+            OverloadResolvable* GetCallableForFunction(const AST::FunctionBase* f, Type* context);
             TupleType* GetTupleType(std::vector<Type*> types);
             
             ConcreteExpression AnalyzeExpression(Type* t, const AST::Expression* e, std::function<void(ConcreteExpression)>);

@@ -27,7 +27,7 @@ namespace Wide {
             auto mod = a.GetWideModule(root, higher);
             for(auto overset : root->functions) {
                 for(auto fun : overset.second->functions) {
-                    Wide::Semantic::Context c(a, fun->where.front(), swallow_raii);
+                    Wide::Semantic::Context c(a, fun->where(), swallow_raii);
                     if (fun->args.size() == 0) {
                         Try([&] { a.GetWideFunction(fun, mod)->BuildCall(a.GetWideFunction(fun, mod)->BuildValueConstruction(c), std::vector<Wide::Semantic::ConcreteExpression>(), c); }, errorfunc, swallow);
                         continue;
@@ -58,10 +58,10 @@ namespace Wide {
             for(auto decl : root->decls) {
                 Wide::Semantic::Context c(a, root->where.front(), swallow_raii);
                 if (auto use = dynamic_cast<Wide::AST::Using*>(decl.second)) {
-                    Try([&] { mod->BuildValueConstruction(c).AccessMember(use->name, c); }, errorfunc, swallow);
+                    Try([&] { mod->BuildValueConstruction(c).AccessMember(decl.first, c); }, errorfunc, swallow);
                 }
                 if (auto module = dynamic_cast<Wide::AST::Module*>(decl.second)) {
-                    Try([&] { mod->BuildValueConstruction(c).AccessMember(module->name, c); }, errorfunc, swallow);
+                    Try([&] { mod->BuildValueConstruction(c).AccessMember(decl.first, c); }, errorfunc, swallow);
                     Test(a, mod, module, errorfunc, mockgen, swallow);
                 }
             }

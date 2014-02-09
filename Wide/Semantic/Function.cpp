@@ -10,6 +10,7 @@
 #include <Wide/Semantic/Reference.h>
 #include <Wide/Semantic/OverloadSet.h>
 #include <Wide/Semantic/TupleType.h>
+#include <Wide/Semantic/LambdaType.h>
 #include <unordered_set>
 #include <sstream>
 #include <iostream>
@@ -72,7 +73,7 @@ Wide::Util::optional<ConcreteExpression> Function::Scope::LookupName(std::string
     return Wide::Util::none;
 }
 
-Function::Function(std::vector<Type*> args, const AST::Function* astfun, Analyzer& a, Type* mem)
+Function::Function(std::vector<Type*> args, const AST::FunctionBase* astfun, Analyzer& a, Type* mem)
 : analyzer(a)
 , ReturnType(nullptr)
 , fun(astfun)
@@ -85,7 +86,7 @@ Function::Function(std::vector<Type*> args, const AST::Function* astfun, Analyze
     current_scope = &root_scope;
     unsigned num = 0;
     unsigned metaargs = 0;
-    if (mem && dynamic_cast<UserDefinedType*>(mem->Decay())) {
+    if (mem && (dynamic_cast<UserDefinedType*>(mem->Decay()) || dynamic_cast<LambdaType*>(mem->Decay()))) {
         ++num; // Skip the first argument in args if we are a member.
         Args.push_back(mem == mem->Decay() ? a.GetLvalueType(mem) : mem);
     }
@@ -126,32 +127,34 @@ Function::Function(std::vector<Type*> args, const AST::Function* astfun, Analyze
     strstr << "__" << std::hex << this;
     name = strstr.str();
 
-    // Deal with the prolog first.
-    for(auto&& prolog : astfun->prolog) {
-        auto ass = dynamic_cast<const AST::BinaryExpression*>(prolog);
-        if (!ass || ass->type != Lexer::TokenType::Assignment)            
-            throw std::runtime_error("Prologs can only be composed of assignment expressions right now!");
-        auto ident = dynamic_cast<const AST::Identifier*>(ass->lhs);
-        if (!ident)
-            throw std::runtime_error("Prolog assignment expressions must have a plain identifier on the left-hand-side right now!");
-        auto expr = a.AnalyzeExpression(this, ass->rhs, [](ConcreteExpression e) {});
-        if (ident->val == "ExportName") {
-            auto str = dynamic_cast<Codegen::StringExpression*>(expr.Expr);
-            if (!str)
-                throw std::runtime_error("Prolog right-hand-sides of ExportName must be of string type!");
-            name = str->GetContents();     
+    // Deal with the prolog first- if we have one.
+    if (auto fun = dynamic_cast<const AST::Function*>(astfun)) {
+        for (auto&& prolog : fun->prolog) {
+            auto ass = dynamic_cast<const AST::BinaryExpression*>(prolog);
+            if (!ass || ass->type != Lexer::TokenType::Assignment)
+                throw std::runtime_error("Prologs can only be composed of assignment expressions right now!");
+            auto ident = dynamic_cast<const AST::Identifier*>(ass->lhs);
+            if (!ident)
+                throw std::runtime_error("Prolog assignment expressions must have a plain identifier on the left-hand-side right now!");
+            auto expr = a.AnalyzeExpression(this, ass->rhs, [](ConcreteExpression e) {});
+            if (ident->val == "ExportName") {
+                auto str = dynamic_cast<Codegen::StringExpression*>(expr.Expr);
+                if (!str)
+                    throw std::runtime_error("Prolog right-hand-sides of ExportName must be of string type!");
+                name = str->GetContents();
+            }
+            if (ident->val == "ReturnType") {
+                auto ty = dynamic_cast<ConstructorType*>(expr.t);
+                if (!ty)
+                    throw std::runtime_error("Prolog right-hand-side of ReturnType must be a type.");
+                ReturnType = ty->GetConstructedType();
+                returnstate = ReturnState::ConcreteReturnSeen;
+            }
         }
-        if (ident->val == "ReturnType") {
-            auto ty = dynamic_cast<ConstructorType*>(expr.t);
-            if (!ty)
-                throw std::runtime_error("Prolog right-hand-side of ReturnType must be a type.");
-            ReturnType = ty->GetConstructedType();
-            returnstate = ReturnState::ConcreteReturnSeen;
+        if (ReturnType) {
+            // We have the name and signature- declare, and generate the body later.
+            codefun = a.gen->CreateFunction(GetSignature(a)->GetLLVMType(a), name, this);
         }
-    }
-    if (ReturnType) {
-        // We have the name and signature- declare, and generate the body later.
-        codefun = a.gen->CreateFunction(GetSignature(a)->GetLLVMType(a), name, this);
     }
 }
 
@@ -169,12 +172,13 @@ void Function::ComputeBody(Analyzer& a) {
     if (s == State::NotYetAnalyzed) {
         s = State::AnalyzeInProgress;
         // Initializers first, if we are a constructor
-        if (member && fun->name == "type") {
-            ConcreteExpression self(a.GetLvalueType(member), a.gen->CreateParameterExpression([this] { return ReturnType->IsComplexType(); }));
-            auto members = member->GetMembers();
-            for (auto&& x : members) {
-                auto has_initializer = [&](std::string name) -> const AST::Variable* {
-                    for (auto&& x : fun->initializers) {
+        if (member) {
+            if (auto con = dynamic_cast<const AST::Constructor*>(fun)) {
+                ConcreteExpression self(a.GetLvalueType(member), a.gen->CreateParameterExpression([this] { return ReturnType->IsComplexType(); }));
+                auto members = member->GetMembers();
+                for (auto&& x : members) {
+                    auto has_initializer = [&](std::string name) -> const AST::Variable*{
+                    for (auto&& x : con->initializers) {
                         // Can only have 1 name- AST restriction
                         assert(x->name.size() == 1);
                         if (x->name.front() == name)
@@ -182,21 +186,20 @@ void Function::ComputeBody(Analyzer& a) {
                     }
                     return nullptr;
                 };
-                // For member variables, don't add them to the list, the destructor will handle them.
-                if (auto init = has_initializer(x.name)) {
-                    Context c(a, init->location, [](ConcreteExpression e) {});
-                    // AccessMember will automatically give us back a T*, but we need the T** here
-                    // if the type of this member is a reference.
-                    auto mem = a.gen->CreateFieldExpression(self.Expr, x.num);
-                    std::vector<ConcreteExpression> args;
-                    if (init->initializer)
-                        args.push_back(a.AnalyzeExpression(this, init->initializer, [](ConcreteExpression e) {}));
-                    exprs.push_back(x.t->BuildInplaceConstruction(mem, std::move(args), c));
-                }
-                else {
-                    // Don't care about if x.t is ref because refs can't be default-constructed anyway.
-                    /*if (x.InClassInitializer)
-                    {
+                    // For member variables, don't add them to the list, the destructor will handle them.
+                    if (auto init = has_initializer(x.name)) {
+                        Context c(a, init->location, [](ConcreteExpression e) {});
+                        // AccessMember will automatically give us back a T*, but we need the T** here
+                        // if the type of this member is a reference.
+                        auto mem = a.gen->CreateFieldExpression(self.Expr, x.num);
+                        std::vector<ConcreteExpression> args;
+                        if (init->initializer)
+                            args.push_back(a.AnalyzeExpression(this, init->initializer, [](ConcreteExpression e) {}));
+                        exprs.push_back(x.t->BuildInplaceConstruction(mem, std::move(args), c));
+                    } else {
+                        // Don't care about if x.t is ref because refs can't be default-constructed anyway.
+                        /*if (x.InClassInitializer)
+                        {
                         Context c(a, x.InClassInitializer->location, [](ConcreteExpression e) {});
                         auto expr = a.AnalyzeExpression(this, x.InClassInitializer, [](ConcreteExpression e) {});
                         auto mem = check(self.t->AccessMember(self, x.name, c));
@@ -204,18 +207,19 @@ void Function::ComputeBody(Analyzer& a) {
                         args.push_back(expr);
                         exprs.push_back(x.t->BuildInplaceConstruction(mem.Expr, std::move(args), c));
                         continue;
-                    }*/
-                    if (x.t->IsReference())
-                        throw std::runtime_error("Failed to initialize a reference member.");
-                    auto mem = a.gen->CreateFieldExpression(self.Expr, x.num);
-                    std::vector<ConcreteExpression> args;
-                    Context c(a, fun->where.front(), [](ConcreteExpression e) {});
-                    exprs.push_back(x.t->BuildInplaceConstruction(mem, std::move(args), c));
+                        }*/
+                        if (x.t->IsReference())
+                            throw std::runtime_error("Failed to initialize a reference member.");
+                        auto mem = a.gen->CreateFieldExpression(self.Expr, x.num);
+                        std::vector<ConcreteExpression> args;
+                        Context c(a, con->where(), [](ConcreteExpression e) {});
+                        exprs.push_back(x.t->BuildInplaceConstruction(mem, std::move(args), c));
+                    }
                 }
+                for (auto&& x : con->initializers)
+                    if (std::find_if(members.begin(), members.end(), [&](decltype(*members.begin())& ref) { return ref.name == x->name.front(); }) == members.end())
+                        throw std::runtime_error("Attempted to initialize a member that did not exist.");
             }
-            for(auto&& x : fun->initializers)
-                if (std::find_if(members.begin(), members.end(), [&](decltype(*members.begin())& ref) { return ref.name == x->name.front(); }) == members.end())
-                    throw std::runtime_error("Attempted to initialize a member that did not exist.");
         }
         // Now the body.
         LocalScope base_scope(&root_scope, this);
@@ -408,7 +412,7 @@ void Function::CompleteAnalysis(Type* ret, Analyzer& a) {
         if (!ReturnType)
             throw std::runtime_error("Deferred return type was not evaluated prior to completing analysis.");
     if (ReturnType == a.GetVoidType() && !dynamic_cast<Codegen::ReturnStatement*>(exprs.empty() ? nullptr : exprs.back())) {
-        exprs.push_back(current_scope->GetCleanupAllExpression(a, fun->where.front()));
+        exprs.push_back(current_scope->GetCleanupAllExpression(a, fun->where()));
         exprs.push_back(a.gen->CreateReturn()); 
     }
     s = State::AnalyzeCompleted;

@@ -24,7 +24,7 @@ namespace Wide {
             std::function<void(std::vector<Wide::Lexer::Range>, Parser::Error)> error;
             std::function<void(Lexer::Range, Parser::Warning)> warning;
             std::function<void(Lexer::Range, OutliningType)> outlining;
-            std::unordered_map<Module*, std::unordered_set<DeclContext*>> combine_errors;
+            std::unordered_map<Module*, std::unordered_map<std::string, std::unordered_set<DeclContext*>>> combine_errors;
         public:
             Builder(
                 std::function<void(std::vector<Wide::Lexer::Range>, Parser::Error)>, 
