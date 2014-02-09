@@ -8,7 +8,7 @@ namespace Wide {
             F& crtp_cast() { return *static_cast<F*>(this); }
         public:
             void VisitStatement(const Statement* s) {
-                if (!s) return;
+                if (!s) assert(false && "Internal compiler error: Attempted to visit a null statement.");
                 if (auto whil = dynamic_cast<const While*>(s)) { return crtp_cast().VisitWhile(whil); }
                 if (auto br = dynamic_cast<const If*>(s)) { return crtp_cast().VisitIf(br); }
                 if (auto ret = dynamic_cast<const Return*>(s)) { return crtp_cast().VisitReturn(ret); }
@@ -35,9 +35,14 @@ namespace Wide {
                 if (auto bin = dynamic_cast<const BinaryExpression*>(e)) { return crtp_cast().VisitBinaryExpression(bin); }
                 if (auto addr = dynamic_cast<const AddressOf*>(e)) { return crtp_cast().VisitAddressOf(addr); }
                 if (auto ty = dynamic_cast<const Type*>(e)) { return crtp_cast().VisitType(ty); }
+                if (auto tup = dynamic_cast<const Tuple*>(e)) { return crtp_cast().VisitTuple(tup); }
                 assert(false && "Internal Compiler Error: Encountered unknown expression node in AST::Visitor.");
             }            
 
+            void VisitTuple(const Tuple* t) {
+                for (auto expr : t->expressions)
+                    crtp_cast().VisitExpression(expr);
+            }
             void VisitWhile(const While* s) { 
                 crtp_cast().VisitExpression(s->condition);
                 crtp_cast().VisitStatement(s->body);

@@ -7,8 +7,8 @@ namespace Wide {
         class AggregateType : public Type {
             std::vector<Type*> contents;
 
-            unsigned allocsize;
-            unsigned align;
+            std::size_t allocsize;
+            std::size_t align;
 
             std::vector<unsigned> FieldIndices;
             std::vector<std::function<llvm::Type*(llvm::Module*)>> llvmtypes;

@@ -67,6 +67,7 @@ namespace Wide {
         class FloatType;
         struct NullType;
         struct Result;
+        class TupleType;
         struct VectorTypeHasher {
             std::size_t operator()(const std::vector<Type*>& t) const;
         };
@@ -93,13 +94,13 @@ namespace Wide {
             std::unordered_map<const AST::FunctionOverloadSet*, std::unordered_map<Type*, OverloadSet*>> OverloadSets;
             std::unordered_map<unsigned, FloatType*> FloatTypes;
             std::unordered_map<std::unordered_set<clang::NamedDecl*>, std::unordered_map<Type*, OverloadSet*>, SetTypeHasher> clang_overload_sets;
-
             std::unordered_map<const AST::Type*, std::unordered_map<Type*, UserDefinedType*>> UDTs;
             std::unordered_map<const AST::Module*, Module*> WideModules;
             std::unordered_map<unsigned, std::unordered_map<bool, IntegralType*>> integers;
             std::unordered_map<Type*, PointerType*> Pointers;
             std::unordered_map<OverloadSet*, std::unordered_map<OverloadSet*, OverloadSet*>> CombinedOverloadSets;
             std::unordered_map<const AST::Function*, OverloadResolvable*> FunctionCallables;
+            std::unordered_map<std::vector<Type*>, TupleType*, VectorTypeHasher> tupletypes;
 
             const Options::Clang* clangopts;
 
@@ -146,6 +147,7 @@ namespace Wide {
             FloatType* GetFloatType(unsigned);
             Module* GetGlobalModule();
             OverloadResolvable* GetCallableForFunction(const AST::Function* f, Type* context);
+            TupleType* GetTupleType(std::vector<Type*> types);
             
             ConcreteExpression AnalyzeExpression(Type* t, const AST::Expression* e, std::function<void(ConcreteExpression)>);
             Wide::Util::optional<ConcreteExpression> LookupIdentifier(Type* context, const AST::Identifier* ident);

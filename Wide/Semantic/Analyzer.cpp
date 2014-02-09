@@ -24,6 +24,7 @@
 #include <Wide/Semantic/SemanticError.h>
 #include <Wide/Semantic/SemanticExpression.h>
 #include <Wide/Semantic/FloatType.h>
+#include <Wide/Semantic/TupleType.h>
 #include <Wide/Util/DebugUtilities.h>
 #include <sstream>
 #include <iostream>
@@ -190,6 +191,15 @@ ConcreteExpression Analyzer::AnalyzeExpression(Type* t, const AST::Expression* e
         }
         void VisitNegate(const AST::Negate* ne) {
             out = self->AnalyzeExpression(t, ne->ex, handler).BuildNegate(Context(*self, ne->location, handler));
+        }
+        void VisitTuple(const AST::Tuple* tup) {
+            std::vector<ConcreteExpression> exprs;
+            for (auto expr : tup->expressions)
+                exprs.push_back(self->AnalyzeExpression(t, expr, handler));
+            std::vector<Type*> types;
+            for (auto expr : exprs)
+                types.push_back(expr.t->Decay());
+            out = self->GetTupleType(types)->ConstructFromLiteral(exprs, Context(*self, tup->location, handler));
         }
         // Ugly to perform an AST-level transformation in the analyzer
         // But hey- the AST exists to represent the exact source.
@@ -549,6 +559,11 @@ PointerType* Analyzer::GetPointerType(Type* to) {
     if (Pointers.find(to) != Pointers.end())
         return Pointers[to];
     return Pointers[to] = arena.Allocate<PointerType>(to);
+}
+TupleType* Analyzer::GetTupleType(std::vector<Type*> types) {
+    if (tupletypes.find(types) != tupletypes.end())
+        return tupletypes[types];
+    return tupletypes[types] = arena.Allocate<TupleType>(types, *this);
 }
 Type* Analyzer::GetNullType() {
     return null;
