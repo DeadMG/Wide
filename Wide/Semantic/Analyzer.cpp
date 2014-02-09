@@ -293,70 +293,22 @@ ConcreteExpression Analyzer::AnalyzeExpression(Type* t, const AST::Expression* e
                 for(auto&& name : arg->name)
                     captures.erase(name);
 
-            std::vector<ConcreteExpression> cap_expressions;
+            std::vector<std::pair<std::string, ConcreteExpression>> cap_expressions;
             for(auto&& arg : lam->Captures) {
-                cap_expressions.push_back(self->AnalyzeExpression(t, arg->initializer, handler));
+                cap_expressions.push_back(std::make_pair(arg->name.front(), self->AnalyzeExpression(t, arg->initializer, handler)));
             }
             for(auto&& name : captures) {                
                 AST::Identifier ident(name, lam->location);
-                cap_expressions.push_back(self->AnalyzeExpression(t, &ident, handler));
+                cap_expressions.push_back(std::make_pair(name, self->AnalyzeExpression(t, &ident, handler)));
             }
-            std::vector<Type*> types;
-            for (auto cap : cap_expressions)
-                types.push_back(cap.t);
+            std::vector<std::pair<std::string, Type*>> types;
+            std::vector<ConcreteExpression> expressions;
+            for (auto cap : cap_expressions) {
+                types.push_back(std::make_pair(cap.first, cap.second.t->Decay()));
+                expressions.push_back(cap.second);
+            }
             auto type = self->arena.Allocate<LambdaType>(types, lam, *self);
-            out = type->BuildLambdaFromCaptures(cap_expressions, Context(*self, lam->location, handler));
-
-            /*auto lamself = self;
-            auto lamt = t;
-            auto handlercopy = handler;
-            auto handler = handlercopy;
-            auto process_lambda = [lam, cap_expressions, lamself, ty, lamt, captures, handler](Wide::Semantic::Type*) -> Wide::Semantic::ConcreteExpression {
-                auto t = lamt;
-                auto self = lamself;
-                std::vector<AST::Variable*> initializers;
-                std::vector<AST::FunctionArgument> funargs;
-                std::vector<ConcreteExpression> args;
-                unsigned num = 0;
-                for(auto&& arg : lam->Captures) {
-                    std::stringstream str;
-                    str << "__param" << num;
-                    auto init = cap_expressions[num];
-                    AST::FunctionArgument f(lam->location);
-                    f.name = str.str();
-                    f.type = self->arena.Allocate<SemanticExpression>(ConcreteExpression(self->GetConstructorType(init.t), nullptr), lam->location);
-                    ty->variables.push_back(self->arena.Allocate<AST::Variable>(arg->name, self->arena.Allocate<SemanticExpression>(ConcreteExpression(self->GetConstructorType(init.t->Decay()), nullptr), lam->location), lam->location));
-                    initializers.push_back(self->arena.Allocate<AST::Variable>(arg->name, self->arena.Allocate<AST::Identifier>(str.str(), lam->location), lam->location));
-                    funargs.push_back(f);
-                    ++num;
-                    args.push_back(init);
-                }
-                for(auto&& name : captures) {
-                    std::stringstream str;
-                    str << "__param" << num;
-                    auto capty = cap_expressions[num].t;
-                    std::vector<std::string> names;
-                    names.push_back(name);
-                    initializers.push_back(self->arena.Allocate<AST::Variable>(names, self->arena.Allocate<AST::Identifier>(str.str(), lam->location), lam->location));
-                    AST::FunctionArgument f(lam->location);
-                    f.name = str.str();
-                    f.type = self->arena.Allocate<SemanticExpression>(ConcreteExpression(self->GetConstructorType(capty), nullptr), lam->location);
-                    funargs.push_back(f);
-                    if (!lam->defaultref)
-                        capty = capty->Decay();
-                    ty->variables.push_back(self->arena.Allocate<AST::Variable>(names, self->arena.Allocate<SemanticExpression>(ConcreteExpression(self->GetConstructorType(capty), nullptr), lam->location), lam->location));
-                    args.push_back(cap_expressions[num]);
-                    ++num;
-                }
-                if (ty->variables.size() != 0) {
-                    auto conoverset = self->arena.Allocate<AST::FunctionOverloadSet>();
-                    conoverset->functions.insert(self->arena.Allocate<AST::Function>("type", std::vector<AST::Statement*>(), std::vector<AST::Statement*>(), lam->location, std::move(funargs), std::move(initializers)));
-                    ty->Functions["type"] = conoverset;
-                }
-                auto lamty = self->GetUDT(ty, t->GetConstantContext(*self) ? t->GetConstantContext(*self) : t);
-                return lamty->BuildRvalueConstruction(std::move(args), Context(*self, lam->location, handler));
-            };
-            out = process_lambda(nullptr);*/
+            out = type->BuildLambdaFromCaptures(expressions, Context(*self, lam->location, handler));
         }
         void VisitDereference(const AST::Dereference* deref) {
             out = self->AnalyzeExpression(t, deref->ex, handler).BuildDereference(Context(*self, deref->location, handler));
@@ -616,6 +568,13 @@ Wide::Util::optional<ConcreteExpression> Analyzer::LookupIdentifier(Type* contex
             lookup = self->AccessMember(ident->val, c);
             if (!lookup)
                 return LookupIdentifier(udt->GetContext(*this), ident);
+            return lookup;
+        }
+        if (auto lam = dynamic_cast<LambdaType*>(fun->GetContext(*this)->Decay())) {
+            auto self = fun->LookupLocal("this", c);
+            lookup = lam->LookupCapture(*self, ident->val, c);
+            if (!lookup)
+                return LookupIdentifier(lam->GetContext(*this), ident);
             return lookup;
         }
         return LookupIdentifier(fun->GetContext(*this), ident);

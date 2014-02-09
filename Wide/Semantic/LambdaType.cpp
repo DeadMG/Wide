@@ -8,8 +8,19 @@
 using namespace Wide;
 using namespace Semantic;
 
-LambdaType::LambdaType(std::vector<Type*> capturetypes, const AST::Lambda* l, Analyzer& a)
-    : AggregateType(capturetypes, a), lam(l) {}
+std::vector<Type*> GetTypesFrom(std::vector<std::pair<std::string, Type*>>& vec) {
+    std::vector<Type*> out;
+    for (auto cap : vec)
+        out.push_back(cap.second);
+    return out;
+}
+LambdaType::LambdaType(std::vector<std::pair<std::string, Type*>> capturetypes, const AST::Lambda* l, Analyzer& a)
+    : AggregateType(GetTypesFrom(capturetypes), a), lam(l) 
+{
+    std::size_t i = 0;
+    for (auto pair : capturetypes)
+        names[pair.first] = i++;
+}
 
 ConcreteExpression LambdaType::BuildCall(ConcreteExpression val, std::vector<ConcreteExpression> args, Context c) {
     if (val.t == this)
@@ -42,4 +53,10 @@ ConcreteExpression LambdaType::BuildLambdaFromCaptures(std::vector<ConcreteExpre
     memory.Expr = c->gen->CreateChainExpression(construct, memory.Expr);
     memory.steal = true;
     return memory;
+}
+
+Wide::Util::optional<ConcreteExpression> LambdaType::LookupCapture(ConcreteExpression self, std::string name, Context c) {
+    if (names.find(name) != names.end())
+        return PrimitiveAccessMember(self, names[name], *c);
+    return Wide::Util::none;
 }

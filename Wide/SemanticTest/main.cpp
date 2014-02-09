@@ -74,7 +74,7 @@ int main(int argc, char** argv) {
         total_failed += result.fails;
     }
     std::cout << "Total succeeded: " << total_succeeded << " failed: " << total_failed;
-    //Jit(clangopts, "JITSuccess/Tuple/ConstantContext.wide");
+    //Jit(clangopts, "JITSuccess/Lambda/SimpleValueCapture.wide");
     if (input.count("break"))
         Wide::Util::DebugBreak();
     return total_failed != 0;

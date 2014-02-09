@@ -433,7 +433,7 @@ ConcreteExpression Function::BuildCall(ConcreteExpression ex, std::vector<Concre
     throw std::runtime_error("Attempted to call a function, but the analysis was not yet completed. This means that you used recursion that the type system cannot handle.");
 }
 Wide::Util::optional<ConcreteExpression> Function::LookupLocal(std::string name, Context c) {
-    if (name == "this" && dynamic_cast<UserDefinedType*>(context->Decay()))
+    if (name == "this" && (dynamic_cast<UserDefinedType*>(context->Decay()) || dynamic_cast<LambdaType*>(context->Decay())))
         return ConcreteExpression(c->GetLvalueType(context->Decay()), c->gen->CreateParameterExpression([this] { return ReturnType->IsComplexType(); }));
     return current_scope->LookupName(name);
 }
