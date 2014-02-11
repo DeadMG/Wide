@@ -6,6 +6,7 @@
 #include <Wide/Semantic/OverloadSet.h>
 #include <Wide/Semantic/Function.h>
 #include <Wide/Semantic/FunctionType.h>
+#include <Wide/Semantic/TupleType.h>
 #include <Wide/Semantic/ConstructorType.h>
 #include <Wide/Parser/AST.h>
 #include <Wide/Semantic/SemanticExpression.h>
@@ -42,7 +43,9 @@ std::vector<Type*> GetTypesFromType(const AST::Type* t, Analyzer& a, Type* conte
 
 UserDefinedType::UserDefinedType(const AST::Type* t, Analyzer& a, Type* higher)
 : AggregateType(GetTypesFromType(t, a, higher), a)
-, context(higher) {
+, context(higher)
+, IsUserDefinedComplex(false)
+, IsBinaryComplex(AggregateType::IsComplexType()) {
     std::unordered_map<std::string, unsigned> mem;
     type = t;
     {
@@ -50,6 +53,37 @@ UserDefinedType::UserDefinedType(const AST::Type* t, Analyzer& a, Type* higher)
         for (auto&& var : type->variables)
             members[var->name.front()] = i++;
     }
+    // We are user-defined complex if the user specified any of the following:
+    // Copy/move constructor, copy/move assignment operator, destructor.
+    if (type->Functions.find("type") != type->Functions.end()) {
+        std::vector<Type*> copytypes;
+        copytypes.push_back(a.GetLvalueType(this));
+        copytypes.push_back(copytypes.front());
+        IsUserDefinedComplex = IsUserDefinedComplex || a.GetOverloadSet(type->Functions.at("type"), a.GetLvalueType(this))->Resolve(copytypes, a);
+        IsBinaryComplex = IsBinaryComplex || a.GetOverloadSet(type->Functions.at("type"), a.GetLvalueType(this))->Resolve(copytypes, a);
+
+        std::vector<Type*> movetypes;
+        movetypes.push_back(a.GetLvalueType(this));
+        movetypes.push_back(a.GetRvalueType(this));
+        IsUserDefinedComplex = IsUserDefinedComplex || a.GetOverloadSet(type->Functions.at("type"), a.GetLvalueType(this))->Resolve(movetypes, a);
+
+        std::vector<Type*> defaulttypes;
+        defaulttypes.push_back(a.GetLvalueType(this));
+        HasDefaultConstructor = a.GetOverloadSet(type->Functions.at("type"), a.GetLvalueType(this))->Resolve(defaulttypes, a);
+    }
+    if (type->opcondecls.find(Lexer::TokenType::Assignment) != type->opcondecls.end()) {
+        std::vector<Type*> copytypes;
+        copytypes.push_back(a.GetLvalueType(this));
+        copytypes.push_back(copytypes.front());
+        IsUserDefinedComplex = IsUserDefinedComplex || a.GetOverloadSet(type->opcondecls.at(Lexer::TokenType::Assignment), a.GetLvalueType(this))->Resolve(copytypes, a);
+
+        std::vector<Type*> movetypes;
+        movetypes.push_back(a.GetLvalueType(this));
+        movetypes.push_back(a.GetRvalueType(this));
+        IsUserDefinedComplex = IsUserDefinedComplex || a.GetOverloadSet(type->opcondecls.at(Lexer::TokenType::Assignment), a.GetLvalueType(this))->Resolve(movetypes, a);
+    }
+    if (type->Functions.find("~") != type->Functions.end())
+        IsUserDefinedComplex = IsBinaryComplex = true;
 }
 
 std::vector<UserDefinedType::member> UserDefinedType::GetMembers() {
@@ -198,14 +232,65 @@ ConcreteExpression UserDefinedType::BuildCall(ConcreteExpression val, std::vecto
 }
 
 OverloadSet* UserDefinedType::CreateConstructorOverloadSet(Analyzer& a) {
-    if (type->Functions.find("type") == type->Functions.end())
-        return AggregateType::CreateConstructorOverloadSet(a);
-    return a.GetOverloadSet(type->Functions.at("type"), a.GetLvalueType(this));
+    auto user_defined_constructors = type->Functions.find("type") == type->Functions.end() ? a.GetOverloadSet() : a.GetOverloadSet(type->Functions.at("type"), a.GetLvalueType(this));
+    if (IsUserDefinedComplex)
+        return user_defined_constructors;
+    
+    struct TupleConstructor : public OverloadResolvable, Callable {
+        TupleConstructor(UserDefinedType* p) : self(p) {}
+        UserDefinedType* self;
+        unsigned GetArgumentCount() override final { return 2; }
+        Callable* GetCallableForResolution(std::vector<Type*>, Analyzer& a) { return this; }
+        Type* MatchParameter(Type* t, unsigned num, Analyzer& a) override final {
+            if (num == 0) {
+                if (t == a.GetLvalueType(self))
+                    return t;
+                else
+                    return nullptr;
+            }
+            auto tup = dynamic_cast<TupleType*>(t->Decay());
+            if (!tup) return nullptr;
+            if (tup->IsA(t, self, a))
+                return t;
+            return nullptr;
+        }
+        std::vector<ConcreteExpression> AdjustArguments(std::vector<ConcreteExpression> args, Context c) override final { return args; }
+        ConcreteExpression CallFunction(std::vector<ConcreteExpression> args, Context c) {
+            // We should already have properly-typed memory at 0.
+            // and the tuple at 1.
+            auto tupty = dynamic_cast<TupleType*>(args[1].t->Decay());
+            assert(tupty);
+            if (self->GetMembers().size() == 0)
+                return args[0];
+            Codegen::Expression* p = nullptr;
+            for (std::size_t i = 0; i < self->GetMembers().size(); ++i) {
+                auto memory = self->PrimitiveAccessMember(args[0], i, *c);
+                auto argument = tupty->PrimitiveAccessMember(args[1], i, *c);
+                auto expr = self->GetMembers()[i].t->BuildInplaceConstruction(memory.Expr, argument, c);
+                p = p ? c->gen->CreateChainExpression(p, expr) : expr;
+            }
+            return ConcreteExpression(c->GetLvalueType(self), c->gen->CreateChainExpression(p, args[0].Expr));
+        }
+    };
+    user_defined_constructors = a.GetOverloadSet(user_defined_constructors, a.GetOverloadSet(a.arena.Allocate<TupleConstructor>(this)));
+
+    std::vector<Type*> types;
+    types.push_back(a.GetLvalueType(this));
+    if (auto default_constructor = user_defined_constructors->Resolve(types, a))
+        return a.GetOverloadSet(user_defined_constructors, AggregateType::CreateNondefaultConstructorOverloadSet(a));
+    return a.GetOverloadSet(user_defined_constructors, AggregateType::CreateConstructorOverloadSet(a));
 }
 
 OverloadSet* UserDefinedType::CreateOperatorOverloadSet(Type* self, Lexer::TokenType name, Analyzer& a) {
+    if (name == Lexer::TokenType::Assignment) {
+        if (IsUserDefinedComplex) {
+            if (type->opcondecls.find(name) != type->opcondecls.end())
+                return a.GetOverloadSet(type->opcondecls.at(name), self);
+            return a.GetOverloadSet();
+        }
+    }
     if (type->opcondecls.find(name) != type->opcondecls.end())
-        return a.GetOverloadSet(type->opcondecls.at(name), self);
+        return a.GetOverloadSet(a.GetOverloadSet(type->opcondecls.at(name), self), AggregateType::CreateOperatorOverloadSet(self, name, a));
     return AggregateType::CreateOperatorOverloadSet(self, name, a);
 }
 
@@ -218,7 +303,7 @@ OverloadSet* UserDefinedType::CreateDestructorOverloadSet(Analyzer& a) {
             OverloadSet* aggset;
 
             unsigned GetArgumentCount() override final { return 1; }
-            Type* MatchParameter(Type* t, unsigned num, Analyzer& a) override final { if (num == 0) return t; assert(false); }
+            Type* MatchParameter(Type* t, unsigned num, Analyzer& a) override final { assert(num == 0); return t; }
             Callable* GetCallableForResolution(std::vector<Type*> tys, Analyzer& a) override final { return this; }
             std::vector<ConcreteExpression> AdjustArguments(std::vector<ConcreteExpression> args, Context c) override final { return args; }
             ConcreteExpression CallFunction(std::vector<ConcreteExpression> args, Context c) override final { 
@@ -252,4 +337,14 @@ bool UserDefinedType::IsMoveAssignable(Analyzer& a) {
     if (type->opcondecls.find(Lexer::TokenType::Assignment) != type->opcondecls.end())
         return Type::IsMoveAssignable(a);
     return AggregateType::IsMoveAssignable(a);
+}
+
+bool UserDefinedType::IsComplexType() {
+    return IsBinaryComplex;
+}
+
+Wide::Util::optional<std::vector<Type*>> UserDefinedType::GetTypesForTuple() {
+    if (IsUserDefinedComplex)
+        return Wide::Util::none;
+    return AggregateType::GetMembers();
 }

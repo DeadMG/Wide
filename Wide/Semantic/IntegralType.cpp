@@ -167,7 +167,7 @@ OverloadSet* IntegralType::CreateADLOverloadSet(Lexer::TokenType name, Type* lhs
     }
     return a.GetOverloadSet();
 }
-bool IntegralType::IsA(Type* other, Analyzer& a) {
+bool IntegralType::IsA(Type* self, Type* other, Analyzer& a) {
     if (this == other) return true;
     auto otherint = dynamic_cast<IntegralType*>(other->Decay());
     if (!otherint)

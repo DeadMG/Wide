@@ -1,0 +1,16 @@
+type inner {
+    x := int64;
+    y := int64;
+}
+type outer {
+    first := inner;
+    second := inner;
+}
+Main() {
+    var := outer({{1, 2}, {3, 4}});
+    return 
+        var.first.x == 1 
+      & var.first.y == 2 
+      & var.second.x == 3 
+      & var.second.y == 4;
+}

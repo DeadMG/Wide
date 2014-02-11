@@ -33,6 +33,7 @@ namespace Wide {
             Type* GetConstantContext(Analyzer& a) override;
             std::function<llvm::Type*(llvm::Module*)> GetLLVMType(Analyzer& a) override final;
             
+            OverloadSet* CreateNondefaultConstructorOverloadSet(Analyzer& a);
             OverloadSet* CreateOperatorOverloadSet(Type* t, Lexer::TokenType type, Analyzer& a) override;
             OverloadSet* CreateConstructorOverloadSet(Analyzer& a) override;
             OverloadSet* CreateDestructorOverloadSet(Analyzer& a) override;

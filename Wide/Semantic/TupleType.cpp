@@ -2,6 +2,7 @@
 #include <Wide/Semantic/Analyzer.h>
 #include <Wide/Semantic/OverloadSet.h>
 #include <Wide/Semantic/Reference.h>
+#include <Wide/Semantic/UserDefinedType.h>
 #include <Wide/Codegen/Generator.h>
 
 using namespace Wide;
@@ -33,4 +34,20 @@ ConcreteExpression TupleType::ConstructFromLiteral(std::vector<ConcreteExpressio
     memory.Expr = c->gen->CreateChainExpression(construct, memory.Expr);
     memory.steal = true;
     return memory;
+}
+
+bool TupleType::IsA(Type* self, Type* other, Analyzer& a) {
+    auto udt = dynamic_cast<UserDefinedType*>(other);
+    if (!udt) return Type::IsA(self, other, a);
+    auto udt_members = udt->GetTypesForTuple();
+    if (!udt_members) return false;
+    if (GetMembers().size() != udt_members->size()) return false;
+    bool is = true;
+    for (std::size_t i = 0; i < GetMembers().size(); ++i) {
+        std::vector<Type*> types;
+        types.push_back(a.GetLvalueType(udt_members->at(i)));
+        types.push_back(IsLvalueType(self) ? a.GetLvalueType(GetMembers()[i]) : a.GetRvalueType(GetMembers()[i]));
+        is = is && udt_members->at(i)->GetConstructorOverloadSet(a)->Resolve(types, a);
+    }
+    return is;
 }

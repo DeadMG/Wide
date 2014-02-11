@@ -61,7 +61,7 @@ namespace Wide {
         class FunctionValue : public Expression, public Codegen::FunctionValue {
             std::string mangled_name;
         public:
-            std::string GetMangledName() override final {
+            std::string GetMangledName() {
                 return mangled_name;
             }
             FunctionValue(std::string name);

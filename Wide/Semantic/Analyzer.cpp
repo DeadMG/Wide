@@ -545,6 +545,8 @@ bool Semantic::IsRvalueType(Type* t) {
 OverloadSet* Analyzer::GetOverloadSet(OverloadSet* f, OverloadSet* s) {
     if (CombinedOverloadSets[f].find(s) != CombinedOverloadSets[f].end())
         return CombinedOverloadSets[f][s];
+    if (CombinedOverloadSets[s].find(f) != CombinedOverloadSets[s].end())
+        return CombinedOverloadSets[s][f];
     return CombinedOverloadSets[f][s] = arena.Allocate<OverloadSet>(f, s);
 }
 FloatType* Analyzer::GetFloatType(unsigned bits) {
@@ -685,7 +687,7 @@ OverloadResolvable* Analyzer::GetCallableForFunction(const AST::FunctionBase* f,
             if (!parameter_type)
                 throw Wide::Semantic::SemanticError(func->args[num].location, Wide::Semantic::Error::ExpressionNoType);
 
-            if (argument->IsA(parameter_type->GetConstructedType(), a))
+            if (argument->IsA(argument, parameter_type->GetConstructedType(), a))
                 return parameter_type->GetConstructedType();
             return nullptr;
         }

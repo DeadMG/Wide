@@ -86,7 +86,28 @@ ConcreteExpression OverloadSet::BuildCall(ConcreteExpression e, std::vector<Conc
 }
 
 OverloadSet::OverloadSet(std::unordered_set<OverloadResolvable*> call, Type* t)
-    : callables(std::move(call)), from(nullptr), nonstatic(t) {}
+: callables(std::move(call)), from(nullptr), nonstatic(t), ResolveOverloadSet(nullptr) {}
+
+struct cppcallable : public Callable {
+    clang::FunctionDecl* fun;
+    ClangUtil::ClangTU* from;
+    std::vector<Type*> types;
+
+    ConcreteExpression CallFunction(std::vector<ConcreteExpression> args, Context c) override final {
+        return ConcreteExpression(c->GetFunctionType(c->GetClangType(*from, fun->getResultType()), types), c->gen->CreateFunctionValue(from->MangleName(fun))).BuildCall(args, c);
+    }
+    std::vector<ConcreteExpression> AdjustArguments(std::vector<ConcreteExpression> args, Context c) override final {
+        // Clang may ask us to call overloads where we think the arguments are not a match
+        // for example, implicit conversion from int64 to int32
+        if (args.size() != types.size())
+            Wide::Util::DebugBreak();
+        std::vector<ConcreteExpression> out;
+        for (std::size_t i = 0; i < types.size(); ++i) {
+            out.push_back(types[i]->BuildValueConstruction(args[i], c));
+        }
+        return out;
+    }
+};
 
 Callable* OverloadSet::Resolve(std::vector<Type*> f_args, Analyzer& a) {
     std::vector<std::pair<OverloadResolvable*, std::vector<Type*>>> call;
@@ -162,26 +183,6 @@ Callable* OverloadSet::Resolve(std::vector<Type*> f_args, Analyzer& a) {
         if (wide_result)
             throw std::runtime_error("Attempted to resolve an overload set, but both Wide and C++ provided viable results.");
         auto fun = best->Function;
-        struct cppcallable : public Callable {
-            clang::FunctionDecl* fun;
-            ClangUtil::ClangTU* from;
-            std::vector<Type*> types;
-
-            ConcreteExpression CallFunction(std::vector<ConcreteExpression> args, Context c) override final {                
-                return ConcreteExpression(c->GetFunctionType(c->GetClangType(*from, fun->getResultType()), types), c->gen->CreateFunctionValue(from->MangleName(fun))).BuildCall(args, c);
-            }
-            std::vector<ConcreteExpression> AdjustArguments(std::vector<ConcreteExpression> args, Context c) override final {
-                // Clang may ask us to call overloads where we think the arguments are not a match
-                // for example, implicit conversion from int64 to int32
-                if (args.size() != types.size())
-                    Wide::Util::DebugBreak();
-                std::vector<ConcreteExpression> out;
-                for (std::size_t i = 0; i < types.size(); ++i) {
-                    out.push_back(types[i]->BuildValueConstruction(args[i], c));
-                }
-                return out;
-            }
-        };
         auto p = new cppcallable();
         p->fun = fun;
         p->from = from;
@@ -209,7 +210,7 @@ std::size_t OverloadSet::alignment(Analyzer& a) {
     return llvm::DataLayout(a.gen->GetDataLayout()).getPointerABIAlignment();
 }
 OverloadSet::OverloadSet(OverloadSet* s, OverloadSet* other)
-: nonstatic(nullptr) {
+: nonstatic(nullptr), ResolveOverloadSet(nullptr) {
     for(auto x : s->callables)
         callables.insert(x);
     for(auto x : other->callables)
@@ -228,7 +229,7 @@ OverloadSet::OverloadSet(OverloadSet* s, OverloadSet* other)
     }
 }
 OverloadSet::OverloadSet(std::unordered_set<clang::NamedDecl*> clangdecls, ClangUtil::ClangTU* tu, Type* context)
-    : clangfuncs(std::move(clangdecls)), from(tu), nonstatic(nullptr)
+: clangfuncs(std::move(clangdecls)), from(tu), nonstatic(nullptr), ResolveOverloadSet(nullptr)
 {
     if(dynamic_cast<ClangType*>(context->Decay()))
         nonstatic = context;
@@ -256,21 +257,38 @@ OverloadSet* OverloadSet::CreateConstructorOverloadSet(Analyzer& a) {
     constructors.insert(make_resolvable([](std::vector<ConcreteExpression> args, Context c) { return args[0]; }, types, a));
     return a.GetOverloadSet(constructors);
 }
-/*Codegen::Expression* OverloadSet::BuildInplaceConstruction(Codegen::Expression* mem, std::vector<ConcreteExpression> args, Context c) {
-    if (args.size() > 1)
-        throw std::runtime_error("Cannot construct an overload set from more than one argument.");
-    if (args.size() == 1) {
-        if (args[0].BuildValue(c).t == this)
-            return c->gen->CreateStore(mem, args[0].BuildValue(c).Expr);
-        if (nonstatic) {
-            if (args[0].t->IsReference(nonstatic) || (nonstatic->IsReference() && nonstatic == args[0].t))
-                return c->gen->CreateStore(c->gen->CreateFieldExpression(mem, 0), args[0].Expr);
-            if (args[0].t == nonstatic)
-                assert("Internal compiler error: Attempt to call a member function of a value.");
+std::string OverloadSet::GetCPPMangledName() {
+    if (clangfuncs.size() != 1)
+        throw std::runtime_error("Attempted to get the mangled name of a Clang function, but it was an overload set.");
+    auto decl = *clangfuncs.begin();
+    return from->MangleName(decl);
+}
+Wide::Util::optional<ConcreteExpression> OverloadSet::AccessMember(ConcreteExpression self, std::string name, Context c) {
+    if (name != "resolve")
+        return Type::AccessMember(self, name, c);
+    if (ResolveOverloadSet)
+        return ResolveOverloadSet->BuildValueConstruction(c);
+    struct ResolveCallable : public MetaType 
+    {
+        ResolveCallable(OverloadSet* f)
+        : from(f) {}
+        OverloadSet* from;
+        ConcreteExpression BuildCall(ConcreteExpression self, std::vector<ConcreteExpression> args, Context c) override final {
+            std::vector<Type*> types;
+            for (auto arg : args) {
+                auto con = dynamic_cast<ConstructorType*>(arg.t->Decay());
+                if (!con) throw std::runtime_error("Attempted to resolve but an argument was not a type.");
+                types.push_back(con->GetConstructedType());
+            }
+            auto call = from->Resolve(types, *c);
+            if (!call)
+                throw std::runtime_error("Could not resolve a single function from this overload set.");
+            auto clangfunc = dynamic_cast<cppcallable*>(call);
+            std::unordered_set<clang::NamedDecl*> decls;
+            decls.insert(clangfunc->fun);
+            return c->GetOverloadSet(decls, clangfunc->from, nullptr)->BuildValueConstruction(c);
         }
-        throw std::runtime_error("Can only construct overload set from another overload set of the same type, or a reference to T.");
-    }
-    if (nonstatic)
-        throw std::runtime_error("Cannot default-construct a non-static overload set.");
-    return c->gen->CreateNull(GetLLVMType(*c));
-}*/
+    };
+    ResolveOverloadSet = c->arena.Allocate<ResolveCallable>(this);
+    return ResolveOverloadSet->BuildValueConstruction(c);
+}

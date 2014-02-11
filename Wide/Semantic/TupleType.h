@@ -9,6 +9,7 @@ namespace Wide {
             TupleType(std::vector<Type*> types, Analyzer& a);
 
             ConcreteExpression ConstructFromLiteral(std::vector<ConcreteExpression> exprs, Context c);
+            bool IsA(Type* self, Type* other, Analyzer& a) override final;
         };
     }
 }

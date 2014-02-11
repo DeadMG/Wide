@@ -28,10 +28,7 @@ namespace Wide {
         class StoreExpression : public Expression {};
         class LoadExpression : public Expression {};
         class ReturnStatement  : public Statement {};
-        class FunctionValue : public Expression {
-        public:
-            virtual std::string GetMangledName() = 0;
-        };
+        class FunctionValue : public Expression {};
         class IntegralExpression : public Expression {
         public:
             virtual unsigned long long GetValue() = 0;

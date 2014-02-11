@@ -1,0 +1,10 @@
+type t {
+    x := int64;
+    y := int64;
+}
+f(t arg) {
+    return arg.x == 1 & arg.y == 2;
+}
+Main() {
+    return f({1, 2});
+}

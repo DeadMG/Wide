@@ -209,7 +209,7 @@ namespace Wide {
             
             virtual OverloadSet* PerformADL(Lexer::TokenType what, Type* lhs, Type* rhs, Analyzer& a);
 
-            virtual bool IsA(Type* other, Analyzer& a);
+            virtual bool IsA(Type* self, Type* other, Analyzer& a);
             virtual Type* GetConstantContext(Analyzer& a) {
                 return nullptr;
             }

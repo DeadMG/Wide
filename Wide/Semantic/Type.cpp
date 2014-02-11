@@ -321,8 +321,12 @@ std::function<llvm::Type*(llvm::Module*)> MetaType::GetLLVMType(Analyzer& a) {
         return llvm::StructType::create(nam, llvm::IntegerType::getInt8Ty(mod->getContext()), nullptr);
     };
 }
-bool Type::IsA(Type* other, Analyzer& a) {
-    return other == this || other == a.GetRvalueType(this);
+bool Type::IsA(Type* self, Type* other, Analyzer& a) {
+    return
+        other == self ||
+        other == a.GetRvalueType(self) ||
+        self == a.GetLvalueType(other) && other->IsCopyConstructible(a) ||
+        self == a.GetRvalueType(other) && other->IsMoveConstructible(a);
 }
 
 #pragma warning(disable : 4800)
@@ -424,7 +428,7 @@ std::vector<ConcreteExpression> Semantic::AdjustArgumentsForTypes(std::vector<Co
         Wide::Util::DebugBreak();
     std::vector<ConcreteExpression> out;
     for (std::size_t i = 0; i < types.size(); ++i) {
-        if (!args[i].t->IsA(types[i], *c))
+        if (!args[i].t->IsA(args[i].t, types[i], *c))
             Wide::Util::DebugBreak();
         out.push_back(types[i]->BuildValueConstruction(args[i], c));
     }
@@ -434,7 +438,7 @@ std::vector<ConcreteExpression> Semantic::AdjustArgumentsForTypes(std::vector<Co
 OverloadSet* Type::CreateDestructorOverloadSet(Analyzer& a) {
     struct DestructNothing : OverloadResolvable, Callable {
         unsigned GetArgumentCount() override final { return 1; }
-        Type* MatchParameter(Type* t, unsigned num, Analyzer& a) override final { if (num == 0) return t; assert(false); }
+        Type* MatchParameter(Type* t, unsigned num, Analyzer& a) override final { assert(num == 0); return t; }
         Callable* GetCallableForResolution(std::vector<Type*> tys, Analyzer& a) override final { return this; }
         std::vector<ConcreteExpression> AdjustArguments(std::vector<ConcreteExpression> args, Context c) override final { return args; }
         ConcreteExpression CallFunction(std::vector<ConcreteExpression> args, Context c) override final { return args[0]; }
@@ -450,7 +454,7 @@ struct assign : OverloadResolvable, Callable {
 
     unsigned GetArgumentCount() override final { return types.size(); }
     Type* MatchParameter(Type* t, unsigned num, Analyzer& a) override final {
-        if (t->IsA(types[num], a))
+        if (t->IsA(t, types[num], a))
             return types[num];
         return nullptr;
     }

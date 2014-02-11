@@ -22,6 +22,7 @@ namespace Wide {
             std::unordered_set<OverloadResolvable*> callables;
             std::unordered_set<clang::NamedDecl*> clangfuncs;
             ClangUtil::ClangTU* from;
+            Type* ResolveOverloadSet;
 
             Type* nonstatic;
         public:
@@ -29,6 +30,7 @@ namespace Wide {
             OverloadSet(std::unordered_set<OverloadResolvable*> call, Type* nonstatic);
             OverloadSet(std::unordered_set<clang::NamedDecl*> clangdecls, ClangUtil::ClangTU* tu, Type* context);
 
+            Wide::Util::optional<ConcreteExpression> AccessMember(ConcreteExpression self, std::string name, Context c) override final;
             OverloadSet* CreateConstructorOverloadSet(Analyzer& a) override final;
             std::function<llvm::Type*(llvm::Module*)> GetLLVMType(Analyzer& a) override final;
             ConcreteExpression BuildCall(ConcreteExpression, std::vector<ConcreteExpression> args, Context c) override final;
@@ -37,6 +39,7 @@ namespace Wide {
             std::size_t alignment(Analyzer& a) override final;
 
             Type* GetConstantContext(Analyzer& a) override final;
+            std::string GetCPPMangledName();
         };
     }
 }

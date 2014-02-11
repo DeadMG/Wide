@@ -1,0 +1,11 @@
+type t {
+    val := bool;
+    type() : val(false) {}
+    type(this->rvalue other) : val(other.val) {}
+    operator=(this->lvalue other) { val = true; }
+}
+Main() {
+    x, y := { t(), t() };
+    x = y;
+    return x.val;
+}

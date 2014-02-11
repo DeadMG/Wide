@@ -24,6 +24,9 @@ namespace Wide {
         class Module;
         class UserDefinedType : public AggregateType {
             const AST::Type* type;
+            bool IsBinaryComplex;
+            bool IsUserDefinedComplex;
+            bool HasDefaultConstructor;
 
             // Actually a list of member variables
             std::unordered_map<std::string, unsigned> members;
@@ -51,6 +54,9 @@ namespace Wide {
             bool IsMoveConstructible(Analyzer& a) override final;
             bool IsCopyAssignable(Analyzer& a) override final;
             bool IsMoveAssignable(Analyzer& a) override final;
+            bool IsComplexType() override final;
+
+            Wide::Util::optional<std::vector<Type*>> GetTypesForTuple();
         };
     }
 }

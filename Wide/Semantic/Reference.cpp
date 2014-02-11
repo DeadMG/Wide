@@ -33,21 +33,19 @@ std::size_t Reference::alignment(Analyzer& a) {
     return llvm::DataLayout(a.gen->GetDataLayout()).getPointerABIAlignment();
 }
 
-bool RvalueType::IsA(Type* other, Analyzer& a) {
-    if (other == this)
-        return true;
-    if (Decay()->IsA(other, a))
-        return Decay()->IsMoveConstructible(a);
-    return false;
-}
-bool LvalueType::IsA(Type* other, Analyzer& a) {
+bool RvalueType::IsA(Type* self, Type* other, Analyzer& a) {
     if (other == this)
         return true;
     if (other == a.GetRvalueType(Decay()))
         return false;
-    if (Decay()->IsA(other, a))
-        return Decay()->IsCopyConstructible(a);
-    return false;
+    return Decay()->IsA(self, other, a);
+}
+bool LvalueType::IsA(Type* self, Type* other, Analyzer& a) {
+    if (other == this)
+        return true;
+    if (other == a.GetRvalueType(Decay()))
+        return false;
+    return Decay()->IsA(self, other, a);
 }
 OverloadSet* RvalueType::CreateConstructorOverloadSet(Analyzer& a) {
     std::vector<Type*> types;

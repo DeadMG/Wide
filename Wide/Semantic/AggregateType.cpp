@@ -181,7 +181,7 @@ ConcreteExpression AggregateType::PrimitiveAccessMember(ConcreteExpression e, un
     return ConcreteExpression(a.GetRvalueType(contents[num]), obj);
 }
 
-OverloadSet* AggregateType::CreateConstructorOverloadSet(Analyzer& a) {
+OverloadSet* AggregateType::CreateNondefaultConstructorOverloadSet(Analyzer& a) {
     std::unordered_set<OverloadResolvable*> set;
 
     // First, move/copy
@@ -196,7 +196,7 @@ OverloadSet* AggregateType::CreateConstructorOverloadSet(Analyzer& a) {
 
             Codegen::Expression* move = nullptr;
             // For every type, call the move constructor.
-            for (auto i = 0; i < contents.size(); ++i) {
+            for (std::size_t i = 0; i < contents.size(); ++i) {
                 ConcreteExpression memory(c->GetLvalueType(contents[i]), c->gen->CreateFieldExpression(args[0].Expr, FieldIndices[i]));
                 std::vector<Type*> types;
                 types.push_back(c->GetLvalueType(contents[i]));
@@ -217,7 +217,10 @@ OverloadSet* AggregateType::CreateConstructorOverloadSet(Analyzer& a) {
         modify = [&a](Type* t) { return a.GetLvalueType(t); };
         createconstructor();
     }
-
+    return a.GetOverloadSet(set);
+}
+OverloadSet* AggregateType::CreateConstructorOverloadSet(Analyzer& a) {
+    std::unordered_set<OverloadResolvable*> set;
     // Then default.
     auto is_default_constructible = [this, &a] {
         for (auto ty : contents) {
@@ -236,7 +239,7 @@ OverloadSet* AggregateType::CreateConstructorOverloadSet(Analyzer& a) {
                 return args[0];
 
             Codegen::Expression* def = nullptr;
-            for (auto i = 0; i < contents.size(); ++i) {
+            for (std::size_t i = 0; i < contents.size(); ++i) {
                 ConcreteExpression memory(c->GetLvalueType(contents[i]), c->gen->CreateFieldExpression(args[0].Expr, FieldIndices[i]));
                 std::vector<Type*> types;
                 types.push_back(c->GetLvalueType(contents[i]));
@@ -246,8 +249,7 @@ OverloadSet* AggregateType::CreateConstructorOverloadSet(Analyzer& a) {
             return ConcreteExpression(c->GetLvalueType(this), def);
         }, types, a));
     }
-    
-    return a.GetOverloadSet(set);
+    return a.GetOverloadSet(a.GetOverloadSet(set), AggregateType::CreateNondefaultConstructorOverloadSet(a));
 }
 OverloadSet* AggregateType::CreateDestructorOverloadSet(Analyzer& a) {
     struct Destructor : OverloadResolvable, Callable {
@@ -255,7 +257,7 @@ OverloadSet* AggregateType::CreateDestructorOverloadSet(Analyzer& a) {
         Destructor(AggregateType* ty) : self(ty) {}
 
         unsigned GetArgumentCount() override final { return 1; }
-        Type* MatchParameter(Type* t, unsigned num, Analyzer& a) override final { if (num == 0) return t; assert(false); }
+        Type* MatchParameter(Type* t, unsigned num, Analyzer& a) override final { assert(num == 0); return t; }
         Callable* GetCallableForResolution(std::vector<Type*> tys, Analyzer& a) override final { return this; }
         std::vector<ConcreteExpression> AdjustArguments(std::vector<ConcreteExpression> args, Context c) override final { return args; }
         ConcreteExpression CallFunction(std::vector<ConcreteExpression> args, Context c) override final {

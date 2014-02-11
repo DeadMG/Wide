@@ -4,6 +4,7 @@
 #include <Wide/Semantic/ClangNamespace.h>
 #include <Wide/Semantic/FunctionType.h>
 #include <Wide/Semantic/IntegralType.h>
+#include <Wide/Semantic/OverloadSet.h>
 #include <Wide/Codegen/Generator.h>
 
 #pragma warning(push, 0)
@@ -19,23 +20,27 @@ using namespace Semantic;
 
 Wide::Util::optional<ConcreteExpression> ClangIncludeEntity::AccessMember(ConcreteExpression, std::string name, Context c) {
     if (name == "mangle") {
-        struct ClangNameMangler : public MetaType {
-            ConcreteExpression BuildCall(ConcreteExpression, std::vector<ConcreteExpression> args, Context c) override {
-                if (args.size() != 1)
-                    throw std::runtime_error("Attempt to mangle name but passed more than one object.");
-                auto ty = dynamic_cast<FunctionType*>(args[0].t);
-                if (!ty) throw std::runtime_error("Attempt to mangle the name of something that was not a function.");
-                auto fun = dynamic_cast<Codegen::FunctionValue*>(args[0].Expr);
-                if (!fun)
-                    throw std::runtime_error("The argument was not a Clang mangled function name.");
-                return ConcreteExpression(c->GetLiteralStringType(), c->gen->CreateStringExpression(fun->GetMangledName()));
+        if (MangleOverloadSet)
+            return MangleOverloadSet->BuildValueConstruction(c);
+        struct NameMangler : OverloadResolvable, Callable {
+            unsigned GetArgumentCount() override final { return 1; }
+            Type* MatchParameter(Type* t, unsigned, Analyzer& a) override final {
+                if (dynamic_cast<OverloadSet*>(t->Decay()))
+                    return t;
+                return nullptr;
+            }
+            Callable* GetCallableForResolution(std::vector<Type*>, Analyzer& a) override final { return this; }
+            std::vector<ConcreteExpression> AdjustArguments(std::vector<ConcreteExpression> args, Context c) override final { return args; }
+            ConcreteExpression CallFunction(std::vector<ConcreteExpression> args, Context c) override final { 
+                auto name = dynamic_cast<OverloadSet*>(args[0].t->Decay())->GetCPPMangledName();
+                return ConcreteExpression(c->GetLiteralStringType(), c->gen->CreateStringExpression(name));
             }
         };
-        return c->arena.Allocate<ClangNameMangler>()->BuildValueConstruction(c);
+        return (MangleOverloadSet = c->GetOverloadSet(c->arena.Allocate<NameMangler>()))->BuildValueConstruction(c);
     }
     if (name == "macro") {
         struct ClangMacroHandler : public MetaType {
-            ConcreteExpression BuildCall(ConcreteExpression, std::vector<ConcreteExpression> args, Context c) override {
+            ConcreteExpression BuildCall(ConcreteExpression, std::vector<ConcreteExpression> args, Context c) override final{
                 if (args.size() < 2)
                     throw std::runtime_error("Attempt to access a macro but no TU or macro name was passed.");
                 // Should be a ClangNamespace as first argument.

@@ -1,10 +1,10 @@
 type t {
     value := bool->pointer;
     type(bool->lvalue val) : value(&val) {}
-    type(t->lvalue copy) : value(copy.value) {
+    type(this->lvalue copy) : value(copy.value) {
         *value = true;
     }
-    type(t->rvalue move) : value(move.value) {}
+    type(this->rvalue move) : value(move.value) {}
 }
 Main() {
     result := false;

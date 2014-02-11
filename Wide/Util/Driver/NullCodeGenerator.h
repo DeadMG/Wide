@@ -30,13 +30,6 @@ namespace Wide {
             unsigned long long GetValue() { return value; }
             bool GetSign() { return sign; }
         };
-        class NullFunctionValue : public Codegen::FunctionValue {
-            std::string name;
-        public:
-            NullFunctionValue(std::string nam)
-                : name(std::move(nam)) {}
-            std::string GetMangledName() { return name; }
-        };
         class NullStringExpression : public Codegen::StringExpression {
             std::string val;
         public:
@@ -55,7 +48,6 @@ namespace Wide {
             std::string layout;
 
             std::unordered_map<std::string, std::unique_ptr<NullStringExpression>> mockstrings;
-            std::unordered_map<std::string, std::unique_ptr<NullFunctionValue>> mockfunctions;
             std::vector<std::unique_ptr<NullIntegralExpression>> mockintegers;
 
             virtual llvm::LLVMContext& GetContext() { return con; }
@@ -79,11 +71,7 @@ namespace Wide {
             virtual Codegen::ReturnStatement* CreateReturn() { return nullptr; }
             virtual Codegen::ReturnStatement* CreateReturn(std::function<Codegen::Expression*()>) { return nullptr; }
             virtual Codegen::ReturnStatement* CreateReturn(Codegen::Expression*) { return nullptr; }
-            virtual Codegen::FunctionValue* CreateFunctionValue(std::string val) {
-                if (mockfunctions.find(val) != mockfunctions.end())
-                    return mockfunctions[val].get();
-                return (mockfunctions[val] = std::unique_ptr<NullFunctionValue>(new NullFunctionValue(std::move(val)))).get();
-            }
+            virtual Codegen::FunctionValue* CreateFunctionValue(std::string val) { return nullptr; }
             virtual Codegen::IntegralExpression* CreateIntegralExpression(std::uint64_t val, bool is_signed, std::function<llvm::Type*(llvm::Module*)> ty) { 
                 mockintegers.push_back(std::unique_ptr<NullIntegralExpression>(new NullIntegralExpression(val, is_signed)));
                 return mockintegers.back().get();
