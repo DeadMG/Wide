@@ -38,7 +38,7 @@ namespace Wide {
             ReturnState returnstate;
             void ComputeBody(Analyzer& a);
             Type* context;
-
+            Wide::Util::optional<std::string> trampoline;
             void CompleteAnalysis(Type* ret, Analyzer& a);
 
             std::vector<Codegen::Statement*> exprs;

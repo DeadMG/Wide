@@ -1,0 +1,10 @@
+using header := cpp("JITSuccess/CPPInterop/ExportOverloadSet.h");
+f() prolog {
+    ExportName = cpp.mangle(header.f.resolve());
+} {
+    return true;
+}
+Main() {
+    f();
+    return header.f(2);
+}

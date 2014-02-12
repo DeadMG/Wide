@@ -42,21 +42,9 @@ ConcreteExpression PointerType::BuildDereference(ConcreteExpression val, Context
     return ConcreteExpression(c->GetLvalueType(pointee), val.BuildValue(c).Expr);
 }
 
-/*Codegen::Expression* PointerType::BuildInplaceConstruction(Codegen::Expression* mem, std::vector<ConcreteExpression> args, Context c) {
-    if (args.size() > 1)
-        throw std::runtime_error("Attempted to construct a pointer from more than one argument.");
-    if (args.size() == 0)
-        throw std::runtime_error("Attempted to default-construct a pointer.");
-    args[0] = args[0].BuildValue(c);
-    if (args[0].t == this)
-        return c->gen->CreateStore(mem, args[0].Expr);
-    if (args[0].t->Decay() == c->GetNullType())
-        return c->gen->CreateStore(mem, c->gen->CreateChainExpression(args[0].Expr, c->gen->CreateNull(GetLLVMType(*c))));
-    throw std::runtime_error("Attempted to construct a pointer from something that was not a pointer of the same type or null.");
-}*/
-
 OverloadSet* PointerType::CreateConstructorOverloadSet(Analyzer& a) {
     auto usual = PrimitiveType::CreateConstructorOverloadSet(a);
+    //return usual;
     std::vector<Type*> types;
     types.push_back(a.GetLvalueType(this));
     types.push_back(a.GetNullType());
@@ -67,5 +55,5 @@ OverloadSet* PointerType::CreateConstructorOverloadSet(Analyzer& a) {
 }
 
 Codegen::Expression* PointerType::BuildBooleanConversion(ConcreteExpression obj, Context c) {
-    return c->gen->CreateIsNullExpression(obj.BuildValue(c).Expr);
+    return c->gen->CreateNegateExpression(c->gen->CreateIsNullExpression(obj.BuildValue(c).Expr));
 }

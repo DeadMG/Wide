@@ -148,28 +148,32 @@ Callable* OverloadSet::Resolve(std::vector<Type*> f_args, Analyzer& a) {
             exprptrs.push_back(&x);
         clang::OverloadCandidateSet s((clang::SourceLocation()));
         clang::UnresolvedSet<8> us;
+        bool has_members = false;
         for (auto decl : clangfuncs) {
-            if (llvm::dyn_cast<clang::CXXMethodDecl>(decl))
+            if (llvm::dyn_cast<clang::CXXMethodDecl>(decl)) {
+                has_members = true;
                 continue;
+            }
             us.addDecl(decl);
         }
         from->GetSema().AddFunctionCandidates(us, exprptrs, s, false, nullptr);
-        exprptrs.erase(exprptrs.begin());
-
-        for (auto decl : clangfuncs) {
-            if (llvm::dyn_cast<clang::CXXConstructorDecl>(decl)) {
-                clang::DeclAccessPair d;
-                d.setDecl(decl);
-                d.setAccess(decl->getAccess());
-                from->GetSema().AddOverloadCandidate(llvm::cast<clang::FunctionDecl>(decl), d, exprptrs, s, false, false, true);
-                continue;
-            }
-            if (llvm::dyn_cast<clang::CXXMethodDecl>(decl)) {
-                clang::DeclAccessPair d;
-                d.setDecl(decl);
-                d.setAccess(decl->getAccess());
-                from->GetSema().AddMethodCandidate(d, f_args[0]->GetClangType(*from, a).getNonLValueExprType(from->GetASTContext()), clang::Expr::Classification::makeSimpleLValue(), exprptrs, s, false);
-                continue;
+        if (has_members && !exprptrs.empty()) {
+            exprptrs.erase(exprptrs.begin());
+            for (auto decl : clangfuncs) {
+                if (llvm::dyn_cast<clang::CXXConstructorDecl>(decl)) {
+                    clang::DeclAccessPair d;
+                    d.setDecl(decl);
+                    d.setAccess(decl->getAccess());
+                    from->GetSema().AddOverloadCandidate(llvm::cast<clang::FunctionDecl>(decl), d, exprptrs, s, false, false, true);
+                    continue;
+                }
+                if (llvm::dyn_cast<clang::CXXMethodDecl>(decl)) {
+                    clang::DeclAccessPair d;
+                    d.setDecl(decl);
+                    d.setAccess(decl->getAccess());
+                    from->GetSema().AddMethodCandidate(d, f_args[0]->GetClangType(*from, a).getNonLValueExprType(from->GetASTContext()), clang::Expr::Classification::makeSimpleLValue(), exprptrs, s, false);
+                    continue;
+                }
             }
         }
         assert(s.size() == clangfuncs.size());
@@ -191,7 +195,7 @@ Callable* OverloadSet::Resolve(std::vector<Type*> f_args, Analyzer& a) {
         for (unsigned i = 0; i < fun->getNumParams(); ++i) {
             // If the function takes a const T&, and we provided an rvalue, pretend secretly that it took an rvalue reference instead.
             auto argty = fun->getParamDecl(i)->getType();            
-            if (argty->isReferenceType() && (argty->getPointeeType().isConstQualified() || argty->getPointeeType().isLocalConstQualified()) && f_args[p->types.size()] == a.GetRvalueType(f_args[p->types.size()]->Decay())) {
+            if (argty->isReferenceType() && (argty->getPointeeType().isConstQualified() || argty->getPointeeType().isLocalConstQualified()) && (f_args[p->types.size()] == a.GetRvalueType(f_args[p->types.size()]->Decay()) || f_args[p->types.size()] == f_args[p->types.size()]->Decay())) {
                 p->types.push_back(a.GetClangType(*from, from->GetASTContext().getRValueReferenceType(argty->getLocallyUnqualifiedSingleStepDesugaredType())));
             } else
                 p->types.push_back(a.GetClangType(*from, argty));
@@ -231,8 +235,9 @@ OverloadSet::OverloadSet(OverloadSet* s, OverloadSet* other)
 OverloadSet::OverloadSet(std::unordered_set<clang::NamedDecl*> clangdecls, ClangUtil::ClangTU* tu, Type* context)
 : clangfuncs(std::move(clangdecls)), from(tu), nonstatic(nullptr), ResolveOverloadSet(nullptr)
 {
-    if(dynamic_cast<ClangType*>(context->Decay()))
-        nonstatic = context;
+    if(context)
+        if(dynamic_cast<ClangType*>(context->Decay()))
+            nonstatic = context;
 }
 
 Type* OverloadSet::GetConstantContext(Analyzer& a) {

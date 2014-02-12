@@ -19,10 +19,8 @@ llvm::Value* Function::GetParameter(unsigned i) {
 }
 void Function::Declare(llvm::Module* mod, llvm::LLVMContext& con, Generator& g) {
     if (f) return;
-    if ((f = mod->getFunction(name))) {
-        if (f->getType() == Type(mod))
-            f = mod->getFunction(name);
-        else {
+    if (f = mod->getFunction(name)) {
+        if (f->getType() != Type(mod)) {
             auto fty = llvm::dyn_cast<llvm::FunctionType>(f->getType()->getElementType());
             auto ty = llvm::dyn_cast<llvm::FunctionType>(llvm::dyn_cast<llvm::PointerType>(Type(mod))->getElementType());
             
@@ -35,11 +33,36 @@ void Function::Declare(llvm::Module* mod, llvm::LLVMContext& con, Generator& g) 
                 assert(ret && "A trampoline's single statement must be a return statement.");
                 statements[0] = g.CreateReturn(g.CreateTruncate(ret->GetReturnExpression(), [&](llvm::Module*) { return llvm::IntegerType::getInt1Ty(con); }));
             } else {
-                throw std::runtime_error("Found a function of the same name in the module but it had the wrong LLVM type.");
-            }
-
-            f = mod->getFunction(name);
-            
+                // Check Clang's uses of this function - if it bitcasts them all we're good.
+                for (auto use_it = f->use_begin(); use_it != f->use_end(); ++use_it) {
+                    auto use = *use_it;
+                    if (auto cast = llvm::dyn_cast<llvm::CastInst>(use)) {
+                        if (cast->getDestTy() != ty->getPointerTo())
+                            throw std::runtime_error("Found a function of the same name in the module but it had the wrong LLVM type.");
+                    } 
+                    if (auto constant = llvm::dyn_cast<llvm::ConstantExpr>(use)) {
+                        if (constant->getType() != ty->getPointerTo()) {
+                            throw std::runtime_error("Found a function of the same name in the module but it had the wrong LLVM type.");
+                        }
+                    } else
+                        throw std::runtime_error("Found a function of the same name in the module but it had the wrong LLVM type.");
+                }
+                // All Clang's uses are valid.
+                f->setName("__fucking__clang__type_hacks");
+                auto badf = f;
+                auto linkage = tramp ? llvm::GlobalValue::LinkageTypes::ExternalLinkage : llvm::GlobalValue::LinkageTypes::InternalLinkage;
+                auto t = llvm::dyn_cast<llvm::FunctionType>(llvm::dyn_cast<llvm::PointerType>(Type(mod))->getElementType());
+                f = llvm::Function::Create(t, linkage, name, mod);
+                // Update all Clang's uses
+                // Check Clang's uses of this function - if it bitcasts them all we're good.
+                for (auto use_it = badf->use_begin(); use_it != badf->use_end(); ++use_it) {
+                    auto use = *use_it;
+                    if (auto cast = llvm::dyn_cast<llvm::CastInst>(use))
+                        cast->replaceAllUsesWith(f);
+                    if (auto constant = llvm::dyn_cast<llvm::ConstantExpr>(use))
+                        constant->replaceAllUsesWith(f);
+                }
+            }            
         }
     } else {
         auto linkage = tramp ? llvm::GlobalValue::LinkageTypes::ExternalLinkage : llvm::GlobalValue::LinkageTypes::InternalLinkage;
@@ -55,26 +78,31 @@ void Function::Declare(llvm::Module* mod, llvm::LLVMContext& con, Generator& g) 
     auto ty = llvm::dyn_cast<llvm::FunctionType>(llvm::dyn_cast<llvm::PointerType>(Type(mod))->getElementType());
 
     // Always in sync except when Clang skips an empty type parameter.
-    auto arg_begin = f->getArgumentList().begin();
-    for(std::size_t i = 0; i < ty->getNumParams(); ++i) {
-        if (ty->getParamType(i) == arg_begin->getType()) {
-            ParameterValues[i] = arg_begin;
-            ++arg_begin;
-            continue;
-        }
-        if (auto ptr = llvm::dyn_cast<llvm::PointerType>(ty->getParamType(i))) {
-            auto el = ptr->getElementType();
-            if (g.IsEliminateType(el)) {
-                ParameterValues[i] = llvm::Constant::getNullValue(ty->getParamType(i));
+    if (fty != ty) {
+        auto arg_begin = f->getArgumentList().begin();
+        for (std::size_t i = 0; i < ty->getNumParams(); ++i) {
+            if (ty->getParamType(i) == arg_begin->getType()) {
+                ParameterValues[i] = arg_begin;
+                ++arg_begin;
                 continue;
             }
+            if (auto ptr = llvm::dyn_cast<llvm::PointerType>(ty->getParamType(i))) {
+                auto el = ptr->getElementType();
+                if (g.IsEliminateType(el)) {
+                    ParameterValues[i] = llvm::Constant::getNullValue(ty->getParamType(i));
+                    continue;
+                }
+            }
+            if (ty->getParamType(i) == llvm::IntegerType::getInt8Ty(con) && arg_begin->getType() == llvm::IntegerType::getInt1Ty(con)) {
+                ParameterValues[i] = irbuilder.CreateZExt(arg_begin, llvm::IntegerType::getInt1Ty(con));
+                ++arg_begin;
+                continue;
+            }
+            assert(false && "The function type did not match the expected type and none of the compensation schemes were successful in resolving the mismatch.");
         }
-        if (ty->getParamType(i) == llvm::IntegerType::getInt8Ty(con) && arg_begin->getType() == llvm::IntegerType::getInt1Ty(con)) {
-            ParameterValues[i] = irbuilder.CreateZExt(arg_begin, llvm::IntegerType::getInt1Ty(con));
-            ++arg_begin;
-            continue;
-        }
-        assert(false && "The function type did not match the expected type and none of the compensation schemes were successful in resolving the mismatch.");
+    } else {
+        for (std::size_t i = 0; i < ty->getNumParams(); ++i)
+            ParameterValues[i] = std::next(f->arg_begin(), i);
     }
 
     g.TieFunction(f, this);

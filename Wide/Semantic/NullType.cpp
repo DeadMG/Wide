@@ -2,6 +2,7 @@
 #include <Wide/Semantic/ClangTU.h>
 #include <Wide/Semantic/Analyzer.h>
 #include <Wide/Codegen/Generator.h>
+#include <Wide/Semantic/PointerType.h>
 
 #pragma warning(push, 0)
 #include <clang/AST/ASTContext.h>
@@ -26,4 +27,9 @@ std::size_t NullType::size(Analyzer& a) {
 }
 std::size_t NullType::alignment(Analyzer& a) {
     return a.gen->GetDataLayout().getPointerABIAlignment();
+}
+bool NullType::IsA(Type* self, Type* other, Analyzer& a) {
+    if (dynamic_cast<PointerType*>(other))
+        return true;
+    return Type::IsA(self, other, a);
 }

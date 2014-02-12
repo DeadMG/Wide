@@ -1,6 +1,7 @@
 #include <Wide/Semantic/ClangTU.h>
 #include <Wide/Semantic/Analyzer.h>
 #include <Wide/Codegen/Generator.h>
+#include <Wide/Semantic/OverloadSet.h>
 #include <Wide/Semantic/Reference.h>
 
 #pragma warning(push, 0)
@@ -73,6 +74,15 @@ ConcreteExpression RvalueType::BuildValueConstruction(std::vector<ConcreteExpres
             auto mem = c->gen->CreateVariable(Decay()->GetLLVMType(*c), Decay()->alignment(*c));
             auto store = c->gen->CreateStore(mem, args[0].Expr);
             return ConcreteExpression(this, c->gen->CreateChainExpression(store, mem));
+        }
+        if (args[0].t != this) {
+            auto decaycon = Decay()->GetConstructorOverloadSet(*c);
+            std::vector<Type*> types;
+            types.push_back(c->GetLvalueType(Decay()));
+            types.push_back(args[0].t);
+            if (auto call = decaycon->Resolve(types, *c)) {
+                return Decay()->BuildRvalueConstruction(args[0], c);
+            }
         }
     }
     return Type::BuildValueConstruction(args, c);

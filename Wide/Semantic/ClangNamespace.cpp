@@ -35,11 +35,9 @@ Wide::Util::optional<ConcreteExpression> ClangNamespace::AccessMember(ConcreteEx
         auto result = lr.getFoundDecl()->getCanonicalDecl();
         // If result is a function, namespace, or variable decl, we're good. Else, cry like a little girl. A LITTLE GIRL.
         if (auto fundecl = llvm::dyn_cast<clang::FunctionDecl>(result)) {
-            std::vector<Type*> args;
-            for(auto decl = fundecl->param_begin(); decl != fundecl->param_end(); ++decl) {
-                args.push_back(c->GetClangType(*from, (*decl)->getType()));
-            }
-            return ConcreteExpression(c->GetFunctionType(c->GetClangType(*from, fundecl->getResultType()), args), c->gen->CreateFunctionValue(from->MangleName(fundecl)));
+            std::unordered_set<clang::NamedDecl*> decls;
+            decls.insert(fundecl);
+            return c->GetOverloadSet(std::move(decls), from, GetContext(*c))->BuildValueConstruction(c);
         }
         if (auto vardecl = llvm::dyn_cast<clang::VarDecl>(result)) {
             return ConcreteExpression(c->GetLvalueType(c->GetClangType(*from, vardecl->getType())), c->gen->CreateGlobalVariable(from->MangleName(vardecl)));

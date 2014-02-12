@@ -141,7 +141,7 @@ Function::Function(std::vector<Type*> args, const AST::FunctionBase* astfun, Ana
                 auto str = dynamic_cast<Codegen::StringExpression*>(expr.Expr);
                 if (!str)
                     throw std::runtime_error("Prolog right-hand-sides of ExportName must be of string type!");
-                name = str->GetContents();
+                trampoline = str->GetContents();
             }
             if (ident->val == "ReturnType") {
                 auto ty = dynamic_cast<ConstructorType*>(expr.t);
@@ -420,6 +420,17 @@ void Function::CompleteAnalysis(Type* ret, Analyzer& a) {
         codefun = a.gen->CreateFunction(GetSignature(a)->GetLLVMType(a), name, this);
     for (auto&& x : exprs)
         codefun->AddStatement(x);
+    if (trampoline) {
+        auto tramp = a.gen->CreateFunction(GetSignature(a)->GetLLVMType(a), *trampoline, this, true);
+        // Args includes this if necessary, but add 1 if complex return
+        std::size_t argcount = Args.size();
+        if (ReturnType->IsComplexType(a))
+            ++argcount;
+        std::vector<Codegen::Expression*> args;
+        for (std::size_t i = 0; i < argcount; ++i)
+            args.push_back(a.gen->CreateParameterExpression(i));
+        tramp->AddStatement(a.gen->CreateReturn(a.gen->CreateFunctionCall(a.gen->CreateFunctionValue(GetName()), args)));
+    }
 }
 ConcreteExpression Function::BuildCall(ConcreteExpression ex, std::vector<ConcreteExpression> args, Context c) {
     if (s == State::AnalyzeCompleted) {
