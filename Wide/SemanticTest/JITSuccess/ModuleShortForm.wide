@@ -1,4 +1,0 @@
-module X.Y.Z { f() { return true; } }
-Main() {
-    return X.Y.Z.f();
-}

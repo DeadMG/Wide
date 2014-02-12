@@ -1,0 +1,9 @@
+f(bool->pointer->rvalue p) {
+    return true;
+}
+f(int64 i) {
+    return false;
+}
+Main() {
+    return f(null);
+}

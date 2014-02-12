@@ -1,2 +1,0 @@
-X.Y.f() { return true; }
-Main() { return X.Y.f(); }

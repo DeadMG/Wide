@@ -1,0 +1,9 @@
+f(bool->pointer p) {
+    return true;
+}
+f(int64 i) {
+    return false;
+}
+Main() {
+    return f(null);
+}

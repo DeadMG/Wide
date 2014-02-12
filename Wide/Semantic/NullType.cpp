@@ -31,5 +31,7 @@ std::size_t NullType::alignment(Analyzer& a) {
 bool NullType::IsA(Type* self, Type* other, Analyzer& a) {
     if (dynamic_cast<PointerType*>(other))
         return true;
+    if (dynamic_cast<PointerType*>(other->Decay()) && IsRvalueType(other))
+        return true;
     return Type::IsA(self, other, a);
 }
