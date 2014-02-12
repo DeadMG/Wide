@@ -24,8 +24,6 @@ namespace Wide {
         class Module;
         class UserDefinedType : public AggregateType {
             const AST::Type* type;
-            bool IsBinaryComplex;
-            bool IsUserDefinedComplex;
             bool HasDefaultConstructor;
 
             // Actually a list of member variables
@@ -37,6 +35,14 @@ namespace Wide {
                 Type* t;
                 unsigned num;
             };
+
+            // User Defined Complex
+            Wide::Util::optional<bool> UDCCache;
+            bool UserDefinedComplex(Analyzer& a);
+
+            // Binary Complex
+            Wide::Util::optional<bool> BCCache;
+            bool BinaryComplex(Analyzer& a);
         public:
             std::vector<member> GetMembers();
             UserDefinedType(const AST::Type* t, Analyzer& a, Type* context);           
@@ -54,9 +60,9 @@ namespace Wide {
             bool IsMoveConstructible(Analyzer& a) override final;
             bool IsCopyAssignable(Analyzer& a) override final;
             bool IsMoveAssignable(Analyzer& a) override final;
-            bool IsComplexType() override final;
+            bool IsComplexType(Analyzer& a) override final;
 
-            Wide::Util::optional<std::vector<Type*>> GetTypesForTuple();
+            Wide::Util::optional<std::vector<Type*>> GetTypesForTuple(Analyzer& a);
         };
     }
 }

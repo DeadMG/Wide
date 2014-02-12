@@ -16,14 +16,14 @@ using namespace Semantic;
 std::function<llvm::Type*(llvm::Module*)> FunctionType::GetLLVMType(Analyzer& a) {
     std::function<llvm::Type*(llvm::Module*)> ret;
     std::vector<std::function<llvm::Type*(llvm::Module*)>> args;
-    if (ReturnType->IsComplexType()) {
+    if (ReturnType->IsComplexType(a)) {
         ret = a.GetVoidType()->GetLLVMType(a);
         args.push_back(a.GetRvalueType(ReturnType)->GetLLVMType(a));
     } else {
         ret = ReturnType->GetLLVMType(a);
     }
     for(auto&& x : Args) {
-        if (x->IsComplexType()) {
+        if (x->IsComplexType(a)) {
             args.push_back(a.GetRvalueType(x)->GetLLVMType(a));
         } else {
             args.push_back(x->GetLLVMType(a));
@@ -51,7 +51,7 @@ ConcreteExpression FunctionType::BuildCall(ConcreteExpression val, std::vector<C
     // Our type system handles T vs T&& transparently, so substitution should be clean here. Just mention it in out.t.
     std::vector<Codegen::Expression*> e;
     // If the return type is complex, pass in pointer to result to be constructed, and mark our return type as an rvalue ref.
-    if (out.t->IsComplexType()) {
+    if (out.t->IsComplexType(*c)) {
         e.push_back(c->gen->CreateVariable(out.t->GetLLVMType(*c), out.t->alignment(*c)));
     }
     for(unsigned int i = 0; i < args.size(); ++i) {
@@ -62,7 +62,7 @@ ConcreteExpression FunctionType::BuildCall(ConcreteExpression val, std::vector<C
         }
 
         // If T is complex and we take some U, then consider T as T&&.
-        if (Args[i]->IsComplexType()) {
+        if (Args[i]->IsComplexType(*c)) {
             // If T is complex, and we already have a reference, take that.
             if (args[i].t->IsReference(Args[i])) {
                 e.push_back(args[i].Expr);
@@ -111,7 +111,7 @@ ConcreteExpression FunctionType::BuildCall(ConcreteExpression val, std::vector<C
     out.Expr = c->gen->CreateFunctionCall(val.Expr, e, GetLLVMType(*c));
     // If out's T is complex, then call f() and return e[0], which is the memory we allocated to store T, which is now constructed.
     // Also mark it for stealing
-    if (out.t->IsComplexType()) {
+    if (out.t->IsComplexType(*c)) {
         out.Expr = c->gen->CreateChainExpression(out.Expr, e[0]);
         out.t = c->GetRvalueType(out.t);
         out.steal = true;

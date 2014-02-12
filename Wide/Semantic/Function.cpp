@@ -97,11 +97,11 @@ Function::Function(std::vector<Type*> args, const AST::FunctionBase* astfun, Ana
         if (arg.name == "this")
             continue;
 #pragma warning(disable : 4800)
-        auto param = [this, num] { return num + ReturnType->IsComplexType() + (bool(dynamic_cast<UserDefinedType*>(context))); };
+        auto param = [this, num, &a] { return num + ReturnType->IsComplexType(a) + (bool(dynamic_cast<UserDefinedType*>(context))); };
         Type* ty = args[num];
         // Expr is set.
         ConcreteExpression var(a.GetLvalueType(ty), nullptr);
-        if (ty->IsComplexType()) {
+        if (ty->IsComplexType(a)) {
             var.Expr = a.gen->CreateParameterExpression(param);
         } else {
             if (ty->IsReference()) {
@@ -174,7 +174,7 @@ void Function::ComputeBody(Analyzer& a) {
         // Initializers first, if we are a constructor
         if (member) {
             if (auto con = dynamic_cast<const AST::Constructor*>(fun)) {
-                ConcreteExpression self(a.GetLvalueType(member), a.gen->CreateParameterExpression([this] { return ReturnType->IsComplexType(); }));
+                ConcreteExpression self(a.GetLvalueType(member), a.gen->CreateParameterExpression([this, &a] { return ReturnType->IsComplexType(a); }));
                 auto members = member->GetMembers();
                 for (auto&& x : members) {
                     auto has_initializer = [&](std::string name) -> const AST::Variable*{
@@ -256,7 +256,7 @@ void Function::ComputeBody(Analyzer& a) {
                     // Deal with emplacing the result
                     // If we emplace a complex result, don't destruct it, because that's the callee's job.
                     Context c(a, ret->location, [](ConcreteExpression e) {});
-                    if (ReturnType->IsComplexType()) {
+                    if (ReturnType->IsComplexType(a)) {
                         std::vector<ConcreteExpression> args;
                         args.push_back(result);
                         auto retexpr = ReturnType->BuildInplaceConstruction(a.gen->CreateParameterExpression(0), std::move(args), c);
@@ -433,8 +433,9 @@ ConcreteExpression Function::BuildCall(ConcreteExpression ex, std::vector<Concre
     throw std::runtime_error("Attempted to call a function, but the analysis was not yet completed. This means that you used recursion that the type system cannot handle.");
 }
 Wide::Util::optional<ConcreteExpression> Function::LookupLocal(std::string name, Context c) {
+    Analyzer& a = *c;
     if (name == "this" && (dynamic_cast<UserDefinedType*>(context->Decay()) || dynamic_cast<LambdaType*>(context->Decay())))
-        return ConcreteExpression(c->GetLvalueType(context->Decay()), c->gen->CreateParameterExpression([this] { return ReturnType->IsComplexType(); }));
+        return ConcreteExpression(c->GetLvalueType(context->Decay()), c->gen->CreateParameterExpression([this, &a] { return ReturnType->IsComplexType(a); }));
     return current_scope->LookupName(name);
 }
 std::string Function::GetName() {

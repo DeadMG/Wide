@@ -142,7 +142,7 @@ Wide::Util::optional<ConcreteExpression> Type::AccessMember(ConcreteExpression e
     return Wide::Util::none;
 }
 ConcreteExpression Type::BuildValue(ConcreteExpression lhs, Context c) {
-    if (IsComplexType())
+    if (IsComplexType(*c))
         throw std::runtime_error("Internal Compiler Error: Attempted to build a complex type into a register.");
     if (lhs.t->IsReference())
         return ConcreteExpression(lhs.t->Decay(), c->gen->CreateLoad(lhs.Expr));
@@ -261,7 +261,7 @@ Codegen::Expression* Type::BuildInplaceConstruction(Codegen::Expression* mem, st
 }
 
 ConcreteExpression Type::BuildValueConstruction(std::vector<ConcreteExpression> args, Context c) {
-    if (IsComplexType())
+    if (IsComplexType(*c))
         throw std::runtime_error("Internal compiler error: Attempted to value construct a complex UDT.");
     if (args.size() == 1 && args[0].t == this)
         return args[0];

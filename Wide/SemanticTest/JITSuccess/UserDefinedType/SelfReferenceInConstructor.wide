@@ -1,0 +1,13 @@
+type t {
+    val := int64->pointer;
+    type(int64->lvalue p) : val(&p) {}
+    type(t->lvalue other) : val(other.val) { (*val)++; }
+    operator=(t->lvalue other) { val = other.val; (*val)++; }
+}
+Main() {
+    counter := 0;
+    x := t(counter);
+    y := x;
+    y = x;
+    return counter == 2;
+}

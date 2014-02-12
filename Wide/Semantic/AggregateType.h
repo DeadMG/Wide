@@ -42,7 +42,7 @@ namespace Wide {
             bool IsMoveConstructible(Analyzer& a) override;
             bool IsCopyAssignable(Analyzer& a) override;
             bool IsMoveAssignable(Analyzer& a) override;
-            bool IsComplexType() override;
+            bool IsComplexType(Analyzer& a) override;
         };
     }
 }

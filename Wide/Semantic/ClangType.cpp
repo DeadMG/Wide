@@ -258,7 +258,7 @@ std::function<llvm::Type*(llvm::Module*)> ClangType::GetLLVMType(Analyzer& a) {
     return funty->BuildCall(obj, args, c).Expr;
 }*/
 
-bool ClangType::IsComplexType() {
+bool ClangType::IsComplexType(Analyzer& a) {
     auto decl = type.getCanonicalType()->getAsCXXRecordDecl();
     return decl && from->IsComplexType(decl);
 }

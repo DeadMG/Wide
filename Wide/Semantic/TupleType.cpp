@@ -39,7 +39,7 @@ ConcreteExpression TupleType::ConstructFromLiteral(std::vector<ConcreteExpressio
 bool TupleType::IsA(Type* self, Type* other, Analyzer& a) {
     auto udt = dynamic_cast<UserDefinedType*>(other);
     if (!udt) return Type::IsA(self, other, a);
-    auto udt_members = udt->GetTypesForTuple();
+    auto udt_members = udt->GetTypesForTuple(a);
     if (!udt_members) return false;
     if (GetMembers().size() != udt_members->size()) return false;
     bool is = true;

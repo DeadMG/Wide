@@ -56,7 +56,7 @@ AggregateType::AggregateType(std::vector<Type*> types, Wide::Semantic::Analyzer&
         FieldIndices.push_back(llvmtypes.size());
         llvmtypes.push_back(ty->GetLLVMType(a));
 
-        IsComplex = IsComplex || ty->IsComplexType();
+        IsComplex = IsComplex || ty->IsComplexType(a);
         copyconstructible = copyconstructible && ty->IsCopyConstructible(a);
         moveconstructible = moveconstructible && ty->IsMoveConstructible(a);
         copyassignable = copyassignable && ty->IsCopyAssignable(a);
@@ -73,7 +73,7 @@ std::size_t AggregateType::size(Analyzer& a) {
 std::size_t AggregateType::alignment(Analyzer& a) {
     return align;
 }
-bool AggregateType::IsComplexType() {
+bool AggregateType::IsComplexType(Analyzer& a) {
     return IsComplex;
 }
 

@@ -25,7 +25,7 @@ namespace Wide {
             
             Wide::Codegen::Expression* BuildBooleanConversion(ConcreteExpression self, Context c) override final;
 
-            bool IsComplexType() override final;
+            bool IsComplexType(Analyzer& a) override final;
             ConcreteExpression BuildDereference(ConcreteExpression obj, Context c) override final;
             ConcreteExpression BuildIncrement(ConcreteExpression obj, bool postfix, Context c) override final;
             std::size_t size(Analyzer& a) override final;

@@ -43,9 +43,7 @@ std::vector<Type*> GetTypesFromType(const AST::Type* t, Analyzer& a, Type* conte
 
 UserDefinedType::UserDefinedType(const AST::Type* t, Analyzer& a, Type* higher)
 : AggregateType(GetTypesFromType(t, a, higher), a)
-, context(higher)
-, IsUserDefinedComplex(false)
-, IsBinaryComplex(AggregateType::IsComplexType()) {
+, context(higher) {
     std::unordered_map<std::string, unsigned> mem;
     type = t;
     {
@@ -53,37 +51,6 @@ UserDefinedType::UserDefinedType(const AST::Type* t, Analyzer& a, Type* higher)
         for (auto&& var : type->variables)
             members[var->name.front()] = i++;
     }
-    // We are user-defined complex if the user specified any of the following:
-    // Copy/move constructor, copy/move assignment operator, destructor.
-    if (type->Functions.find("type") != type->Functions.end()) {
-        std::vector<Type*> copytypes;
-        copytypes.push_back(a.GetLvalueType(this));
-        copytypes.push_back(copytypes.front());
-        IsUserDefinedComplex = IsUserDefinedComplex || a.GetOverloadSet(type->Functions.at("type"), a.GetLvalueType(this))->Resolve(copytypes, a);
-        IsBinaryComplex = IsBinaryComplex || a.GetOverloadSet(type->Functions.at("type"), a.GetLvalueType(this))->Resolve(copytypes, a);
-
-        std::vector<Type*> movetypes;
-        movetypes.push_back(a.GetLvalueType(this));
-        movetypes.push_back(a.GetRvalueType(this));
-        IsUserDefinedComplex = IsUserDefinedComplex || a.GetOverloadSet(type->Functions.at("type"), a.GetLvalueType(this))->Resolve(movetypes, a);
-
-        std::vector<Type*> defaulttypes;
-        defaulttypes.push_back(a.GetLvalueType(this));
-        HasDefaultConstructor = a.GetOverloadSet(type->Functions.at("type"), a.GetLvalueType(this))->Resolve(defaulttypes, a);
-    }
-    if (type->opcondecls.find(Lexer::TokenType::Assignment) != type->opcondecls.end()) {
-        std::vector<Type*> copytypes;
-        copytypes.push_back(a.GetLvalueType(this));
-        copytypes.push_back(copytypes.front());
-        IsUserDefinedComplex = IsUserDefinedComplex || a.GetOverloadSet(type->opcondecls.at(Lexer::TokenType::Assignment), a.GetLvalueType(this))->Resolve(copytypes, a);
-
-        std::vector<Type*> movetypes;
-        movetypes.push_back(a.GetLvalueType(this));
-        movetypes.push_back(a.GetRvalueType(this));
-        IsUserDefinedComplex = IsUserDefinedComplex || a.GetOverloadSet(type->opcondecls.at(Lexer::TokenType::Assignment), a.GetLvalueType(this))->Resolve(movetypes, a);
-    }
-    if (type->Functions.find("~") != type->Functions.end())
-        IsUserDefinedComplex = IsBinaryComplex = true;
 }
 
 std::vector<UserDefinedType::member> UserDefinedType::GetMembers() {
@@ -187,7 +154,7 @@ clang::QualType UserDefinedType::GetClangType(ClangUtil::ClangTU& TU, Analyzer& 
                     }
                     // If T is complex, then "this" is the second argument. Else it is the first.
                     auto self = TU.GetLLVMTypeFromClangType(TU.GetASTContext().getTypeDeclType(recdecl), a)(m)->getPointerTo();
-                    if (sig->GetReturnType()->IsComplexType()) {
+                    if (sig->GetReturnType()->IsComplexType(a)) {
                         args.insert(args.begin() + 1, self);
                     } else {
                         args.insert(args.begin(), self);
@@ -197,7 +164,7 @@ clang::QualType UserDefinedType::GetClangType(ClangUtil::ClangTU& TU, Analyzer& 
                 // The only statement is return f().
                 std::vector<Codegen::Expression*> exprs;
                 // Unlike OverloadSet, we wish to simply forward all parameters after ABI adjustment performed by FunctionCall in Codegen.
-                if (sig->GetReturnType()->IsComplexType()) {
+                if (sig->GetReturnType()->IsComplexType(a)) {
                     // Two hidden arguments: ret, this, skip this and do the rest.
                     for(std::size_t i = 0; i < sig->GetArguments().size() + 2; ++i) {
                         exprs.push_back(a.gen->CreateParameterExpression(i));
@@ -224,6 +191,60 @@ bool UserDefinedType::HasMember(std::string name) {
     return type->Functions.find(name) != type->Functions.end() || members.find(name) != members.end();
 }
 
+bool UserDefinedType::BinaryComplex(Analyzer& a) {
+    if (BCCache)
+        return *BCCache;
+    bool IsBinaryComplex = AggregateType::IsComplexType(a);
+    if (type->Functions.find("type") != type->Functions.end()) {
+        std::vector<Type*> copytypes;
+        copytypes.push_back(a.GetLvalueType(this));
+        copytypes.push_back(copytypes.front());
+        IsBinaryComplex = IsBinaryComplex || a.GetOverloadSet(type->Functions.at("type"), a.GetLvalueType(this))->Resolve(copytypes, a);
+    }
+    if (type->Functions.find("~") != type->Functions.end()) 
+        IsBinaryComplex = true;
+    BCCache = IsBinaryComplex;
+    return *BCCache;
+}
+
+bool UserDefinedType::UserDefinedComplex(Analyzer& a) {
+    if (UDCCache)
+        return *UDCCache;
+    // We are user-defined complex if the user specified any of the following:
+    // Copy/move constructor, copy/move assignment operator, destructor.
+    bool IsUserDefinedComplex = false;
+    if (type->Functions.find("type") != type->Functions.end()) {
+        std::vector<Type*> copytypes;
+        copytypes.push_back(a.GetLvalueType(this));
+        copytypes.push_back(copytypes.front());
+        IsUserDefinedComplex = IsUserDefinedComplex || a.GetOverloadSet(type->Functions.at("type"), a.GetLvalueType(this))->Resolve(copytypes, a);
+
+        std::vector<Type*> movetypes;
+        movetypes.push_back(a.GetLvalueType(this));
+        movetypes.push_back(a.GetRvalueType(this));
+        IsUserDefinedComplex = IsUserDefinedComplex || a.GetOverloadSet(type->Functions.at("type"), a.GetLvalueType(this))->Resolve(movetypes, a);
+
+        std::vector<Type*> defaulttypes;
+        defaulttypes.push_back(a.GetLvalueType(this));
+        HasDefaultConstructor = a.GetOverloadSet(type->Functions.at("type"), a.GetLvalueType(this))->Resolve(defaulttypes, a);
+    }
+    if (type->opcondecls.find(Lexer::TokenType::Assignment) != type->opcondecls.end()) {
+        std::vector<Type*> copytypes;
+        copytypes.push_back(a.GetLvalueType(this));
+        copytypes.push_back(copytypes.front());
+        IsUserDefinedComplex = IsUserDefinedComplex || a.GetOverloadSet(type->opcondecls.at(Lexer::TokenType::Assignment), a.GetLvalueType(this))->Resolve(copytypes, a);
+
+        std::vector<Type*> movetypes;
+        movetypes.push_back(a.GetLvalueType(this));
+        movetypes.push_back(a.GetRvalueType(this));
+        IsUserDefinedComplex = IsUserDefinedComplex || a.GetOverloadSet(type->opcondecls.at(Lexer::TokenType::Assignment), a.GetLvalueType(this))->Resolve(movetypes, a);
+    }
+    if (type->Functions.find("~") != type->Functions.end())
+        IsUserDefinedComplex = true;
+    UDCCache = IsUserDefinedComplex;
+    return *UDCCache;
+}
+
 ConcreteExpression UserDefinedType::BuildCall(ConcreteExpression val, std::vector<ConcreteExpression> args, Context c) {
     auto self = val.t == this ? BuildRvalueConstruction(val, c) : val;
     if (type->opcondecls.find(Lexer::TokenType::OpenBracket) != type->opcondecls.end())
@@ -233,7 +254,7 @@ ConcreteExpression UserDefinedType::BuildCall(ConcreteExpression val, std::vecto
 
 OverloadSet* UserDefinedType::CreateConstructorOverloadSet(Analyzer& a) {
     auto user_defined_constructors = type->Functions.find("type") == type->Functions.end() ? a.GetOverloadSet() : a.GetOverloadSet(type->Functions.at("type"), a.GetLvalueType(this));
-    if (IsUserDefinedComplex)
+    if (UserDefinedComplex(a))
         return user_defined_constructors;
     
     struct TupleConstructor : public OverloadResolvable, Callable {
@@ -283,7 +304,7 @@ OverloadSet* UserDefinedType::CreateConstructorOverloadSet(Analyzer& a) {
 
 OverloadSet* UserDefinedType::CreateOperatorOverloadSet(Type* self, Lexer::TokenType name, Analyzer& a) {
     if (name == Lexer::TokenType::Assignment) {
-        if (IsUserDefinedComplex) {
+        if (UserDefinedComplex(a)) {
             if (type->opcondecls.find(name) != type->opcondecls.end())
                 return a.GetOverloadSet(type->opcondecls.at(name), self);
             return a.GetOverloadSet();
@@ -339,12 +360,12 @@ bool UserDefinedType::IsMoveAssignable(Analyzer& a) {
     return AggregateType::IsMoveAssignable(a);
 }
 
-bool UserDefinedType::IsComplexType() {
-    return IsBinaryComplex;
+bool UserDefinedType::IsComplexType(Analyzer& a) {
+    return BinaryComplex(a);
 }
 
-Wide::Util::optional<std::vector<Type*>> UserDefinedType::GetTypesForTuple() {
-    if (IsUserDefinedComplex)
+Wide::Util::optional<std::vector<Type*>> UserDefinedType::GetTypesForTuple(Analyzer& a) {
+    if (UserDefinedComplex(a))
         return Wide::Util::none;
     return AggregateType::GetMembers();
 }
