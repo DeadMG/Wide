@@ -38,7 +38,6 @@ Add ability for C++ to understand Wide member functions, constructors, and destr
 Add the ability for Wide to expose Wide generic functions as C++ templates
 Add the ability for Wide functions to refer to constant context.
 Add the ability to resolve one function from a C++ overload set.
-Look into whether the UDT destructor code is modifying the AST.
 Consider parameterised destructors.
 Add tests.
 
