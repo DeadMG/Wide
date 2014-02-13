@@ -5,6 +5,7 @@
 #include <Wide/Semantic/FunctionType.h>
 #include <Wide/Semantic/IntegralType.h>
 #include <Wide/Semantic/OverloadSet.h>
+#include <Wide/Semantic/Util.h>
 #include <Wide/Codegen/Generator.h>
 
 #pragma warning(push, 0)
@@ -75,15 +76,7 @@ Wide::Util::optional<ConcreteExpression> ClangIncludeEntity::AccessMember(Concre
                 p.Initialize();
                 auto expr = p.ParseExpression();
                 if (expr.isUsable()) {
-                    if (expr.get()->isIntegerConstantExpr(tu->GetASTContext())) {
-                        llvm::APSInt out;
-                        if (expr.get()->EvaluateAsInt(out, tu->GetASTContext())) {
-                            if (out.getBitWidth() == 1)
-                                return ConcreteExpression(c->GetBooleanType(), c->gen->CreateIntegralExpression(out.getLimitedValue(1), false, c->GetBooleanType()->GetLLVMType(*c)));
-                            auto ty = c->GetIntegralType(out.getBitWidth(), out.isSigned());
-                            return ConcreteExpression(ty, c->gen->CreateIntegralExpression(out.getLimitedValue(), out.isSigned(), ty->GetLLVMType(*c)));
-                        }
-                    }
+                    return InterpretExpression(expr.get(), *tu, c);
                 }
                 throw std::runtime_error("Only support constexpr integral macros right now.");
             }

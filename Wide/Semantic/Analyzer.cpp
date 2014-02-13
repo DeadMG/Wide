@@ -22,7 +22,6 @@
 #include <Wide/Semantic/UserDefinedType.h>
 #include <Wide/Semantic/NullType.h>
 #include <Wide/Semantic/SemanticError.h>
-#include <Wide/Semantic/SemanticExpression.h>
 #include <Wide/Semantic/FloatType.h>
 #include <Wide/Semantic/TupleType.h>
 #include <Wide/Semantic/LambdaType.h>
@@ -127,10 +126,6 @@ Analyzer::Analyzer(const Options::Clang& opts, Codegen::Generator& g, const AST:
 }
 
 ConcreteExpression Analyzer::AnalyzeExpression(Type* t, const AST::Expression* e, std::function<void(ConcreteExpression)> handler) {
-    if (auto semexpr = dynamic_cast<const SemanticExpression*>(e)) {
-        return semexpr->e;
-    }
-
     struct AnalyzerVisitor : public AST::Visitor<AnalyzerVisitor> {
         Type* t;
         Analyzer* self;
@@ -342,16 +337,16 @@ ConcreteExpression Analyzer::AnalyzeExpression(Type* t, const AST::Expression* e
     return *v.out;
 }
 
-ClangUtil::ClangTU* Analyzer::LoadCPPHeader(std::string file, Lexer::Range where) {
+ClangTU* Analyzer::LoadCPPHeader(std::string file, Lexer::Range where) {
     if (headers.find(file) != headers.end())
         return &headers.find(file)->second;
-    headers.insert(std::make_pair(file, ClangUtil::ClangTU(gen->GetContext(), file, *clangopts, where)));
+    headers.insert(std::make_pair(file, ClangTU(gen->GetContext(), file, *clangopts, where)));
     auto ptr = &headers.find(file)->second;
     gen->AddClangTU([=](llvm::Module* main) { ptr->GenerateCodeAndLinkModule(main); });
     return ptr;
 }
 
-Type* Analyzer::GetClangType(ClangUtil::ClangTU& from, clang::QualType t) {
+Type* Analyzer::GetClangType(ClangTU& from, clang::QualType t) {
     t = t.getCanonicalType();
     if (t.isConstQualified())
        t.removeLocalConst();
@@ -382,7 +377,7 @@ Type* Analyzer::GetClangType(ClangUtil::ClangTU& from, clang::QualType t) {
     return ClangTypes[t] = arena.Allocate<ClangType>(&from, t);
 }
 
-ClangNamespace* Analyzer::GetClangNamespace(ClangUtil::ClangTU& tu, clang::DeclContext* con) {
+ClangNamespace* Analyzer::GetClangNamespace(ClangTU& tu, clang::DeclContext* con) {
     if (ClangNamespaces.find(con) != ClangNamespaces.end())
         return ClangNamespaces[con];
     return ClangNamespaces[con] = arena.Allocate<ClangNamespace>(con, &tu);
@@ -462,7 +457,7 @@ ConstructorType* Analyzer::GetConstructorType(Type* t) {
     return ConstructorTypes[t] = arena.Allocate<ConstructorType>(t);
 }
 
-ClangTemplateClass* Analyzer::GetClangTemplateClass(ClangUtil::ClangTU& from, clang::ClassTemplateDecl* decl) {
+ClangTemplateClass* Analyzer::GetClangTemplateClass(ClangTU& from, clang::ClassTemplateDecl* decl) {
     if (ClangTemplateClasses.find(decl) != ClangTemplateClasses.end())
         return ClangTemplateClasses[decl];
     return ClangTemplateClasses[decl] = arena.Allocate<ClangTemplateClass>(decl, &from);
@@ -605,7 +600,7 @@ Wide::Util::optional<ConcreteExpression> Analyzer::LookupIdentifier(Type* contex
 Module* Analyzer::GetGlobalModule() {
     return global;
 }
-OverloadSet* Analyzer::GetOverloadSet(std::unordered_set<clang::NamedDecl*> decls, ClangUtil::ClangTU* from, Type* context) {
+OverloadSet* Analyzer::GetOverloadSet(std::unordered_set<clang::NamedDecl*> decls, ClangTU* from, Type* context) {
     if (clang_overload_sets.find(decls) != clang_overload_sets.end())
         if (clang_overload_sets[decls].find(context) != clang_overload_sets[decls].end())
             return clang_overload_sets[decls][context];

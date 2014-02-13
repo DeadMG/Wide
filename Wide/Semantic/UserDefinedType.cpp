@@ -9,7 +9,6 @@
 #include <Wide/Semantic/TupleType.h>
 #include <Wide/Semantic/ConstructorType.h>
 #include <Wide/Parser/AST.h>
-#include <Wide/Semantic/SemanticExpression.h>
 #include <Wide/Semantic/Reference.h>
 #include <sstream>
 
@@ -74,7 +73,7 @@ Wide::Util::optional<ConcreteExpression> UserDefinedType::AccessMember(ConcreteE
     }
     return Wide::Util::none;
 }
-clang::QualType UserDefinedType::GetClangType(ClangUtil::ClangTU& TU, Analyzer& a) {
+clang::QualType UserDefinedType::GetClangType(ClangTU& TU, Analyzer& a) {
     if (clangtypes.find(&TU) != clangtypes.end())
         return clangtypes[&TU];
     

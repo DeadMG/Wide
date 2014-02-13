@@ -38,29 +38,27 @@
 #pragma warning(pop)
 
 using namespace Wide;
-using namespace ClangUtil;
+using namespace Semantic;   
 
-namespace Wide {
-    namespace ClangUtil {        
-        class CodeGenConsumer : public clang::ASTConsumer {
-        public:
-            CodeGenConsumer(std::vector<clang::Decl*>& arg)
-                : vec(arg) {}
-            std::vector<clang::Decl*>& vec;
-            bool HandleTopLevelDecl(clang::DeclGroupRef arg) {
-                for(auto&& x : arg) {
-                    vec.push_back(x);
-                }
-                return true;
-            }
-        }; 
+class CodeGenConsumer : public clang::ASTConsumer {
+public:
+    CodeGenConsumer(std::vector<clang::Decl*>& arg)
+        : vec(arg) {}
+    std::vector<clang::Decl*>& vec;
+    bool HandleTopLevelDecl(clang::DeclGroupRef arg) {
+        for(auto&& x : arg) {
+            vec.push_back(x);
+        }
+        return true;
     }
-}
+}; 
 
-namespace Wide {
-    namespace ClangUtil {
-        clang::TargetInfo* CreateTargetInfoFromTriple(clang::DiagnosticsEngine& engine, std::string triple); 
-    }
+clang::TargetInfo* CreateTargetInfoFromTriple(clang::DiagnosticsEngine& engine, std::string triple) {
+    clang::TargetOptions& target = *new clang::TargetOptions();
+    target.Triple = triple;
+    auto targetinfo = clang::TargetInfo::CreateTargetInfo(engine, &target);
+    targetinfo->setCXXABI(clang::TargetCXXABI::GenericItanium);
+    return targetinfo;
 }
 
 class ClangTU::Impl {
@@ -80,7 +78,7 @@ public:
     clang::SourceManager sm;
     clang::Preprocessor preproc;
     clang::ASTContext astcon;
-    Wide::ClangUtil::CodeGenConsumer consumer;
+    CodeGenConsumer consumer;
     clang::Sema sema;
     std::string filename;
     std::unordered_map<clang::QualType, std::function<llvm::Type*(llvm::Module*)>, ClangTypeHasher> DeferredTypeMap;
@@ -102,7 +100,7 @@ public:
         , error_stream(errors)
         , FileManager(opts.FileSearchOptions)
         , engine(opts.DiagnosticIDs, opts.DiagnosticOptions.getPtr(), new clang::TextDiagnosticPrinter(error_stream, opts.DiagnosticOptions.getPtr()), false)
-        , targetinfo(Wide::ClangUtil::CreateTargetInfoFromTriple(engine, opts.TargetOptions.Triple))
+        , targetinfo(CreateTargetInfoFromTriple(engine, opts.TargetOptions.Triple))
         , hs(opts.HeaderSearchOptions, FileManager, engine, opts.LanguageOptions, targetinfo.get())
         , layout(targetinfo->getTargetDescription())
         , sm(engine, FileManager)

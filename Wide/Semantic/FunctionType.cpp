@@ -37,7 +37,7 @@ std::function<llvm::Type*(llvm::Module*)> FunctionType::GetLLVMType(Analyzer& a)
     };
 }
 
-clang::QualType FunctionType::GetClangType(ClangUtil::ClangTU& from, Analyzer& a) {
+clang::QualType FunctionType::GetClangType(ClangTU& from, Analyzer& a) {
     std::vector<clang::QualType> types;
     for(auto x : Args)
         types.push_back(x->GetClangType(from, a));

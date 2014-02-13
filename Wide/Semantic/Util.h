@@ -1,26 +1,30 @@
 #pragma once
 
 #include <string>
+#include <unordered_map>
 
 namespace clang {
     class QualType;
-#if _MSC_VER
-    enum ExprValueKind : int;
-#else
-}
-#include <clang/Basic/Specifiers.h>
-namespace clang {
-#endif
+    class Expr;
 }
 
+#pragma warning(push, 0)
+#include <clang/Basic/Specifiers.h>
+#include <clang/Basic/OperatorKinds.h>
+#include <clang/AST/OperationKinds.h>
+#pragma warning(pop)
+
 namespace Wide {
+    namespace Lexer {
+        enum class TokenType : int;
+    }
     namespace Semantic {
         struct Type;
+        struct Context;
+        struct ConcreteExpression;    
         clang::ExprValueKind GetKindOfType(Type* t);
-    }
-    namespace ClangUtil {
-        struct ClangTypeHasher {
-            std::size_t operator()(clang::QualType t) const;
-        };
+        class ClangTU;
+        const std::unordered_map<Lexer::TokenType, std::pair<clang::OverloadedOperatorKind, clang::BinaryOperatorKind>>& GetTokenMappings();
+        ConcreteExpression InterpretExpression(clang::Expr* p, ClangTU& from, Context c);
     }
 }

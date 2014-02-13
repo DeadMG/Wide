@@ -15,7 +15,7 @@
 using namespace Wide;
 using namespace Semantic;
 
-clang::QualType IntegralType::GetClangType(ClangUtil::ClangTU& TU, Analyzer& a) {
+clang::QualType IntegralType::GetClangType(ClangTU& TU, Analyzer& a) {
     switch(bits) {
     case 8:
         if (is_signed)

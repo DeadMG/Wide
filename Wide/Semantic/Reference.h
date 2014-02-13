@@ -37,14 +37,14 @@ namespace Wide {
         class LvalueType : public Reference {
         public:
             LvalueType(Type* t) : Reference(t) {}
-            clang::QualType GetClangType(ClangUtil::ClangTU& tu, Analyzer& a) override;
+            clang::QualType GetClangType(ClangTU& tu, Analyzer& a) override final;
             bool IsA(Type* self, Type* other, Analyzer& a) override final;
             OverloadSet* CreateConstructorOverloadSet(Analyzer& a) override final;
         };
         class RvalueType : public Reference {
         public:
             RvalueType(Type* t) : Reference(t) {}
-            clang::QualType GetClangType(ClangUtil::ClangTU& tu, Analyzer& a) override;
+            clang::QualType GetClangType(ClangTU& tu, Analyzer& a) override final;
             bool IsA(Type* self, Type* other, Analyzer& a) override final;
             OverloadSet* CreateConstructorOverloadSet(Analyzer& a) override final;
             ConcreteExpression BuildValueConstruction(std::vector<ConcreteExpression> args, Context c) override final;

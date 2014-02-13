@@ -8,6 +8,7 @@
 #include <Wide/Codegen/Generator.h>
 #include <Wide/Semantic/Reference.h>
 #include <Wide/Semantic/ClangTemplateClass.h>
+#include <Wide/Semantic/Util.h>
 #include <Wide/Semantic/ConstructorType.h>
 #include <Wide/Lexer/Token.h>
 #include <iostream>
@@ -25,20 +26,20 @@
 using namespace Wide;
 using namespace Semantic;
 
-ConcreteExpression GetOverloadSet(clang::NamedDecl* d, ClangUtil::ClangTU* from, ConcreteExpression self, Context c) {
+ConcreteExpression GetOverloadSet(clang::NamedDecl* d, ClangTU* from, ConcreteExpression self, Context c) {
     std::unordered_set<clang::NamedDecl*> decls;
     if (d)
         decls.insert(d);
     return c->GetOverloadSet(std::move(decls), from, self.t)->BuildValueConstruction(self, c);
 }
-ConcreteExpression GetOverloadSet(clang::LookupResult& lr, ClangUtil::ClangTU* from, ConcreteExpression self, Context c) {
+ConcreteExpression GetOverloadSet(clang::LookupResult& lr, ClangTU* from, ConcreteExpression self, Context c) {
     std::unordered_set<clang::NamedDecl*> decls;
     decls.insert(lr.begin(), lr.end());
     return c->GetOverloadSet(std::move(decls), from, self.t)->BuildValueConstruction(self, c);
 }
 
 
-ClangType::ClangType(ClangUtil::ClangTU* src, clang::QualType t) 
+ClangType::ClangType(ClangTU* src, clang::QualType t) 
     : from(src), type(t.getCanonicalType()) 
 {
     // Declare any special members that need it.    
@@ -118,7 +119,7 @@ ClangType::ClangType(ClangUtil::ClangTU* src, clang::QualType t)
         [&]{ return from->GetSema().LookupDefaultConstructor(recdecl); }
     );
 }
-clang::QualType ClangType::GetClangType(ClangUtil::ClangTU& tu, Analyzer& a) {
+clang::QualType ClangType::GetClangType(ClangTU& tu, Analyzer& a) {
     if (&tu != from)
         throw std::runtime_error("Attempted to use a C++ type outside the TU where it was declared.");
     return type;
@@ -172,130 +173,11 @@ std::function<llvm::Type*(llvm::Module*)> ClangType::GetLLVMType(Analyzer& a) {
     return from->GetLLVMTypeFromClangType(type, a);
 }
            
-/*Codegen::Expression* ClangType::BuildInplaceConstruction(Codegen::Expression* mem, std::vector<ConcreteExpression> args, Context c) {
-    if (args.size() == 1 && args[0].t->Decay() == this && !IsComplexType()) {
-        return c->gen->CreateStore(mem, args[0].BuildValue(c).Expr);
-    }
-    clang::UnresolvedSet<8> us;
-
-    auto recdecl = type->getAsCXXRecordDecl();    
-    // The first argument is pseudo-this.
-    if (!recdecl) {
-        type->dump();
-        // Just store.
-        throw std::runtime_error("Attempted to in-place construct a type that was not a CXXRecordDecl. Maybe a union or something. This is not supported.");
-    }
-
-    auto cons = from->GetSema().LookupConstructors(recdecl);
-    for (auto begin = cons.begin(); begin != cons.end(); ++begin) {
-        us.addDecl(*begin);
-    }
-    std::vector<clang::OpaqueValueExpr> exprs;
-    for(auto x : args) {
-        exprs.push_back(clang::OpaqueValueExpr(clang::SourceLocation(), x.t->GetClangType(*from, *c).getNonLValueExprType(from->GetASTContext()), GetKindOfType(x.t)));
-    }
-    std::vector<clang::Expr*> exprptrs;
-    for(auto&& x : exprs) {
-        exprptrs.push_back(&x);
-    }
-    clang::OverloadCandidateSet s((clang::SourceLocation()));
-    for(auto&& x : us) {
-        auto con = static_cast<clang::CXXConstructorDecl*>(x);
-        clang::DeclAccessPair d;
-        d.set(con, con->getAccess());
-        from->GetSema().AddOverloadCandidate(con, d, exprptrs, s);
-    }
-    clang::OverloadCandidateSet::iterator best;
-    auto result = s.BestViableFunction(from->GetSema(), clang::SourceLocation(), best);
-    if (result == clang::OverloadingResult::OR_Ambiguous)
-        throw std::runtime_error("Attempted to call an overloaded constructor, but Clang said the overloads were ambiguous.");
-    if (result == clang::OverloadingResult::OR_Deleted)
-        throw std::runtime_error("Attempted to call an overloaded constructor, but Clang said the best match was a C++ deleted function.");
-    if (result == clang::OverloadingResult::OR_No_Viable_Function)
-        throw std::runtime_error("Attempted to call an overloaded constructor, but Clang said that there were no viable functions.");
-    auto fun = best->Function;
-    if (args.size() == 0 && fun->isTrivial()) {
-        return mem;
-    }
-    if (args.size() == 1 && fun->isTrivial() && args[0].t->Decay() == this) {
-        return c->gen->CreateStore(mem, args[0].BuildValue(c).Expr);
-    }
-
-    std::vector<Type*> types;
-
-    // Constructor signatures don't seem to include the need for "this", so just lie.
-    // It all turns out alright.
-    ConcreteExpression self(c->GetLvalueType(this), mem);
-    types.push_back(self.t);
-
-    for(unsigned i = 0; i < fun->getNumParams(); ++i) {
-        // Clang's overload resolution may ask us to create a default parameter.
-        // Check if the function takes more params than we do and if so, create a default.
-        auto paramdecl = fun->getParamDecl(i);
-        if (i >= args.size()) {
-            if (paramdecl->hasDefaultArg()) {
-                // Assume that it is default-construct for now because fuck every other thing.
-                std::vector<ConcreteExpression> conargs;
-                auto ty = c->GetClangType(*from, paramdecl->getType());
-                // If ty is T&, construct lvalue construction.
-                if (IsLvalueType(ty)) {
-                    args.push_back(ty->Decay()->BuildLvalueConstruction(conargs, c));
-                } else if (IsRvalueType(ty)) {
-                    args.push_back(ty->Decay()->BuildRvalueConstruction(conargs, c));
-                } else 
-                    args.push_back(ty->BuildValueConstruction(conargs, c));
-            }
-        }
-        types.push_back(c->GetClangType(*from, paramdecl->getType()));
-        if (c->GetClangType(*from, paramdecl->getType()) == this)
-            throw std::runtime_error("Fuck");
-    }
-    args.insert(args.begin(), self);
-
-    auto rty = c->GetClangType(*from, fun->getResultType());
-    auto funty = c->GetFunctionType(rty, types);
-    ConcreteExpression obj(funty, c->gen->CreateFunctionValue(from->MangleName(fun)));
-    return funty->BuildCall(obj, args, c).Expr;
-}*/
-
 bool ClangType::IsComplexType(Analyzer& a) {
     auto decl = type.getCanonicalType()->getAsCXXRecordDecl();
     return decl && from->IsComplexType(decl);
 }
 
-static const std::unordered_map<Lexer::TokenType, std::pair<clang::OverloadedOperatorKind, clang::BinaryOperatorKind>> BinaryTokenMapping = []() 
-    -> std::unordered_map<Lexer::TokenType, std::pair<clang::OverloadedOperatorKind, clang::BinaryOperatorKind>> 
-{
-    std::unordered_map<Lexer::TokenType, std::pair<clang::OverloadedOperatorKind, clang::BinaryOperatorKind>> ret;
-    ret[Lexer::TokenType::NotEqCmp] = std::make_pair(clang::OverloadedOperatorKind::OO_ExclaimEqual, clang::BinaryOperatorKind::BO_NE);
-    ret[Lexer::TokenType::EqCmp] = std::make_pair(clang::OverloadedOperatorKind::OO_EqualEqual, clang::BinaryOperatorKind::BO_EQ);
-    ret[Lexer::TokenType::LT] = std::make_pair(clang::OverloadedOperatorKind::OO_Less, clang::BinaryOperatorKind::BO_LT);
-    ret[Lexer::TokenType::GT] = std::make_pair(clang::OverloadedOperatorKind::OO_Greater, clang::BinaryOperatorKind::BO_GT);
-    ret[Lexer::TokenType::LTE] = std::make_pair(clang::OverloadedOperatorKind::OO_LessEqual, clang::BinaryOperatorKind::BO_LE);
-    ret[Lexer::TokenType::GTE] = std::make_pair(clang::OverloadedOperatorKind::OO_GreaterEqual, clang::BinaryOperatorKind::BO_GE);    
-    ret[Lexer::TokenType::Assignment] = std::make_pair(clang::OverloadedOperatorKind::OO_Equal, clang::BinaryOperatorKind::BO_Assign);
-    ret[Lexer::TokenType::LeftShift] = std::make_pair(clang::OverloadedOperatorKind::OO_LessLess, clang::BinaryOperatorKind::BO_Shl);
-    ret[Lexer::TokenType::LeftShiftAssign] = std::make_pair(clang::OverloadedOperatorKind::OO_LessLessEqual, clang::BinaryOperatorKind::BO_ShlAssign);
-    ret[Lexer::TokenType::RightShift] = std::make_pair(clang::OverloadedOperatorKind::OO_GreaterGreater, clang::BinaryOperatorKind::BO_Shr);
-    ret[Lexer::TokenType::RightShiftAssign] = std::make_pair(clang::OverloadedOperatorKind::OO_GreaterGreaterEqual, clang::BinaryOperatorKind::BO_ShrAssign);
-    ret[Lexer::TokenType::Plus] = std::make_pair(clang::OverloadedOperatorKind::OO_Plus, clang::BinaryOperatorKind::BO_Add);
-    ret[Lexer::TokenType::PlusAssign] = std::make_pair(clang::OverloadedOperatorKind::OO_PlusEqual, clang::BinaryOperatorKind::BO_AddAssign);
-    ret[Lexer::TokenType::Minus] = std::make_pair(clang::OverloadedOperatorKind::OO_Minus, clang::BinaryOperatorKind::BO_Sub);
-    ret[Lexer::TokenType::MinusAssign] = std::make_pair(clang::OverloadedOperatorKind::OO_MinusEqual, clang::BinaryOperatorKind::BO_SubAssign);
-    ret[Lexer::TokenType::Divide] = std::make_pair(clang::OverloadedOperatorKind::OO_Slash, clang::BinaryOperatorKind::BO_Div);
-    ret[Lexer::TokenType::DivAssign] = std::make_pair(clang::OverloadedOperatorKind::OO_SlashEqual, clang::BinaryOperatorKind::BO_DivAssign);
-    ret[Lexer::TokenType::Modulo] = std::make_pair(clang::OverloadedOperatorKind::OO_Percent, clang::BinaryOperatorKind::BO_Rem);
-    ret[Lexer::TokenType::ModAssign] = std::make_pair(clang::OverloadedOperatorKind::OO_PercentEqual, clang::BinaryOperatorKind::BO_RemAssign);
-    ret[Lexer::TokenType::Dereference] = std::make_pair(clang::OverloadedOperatorKind::OO_Star, clang::BinaryOperatorKind::BO_Mul);
-    ret[Lexer::TokenType::MulAssign] = std::make_pair(clang::OverloadedOperatorKind::OO_StarEqual, clang::BinaryOperatorKind::BO_MulAssign);
-    ret[Lexer::TokenType::Xor] = std::make_pair(clang::OverloadedOperatorKind::OO_Caret, clang::BinaryOperatorKind::BO_Xor);
-    ret[Lexer::TokenType::XorAssign] = std::make_pair(clang::OverloadedOperatorKind::OO_CaretEqual, clang::BinaryOperatorKind::BO_XorAssign);
-    ret[Lexer::TokenType::Or] = std::make_pair(clang::OverloadedOperatorKind::OO_Pipe, clang::BinaryOperatorKind::BO_Or);
-    ret[Lexer::TokenType::OrAssign] = std::make_pair(clang::OverloadedOperatorKind::OO_PipeEqual, clang::BinaryOperatorKind::BO_OrAssign);
-    ret[Lexer::TokenType::And] = std::make_pair(clang::OverloadedOperatorKind::OO_Amp, clang::BinaryOperatorKind::BO_And);
-    ret[Lexer::TokenType::AndAssign] = std::make_pair(clang::OverloadedOperatorKind::OO_AmpEqual, clang::BinaryOperatorKind::BO_AndAssign);
-    return ret;
-}();
 Wide::Codegen::Expression* ClangType::BuildBooleanConversion(ConcreteExpression self, Context c) {
     if (self.t->Decay() == self.t)
         self = BuildRvalueConstruction(self, c);
@@ -394,15 +276,15 @@ OverloadSet* ClangType::CreateADLOverloadSet(Lexer::TokenType what, Type* lhs, T
     std::vector<clang::Expr*> exprs;
     exprs.push_back(&lhsexpr);
     exprs.push_back(&rhsexpr);
-    from->GetSema().ArgumentDependentLookup(from->GetASTContext().DeclarationNames.getCXXOperatorName(BinaryTokenMapping.at(what).first), true, clang::SourceLocation(), exprs, res);
+    from->GetSema().ArgumentDependentLookup(from->GetASTContext().DeclarationNames.getCXXOperatorName(GetTokenMappings().at(what).first), true, clang::SourceLocation(), exprs, res);
     std::unordered_set<clang::NamedDecl*> decls;
     decls.insert(res.begin(), res.end());
     return a.GetOverloadSet(std::move(decls), from, GetContext(a));
 }
 
 OverloadSet* ClangType::CreateOperatorOverloadSet(Type* self, Lexer::TokenType name, Analyzer& a) {
-    auto opkind = BinaryTokenMapping.at(name).first;
-    auto opcode = BinaryTokenMapping.at(name).second;
+    auto opkind = GetTokenMappings().at(name).first;
+    auto opcode = GetTokenMappings().at(name).second;
     clang::LookupResult lr(
         from->GetSema(), 
         from->GetASTContext().DeclarationNames.getCXXOperatorName(opkind), 

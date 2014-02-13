@@ -25,9 +25,6 @@ namespace clang {
     class QualType;
 }
 namespace Wide {
-    namespace ClangUtil {
-        class ClangTU;
-    }
     namespace Codegen {
         class Expression;
         class Generator;
@@ -39,6 +36,7 @@ namespace Wide {
         enum class TokenType : int;
     }
     namespace Semantic {
+        class ClangTU;
         class Analyzer;
         class OverloadSet;
         struct Type;
@@ -120,7 +118,7 @@ namespace Wide {
             virtual Type* GetContext(Analyzer& a);
 
             virtual bool IsComplexType(Analyzer& a) { return false; }
-            virtual clang::QualType GetClangType(ClangUtil::ClangTU& TU, Analyzer& a);
+            virtual clang::QualType GetClangType(ClangTU& TU, Analyzer& a);
             virtual std::function<llvm::Type*(llvm::Module*)> GetLLVMType(Analyzer& a) {
                 throw std::runtime_error("This type has no LLVM counterpart.");
             }

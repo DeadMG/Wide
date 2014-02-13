@@ -15,7 +15,7 @@
 using namespace Wide;
 using namespace Semantic;
 
-clang::QualType PointerType::GetClangType(ClangUtil::ClangTU& tu, Analyzer& a) {
+clang::QualType PointerType::GetClangType(ClangTU& tu, Analyzer& a) {
     return tu.GetASTContext().getPointerType(pointee->GetClangType(tu, a));
 }
 

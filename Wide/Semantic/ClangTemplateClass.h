@@ -9,11 +9,11 @@ namespace Wide {
     namespace Semantic {
         class ClangTemplateClass : public MetaType {
             clang::ClassTemplateDecl* tempdecl;
-            ClangUtil::ClangTU* from;
+            ClangTU* from;
         public:
             using Type::BuildValueConstruction;
 
-            ClangTemplateClass(clang::ClassTemplateDecl* decl, ClangUtil::ClangTU* ptr)
+            ClangTemplateClass(clang::ClassTemplateDecl* decl, ClangTU* ptr)
                 : tempdecl(decl), from(ptr) {}
 
             ConcreteExpression BuildCall(ConcreteExpression, std::vector<ConcreteExpression>, Context c) override;

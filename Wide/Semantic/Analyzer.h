@@ -5,6 +5,7 @@
 #include <Wide/Semantic/Util.h>
 #include <Wide/Util/Ranges/Optional.h>
 #include <Wide/Semantic/ClangOptions.h>
+#include <Wide/Semantic/Hashers.h>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -30,9 +31,6 @@ namespace clang {
 }
 
 namespace Wide {
-    namespace ClangUtil {
-        class ClangTU;
-    }
     namespace Codegen {
         class Generator;
     }
@@ -47,6 +45,7 @@ namespace Wide {
         struct Identifier;
     };
     namespace Semantic {
+        class ClangTU;
         struct Callable;
         class Function;
         class Module;
@@ -68,22 +67,11 @@ namespace Wide {
         struct NullType;
         struct Result;
         class TupleType;
-        struct VectorTypeHasher {
-            std::size_t operator()(const std::vector<Type*>& t) const;
-        };
-        struct SetTypeHasher {
-            template<typename T> std::size_t operator()(const std::unordered_set<T*>& t) const {
-                std::size_t hash = 0;
-                for(auto ty : t)
-                    hash += std::hash<T*>()(ty);
-                return hash;
-            }
-        };
         class Analyzer {
             Module* global;
             std::unordered_map<std::unordered_set<OverloadResolvable*>, OverloadSet*, SetTypeHasher> callable_overload_sets;
-            std::unordered_map<std::string, ClangUtil::ClangTU> headers;
-            std::unordered_map<clang::QualType, Type*, ClangUtil::ClangTypeHasher> ClangTypes;
+            std::unordered_map<std::string, ClangTU> headers;
+            std::unordered_map<clang::QualType, Type*, ClangTypeHasher> ClangTypes;
             std::unordered_map<clang::DeclContext*, ClangNamespace*> ClangNamespaces;
             std::unordered_map<Type*, std::unordered_map<std::vector<Type*>, FunctionType*, VectorTypeHasher>> FunctionTypes;
             std::unordered_map<const AST::FunctionBase*, std::unordered_map<std::vector<Type*>, Function*, VectorTypeHasher>> WideFunctions;
@@ -126,21 +114,21 @@ namespace Wide {
             
             // The contract of this function is to return the Wide type that corresponds to that Clang type.
             // Not to return a ClangType instance.
-            Type* GetClangType(ClangUtil::ClangTU& from, clang::QualType t);
-            ClangNamespace* GetClangNamespace(ClangUtil::ClangTU& from, clang::DeclContext* dc);
+            Type* GetClangType(ClangTU& from, clang::QualType t);
+            ClangNamespace* GetClangNamespace(ClangTU& from, clang::DeclContext* dc);
             FunctionType* GetFunctionType(Type* ret, const std::vector<Type*>& t);
             Module* GetWideModule(const AST::Module* m, Module* higher);
             Function* GetWideFunction(const AST::FunctionBase* p, Type* context, const std::vector<Type*>& = std::vector<Type*>());
             LvalueType* GetLvalueType(Type* t);
             Type* GetRvalueType(Type* t);
             ConstructorType* GetConstructorType(Type* t);
-            ClangTemplateClass* GetClangTemplateClass(ClangUtil::ClangTU& from, clang::ClassTemplateDecl*);
+            ClangTemplateClass* GetClangTemplateClass(ClangTU& from, clang::ClassTemplateDecl*);
             OverloadSet* GetOverloadSet();
             OverloadSet* GetOverloadSet(std::unordered_set<OverloadResolvable*> c, Type* nonstatic = nullptr);
             OverloadSet* GetOverloadSet(OverloadResolvable* c);
             OverloadSet* GetOverloadSet(const AST::FunctionOverloadSet* set, Type* nonstatic);
             OverloadSet* GetOverloadSet(OverloadSet*, OverloadSet*);
-            OverloadSet* GetOverloadSet(std::unordered_set<clang::NamedDecl*> decls, ClangUtil::ClangTU* from, Type* context);
+            OverloadSet* GetOverloadSet(std::unordered_set<clang::NamedDecl*> decls, ClangTU* from, Type* context);
             UserDefinedType* GetUDT(const AST::Type*, Type* context);
             IntegralType* GetIntegralType(unsigned, bool);
             PointerType* GetPointerType(Type* to);
@@ -154,7 +142,7 @@ namespace Wide {
 
             Analyzer(const Options::Clang&, Codegen::Generator&, const AST::Module*);     
 
-            ClangUtil::ClangTU* LoadCPPHeader(std::string file, Lexer::Range where);
+            ClangTU* LoadCPPHeader(std::string file, Lexer::Range where);
             
             ~Analyzer();
         };

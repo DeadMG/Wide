@@ -30,7 +30,7 @@ llvm::Type* GetLLVMTypeForBits(unsigned bits, llvm::LLVMContext& con) {
     assert(false && "Bad number of bits for floating-point type.");
 }
 
-clang::QualType FloatType::GetClangType(ClangUtil::ClangTU& from, Analyzer& a) {
+clang::QualType FloatType::GetClangType(ClangTU& from, Analyzer& a) {
     switch(bits) {
     case 16:
         return from.GetASTContext().HalfTy;

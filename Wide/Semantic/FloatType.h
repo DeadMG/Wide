@@ -7,7 +7,7 @@ namespace Wide {
         public:
             FloatType(unsigned bit) : bits(bit) {}
 
-            clang::QualType GetClangType(ClangUtil::ClangTU& TU, Analyzer& a) override final;
+            clang::QualType GetClangType(ClangTU& TU, Analyzer& a) override final;
             std::function<llvm::Type*(llvm::Module*)> GetLLVMType(Analyzer& a) override final;
 
             Codegen::Expression* BuildInplaceConstruction(Codegen::Expression* mem, std::vector<ConcreteExpression> args, Context c) override final;

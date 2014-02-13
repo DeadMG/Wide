@@ -10,6 +10,7 @@
 #include <Wide/Semantic/SemanticError.h>
 #include <Wide/Semantic/ConstructorType.h>
 #include <Wide/Semantic/Reference.h>
+#include <Wide/Semantic/IntegralType.h>
 #include <Wide/Util/DebugUtilities.h>
 #include <Wide/Semantic/UserDefinedType.h>
 #include <array>
@@ -90,20 +91,41 @@ OverloadSet::OverloadSet(std::unordered_set<OverloadResolvable*> call, Type* t)
 
 struct cppcallable : public Callable {
     clang::FunctionDecl* fun;
-    ClangUtil::ClangTU* from;
-    std::vector<Type*> types;
+    ClangTU* from;
+    std::vector<std::pair<Type*, bool>> types;
 
     ConcreteExpression CallFunction(std::vector<ConcreteExpression> args, Context c) override final {
-        return ConcreteExpression(c->GetFunctionType(c->GetClangType(*from, fun->getResultType()), types), c->gen->CreateFunctionValue(from->MangleName(fun))).BuildCall(args, c);
+        std::vector<Type*> local;
+        for (auto x : types)
+            local.push_back(x.first);
+        return ConcreteExpression(c->GetFunctionType(c->GetClangType(*from, fun->getResultType()), local), c->gen->CreateFunctionValue(from->MangleName(fun))).BuildCall(args, c);
     }
     std::vector<ConcreteExpression> AdjustArguments(std::vector<ConcreteExpression> args, Context c) override final {
+        // Clang may ask us to call an overload that doesn't have the right number of arguments
+        // because it has a default argument.
+        // types includes this when Clang doesn't include it, so subtract 1 for that.
+        auto baseargsize = args.size();
+        if (baseargsize != types.size()) {
+            for (std::size_t i = 0; i < (types.size() - baseargsize); ++i) {
+                auto argnum = i + baseargsize;
+                if (fun->isCXXInstanceMember())
+                    argnum--;
+                auto paramdecl = fun->getParamDecl(argnum);
+                if (!paramdecl->hasDefaultArg())
+                    assert(false);
+                args.push_back(InterpretExpression(paramdecl->getDefaultArg(), *from, c));
+            }
+        }
         // Clang may ask us to call overloads where we think the arguments are not a match
         // for example, implicit conversion from int64 to int32
-        if (args.size() != types.size())
-            Wide::Util::DebugBreak();
         std::vector<ConcreteExpression> out;
         for (std::size_t i = 0; i < types.size(); ++i) {
-            out.push_back(types[i]->BuildValueConstruction(args[i], c));
+            // If the function takes a const lvalue (as kindly provided by the second member),
+            // and we provided an rvalue, pretend secretly that it took an rvalue reference instead.
+            if (types[i].second && !IsLvalueType(args[i].t))
+                out.push_back(c->GetRvalueType(types[i].first->Decay())->BuildValueConstruction(args[i], c));
+            else
+                out.push_back(types[i].first->BuildValueConstruction(args[i], c));
         }
         return out;
     }
@@ -221,14 +243,11 @@ Callable* OverloadSet::Resolve(std::vector<Type*> f_args, Analyzer& a) {
         p->fun = fun;
         p->from = from;
         if (llvm::dyn_cast<clang::CXXMethodDecl>(p->fun))
-            p->types.push_back(f_args[0]);
+            p->types.push_back(std::make_pair(f_args[0], false));
         for (unsigned i = 0; i < fun->getNumParams(); ++i) {
-            // If the function takes a const T&, and we provided an rvalue, pretend secretly that it took an rvalue reference instead.
             auto argty = fun->getParamDecl(i)->getType();            
-            if (argty->isReferenceType() && (argty->getPointeeType().isConstQualified() || argty->getPointeeType().isLocalConstQualified()) && (f_args[p->types.size()] == a.GetRvalueType(f_args[p->types.size()]->Decay()) || f_args[p->types.size()] == f_args[p->types.size()]->Decay())) {
-                p->types.push_back(a.GetClangType(*from, from->GetASTContext().getRValueReferenceType(argty->getLocallyUnqualifiedSingleStepDesugaredType())));
-            } else
-                p->types.push_back(a.GetClangType(*from, argty));
+            auto arg_is_const_ref = argty->isReferenceType() && (argty->getPointeeType().isConstQualified() || argty->getPointeeType().isLocalConstQualified());
+            p->types.push_back(std::make_pair(a.GetClangType(*from, argty), arg_is_const_ref));
         }
         return p;
     }
@@ -262,7 +281,7 @@ OverloadSet::OverloadSet(OverloadSet* s, OverloadSet* other)
         nonstatic = s->nonstatic;
     }
 }
-OverloadSet::OverloadSet(std::unordered_set<clang::NamedDecl*> clangdecls, ClangUtil::ClangTU* tu, Type* context)
+OverloadSet::OverloadSet(std::unordered_set<clang::NamedDecl*> clangdecls, ClangTU* tu, Type* context)
 : clangfuncs(std::move(clangdecls)), from(tu), nonstatic(nullptr), ResolveOverloadSet(nullptr)
 {
     if(context)

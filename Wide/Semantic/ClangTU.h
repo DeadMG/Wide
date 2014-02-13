@@ -3,6 +3,7 @@
 #include <Wide/Lexer/Token.h>
 #include <Wide/Semantic/Util.h>
 #include <Wide/Semantic/ClangOptions.h>
+#include <Wide/Semantic/Hashers.h>
 #include <memory>
 #include <string>
 #include <functional>
@@ -37,11 +38,6 @@ namespace clang {
 namespace Wide {
     namespace Semantic {        
         class Analyzer;
-        struct ClangTypeHasher {
-            std::size_t operator()(clang::QualType t) const;
-        };
-    };
-    namespace ClangUtil {
         class ClangTU {
             class Impl;
             std::unordered_set<clang::FunctionDecl*> visited;

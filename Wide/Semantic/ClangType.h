@@ -11,14 +11,15 @@ namespace clang {
     class LookupResult;
 }
 namespace Wide {
-    namespace Semantic {       
+    namespace Semantic {     
+        class ClangTU;
         class ClangType : public Type {
-            ClangUtil::ClangTU* from;
+            ClangTU* from;
             clang::QualType type;
         public:
-            ClangType(ClangUtil::ClangTU* src, clang::QualType t);         
+            ClangType(ClangTU* src, clang::QualType t);         
             std::function<llvm::Type*(llvm::Module*)> GetLLVMType(Analyzer& a) override final;            
-            clang::QualType GetClangType(ClangUtil::ClangTU& tu, Analyzer& a) override final;
+            clang::QualType GetClangType(ClangTU& tu, Analyzer& a) override final;
 
             Wide::Util::optional<ConcreteExpression> AccessMember(ConcreteExpression val, std::string name, Context c) override final;
             ConcreteExpression BuildCall(ConcreteExpression val, std::vector<ConcreteExpression> args, Context c) override final;

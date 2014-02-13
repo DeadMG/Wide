@@ -20,10 +20,10 @@ std::function<llvm::Type*(llvm::Module*)> Reference::GetLLVMType(Analyzer& a) {
         return f(m)->getPointerTo();
     };
 }
-clang::QualType LvalueType::GetClangType(ClangUtil::ClangTU& tu, Analyzer& a) {
+clang::QualType LvalueType::GetClangType(ClangTU& tu, Analyzer& a) {
     return tu.GetASTContext().getLValueReferenceType(Decay()->GetClangType(tu, a));
 }
-clang::QualType RvalueType::GetClangType(ClangUtil::ClangTU& tu, Analyzer& a) {
+clang::QualType RvalueType::GetClangType(ClangTU& tu, Analyzer& a) {
     return tu.GetASTContext().getRValueReferenceType(Decay()->GetClangType(tu, a));
 }
 

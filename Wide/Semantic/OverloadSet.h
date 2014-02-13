@@ -21,14 +21,14 @@ namespace Wide {
         class OverloadSet : public Type {
             std::unordered_set<OverloadResolvable*> callables;
             std::unordered_set<clang::NamedDecl*> clangfuncs;
-            ClangUtil::ClangTU* from;
+            ClangTU* from;
             Type* ResolveOverloadSet;
 
             Type* nonstatic;
         public:
             OverloadSet(OverloadSet* s, OverloadSet* other);
             OverloadSet(std::unordered_set<OverloadResolvable*> call, Type* nonstatic);
-            OverloadSet(std::unordered_set<clang::NamedDecl*> clangdecls, ClangUtil::ClangTU* tu, Type* context);
+            OverloadSet(std::unordered_set<clang::NamedDecl*> clangdecls, ClangTU* tu, Type* context);
 
             Wide::Util::optional<ConcreteExpression> AccessMember(ConcreteExpression self, std::string name, Context c) override final;
             OverloadSet* CreateConstructorOverloadSet(Analyzer& a) override final;

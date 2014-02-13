@@ -28,7 +28,7 @@ namespace Wide {
 
             // Actually a list of member variables
             std::unordered_map<std::string, unsigned> members;
-            std::unordered_map<ClangUtil::ClangTU*, clang::QualType> clangtypes;
+            std::unordered_map<ClangTU*, clang::QualType> clangtypes;
             Type* context;
             struct member {
                 std::string name;
@@ -48,7 +48,7 @@ namespace Wide {
             UserDefinedType(const AST::Type* t, Analyzer& a, Type* context);           
             Type* GetContext(Analyzer& a) override final { return context; }
             bool HasMember(std::string name);            
-            clang::QualType GetClangType(ClangUtil::ClangTU& TU, Analyzer& a) override final;
+            clang::QualType GetClangType(ClangTU& TU, Analyzer& a) override final;
             Wide::Util::optional<ConcreteExpression> AccessMember(ConcreteExpression, std::string name, Context c) override final;
             ConcreteExpression BuildCall(ConcreteExpression val, std::vector<ConcreteExpression> args, Context c) override final;
 

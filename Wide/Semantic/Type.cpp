@@ -23,7 +23,7 @@ using namespace Semantic;
 Type* Type::GetContext(Analyzer& a) {
     return a.GetGlobalModule();
 }
-clang::QualType Type::GetClangType(ClangUtil::ClangTU& TU, Analyzer& a) {
+clang::QualType Type::GetClangType(ClangTU& TU, Analyzer& a) {
     throw std::runtime_error("This type has no Clang representation.");
 }
 

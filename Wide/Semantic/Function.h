@@ -70,7 +70,7 @@ namespace Wide {
             bool HasLocalVariable(std::string name);
             Function(std::vector<Type*> args, const AST::FunctionBase* astfun, Analyzer& a, Type* container);        
 
-            clang::QualType GetClangType(ClangUtil::ClangTU& where, Analyzer& a) override final;
+            clang::QualType GetClangType(ClangTU& where, Analyzer& a) override final;
      
             ConcreteExpression BuildCall(ConcreteExpression, std::vector<ConcreteExpression> args, Context c) override final;
             std::string GetName();
