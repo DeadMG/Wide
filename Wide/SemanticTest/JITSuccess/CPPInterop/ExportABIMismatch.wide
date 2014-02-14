@@ -1,0 +1,12 @@
+using header := cpp("JITSuccess/CPPInterop/ExportABIMismatch.h");
+f(bool b, header.test arg) 
+prolog {
+    ExportName = cpp.mangle(header.f);
+}
+{
+    return b;
+}
+Main() {
+    f(true, header.test());
+    return header.g();
+}

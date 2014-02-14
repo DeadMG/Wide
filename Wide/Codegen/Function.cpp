@@ -93,8 +93,13 @@ void Function::Declare(llvm::Module* mod, llvm::LLVMContext& con, Generator& g) 
                     continue;
                 }
             }
+            // Clang also elides eliminate types by value.
+            if (g.IsEliminateType(ty->getParamType(i))) {
+                ParameterValues[i] = llvm::Constant::getNullValue(ty->getParamType(i));
+                continue;
+            }
             if (ty->getParamType(i) == llvm::IntegerType::getInt8Ty(con) && arg_begin->getType() == llvm::IntegerType::getInt1Ty(con)) {
-                ParameterValues[i] = irbuilder.CreateZExt(arg_begin, llvm::IntegerType::getInt1Ty(con));
+                ParameterValues[i] = irbuilder.CreateZExt(arg_begin, llvm::IntegerType::getInt8Ty(con));
                 ++arg_begin;
                 continue;
             }
