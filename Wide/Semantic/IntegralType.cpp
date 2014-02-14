@@ -12,6 +12,8 @@
 #include <llvm/IR/Module.h>
 #pragma warning(pop)
 
+#include <Wide/Codegen/GeneratorMacros.h>
+
 using namespace Wide;
 using namespace Semantic;
 

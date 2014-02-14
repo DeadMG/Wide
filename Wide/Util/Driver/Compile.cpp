@@ -2,7 +2,6 @@
 #include <Wide/Semantic/ClangOptions.h>
 #include <Wide/Util/Concurrency/ParallelForEach.h>
 #include <Wide/Codegen/LLVMOptions.h>
-#include <Wide/Codegen/Generator.h>
 #include <Wide/Parser/Parser.h>
 #include <Wide/Lexer/Lexer.h>
 #include <Wide/Parser/Builder.h>
@@ -11,6 +10,7 @@
 #include <Wide/Parser/AST.h>
 #include <Wide/Semantic/Analyzer.h>
 #include <Wide/Util/Ranges/IStreamRange.h>
+#include <Wide/Codegen/Generator.h>
 #include <mutex>
 #include <atomic>
 #include <sstream>

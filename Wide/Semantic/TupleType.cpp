@@ -4,6 +4,7 @@
 #include <Wide/Semantic/Reference.h>
 #include <Wide/Semantic/UserDefinedType.h>
 #include <Wide/Codegen/Generator.h>
+#include <Wide/Codegen/GeneratorMacros.h>
 
 using namespace Wide;
 using namespace Semantic;

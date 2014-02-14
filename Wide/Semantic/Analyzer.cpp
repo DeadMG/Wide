@@ -35,6 +35,8 @@
 #include <clang/AST/ASTContext.h>
 #pragma warning(pop)
 
+#include <Wide/Codegen/GeneratorMacros.h>
+
 using namespace Wide;
 using namespace Semantic;
 
@@ -427,9 +429,9 @@ LvalueType* Analyzer::GetLvalueType(Type* t) {
     
     // This implements "named rvalue ref is an lvalue", and static_cast<T&&>(T&).
     // by permitting T&& & to become T&.
-    if (auto rval = dynamic_cast<RvalueType*>(t)) {
-        return LvalueTypes[t] = GetLvalueType(rval->Decay());
-    }
+    //if (auto rval = dynamic_cast<RvalueType*>(t)) {
+    //    return LvalueTypes[t] = GetLvalueType(rval->Decay());
+    //}
 
     return LvalueTypes[t] = arena.Allocate<LvalueType>(t);
 }
@@ -537,12 +539,12 @@ bool Semantic::IsRvalueType(Type* t) {
     return dynamic_cast<RvalueType*>(t);
 }
 #pragma warning(default : 4800)
-OverloadSet* Analyzer::GetOverloadSet(OverloadSet* f, OverloadSet* s) {
+OverloadSet* Analyzer::GetOverloadSet(OverloadSet* f, OverloadSet* s, Type* context) {
     if (CombinedOverloadSets[f].find(s) != CombinedOverloadSets[f].end())
         return CombinedOverloadSets[f][s];
     if (CombinedOverloadSets[s].find(f) != CombinedOverloadSets[s].end())
         return CombinedOverloadSets[s][f];
-    return CombinedOverloadSets[f][s] = arena.Allocate<OverloadSet>(f, s);
+    return CombinedOverloadSets[f][s] = arena.Allocate<OverloadSet>(f, s, context);
 }
 FloatType* Analyzer::GetFloatType(unsigned bits) {
     if (FloatTypes.find(bits) != FloatTypes.end())
@@ -643,7 +645,7 @@ OverloadResolvable* Analyzer::GetCallableForFunction(const AST::FunctionBase* f,
             
             if (HasImplicitThis()) {
                 if (num == 0) {
-                    if (argument->Decay() == context->Decay()) {
+                    if (argument->IsA(argument, context, a)) {
                         return argument;
                     }
                     return nullptr;

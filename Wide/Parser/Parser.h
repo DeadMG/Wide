@@ -273,7 +273,8 @@ namespace Wide {
                     return sema.CreateLambda(std::move(args), std::move(grp), pos + tok.GetLocation(), defaultref, std::move(caps));
                 }
                 if(t.GetType() == Lexer::TokenType::Type) {
-                    auto ty = sema.CreateType("anonymous", Check(Error::TypeExpressionNoCurly, Lexer::TokenType::OpenCurlyBracket).GetLocation());
+                    auto bases = ParseTypeBases();
+                    auto ty = sema.CreateType(bases, Check(Error::TypeExpressionNoCurly, Lexer::TokenType::OpenCurlyBracket).GetLocation());
                     ParseTypeBody(ty);
                     return ty;
                 }
@@ -1057,8 +1058,19 @@ namespace Wide {
                 }
                 sema.SetTypeEndLocation(loc + t.GetLocation(), ty);
             }
+            auto ParseTypeBases() -> decltype(sema.CreateExpressionGroup()) {
+                auto colon = lex();
+                auto group = sema.CreateExpressionGroup();
+                while (colon.GetType() == Lexer::TokenType::Colon) {
+                    sema.AddExpressionToGroup(group, ParseExpression());
+                    colon = lex();
+                }
+                lex(colon);
+                return group;
+            }
             void ParseTypeDeclaration(ModuleType m, LocationType loc) {
                 auto ident = Check(Error::ModuleScopeTypeNoIdentifier, Lexer::TokenType::Identifier);
+                auto bases = ParseTypeBases();
                 auto t = Check(Error::ModuleScopeTypeNoCurlyBrace, [&](decltype(lex())& curr) -> bool {
                     if(curr.GetType() == Lexer::TokenType::OpenCurlyBracket)
                         return true;
@@ -1070,7 +1082,7 @@ namespace Wide {
                     }
                     return false;
                 });
-                auto ty = sema.CreateType(ident.GetValue(), m, loc + t.GetLocation());
+                auto ty = sema.CreateType(ident.GetValue(), m, bases, loc + t.GetLocation());
                 return ParseTypeBody(ty);
             }
             void ParseModuleLevelDeclaration(ModuleType m) {

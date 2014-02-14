@@ -16,7 +16,12 @@ namespace Wide {
         class Function;
     }
     namespace Codegen {
-        class Statement { public: virtual ~Statement() {} };
+        class Statement {
+        public:
+            const char* file;
+            int line;
+            virtual ~Statement() {}
+        };
         class Expression : public Statement {};
         class Variable : public Expression {};
         class FunctionCall : public Expression {};
@@ -77,16 +82,40 @@ namespace Wide {
             virtual void AddStatement(Statement* s) = 0;
         };
         class Generator {
+            template<typename T> T AddDebugData(T s, const char* file, int line) {
+                if (s) {
+                    s->file = file;
+                    s->line = line;
+                }
+                return s;
+            }
         public:
-            virtual LifetimeEnd* CreateLifetimeEnd(Codegen::Expression* pointer) = 0;
             virtual Function* CreateFunction(std::function<llvm::Type*(llvm::Module*)>, std::string, Semantic::Function* debug, bool trampoline = false) = 0;
+
+            virtual LifetimeEnd* CreateLifetimeEnd(Codegen::Expression* pointer) = 0;
+            LifetimeEnd* CreateLifetimeEndFileLine(Codegen::Expression* pointer, const char* file, int line) {
+                return AddDebugData(CreateLifetimeEnd(pointer), file, line);
+            }
+
             virtual Variable* CreateVariable(std::function<llvm::Type*(llvm::Module*)>, unsigned alignment) = 0;
+            Variable* CreateVariableFileLine(std::function<llvm::Type*(llvm::Module*)> ty, unsigned alignment, const char* file, int line) {
+                return AddDebugData(CreateVariable(ty, alignment), file, line);
+            }
+
             virtual FunctionCall* CreateFunctionCall(Expression*, std::vector<Expression*>, std::function<llvm::Type*(llvm::Module*)> = std::function<llvm::Type*(llvm::Module*)>()) = 0;
+            FunctionCall* CreateFunctionCallFileLine(const char* file, int line, Expression* obj, std::vector<Expression*> args, std::function<llvm::Type*(llvm::Module*)> ty = std::function<llvm::Type*(llvm::Module*)>()) {
+                return AddDebugData(CreateFunctionCall(obj, args, ty), file, line);
+            }
+
             virtual Deferred* CreateDeferredStatement(std::function<Codegen::Statement*()>) = 0;
             virtual DeferredExpr* CreateDeferredExpression(std::function<Codegen::Expression*()>) = 0;
             virtual StringExpression* CreateStringExpression(std::string) = 0;
             virtual NamedGlobalVariable* CreateGlobalVariable(std::string) = 0;
             virtual StoreExpression* CreateStore(Expression*, Expression*) = 0;
+            StoreExpression* CreateStoreFileLine(Expression* lhs, Expression* rhs, const char* file, int line) {
+                return AddDebugData(CreateStore(lhs, rhs), file, line);
+            }
+
             virtual LoadExpression* CreateLoad(Expression*) = 0;
             virtual ReturnStatement* CreateReturn() = 0;
             virtual ReturnStatement* CreateReturn(std::function<Expression*()>) = 0;

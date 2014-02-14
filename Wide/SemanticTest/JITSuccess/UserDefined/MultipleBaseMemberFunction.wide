@@ -1,0 +1,13 @@
+type base {
+    b := bool;
+    f() { return b; }
+    type() : b(true) {}
+}
+type base2 {
+    f(int64 i) { return false; }
+}
+type derived : base : base2 {}
+Main() {
+    var := derived();
+    return var.f();
+}

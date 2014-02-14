@@ -127,7 +127,7 @@ namespace Wide {
             OverloadSet* GetOverloadSet(std::unordered_set<OverloadResolvable*> c, Type* nonstatic = nullptr);
             OverloadSet* GetOverloadSet(OverloadResolvable* c);
             OverloadSet* GetOverloadSet(const AST::FunctionOverloadSet* set, Type* nonstatic);
-            OverloadSet* GetOverloadSet(OverloadSet*, OverloadSet*);
+            OverloadSet* GetOverloadSet(OverloadSet*, OverloadSet*, Type* context = nullptr);
             OverloadSet* GetOverloadSet(std::unordered_set<clang::NamedDecl*> decls, ClangTU* from, Type* context);
             UserDefinedType* GetUDT(const AST::Type*, Type* context);
             IntegralType* GetIntegralType(unsigned, bool);

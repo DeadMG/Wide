@@ -46,10 +46,11 @@ namespace Wide {
         };
         struct Variable;
         struct Type : public DeclContext, Expression {
-            Type(Lexer::Range loc) : DeclContext(loc), Expression(loc) {}
+            Type(std::vector<Expression*> base, Lexer::Range loc) : DeclContext(loc), Expression(loc), bases(base) {}
             std::vector<Variable*> variables;
             std::unordered_map<std::string, FunctionOverloadSet*> Functions;
             std::unordered_map<Lexer::TokenType, FunctionOverloadSet*> opcondecls;
+            std::vector<Expression*> bases;
         };
         struct Identifier : Expression {
             Identifier(std::string nam, Lexer::Range loc)

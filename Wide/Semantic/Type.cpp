@@ -20,6 +20,8 @@ using namespace Semantic;
 #include <clang/AST/AST.h>
 #pragma warning(pop)
 
+#include <Wide/Codegen/GeneratorMacros.h>
+
 Type* Type::GetContext(Analyzer& a) {
     return a.GetGlobalModule();
 }
@@ -420,6 +422,13 @@ ConcreteExpression Callable::Call(ConcreteExpression arg1, ConcreteExpression ar
 }
 
 ConcreteExpression Callable::Call(std::vector<ConcreteExpression> args, Context c) {
+    for (auto&& arg : args) {
+        if (!arg.t->IsReference()) {
+            auto mem = c->gen->CreateVariable(arg.t->GetLLVMType(*c), arg.t->alignment(*c));
+            auto store = c->gen->CreateStore(mem, arg.Expr);
+            arg = ConcreteExpression(c->GetRvalueType(arg.t), c->gen->CreateChainExpression(store, mem));
+        }
+    }
     return CallFunction(AdjustArguments(std::move(args), c), c);
 }
 

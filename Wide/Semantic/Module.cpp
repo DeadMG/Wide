@@ -8,6 +8,7 @@
 #include <Wide/Semantic/UserDefinedType.h>
 #include <Wide/Semantic/ClangTemplateClass.h>
 #include <Wide/Codegen/Generator.h>
+#include <Wide/Codegen/GeneratorMacros.h>
 
 using namespace Wide;
 using namespace Semantic;

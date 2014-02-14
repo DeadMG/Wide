@@ -1,4 +1,4 @@
-using movable := cpp("JITSuccess/CPPInterop/CPPNonCopyable.h").test;
+using movable := cpp("JITSuccess/CPPInterop/NonCopyable.h").test;
 f(movable x) {
     return false;
 }

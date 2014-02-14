@@ -131,9 +131,9 @@ void Builder::CreateOverloadedOperator(
     t->opcondecls[name]->functions.insert(arena.Allocate<Function>(std::move(body), std::move(prolog), r, std::move(args)));
 }
 
-Type* Builder::CreateType(std::string name, Lexer::Range loc) { return arena.Allocate<Type>(loc); }
-Type* Builder::CreateType(std::string name, Module* higher, Lexer::Range loc) {
-    auto ty = arena.Allocate<Type>(loc);
+Type* Builder::CreateType(std::vector<Expression*> bases, Lexer::Range loc) { return arena.Allocate<Type>(bases, loc); }
+Type* Builder::CreateType(std::string name, Module* higher, std::vector<Expression*> bases, Lexer::Range loc) {
+    auto ty = arena.Allocate<Type>(bases, loc);
     if (higher->functions.find(name) != higher->functions.end()) {
        for(auto&& x : higher->functions[name]->functions)
            combine_errors[higher][name].insert(x);

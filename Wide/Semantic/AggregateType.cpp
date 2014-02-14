@@ -1,10 +1,10 @@
 #include <Wide/Semantic/AggregateType.h>
 #include <Wide/Semantic/Analyzer.h>
-#include <Wide/Codegen/Generator.h>
 #include <Wide/Semantic/IntegralType.h>
 #include <Wide/Semantic/Reference.h>
 #include <Wide/Semantic/OverloadSet.h>
 #include <sstream>
+#include <Wide/Codegen/Generator.h>
 
 #pragma warning(push, 0)
 #include <llvm/IR/LLVMContext.h>
@@ -12,6 +12,8 @@
 #include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/DataLayout.h>
 #pragma warning(pop)
+
+#include <Wide/Codegen/GeneratorMacros.h>
 
 using namespace Wide;
 using namespace Semantic;

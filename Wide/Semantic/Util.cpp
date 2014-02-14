@@ -6,6 +6,7 @@
 #include <Wide/Semantic/IntegralType.h>
 #include <Wide/Semantic/OverloadSet.h>
 #include <Wide/Codegen/Generator.h>
+#include <Wide/Codegen/GeneratorMacros.h>
 #include <unordered_map>
 
 #pragma warning(push, 0)

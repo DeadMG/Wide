@@ -63,6 +63,8 @@ namespace Wide {
             bool IsComplexType(Analyzer& a) override final;
 
             Wide::Util::optional<std::vector<Type*>> GetTypesForTuple(Analyzer& a);
+            bool IsUnambiguouslyDerivedFrom(Type* other);
+            Codegen::Expression* AccessBase(Type* other, Codegen::Expression*, Analyzer& a);
         };
     }
 }

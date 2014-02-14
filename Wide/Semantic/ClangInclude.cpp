@@ -16,6 +16,8 @@
 #include <clang/Lex/Preprocessor.h>
 #pragma warning(pop)
 
+#include <Wide/Codegen/GeneratorMacros.h>
+
 using namespace Wide;
 using namespace Semantic;
 

@@ -29,6 +29,8 @@
 #include <clang/Sema/Overload.h>
 #pragma warning(pop)
 
+#include <Wide/Codegen/GeneratorMacros.h>
+
 using namespace Wide;
 using namespace Semantic;
 
@@ -118,12 +120,15 @@ struct cppcallable : public Callable {
         }
         // Clang may ask us to call overloads where we think the arguments are not a match
         // for example, implicit conversion from int64 to int32
+        // so do the conversion ourselves if lvalues were not involved.
         std::vector<ConcreteExpression> out;
         for (std::size_t i = 0; i < types.size(); ++i) {
             // If the function takes a const lvalue (as kindly provided by the second member),
             // and we provided an rvalue, pretend secretly that it took an rvalue reference instead.
-            if (types[i].second && !IsLvalueType(args[i].t))
-                out.push_back(c->GetRvalueType(types[i].first->Decay())->BuildValueConstruction(args[i], c));
+            // Since is-a does not apply here, build construction from the underlying type, rather than going through rvaluetype.
+            // If a type adjustment is necessary, perform it- don't infinitely recurs.
+            if ((types[i].second || IsRvalueType(types[i].first)) && !IsLvalueType(args[i].t) && args[i].t->Decay() != types[i].first->Decay())
+                out.push_back(types[i].first->Decay()->BuildRvalueConstruction(args[i], c));
             else
                 out.push_back(types[i].first->BuildValueConstruction(args[i], c));
         }
@@ -262,7 +267,7 @@ std::size_t OverloadSet::alignment(Analyzer& a) {
     if (!nonstatic) return a.gen->GetDataLayout().getABIIntegerTypeAlignment(8);
     return llvm::DataLayout(a.gen->GetDataLayout()).getPointerABIAlignment();
 }
-OverloadSet::OverloadSet(OverloadSet* s, OverloadSet* other)
+OverloadSet::OverloadSet(OverloadSet* s, OverloadSet* other, Type* context)
 : nonstatic(nullptr), ResolveOverloadSet(nullptr) {
     for(auto x : s->callables)
         callables.insert(x);
@@ -276,9 +281,14 @@ OverloadSet::OverloadSet(OverloadSet* s, OverloadSet* other)
     from = s->from;
     if (!from)
         from = other->from;
-    if (s->nonstatic && other->nonstatic) {
-        assert(s->nonstatic != other->nonstatic && "Attempted to combine an overload set of two overload sets containing functions which are members of two different types.");
-        nonstatic = s->nonstatic;
+    if (!context) {
+        if (s->nonstatic && other->nonstatic) {
+            assert(s->nonstatic != other->nonstatic && "Attempted to combine an overload set of two overload sets containing functions which are members of two different types.");
+            nonstatic = s->nonstatic;
+        }
+    } else {
+        if (dynamic_cast<UserDefinedType*>(context->Decay()))
+            nonstatic = context;
     }
 }
 OverloadSet::OverloadSet(std::unordered_set<clang::NamedDecl*> clangdecls, ClangTU* tu, Type* context)
@@ -307,7 +317,9 @@ OverloadSet* OverloadSet::CreateConstructorOverloadSet(Analyzer& a) {
         return a.GetOverloadSet(constructors);
     }
     constructors.insert(make_resolvable([](std::vector<ConcreteExpression> args, Context c) { return args[0]; }, types, a));
-    types.push_back(this);
+    types.push_back(a.GetLvalueType(this));
+    constructors.insert(make_resolvable([](std::vector<ConcreteExpression> args, Context c) { return args[0]; }, types, a));
+    types[1] = a.GetRvalueType(this);
     constructors.insert(make_resolvable([](std::vector<ConcreteExpression> args, Context c) { return args[0]; }, types, a));
     return a.GetOverloadSet(constructors);
 }

@@ -24,11 +24,21 @@
 #include <llvm/IR/DerivedTypes.h>
 #pragma warning(pop)
 
+#include <Wide/Codegen/GeneratorMacros.h>
+
 using namespace Wide;
 using namespace Semantic;
 
 std::vector<Type*> GetTypesFromType(const AST::Type* t, Analyzer& a, Type* context) {
     std::vector<Type*> out;
+    for (auto expr : t->bases) {
+        auto base = a.AnalyzeExpression(context, expr, [](Wide::Semantic::ConcreteExpression) { assert(false); });
+        auto con = dynamic_cast<ConstructorType*>(base.t->Decay());
+        if (!con) throw std::runtime_error("Attempted to define base classes but an expression was not a type.");
+        auto udt = dynamic_cast<UserDefinedType*>(con->GetConstructedType());
+        if (!udt) throw std::runtime_error("Attempted to inherit from a type but that type was not a user-defined type.");
+        out.push_back(udt);
+    }
     for (auto&& var : t->variables) {
         auto expr = a.AnalyzeExpression(context, var->initializer, [](ConcreteExpression e) {});
         expr.t = expr.t->Decay();
@@ -42,36 +52,55 @@ std::vector<Type*> GetTypesFromType(const AST::Type* t, Analyzer& a, Type* conte
 
 UserDefinedType::UserDefinedType(const AST::Type* t, Analyzer& a, Type* higher)
 : AggregateType(GetTypesFromType(t, a, higher), a)
-, context(higher) {
-    std::unordered_map<std::string, unsigned> mem;
-    type = t;
-    {
-        unsigned i = 0;
-        for (auto&& var : type->variables)
-            members[var->name.front()] = i++;
-    }
+, context(higher)
+, type(t){
+    unsigned i = 0;
+    for (auto&& var : type->variables)
+        members[var->name.front()] = i++ + type->bases.size();
 }
 
 std::vector<UserDefinedType::member> UserDefinedType::GetMembers() {
     std::vector<UserDefinedType::member> out;
-    for (unsigned i = 0; i < type->variables.size(); ++i) {
+    for (unsigned i = 0; i < type->bases.size(); ++i) {
         member m;
         m.t = AggregateType::GetMembers()[i];
-        m.name = type->variables[i]->name.front();
+        m.name = dynamic_cast<AST::Identifier*>(type->bases[i])->val;
         m.num = AggregateType::GetFieldIndex(i);
+        out.push_back(m);
+    }
+    for (unsigned i = 0; i < type->variables.size(); ++i) {
+        member m;
+        m.t = AggregateType::GetMembers()[i + type->bases.size()];
+        m.name = type->variables[i]->name.front();
+        m.num = AggregateType::GetFieldIndex(i) + type->bases.size();
         out.push_back(m);
     }
     return out;
 }
 
 Wide::Util::optional<ConcreteExpression> UserDefinedType::AccessMember(ConcreteExpression expr, std::string name, Context c) {
+    auto self = expr.t == this ? BuildRvalueConstruction(expr, c) : expr;
     if (members.find(name) != members.end())
         return PrimitiveAccessMember(expr, members[name], *c);
     if (type->Functions.find(name) != type->Functions.end()) {
-        auto self = expr.t == this ? BuildRvalueConstruction(expr, c) : expr;
         return c->GetOverloadSet(type->Functions.at(name), self.t)->BuildValueConstruction(self, c);
     }
-    return Wide::Util::none;
+    // Any of our bases have this member?
+    Wide::Util::optional<ConcreteExpression> result;
+    for (std::size_t i = 0; i < AggregateType::GetMembers().size() - type->variables.size(); ++i) {
+        auto base = PrimitiveAccessMember(expr, i, *c);
+        if (auto member = base.AccessMember(name, c)) {
+            // If there's nothing there, we win.
+            // If we're an OS and the existing is an OS, we win by unifying.
+            // Else we lose.
+            if (!result) { result = member; continue; }  
+            auto os = dynamic_cast<OverloadSet*>(result->t->Decay());
+            auto otheros = dynamic_cast<OverloadSet*>(member->t->Decay());
+            if (!os || !otheros) throw std::runtime_error("Attempted to access a member, but it was ambiguous in more than one base class.");
+            result = c->GetOverloadSet(os, otheros, self.t)->BuildValueConstruction(self, c);
+        }
+    }
+    return result;
 }
 clang::QualType UserDefinedType::GetClangType(ClangTU& TU, Analyzer& a) {
     if (clangtypes.find(&TU) != clangtypes.end())
@@ -367,4 +396,30 @@ Wide::Util::optional<std::vector<Type*>> UserDefinedType::GetTypesForTuple(Analy
     if (UserDefinedComplex(a))
         return Wide::Util::none;
     return AggregateType::GetMembers();
+}
+
+bool UserDefinedType::IsUnambiguouslyDerivedFrom(Type* other) {
+    std::unordered_map<Type*, unsigned> basecount;
+    std::function<void(UserDefinedType*)> count;
+    count = [&](UserDefinedType* t) {
+        for (std::size_t i = 0; i < t->type->bases.size(); ++i) {
+            basecount[AggregateType::GetMembers()[i]]++;
+            if (auto udt = dynamic_cast<UserDefinedType*>(AggregateType::GetMembers()[i])) {
+                count(udt);
+            }
+        }
+    };
+    count(this);
+    return basecount.find(other) != basecount.end() && basecount[other] == 1;
+}
+Codegen::Expression* UserDefinedType::AccessBase(Type* other, Codegen::Expression* current, Analyzer& a) {
+    // It is unambiguous so just hit on the first base we come across
+    for (std::size_t i = 0; i < type->bases.size(); ++i) {
+        auto base = dynamic_cast<UserDefinedType*>(AggregateType::GetMembers()[i]);
+        if (base == other)
+            return a.gen->CreateFieldExpression(current, GetFieldIndex(i));
+        if (base->IsUnambiguouslyDerivedFrom(other))
+            return base->AccessBase(other, a.gen->CreateFieldExpression(current, GetFieldIndex(i)), a);
+    }
+    assert(false);
 }

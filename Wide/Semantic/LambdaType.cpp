@@ -5,6 +5,8 @@
 #include <Wide/Codegen/Generator.h>
 #include <Wide/Parser/AST.h>
 
+#include <Wide/Codegen/GeneratorMacros.h>
+
 using namespace Wide;
 using namespace Semantic;
 

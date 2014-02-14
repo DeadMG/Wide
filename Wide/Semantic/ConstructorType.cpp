@@ -6,6 +6,8 @@
 #include <Wide/Semantic/Reference.h>
 #include <sstream>
 
+#include <Wide/Codegen/GeneratorMacros.h>
+
 using namespace Wide;
 using namespace Semantic;
 

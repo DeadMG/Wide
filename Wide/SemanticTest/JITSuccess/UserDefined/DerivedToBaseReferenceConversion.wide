@@ -1,0 +1,10 @@
+type base {
+    val := bool;
+}
+type derived : base {}
+f(base->rvalue arg) {
+    return arg.val;
+}
+Main() {
+    f(derived({{true}}));
+}

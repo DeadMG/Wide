@@ -47,8 +47,6 @@ namespace Wide {
             clang::QualType GetClangType(ClangTU& tu, Analyzer& a) override final;
             bool IsA(Type* self, Type* other, Analyzer& a) override final;
             OverloadSet* CreateConstructorOverloadSet(Analyzer& a) override final;
-            ConcreteExpression BuildValueConstruction(std::vector<ConcreteExpression> args, Context c) override final;
-            using Type::BuildValueConstruction;
         };
     }
 }

@@ -26,7 +26,7 @@ namespace Wide {
 
             Type* nonstatic;
         public:
-            OverloadSet(OverloadSet* s, OverloadSet* other);
+            OverloadSet(OverloadSet* s, OverloadSet* other, Type* context = nullptr);
             OverloadSet(std::unordered_set<OverloadResolvable*> call, Type* nonstatic);
             OverloadSet(std::unordered_set<clang::NamedDecl*> clangdecls, ClangTU* tu, Type* context);
 
