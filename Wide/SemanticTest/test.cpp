@@ -26,13 +26,8 @@ results TestDirectory(std::string path, std::string mode, std::string program, b
         std::string err = "";
         bool failed = false;
         auto timeout = debugbreak ? 0 : 1;
-#ifdef _MSC_VER
         auto ret = llvm::sys::ExecuteAndWait(
             args[0],
-#else
-        auto ret = llvm::sys::Program::ExecuteAndWait(
-            llvm::sys::Path(args[0]),
-#endif
             args,
             nullptr,
             nullptr,
