@@ -22,7 +22,7 @@ namespace Wide {
         class Function;
         class OverloadSet;
         class Module;
-        class UserDefinedType : public AggregateType {
+        class UserDefinedType : public AggregateType, public TupleInitializable {
             const AST::Type* type;
             bool HasDefaultConstructor;
 
@@ -62,9 +62,10 @@ namespace Wide {
             bool IsMoveAssignable(Analyzer& a) override final;
             bool IsComplexType(Analyzer& a) override final;
 
-            Wide::Util::optional<std::vector<Type*>> GetTypesForTuple(Analyzer& a);
+            Wide::Util::optional<std::vector<Type*>> GetTypesForTuple(Analyzer& a) override final;
             bool IsUnambiguouslyDerivedFrom(Type* other);
             Codegen::Expression* AccessBase(Type* other, Codegen::Expression*, Analyzer& a);
+            ConcreteExpression PrimitiveAccessMember(ConcreteExpression e, unsigned num, Analyzer& a) override final;
         };
     }
 }

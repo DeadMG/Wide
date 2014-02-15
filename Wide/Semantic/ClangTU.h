@@ -59,6 +59,7 @@ namespace Wide {
             clang::Sema& GetSema();
             clang::IdentifierInfo* GetIdentifierInfo(std::string ident);
             unsigned GetFieldNumber(clang::FieldDecl*);
+            unsigned GetBaseNumber(clang::CXXRecordDecl* self, clang::CXXRecordDecl* base);
             clang::SourceLocation GetFileEnd();
         };
     }

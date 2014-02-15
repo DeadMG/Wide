@@ -449,6 +449,10 @@ unsigned ClangTU::GetFieldNumber(clang::FieldDecl* f) {
     return impl->codegenmod.getTypes().getCGRecordLayout(f->getParent()).getLLVMFieldNo(f);
 }
 
+unsigned ClangTU::GetBaseNumber(clang::CXXRecordDecl* self, clang::CXXRecordDecl* f) {
+    return impl->codegenmod.getTypes().getCGRecordLayout(self).getNonVirtualBaseLLVMFieldNo(f);
+}
+
 clang::SourceLocation ClangTU::GetFileEnd() {
     return impl->sm.getLocForEndOfFile(impl->sm.getMainFileID());
 }

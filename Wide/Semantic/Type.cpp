@@ -7,6 +7,7 @@
 #include <Wide/Semantic/Reference.h>
 #include <Wide/Lexer/Token.h>
 #include <Wide/Semantic/UserDefinedType.h>
+#include <Wide/Semantic/TupleType.h>
 #include <Wide/Semantic/OverloadSet.h>
 #include <Wide/Util/DebugUtilities.h>
 #include <sstream>
@@ -486,4 +487,48 @@ OverloadResolvable* Semantic::make_resolvable(std::function<ConcreteExpression(s
 }
 OverloadSet* PrimitiveType::PerformADL(Lexer::TokenType what, Type* lhs, Type* rhs, Analyzer& a) {
     return Type::PerformADL(what, lhs->Decay(), rhs->Decay(), a);
+}
+OverloadSet* TupleInitializable::CreateConstructorOverloadSet(Analyzer& a) {
+    struct TupleConstructor : public OverloadResolvable, Callable {
+        TupleConstructor(TupleInitializable* p) : self(p) {}
+        TupleInitializable* self;
+        unsigned GetArgumentCount() override final { return 2; }
+        Callable* GetCallableForResolution(std::vector<Type*>, Analyzer& a) { return this; }
+        Type* MatchParameter(Type* t, unsigned num, Analyzer& a) override final {
+            if (num == 0) {
+                if (t == a.GetLvalueType(self))
+                    return t;
+                else
+                    return nullptr;
+            }
+            auto tup = dynamic_cast<TupleType*>(t->Decay());
+            if (!tup) return nullptr;
+            if (tup->IsA(t, self, a))
+                return t;
+            return nullptr;
+        }
+        std::vector<ConcreteExpression> AdjustArguments(std::vector<ConcreteExpression> args, Context c) override final { return args; }
+        ConcreteExpression CallFunction(std::vector<ConcreteExpression> args, Context c) {
+            // We should already have properly-typed memory at 0.
+            // and the tuple at 1.
+            // This stuff won't be called unless we are valid
+            auto tupty = dynamic_cast<TupleType*>(args[1].t->Decay());
+            assert(tupty);
+            auto members_opt = self->GetTypesForTuple(*c);
+            assert(members_opt);
+            auto members = *members_opt;
+
+            if (members.size() == 0)
+                return args[0];
+            Codegen::Expression* p = nullptr;
+            for (std::size_t i = 0; i < members.size(); ++i) {
+                auto memory = self->PrimitiveAccessMember(args[0], i, *c);
+                auto argument = tupty->PrimitiveAccessMember(args[1], i, *c);
+                auto expr = members[i]->BuildInplaceConstruction(memory.Expr, argument, c);
+                p = p ? c->gen->CreateChainExpression(p, expr) : expr;
+            }
+            return ConcreteExpression(c->GetLvalueType(self), c->gen->CreateChainExpression(p, args[0].Expr));
+        }
+    };
+    return a.GetOverloadSet(a.arena.Allocate<TupleConstructor>(this));
 }

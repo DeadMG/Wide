@@ -304,7 +304,8 @@ OverloadSet* ClangType::CreateOperatorOverloadSet(Type* self, Lexer::TokenType n
 OverloadSet* ClangType::CreateConstructorOverloadSet(Analyzer& a) {
     auto cons = from->GetSema().LookupConstructors(type->getAsCXXRecordDecl());
     std::unordered_set<clang::NamedDecl*> decls(cons.begin(), cons.end());
-    return a.GetOverloadSet(decls, from, a.GetLvalueType(this));
+    auto tupcon = GetTypesForTuple(a) ? TupleInitializable::CreateConstructorOverloadSet(a) : a.GetOverloadSet();
+    return a.GetOverloadSet(a.GetOverloadSet(decls, from, a.GetLvalueType(this)), tupcon);
 }
 
 /*bool ClangType::IsCopyable(Analyzer& a) {
@@ -325,4 +326,37 @@ OverloadSet* ClangType::CreateDestructorOverloadSet(Analyzer& a) {
     std::unordered_set<clang::NamedDecl*> decls;
     decls.insert(des);
     return a.GetOverloadSet(decls, from, a.GetLvalueType(this));
+}
+Wide::Util::optional<std::vector<Type*>> ClangType::GetTypesForTuple(Analyzer& a) {
+    auto recdecl = type->getAsCXXRecordDecl();
+    if (!recdecl) return Wide::Util::none;
+    if (recdecl->hasUserDeclaredCopyAssignment()
+     || recdecl->hasUserDeclaredCopyConstructor()
+     || recdecl->hasUserDeclaredDestructor()
+     || recdecl->hasUserDeclaredMoveAssignment()
+     || recdecl->hasUserDeclaredMoveConstructor())
+        return Wide::Util::none;
+    std::vector<Type*> types;
+    for (auto it = recdecl->bases_begin(); it != recdecl->bases_end(); ++it) {
+        types.push_back(a.GetClangType(*from, it->getType()));
+    }
+    for (auto it = recdecl->field_begin(); it != recdecl->field_end(); ++it) {
+        types.push_back(a.GetClangType(*from, it->getType()));
+    }
+    return types;
+}
+
+ConcreteExpression ClangType::PrimitiveAccessMember(ConcreteExpression e, unsigned num, Analyzer& a) {
+    auto numbases = type->getAsCXXRecordDecl()->bases_end() - type->getAsCXXRecordDecl()->bases_begin();
+    Codegen::Expression* fieldexpr = num >= numbases
+        ? a.gen->CreateFieldExpression(e.Expr, from->GetFieldNumber(*std::next(type->getAsCXXRecordDecl()->field_begin(), num - numbases)))
+        : a.gen->CreateFieldExpression(e.Expr, from->GetBaseNumber(type->getAsCXXRecordDecl(), (type->getAsCXXRecordDecl()->bases_begin() + num)->getType()->getAsCXXRecordDecl()));
+    auto ty = GetTypesForTuple(a)->at(num);
+    if (!e.t->IsReference())
+        return ConcreteExpression(ty, fieldexpr);
+    if (e.t->IsReference() && ty->IsReference())
+        return ConcreteExpression(ty, a.gen->CreateLoad(fieldexpr));
+    if (IsLvalueType(e.t))
+        return ConcreteExpression(a.GetLvalueType(ty), fieldexpr);
+    return ConcreteExpression(a.GetRvalueType(ty), fieldexpr);
 }

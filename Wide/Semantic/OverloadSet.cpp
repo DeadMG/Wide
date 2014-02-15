@@ -4,6 +4,7 @@
 #include <Wide/Semantic/Function.h>
 #include <Wide/Semantic/ClangType.h>
 #include <Wide/Semantic/FunctionType.h>
+#include <Wide/Semantic/TupleType.h>
 #include <Wide/Parser/AST.h>
 #include <Wide/Semantic/ClangTU.h>
 #include <Wide/Semantic/Analyzer.h>
@@ -196,7 +197,14 @@ Callable* OverloadSet::Resolve(std::vector<Type*> f_args, Analyzer& a) {
         return nullptr;
     };
 
-    if (from) {    
+    auto is_clang_viable = [&] {
+        for (auto arg : f_args) {
+            if (dynamic_cast<TupleType*>(arg->Decay()))
+                return false;
+        }
+        return true;
+    };
+    if (from && is_clang_viable()) {    
         std::list<clang::OpaqueValueExpr> exprs;
         for(auto x : f_args)
             exprs.push_back(clang::OpaqueValueExpr(clang::SourceLocation(), x->GetClangType(*from, a).getNonLValueExprType(from->GetASTContext()), GetKindOfType(x)));

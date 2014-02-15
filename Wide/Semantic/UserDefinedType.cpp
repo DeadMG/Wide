@@ -285,43 +285,7 @@ OverloadSet* UserDefinedType::CreateConstructorOverloadSet(Analyzer& a) {
     if (UserDefinedComplex(a))
         return user_defined_constructors;
     
-    struct TupleConstructor : public OverloadResolvable, Callable {
-        TupleConstructor(UserDefinedType* p) : self(p) {}
-        UserDefinedType* self;
-        unsigned GetArgumentCount() override final { return 2; }
-        Callable* GetCallableForResolution(std::vector<Type*>, Analyzer& a) { return this; }
-        Type* MatchParameter(Type* t, unsigned num, Analyzer& a) override final {
-            if (num == 0) {
-                if (t == a.GetLvalueType(self))
-                    return t;
-                else
-                    return nullptr;
-            }
-            auto tup = dynamic_cast<TupleType*>(t->Decay());
-            if (!tup) return nullptr;
-            if (tup->IsA(t, self, a))
-                return t;
-            return nullptr;
-        }
-        std::vector<ConcreteExpression> AdjustArguments(std::vector<ConcreteExpression> args, Context c) override final { return args; }
-        ConcreteExpression CallFunction(std::vector<ConcreteExpression> args, Context c) {
-            // We should already have properly-typed memory at 0.
-            // and the tuple at 1.
-            auto tupty = dynamic_cast<TupleType*>(args[1].t->Decay());
-            assert(tupty);
-            if (self->GetMembers().size() == 0)
-                return args[0];
-            Codegen::Expression* p = nullptr;
-            for (std::size_t i = 0; i < self->GetMembers().size(); ++i) {
-                auto memory = self->PrimitiveAccessMember(args[0], i, *c);
-                auto argument = tupty->PrimitiveAccessMember(args[1], i, *c);
-                auto expr = self->GetMembers()[i].t->BuildInplaceConstruction(memory.Expr, argument, c);
-                p = p ? c->gen->CreateChainExpression(p, expr) : expr;
-            }
-            return ConcreteExpression(c->GetLvalueType(self), c->gen->CreateChainExpression(p, args[0].Expr));
-        }
-    };
-    user_defined_constructors = a.GetOverloadSet(user_defined_constructors, a.GetOverloadSet(a.arena.Allocate<TupleConstructor>(this)));
+    user_defined_constructors = a.GetOverloadSet(user_defined_constructors, TupleInitializable::CreateConstructorOverloadSet(a));
 
     std::vector<Type*> types;
     types.push_back(a.GetLvalueType(this));
@@ -422,4 +386,8 @@ Codegen::Expression* UserDefinedType::AccessBase(Type* other, Codegen::Expressio
             return base->AccessBase(other, a.gen->CreateFieldExpression(current, GetFieldIndex(i)), a);
     }
     assert(false);
+}
+
+ConcreteExpression UserDefinedType::PrimitiveAccessMember(ConcreteExpression e, unsigned num, Analyzer& a) {
+    return AggregateType::PrimitiveAccessMember(e, num, a);
 }

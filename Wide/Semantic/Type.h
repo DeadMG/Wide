@@ -214,7 +214,12 @@ namespace Wide {
                                 
             virtual ~Type() {}
         };
-
+        struct TupleInitializable : public virtual Type {
+            virtual Wide::Util::optional<std::vector<Type*>> GetTypesForTuple(Analyzer& a) = 0;
+            virtual OverloadSet* CreateConstructorOverloadSet(Analyzer& a) override;
+            virtual ConcreteExpression PrimitiveAccessMember(ConcreteExpression e, unsigned num, Analyzer& a) = 0;
+            virtual ~TupleInitializable() {}
+        };
         struct Callable {
             virtual ~Callable() {}
         public:
@@ -232,7 +237,7 @@ namespace Wide {
             virtual Callable* GetCallableForResolution(std::vector<Type*>, Analyzer& a) = 0;
         };
 
-        class PrimitiveType : public Type {
+        class PrimitiveType : public virtual Type {
         protected:
             PrimitiveType() {}
         public:

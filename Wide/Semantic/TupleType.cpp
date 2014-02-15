@@ -2,7 +2,6 @@
 #include <Wide/Semantic/Analyzer.h>
 #include <Wide/Semantic/OverloadSet.h>
 #include <Wide/Semantic/Reference.h>
-#include <Wide/Semantic/UserDefinedType.h>
 #include <Wide/Codegen/Generator.h>
 #include <Wide/Codegen/GeneratorMacros.h>
 
@@ -38,7 +37,7 @@ ConcreteExpression TupleType::ConstructFromLiteral(std::vector<ConcreteExpressio
 }
 
 bool TupleType::IsA(Type* self, Type* other, Analyzer& a) {
-    auto udt = dynamic_cast<UserDefinedType*>(other);
+    auto udt = dynamic_cast<TupleInitializable*>(other);
     if (!udt) return Type::IsA(self, other, a);
     auto udt_members = udt->GetTypesForTuple(a);
     if (!udt_members) return false;

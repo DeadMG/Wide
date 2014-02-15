@@ -13,7 +13,7 @@ namespace clang {
 namespace Wide {
     namespace Semantic {     
         class ClangTU;
-        class ClangType : public Type {
+        class ClangType : public virtual Type, public TupleInitializable {
             ClangTU* from;
             clang::QualType type;
         public:
@@ -36,6 +36,8 @@ namespace Wide {
             OverloadSet* CreateOperatorOverloadSet(Type* self, Lexer::TokenType name, Analyzer& a) override final;
             OverloadSet* CreateConstructorOverloadSet(Wide::Semantic::Analyzer&) override final;
             OverloadSet* CreateDestructorOverloadSet(Wide::Semantic::Analyzer&) override final;
+            Wide::Util::optional<std::vector<Type*>> GetTypesForTuple(Analyzer& a) override final;
+            ConcreteExpression PrimitiveAccessMember(ConcreteExpression e, unsigned num, Analyzer& a) override final;
         };
     }
 }
