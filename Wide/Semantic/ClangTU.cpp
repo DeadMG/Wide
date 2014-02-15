@@ -69,7 +69,8 @@ public:
     clang::FileManager FileManager;
     std::string errors;
     llvm::raw_string_ostream error_stream;
-    clang::DiagnosticsEngine engine;
+	clang::DiagnosticsEngine engine;
+	clang::SourceManager sm;
     std::unique_ptr<clang::TargetInfo> targetinfo;
     clang::CompilerInstance ci;
     clang::HeaderSearch hs;
@@ -77,7 +78,6 @@ public:
 
     clang::LangOptions langopts;
     std::vector<clang::Decl*> stuff;
-    clang::SourceManager sm;
     clang::Preprocessor preproc;
     clang::ASTContext astcon;
     CodeGenConsumer consumer;
@@ -102,10 +102,10 @@ public:
         , error_stream(errors)
         , FileManager(opts.FileSearchOptions)
         , engine(opts.DiagnosticIDs, opts.DiagnosticOptions.getPtr(), new clang::TextDiagnosticPrinter(error_stream, opts.DiagnosticOptions.getPtr()), false)
-        , targetinfo(CreateTargetInfoFromTriple(engine, opts.TargetOptions.Triple))
-        , hs(opts.HeaderSearchOptions, FileManager, engine, opts.LanguageOptions, targetinfo.get())
+		, targetinfo(CreateTargetInfoFromTriple(engine, opts.TargetOptions.Triple))
+		, sm(engine, FileManager)
+        , hs(opts.HeaderSearchOptions, sm, engine, opts.LanguageOptions, targetinfo.get())
         , layout(targetinfo->getTargetDescription())
-        , sm(engine, FileManager)
         , langopts(Options->LanguageOptions)
         , preproc(Options->PreprocessorOptions, engine, langopts, targetinfo.get(), sm, hs, ci)
         , astcon(langopts, sm, targetinfo.get(), preproc.getIdentifierTable(), preproc.getSelectorTable(), preproc.getBuiltinInfo(), 1000)

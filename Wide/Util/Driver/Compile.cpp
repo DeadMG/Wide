@@ -5,7 +5,6 @@
 #include <Wide/Parser/Parser.h>
 #include <Wide/Lexer/Lexer.h>
 #include <Wide/Parser/Builder.h>
-#include <boost/program_options.hpp>
 #include <Wide/Util/Concurrency/ConcurrentVector.h>
 #include <Wide/Parser/AST.h>
 #include <Wide/Semantic/Analyzer.h>

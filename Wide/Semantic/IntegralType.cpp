@@ -96,6 +96,7 @@ OverloadSet* IntegralType::CreateConstructorOverloadSet(Wide::Semantic::Analyzer
             if (integral->bits == inttype->bits)
                 return ConcreteExpression(args[0].t, c->gen->CreateStore(args[0].Expr, args[1].Expr));
             assert(false && "Integer constructor called with conditions that OR should have prevented.");
+			return ConcreteExpression(nullptr, nullptr);// shush warning
         }
         std::vector<ConcreteExpression> AdjustArguments(std::vector<ConcreteExpression> args, Context c) override final {
             return args;

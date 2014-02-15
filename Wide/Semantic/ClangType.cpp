@@ -347,7 +347,7 @@ Wide::Util::optional<std::vector<Type*>> ClangType::GetTypesForTuple(Analyzer& a
 }
 
 ConcreteExpression ClangType::PrimitiveAccessMember(ConcreteExpression e, unsigned num, Analyzer& a) {
-    auto numbases = type->getAsCXXRecordDecl()->bases_end() - type->getAsCXXRecordDecl()->bases_begin();
+    std::size_t numbases = type->getAsCXXRecordDecl()->bases_end() - type->getAsCXXRecordDecl()->bases_begin();
     Codegen::Expression* fieldexpr = num >= numbases
         ? a.gen->CreateFieldExpression(e.Expr, from->GetFieldNumber(*std::next(type->getAsCXXRecordDecl()->field_begin(), num - numbases)))
         : a.gen->CreateFieldExpression(e.Expr, from->GetBaseNumber(type->getAsCXXRecordDecl(), (type->getAsCXXRecordDecl()->bases_begin() + num)->getType()->getAsCXXRecordDecl()));

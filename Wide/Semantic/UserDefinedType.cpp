@@ -235,6 +235,8 @@ bool UserDefinedType::BinaryComplex(Analyzer& a) {
     return *BCCache;
 }
 
+#pragma warning(disable : 4800)
+
 bool UserDefinedType::UserDefinedComplex(Analyzer& a) {
     if (UDCCache)
         return *UDCCache;
@@ -386,6 +388,8 @@ Codegen::Expression* UserDefinedType::AccessBase(Type* other, Codegen::Expressio
             return base->AccessBase(other, a.gen->CreateFieldExpression(current, GetFieldIndex(i)), a);
     }
     assert(false);
+	return nullptr;
+	// shush warning
 }
 
 ConcreteExpression UserDefinedType::PrimitiveAccessMember(ConcreteExpression e, unsigned num, Analyzer& a) {
