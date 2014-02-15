@@ -183,7 +183,7 @@ function AddClangDependencies(conf)
         links { v }
     end
     if not os.is("windows") then
-        links { "dl", "pthread" }
+        links { "dl", "pthread", "curses" }
         return
     end
 end
