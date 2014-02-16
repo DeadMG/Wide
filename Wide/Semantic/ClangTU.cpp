@@ -69,8 +69,8 @@ public:
     clang::FileManager FileManager;
     std::string errors;
     llvm::raw_string_ostream error_stream;
-	clang::DiagnosticsEngine engine;
-	clang::SourceManager sm;
+    clang::DiagnosticsEngine engine;
+    clang::SourceManager sm;
     std::unique_ptr<clang::TargetInfo> targetinfo;
     clang::CompilerInstance ci;
     clang::HeaderSearch hs;
@@ -102,8 +102,8 @@ public:
         , error_stream(errors)
         , FileManager(opts.FileSearchOptions)
         , engine(opts.DiagnosticIDs, opts.DiagnosticOptions.getPtr(), new clang::TextDiagnosticPrinter(error_stream, opts.DiagnosticOptions.getPtr()), false)
-		, targetinfo(CreateTargetInfoFromTriple(engine, opts.TargetOptions.Triple))
-		, sm(engine, FileManager)
+        , targetinfo(CreateTargetInfoFromTriple(engine, opts.TargetOptions.Triple))
+        , sm(engine, FileManager)
         , hs(opts.HeaderSearchOptions, sm, engine, opts.LanguageOptions, targetinfo.get())
         , layout(targetinfo->getTargetDescription())
         , langopts(Options->LanguageOptions)

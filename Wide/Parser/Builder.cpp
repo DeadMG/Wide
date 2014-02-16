@@ -10,7 +10,7 @@ Builder::Builder(
     std::function<void(Lexer::Range, Parser::Warning)> warn,
     std::function<void(Lexer::Range, OutliningType)> outline
 )
-    : GlobalModule(Lexer::Range(global_module_location))
+    : GlobalModule(Lexer::Range(global_module_location), Lexer::Access::Public)
     , error(std::move(err))
     , warning(std::move(warn))
     , outlining(std::move(outline))
@@ -22,8 +22,8 @@ void RaiseError(Builder& build, Wide::Lexer::Range loc, std::vector<Wide::Lexer:
     build.Error(std::move(extra), what);
 }
 
-Using* Builder::CreateUsing(std::string name, Lexer::Range loc, Expression* val, Module* m) {
-    auto p = arena.Allocate<Using>(val, loc);
+Using* Builder::CreateUsing(std::string name, Lexer::Range loc, Expression* val, Module* m, Lexer::Access a) {
+    auto p = arena.Allocate<Using>(val, loc, a);
     if (m->functions.find(name) != m->functions.end()) {
        for(auto&& x : m->functions[name]->functions)
            combine_errors[m][name].insert(x);
@@ -37,8 +37,8 @@ Using* Builder::CreateUsing(std::string name, Lexer::Range loc, Expression* val,
     return p;
 }
 
-Module* Builder::CreateModule(std::string val, Module* m, Lexer::Range l) {
-    auto p = arena.Allocate<Module>(l);
+Module* Builder::CreateModule(std::string val, Module* m, Lexer::Range l, Lexer::Access a) {
+    auto p = arena.Allocate<Module>(l, a);
     if (m->functions.find(val) != m->functions.end()) {
        for(auto&& x : m->functions[val]->functions)
            combine_errors[m][val].insert(x);
@@ -66,21 +66,22 @@ void Builder::CreateFunction(
     Lexer::Range r,
     Type* p, 
     std::vector<FunctionArgument> args, 
-    std::vector<Variable*> caps
+    std::vector<Variable*> caps, 
+    Lexer::Access a
     ) {
     if (p->Functions.find(name) == p->Functions.end())
         p->Functions[name] = arena.Allocate<FunctionOverloadSet>();
     if (name == "type") {
-        p->Functions[name]->functions.insert(arena.Allocate<Constructor>(std::move(body), std::move(prolog), where, std::move(args), std::move(caps)));
+        p->Functions[name]->functions.insert(arena.Allocate<Constructor>(std::move(body), std::move(prolog), where, std::move(args), std::move(caps), a));
         return;
     }
     for(auto var : p->variables)
-        if (std::find(var->name.begin(), var->name.end(), name) != var->name.end()) {
+        if (std::find(var.first->name.begin(), var.first->name.end(), name) != var.first->name.end()) {
             std::vector<Lexer::Range> err;
-            err.push_back(var->location);
+            err.push_back(var.first->location);
             RaiseError(*this, where, err, Parser::Error::TypeFunctionAlreadyVariable);
         }
-    p->Functions[name]->functions.insert(arena.Allocate<Function>(std::move(body), std::move(prolog), where, std::move(args)));
+    p->Functions[name]->functions.insert(arena.Allocate<Function>(std::move(body), std::move(prolog), where, std::move(args), a));
     outlining(r, OutliningType::Function);
 }
 
@@ -92,9 +93,10 @@ void Builder::CreateFunction(
     Lexer::Range r,
     Module* m, 
     std::vector<FunctionArgument> args, 
-    std::vector<Variable*> caps
+    std::vector<Variable*> caps,
+    Lexer::Access a
 ) {
-    auto func = arena.Allocate<Function>(std::move(body), std::move(prolog), where, std::move(args));
+    auto func = arena.Allocate<Function>(std::move(body), std::move(prolog), where, std::move(args), a);
     if (m->decls.find(name) != m->decls.end()) {
         combine_errors[m][name].insert(func);
         combine_errors[m][name].insert(m->decls[name]);
@@ -112,11 +114,12 @@ void Builder::CreateOverloadedOperator(
     std::vector<Statement*> prolog, 
     Lexer::Range r, 
     Module* m, 
-    std::vector<FunctionArgument> args
+    std::vector<FunctionArgument> args,
+    Lexer::Access a
 ) {
     if (m->opcondecls.find(name) == m->opcondecls.end())
         m->opcondecls[name] = arena.Allocate<FunctionOverloadSet>();
-    m->opcondecls[name]->functions.insert(arena.Allocate<Function>(std::move(body), std::move(prolog), r, std::move(args)));
+    m->opcondecls[name]->functions.insert(arena.Allocate<Function>(std::move(body), std::move(prolog), r, std::move(args), a));
 }
 void Builder::CreateOverloadedOperator(
     Wide::Lexer::TokenType name, 
@@ -124,16 +127,17 @@ void Builder::CreateOverloadedOperator(
     std::vector<Statement*> prolog, 
     Lexer::Range r, 
     Type* t, 
-    std::vector<FunctionArgument> args
+    std::vector<FunctionArgument> args, 
+    Lexer::Access a
 ) {
     if (t->opcondecls.find(name) == t->opcondecls.end())
         t->opcondecls[name] = arena.Allocate<FunctionOverloadSet>();
-    t->opcondecls[name]->functions.insert(arena.Allocate<Function>(std::move(body), std::move(prolog), r, std::move(args)));
+    t->opcondecls[name]->functions.insert(arena.Allocate<Function>(std::move(body), std::move(prolog), r, std::move(args), a));
 }
 
-Type* Builder::CreateType(std::vector<Expression*> bases, Lexer::Range loc) { return arena.Allocate<Type>(bases, loc); }
-Type* Builder::CreateType(std::string name, Module* higher, std::vector<Expression*> bases, Lexer::Range loc) {
-    auto ty = arena.Allocate<Type>(bases, loc);
+Type* Builder::CreateType(std::vector<Expression*> bases, Lexer::Range loc, Lexer::Access a) { return arena.Allocate<Type>(bases, loc, a); }
+Type* Builder::CreateType(std::string name, Module* higher, std::vector<Expression*> bases, Lexer::Range loc, Lexer::Access a) {
+    auto ty = arena.Allocate<Type>(bases, loc, a);
     if (higher->functions.find(name) != higher->functions.end()) {
        for(auto&& x : higher->functions[name]->functions)
            combine_errors[higher][name].insert(x);
@@ -288,7 +292,7 @@ void Builder::SetModuleEndLocation(Module* m, Lexer::Range loc) { outlining(loc,
 
 std::vector<FunctionArgument> Builder::CreateFunctionArgumentGroup() { return std::vector<FunctionArgument>(); }
 
-void Builder::AddTypeField(Type* t, Variable* decl) {
+void Builder::AddTypeField(Type* t, Variable* decl, Lexer::Access a) {
     for (auto&& name : decl->name) {
         if (t->Functions.find(name) != t->Functions.end()) {
             std::vector<Wide::Lexer::Range> vec;
@@ -297,7 +301,7 @@ void Builder::AddTypeField(Type* t, Variable* decl) {
             throw Parser::ParserError(decl->location, vec, Parser::Error::TypeVariableAlreadyFunction);
         }
     }
-    t->variables.push_back(decl); 
+    t->variables.push_back(std::make_pair(decl, a)); 
 }
 void Builder::AddArgumentToFunctionGroup(std::vector<FunctionArgument>& args, std::string name, Lexer::Range r, Expression* expr)  {
     FunctionArgument arg(r);

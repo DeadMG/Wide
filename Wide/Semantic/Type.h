@@ -43,25 +43,23 @@ namespace Wide {
         struct DeferredExpression;
         struct ConcreteExpression;
         struct Context {
-            Context(const Context& other)
-                : a(other.a)
-                , where(other.where)
-                , RAIIHandler(other.RAIIHandler) {}
-            Context(Context&& other)
-                : a(other.a)
-                , where(other.where)
-                , RAIIHandler(std::move(other.RAIIHandler)) {}
+            Context(const Context& other) = default;
+            Context(Context&& other) = default;
 
-            Context(Analyzer* an, Lexer::Range loc, std::function<void(ConcreteExpression)> handler)
-                : a(an), where(loc), RAIIHandler(std::move(handler)) {}
-            Context(Analyzer& an, Lexer::Range loc, std::function<void(ConcreteExpression)> handler)
-                : a(&an), where(loc), RAIIHandler(std::move(handler)) {}
+            //Context(Analyzer* an, Lexer::Range loc, std::function<void(ConcreteExpression)> handler, Type* t)
+            //    : a(an), where(loc), RAIIHandler(std::move(handler)), source(t) {}
+
+            Context(Analyzer& an, Lexer::Range loc, std::function<void(ConcreteExpression)> handler, Type* s)
+                : a(&an), where(loc), RAIIHandler(std::move(handler)), source(s) {}
+
             Analyzer* a;
             Analyzer* operator->() const { return a; }
             Analyzer& operator*() const { return *a; }
+
             Lexer::Range where;
             void operator()(ConcreteExpression e);
             std::function<void(ConcreteExpression)> RAIIHandler;
+            Type* source;
         };
         
         struct ConcreteExpression {
@@ -220,6 +218,7 @@ namespace Wide {
             virtual ConcreteExpression PrimitiveAccessMember(ConcreteExpression e, unsigned num, Analyzer& a) = 0;
             virtual ~TupleInitializable() {}
         };
+
         struct Callable {
             virtual ~Callable() {}
         public:
@@ -237,6 +236,16 @@ namespace Wide {
             virtual Callable* GetCallableForResolution(std::vector<Type*>, Analyzer& a) = 0;
         };
 
+        enum InheritanceRelationship {
+            NotDerived,
+            AmbiguouslyDerived,
+            UnambiguouslyDerived
+        };
+        struct BaseType : public virtual Type {
+            virtual InheritanceRelationship IsDerivedFrom(Type* other, Analyzer& a) = 0;
+            virtual Codegen::Expression* AccessBase(Type* other, Codegen::Expression*, Analyzer& a) = 0;
+        };
+        struct MemberFunctionContext { virtual ~MemberFunctionContext() {} };
         class PrimitiveType : public virtual Type {
         protected:
             PrimitiveType() {}

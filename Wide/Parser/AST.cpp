@@ -42,7 +42,7 @@ void Combiner::Add(Module* m) {
                         continue;
                     }
                 else {
-                    auto new_mod = Wide::Memory::MakeUnique<Module>(nested->where.front());
+                    auto new_mod = Wide::Memory::MakeUnique<Module>(nested->where.front(), nested->access);
                     new_mod->where = nested->where;
                     to->decls[entry.first] = owned_decl_contexts.insert(std::make_pair(next = new_mod.get(), std::move(new_mod))).first->first;
                 }

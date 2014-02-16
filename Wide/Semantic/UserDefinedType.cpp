@@ -35,12 +35,12 @@ std::vector<Type*> GetTypesFromType(const AST::Type* t, Analyzer& a, Type* conte
         auto base = a.AnalyzeExpression(context, expr, [](Wide::Semantic::ConcreteExpression) { assert(false); });
         auto con = dynamic_cast<ConstructorType*>(base.t->Decay());
         if (!con) throw std::runtime_error("Attempted to define base classes but an expression was not a type.");
-        auto udt = dynamic_cast<UserDefinedType*>(con->GetConstructedType());
+        auto udt = dynamic_cast<BaseType*>(con->GetConstructedType());
         if (!udt) throw std::runtime_error("Attempted to inherit from a type but that type was not a user-defined type.");
         out.push_back(udt);
     }
     for (auto&& var : t->variables) {
-        auto expr = a.AnalyzeExpression(context, var->initializer, [](ConcreteExpression e) {});
+        auto expr = a.AnalyzeExpression(context, var.first->initializer, [](ConcreteExpression e) {});
         expr.t = expr.t->Decay();
         if (auto con = dynamic_cast<ConstructorType*>(expr.t))
             out.push_back(con->GetConstructedType());
@@ -56,7 +56,7 @@ UserDefinedType::UserDefinedType(const AST::Type* t, Analyzer& a, Type* higher)
 , type(t){
     unsigned i = 0;
     for (auto&& var : type->variables)
-        members[var->name.front()] = i++ + type->bases.size();
+        members[var.first->name.front()] = i++ + type->bases.size();
 }
 
 std::vector<UserDefinedType::member> UserDefinedType::GetMembers() {
@@ -71,7 +71,7 @@ std::vector<UserDefinedType::member> UserDefinedType::GetMembers() {
     for (unsigned i = 0; i < type->variables.size(); ++i) {
         member m;
         m.t = AggregateType::GetMembers()[i + type->bases.size()];
-        m.name = type->variables[i]->name.front();
+        m.name = type->variables[i].first->name.front();
         m.num = AggregateType::GetFieldIndex(i) + type->bases.size();
         out.push_back(m);
     }
@@ -119,7 +119,7 @@ clang::QualType UserDefinedType::GetClangType(ClangTU& TU, Analyzer& a) {
             recdecl,
             clang::SourceLocation(),
             clang::SourceLocation(),
-            TU.GetIdentifierInfo(type->variables[i]->name.front()),
+            TU.GetIdentifierInfo(type->variables[i].first->name.front()),
             AggregateType::GetMembers()[i]->GetClangType(TU, a),
             nullptr,
             nullptr,
@@ -364,32 +364,45 @@ Wide::Util::optional<std::vector<Type*>> UserDefinedType::GetTypesForTuple(Analy
     return AggregateType::GetMembers();
 }
 
-bool UserDefinedType::IsUnambiguouslyDerivedFrom(Type* other) {
-    std::unordered_map<Type*, unsigned> basecount;
-    std::function<void(UserDefinedType*)> count;
-    count = [&](UserDefinedType* t) {
-        for (std::size_t i = 0; i < t->type->bases.size(); ++i) {
-            basecount[AggregateType::GetMembers()[i]]++;
-            if (auto udt = dynamic_cast<UserDefinedType*>(AggregateType::GetMembers()[i])) {
-                count(udt);
-            }
+InheritanceRelationship UserDefinedType::IsDerivedFrom(Type* other, Analyzer& a) {
+    auto base = dynamic_cast<BaseType*>(other);
+    if (!base) return InheritanceRelationship::NotDerived;
+    InheritanceRelationship result = InheritanceRelationship::NotDerived;
+    for (std::size_t i = 0; i < type->bases.size(); ++i) {
+        auto ourbase = dynamic_cast<BaseType*>(AggregateType::GetMembers()[i]);
+        assert(ourbase);
+        if (ourbase == other) {
+            if (result == InheritanceRelationship::NotDerived)
+                result = InheritanceRelationship::UnambiguouslyDerived;
+            else if (result == InheritanceRelationship::UnambiguouslyDerived)
+                result = InheritanceRelationship::AmbiguouslyDerived;
+            continue;
         }
-    };
-    count(this);
-    return basecount.find(other) != basecount.end() && basecount[other] == 1;
+        auto subresult = ourbase->IsDerivedFrom(other, a);
+        if (subresult == InheritanceRelationship::AmbiguouslyDerived)
+            result = InheritanceRelationship::AmbiguouslyDerived;
+        if (subresult == InheritanceRelationship::UnambiguouslyDerived) {
+            if (result == InheritanceRelationship::NotDerived)
+                result = subresult;
+            if (result == InheritanceRelationship::UnambiguouslyDerived)
+                result = InheritanceRelationship::AmbiguouslyDerived;
+        }
+    }
+    return result;
 }
 Codegen::Expression* UserDefinedType::AccessBase(Type* other, Codegen::Expression* current, Analyzer& a) {
+    assert(IsDerivedFrom(other, a) == InheritanceRelationship::UnambiguouslyDerived);
     // It is unambiguous so just hit on the first base we come across
     for (std::size_t i = 0; i < type->bases.size(); ++i) {
-        auto base = dynamic_cast<UserDefinedType*>(AggregateType::GetMembers()[i]);
+        auto base = dynamic_cast<BaseType*>(AggregateType::GetMembers()[i]);
         if (base == other)
             return a.gen->CreateFieldExpression(current, GetFieldIndex(i));
-        if (base->IsUnambiguouslyDerivedFrom(other))
+        if (base->IsDerivedFrom(other, a) == InheritanceRelationship::UnambiguouslyDerived)
             return base->AccessBase(other, a.gen->CreateFieldExpression(current, GetFieldIndex(i)), a);
     }
     assert(false);
-	return nullptr;
-	// shush warning
+    return nullptr;
+    // shush warning
 }
 
 ConcreteExpression UserDefinedType::PrimitiveAccessMember(ConcreteExpression e, unsigned num, Analyzer& a) {

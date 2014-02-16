@@ -1,0 +1,9 @@
+module f {
+private:
+    test(int32 i) { return false; }
+public:
+    test(int64 i) { return true; }
+}
+Main() {
+    return f.test(0);
+}

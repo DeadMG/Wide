@@ -25,8 +25,12 @@ OverloadSet* Module::CreateOperatorOverloadSet(Type* t, Wide::Lexer::TokenType t
     return PrimitiveType::CreateOperatorOverloadSet(t, ty, a);
 }
 Wide::Util::optional<ConcreteExpression> Module::AccessMember(ConcreteExpression val, std::string name, Context c) {
+    auto access = GetAccessSpecifier(c, this);
     if (m->decls.find(name) != m->decls.end()) {
         auto decl = m->decls.at(name);
+        if (decl->access > access)
+            return Wide::Util::none;
+
         if (auto moddecl = dynamic_cast<const AST::Module*>(decl)) {
             return c->GetWideModule(moddecl, this)->BuildValueConstruction(c);
         }
@@ -54,8 +58,16 @@ Wide::Util::optional<ConcreteExpression> Module::AccessMember(ConcreteExpression
         }
         throw std::runtime_error("Attempted to access a member of a Wide module, but did not recognize it as a using, a type, or a function.");
     }
-    if (m->functions.find(name) != m->functions.end())
-        return c->GetOverloadSet(m->functions.at(name), this)->BuildValueConstruction(c);   
+    if (m->functions.find(name) != m->functions.end()) {
+        std::unordered_set<OverloadResolvable*> resolvable;
+        for (auto func : m->functions.at(name)->functions) {
+            if (func->access > access)
+                continue;
+            resolvable.insert(c->GetCallableForFunction(func, this));
+        }
+        if (resolvable.empty()) return Wide::Util::none;
+        return c->GetOverloadSet(resolvable)->BuildValueConstruction(c);
+    }
     if (SpecialMembers.find(name) != SpecialMembers.end())
         return SpecialMembers.at(name);
     return Wide::Util::none;

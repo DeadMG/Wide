@@ -71,8 +71,16 @@ namespace Wide {
             Lambda,
             Template,
             Concept,
-            ConceptMap
-        };    
+            ConceptMap,
+            Public,
+            Private,
+            Protected
+        };
+        enum Access {
+            Public,
+            Protected,
+            Private,
+        };
         struct Position {
             Position(std::shared_ptr<std::string> where)
                 : line(1), column(1), offset(0), name(std::move(where)) {}

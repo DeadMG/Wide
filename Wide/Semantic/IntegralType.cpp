@@ -96,7 +96,7 @@ OverloadSet* IntegralType::CreateConstructorOverloadSet(Wide::Semantic::Analyzer
             if (integral->bits == inttype->bits)
                 return ConcreteExpression(args[0].t, c->gen->CreateStore(args[0].Expr, args[1].Expr));
             assert(false && "Integer constructor called with conditions that OR should have prevented.");
-			return ConcreteExpression(nullptr, nullptr);// shush warning
+            return ConcreteExpression(nullptr, nullptr);// shush warning
         }
         std::vector<ConcreteExpression> AdjustArguments(std::vector<ConcreteExpression> args, Context c) override final {
             return args;
@@ -171,10 +171,17 @@ OverloadSet* IntegralType::CreateADLOverloadSet(Lexer::TokenType name, Type* lhs
     return a.GetOverloadSet();
 }
 bool IntegralType::IsA(Type* self, Type* other, Analyzer& a) {
-    if (this == other) return true;
+    // If we already are, then don't bother.
+    if (Type::IsA(self, other, a)) return true;
+
+    // T to U conversion
+    // Cannot be U&
+    if (IsLvalueType(other)) return false;
+
     auto otherint = dynamic_cast<IntegralType*>(other->Decay());
     if (!otherint)
         return false;
+
     if (is_signed == otherint->is_signed && otherint->bits > bits)
         return true;
     if (!is_signed && otherint->is_signed && otherint->bits > bits)

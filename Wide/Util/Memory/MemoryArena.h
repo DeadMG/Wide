@@ -112,11 +112,12 @@ namespace Wide {
                 if (size > BufferSize)
                     throw std::runtime_error("Fuck");
                 return tail->AllocateFor(size, alignment);
-            }/*
+            }
             template<typename T, typename... Args> T* Allocate(Args&&... args) {
                 T* ret = new (tail->AllocateFor<T>()) T(std::forward<Args>(args)...);
                 return ret;
-            }*/
+            }
+            /*
             template<typename T> T* Allocate() {
                 T* ret = new (tail->AllocateFor<T>()) T();
                 return ret;
@@ -155,7 +156,7 @@ namespace Wide {
                 auto mem = tail->AllocateFor<T>();
                 T* ret = new (mem) T(std::forward<Arg1>(other), std::forward<Arg2>(other2), std::forward<Arg3>(other3), std::forward<Arg4>(other4), std::forward<Arg5>(other5), std::forward<Arg6>(other6), std::forward<Arg7>(other7));
                 return ret;
-            }
+            }*/
         };
         template<typename T> struct ArenaAllocator {
             ArenaAllocator(Arena* ptr) {

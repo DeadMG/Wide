@@ -91,10 +91,10 @@ Analyzer::Analyzer(const Options::Clang& opts, Codegen::Generator& g, const AST:
     };
 
     static const auto location = Lexer::Range(std::make_shared<std::string>("Analyzer internal."));
+    global = GetWideModule(GlobalModule, nullptr);
     Context c(*this, location, [](ConcreteExpression e) {
         assert(false);
-    });
-    global = GetWideModule(GlobalModule, nullptr);
+    }, global);
     auto global_val = global->BuildValueConstruction(c);
     EmptyOverloadSet = arena.Allocate<OverloadSet>(std::unordered_set<OverloadResolvable*>(), nullptr);
     global->AddSpecialMember("cpp", ConcreteExpression(arena.Allocate<ClangIncludeEntity>(), nullptr));
@@ -142,7 +142,7 @@ ConcreteExpression Analyzer::AnalyzeExpression(Type* t, const AST::Expression* e
         }
         void VisitMemberAccess(const AST::MemberAccess* access) {
             auto val = self->AnalyzeExpression(t, access->expr, handler);
-            auto mem = val.AccessMember(access->mem, Context(*self, access->location, handler));
+            auto mem = val.AccessMember(access->mem, Context(*self, access->location, handler, t));
             if (!mem) throw SemanticError(access->location, Error::NoMember);
             out = *mem;
         }
@@ -154,7 +154,7 @@ ConcreteExpression Analyzer::AnalyzeExpression(Type* t, const AST::Expression* e
                 args.push_back(self->AnalyzeExpression(t, arg, [&](ConcreteExpression e) { destructors.push_back(e); }));
             }
             
-            out = fun.BuildCall(std::move(args), std::move(destructors), Context(*self, funccall->location, handler));
+            out = fun.BuildCall(std::move(args), std::move(destructors), Context(*self, funccall->location, handler, t));
         }
         void VisitIdentifier(const AST::Identifier* ident) {
             auto mem = self->LookupIdentifier(t, ident);
@@ -165,7 +165,7 @@ ConcreteExpression Analyzer::AnalyzeExpression(Type* t, const AST::Expression* e
             std::vector<ConcreteExpression> destructors;
             auto lhs = self->AnalyzeExpression(t, bin->lhs, handler);
             auto rhs = self->AnalyzeExpression(t, bin->rhs, [&](ConcreteExpression e) { destructors.push_back(e); });
-            out = lhs.BuildBinaryExpression(rhs, bin->type, std::move(destructors), Context(*self, bin->location, handler));
+            out = lhs.BuildBinaryExpression(rhs, bin->type, std::move(destructors), Context(*self, bin->location, handler, t));
         }
         void VisitMetaCall(const AST::MetaCall* mcall) {
             auto fun = self->AnalyzeExpression(t, mcall->callee, handler);
@@ -173,7 +173,7 @@ ConcreteExpression Analyzer::AnalyzeExpression(Type* t, const AST::Expression* e
             for(auto&& arg : mcall->args)
                 args.push_back(self->AnalyzeExpression(t, arg, handler));
             
-            out = fun.BuildMetaCall(std::move(args), Context(*self, mcall->location, handler));
+            out = fun.BuildMetaCall(std::move(args), Context(*self, mcall->location, handler, t));
         }
         void VisitInteger(const AST::Integer* integer) {
             out = ConcreteExpression( self->GetIntegralType(64, true), self->gen->CreateIntegralExpression(std::stoll(integer->integral_value), true, self->GetIntegralType(64, true)->GetLLVMType(*self)));
@@ -181,14 +181,14 @@ ConcreteExpression Analyzer::AnalyzeExpression(Type* t, const AST::Expression* e
         void VisitThis(const AST::This* loc) {
             auto fun = dynamic_cast<Function*>(t);
             if (fun) {
-                auto mem = fun->LookupLocal("this", Context(*self, loc->location, handler));
+                auto mem = fun->LookupLocal("this", Context(*self, loc->location, handler, t));
                 if (!mem) throw std::runtime_error("Attempted to access \"this\", but it was not found, probably because you were not in a member function.");
                 out = *mem;
             } else
                 out = self->LookupIdentifier(t, self->arena.Allocate<Wide::AST::Identifier>("this", loc->location));
         }
         void VisitNegate(const AST::Negate* ne) {
-            out = self->AnalyzeExpression(t, ne->ex, handler).BuildNegate(Context(*self, ne->location, handler));
+            out = self->AnalyzeExpression(t, ne->ex, handler).BuildNegate(Context(*self, ne->location, handler, t));
         }
         void VisitTuple(const AST::Tuple* tup) {
             std::vector<ConcreteExpression> exprs;
@@ -197,7 +197,7 @@ ConcreteExpression Analyzer::AnalyzeExpression(Type* t, const AST::Expression* e
             std::vector<Type*> types;
             for (auto expr : exprs)
                 types.push_back(expr.t->Decay());
-            out = self->GetTupleType(types)->ConstructFromLiteral(exprs, Context(*self, tup->location, handler));
+            out = self->GetTupleType(types)->ConstructFromLiteral(exprs, Context(*self, tup->location, handler, t));
         }
         // Ugly to perform an AST-level transformation in the analyzer
         // But hey- the AST exists to represent the exact source.
@@ -305,27 +305,27 @@ ConcreteExpression Analyzer::AnalyzeExpression(Type* t, const AST::Expression* e
                 expressions.push_back(cap.second);
             }
             auto type = self->arena.Allocate<LambdaType>(types, lam, *self);
-            out = type->BuildLambdaFromCaptures(expressions, Context(*self, lam->location, handler));
+            out = type->BuildLambdaFromCaptures(expressions, Context(*self, lam->location, handler, t));
         }
         void VisitDereference(const AST::Dereference* deref) {
-            out = self->AnalyzeExpression(t, deref->ex, handler).BuildDereference(Context(*self, deref->location, handler));
+            out = self->AnalyzeExpression(t, deref->ex, handler).BuildDereference(Context(*self, deref->location, handler, t));
         }
         void VisitIncrement(const AST::Increment* inc) {
             auto lhs = self->AnalyzeExpression(t, inc->ex, handler);
-            out = lhs.BuildIncrement(inc->postfix, Context(*self, inc->location, handler));
+            out = lhs.BuildIncrement(inc->postfix, Context(*self, inc->location, handler, t));
         }
         void VisitType(const AST::Type* ty) {
             auto udt = self->GetUDT(ty, t->GetConstantContext(*self) ? t->GetConstantContext(*self) : t);
-            out = self->GetConstructorType(udt)->BuildValueConstruction(Context(*self, ty->location, handler));
+            out = self->GetConstructorType(udt)->BuildValueConstruction(Context(*self, ty->location, handler, t));
         }
         void VisitPointerAccess(const AST::PointerMemberAccess* ptr) {
-            auto mem = self->AnalyzeExpression(t, ptr->ex, handler).PointerAccessMember(ptr->member, Context(*self, ptr->location, handler));
+            auto mem = self->AnalyzeExpression(t, ptr->ex, handler).PointerAccessMember(ptr->member, Context(*self, ptr->location, handler, t));
             if (!mem)
                 throw std::runtime_error("Attempted to access a member of a pointer, but it contained no such member.");
             out = *mem;
         }
         void VisitAddressOf(const AST::AddressOf* add) {
-            out = self->AnalyzeExpression(t, add->ex, handler).AddressOf(Context(*self, add->location, handler));
+            out = self->AnalyzeExpression(t, add->ex, handler).AddressOf(Context(*self, add->location, handler, t));
         }
     };
 
@@ -556,7 +556,7 @@ Wide::Util::optional<ConcreteExpression> Analyzer::LookupIdentifier(Type* contex
         return Wide::Util::none;
     Context c(*this, ident->location, [](ConcreteExpression e) {
         assert(false);
-    });
+    }, context);
     context = context->Decay();
     if (auto fun = dynamic_cast<Function*>(context)) {
         auto lookup = fun->LookupLocal(ident->val, c);
@@ -694,4 +694,18 @@ OverloadResolvable* Analyzer::GetCallableForFunction(const AST::FunctionBase* f,
         }
     };
     return FunctionCallables[f] = arena.Allocate<FunctionCallable>(f, context);
+}
+
+Lexer::Access Semantic::GetAccessSpecifier(Context c, Type* to) {
+    if (c.source == to) return Lexer::Access::Private;
+    if (auto base = dynamic_cast<BaseType*>(to)) {
+        if (auto derived = dynamic_cast<BaseType*>(c.source->Decay())) {
+            if (derived->IsDerivedFrom(to, *c) == InheritanceRelationship::UnambiguouslyDerived)
+                return Lexer::Access::Protected;
+        }
+    }
+    if (auto context = c.source->GetContext(*c))
+        return GetAccessSpecifier(Context(*c, c.where, c.RAIIHandler, context), to);
+
+    return Lexer::Access::Public;    
 }

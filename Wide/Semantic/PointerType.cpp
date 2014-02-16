@@ -2,7 +2,6 @@
 #include <Wide/Semantic/ClangTU.h>
 #include <Wide/Codegen/Generator.h>
 #include <Wide/Semantic/Analyzer.h>
-#include <Wide/Semantic/UserDefinedType.h>
 #include <Wide/Semantic/NullType.h>
 #include <Wide/Semantic/Reference.h>
 
@@ -66,7 +65,7 @@ OverloadSet* PointerType::CreateConstructorOverloadSet(Analyzer& a) {
         std::vector<ConcreteExpression> AdjustArguments(std::vector<ConcreteExpression> args, Context c) override final { return args; }
         ConcreteExpression CallFunction(std::vector<ConcreteExpression> args, Context c) override final {
             auto other = args[1].BuildValue(c);
-            auto udt = dynamic_cast<UserDefinedType*>(dynamic_cast<PointerType*>(other.t)->pointee);
+            auto udt = dynamic_cast<BaseType*>(dynamic_cast<PointerType*>(other.t)->pointee);
             return ConcreteExpression(args[0].t, c->gen->CreateStore(args[0].Expr, udt->AccessBase(self->pointee, other.Expr, *c)));
         }
         Callable* GetCallableForResolution(std::vector<Type*>, Analyzer& a) override final { return this; }
@@ -94,13 +93,12 @@ bool PointerType::IsA(Type* self, Type* other, Analyzer& a) {
     // But reference to T* is not reference to U* so keep that shit under wraps yo.
     // T* or T*&& can be U* or U*&&
     // T*& can be U*
-    if (self->Decay() == other->Decay()) return Type::IsA(self, other, a);
-    if (IsLvalueType(other)) return Type::IsA(self, other, a);
-    if (IsLvalueType(self) && other->IsReference()) return Type::IsA(self, other, a);
+    if (Type::IsA(self, other, a)) return true;
+    if (IsLvalueType(other)) return false;
 
     auto otherptr = dynamic_cast<PointerType*>(other->Decay());
-    if (!otherptr) return Type::IsA(self, other, a);
-    auto udt = dynamic_cast<UserDefinedType*>(pointee);
-    if (!udt) return Type::IsA(self, other, a);
-    return udt->IsUnambiguouslyDerivedFrom(otherptr->pointee);
+    if (!otherptr) return false;
+    auto udt = dynamic_cast<BaseType*>(pointee);
+    if (!udt) return false;
+    return udt->IsDerivedFrom(otherptr->pointee, a) == InheritanceRelationship::UnambiguouslyDerived;
 }

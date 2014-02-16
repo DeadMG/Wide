@@ -57,7 +57,7 @@ namespace Wide {
             LambdaNoOpenCurly,
             TypeExpressionNoCurly,
             ExpressionNoBeginning,
-            TypeFunctionAlreadyVariable, 
+            TypeFunctionAlreadyVariable,
             TypeVariableAlreadyFunction,
             BreakNoSemicolon,
             ContinueNoSemicolon,
@@ -65,7 +65,9 @@ namespace Wide {
             LambdaNoIntroducer,
             TupleCommaOrClose,
             VariableListNoIdentifier,
-            VariableListNoInitializer
+            VariableListNoInitializer,
+            AccessSpecifierNoColon,
+            ProtectedModuleScope
         };         
 
         enum class Warning : int {
@@ -149,7 +151,9 @@ namespace Wide {
                 std::make_pair(Error::LambdaNoIntroducer, "Found (), expected => to introduce nullary short-form lambda."),
                 std::make_pair(Error::TupleCommaOrClose, "Expected , or } to continue or close a tuple literal"),
                 std::make_pair(Error::VariableListNoIdentifier, "Expected an identifier after , to continue a list of variables."),
-                std::make_pair(Error::VariableListNoInitializer, "Expected to find := after identifier [, identifier]* to create a variable statement.")
+                std::make_pair(Error::VariableListNoInitializer, "Expected to find := after identifier [, identifier]* to create a variable statement."),
+                std::make_pair(Error::AccessSpecifierNoColon, "Expected to find : after private, public, or protected to create an access specifier."),
+                std::make_pair(Error::ProtectedModuleScope, "Cannot define module-scope definitions as protected."),
             };
             return std::unordered_map<Error, std::string>(std::begin(strings), std::end(strings));
         }());

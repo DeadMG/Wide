@@ -148,5 +148,6 @@ namespace Wide {
         };
         bool IsRvalueType(Type* t);
         bool IsLvalueType(Type* t);
+        Lexer::Access GetAccessSpecifier(Context c, Type* to);
     }
 }

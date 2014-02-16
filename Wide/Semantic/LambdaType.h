@@ -7,7 +7,7 @@ namespace Wide {
         struct Lambda;
     }
     namespace Semantic {
-        class LambdaType : public AggregateType {
+        class LambdaType : public AggregateType, public MemberFunctionContext {
             const AST::Lambda* lam;
             std::unordered_map<std::string, std::size_t> names;
         public:

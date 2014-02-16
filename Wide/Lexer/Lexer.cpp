@@ -93,6 +93,9 @@ const std::unordered_map<std::string, TokenType> Arguments::keywords = []() -> s
     keywords["concept"] = TokenType::Concept;
     keywords["template"] = TokenType::Template;
     keywords["concept_map"] = TokenType::ConceptMap;
+    keywords["public"] = TokenType::Public;
+    keywords["private"] = TokenType::Private;
+    keywords["protected"] = TokenType::Protected;
     return keywords;
 }();
 

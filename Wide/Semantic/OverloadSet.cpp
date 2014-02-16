@@ -13,7 +13,6 @@
 #include <Wide/Semantic/Reference.h>
 #include <Wide/Semantic/IntegralType.h>
 #include <Wide/Util/DebugUtilities.h>
-#include <Wide/Semantic/UserDefinedType.h>
 #include <array>
 #include <sstream>
 
@@ -295,7 +294,7 @@ OverloadSet::OverloadSet(OverloadSet* s, OverloadSet* other, Type* context)
             nonstatic = s->nonstatic;
         }
     } else {
-        if (dynamic_cast<UserDefinedType*>(context->Decay()))
+        if (dynamic_cast<MemberFunctionContext*>(context->Decay()))
             nonstatic = context;
     }
 }

@@ -13,7 +13,7 @@ namespace clang {
 namespace Wide {
     namespace Semantic {     
         class ClangTU;
-        class ClangType : public virtual Type, public TupleInitializable {
+        class ClangType : public virtual Type, public TupleInitializable, public BaseType {
             ClangTU* from;
             clang::QualType type;
         public:
@@ -38,6 +38,8 @@ namespace Wide {
             OverloadSet* CreateDestructorOverloadSet(Wide::Semantic::Analyzer&) override final;
             Wide::Util::optional<std::vector<Type*>> GetTypesForTuple(Analyzer& a) override final;
             ConcreteExpression PrimitiveAccessMember(ConcreteExpression e, unsigned num, Analyzer& a) override final;
+            InheritanceRelationship IsDerivedFrom(Type* other, Analyzer& a) override final;
+            Codegen::Expression* AccessBase(Type* other, Codegen::Expression*, Analyzer& a) override final;
         };
     }
 }

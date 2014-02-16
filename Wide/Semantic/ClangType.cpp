@@ -360,3 +360,43 @@ ConcreteExpression ClangType::PrimitiveAccessMember(ConcreteExpression e, unsign
         return ConcreteExpression(a.GetLvalueType(ty), fieldexpr);
     return ConcreteExpression(a.GetRvalueType(ty), fieldexpr);
 }
+
+InheritanceRelationship ClangType::IsDerivedFrom(Type* other, Analyzer& a) {
+    auto otherbase = dynamic_cast<BaseType*>(other);
+    if (!otherbase) return InheritanceRelationship::NotDerived;
+    auto otherdecl = other->GetClangType(*from, a)->getAsCXXRecordDecl();
+    auto recdecl = type->getAsCXXRecordDecl();
+    InheritanceRelationship result = InheritanceRelationship::NotDerived;
+    for (auto base = recdecl->bases_begin(); base != recdecl->bases_end(); ++base) {
+        if (base->getType()->getAsCXXRecordDecl() == otherdecl) {
+            if (result == InheritanceRelationship::NotDerived)
+                result = InheritanceRelationship::UnambiguouslyDerived;
+            result = InheritanceRelationship::AmbiguouslyDerived;
+            continue;
+        }
+        auto Base = dynamic_cast<BaseType*>(a.GetClangType(*from, base->getType()));
+        auto subresult = Base->IsDerivedFrom(other, a);
+        if (subresult == InheritanceRelationship::AmbiguouslyDerived)
+            result = InheritanceRelationship::AmbiguouslyDerived;
+        if (subresult == InheritanceRelationship::UnambiguouslyDerived) {
+            if (result == InheritanceRelationship::NotDerived)
+                result = subresult;
+            if (result == InheritanceRelationship::UnambiguouslyDerived)
+                result = InheritanceRelationship::AmbiguouslyDerived;
+        }
+    }
+    return result;
+}
+Codegen::Expression* ClangType::AccessBase(Type* other, Codegen::Expression* expr, Analyzer& a) {
+    auto recdecl = type->getAsCXXRecordDecl();
+    assert(IsDerivedFrom(other, a) == InheritanceRelationship::UnambiguouslyDerived);
+    for (auto baseit = recdecl->bases_begin(); baseit != recdecl->bases_end(); ++baseit) {
+        auto base = dynamic_cast<BaseType*>(a.GetClangType(*from, baseit->getType()));
+        if (base == other)
+            return a.gen->CreateFieldExpression(expr, from->GetBaseNumber(recdecl, baseit->getType()->getAsCXXRecordDecl()));
+        if (base->IsDerivedFrom(other, a) == InheritanceRelationship::UnambiguouslyDerived)
+            return base->AccessBase(other, a.gen->CreateFieldExpression(expr, from->GetBaseNumber(recdecl, baseit->getType()->getAsCXXRecordDecl())), a);
+    }
+    assert(false);
+    return nullptr;
+}
