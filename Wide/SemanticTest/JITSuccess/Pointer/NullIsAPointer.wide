@@ -1,4 +1,4 @@
-f(bool->pointer p) {
+f(bool.pointer p) {
     return true;
 }
 f(int64 i) {

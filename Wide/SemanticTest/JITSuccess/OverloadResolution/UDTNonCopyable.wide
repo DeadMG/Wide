@@ -1,11 +1,11 @@
 type movable {
-    type(this->rvalue arg) {}
+    type(this.rvalue arg) {}
     type() {}
 }
 f(movable x) {
     return false;
 }
-f(auto->lvalue x) {
+f(auto.lvalue x) {
     return true;
 }
 Main() {

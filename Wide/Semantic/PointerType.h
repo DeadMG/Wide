@@ -9,8 +9,8 @@ namespace Wide {
         public:
             using Type::BuildInplaceConstruction;
 
-            PointerType(Type* point);
-            ConcreteExpression BuildDereference(ConcreteExpression obj, Context c) override final;
+            PointerType(Type* point); 
+            OverloadSet* CreateOperatorOverloadSet(Type* self, Lexer::TokenType what, Analyzer& a) override final;
             Codegen::Expression* BuildBooleanConversion(ConcreteExpression val, Context c) override final;
             clang::QualType GetClangType(ClangTU& TU, Analyzer& a) override final;
             std::function<llvm::Type*(llvm::Module*)> GetLLVMType(Analyzer& a) override final;

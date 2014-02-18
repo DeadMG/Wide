@@ -1,12 +1,12 @@
 type testty {
-    result := bool->pointer;
+    result := bool.pointer;
     ~type() {
          *result = true;
     }
-    type(bool->pointer arg)
+    type(bool.pointer arg)
         : result(arg) {}
 }
-testfunc(bool->pointer result) {
+testfunc(bool.pointer result) {
     var := testty(result);
 }
 Main() {

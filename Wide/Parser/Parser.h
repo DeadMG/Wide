@@ -1012,14 +1012,20 @@ namespace Wide {
                     if (t.GetType() == Lexer::TokenType::Public) {
                         Check(Error::AccessSpecifierNoColon, Lexer::TokenType::Colon);
                         access = Lexer::Access::Public;
+                        t = lex();
+                        continue;
                     }
                     if (t.GetType() == Lexer::TokenType::Private) {
                         Check(Error::AccessSpecifierNoColon, Lexer::TokenType::Colon);
                         access = Lexer::Access::Private;
+                        t = lex();
+                        continue;
                     }
                     if (t.GetType() == Lexer::TokenType::Protected) {
                         Check(Error::AccessSpecifierNoColon, Lexer::TokenType::Colon);
                         access = Lexer::Access::Protected;
+                        t = lex();
+                        continue;
                     }
                     if(t.GetType() == Lexer::TokenType::Identifier) {
                         // Must be either := for variable or ( for function. Don't support functions yet.

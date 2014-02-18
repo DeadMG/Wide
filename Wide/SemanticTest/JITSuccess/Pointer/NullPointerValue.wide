@@ -1,4 +1,4 @@
 Main() {
-    var := bool->pointer(null);
+    var := bool.pointer(null);
     return ~var;
 }

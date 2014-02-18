@@ -128,9 +128,9 @@ struct cppcallable : public Callable {
             // Since is-a does not apply here, build construction from the underlying type, rather than going through rvaluetype.
             // If a type adjustment is necessary, perform it- don't infinitely recurs.
             if ((types[i].second || IsRvalueType(types[i].first)) && !IsLvalueType(args[i].t) && args[i].t->Decay() != types[i].first->Decay())
-                out.push_back(types[i].first->Decay()->BuildRvalueConstruction(args[i], c));
+                out.push_back(types[i].first->Decay()->BuildRvalueConstruction({ args[i] }, c));
             else
-                out.push_back(types[i].first->BuildValueConstruction(args[i], c));
+                out.push_back(types[i].first->BuildValueConstruction({ args[i] }, c));
         }
         return out;
     }
@@ -340,7 +340,7 @@ Wide::Util::optional<ConcreteExpression> OverloadSet::AccessMember(ConcreteExpre
     if (name != "resolve")
         return Type::AccessMember(self, name, c);
     if (ResolveOverloadSet)
-        return ResolveOverloadSet->BuildValueConstruction(c);
+        return ResolveOverloadSet->BuildValueConstruction({}, c);
     struct ResolveCallable : public MetaType 
     {
         ResolveCallable(OverloadSet* f)
@@ -359,9 +359,9 @@ Wide::Util::optional<ConcreteExpression> OverloadSet::AccessMember(ConcreteExpre
             auto clangfunc = dynamic_cast<cppcallable*>(call);
             std::unordered_set<clang::NamedDecl*> decls;
             decls.insert(clangfunc->fun);
-            return c->GetOverloadSet(decls, clangfunc->from, nullptr)->BuildValueConstruction(c);
+            return c->GetOverloadSet(decls, clangfunc->from, nullptr)->BuildValueConstruction({}, c);
         }
     };
     ResolveOverloadSet = c->arena.Allocate<ResolveCallable>(this);
-    return ResolveOverloadSet->BuildValueConstruction(c);
+    return ResolveOverloadSet->BuildValueConstruction({}, c);
 }

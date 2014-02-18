@@ -1,8 +1,8 @@
 Main() {
     x := type { 
-        pointer := bool->pointer;
-        type(bool->lvalue p) : pointer(&p) {}
-        type(this->lvalue other) : pointer(other.pointer) {
+        pointer := bool.pointer;
+        type(bool.lvalue p) : pointer(&p) {}
+        type(this.lvalue other) : pointer(other.pointer) {
             *pointer = true;
         }
     };

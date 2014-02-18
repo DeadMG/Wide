@@ -101,7 +101,7 @@ void Jit(const Wide::Options::Clang& copts, std::string file) {
     });
     Wide::Driver::Compile(copts, [&](Wide::Semantic::Analyzer& a, const Wide::AST::Module* root) {
         Wide::Semantic::Context c(a, loc, [](Wide::Semantic::ConcreteExpression e) {}, a.GetGlobalModule());
-        auto m = a.GetGlobalModule()->AccessMember(a.GetGlobalModule()->BuildValueConstruction(c), "Main", c);
+        auto m = a.GetGlobalModule()->AccessMember(a.GetGlobalModule()->BuildValueConstruction({}, c), "Main", c);
         if (!m)
             throw std::runtime_error("No Main() found for test!");
         auto func = dynamic_cast<Wide::Semantic::OverloadSet*>(m->t);
@@ -111,7 +111,7 @@ void Jit(const Wide::Options::Clang& copts, std::string file) {
         if (!f)
             throw std::runtime_error("Could not resolve Main to a function.");
         name = f->GetName();
-        f->BuildCall(f->BuildValueConstruction(c), std::vector<Wide::Semantic::ConcreteExpression>(), c);
+        f->BuildCall(f->BuildValueConstruction({}, c), {}, c);
     }, g, { file });
 }
 void Compile(const Wide::Options::Clang& copts, std::string file) {

@@ -1,5 +1,5 @@
 using header := cpp("JITSuccess/CPPInterop/ExportEmptyMemberFunction.h");
-f(header.test->pointer self) prolog {
+f(header.test.pointer self) prolog {
     ExportName = cpp.mangle(header.test().f);
 } {
     return true;

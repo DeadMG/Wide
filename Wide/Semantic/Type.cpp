@@ -30,12 +30,17 @@ clang::QualType Type::GetClangType(ClangTU& TU, Analyzer& a) {
     throw std::runtime_error("This type has no Clang representation.");
 }
 
-ConcreteExpression ConcreteExpression::BuildIncrement(bool b, Context c) {
-    return t->BuildIncrement(*this, b, c);
+ConcreteExpression ConcreteExpression::BuildIncrement(bool postfix, Context c) {
+    if (postfix) {
+        auto copy = t->Decay()->BuildLvalueConstruction({ *this }, c);
+        auto result = BuildIncrement(false, c);
+        return ConcreteExpression(copy.t, c->gen->CreateChainExpression(result.Expr, copy.Expr));
+    }
+    return t->Decay()->BuildUnaryExpression(*this, Lexer::TokenType::Increment, c);
 }
 
 ConcreteExpression ConcreteExpression::BuildNegate(Context c) {
-    return t->BuildNegate(*this, c);
+    return t->Decay()->BuildUnaryExpression(*this, Lexer::TokenType::Negate, c);
 }
 
 ConcreteExpression ConcreteExpression::BuildCall(ConcreteExpression l, ConcreteExpression r, Context c) {
@@ -46,11 +51,11 @@ ConcreteExpression ConcreteExpression::BuildCall(ConcreteExpression l, ConcreteE
 }
 
 Util::optional<ConcreteExpression> ConcreteExpression::PointerAccessMember(std::string mem, Context c) {
-    return t->PointerAccessMember(*this, std::move(mem), c);
+    return BuildDereference(c).AccessMember(mem, c);
 }
 
 ConcreteExpression ConcreteExpression::BuildDereference(Context c) {
-    return t->BuildDereference(*this, c);
+    return t->Decay()->BuildUnaryExpression(*this, Lexer::TokenType::Dereference, c);
 }
 
 ConcreteExpression ConcreteExpression::BuildCall(ConcreteExpression lhs, Context c) {
@@ -60,7 +65,10 @@ ConcreteExpression ConcreteExpression::BuildCall(ConcreteExpression lhs, Context
 }
 
 ConcreteExpression ConcreteExpression::AddressOf(Context c) {
-    return t->AddressOf(*this, c);
+    // TODO: Remove this restriction, it is not very Wide.
+    if (!IsLvalueType(t))
+        throw std::runtime_error("Attempted to take the address of something that was not an lvalue.");
+    return ConcreteExpression(c->GetPointerType(t->Decay()), Expr);
 }
 
 Codegen::Expression* ConcreteExpression::BuildBooleanConversion(Context c) {
@@ -87,74 +95,24 @@ Wide::Util::optional<ConcreteExpression> ConcreteExpression::AccessMember(std::s
 }
 
 ConcreteExpression ConcreteExpression::BuildValue(Context c) {
-    return t->BuildValue(*this, c);
+    if (t->IsComplexType(*c))
+        throw std::runtime_error("Internal Compiler Error: Attempted to build a complex type into a register.");
+    if (t->IsReference())
+        return ConcreteExpression(t->Decay(), c->gen->CreateLoad(Expr));
+    return *this;
 }
 
 ConcreteExpression ConcreteExpression::BuildCall(std::vector<ConcreteExpression> args, Context c) {
-    return t->BuildCall(*this, std::move(args), c);
+    return t->Decay()->BuildCall(*this, std::move(args), c);
 }
 
 ConcreteExpression ConcreteExpression::BuildCall(Context c) {
     return BuildCall(std::vector<ConcreteExpression>(), c);
 }
-
-ConcreteExpression Type::BuildValueConstruction(ConcreteExpression arg, Context c) {
-    std::vector<ConcreteExpression> args;
-    args.push_back(arg);
-    return BuildValueConstruction(std::move(args), c);
-}
-ConcreteExpression Type::BuildRvalueConstruction(ConcreteExpression arg, Context c) {
-    std::vector<ConcreteExpression> args;
-    args.push_back(arg);
-    return BuildRvalueConstruction(std::move(args), c);
-}
-ConcreteExpression Type::BuildLvalueConstruction(ConcreteExpression arg, Context c) {
-    std::vector<ConcreteExpression> args;
-    args.push_back(arg);
-    return BuildLvalueConstruction(std::move(args), c);
-}
-ConcreteExpression Type::BuildCall(ConcreteExpression val, std::vector<ConcreteExpression> args, Context c) {
-    if (IsReference())
-        return Decay()->BuildCall(val, std::move(args), c);
-    throw std::runtime_error("Attempted to call a type that did not support it.");
-}
-Codegen::Expression* Type::BuildInplaceConstruction(Codegen::Expression* mem, ConcreteExpression arg, Context c){
-    std::vector<ConcreteExpression> args;
-    args.push_back(arg);
-    return BuildInplaceConstruction(mem, std::move(args), c);
-}
-ConcreteExpression Type::BuildValueConstruction(Context c) {
-    std::vector<ConcreteExpression> args;
-    return BuildValueConstruction(args, c);
-}
-ConcreteExpression Type::BuildRvalueConstruction(Context c) {
-    std::vector<ConcreteExpression> args;
-    return BuildRvalueConstruction(args, c);
-}
-ConcreteExpression Type::BuildLvalueConstruction(Context c) {
-    std::vector<ConcreteExpression> args;
-    return BuildLvalueConstruction(args, c);
-}
-Codegen::Expression* Type::BuildInplaceConstruction(Codegen::Expression* mem, Context c) {
-    std::vector<ConcreteExpression> args;
-    return BuildInplaceConstruction(mem, args, c);
-}
 Wide::Util::optional<ConcreteExpression> Type::AccessMember(ConcreteExpression e, std::string name, Context c) {
     if (IsReference())
         return Decay()->AccessMember(e, std::move(name), c);
     return Wide::Util::none;
-}
-ConcreteExpression Type::BuildValue(ConcreteExpression lhs, Context c) {
-    if (IsComplexType(*c))
-        throw std::runtime_error("Internal Compiler Error: Attempted to build a complex type into a register.");
-    if (lhs.t->IsReference())
-        return ConcreteExpression(lhs.t->Decay(), c->gen->CreateLoad(lhs.Expr));
-    return lhs;
-}            
-ConcreteExpression Type::BuildNegate(ConcreteExpression val, Context c) {
-    if (IsReference())
-        return Decay()->BuildNegate(val, c);
-    return ConcreteExpression(c->GetBooleanType(), c->gen->CreateNegateExpression(val.BuildBooleanConversion(c)));
 }
 
 static const std::unordered_map<Lexer::TokenType, Lexer::TokenType> Assign = []() -> std::unordered_map<Lexer::TokenType, Lexer::TokenType> {
@@ -193,13 +151,13 @@ ConcreteExpression Type::BuildBinaryExpression(ConcreteExpression lhs, ConcreteE
     arguments.push_back(lhs.t);
     arguments.push_back(rhs.t);
     if (auto call = adlset->Resolve(arguments, *c)) {
-        return call->Call(lhs, rhs, c);
+        return call->Call({ lhs, rhs }, c);
     }
     
     // ADL has failed to find us a suitable operator, so fall back to defaults.
     // First implement binary op in terms of op=
     if (Assign.find(type) != Assign.end()) {
-        auto lval = BuildLvalueConstruction(lhs, c).BuildBinaryExpression(rhs, Assign.at(type), c);
+        auto lval = BuildLvalueConstruction({ lhs }, c).BuildBinaryExpression(rhs, Assign.at(type), c);
         lval.t = c->GetRvalueType(lval.t);
         return lval;
     }
@@ -271,13 +229,6 @@ ConcreteExpression Type::BuildValueConstruction(std::vector<ConcreteExpression> 
     auto mem = c->gen->CreateVariable(GetLLVMType(*c), alignment(*c));
     return ConcreteExpression(this, c->gen->CreateLoad(c->gen->CreateChainExpression(BuildInplaceConstruction(mem, std::move(args), c), mem)));
 }
-ConcreteExpression Type::AddressOf(ConcreteExpression obj, Context c) {
-    // TODO: Remove this restriction, it is not very Wide.
-    if (!IsLvalueType(obj.t))
-        throw std::runtime_error("Attempted to take the address of something that was not an lvalue.");
-    return ConcreteExpression(c->GetPointerType(obj.t->Decay()), obj.Expr);
-}
-
 OverloadSet* Type::CreateADLOverloadSet(Lexer::TokenType what, Type* lhs, Type* rhs, Analyzer& a) {
     if (IsReference())
         return Decay()->CreateADLOverloadSet(what, lhs, rhs, a);
@@ -407,21 +358,6 @@ OverloadSet* MetaType::CreateConstructorOverloadSet(Analyzer& a) {
     return a.GetOverloadSet(PrimitiveType::CreateConstructorOverloadSet(a), a.GetOverloadSet(default_constructor));
 }
 
-ConcreteExpression Callable::Call(Context c) {
-    return Call(std::vector<ConcreteExpression>(), c);
-}
-ConcreteExpression Callable::Call(ConcreteExpression arg, Context c) {
-    std::vector<ConcreteExpression> e;
-    e.push_back(arg);
-    return Call(e, c);
-}
-ConcreteExpression Callable::Call(ConcreteExpression arg1, ConcreteExpression arg2, Context c) {
-    std::vector<ConcreteExpression> e;
-    e.push_back(arg1);
-    e.push_back(arg2);
-    return Call(e, c);
-}
-
 ConcreteExpression Callable::Call(std::vector<ConcreteExpression> args, Context c) {
     for (auto&& arg : args) {
         if (!arg.t->IsReference()) {
@@ -440,7 +376,7 @@ std::vector<ConcreteExpression> Semantic::AdjustArgumentsForTypes(std::vector<Co
     for (std::size_t i = 0; i < types.size(); ++i) {
         if (!args[i].t->IsA(args[i].t, types[i], *c))
             Wide::Util::DebugBreak();
-        out.push_back(types[i]->BuildValueConstruction(args[i], c));
+        out.push_back(types[i]->BuildValueConstruction({ args[i] }, c));
     }
     return out;
 }
@@ -524,11 +460,61 @@ OverloadSet* TupleInitializable::CreateConstructorOverloadSet(Analyzer& a) {
             for (std::size_t i = 0; i < members.size(); ++i) {
                 auto memory = self->PrimitiveAccessMember(args[0], i, *c);
                 auto argument = tupty->PrimitiveAccessMember(args[1], i, *c);
-                auto expr = members[i]->BuildInplaceConstruction(memory.Expr, argument, c);
+                auto expr = members[i]->BuildInplaceConstruction(memory.Expr, { argument }, c);
                 p = p ? c->gen->CreateChainExpression(p, expr) : expr;
             }
             return ConcreteExpression(c->GetLvalueType(self), c->gen->CreateChainExpression(p, args[0].Expr));
         }
     };
     return a.GetOverloadSet(a.arena.Allocate<TupleConstructor>(this));
+}
+OverloadSet* Type::GetConstructorOverloadSet(Analyzer& a) {
+    if (!ConstructorOverloadSet)
+        ConstructorOverloadSet = CreateConstructorOverloadSet(a);
+    return ConstructorOverloadSet;
+}
+OverloadSet* Type::GetDestructorOverloadSet(Analyzer& a) {
+    if (!DestructorOverloadSet)
+        DestructorOverloadSet = CreateDestructorOverloadSet(a);
+    return DestructorOverloadSet;
+}
+ConcreteExpression Type::BuildCall(ConcreteExpression val, std::vector<ConcreteExpression> args, std::vector<ConcreteExpression> destructors, Context c) {
+    for (auto x : destructors)
+        c(x);
+    return val.BuildCall(std::move(args), c);
+}
+Type* Type::GetConstantContext(Analyzer& a) {
+    return nullptr;
+}
+
+ConcreteExpression Type::BuildUnaryExpression(ConcreteExpression self, Lexer::TokenType type, Context c) {
+    // Increment funkyness already taken care of
+    auto opset = AccessMember(self.t, type, *c);
+    auto callable = opset->Resolve({ self.t }, *c);
+    if (!callable) {
+        if (type != Lexer::TokenType::Negate)
+            throw std::runtime_error("Could not resolve unary operator call.");
+        return ConcreteExpression(c->GetBooleanType(), c->gen->CreateNegateExpression(self.BuildBooleanConversion(c)));
+    }
+    return callable->Call({ self }, c);
+}
+/*
+ConcreteExpression Type::BuildValueConstruction(std::vector<ConcreteExpression> args, Context c) {
+    if (IsComplexType(*c))
+        throw std::runtime_error("Internal compiler error: Attempted to value construct a complex UDT.");
+    if (args.size() == 1 && args[0].t == this)
+        return args[0];
+    auto mem = c->gen->CreateVariable(GetLLVMType(*c), alignment(*c));
+    return ConcreteExpression(this, c->gen->CreateLoad(c->gen->CreateChainExpression(BuildInplaceConstruction(mem, std::move(args), c), mem)));
+}*/
+ConcreteExpression Type::BuildCall(ConcreteExpression val, std::vector<ConcreteExpression> args, Context c) {
+    auto set = val.AccessMember(Lexer::TokenType::OpenBracket, c);
+    args.insert(args.begin(), val);
+    std::vector<Type*> types;
+    for (auto arg : args)
+        types.push_back(arg.t);
+    auto call = set->Resolve(types, *c);
+    if (!call)
+        throw std::runtime_error("Attempted to call a type but it had no such member.");
+    return call->Call(args, c);
 }

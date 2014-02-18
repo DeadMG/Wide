@@ -1,5 +1,5 @@
 f(int16 i) {
-    return decltype(i)->decay->size == uint64(2);
+    return decltype(i).decay.size == uint64(2);
 }
 Main() {
     return f(int8(32));

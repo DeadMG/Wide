@@ -1,7 +1,7 @@
 type t {
     val := bool;
     type() : val(false) {}
-    type(this->lvalue other) : val(true) {}
+    type(this.lvalue other) : val(true) {}
 }
 Main() {
     x := t();

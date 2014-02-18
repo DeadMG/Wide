@@ -24,7 +24,7 @@ using namespace Semantic;
 Wide::Util::optional<ConcreteExpression> ClangIncludeEntity::AccessMember(ConcreteExpression, std::string name, Context c) {
     if (name == "mangle") {
         if (MangleOverloadSet)
-            return MangleOverloadSet->BuildValueConstruction(c);
+            return MangleOverloadSet->BuildValueConstruction({}, c);
         struct NameMangler : OverloadResolvable, Callable {
             unsigned GetArgumentCount() override final { return 1; }
             Type* MatchParameter(Type* t, unsigned, Analyzer& a) override final {
@@ -39,7 +39,7 @@ Wide::Util::optional<ConcreteExpression> ClangIncludeEntity::AccessMember(Concre
                 return ConcreteExpression(c->GetLiteralStringType(), c->gen->CreateStringExpression(name));
             }
         };
-        return (MangleOverloadSet = c->GetOverloadSet(c->arena.Allocate<NameMangler>()))->BuildValueConstruction(c);
+        return (MangleOverloadSet = c->GetOverloadSet(c->arena.Allocate<NameMangler>()))->BuildValueConstruction({}, c);
     }
     if (name == "macro") {
         struct ClangMacroHandler : public MetaType {
@@ -83,7 +83,7 @@ Wide::Util::optional<ConcreteExpression> ClangIncludeEntity::AccessMember(Concre
                 throw std::runtime_error("Only support constexpr integral macros right now.");
             }
         };
-        return c->arena.Allocate<ClangMacroHandler>()->BuildValueConstruction(c);
+        return c->arena.Allocate<ClangMacroHandler>()->BuildValueConstruction({}, c);
     }
     return Wide::Util::none;
 }
@@ -101,5 +101,5 @@ ConcreteExpression ClangIncludeEntity::BuildCall(ConcreteExpression e, std::vect
         name = std::string(name.begin(), name.end() - 1);
     auto clangtu = c->LoadCPPHeader(std::move(name), c.where);
 
-    return c->GetClangNamespace(*clangtu, clangtu->GetDeclContext())->BuildValueConstruction(c);
+    return c->GetClangNamespace(*clangtu, clangtu->GetDeclContext())->BuildValueConstruction({}, c);
 }

@@ -26,7 +26,7 @@ LambdaType::LambdaType(std::vector<std::pair<std::string, Type*>> capturetypes, 
 
 ConcreteExpression LambdaType::BuildCall(ConcreteExpression val, std::vector<ConcreteExpression> args, Context c) {
     if (val.t == this)
-        val = BuildLvalueConstruction(val, c);
+        val = BuildLvalueConstruction({ val }, c);
     args.insert(args.begin(), val);
     std::vector<Type*> types;
     for (auto arg : args)
@@ -48,7 +48,7 @@ ConcreteExpression LambdaType::BuildLambdaFromCaptures(std::vector<ConcreteExpre
         auto call = GetMembers()[i]->GetConstructorOverloadSet(*c)->Resolve(types, *c);
         if (!call)
             throw std::runtime_error("Could not construct lambda from literal.");
-        auto expr = call->Call(PrimitiveAccessMember(memory, i, *c), exprs[i], c).Expr;
+        auto expr = call->Call({ PrimitiveAccessMember(memory, i, *c), exprs[i] }, c).Expr;
         construct = construct ? c->gen->CreateChainExpression(construct, expr) : expr;
     }
     memory.t = c->GetRvalueType(this);

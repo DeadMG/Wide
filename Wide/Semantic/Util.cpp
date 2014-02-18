@@ -103,7 +103,7 @@ ConcreteExpression Semantic::InterpretExpression(clang::Expr* expr, ClangTU& tu,
         return func.BuildCall(args, c);
     }
     if (auto null = llvm::dyn_cast<clang::CXXNullPtrLiteralExpr>(expr)) {
-        return c->GetNullType()->BuildValueConstruction(c);
+        return c->GetNullType()->BuildValueConstruction({}, c);
     }
     if (auto con = llvm::dyn_cast<clang::CXXConstructExpr>(expr)) {
         auto ty = c->GetClangType(tu, tu.GetASTContext().getRecordType(con->getConstructor()->getParent()));
@@ -128,7 +128,7 @@ ConcreteExpression Semantic::InterpretExpression(clang::Expr* expr, ClangTU& tu,
         if (auto func = llvm::dyn_cast<clang::FunctionDecl>(decl)) {
             std::unordered_set<clang::NamedDecl*> decls;
             decls.insert(func);
-            return c->GetOverloadSet(decls, &tu, nullptr)->BuildValueConstruction(c);
+            return c->GetOverloadSet(decls, &tu, nullptr)->BuildValueConstruction({}, c);
         }
         throw std::runtime_error("Attempted to interpret a Clang expression, but it referenced a decl which could not be interpreted.");
     }
@@ -136,7 +136,7 @@ ConcreteExpression Semantic::InterpretExpression(clang::Expr* expr, ClangTU& tu,
         return InterpretExpression(temp->GetTemporaryExpr(), tu, c);
     }
     if (auto cast = llvm::dyn_cast<clang::ImplicitCastExpr>(expr)) {
-        return c->GetClangType(tu, cast->getType())->BuildRvalueConstruction(InterpretExpression(cast->getSubExpr(), tu, c), c);
+        return c->GetClangType(tu, cast->getType())->BuildRvalueConstruction({ InterpretExpression(cast->getSubExpr(), tu, c) }, c);
     }
     throw std::runtime_error("Attempted to interpret a Clang expression, but it was of a structure that could not be interpreted.");
 }

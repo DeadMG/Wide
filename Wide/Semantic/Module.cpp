@@ -32,12 +32,12 @@ Wide::Util::optional<ConcreteExpression> Module::AccessMember(ConcreteExpression
             return Wide::Util::none;
 
         if (auto moddecl = dynamic_cast<const AST::Module*>(decl)) {
-            return c->GetWideModule(moddecl, this)->BuildValueConstruction(c);
+            return c->GetWideModule(moddecl, this)->BuildValueConstruction({}, c);
         }
         if (auto usedecl = dynamic_cast<const AST::Using*>(decl)) {
             auto expr = c->AnalyzeExpression(this, usedecl->expr, [](ConcreteExpression e) {});
             if (auto conty = dynamic_cast<ConstructorType*>(expr.t->Decay())) {
-                return conty->BuildValueConstruction(c);
+                return conty->BuildValueConstruction({}, c);
             }
             if (auto fun = dynamic_cast<OverloadSet*>(expr.t->Decay()))
                 return expr;
@@ -52,9 +52,9 @@ Wide::Util::optional<ConcreteExpression> Module::AccessMember(ConcreteExpression
             throw std::runtime_error("Attempted to using something that was not a type, template, module, or function");
         }
         if (auto overdecl = dynamic_cast<const AST::FunctionOverloadSet*>(decl))
-            return c->GetOverloadSet(overdecl, this)->BuildValueConstruction(c); 
+            return c->GetOverloadSet(overdecl, this)->BuildValueConstruction({}, c);
         if (auto tydecl = dynamic_cast<const AST::Type*>(decl)) {
-            return c->GetConstructorType(c->GetUDT(tydecl, this))->BuildValueConstruction(c);
+            return c->GetConstructorType(c->GetUDT(tydecl, this))->BuildValueConstruction({}, c);
         }
         throw std::runtime_error("Attempted to access a member of a Wide module, but did not recognize it as a using, a type, or a function.");
     }
@@ -66,7 +66,7 @@ Wide::Util::optional<ConcreteExpression> Module::AccessMember(ConcreteExpression
             resolvable.insert(c->GetCallableForFunction(func, this));
         }
         if (resolvable.empty()) return Wide::Util::none;
-        return c->GetOverloadSet(resolvable)->BuildValueConstruction(c);
+        return c->GetOverloadSet(resolvable)->BuildValueConstruction({}, c);
     }
     if (SpecialMembers.find(name) != SpecialMembers.end())
         return SpecialMembers.at(name);

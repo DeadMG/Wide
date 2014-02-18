@@ -62,11 +62,11 @@ Analyzer::Analyzer(const Options::Clang& opts, Codegen::Generator& g, const AST:
                 throw std::runtime_error("Attempt to call decltype with more or less than 1 argument.");
 
             if (auto con = dynamic_cast<ConstructorType*>(args[0].t->Decay())) {
-                return c->GetConstructorType(args[0].t)->BuildValueConstruction(c);
+                return c->GetConstructorType(args[0].t)->BuildValueConstruction({}, c);
             }
             if (!dynamic_cast<LvalueType*>(args[0].t))
                 args[0].t = c->GetRvalueType(args[0].t);
-            return c->GetConstructorType(args[0].t)->BuildValueConstruction(c);
+            return c->GetConstructorType(args[0].t)->BuildValueConstruction({}, c);
         }
     };
 
@@ -95,25 +95,25 @@ Analyzer::Analyzer(const Options::Clang& opts, Codegen::Generator& g, const AST:
     Context c(*this, location, [](ConcreteExpression e) {
         assert(false);
     }, global);
-    auto global_val = global->BuildValueConstruction(c);
+    auto global_val = global->BuildValueConstruction({}, c);
     EmptyOverloadSet = arena.Allocate<OverloadSet>(std::unordered_set<OverloadResolvable*>(), nullptr);
     global->AddSpecialMember("cpp", ConcreteExpression(arena.Allocate<ClangIncludeEntity>(), nullptr));
     global->AddSpecialMember("void", ConcreteExpression(GetConstructorType(Void = arena.Allocate<VoidType>()), nullptr));
     global->AddSpecialMember("global", ConcreteExpression(global, nullptr));
-    global->AddSpecialMember("int8", GetConstructorType(GetIntegralType(8, true))->BuildValueConstruction(c));
-    global->AddSpecialMember("uint8", GetConstructorType(GetIntegralType(8, false))->BuildValueConstruction(c));
-    global->AddSpecialMember("int16", GetConstructorType(GetIntegralType(16, true))->BuildValueConstruction(c));
-    global->AddSpecialMember("uint16", GetConstructorType(GetIntegralType(16, false))->BuildValueConstruction(c));
-    global->AddSpecialMember("int32", GetConstructorType(GetIntegralType(32, true))->BuildValueConstruction(c));
-    global->AddSpecialMember("uint32", GetConstructorType(GetIntegralType(32, false))->BuildValueConstruction(c));
-    global->AddSpecialMember("int64", GetConstructorType(GetIntegralType(64, true))->BuildValueConstruction(c));
-    global->AddSpecialMember("uint64", GetConstructorType(GetIntegralType(64, false))->BuildValueConstruction(c));
-    global->AddSpecialMember("float32", GetConstructorType(GetFloatType(32))->BuildValueConstruction(c));
-    global->AddSpecialMember("float64", GetConstructorType(GetFloatType(64))->BuildValueConstruction(c));
+    global->AddSpecialMember("int8", GetConstructorType(GetIntegralType(8, true))->BuildValueConstruction({}, c));
+    global->AddSpecialMember("uint8", GetConstructorType(GetIntegralType(8, false))->BuildValueConstruction({}, c));
+    global->AddSpecialMember("int16", GetConstructorType(GetIntegralType(16, true))->BuildValueConstruction({}, c));
+    global->AddSpecialMember("uint16", GetConstructorType(GetIntegralType(16, false))->BuildValueConstruction({}, c));
+    global->AddSpecialMember("int32", GetConstructorType(GetIntegralType(32, true))->BuildValueConstruction({}, c));
+    global->AddSpecialMember("uint32", GetConstructorType(GetIntegralType(32, false))->BuildValueConstruction({}, c));
+    global->AddSpecialMember("int64", GetConstructorType(GetIntegralType(64, true))->BuildValueConstruction({}, c));
+    global->AddSpecialMember("uint64", GetConstructorType(GetIntegralType(64, false))->BuildValueConstruction({}, c));
+    global->AddSpecialMember("float32", GetConstructorType(GetFloatType(32))->BuildValueConstruction({}, c));
+    global->AddSpecialMember("float64", GetConstructorType(GetFloatType(64))->BuildValueConstruction({}, c));
     global->AddSpecialMember("bool", ConcreteExpression(GetConstructorType(Boolean = arena.Allocate<Bool>()), nullptr));
     global->AddSpecialMember("true", ConcreteExpression(Boolean, gen->CreateIntegralExpression(1, false, Boolean->GetLLVMType(*this))));
     global->AddSpecialMember("false", ConcreteExpression(Boolean, gen->CreateIntegralExpression(0, false, Boolean->GetLLVMType(*this))));
-    global->AddSpecialMember("decltype", arena.Allocate<decltypetype>()->BuildValueConstruction(c));
+    global->AddSpecialMember("decltype", arena.Allocate<decltypetype>()->BuildValueConstruction({}, c));
 
     global->AddSpecialMember("byte",   *global->AccessMember(global_val, "uint8", c));
     global->AddSpecialMember("int",    *global->AccessMember(global_val, "int32", c));
@@ -122,8 +122,8 @@ Analyzer::Analyzer(const Options::Clang& opts, Codegen::Generator& g, const AST:
     global->AddSpecialMember("float",  *global->AccessMember(global_val, "float32", c));
     global->AddSpecialMember("double", *global->AccessMember(global_val, "float64", c));
 
-    global->AddSpecialMember("null", GetNullType()->BuildValueConstruction(c));
-    global->AddSpecialMember("reinterpret_cast", arena.Allocate<PointerCastType>()->BuildValueConstruction(c));
+    global->AddSpecialMember("null", GetNullType()->BuildValueConstruction({}, c));
+    global->AddSpecialMember("reinterpret_cast", arena.Allocate<PointerCastType>()->BuildValueConstruction({}, c));
     //GetWideModule(GlobalModule)->AddSpecialMember("move", arena.Allocate<MoveType>()->BuildValueConstruction(std::vector<Expression>(), *this));
 }
 
@@ -316,7 +316,7 @@ ConcreteExpression Analyzer::AnalyzeExpression(Type* t, const AST::Expression* e
         }
         void VisitType(const AST::Type* ty) {
             auto udt = self->GetUDT(ty, t->GetConstantContext(*self) ? t->GetConstantContext(*self) : t);
-            out = self->GetConstructorType(udt)->BuildValueConstruction(Context(*self, ty->location, handler, t));
+            out = self->GetConstructorType(udt)->BuildValueConstruction({}, Context(*self, ty->location, handler, t));
         }
         void VisitPointerAccess(const AST::PointerMemberAccess* ptr) {
             auto mem = self->AnalyzeExpression(t, ptr->ex, handler).PointerAccessMember(ptr->member, Context(*self, ptr->location, handler, t));
@@ -579,7 +579,7 @@ Wide::Util::optional<ConcreteExpression> Analyzer::LookupIdentifier(Type* contex
         return LookupIdentifier(fun->GetContext(*this), ident);
     }
     if (auto mod = dynamic_cast<Module*>(context)) {
-        auto lookup = mod->AccessMember(mod->BuildValueConstruction(c), ident->val, c);
+        auto lookup = mod->AccessMember(mod->BuildValueConstruction({}, c), ident->val, c);
         if (!lookup)
             return LookupIdentifier(mod->GetContext(*this), ident);
         if (!dynamic_cast<OverloadSet*>(lookup->t))
@@ -588,13 +588,13 @@ Wide::Util::optional<ConcreteExpression> Analyzer::LookupIdentifier(Type* contex
         if (!lookup2)
             return lookup;
         if (dynamic_cast<OverloadSet*>(lookup2->t))
-            return GetOverloadSet(dynamic_cast<OverloadSet*>(lookup->t), dynamic_cast<OverloadSet*>(lookup2->t))->BuildValueConstruction(c);
+            return GetOverloadSet(dynamic_cast<OverloadSet*>(lookup->t), dynamic_cast<OverloadSet*>(lookup2->t))->BuildValueConstruction({}, c);
         return lookup;
     }
     if (auto udt = dynamic_cast<UserDefinedType*>(context)) {
         return LookupIdentifier(context->GetContext(*this), ident);
     }
-    auto value = context->AccessMember(context->BuildValueConstruction(c), ident->val, c);
+    auto value = context->AccessMember(context->BuildValueConstruction({}, c), ident->val, c);
     if (value)
         return value;
     return LookupIdentifier(context->GetContext(*this), ident);
@@ -660,11 +660,11 @@ OverloadResolvable* Analyzer::GetCallableForFunction(const AST::FunctionBase* f,
                 Wide::Util::optional<ConcreteExpression> AccessMember(ConcreteExpression, std::string name, Context c) override final {
                     if (name == "this") {
                         if (member)
-                            return c->GetConstructorType(member->Decay())->BuildValueConstruction(c);
+                            return c->GetConstructorType(member->Decay())->BuildValueConstruction({}, c);
                         throw std::runtime_error("Attempt to access this in a non-member.");
                     }
                     if (name == "auto")
-                        return c->GetConstructorType(argument->Decay())->BuildValueConstruction(c);
+                        return c->GetConstructorType(argument->Decay())->BuildValueConstruction({}, c);
                     return Wide::Util::none;
                 }
                 Type* GetContext(Analyzer& a) override final {
@@ -697,15 +697,17 @@ OverloadResolvable* Analyzer::GetCallableForFunction(const AST::FunctionBase* f,
 }
 
 Lexer::Access Semantic::GetAccessSpecifier(Context c, Type* to) {
-    if (c.source == to) return Lexer::Access::Private;
-    if (auto base = dynamic_cast<BaseType*>(to)) {
-        if (auto derived = dynamic_cast<BaseType*>(c.source->Decay())) {
-            if (derived->IsDerivedFrom(to, *c) == InheritanceRelationship::UnambiguouslyDerived)
+    auto source = c.source->Decay();
+    auto target = to->Decay();
+    if (source == target) return Lexer::Access::Private;
+    if (auto base = dynamic_cast<BaseType*>(target)) {
+        if (auto derived = dynamic_cast<BaseType*>(source)) {
+            if (derived->IsDerivedFrom(target, *c) == InheritanceRelationship::UnambiguouslyDerived)
                 return Lexer::Access::Protected;
         }
     }
-    if (auto context = c.source->GetContext(*c))
-        return GetAccessSpecifier(Context(*c, c.where, c.RAIIHandler, context), to);
+    if (auto context = source->GetContext(*c))
+        return GetAccessSpecifier(Context(*c, c.where, c.RAIIHandler, context), target);
 
     return Lexer::Access::Public;    
 }

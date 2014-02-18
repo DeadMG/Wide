@@ -29,7 +29,7 @@ namespace Wide {
                 for(auto fun : overset.second->functions) {
                     Wide::Semantic::Context c(a, fun->where(), swallow_raii, mod);
                     if (fun->args.size() == 0) {
-                        Try([&] { a.GetWideFunction(fun, mod)->BuildCall(a.GetWideFunction(fun, mod)->BuildValueConstruction(c), std::vector<Wide::Semantic::ConcreteExpression>(), c); }, errorfunc, swallow);
+                        Try([&] { a.GetWideFunction(fun, mod)->BuildCall(a.GetWideFunction(fun, mod)->BuildValueConstruction({}, c), std::vector<Wide::Semantic::ConcreteExpression>(), c); }, errorfunc, swallow);
                         continue;
                     }
                     std::vector<Wide::Semantic::ConcreteExpression> concexpr;
@@ -49,7 +49,7 @@ namespace Wide {
                                 types.push_back(x.t);
                             Try([&] { 
                                 auto ty = a.GetWideFunction(fun, mod, std::move(types));
-                                ty->BuildCall(ty->BuildValueConstruction(c), std::move(concexpr), c); 
+                                ty->BuildCall(ty->BuildValueConstruction({}, c), std::move(concexpr), c);
                             }, errorfunc, swallow);
                         }
                     } catch(...) {}
@@ -58,10 +58,10 @@ namespace Wide {
             for(auto decl : root->decls) {
                 Wide::Semantic::Context c(a, root->where.front(), swallow_raii, mod);
                 if (auto use = dynamic_cast<Wide::AST::Using*>(decl.second)) {
-                    Try([&] { mod->BuildValueConstruction(c).AccessMember(decl.first, c); }, errorfunc, swallow);
+                    Try([&] { mod->BuildValueConstruction({}, c).AccessMember(decl.first, c); }, errorfunc, swallow);
                 }
                 if (auto module = dynamic_cast<Wide::AST::Module*>(decl.second)) {
-                    Try([&] { mod->BuildValueConstruction(c).AccessMember(decl.first, c); }, errorfunc, swallow);
+                    Try([&] { mod->BuildValueConstruction({}, c).AccessMember(decl.first, c); }, errorfunc, swallow);
                     Test(a, mod, module, errorfunc, mockgen, swallow);
                 }
             }

@@ -33,29 +33,26 @@ ConcreteExpression ConstructorType::BuildCall(ConcreteExpression self, std::vect
 }
 Wide::Util::optional<ConcreteExpression> ConstructorType::AccessMember(ConcreteExpression self, std::string name, Context c) {
     assert(self.t->Decay() == this);
-    return t->AccessStaticMember(name, c);
-}
-
-Wide::Util::optional<ConcreteExpression> ConstructorType::PointerAccessMember(ConcreteExpression obj, std::string name, Context c) {
-    assert(obj.t->Decay() == this);
+    //return t->AccessStaticMember(name, c);
     if (name == "decay")
-        return c->GetConstructorType(t->Decay())->BuildValueConstruction(c);
+        return c->GetConstructorType(t->Decay())->BuildValueConstruction({}, c);
     if (name == "lvalue")
-        return c->GetConstructorType(c->GetLvalueType(t))->BuildValueConstruction(c);
+        return c->GetConstructorType(c->GetLvalueType(t))->BuildValueConstruction({}, c);
     if (name == "rvalue")
-        return c->GetConstructorType(c->GetRvalueType(t))->BuildValueConstruction(c);
+        return c->GetConstructorType(c->GetRvalueType(t))->BuildValueConstruction({}, c);
     if (name == "pointer")
-        return c->GetConstructorType(c->GetPointerType(t))->BuildValueConstruction(c);
+        return c->GetConstructorType(c->GetPointerType(t))->BuildValueConstruction({}, c);
     if (name == "size")
         return ConcreteExpression(c->GetIntegralType(64, false), c->gen->CreateIntegralExpression(t->size(*c), false, c->GetIntegralType(64, false)->GetLLVMType(*c)));
     if (name == "alignment")
         return ConcreteExpression(c->GetIntegralType(64, false), c->gen->CreateIntegralExpression(t->alignment(*c), false, c->GetIntegralType(64, false)->GetLLVMType(*c)));
     if (name == "emplace") {
         if (!emplace) emplace = c->arena.Allocate<EmplaceType>(t);
-        return emplace->BuildValueConstruction(c);
+        return emplace->BuildValueConstruction({}, c);
     }
     throw std::runtime_error("Attempted to access the special members of a type, but the identifier provided did not name a special member.");
 }
+
 ConstructorType::ConstructorType(Type* con) {
     t = con;
     emplace = nullptr;

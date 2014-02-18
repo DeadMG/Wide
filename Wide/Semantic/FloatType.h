@@ -10,7 +10,6 @@ namespace Wide {
             clang::QualType GetClangType(ClangTU& TU, Analyzer& a) override final;
             std::function<llvm::Type*(llvm::Module*)> GetLLVMType(Analyzer& a) override final;
 
-            Codegen::Expression* BuildInplaceConstruction(Codegen::Expression* mem, std::vector<ConcreteExpression> args, Context c) override final;
             std::size_t size(Analyzer& a) override final;
             std::size_t alignment(Analyzer& a) override final;
         };

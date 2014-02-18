@@ -11,8 +11,6 @@ namespace Wide {
             clang::ClassTemplateDecl* tempdecl;
             ClangTU* from;
         public:
-            using Type::BuildValueConstruction;
-
             ClangTemplateClass(clang::ClassTemplateDecl* decl, ClangTU* ptr)
                 : tempdecl(decl), from(ptr) {}
 

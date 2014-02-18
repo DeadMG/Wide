@@ -1,10 +1,10 @@
 // Fails if the compound scope does not correctly destroy the object.
 type testty {
-    result := bool->pointer;
+    result := bool.pointer;
     ~type() {
          *result = true;
     }
-    type(bool->pointer arg)
+    type(bool.pointer arg)
         : result(arg) {}
 }
 Main() {

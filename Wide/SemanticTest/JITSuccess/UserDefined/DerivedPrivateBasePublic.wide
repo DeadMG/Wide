@@ -1,0 +1,10 @@
+type base {
+    f() { return true; }
+}
+type derived : base {
+private:
+    f() { return false; }
+}
+Main() {
+    return derived().f();
+}

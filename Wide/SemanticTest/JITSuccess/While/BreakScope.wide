@@ -1,10 +1,10 @@
 // Fails if break destroys things from the wrong scope.
 type testty {
-    result := bool->pointer;
+    result := bool.pointer;
     ~type() {
          *result = false;
     }
-    type(bool->pointer arg)
+    type(bool.pointer arg)
         : result(arg) {}
 }
 Main() {

@@ -47,21 +47,6 @@ std::function<llvm::Type*(llvm::Module*)> IntegralType::GetLLVMType(Analyzer& a)
         return llvm::IntegerType::get(m->getContext(), bits);
     };
 }
-ConcreteExpression IntegralType::BuildIncrement(ConcreteExpression obj, bool postfix,Context c) {    
-    if (postfix) {
-        if (IsLvalueType(obj.t)) {
-            auto curr = c->gen->CreateLoad(obj.Expr);
-            auto next = c->gen->CreatePlusExpression(curr, c->gen->CreateIntegralExpression(1, false, GetLLVMType(*c)));
-            return ConcreteExpression(this, c->gen->CreateChainExpression(c->gen->CreateChainExpression(curr, c->gen->CreateStore(obj.Expr, next)), curr));
-        } else
-            throw std::runtime_error("Attempted to postfix increment a non-lvalue integer.");
-    }
-    if (obj.t == this)
-        throw std::runtime_error("Attempted to prefix increment a stealable integer.");
-    auto curr = c->gen->CreateLoad(obj.Expr);
-    auto next = c->gen->CreatePlusExpression(curr, c->gen->CreateIntegralExpression(1, false, GetLLVMType(*c)));
-    return ConcreteExpression(this, c->gen->CreateChainExpression(c->gen->CreateStore(obj.Expr, next), next));
-}
 
 OverloadSet* IntegralType::CreateConstructorOverloadSet(Wide::Semantic::Analyzer& a) {    
     struct integral_constructor : public OverloadResolvable, Callable {
@@ -168,7 +153,7 @@ OverloadSet* IntegralType::CreateADLOverloadSet(Lexer::TokenType name, Type* lhs
             return ConcreteExpression(c->GetBooleanType(), c->gen->CreateEqualityExpression(args[0].Expr, args[1].Expr));
         }, types, a));
     }
-    return a.GetOverloadSet();
+    return PrimitiveType::CreateADLOverloadSet(name, lhs, rhs, a);
 }
 bool IntegralType::IsA(Type* self, Type* other, Analyzer& a) {
     // If we already are, then don't bother.
@@ -187,4 +172,15 @@ bool IntegralType::IsA(Type* self, Type* other, Analyzer& a) {
     if (!is_signed && otherint->is_signed && otherint->bits > bits)
         return true;
     return false;
+}
+OverloadSet* IntegralType::CreateOperatorOverloadSet(Type* self, Lexer::TokenType what, Analyzer& a) {
+    switch (what) {
+    case Lexer::TokenType::Increment:
+        return a.GetOverloadSet(make_resolvable([this](std::vector<ConcreteExpression> args, Context c) {
+            auto curr = c->gen->CreateLoad(args[0].Expr);
+            auto next = c->gen->CreatePlusExpression(curr, c->gen->CreateIntegralExpression(1, false, GetLLVMType(*c)));
+            return ConcreteExpression(this, c->gen->CreateStore(args[0].Expr, next));
+        }, { a.GetLvalueType(this) }, a));
+    }
+    return PrimitiveType::CreateOperatorOverloadSet(self, what, a);
 }

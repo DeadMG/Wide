@@ -1,5 +1,5 @@
-f(auto->decay->lvalue arg) { return true; }
-f(auto->decay->rvalue arg) { return false; }
+f(auto.decay.lvalue arg) { return true; }
+f(auto.decay.rvalue arg) { return false; }
 Main() {
     t := type {}();
     x := 5;

@@ -79,11 +79,21 @@ std::vector<UserDefinedType::member> UserDefinedType::GetMembers() {
 }
 
 Wide::Util::optional<ConcreteExpression> UserDefinedType::AccessMember(ConcreteExpression expr, std::string name, Context c) {
-    auto self = expr.t == this ? BuildRvalueConstruction(expr, c) : expr;
-    if (members.find(name) != members.end())
-        return PrimitiveAccessMember(expr, members[name], *c);
+    auto self = expr.t == this ? BuildRvalueConstruction({ expr }, c) : expr;
+    auto spec = GetAccessSpecifier(c, this);
+    if (members.find(name) != members.end()) {
+        auto member = type->variables[members[name] - type->bases.size()];
+        if (spec >= member.second)
+            return PrimitiveAccessMember(expr, members[name], *c);
+    }
     if (type->Functions.find(name) != type->Functions.end()) {
-        return c->GetOverloadSet(type->Functions.at(name), self.t)->BuildValueConstruction(self, c);
+        std::unordered_set<OverloadResolvable*> resolvables;
+        for (auto f : type->Functions.at(name)->functions) {
+            if (spec >= f->access)
+                resolvables.insert(c->GetCallableForFunction(f, self.t));
+        }
+        if (!resolvables.empty())
+            return c->GetOverloadSet(resolvables, self.t)->BuildValueConstruction({ self }, c);
     }
     // Any of our bases have this member?
     Wide::Util::optional<ConcreteExpression> result;
@@ -97,7 +107,7 @@ Wide::Util::optional<ConcreteExpression> UserDefinedType::AccessMember(ConcreteE
             auto os = dynamic_cast<OverloadSet*>(result->t->Decay());
             auto otheros = dynamic_cast<OverloadSet*>(member->t->Decay());
             if (!os || !otheros) throw std::runtime_error("Attempted to access a member, but it was ambiguous in more than one base class.");
-            result = c->GetOverloadSet(os, otheros, self.t)->BuildValueConstruction(self, c);
+            result = c->GetOverloadSet(os, otheros, self.t)->BuildValueConstruction({ self }, c);
         }
     }
     return result;
@@ -275,13 +285,6 @@ bool UserDefinedType::UserDefinedComplex(Analyzer& a) {
     return *UDCCache;
 }
 
-ConcreteExpression UserDefinedType::BuildCall(ConcreteExpression val, std::vector<ConcreteExpression> args, Context c) {
-    auto self = val.t == this ? BuildRvalueConstruction(val, c) : val;
-    if (type->opcondecls.find(Lexer::TokenType::OpenBracket) != type->opcondecls.end())
-        return c->GetOverloadSet(type->opcondecls.at(Lexer::TokenType::OpenBracket), self.t)->BuildValueConstruction(self, c).BuildCall(std::move(args), c);
-    throw std::runtime_error("Attempt to call a user-defined type with no operator() defined.");
-}
-
 OverloadSet* UserDefinedType::CreateConstructorOverloadSet(Analyzer& a) {
     auto user_defined_constructors = type->Functions.find("type") == type->Functions.end() ? a.GetOverloadSet() : a.GetOverloadSet(type->Functions.at("type"), a.GetLvalueType(this));
     if (UserDefinedComplex(a))
@@ -324,8 +327,8 @@ OverloadSet* UserDefinedType::CreateDestructorOverloadSet(Analyzer& a) {
             ConcreteExpression CallFunction(std::vector<ConcreteExpression> args, Context c) override final { 
                 std::vector<Type*> types;
                 types.push_back(args[0].t);
-                auto userdestructor = c->GetOverloadSet(self->type->Functions.at("~"), args[0].t)->Resolve(types, *c)->Call(args[0], c).Expr;
-                auto autodestructor = aggset->Resolve(types, *c)->Call(args[0], c).Expr;
+                auto userdestructor = c->GetOverloadSet(self->type->Functions.at("~"), args[0].t)->Resolve(types, *c)->Call({ args[0] }, c).Expr;
+                auto autodestructor = aggset->Resolve(types, *c)->Call({ args[0] }, c).Expr;
                 return ConcreteExpression(c->GetLvalueType(self), c->gen->CreateChainExpression(userdestructor, autodestructor));
             }
         };
@@ -333,6 +336,10 @@ OverloadSet* UserDefinedType::CreateDestructorOverloadSet(Analyzer& a) {
     }
     return aggset;
 }
+
+// Gotta override these to respect our user-defined functions
+// else aggregatetype will just assume them.
+// Could just return Type:: all the time but AggregateType will be faster.
 bool UserDefinedType::IsCopyConstructible(Analyzer& a) {
     if (type->Functions.find("type") != type->Functions.end())
         return Type::IsCopyConstructible(a);

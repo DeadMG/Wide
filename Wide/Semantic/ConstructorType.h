@@ -15,7 +15,6 @@ namespace Wide {
                 return t;
             }
             Wide::Util::optional<ConcreteExpression> AccessMember(ConcreteExpression, std::string name, Context c) override final;
-            Wide::Util::optional<ConcreteExpression> PointerAccessMember(ConcreteExpression obj, std::string name, Context c) override final;
         };
     }
 }

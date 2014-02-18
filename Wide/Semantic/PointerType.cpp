@@ -40,9 +40,6 @@ PointerType::PointerType(Type* point) {
     pointee = point;
 }
 
-ConcreteExpression PointerType::BuildDereference(ConcreteExpression val, Context c) {
-    return ConcreteExpression(c->GetLvalueType(pointee), val.BuildValue(c).Expr);
-}
 OverloadSet* PointerType::CreateConstructorOverloadSet(Analyzer& a) {
     struct PointerComparableResolvable : OverloadResolvable, Callable {
         PointerComparableResolvable(PointerType* s)
@@ -101,4 +98,11 @@ bool PointerType::IsA(Type* self, Type* other, Analyzer& a) {
     auto udt = dynamic_cast<BaseType*>(pointee);
     if (!udt) return false;
     return udt->IsDerivedFrom(otherptr->pointee, a) == InheritanceRelationship::UnambiguouslyDerived;
+}
+
+OverloadSet* PointerType::CreateOperatorOverloadSet(Type* self, Lexer::TokenType what, Analyzer& a) {
+    if (what != Lexer::TokenType::Dereference) return PrimitiveType::CreateOperatorOverloadSet(self, what, a);
+    return a.GetOverloadSet(make_resolvable([this](std::vector<ConcreteExpression> args, Context c) {
+        return ConcreteExpression(c->GetLvalueType(pointee), args[0].BuildValue(c).Expr);
+    }, { this }, a));
 }

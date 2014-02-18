@@ -47,7 +47,7 @@ ConcreteExpression ClangTemplateClass::BuildCall(ConcreteExpression, std::vector
     void* pos = 0;
     auto spec = tempdecl->findSpecialization(tempargs.data(), tempargs.size(), pos);    
     if (spec)    
-        return c->GetConstructorType(c->GetClangType(*from, from->GetASTContext().getRecordType(spec)))->BuildValueConstruction(c);
+        return c->GetConstructorType(c->GetClangType(*from, from->GetASTContext().getRecordType(spec)))->BuildValueConstruction({}, c);
     auto loc = from->GetFileEnd();
     if (!spec) {
         spec = clang::ClassTemplateSpecializationDecl::Create(
@@ -73,5 +73,5 @@ ConcreteExpression ClangTemplateClass::BuildCall(ConcreteExpression, std::vector
 
     //from->GetSema().InstantiateClassTemplateSpecializationMembers(loc, llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(spec->getDefinition()), tsk);
     
-    return c->GetConstructorType(c->GetClangType(*from, from->GetASTContext().getRecordType(spec)))->BuildValueConstruction(c);
+        return c->GetConstructorType(c->GetClangType(*from, from->GetASTContext().getRecordType(spec)))->BuildValueConstruction({}, c);
 }

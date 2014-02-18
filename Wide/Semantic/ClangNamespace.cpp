@@ -39,25 +39,25 @@ Wide::Util::optional<ConcreteExpression> ClangNamespace::AccessMember(ConcreteEx
         if (auto fundecl = llvm::dyn_cast<clang::FunctionDecl>(result)) {
             std::unordered_set<clang::NamedDecl*> decls;
             decls.insert(fundecl);
-            return c->GetOverloadSet(std::move(decls), from, GetContext(*c))->BuildValueConstruction(c);
+            return c->GetOverloadSet(std::move(decls), from, GetContext(*c))->BuildValueConstruction({}, c);
         }
         if (auto vardecl = llvm::dyn_cast<clang::VarDecl>(result)) {
             return ConcreteExpression(c->GetLvalueType(c->GetClangType(*from, vardecl->getType())), c->gen->CreateGlobalVariable(from->MangleName(vardecl)));
         }
         if (auto namedecl = llvm::dyn_cast<clang::NamespaceDecl>(result)) {
-            return c->GetClangNamespace(*from, namedecl)->BuildValueConstruction(c);
+            return c->GetClangNamespace(*from, namedecl)->BuildValueConstruction({}, c);
         }
         if (auto typedefdecl = llvm::dyn_cast<clang::TypeDecl>(result)) {
-            return c->GetConstructorType(c->GetClangType(*from, from->GetASTContext().getTypeDeclType(typedefdecl)))->BuildValueConstruction(c);
+            return c->GetConstructorType(c->GetClangType(*from, from->GetASTContext().getTypeDeclType(typedefdecl)))->BuildValueConstruction({}, c);
         }
         if (auto tempdecl = llvm::dyn_cast<clang::ClassTemplateDecl>(result)) {
-            return c->GetClangTemplateClass(*from, tempdecl)->BuildValueConstruction(c);
+            return c->GetClangTemplateClass(*from, tempdecl)->BuildValueConstruction({}, c);
         }
         throw std::runtime_error("Found a decl but didn't know how to interpret it.");
     }
     std::unordered_set<clang::NamedDecl*> decls;
     decls.insert(lr.begin(), lr.end());
-    return c->GetOverloadSet(std::move(decls), from, GetContext(*c))->BuildValueConstruction(c);
+    return c->GetOverloadSet(std::move(decls), from, GetContext(*c))->BuildValueConstruction({}, c);
 }
 
 Type* ClangNamespace::GetContext(Analyzer& a) {

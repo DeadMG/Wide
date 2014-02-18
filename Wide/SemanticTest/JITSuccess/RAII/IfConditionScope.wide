@@ -1,13 +1,13 @@
 // Fails if the if condition scope is not correctly nested.
 type testty {
-    result := bool->pointer;
+    result := bool.pointer;
     ~type() {
          *result = true;
     }
     f() {
         return true;
     }
-    type(bool->pointer arg)
+    type(bool.pointer arg)
         : result(arg) {}
 }
 Main() {

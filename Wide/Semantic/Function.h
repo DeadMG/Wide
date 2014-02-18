@@ -64,7 +64,7 @@ namespace Wide {
                 return AdjustArgumentsForTypes(args, Args, c);
             }
             ConcreteExpression CallFunction(std::vector<ConcreteExpression> exprs, Context c) override final {
-                return BuildCall(BuildValueConstruction(c), std::move(exprs), c);
+                return BuildCall(BuildValueConstruction({}, c), std::move(exprs), c);
             }
         public:
             bool HasLocalVariable(std::string name);

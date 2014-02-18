@@ -57,7 +57,7 @@ Codegen::Statement* Function::Scope::GetCleanupExpression(Analyzer& a, Lexer::Ra
     for (auto des = needs_destruction.rbegin(); des != needs_destruction.rend(); ++des) {
         std::vector<Type*> types;
         types.push_back(des->t);
-        chain = a.gen->CreateChainStatement(chain, des->t->Decay()->GetDestructorOverloadSet(*c)->Resolve(types, *c)->Call(*des, c).Expr);
+        chain = a.gen->CreateChainStatement(chain, des->t->Decay()->GetDestructorOverloadSet(*c)->Resolve(types, *c)->Call({ *des }, c).Expr);
         chain = a.gen->CreateChainStatement(chain, a.gen->CreateLifetimeEnd(des->Expr));
     }
     return chain;
@@ -262,7 +262,7 @@ void Function::ComputeBody(Analyzer& a) {
                         auto retexpr = ReturnType->BuildInplaceConstruction(a.gen->CreateParameterExpression(0), std::move(args), c);
                         return a.gen->CreateReturn(a.gen->CreateChainExpression(a.gen->CreateChainStatement(retexpr, scope->GetCleanupAllExpression(*c, ret->location, this)), retexpr));
                     } else {
-                        auto retval = result.t->BuildValue(result, c).Expr;
+                        auto retval = result.BuildValue(c).Expr;
                         return a.gen->CreateReturn(a.gen->CreateChainExpression(a.gen->CreateChainStatement(retval, scope->GetCleanupAllExpression(*c, ret->location, this)), retval));
                     }
                 }
@@ -473,7 +473,7 @@ Type* Function::GetConstantContext(Analyzer& a) {
         Wide::Util::optional<ConcreteExpression> AccessMember(ConcreteExpression e, std::string member, Context c) override final {
             if (constant.find(member) == constant.end())
                 return Wide::Util::none;
-            return constant.at(member).t->Decay()->GetConstantContext(*c)->BuildValueConstruction(c);
+            return constant.at(member).t->Decay()->GetConstantContext(*c)->BuildValueConstruction({}, c);
         }
     };
     auto context = a.arena.Allocate<FunctionConstantContext>();

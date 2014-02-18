@@ -2,7 +2,7 @@ using movable := cpp("JITSuccess/CPPInterop/NonCopyable.h").test;
 f(movable x) {
     return false;
 }
-f(auto->lvalue x) {
+f(auto.lvalue x) {
     return true;
 }
 Main() {

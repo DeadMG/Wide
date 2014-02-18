@@ -78,7 +78,7 @@ struct PointerComparableResolvable : OverloadResolvable, Callable {
     std::vector<ConcreteExpression> AdjustArguments(std::vector<ConcreteExpression> args, Context c) override final { return args; }
     ConcreteExpression CallFunction(std::vector<ConcreteExpression> args, Context c) override final {
         auto ptr = ConcreteExpression(c->GetPointerType(args[1].t->Decay()), args[1].Expr);
-        return ConcreteExpression(args[0].t, c->GetPointerType(self->Decay())->BuildInplaceConstruction(args[0].Expr, ptr, c));
+        return ConcreteExpression(args[0].t, c->GetPointerType(self->Decay())->BuildInplaceConstruction(args[0].Expr, { ptr }, c));
     }
     Callable* GetCallableForResolution(std::vector<Type*>, Analyzer& a) override final { return this; }
 };
@@ -121,9 +121,9 @@ OverloadSet* RvalueType::CreateConstructorOverloadSet(Analyzer& a) {
             auto ptrself = c->GetPointerType(self->Decay());
             if (ptrt->IsA(ptrt, ptrself, *c)) {
                 auto ptr = ConcreteExpression(c->GetPointerType(args[1].t->Decay()), args[1].Expr);
-                return ConcreteExpression(args[0].t, c->GetPointerType(self->Decay())->BuildInplaceConstruction(args[0].Expr, ptr, c));
+                return ConcreteExpression(args[0].t, c->GetPointerType(self->Decay())->BuildInplaceConstruction(args[0].Expr, { ptr }, c));
             }
-            return self->Decay()->BuildRvalueConstruction(args[1], c);
+            return self->Decay()->BuildRvalueConstruction({ args[1] }, c);
         }
     };
     set.insert(a.arena.Allocate<rvalueconvertible>(this));

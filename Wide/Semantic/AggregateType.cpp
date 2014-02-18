@@ -134,7 +134,7 @@ OverloadSet* AggregateType::CreateOperatorOverloadSet(Type* t, Lexer::TokenType 
                 std::vector<Type*> types;
                 types.push_back(c->GetLvalueType(contents[i]));
                 types.push_back(modify(contents[i]));
-                auto expr = contents[i]->AccessMember(modify(contents[i]), Lexer::TokenType::Assignment, *c)->Resolve(types, *c)->Call(lhs, PrimitiveAccessMember(args[1], i, *c), c).Expr;
+                auto expr = contents[i]->AccessMember(modify(contents[i]), Lexer::TokenType::Assignment, *c)->Resolve(types, *c)->Call({ lhs, PrimitiveAccessMember(args[1], i, *c) }, c).Expr;
                 move = move ? c->gen->CreateChainExpression(move, expr) : expr;
             }
 
@@ -203,7 +203,9 @@ OverloadSet* AggregateType::CreateNondefaultConstructorOverloadSet(Analyzer& a) 
                 std::vector<Type*> types;
                 types.push_back(c->GetLvalueType(contents[i]));
                 types.push_back(modify(contents[i]));
-                auto expr = contents[i]->GetConstructorOverloadSet(*c)->Resolve(types, *c)->Call(memory, PrimitiveAccessMember(args[1], i, *c), c).Expr;
+                auto set = contents[i]->GetConstructorOverloadSet(*c);
+                auto callable = set->Resolve(types, *c);
+                auto expr = callable->Call({ memory, PrimitiveAccessMember(args[1], i, *c) }, c).Expr;
                 move = move ? c->gen->CreateChainExpression(move, expr) : expr;
             }
 
@@ -245,7 +247,7 @@ OverloadSet* AggregateType::CreateConstructorOverloadSet(Analyzer& a) {
                 ConcreteExpression memory(c->GetLvalueType(contents[i]), c->gen->CreateFieldExpression(args[0].Expr, FieldIndices[i]));
                 std::vector<Type*> types;
                 types.push_back(c->GetLvalueType(contents[i]));
-                auto expr = contents[i]->GetConstructorOverloadSet(*c)->Resolve(types, *c)->Call(memory, c).Expr;
+                auto expr = contents[i]->GetConstructorOverloadSet(*c)->Resolve(types, *c)->Call({ memory }, c).Expr;
                 def = def ? c->gen->CreateChainExpression(def, expr) : expr;
             }
             return ConcreteExpression(c->GetLvalueType(this), def);
@@ -270,7 +272,7 @@ OverloadSet* AggregateType::CreateDestructorOverloadSet(Analyzer& a) {
                 auto member = ConcreteExpression(c->GetLvalueType(self->contents[i]), c->gen->CreateFieldExpression(args[0].Expr, self->GetFieldIndex(i)));
                 std::vector<Type*> types;
                 types.push_back(member.t);
-                auto des = self->contents[i]->GetDestructorOverloadSet(*c)->Resolve(types, *c)->Call(member, c).Expr;
+                auto des = self->contents[i]->GetDestructorOverloadSet(*c)->Resolve(types, *c)->Call({ member }, c).Expr;
                 expr = expr ? c->gen->CreateChainExpression(expr, des) : des;
             }
             return ConcreteExpression(c->GetLvalueType(self), expr);

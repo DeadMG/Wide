@@ -121,17 +121,6 @@ namespace Wide {
                 throw std::runtime_error("This type has no LLVM counterpart.");
             }
 
-            OverloadSet* GetConstructorOverloadSet(Analyzer& a) {
-                if (!ConstructorOverloadSet)
-                    ConstructorOverloadSet = CreateConstructorOverloadSet(a);
-                return ConstructorOverloadSet;
-            }
-            OverloadSet* GetDestructorOverloadSet(Analyzer& a) {
-                if (!DestructorOverloadSet)
-                    DestructorOverloadSet = CreateDestructorOverloadSet(a);
-                return DestructorOverloadSet;
-            }
-
             virtual bool IsMoveConstructible(Analyzer& a);
             virtual bool IsCopyConstructible(Analyzer& a);
 
@@ -139,40 +128,13 @@ namespace Wide {
             virtual bool IsCopyAssignable(Analyzer& a);
 
             virtual std::size_t size(Analyzer& a) { throw std::runtime_error("Attempted to size a type that does not have a run-time size."); }
-            virtual std::size_t alignment(Analyzer& a) { throw std::runtime_error("Attempted to align a type that does not have a run-time alignment."); }
-
-            virtual ConcreteExpression BuildValueConstruction(std::vector<ConcreteExpression> args, Context c);
-            virtual ConcreteExpression BuildRvalueConstruction(std::vector<ConcreteExpression> args, Context c);
-            virtual ConcreteExpression BuildLvalueConstruction(std::vector<ConcreteExpression> args, Context c);
-            virtual Codegen::Expression* BuildInplaceConstruction(Codegen::Expression* mem, std::vector<ConcreteExpression> args, Context c);
-            
-            virtual ConcreteExpression BuildValueConstruction(ConcreteExpression arg, Context c);
-            virtual ConcreteExpression BuildRvalueConstruction(ConcreteExpression arg, Context c);
-            virtual ConcreteExpression BuildLvalueConstruction(ConcreteExpression args, Context c);
-            virtual Codegen::Expression* BuildInplaceConstruction(Codegen::Expression* mem, ConcreteExpression args, Context c);
-
-            virtual ConcreteExpression BuildValueConstruction(Context c);
-            virtual ConcreteExpression BuildRvalueConstruction(Context c);
-            virtual ConcreteExpression BuildLvalueConstruction(Context c);
-            virtual Codegen::Expression* BuildInplaceConstruction(Codegen::Expression* mem, Context c);
-
-            virtual ConcreteExpression BuildValue(ConcreteExpression lhs, Context c);
+            virtual std::size_t alignment(Analyzer& a) { throw std::runtime_error("Attempted to align a type that does not have a run-time alignment."); }   
             
             virtual Wide::Util::optional<ConcreteExpression> AccessStaticMember(std::string name, Context c) {
                 throw std::runtime_error("This type does not have any static members.");
             }
             virtual Wide::Util::optional<ConcreteExpression> AccessMember(ConcreteExpression, std::string name, Context c);
-            OverloadSet* AccessMember(Type* t, Lexer::TokenType type, Analyzer& a);
-            
-            /*virtual OverloadSet* AccessStaticMember(Lexer::TokenType type, Context c) {
-                throw std::runtime_error("This type does not have any static members.");
-            }*/
-            virtual ConcreteExpression BuildCall(ConcreteExpression val, std::vector<ConcreteExpression> args, std::vector<ConcreteExpression> destructors, Context c) {
-                for(auto x : destructors)
-                    c(x);
-                return BuildCall(val, std::move(args), c);
-            }
-            virtual ConcreteExpression BuildCall(ConcreteExpression val, std::vector<ConcreteExpression> args, Context c);
+
             virtual ConcreteExpression BuildMetaCall(ConcreteExpression val, std::vector<ConcreteExpression> args, Context c) {
                 throw std::runtime_error("Attempted to call a type that did not support it.");
             }
@@ -181,36 +143,29 @@ namespace Wide {
                     return Decay()->BuildBooleanConversion(val, c);
                 throw std::runtime_error("Could not convert a type to boolean.");
             }
-            
-            virtual ConcreteExpression BuildNegate(ConcreteExpression val, Context c);
-            virtual ConcreteExpression BuildIncrement(ConcreteExpression obj, bool postfix, Context c) {
-                if (IsReference())
-                    return Decay()->BuildIncrement(obj, postfix, c);
-                throw std::runtime_error("Attempted to increment a type that did not support it.");
-            }    
-            virtual ConcreteExpression BuildDereference(ConcreteExpression obj, Context c) {
-                if (IsReference())
-                    return Decay()->BuildDereference(obj, c);
-                throw std::runtime_error("This type does not support de-referencing.");
-            }
-            virtual Wide::Util::optional<ConcreteExpression> PointerAccessMember(ConcreteExpression obj, std::string name, Context c) {
-                if (IsReference())
-                    return Decay()->PointerAccessMember(obj, std::move(name), c);
-                return obj.BuildDereference(c).AccessMember(std::move(name), c);
-            }
-            virtual ConcreteExpression AddressOf(ConcreteExpression obj, Context c);
+            virtual ConcreteExpression BuildCall(ConcreteExpression val, std::vector<ConcreteExpression> args, std::vector<ConcreteExpression> destructors, Context c);
+            virtual ConcreteExpression BuildCall(ConcreteExpression val, std::vector<ConcreteExpression> args, Context c);
 
-            virtual ConcreteExpression BuildBinaryExpression(ConcreteExpression lhs, ConcreteExpression rhs, Lexer::TokenType type, Context c);
             virtual ConcreteExpression BuildBinaryExpression(ConcreteExpression lhs, ConcreteExpression rhs, std::vector<ConcreteExpression> destructors, Lexer::TokenType type, Context c);
-            
+
             virtual OverloadSet* PerformADL(Lexer::TokenType what, Type* lhs, Type* rhs, Analyzer& a);
 
             virtual bool IsA(Type* self, Type* other, Analyzer& a);
-            virtual Type* GetConstantContext(Analyzer& a) {
-                return nullptr;
-            }
-                                
+            virtual Type* GetConstantContext(Analyzer& a);
+
             virtual ~Type() {}
+            
+            Codegen::Expression* BuildInplaceConstruction(Codegen::Expression* mem, std::vector<ConcreteExpression> args, Context c);
+            OverloadSet* AccessMember(Type* t, Lexer::TokenType type, Analyzer& a);
+            ConcreteExpression BuildValueConstruction(std::vector<ConcreteExpression> args, Context c);
+            ConcreteExpression BuildRvalueConstruction(std::vector<ConcreteExpression> args, Context c);
+            ConcreteExpression BuildLvalueConstruction(std::vector<ConcreteExpression> args, Context c);
+
+            ConcreteExpression BuildUnaryExpression(ConcreteExpression self, Lexer::TokenType type, Context c);
+            ConcreteExpression BuildBinaryExpression(ConcreteExpression lhs, ConcreteExpression rhs, Lexer::TokenType type, Context c);
+
+            OverloadSet* GetConstructorOverloadSet(Analyzer& a);
+            OverloadSet* GetDestructorOverloadSet(Analyzer& a);
         };
         struct TupleInitializable : public virtual Type {
             virtual Wide::Util::optional<std::vector<Type*>> GetTypesForTuple(Analyzer& a) = 0;
@@ -222,9 +177,6 @@ namespace Wide {
         struct Callable {
             virtual ~Callable() {}
         public:
-            ConcreteExpression Call(Context c);
-            ConcreteExpression Call(ConcreteExpression arg, Context c);
-            ConcreteExpression Call(ConcreteExpression arg1, ConcreteExpression arg2, Context c);
             ConcreteExpression Call(std::vector<ConcreteExpression> args, Context c);
         private:
             virtual ConcreteExpression CallFunction(std::vector<ConcreteExpression> args, Context c) = 0;

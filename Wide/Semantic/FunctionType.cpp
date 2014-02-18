@@ -71,7 +71,7 @@ ConcreteExpression FunctionType::BuildCall(ConcreteExpression val, std::vector<C
                 continue;
             }
             // Else, we have a complex T from some U, in which case, perform rvalue construction.
-            e.push_back(Args[i]->BuildRvalueConstruction(args[i], c).Expr);
+            e.push_back(Args[i]->BuildRvalueConstruction({ args[i] }, c).Expr);
             continue;
         }
 
@@ -93,7 +93,7 @@ ConcreteExpression FunctionType::BuildCall(ConcreteExpression val, std::vector<C
 
             // Try a copy. The user knows that unless inheritance is involved, we'll need a new value here anyway.
             // T::BuildRvalueConstruction called to construct a T in memory from T or some U, which may be reference.
-            e.push_back(Args[i]->Decay()->BuildRvalueConstruction(args[i], c).Expr);
+            e.push_back(Args[i]->Decay()->BuildRvalueConstruction({ args[i] }, c).Expr);
             continue;
         }
 
@@ -101,13 +101,13 @@ ConcreteExpression FunctionType::BuildCall(ConcreteExpression val, std::vector<C
         // The only way this can work is if U inherits from T, or offers a UDC to T&, neither of which we support right now.
         // Except where Clang takes as const T& an rvalue, in which case we need to create an rvalue of U but pretend it's an lvalue.
         if (IsLvalueType(Args[i])) {
-            e.push_back(Args[i]->Decay()->BuildLvalueConstruction(args[i], c).Expr);
+            e.push_back(Args[i]->Decay()->BuildLvalueConstruction({ args[i] }, c).Expr);
             continue;
         }
 
         // We take a value T, and we need to construct from some U. Use ValueConstruction.
         // Type::BuildValueConstruction called.
-        e.push_back(Args[i]->BuildValueConstruction(args[i], c).Expr);
+        e.push_back(Args[i]->BuildValueConstruction({ args[i] }, c).Expr);
     }
     // Insert a bit cast because Clang sucks.
     out.Expr = c->gen->CreateFunctionCall(val.Expr, e, GetLLVMType(*c));

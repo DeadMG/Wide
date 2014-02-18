@@ -50,7 +50,6 @@ namespace Wide {
             bool HasMember(std::string name);            
             clang::QualType GetClangType(ClangTU& TU, Analyzer& a) override final;
             Wide::Util::optional<ConcreteExpression> AccessMember(ConcreteExpression, std::string name, Context c) override final;
-            ConcreteExpression BuildCall(ConcreteExpression val, std::vector<ConcreteExpression> args, Context c) override final;
 
             OverloadSet* CreateConstructorOverloadSet(Wide::Semantic::Analyzer&) override final;
             OverloadSet* CreateOperatorOverloadSet(Type* self, Lexer::TokenType member, Analyzer& a) override final;

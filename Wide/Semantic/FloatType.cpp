@@ -59,7 +59,7 @@ std::size_t FloatType::alignment(Analyzer& a) {
 }
 #pragma warning(default : 4244)
 
-Codegen::Expression* FloatType::BuildInplaceConstruction(Codegen::Expression* mem, std::vector<ConcreteExpression> args, Context c) {
+/*Codegen::Expression* FloatType::BuildInplaceConstruction(Codegen::Expression* mem, std::vector<ConcreteExpression> args, Context c) {
     if (args.size() > 1)
         throw std::runtime_error("Attempted to construct a floating-point type from more than one argument.");
     if (args.size() == 0)
@@ -72,4 +72,4 @@ Codegen::Expression* FloatType::BuildInplaceConstruction(Codegen::Expression* me
     if (bits < fp->bits)
         return c->gen->CreateStore(mem, c->gen->CreateTruncate(args[0].BuildValue(c).Expr, GetLLVMType(*c)));
     return c->gen->CreateStore(mem, c->gen->CreateFPExtension(args[0].BuildValue(c).Expr, GetLLVMType(*c)));
-}
+}*/
