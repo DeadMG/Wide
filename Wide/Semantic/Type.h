@@ -16,6 +16,14 @@
 #endif
 #pragma warning(disable : 4250)
 
+namespace std {
+    template<> struct hash<Wide::Lexer::Access> {
+        std::size_t operator()(Wide::Lexer::Access a) const {
+            return std::hash<int>()(int(a));
+        }
+    };
+}
+
 namespace llvm {
     class Type;
     class LLVMContext;
