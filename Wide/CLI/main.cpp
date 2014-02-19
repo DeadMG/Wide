@@ -158,8 +158,8 @@ int main(int argc, char** argv)
         });
         Wide::Driver::Compile(ClangOpts, [](Wide::Semantic::Analyzer& a, const Wide::AST::Module* root) {
             static const Wide::Lexer::Range location = std::make_shared<std::string>("Analyzer entry point");
-            Wide::Semantic::Context c(a, location, [](Wide::Semantic::ConcreteExpression e) {});
-            auto std = a.GetGlobalModule()->BuildValueConstruction(c).AccessMember("Standard", c);
+            Wide::Semantic::Context c(a, location, [](Wide::Semantic::ConcreteExpression e) {}, a.GetGlobalModule());
+            auto std = a.GetGlobalModule()->BuildValueConstruction({}, c).AccessMember("Standard", c);
             if (!std)
                 throw std::runtime_error("Fuck.");
             auto main = std->AccessMember("Main", c);

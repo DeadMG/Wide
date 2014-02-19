@@ -1,4 +1,0 @@
-using test := cpp("JITSuccess/CPPInterop/MixedCPPMemberFree.h").test;
-Main() {
-    return test() == 0;
-}

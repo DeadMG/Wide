@@ -28,6 +28,13 @@
 using namespace Wide;
 using namespace Semantic;
 
+namespace std {
+    template<> struct hash<clang::AccessSpecifier> {
+        std::size_t operator()(clang::AccessSpecifier a) const {
+            return std::hash<int>()((int)a);
+        }
+    };
+}
 const std::unordered_map<clang::AccessSpecifier, Lexer::Access> AccessMapping = {
     { clang::AccessSpecifier::AS_public, Lexer::Access::Public },
     { clang::AccessSpecifier::AS_private, Lexer::Access::Private },
