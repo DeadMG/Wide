@@ -1,8 +1,0 @@
-type t {
-    operator+(int64.pointer val) { return true; }
-private:
-    operator+(decltype(null) val) { return false; }
-}
-Main() {
-    return t() + null;
-}
