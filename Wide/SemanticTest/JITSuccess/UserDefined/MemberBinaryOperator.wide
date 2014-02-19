@@ -1,0 +1,6 @@
+type t {
+    operator+(t other) { return true; }
+}
+Main() {
+    return t() + t();
+}

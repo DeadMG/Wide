@@ -1,0 +1,9 @@
+type t {
+    val := bool;
+	type(int64.pointer arg) : val(true) {}
+private:
+    type(decltype(null) arg) : val(false) {}
+}
+Main() {
+    return t().val;
+}

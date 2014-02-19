@@ -1,0 +1,7 @@
+Main() {
+    x := { false, false };
+	y := { true, true };
+	x = y;
+	first, second := x;
+	return first & second;
+}

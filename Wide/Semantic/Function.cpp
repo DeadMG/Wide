@@ -153,10 +153,6 @@ Function::Function(std::vector<Type*> args, const AST::FunctionBase* astfun, Ana
                 returnstate = ReturnState::ConcreteReturnSeen;
             }
         }
-        if (ReturnType) {
-            // We have the name and signature- declare, and generate the body later.
-            codefun = a.gen->CreateFunction(GetSignature(a)->GetLLVMType(a), name, this);
-        }
     }
 }
 
@@ -245,8 +241,13 @@ void Function::ComputeBody(Analyzer& a) {
                     // Destroy all temporaries involved.
                     auto result = a.AnalyzeExpression(this, ret->RetExpr, register_local_destructor);
                     if (returnstate == ReturnState::ConcreteReturnSeen) {
-                        if (ReturnType != result.t->Decay()) {
-                            throw std::runtime_error("Return mismatch: In a deduced function, all returns must return the same type.");
+                        if (!ReturnType->IsReference()) {
+                            if (ReturnType != result.t->Decay()) {
+                                throw std::runtime_error("Return mismatch: In a deduced function, all returns must return the same type.");
+                            }
+                        } else {
+                            if (ReturnType != result.t)
+                                throw std::runtime_error("Return type mismatch- not all returns had the same type.");
                         }
                     }
                     returnstate = ReturnState::ConcreteReturnSeen;                        
@@ -260,6 +261,9 @@ void Function::ComputeBody(Analyzer& a) {
                         std::vector<ConcreteExpression> args;
                         args.push_back(result);
                         auto retexpr = ReturnType->BuildInplaceConstruction(a.gen->CreateParameterExpression(0), std::move(args), c);
+                        return a.gen->CreateReturn(a.gen->CreateChainExpression(a.gen->CreateChainStatement(retexpr, scope->GetCleanupAllExpression(*c, ret->location, this)), retexpr));
+                    } else if (ReturnType->IsReference()) {
+                        auto retexpr = result.Expr;
                         return a.gen->CreateReturn(a.gen->CreateChainExpression(a.gen->CreateChainStatement(retexpr, scope->GetCleanupAllExpression(*c, ret->location, this)), retexpr));
                     } else {
                         auto retval = result.BuildValue(c).Expr;

@@ -34,7 +34,7 @@ ConcreteExpression ConcreteExpression::BuildIncrement(bool postfix, Context c) {
     if (postfix) {
         auto copy = t->Decay()->BuildLvalueConstruction({ *this }, c);
         auto result = BuildIncrement(false, c);
-        return ConcreteExpression(copy.t, c->gen->CreateChainExpression(result.Expr, copy.Expr));
+        return ConcreteExpression(copy.t, c->gen->CreateChainExpression(copy.Expr, c->gen->CreateChainExpression(result.Expr, copy.Expr)));
     }
     return t->Decay()->BuildUnaryExpression(*this, Lexer::TokenType::Increment, c);
 }

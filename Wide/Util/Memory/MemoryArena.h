@@ -117,8 +117,7 @@ namespace Wide {
                 T* ret = new (tail->AllocateFor<T>()) T(std::forward<Args>(args)...);
                 return ret;
             }
-            /*
-            template<typename T> T* Allocate() {
+            /*template<typename T> T* Allocate() {
                 T* ret = new (tail->AllocateFor<T>()) T();
                 return ret;
             }

@@ -1,0 +1,10 @@
+type t {
+    val := bool;
+	type() : val(true) {}
+    type(t.rvalue other) : val(other.val) {}
+}
+Main() {
+    var := t();
+	copy := var;
+	return copy.val;
+}

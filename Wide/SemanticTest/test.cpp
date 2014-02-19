@@ -91,6 +91,7 @@ void Jit(const Wide::Options::Clang& copts, std::string file) {
         b.setErrorStr(&errstring);
         auto ee = b.create();
         // Fuck you, shitty LLVM ownership semantics.
+        auto mod = main.get();
         if (ee)
             main.release();
         auto f = ee->FindFunctionNamed(name.c_str());

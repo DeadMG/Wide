@@ -130,7 +130,7 @@ OverloadSet* AggregateType::CreateOperatorOverloadSet(Type* t, Lexer::TokenType 
             Codegen::Expression* move = nullptr;
             // For every type, call the move constructor.
             for (std::size_t i = 0; i < contents.size(); ++i) {
-                ConcreteExpression lhs = PrimitiveAccessMember(args[1], i, *c);
+                ConcreteExpression lhs = PrimitiveAccessMember(args[0], i, *c);
                 std::vector<Type*> types;
                 types.push_back(c->GetLvalueType(contents[i]));
                 types.push_back(modify(contents[i]));

@@ -27,7 +27,8 @@ namespace Wide {
                 Lexer::TokenType::RightShift,
                 Lexer::TokenType::Xor,
                 Lexer::TokenType::OpenBracket,
-                Lexer::TokenType::Plus
+                Lexer::TokenType::Plus,
+                Lexer::TokenType::Increment
             };
             return std::unordered_set<Lexer::TokenType>(std::begin(tokens), std::end(tokens));
         }());
