@@ -18,6 +18,8 @@
 #include <llvm/Support/TargetRegistry.h>
 #include <llvm/Support/Host.h>
 #include <llvm/Support/FormattedStream.h>
+#include <llvm/Support/Program.h>
+#include <llvm/Support/FileSystem.h>
 #include <llvm/Support/raw_os_ostream.h>
 #pragma warning(pop)
 
@@ -42,6 +44,34 @@ Added include path: /usr/include/x86_64-linux-gnu
 Added include path: /usr/include
 */
 // --include="/usr/include/c++/4.7" --include="/usr/include/c++/4.7/x86_64-linux-gnu" --include="/usr/include/c++/4.7/backward" --include="/usr/lib/gcc/x86_64-linux-gnu/4.7/include" --include="/usr/local/include" --include="/usr/lib/gcc/x86_64-linux-gnu/4.7/include-fixed" --include="/usr/include/x86_64-linux-gnu" --include="/usr/include" hello.wide
+
+void SearchDirectory(std::string path, std::vector<std::string>& vec) {
+    auto end = llvm::sys::fs::directory_iterator();
+    llvm::error_code fuck_error_codes;
+    bool out = true;
+    fuck_error_codes = llvm::sys::fs::is_directory(path, out);
+    if (!out || fuck_error_codes) {
+        std::cout << "Skipping " << path << " as a directory by this name did not exist.\n";
+    }
+    auto begin = llvm::sys::fs::directory_iterator(path, fuck_error_codes);
+    std::set<std::string> entries;
+    while (!fuck_error_codes && begin != end) {
+        entries.insert(begin->path());
+        begin.increment(fuck_error_codes);
+    }
+    for (auto file : entries) {
+        bool isfile = false;
+        llvm::sys::fs::is_regular_file(file, isfile);
+        if (isfile) {
+            if (llvm::sys::path::extension(file) == ".wide")
+                vec.push_back(file);
+        }
+        llvm::sys::fs::is_directory(file, isfile);
+        if (isfile) {
+            SearchDirectory(file, vec);
+        }
+    }
+}
 
 int main(int argc, char** argv)
 {
@@ -118,30 +148,8 @@ int main(int argc, char** argv)
     std::cout << "Triple: " << ClangOpts.TargetOptions.Triple << "\n";
     std::string stdlib = input.count("stdlib") ? input["stdlib"].as<std::string>() : "./WideLibrary/";
 
-    files.push_back(stdlib + "Standard/Algorithm/All.wide");
-    files.push_back(stdlib + "Standard/Algorithm/Any.wide");
-    files.push_back(stdlib + "Standard/Algorithm/Append.wide");
-    files.push_back(stdlib + "Standard/Algorithm/Combiner.wide");
-    files.push_back(stdlib + "Standard/Algorithm/Count.wide");
-    files.push_back(stdlib + "Standard/Algorithm/Drop.wide");
-    files.push_back(stdlib + "Standard/Algorithm/DropWhile.wide");
-    files.push_back(stdlib + "Standard/Algorithm/Filter.wide");
-    files.push_back(stdlib + "Standard/Algorithm/Find.wide");
-    files.push_back(stdlib + "Standard/Algorithm/Flatten.wide");
-    files.push_back(stdlib + "Standard/Algorithm/Fold.wide");
-    files.push_back(stdlib + "Standard/Algorithm/ForEach.wide");
-    files.push_back(stdlib + "Standard/Algorithm/Map.wide");
-    files.push_back(stdlib + "Standard/Algorithm/None.wide");
-    files.push_back(stdlib + "Standard/Algorithm/Take.wide");
-    files.push_back(stdlib + "Standard/Algorithm/TakeWhile.wide");
-    files.push_back(stdlib + "Standard/Containers/optional.wide");
-    files.push_back(stdlib + "Standard/IO/Stream.wide");
-    files.push_back(stdlib + "Standard/Range/BackInserter.wide");
-    files.push_back(stdlib + "Standard/Range/Delimited.wide");
-    files.push_back(stdlib + "Standard/Range/Repeat.wide");
-    files.push_back(stdlib + "Standard/Range/StreamInserter.wide");
-    files.push_back(stdlib + "Standard/Utility/Move.wide");
-    files.push_back(stdlib + "stdlib.wide");
+    SearchDirectory(stdlib, files);
+
     try {
         Wide::LLVMCodegen::Generator Generator(LLVMOpts, ClangOpts.TargetOptions.Triple, [&](std::unique_ptr<llvm::Module> main) {
             llvm::PassManager pm;

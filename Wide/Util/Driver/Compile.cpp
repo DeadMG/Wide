@@ -44,10 +44,10 @@ void Wide::Driver::Compile(const Wide::Options::Clang& copts, std::function<void
     };
     Wide::AST::Combiner combiner(combineerrorhandler);
     Wide::Concurrency::Vector<std::shared_ptr<Wide::AST::Builder>> builders;
-    Wide::Concurrency::ParallelForEach(files.begin(), files.end(), [&](const std::string& filename) {
+    auto errs = Wide::Concurrency::ParallelForEach(files.begin(), files.end(), [&](const std::string& filename) {
         std::ifstream inputfile(filename, std::ios::binary | std::ios::in);
         if (!inputfile)
-            throw std::runtime_error("Could not open this input file.");
+            throw std::runtime_error("Could not open input file " + filename + "\n");
         std::noskipws(inputfile);
         Wide::Lexer::Arguments largs;
         auto contents = Wide::Range::IStreamRange(inputfile);
@@ -73,7 +73,18 @@ void Wide::Driver::Compile(const Wide::Options::Clang& copts, std::function<void
             excepts.push_back("Internal Compiler Error");
         }
     });
-
+    if (!errs.empty()) {
+        for (auto&& x : errs) {
+            try {
+                std::rethrow_exception(x);
+            } catch (std::exception& e) {
+                std::cout << "Error:\n" << e.what() << "\n";
+            } catch (...) {
+                std::cout << "Internal Compiler Error\n";
+            }
+        }
+        return;
+    }
     for(auto&& x : warnings)
         std::cout << x << "\n";
 
