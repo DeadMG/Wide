@@ -300,7 +300,7 @@ WideProjects = {
             if os.is("windows") then
                 postbuildcommands ({ "(robocopy /mir \"Standard\" \"../Deployment/WideLibrary/Standard\") ^& IF %ERRORLEVEL% LEQ 1 exit 0" })
             else
-                postbuildcommands ({ "cp -r ../WideLibrary ../Deployment/WideLibrary" })
+                postbuildcommands ({ ""mkdir -p ../Deployment/WideLibrary", "cp -r ../WideLibrary ../Deployment/WideLibrary" })
             end
         end
     },
