@@ -6,7 +6,6 @@ f(header.test.pointer self) prolog {
         self->var = true;
 }
 Main() {
-    f(null);
     var := header.test();
     var.g();
     return var.var;

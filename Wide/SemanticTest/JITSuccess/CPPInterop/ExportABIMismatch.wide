@@ -7,6 +7,5 @@ prolog {
     return b;
 }
 Main() {
-    f(true, header.test());
     return header.g();
 }

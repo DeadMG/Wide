@@ -6,6 +6,7 @@
 #include <Wide/Semantic/ClangTU.h>
 #include <Wide/Semantic/Module.h>
 #include <Wide/Semantic/ConstructorType.h>
+#include <Wide/Semantic/IntegralType.h>
 #include <Wide/Semantic/UserDefinedType.h>
 #include <Wide/Semantic/Reference.h>
 #include <Wide/Semantic/OverloadSet.h>
@@ -425,7 +426,10 @@ void Function::CompleteAnalysis(Type* ret, Analyzer& a) {
     for (auto&& x : exprs)
         codefun->AddStatement(x);
     if (trampoline) {
-        auto tramp = a.gen->CreateFunction(GetSignature(a)->GetLLVMType(a), *trampoline, this, true);
+        auto sig = GetSignature(a)->GetLLVMType(a);
+        if (*trampoline == "main")
+            sig = a.GetFunctionType(a.GetIntegralType(32, true), {})->GetLLVMType(a);
+        auto tramp = a.gen->CreateFunction(sig, *trampoline, this, true);
         // Args includes this if necessary, but add 1 if complex return
         std::size_t argcount = Args.size();
         if (ReturnType->IsComplexType(a))
@@ -433,7 +437,13 @@ void Function::CompleteAnalysis(Type* ret, Analyzer& a) {
         std::vector<Codegen::Expression*> args;
         for (std::size_t i = 0; i < argcount; ++i)
             args.push_back(a.gen->CreateParameterExpression(i));
-        tramp->AddStatement(a.gen->CreateReturn(a.gen->CreateFunctionCall(a.gen->CreateFunctionValue(GetName()), args)));
+        auto call = a.gen->CreateFunctionCall(a.gen->CreateFunctionValue(GetName()), args);
+        if (*trampoline == "main" && ReturnType == a.GetVoidType()) {
+            tramp->AddStatement(call);
+            tramp->AddStatement(a.gen->CreateReturn(a.gen->CreateIntegralExpression(0, false, a.GetIntegralType(32, true)->GetLLVMType(a))));
+        } else {
+            tramp->AddStatement(a.gen->CreateReturn(call));
+        }
     }
 }
 ConcreteExpression Function::BuildCall(ConcreteExpression ex, std::vector<ConcreteExpression> args, Context c) {

@@ -22,6 +22,7 @@ namespace Wide {
 
             Wide::Util::optional<ConcreteExpression> AccessMember(ConcreteExpression val, std::string name, Context c) override;
             OverloadSet* CreateOperatorOverloadSet(Type* t, Wide::Lexer::TokenType, Analyzer& a) override;
+            const AST::Module* GetASTModule() { return m; }
         };
     }
 }

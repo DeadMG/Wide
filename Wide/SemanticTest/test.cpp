@@ -102,6 +102,7 @@ void Jit(const Wide::Options::Clang& copts, std::string file) {
     });
     Wide::Driver::Compile(copts, [&](Wide::Semantic::Analyzer& a, const Wide::AST::Module* root) {
         Wide::Semantic::Context c(a, loc, [](Wide::Semantic::ConcreteExpression e) {}, a.GetGlobalModule());
+        Wide::Semantic::AnalyzeExportedFunctions(a);
         auto m = a.GetGlobalModule()->AccessMember(a.GetGlobalModule()->BuildValueConstruction({}, c), "Main", c);
         if (!m)
             throw std::runtime_error("No Main() found for test!");

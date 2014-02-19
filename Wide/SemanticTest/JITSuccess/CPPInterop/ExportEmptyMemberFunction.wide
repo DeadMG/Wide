@@ -5,6 +5,5 @@ f(header.test.pointer self) prolog {
     return true;
 }
 Main() {
-    f(null);
     return header.test().g();
 }

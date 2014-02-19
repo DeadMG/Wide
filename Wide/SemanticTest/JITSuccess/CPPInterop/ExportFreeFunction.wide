@@ -5,6 +5,5 @@ f() prolog {
     return true;
 }
 Main() {
-    f();
     return header.g();
 }

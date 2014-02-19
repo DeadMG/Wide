@@ -711,3 +711,47 @@ Lexer::Access Semantic::GetAccessSpecifier(Context c, Type* to) {
 
     return Lexer::Access::Public;    
 }
+
+void ProcessFunction(const AST::Function* f, Analyzer& a, Module* m) {
+    bool exported = false;
+    for (auto stmt : f->prolog) {
+        auto ass = dynamic_cast<const AST::BinaryExpression*>(stmt);
+        if (!ass || ass->type != Lexer::TokenType::Assignment)
+            continue;
+        auto ident = dynamic_cast<const AST::Identifier*>(ass->lhs);
+        if (!ident)
+            continue;
+        if (ident->val == "ExportName")
+            exported = true;
+    }
+    if (!exported) return;
+    std::vector<Type*> types;
+    for (auto arg : f->args) {
+        if (!arg.type) return;
+        auto expr = a.AnalyzeExpression(m, arg.type, [](ConcreteExpression expr) {});
+        if (auto ty = dynamic_cast<ConstructorType*>(expr.t->Decay()))
+            types.push_back(ty->GetConstructedType());
+        else
+            return;
+    }
+    auto func = a.GetWideFunction(f, m, types);
+    func->ComputeBody(a);
+}
+void ProcessOverloadSet(const AST::FunctionOverloadSet* set, Analyzer& a, Module* m) {
+    for (auto func : set->functions) {
+        ProcessFunction(func, a, m);
+    }
+}
+void AnalyzeExportedFunctionsInModule(Analyzer& a, Module* m) {
+    auto mod = m->GetASTModule();
+    for (auto overset : mod->functions)
+        ProcessOverloadSet(overset.second, a, m);
+    for (auto overset : mod->opcondecls)
+        ProcessOverloadSet(overset.second, a, m);
+    for (auto decl : mod->decls)
+        if (auto nested = dynamic_cast<const AST::Module*>(decl.second))
+            AnalyzeExportedFunctionsInModule(a, a.GetWideModule(nested, m));
+}
+void Semantic::AnalyzeExportedFunctions(Analyzer& a) {
+    AnalyzeExportedFunctionsInModule(a, a.GetGlobalModule());
+}

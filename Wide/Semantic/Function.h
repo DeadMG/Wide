@@ -36,7 +36,6 @@ namespace Wide {
             const AST::FunctionBase* fun;
             Codegen::Function* codefun;
             ReturnState returnstate;
-            void ComputeBody(Analyzer& a);
             Type* context;
             Wide::Util::optional<std::string> trampoline;
             void CompleteAnalysis(Type* ret, Analyzer& a);
@@ -67,6 +66,7 @@ namespace Wide {
                 return BuildCall(BuildValueConstruction({}, c), std::move(exprs), c);
             }
         public:
+            void ComputeBody(Analyzer& a);
             bool HasLocalVariable(std::string name);
             Function(std::vector<Type*> args, const AST::FunctionBase* astfun, Analyzer& a, Type* container);        
 
@@ -79,6 +79,7 @@ namespace Wide {
             FunctionType* GetSignature(Analyzer& a);
             Wide::Util::optional<ConcreteExpression> LookupLocal(std::string name, Context c);
             Type* GetConstantContext(Analyzer& a) override final;
+            void SetExportName(std::string name) { trampoline = name; }
         };
     }
 }
