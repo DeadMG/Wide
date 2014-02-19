@@ -636,7 +636,7 @@ OverloadResolvable* Analyzer::GetCallableForFunction(const AST::FunctionBase* f,
             return func->args.size();
         }
 
-        Type* MatchParameter(Type* argument, unsigned num, Analyzer& a) override final {
+        Type* MatchParameter(Type* argument, unsigned num, Analyzer& a, Type* source) override final {
             assert(num <= GetArgumentCount());
 
             // If we are a member and we have an explicit this then treat the first normally.
@@ -645,7 +645,7 @@ OverloadResolvable* Analyzer::GetCallableForFunction(const AST::FunctionBase* f,
             
             if (HasImplicitThis()) {
                 if (num == 0) {
-                    if (argument->IsA(argument, context, a)) {
+                    if (argument->IsA(argument, context, a, GetAccessSpecifier(source, argument, a))) {
                         return argument;
                     }
                     return nullptr;
@@ -684,7 +684,7 @@ OverloadResolvable* Analyzer::GetCallableForFunction(const AST::FunctionBase* f,
             if (!parameter_type)
                 throw Wide::Semantic::SemanticError(func->args[num].location, Wide::Semantic::Error::ExpressionNoType);
 
-            if (argument->IsA(argument, parameter_type->GetConstructedType(), a))
+            if (argument->IsA(argument, parameter_type->GetConstructedType(), a, GetAccessSpecifier(source, argument, a)))
                 return parameter_type->GetConstructedType();
             return nullptr;
         }
@@ -696,20 +696,23 @@ OverloadResolvable* Analyzer::GetCallableForFunction(const AST::FunctionBase* f,
     return FunctionCallables[f] = arena.Allocate<FunctionCallable>(f, context);
 }
 
-Lexer::Access Semantic::GetAccessSpecifier(Context c, Type* to) {
-    auto source = c.source->Decay();
+Lexer::Access Semantic::GetAccessSpecifier(Type* from, Type* to, Analyzer& a) {
+    auto source = from->Decay();
     auto target = to->Decay();
     if (source == target) return Lexer::Access::Private;
     if (auto base = dynamic_cast<BaseType*>(target)) {
         if (auto derived = dynamic_cast<BaseType*>(source)) {
-            if (derived->IsDerivedFrom(target, *c) == InheritanceRelationship::UnambiguouslyDerived)
+            if (derived->IsDerivedFrom(target, a) == InheritanceRelationship::UnambiguouslyDerived)
                 return Lexer::Access::Protected;
         }
     }
-    if (auto context = source->GetContext(*c))
-        return GetAccessSpecifier(Context(*c, c.where, c.RAIIHandler, context), target);
+    if (auto context = source->GetContext(a))
+        return GetAccessSpecifier(context, target, a);
 
-    return Lexer::Access::Public;    
+    return Lexer::Access::Public;
+}
+Lexer::Access Semantic::GetAccessSpecifier(Context c, Type* to) {
+    return GetAccessSpecifier(c.source, to, *c);
 }
 
 void ProcessFunction(const AST::Function* f, Analyzer& a, Module* m) {

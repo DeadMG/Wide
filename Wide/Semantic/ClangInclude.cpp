@@ -27,7 +27,7 @@ Wide::Util::optional<ConcreteExpression> ClangIncludeEntity::AccessMember(Concre
             return MangleOverloadSet->BuildValueConstruction({}, c);
         struct NameMangler : OverloadResolvable, Callable {
             unsigned GetArgumentCount() override final { return 1; }
-            Type* MatchParameter(Type* t, unsigned, Analyzer& a) override final {
+            Type* MatchParameter(Type* t, unsigned, Analyzer& a, Type* source) override final {
                 if (dynamic_cast<OverloadSet*>(t->Decay()))
                     return t;
                 return nullptr;

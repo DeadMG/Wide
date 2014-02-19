@@ -37,32 +37,32 @@ std::size_t Reference::alignment(Analyzer& a) {
     return llvm::DataLayout(a.gen->GetDataLayout()).getPointerABIAlignment();
 }
 
-bool RvalueType::IsA(Type* self, Type* other, Analyzer& a) {
+bool RvalueType::IsA(Type* self, Type* other, Analyzer& a, Lexer::Access access) {
     if (other == this)
         return true;
     if (other == a.GetLvalueType(Decay()))
         return false;
     // T&& is-a U&& if T* is-a U*
-    if (IsRvalueType(other) && a.GetPointerType(Decay())->IsA(a.GetPointerType(Decay()), a.GetPointerType(other->Decay()), a))
+    if (IsRvalueType(other) && a.GetPointerType(Decay())->IsA(a.GetPointerType(Decay()), a.GetPointerType(other->Decay()), a, access))
         return true;
-    return Decay()->IsA(self, other, a);
+    return Decay()->IsA(self, other, a, access);
 }
-bool LvalueType::IsA(Type* self, Type* other, Analyzer& a) {
+bool LvalueType::IsA(Type* self, Type* other, Analyzer& a, Lexer::Access access) {
     if (other == this)
         return true;
     if (other == a.GetRvalueType(Decay()))
         return false;
     // T& is-a U& if T* is-a U*
-    if (IsLvalueType(other) && a.GetPointerType(Decay())->IsA(a.GetPointerType(Decay()), a.GetPointerType(other->Decay()), a))
+    if (IsLvalueType(other) && a.GetPointerType(Decay())->IsA(a.GetPointerType(Decay()), a.GetPointerType(other->Decay()), a, access))
         return true;
-    return Decay()->IsA(self, other, a);
+    return Decay()->IsA(self, other, a, access);
 }
 struct PointerComparableResolvable : OverloadResolvable, Callable {
     PointerComparableResolvable(Reference* s)
     : self(s) {}
     Reference* self;
     unsigned GetArgumentCount() override final { return 2; }
-    Type* MatchParameter(Type* t, unsigned num, Analyzer& a) override final {
+    Type* MatchParameter(Type* t, unsigned num, Analyzer& a, Type* source) override final {
         if (num == 0) {
             if (t == a.GetLvalueType(self))
                 return t;
@@ -71,7 +71,7 @@ struct PointerComparableResolvable : OverloadResolvable, Callable {
         }
         auto ptrt = a.GetPointerType(t->Decay());
         auto ptrself = a.GetPointerType(self->Decay());
-        if (ptrt->IsA(ptrt, ptrself, a))
+        if (ptrt->IsA(ptrt, ptrself, a, GetAccessSpecifier(source, ptrt, a)))
             return t;
         return nullptr;
     }
@@ -82,7 +82,8 @@ struct PointerComparableResolvable : OverloadResolvable, Callable {
     }
     Callable* GetCallableForResolution(std::vector<Type*>, Analyzer& a) override final { return this; }
 };
-OverloadSet* RvalueType::CreateConstructorOverloadSet(Analyzer& a) {
+OverloadSet* RvalueType::CreateConstructorOverloadSet(Analyzer& a, Lexer::Access access) {
+    if (access != Lexer::Access::Public) return GetConstructorOverloadSet(a, Lexer::Access::Public);
     std::vector<Type*> types;
     types.push_back(a.GetLvalueType(this)); 
     types.push_back(this);
@@ -98,7 +99,7 @@ OverloadSet* RvalueType::CreateConstructorOverloadSet(Analyzer& a) {
         unsigned GetArgumentCount() override final { return 2; }
         Callable* GetCallableForResolution(std::vector<Type*>, Analyzer& a) override final { return this; }
         std::vector<ConcreteExpression> AdjustArguments(std::vector<ConcreteExpression> args, Context c) override final { return args; }
-        Type* MatchParameter(Type* t, unsigned num, Analyzer& a) override final {
+        Type* MatchParameter(Type* t, unsigned num, Analyzer& a, Type* source) override final {
             if (num == 0) {
                 if (t == a.GetLvalueType(self))
                     return t;
@@ -108,10 +109,10 @@ OverloadSet* RvalueType::CreateConstructorOverloadSet(Analyzer& a) {
             // If it is or pointer-is then yay, else nay.
             auto ptrt = a.GetPointerType(t->Decay());
             auto ptrself = a.GetPointerType(self->Decay());
-            if (ptrt->IsA(ptrt, ptrself, a))
+            if (ptrt->IsA(ptrt, ptrself, a, GetAccessSpecifier(source, ptrt, a)))
                 return t;
 
-            if (t->Decay()->IsA(t->Decay(), self->Decay(), a))
+            if (t->Decay()->IsA(t->Decay(), self->Decay(), a, GetAccessSpecifier(source, t, a)))
                 return t;
             return nullptr;
         }
@@ -119,7 +120,7 @@ OverloadSet* RvalueType::CreateConstructorOverloadSet(Analyzer& a) {
             // If pointer-is then use that, else go with value-is.
             auto ptrt = c->GetPointerType(args[1].t->Decay());
             auto ptrself = c->GetPointerType(self->Decay());
-            if (ptrt->IsA(ptrt, ptrself, *c)) {
+            if (ptrt->IsA(ptrt, ptrself, *c, GetAccessSpecifier(c, ptrt))) {
                 auto ptr = ConcreteExpression(c->GetPointerType(args[1].t->Decay()), args[1].Expr);
                 return ConcreteExpression(args[0].t, c->GetPointerType(self->Decay())->BuildInplaceConstruction(args[0].Expr, { ptr }, c));
             }
@@ -129,7 +130,8 @@ OverloadSet* RvalueType::CreateConstructorOverloadSet(Analyzer& a) {
     set.insert(a.arena.Allocate<rvalueconvertible>(this));
     return a.GetOverloadSet(set);
 }
-OverloadSet* LvalueType::CreateConstructorOverloadSet(Analyzer& a) {
+OverloadSet* LvalueType::CreateConstructorOverloadSet(Analyzer& a, Lexer::Access access) {
+    if (access != Lexer::Access::Public) return GetConstructorOverloadSet(a, Lexer::Access::Public);
     std::vector<Type*> types;
     types.push_back(a.GetLvalueType(this));
     types.push_back(this);

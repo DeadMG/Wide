@@ -1,6 +1,6 @@
 type t {
     type() {}
-    type(this->rvalue r) {}
+    type(this.rvalue r) {}
 }
 Main() {
     var := { t(), t() };

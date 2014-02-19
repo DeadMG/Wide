@@ -30,10 +30,10 @@ std::size_t NullType::size(Analyzer& a) {
 std::size_t NullType::alignment(Analyzer& a) {
     return a.gen->GetDataLayout().getPointerABIAlignment();
 }
-bool NullType::IsA(Type* self, Type* other, Analyzer& a) {
+bool NullType::IsA(Type* self, Type* other, Analyzer& a, Lexer::Access access) {
     if (dynamic_cast<PointerType*>(other))
         return true;
     if (dynamic_cast<PointerType*>(other->Decay()) && IsRvalueType(other))
         return true;
-    return Type::IsA(self, other, a);
+    return Type::IsA(self, other, a, access);
 }

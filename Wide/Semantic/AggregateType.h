@@ -34,14 +34,14 @@ namespace Wide {
             std::function<llvm::Type*(llvm::Module*)> GetLLVMType(Analyzer& a) override final;
             
             OverloadSet* CreateNondefaultConstructorOverloadSet(Analyzer& a);
-            OverloadSet* CreateOperatorOverloadSet(Type* t, Lexer::TokenType type, Analyzer& a) override;
-            OverloadSet* CreateConstructorOverloadSet(Analyzer& a) override;
+            OverloadSet* CreateOperatorOverloadSet(Type* t, Lexer::TokenType type, Lexer::Access access, Analyzer& a) override;
+            OverloadSet* CreateConstructorOverloadSet(Analyzer& a, Lexer::Access access) override;
             OverloadSet* CreateDestructorOverloadSet(Analyzer& a) override;
 
-            bool IsCopyConstructible(Analyzer& a) override;
-            bool IsMoveConstructible(Analyzer& a) override;
-            bool IsCopyAssignable(Analyzer& a) override;
-            bool IsMoveAssignable(Analyzer& a) override;
+            bool IsCopyConstructible(Analyzer& a, Lexer::Access access) override;
+            bool IsMoveConstructible(Analyzer& a, Lexer::Access access) override;
+            bool IsCopyAssignable(Analyzer& a, Lexer::Access access) override;
+            bool IsMoveAssignable(Analyzer& a, Lexer::Access access) override;
             bool IsComplexType(Analyzer& a) override;
         };
     }

@@ -175,7 +175,7 @@ int main(int argc, char** argv)
             if (!main)
                 return;
             auto overset = dynamic_cast<Wide::Semantic::OverloadSet*>(main->t->Decay());
-            auto f = overset->Resolve({}, a);
+            auto f = overset->Resolve({}, a, a.GetGlobalModule());
             auto func = dynamic_cast<Wide::Semantic::Function*>(f);
             func->SetExportName("main");
             func->ComputeBody(a);

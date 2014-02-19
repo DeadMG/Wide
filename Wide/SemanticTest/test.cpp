@@ -109,7 +109,7 @@ void Jit(const Wide::Options::Clang& copts, std::string file) {
         auto func = dynamic_cast<Wide::Semantic::OverloadSet*>(m->t);
         if (!func)
             throw std::runtime_error("Main was not an overload set.");
-        auto f = dynamic_cast<Wide::Semantic::Function*>(func->Resolve(std::vector<Wide::Semantic::Type*>(), a));
+        auto f = dynamic_cast<Wide::Semantic::Function*>(func->Resolve({}, a, a.GetGlobalModule()));
         if (!f)
             throw std::runtime_error("Could not resolve Main to a function.");
         name = f->GetName();

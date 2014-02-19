@@ -78,7 +78,7 @@ ConcreteExpression OverloadSet::BuildCall(ConcreteExpression e, std::vector<Conc
 
     for(auto x : args)
         targs.push_back(x.t);
-    auto call = Resolve(std::move(targs), *c);
+    auto call = Resolve(std::move(targs), *c, c.source);
     if (!call)
         throw std::runtime_error("Fuck!");
 
@@ -136,7 +136,7 @@ struct cppcallable : public Callable {
     }
 };
 
-Callable* OverloadSet::Resolve(std::vector<Type*> f_args, Analyzer& a) {
+Callable* OverloadSet::Resolve(std::vector<Type*> f_args, Analyzer& a, Type* source) {
     std::vector<std::pair<OverloadResolvable*, std::vector<Type*>>> call;
     for(auto funcobj : callables) {
         std::vector<Type*> matched_types;
@@ -147,7 +147,7 @@ Callable* OverloadSet::Resolve(std::vector<Type*> f_args, Analyzer& a) {
             auto argty = f_args[i];
             if (!argty->IsReference())
                 argty = a.GetRvalueType(f_args[i]);
-            auto paramty = funcobj->MatchParameter(f_args[i], i, a);
+            auto paramty = funcobj->MatchParameter(f_args[i], i, a, source);
             if (!paramty) {
                 fail = true;
                 break;
@@ -167,8 +167,8 @@ Callable* OverloadSet::Resolve(std::vector<Type*> f_args, Analyzer& a) {
         // there is no other argument for which the reverse is true
         // it is more specialized.
         auto is_argument_more_specialized = [&](Type* lhs, Type* rhs) {
-            if (lhs->IsA(lhs, rhs, a))
-                if (!rhs->IsA(rhs, lhs, a))
+            if (lhs->IsA(lhs, rhs, a, GetAccessSpecifier(source, lhs, a)))
+                if (!rhs->IsA(rhs, lhs, a, GetAccessSpecifier(source, rhs, a)))
                     return true;
             return false;
         };
@@ -310,7 +310,8 @@ Type* OverloadSet::GetConstantContext(Analyzer& a) {
     if (!nonstatic) return this;
     return nullptr;
 }
-OverloadSet* OverloadSet::CreateConstructorOverloadSet(Analyzer& a) {
+OverloadSet* OverloadSet::CreateConstructorOverloadSet(Analyzer& a, Lexer::Access access) {
+    if (access != Lexer::Access::Public) return GetConstructorOverloadSet(a, Lexer::Access::Public);
     std::unordered_set<OverloadResolvable*> constructors;
     std::vector<Type*> types;
     types.push_back(a.GetLvalueType(this));
@@ -353,7 +354,7 @@ Wide::Util::optional<ConcreteExpression> OverloadSet::AccessMember(ConcreteExpre
                 if (!con) throw std::runtime_error("Attempted to resolve but an argument was not a type.");
                 types.push_back(con->GetConstructedType());
             }
-            auto call = from->Resolve(types, *c);
+            auto call = from->Resolve(types, *c, c.source);
             if (!call)
                 throw std::runtime_error("Could not resolve a single function from this overload set.");
             auto clangfunc = dynamic_cast<cppcallable*>(call);

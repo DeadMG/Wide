@@ -47,8 +47,7 @@ ConcreteExpression GetOverloadSet(clang::NamedDecl* d, ClangTU* from, ConcreteEx
         decls.insert(d);
     return c->GetOverloadSet(std::move(decls), from, self.t)->BuildValueConstruction({ self }, c);
 }
-OverloadSet* GetOverloadSet(clang::LookupResult& lr, ClangTU* from, ConcreteExpression self, Context c) {
-    auto access = GetAccessSpecifier(c, self.t);
+OverloadSet* GetOverloadSet(clang::LookupResult& lr, ClangTU* from, ConcreteExpression self, Lexer::Access access, Analyzer& a) {
     std::unordered_set<clang::NamedDecl*> decls;
     for (auto decl : lr) {
         if (access < AccessMapping.at(decl->getAccess()))
@@ -57,7 +56,10 @@ OverloadSet* GetOverloadSet(clang::LookupResult& lr, ClangTU* from, ConcreteExpr
     }
     if (decls.empty())
         return nullptr;
-    return c->GetOverloadSet(std::move(decls), from, self.t);
+    return a.GetOverloadSet(std::move(decls), from, self.t);
+}
+OverloadSet* GetOverloadSet(clang::LookupResult& lr, ClangTU* from, ConcreteExpression self, Context c) {
+    return GetOverloadSet(lr, from, self, GetAccessSpecifier(c, self.t), *c);
 }
 
 
@@ -157,6 +159,7 @@ Wide::Util::optional<ConcreteExpression> ClangType::AccessMember(ConcreteExpress
         from->GetSema(), 
         clang::DeclarationNameInfo(clang::DeclarationName(from->GetIdentifierInfo(name)), clang::SourceLocation()),
         clang::Sema::LookupNameKind::LookupOrdinaryName);
+    lr.suppressDiagnostics();
 
     if (!from->GetSema().LookupQualifiedName(lr, type.getCanonicalType()->getAs<clang::TagType>()->getDecl()))
         return Wide::Util::none;
@@ -253,7 +256,8 @@ namespace std {
     };
 }
 
-OverloadSet* ClangType::CreateADLOverloadSet(Lexer::TokenType what, Type* lhs, Type* rhs, Analyzer& a) {
+OverloadSet* ClangType::CreateADLOverloadSet(Lexer::TokenType what, Type* lhs, Type* rhs, Lexer::Access access, Analyzer& a) {
+    if (access != Lexer::Access::Public) return CreateADLOverloadSet(what, lhs, rhs, access, a);
     clang::ADLResult res;
     clang::OpaqueValueExpr lhsexpr(clang::SourceLocation(), type.getNonLValueExprType(from->GetASTContext()), Semantic::GetKindOfType(lhs));
     clang::OpaqueValueExpr rhsexpr(clang::SourceLocation(), type.getNonLValueExprType(from->GetASTContext()), Semantic::GetKindOfType(rhs));
@@ -266,7 +270,7 @@ OverloadSet* ClangType::CreateADLOverloadSet(Lexer::TokenType what, Type* lhs, T
     return a.GetOverloadSet(std::move(decls), from, GetContext(a));
 }
 
-OverloadSet* ClangType::CreateOperatorOverloadSet(Type* self, Lexer::TokenType name, Analyzer& a) {
+OverloadSet* ClangType::CreateOperatorOverloadSet(Type* self, Lexer::TokenType name, Lexer::Access access, Analyzer& a) {
     auto opkind = GetTokenMappings().at(name).first;
     clang::LookupResult lr(
         from->GetSema(), 
@@ -274,18 +278,24 @@ OverloadSet* ClangType::CreateOperatorOverloadSet(Type* self, Lexer::TokenType n
         clang::SourceLocation(),
         clang::Sema::LookupNameKind::LookupOrdinaryName
     );
-
+    lr.suppressDiagnostics();
     if (!from->GetSema().LookupQualifiedName(lr, type.getCanonicalType()->getAs<clang::TagType>()->getDecl()))
         return a.GetOverloadSet();
 
-    std::unordered_set<clang::NamedDecl*> decls(lr.begin(), lr.end());
+    std::unordered_set<clang::NamedDecl*> decls;
+    for (auto decl : lr)
+        if (AccessMapping.at(decl->getAccess()) <= access)
+            decls.insert(decl);
     return a.GetOverloadSet(std::move(decls), from, self);
 }
 
-OverloadSet* ClangType::CreateConstructorOverloadSet(Analyzer& a) {
+OverloadSet* ClangType::CreateConstructorOverloadSet(Analyzer& a, Lexer::Access access) {
     auto cons = from->GetSema().LookupConstructors(type->getAsCXXRecordDecl());
-    std::unordered_set<clang::NamedDecl*> decls(cons.begin(), cons.end());
-    auto tupcon = GetTypesForTuple(a) ? TupleInitializable::CreateConstructorOverloadSet(a) : a.GetOverloadSet();
+    std::unordered_set<clang::NamedDecl*> decls;
+    for (auto con : cons)
+        if (AccessMapping.at(con->getAccess()) <= access)
+            decls.insert(con);
+    auto tupcon = GetTypesForTuple(a) ? TupleInitializable::CreateConstructorOverloadSet(a, Lexer::Access::Public) : a.GetOverloadSet();
     return a.GetOverloadSet(a.GetOverloadSet(decls, from, a.GetLvalueType(this)), tupcon);
 }
 

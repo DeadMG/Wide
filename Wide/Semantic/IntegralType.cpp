@@ -48,7 +48,8 @@ std::function<llvm::Type*(llvm::Module*)> IntegralType::GetLLVMType(Analyzer& a)
     };
 }
 
-OverloadSet* IntegralType::CreateConstructorOverloadSet(Wide::Semantic::Analyzer& a) {    
+OverloadSet* IntegralType::CreateConstructorOverloadSet(Wide::Semantic::Analyzer& a, Lexer::Access access) {
+    if (access != Lexer::Access::Public) return GetConstructorOverloadSet(a, Lexer::Access::Public);
     struct integral_constructor : public OverloadResolvable, Callable {
 
         integral_constructor(IntegralType* self)
@@ -56,7 +57,7 @@ OverloadSet* IntegralType::CreateConstructorOverloadSet(Wide::Semantic::Analyzer
 
         IntegralType* integral;
         unsigned GetArgumentCount() override final { return 2; }
-        Type* MatchParameter(Type* t, unsigned num, Analyzer& a) override final {
+        Type* MatchParameter(Type* t, unsigned num, Analyzer& a, Type* source) override final {
             if (num == 0 && t == a.GetLvalueType(integral)) return t;
             if (num == 1)
                 if (auto intty = dynamic_cast<IntegralType*>(t->Decay()))
@@ -96,7 +97,8 @@ std::size_t IntegralType::size(Analyzer& a) {
 std::size_t IntegralType::alignment(Analyzer& a) {
     return a.gen->GetDataLayout().getABIIntegerTypeAlignment(bits);
 }
-OverloadSet* IntegralType::CreateADLOverloadSet(Lexer::TokenType name, Type* lhs, Type* rhs, Analyzer& a) {
+OverloadSet* IntegralType::CreateADLOverloadSet(Lexer::TokenType name, Type* lhs, Type* rhs, Lexer::Access access, Analyzer& a) {
+    if (access != Lexer::Access::Public) return CreateADLOverloadSet(name, lhs, rhs, Lexer::Access::Public, a);
     std::vector<Type*> types;
     types.push_back(a.GetLvalueType(this));
     types.push_back(this);
@@ -153,11 +155,11 @@ OverloadSet* IntegralType::CreateADLOverloadSet(Lexer::TokenType name, Type* lhs
             return ConcreteExpression(c->GetBooleanType(), c->gen->CreateEqualityExpression(args[0].Expr, args[1].Expr));
         }, types, a));
     }
-    return PrimitiveType::CreateADLOverloadSet(name, lhs, rhs, a);
+    return PrimitiveType::CreateADLOverloadSet(name, lhs, rhs, access, a);
 }
-bool IntegralType::IsA(Type* self, Type* other, Analyzer& a) {
+bool IntegralType::IsA(Type* self, Type* other, Analyzer& a, Lexer::Access access) {
     // If we already are, then don't bother.
-    if (Type::IsA(self, other, a)) return true;
+    if (Type::IsA(self, other, a, access)) return true;
 
     // T to U conversion
     // Cannot be U&
@@ -173,7 +175,9 @@ bool IntegralType::IsA(Type* self, Type* other, Analyzer& a) {
         return true;
     return false;
 }
-OverloadSet* IntegralType::CreateOperatorOverloadSet(Type* self, Lexer::TokenType what, Analyzer& a) {
+OverloadSet* IntegralType::CreateOperatorOverloadSet(Type* self, Lexer::TokenType what, Lexer::Access access, Analyzer& a) {
+    if (access != Lexer::Access::Public)
+        return AccessMember(self, what, Lexer::Access::Public, a);
     switch (what) {
     case Lexer::TokenType::Increment:
         return a.GetOverloadSet(make_resolvable([this](std::vector<ConcreteExpression> args, Context c) {
@@ -182,5 +186,5 @@ OverloadSet* IntegralType::CreateOperatorOverloadSet(Type* self, Lexer::TokenTyp
             return ConcreteExpression(this, c->gen->CreateStore(args[0].Expr, next));
         }, { a.GetLvalueType(this) }, a));
     }
-    return PrimitiveType::CreateOperatorOverloadSet(self, what, a);
+    return PrimitiveType::CreateOperatorOverloadSet(self, what, access, a);
 }

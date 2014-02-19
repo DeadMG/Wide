@@ -58,7 +58,7 @@ Codegen::Statement* Function::Scope::GetCleanupExpression(Analyzer& a, Lexer::Ra
     for (auto des = needs_destruction.rbegin(); des != needs_destruction.rend(); ++des) {
         std::vector<Type*> types;
         types.push_back(des->t);
-        chain = a.gen->CreateChainStatement(chain, des->t->Decay()->GetDestructorOverloadSet(*c)->Resolve(types, *c)->Call({ *des }, c).Expr);
+        chain = a.gen->CreateChainStatement(chain, des->t->Decay()->GetDestructorOverloadSet(*c)->Resolve(types, *c, f)->Call({ *des }, c).Expr);
         chain = a.gen->CreateChainStatement(chain, a.gen->CreateLifetimeEnd(des->Expr));
     }
     return chain;

@@ -28,7 +28,7 @@ namespace Wide {
 
             std::size_t size(Analyzer& a) override;
             std::size_t alignment(Analyzer& a) override;
-            bool IsA(Type* self, Type* other, Analyzer& a) override = 0;
+            bool IsA(Type* self, Type* other, Analyzer& a, Lexer::Access access) override = 0;
             bool IsCopyConstructible(Analyzer& a) { return true; }
             bool IsMoveConstructible(Analyzer& a) { return true; }
             bool IsCopyAssignable(Analyzer& a) { return false; }
@@ -38,15 +38,15 @@ namespace Wide {
         public:
             LvalueType(Type* t) : Reference(t) {}
             clang::QualType GetClangType(ClangTU& tu, Analyzer& a) override final;
-            bool IsA(Type* self, Type* other, Analyzer& a) override final;
-            OverloadSet* CreateConstructorOverloadSet(Analyzer& a) override final;
+            bool IsA(Type* self, Type* other, Analyzer& a, Lexer::Access access) override final;
+            OverloadSet* CreateConstructorOverloadSet(Analyzer& a, Lexer::Access access) override final;
         };
         class RvalueType : public Reference {
         public:
             RvalueType(Type* t) : Reference(t) {}
             clang::QualType GetClangType(ClangTU& tu, Analyzer& a) override final;
-            bool IsA(Type* self, Type* other, Analyzer& a) override final;
-            OverloadSet* CreateConstructorOverloadSet(Analyzer& a) override final;
+            bool IsA(Type* self, Type* other, Analyzer& a, Lexer::Access access) override final;
+            OverloadSet* CreateConstructorOverloadSet(Analyzer& a, Lexer::Access access) override final;
         };
     }
 }

@@ -148,6 +148,7 @@ namespace Wide {
         };
         bool IsRvalueType(Type* t);
         bool IsLvalueType(Type* t);
+        Lexer::Access GetAccessSpecifier(Type* from, Type* to, Analyzer& a);
         Lexer::Access GetAccessSpecifier(Context c, Type* to);
         void AnalyzeExportedFunctions(Analyzer& a);
     }

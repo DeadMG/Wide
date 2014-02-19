@@ -237,7 +237,7 @@ bool UserDefinedType::BinaryComplex(Analyzer& a) {
         std::vector<Type*> copytypes;
         copytypes.push_back(a.GetLvalueType(this));
         copytypes.push_back(copytypes.front());
-        IsBinaryComplex = IsBinaryComplex || a.GetOverloadSet(type->Functions.at("type"), a.GetLvalueType(this))->Resolve(copytypes, a);
+        IsBinaryComplex = IsBinaryComplex || a.GetOverloadSet(type->Functions.at("type"), a.GetLvalueType(this))->Resolve(copytypes, a, this);
     }
     if (type->Functions.find("~") != type->Functions.end()) 
         IsBinaryComplex = true;
@@ -257,27 +257,27 @@ bool UserDefinedType::UserDefinedComplex(Analyzer& a) {
         std::vector<Type*> copytypes;
         copytypes.push_back(a.GetLvalueType(this));
         copytypes.push_back(copytypes.front());
-        IsUserDefinedComplex = IsUserDefinedComplex || a.GetOverloadSet(type->Functions.at("type"), a.GetLvalueType(this))->Resolve(copytypes, a);
+        IsUserDefinedComplex = IsUserDefinedComplex || a.GetOverloadSet(type->Functions.at("type"), a.GetLvalueType(this))->Resolve(copytypes, a, this);
 
         std::vector<Type*> movetypes;
         movetypes.push_back(a.GetLvalueType(this));
         movetypes.push_back(a.GetRvalueType(this));
-        IsUserDefinedComplex = IsUserDefinedComplex || a.GetOverloadSet(type->Functions.at("type"), a.GetLvalueType(this))->Resolve(movetypes, a);
+        IsUserDefinedComplex = IsUserDefinedComplex || a.GetOverloadSet(type->Functions.at("type"), a.GetLvalueType(this))->Resolve(movetypes, a, this);
 
         std::vector<Type*> defaulttypes;
         defaulttypes.push_back(a.GetLvalueType(this));
-        HasDefaultConstructor = a.GetOverloadSet(type->Functions.at("type"), a.GetLvalueType(this))->Resolve(defaulttypes, a);
+        HasDefaultConstructor = a.GetOverloadSet(type->Functions.at("type"), a.GetLvalueType(this))->Resolve(defaulttypes, a, this);
     }
     if (type->opcondecls.find(Lexer::TokenType::Assignment) != type->opcondecls.end()) {
         std::vector<Type*> copytypes;
         copytypes.push_back(a.GetLvalueType(this));
         copytypes.push_back(copytypes.front());
-        IsUserDefinedComplex = IsUserDefinedComplex || a.GetOverloadSet(type->opcondecls.at(Lexer::TokenType::Assignment), a.GetLvalueType(this))->Resolve(copytypes, a);
+        IsUserDefinedComplex = IsUserDefinedComplex || a.GetOverloadSet(type->opcondecls.at(Lexer::TokenType::Assignment), a.GetLvalueType(this))->Resolve(copytypes, a, this);
 
         std::vector<Type*> movetypes;
         movetypes.push_back(a.GetLvalueType(this));
         movetypes.push_back(a.GetRvalueType(this));
-        IsUserDefinedComplex = IsUserDefinedComplex || a.GetOverloadSet(type->opcondecls.at(Lexer::TokenType::Assignment), a.GetLvalueType(this))->Resolve(movetypes, a);
+        IsUserDefinedComplex = IsUserDefinedComplex || a.GetOverloadSet(type->opcondecls.at(Lexer::TokenType::Assignment), a.GetLvalueType(this))->Resolve(movetypes, a, this);
     }
     if (type->Functions.find("~") != type->Functions.end())
         IsUserDefinedComplex = true;
@@ -285,31 +285,52 @@ bool UserDefinedType::UserDefinedComplex(Analyzer& a) {
     return *UDCCache;
 }
 
-OverloadSet* UserDefinedType::CreateConstructorOverloadSet(Analyzer& a) {
-    auto user_defined_constructors = type->Functions.find("type") == type->Functions.end() ? a.GetOverloadSet() : a.GetOverloadSet(type->Functions.at("type"), a.GetLvalueType(this));
+OverloadSet* UserDefinedType::CreateConstructorOverloadSet(Analyzer& a, Lexer::Access access) {
+    auto user_defined = [&, this] {
+        if (type->Functions.find("type") == type->Functions.end())
+            return a.GetOverloadSet();
+        std::unordered_set<OverloadResolvable*> resolvables;
+        for (auto f : type->Functions.at("type")->functions) {
+            if (f->access <= access)
+                resolvables.insert(a.GetCallableForFunction(f, a.GetLvalueType(this)));
+        }
+        return a.GetOverloadSet(resolvables, a.GetLvalueType(this));
+    };
+    auto user_defined_constructors = user_defined();
+
     if (UserDefinedComplex(a))
         return user_defined_constructors;
     
-    user_defined_constructors = a.GetOverloadSet(user_defined_constructors, TupleInitializable::CreateConstructorOverloadSet(a));
+    user_defined_constructors = a.GetOverloadSet(user_defined_constructors, TupleInitializable::CreateConstructorOverloadSet(a, access));
 
     std::vector<Type*> types;
     types.push_back(a.GetLvalueType(this));
-    if (auto default_constructor = user_defined_constructors->Resolve(types, a))
+    if (auto default_constructor = user_defined_constructors->Resolve(types, a, this))
         return a.GetOverloadSet(user_defined_constructors, AggregateType::CreateNondefaultConstructorOverloadSet(a));
-    return a.GetOverloadSet(user_defined_constructors, AggregateType::CreateConstructorOverloadSet(a));
+    return a.GetOverloadSet(user_defined_constructors, AggregateType::CreateConstructorOverloadSet(a, access));
 }
 
-OverloadSet* UserDefinedType::CreateOperatorOverloadSet(Type* self, Lexer::TokenType name, Analyzer& a) {
+OverloadSet* UserDefinedType::CreateOperatorOverloadSet(Type* self, Lexer::TokenType name, Lexer::Access access, Analyzer& a) {
+    auto user_defined = [&, this] {
+        if (type->opcondecls.find(name) != type->opcondecls.end()) {
+            std::unordered_set<OverloadResolvable*> resolvable;
+            for (auto&& f : type->opcondecls.at(name)->functions) {
+                if (f->access <= access)
+                    resolvable.insert(a.GetCallableForFunction(f, self));
+            }
+            return a.GetOverloadSet(resolvable, self);
+        }
+        return a.GetOverloadSet();
+    };
+
     if (name == Lexer::TokenType::Assignment) {
         if (UserDefinedComplex(a)) {
-            if (type->opcondecls.find(name) != type->opcondecls.end())
-                return a.GetOverloadSet(type->opcondecls.at(name), self);
-            return a.GetOverloadSet();
+            return user_defined();
         }
     }
     if (type->opcondecls.find(name) != type->opcondecls.end())
-        return a.GetOverloadSet(a.GetOverloadSet(type->opcondecls.at(name), self), AggregateType::CreateOperatorOverloadSet(self, name, a));
-    return AggregateType::CreateOperatorOverloadSet(self, name, a);
+        return a.GetOverloadSet(user_defined(), AggregateType::CreateOperatorOverloadSet(self, name, access, a));
+    return AggregateType::CreateOperatorOverloadSet(self, name, access, a);
 }
 
 OverloadSet* UserDefinedType::CreateDestructorOverloadSet(Analyzer& a) {
@@ -321,14 +342,14 @@ OverloadSet* UserDefinedType::CreateDestructorOverloadSet(Analyzer& a) {
             OverloadSet* aggset;
 
             unsigned GetArgumentCount() override final { return 1; }
-            Type* MatchParameter(Type* t, unsigned num, Analyzer& a) override final { assert(num == 0); return t; }
+            Type* MatchParameter(Type* t, unsigned num, Analyzer& a, Type* source) override final { assert(num == 0); return t; }
             Callable* GetCallableForResolution(std::vector<Type*> tys, Analyzer& a) override final { return this; }
             std::vector<ConcreteExpression> AdjustArguments(std::vector<ConcreteExpression> args, Context c) override final { return args; }
             ConcreteExpression CallFunction(std::vector<ConcreteExpression> args, Context c) override final { 
                 std::vector<Type*> types;
                 types.push_back(args[0].t);
-                auto userdestructor = c->GetOverloadSet(self->type->Functions.at("~"), args[0].t)->Resolve(types, *c)->Call({ args[0] }, c).Expr;
-                auto autodestructor = aggset->Resolve(types, *c)->Call({ args[0] }, c).Expr;
+                auto userdestructor = c->GetOverloadSet(self->type->Functions.at("~"), args[0].t)->Resolve(types, *c, self)->Call({ args[0] }, c).Expr;
+                auto autodestructor = aggset->Resolve(types, *c, self)->Call({ args[0] }, c).Expr;
                 return ConcreteExpression(c->GetLvalueType(self), c->gen->CreateChainExpression(userdestructor, autodestructor));
             }
         };
@@ -340,25 +361,25 @@ OverloadSet* UserDefinedType::CreateDestructorOverloadSet(Analyzer& a) {
 // Gotta override these to respect our user-defined functions
 // else aggregatetype will just assume them.
 // Could just return Type:: all the time but AggregateType will be faster.
-bool UserDefinedType::IsCopyConstructible(Analyzer& a) {
+bool UserDefinedType::IsCopyConstructible(Analyzer& a, Lexer::Access access) {
     if (type->Functions.find("type") != type->Functions.end())
-        return Type::IsCopyConstructible(a);
-    return AggregateType::IsCopyConstructible(a);
+        return Type::IsCopyConstructible(a, access);
+    return AggregateType::IsCopyConstructible(a, access);
 }
-bool UserDefinedType::IsMoveConstructible(Analyzer& a) {
+bool UserDefinedType::IsMoveConstructible(Analyzer& a, Lexer::Access access) {
     if (type->Functions.find("type") != type->Functions.end())
-        return Type::IsMoveConstructible(a);
-    return AggregateType::IsMoveConstructible(a);
+        return Type::IsMoveConstructible(a, access);
+    return AggregateType::IsMoveConstructible(a, access);
 }
-bool UserDefinedType::IsCopyAssignable(Analyzer& a) {
+bool UserDefinedType::IsCopyAssignable(Analyzer& a, Lexer::Access access) {
     if (type->opcondecls.find(Lexer::TokenType::Assignment) != type->opcondecls.end())
-        return Type::IsCopyAssignable(a);
-    return AggregateType::IsCopyAssignable(a);
+        return Type::IsCopyAssignable(a, access);
+    return AggregateType::IsCopyAssignable(a, access);
 }
-bool UserDefinedType::IsMoveAssignable(Analyzer& a) {
+bool UserDefinedType::IsMoveAssignable(Analyzer& a, Lexer::Access access) {
     if (type->opcondecls.find(Lexer::TokenType::Assignment) != type->opcondecls.end())
-        return Type::IsMoveAssignable(a);
-    return AggregateType::IsMoveAssignable(a);
+        return Type::IsMoveAssignable(a, access);
+    return AggregateType::IsMoveAssignable(a, access);
 }
 
 bool UserDefinedType::IsComplexType(Analyzer& a) {

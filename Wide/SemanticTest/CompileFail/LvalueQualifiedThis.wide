@@ -4,7 +4,7 @@ GetTestMetadata() {
 }
 
 type t1 {
-    operator()(t1->lvalue this) {
+    operator()(t1.lvalue this) {
 	    return false;
     }
 }

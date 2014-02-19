@@ -59,10 +59,10 @@ AggregateType::AggregateType(std::vector<Type*> types, Wide::Semantic::Analyzer&
         llvmtypes.push_back(ty->GetLLVMType(a));
 
         IsComplex = IsComplex || ty->IsComplexType(a);
-        copyconstructible = copyconstructible && ty->IsCopyConstructible(a);
-        moveconstructible = moveconstructible && ty->IsMoveConstructible(a);
-        copyassignable = copyassignable && ty->IsCopyAssignable(a);
-        moveassignable = moveassignable && ty->IsMoveAssignable(a);
+        copyconstructible = copyconstructible && ty->IsCopyConstructible(a, Lexer::Access::Public);
+        moveconstructible = moveconstructible && ty->IsMoveConstructible(a, Lexer::Access::Public);
+        copyassignable = copyassignable && ty->IsCopyAssignable(a, Lexer::Access::Public);
+        moveassignable = moveassignable && ty->IsMoveAssignable(a, Lexer::Access::Public);
         constant = constant && ty->GetConstantContext(a);
     }
 
@@ -79,16 +79,16 @@ bool AggregateType::IsComplexType(Analyzer& a) {
     return IsComplex;
 }
 
-bool AggregateType::IsMoveAssignable(Analyzer& a) {
+bool AggregateType::IsMoveAssignable(Analyzer& a, Lexer::Access access) {
     return moveassignable;
 }
-bool AggregateType::IsMoveConstructible(Analyzer& a) {
+bool AggregateType::IsMoveConstructible(Analyzer& a, Lexer::Access access) {
     return moveconstructible;
 }
-bool AggregateType::IsCopyAssignable(Analyzer& a) {
+bool AggregateType::IsCopyAssignable(Analyzer& a, Lexer::Access access) {
     return copyassignable;
 }
-bool AggregateType::IsCopyConstructible(Analyzer& a) {
+bool AggregateType::IsCopyConstructible(Analyzer& a, Lexer::Access access) {
     return copyconstructible;
 }
 
@@ -112,9 +112,11 @@ std::function<llvm::Type*(llvm::Module*)> AggregateType::GetLLVMType(Analyzer& a
     };
 }
 
-OverloadSet* AggregateType::CreateOperatorOverloadSet(Type* t, Lexer::TokenType type, Analyzer& a) {
+OverloadSet* AggregateType::CreateOperatorOverloadSet(Type* t, Lexer::TokenType type, Lexer::Access access, Analyzer& a) {
     if (type != Lexer::TokenType::Assignment)
         return a.GetOverloadSet();
+    if (access != Lexer::Access::Public)
+        return AccessMember(t, type, Lexer::Access::Public, a);
 
     // Similar principle to constructor
     std::unordered_set<OverloadResolvable*> set;
@@ -134,7 +136,7 @@ OverloadSet* AggregateType::CreateOperatorOverloadSet(Type* t, Lexer::TokenType 
                 std::vector<Type*> types;
                 types.push_back(c->GetLvalueType(contents[i]));
                 types.push_back(modify(contents[i]));
-                auto expr = contents[i]->AccessMember(modify(contents[i]), Lexer::TokenType::Assignment, *c)->Resolve(types, *c)->Call({ lhs, PrimitiveAccessMember(args[1], i, *c) }, c).Expr;
+                auto expr = contents[i]->AccessMember(modify(contents[i]), Lexer::TokenType::Assignment, Lexer::Access::Public, *c)->Resolve(types, *c, this)->Call({ lhs, PrimitiveAccessMember(args[1], i, *c) }, c).Expr;
                 move = move ? c->gen->CreateChainExpression(move, expr) : expr;
             }
 
@@ -203,8 +205,8 @@ OverloadSet* AggregateType::CreateNondefaultConstructorOverloadSet(Analyzer& a) 
                 std::vector<Type*> types;
                 types.push_back(c->GetLvalueType(contents[i]));
                 types.push_back(modify(contents[i]));
-                auto set = contents[i]->GetConstructorOverloadSet(*c);
-                auto callable = set->Resolve(types, *c);
+                auto set = contents[i]->GetConstructorOverloadSet(*c, Lexer::Access::Public);
+                auto callable = set->Resolve(types, *c, this);
                 auto expr = callable->Call({ memory, PrimitiveAccessMember(args[1], i, *c) }, c).Expr;
                 move = move ? c->gen->CreateChainExpression(move, expr) : expr;
             }
@@ -223,14 +225,16 @@ OverloadSet* AggregateType::CreateNondefaultConstructorOverloadSet(Analyzer& a) 
     }
     return a.GetOverloadSet(set);
 }
-OverloadSet* AggregateType::CreateConstructorOverloadSet(Analyzer& a) {
+OverloadSet* AggregateType::CreateConstructorOverloadSet(Analyzer& a, Lexer::Access access) {
+    // Use create instead of get because get will return the more derived class's constructors and that is not what we want.
+    if (access != Lexer::Access::Public) return AggregateType::CreateConstructorOverloadSet(a, Lexer::Access::Public);
     std::unordered_set<OverloadResolvable*> set;
     // Then default.
     auto is_default_constructible = [this, &a] {
         for (auto ty : contents) {
             std::vector<Type*> types;
             types.push_back(a.GetLvalueType(ty));
-            if (!ty->GetConstructorOverloadSet(a)->Resolve(types, a))
+            if (!ty->GetConstructorOverloadSet(a, Lexer::Access::Public)->Resolve(types, a, this))
                 return false;
         }
         return true;
@@ -247,7 +251,7 @@ OverloadSet* AggregateType::CreateConstructorOverloadSet(Analyzer& a) {
                 ConcreteExpression memory(c->GetLvalueType(contents[i]), c->gen->CreateFieldExpression(args[0].Expr, FieldIndices[i]));
                 std::vector<Type*> types;
                 types.push_back(c->GetLvalueType(contents[i]));
-                auto expr = contents[i]->GetConstructorOverloadSet(*c)->Resolve(types, *c)->Call({ memory }, c).Expr;
+                auto expr = contents[i]->GetConstructorOverloadSet(*c, Lexer::Access::Public)->Resolve(types, *c, this)->Call({ memory }, c).Expr;
                 def = def ? c->gen->CreateChainExpression(def, expr) : expr;
             }
             return ConcreteExpression(c->GetLvalueType(this), def);
@@ -259,9 +263,8 @@ OverloadSet* AggregateType::CreateDestructorOverloadSet(Analyzer& a) {
     struct Destructor : OverloadResolvable, Callable {
         AggregateType* self;
         Destructor(AggregateType* ty) : self(ty) {}
-
         unsigned GetArgumentCount() override final { return 1; }
-        Type* MatchParameter(Type* t, unsigned num, Analyzer& a) override final { assert(num == 0); return t; }
+        Type* MatchParameter(Type* t, unsigned num, Analyzer& a, Type* source) override final { assert(num == 0); return t; }
         Callable* GetCallableForResolution(std::vector<Type*> tys, Analyzer& a) override final { return this; }
         std::vector<ConcreteExpression> AdjustArguments(std::vector<ConcreteExpression> args, Context c) override final { return args; }
         ConcreteExpression CallFunction(std::vector<ConcreteExpression> args, Context c) override final {
@@ -272,7 +275,7 @@ OverloadSet* AggregateType::CreateDestructorOverloadSet(Analyzer& a) {
                 auto member = ConcreteExpression(c->GetLvalueType(self->contents[i]), c->gen->CreateFieldExpression(args[0].Expr, self->GetFieldIndex(i)));
                 std::vector<Type*> types;
                 types.push_back(member.t);
-                auto des = self->contents[i]->GetDestructorOverloadSet(*c)->Resolve(types, *c)->Call({ member }, c).Expr;
+                auto des = self->contents[i]->GetDestructorOverloadSet(*c)->Resolve(types, *c, self)->Call({ member }, c).Expr;
                 expr = expr ? c->gen->CreateChainExpression(expr, des) : des;
             }
             return ConcreteExpression(c->GetLvalueType(self), expr);

@@ -38,7 +38,10 @@ Codegen::Expression* Bool::BuildBooleanConversion(ConcreteExpression e, Context 
     return e.BuildValue(c).Expr;
 }
 
-OverloadSet* Bool::CreateOperatorOverloadSet(Type* t, Lexer::TokenType name, Analyzer& a) {
+OverloadSet* Bool::CreateOperatorOverloadSet(Type* t, Lexer::TokenType name, Lexer::Access access, Analyzer& a) {
+    if (access != Lexer::Access::Public)
+        return AccessMember(t, name, Lexer::Access::Public, a);
+
     if (t == a.GetLvalueType(this)) {
         std::vector<Type*> types;
         types.push_back(a.GetLvalueType(this));
@@ -59,7 +62,7 @@ OverloadSet* Bool::CreateOperatorOverloadSet(Type* t, Lexer::TokenType name, Ana
                 return ConcreteExpression(args[0].t, c->gen->CreateStore(args[0].Expr, c->gen->CreateXorExpression(c->gen->CreateLoad(args[0].Expr), args[1].Expr)));
             }, types, a));
         }
-        return PrimitiveType::CreateOperatorOverloadSet(t, name, a);
+        return PrimitiveType::CreateOperatorOverloadSet(t, name, access, a);
     }
     std::vector<Type*> types;
     types.push_back(this);

@@ -1,0 +1,7 @@
+type t {
+private:
+    f() { return false; }
+}
+Main() {
+    return t().f();
+}

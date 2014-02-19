@@ -1,0 +1,12 @@
+type t {
+    type() {}
+    type(t.rvalue r) {}
+private:
+    type(t.lvalue r) {}
+}
+Main() {
+    var := { t(), false };
+    copy := var;
+	x, y := copy;
+	return y;
+}

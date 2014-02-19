@@ -19,10 +19,18 @@ Module::Module(const AST::Module* p, Module* higher)
 void Module::AddSpecialMember(std::string name, ConcreteExpression t){
     SpecialMembers.insert(std::make_pair(std::move(name), t));
 }
-OverloadSet* Module::CreateOperatorOverloadSet(Type* t, Wide::Lexer::TokenType ty, Analyzer& a) {
-    if (m->opcondecls.find(ty) != m->opcondecls.end())
-        return a.GetOverloadSet(m->opcondecls.find(ty)->second, this);
-    return PrimitiveType::CreateOperatorOverloadSet(t, ty, a);
+OverloadSet* Module::CreateOperatorOverloadSet(Type* t, Wide::Lexer::TokenType ty, Lexer::Access access, Analyzer& a) {
+    if (m->opcondecls.find(ty) != m->opcondecls.end()) {
+        std::unordered_set<OverloadResolvable*> resolvable;
+        for (auto func : m->opcondecls.at(ty)->functions) {
+            if (func->access > access)
+                continue;
+            resolvable.insert(a.GetCallableForFunction(func, this));
+        }
+        if (resolvable.empty()) return PrimitiveType::CreateOperatorOverloadSet(t, ty, access, a);
+        return a.GetOverloadSet(resolvable);
+    }
+    return PrimitiveType::CreateOperatorOverloadSet(t, ty, access, a);
 }
 Wide::Util::optional<ConcreteExpression> Module::AccessMember(ConcreteExpression val, std::string name, Context c) {
     auto access = GetAccessSpecifier(c, this);

@@ -29,9 +29,9 @@ namespace Wide {
             std::size_t size(Analyzer& a) override final;
             std::size_t alignment(Analyzer& a) override final;
             Type* GetContext(Analyzer& a) override final;
-            OverloadSet* CreateADLOverloadSet(Lexer::TokenType what, Type* lhs, Type* rhs, Analyzer& a) override final;
-            OverloadSet* CreateOperatorOverloadSet(Type* self, Lexer::TokenType name, Analyzer& a) override final;
-            OverloadSet* CreateConstructorOverloadSet(Wide::Semantic::Analyzer&) override final;
+            OverloadSet* CreateADLOverloadSet(Lexer::TokenType what, Type* lhs, Type* rhs, Lexer::Access access, Analyzer& a) override final;
+            OverloadSet* CreateOperatorOverloadSet(Type* self, Lexer::TokenType name, Lexer::Access access, Analyzer& a) override final;
+            OverloadSet* CreateConstructorOverloadSet(Wide::Semantic::Analyzer&, Lexer::Access) override final;
             OverloadSet* CreateDestructorOverloadSet(Wide::Semantic::Analyzer&) override final;
             Wide::Util::optional<std::vector<Type*>> GetTypesForTuple(Analyzer& a) override final;
             ConcreteExpression PrimitiveAccessMember(ConcreteExpression e, unsigned num, Analyzer& a) override final;

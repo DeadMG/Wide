@@ -16,12 +16,12 @@ namespace Wide {
             std::function<llvm::Type*(llvm::Module*)> GetLLVMType(Analyzer& a) override final;
 
 
-            OverloadSet* CreateADLOverloadSet(Lexer::TokenType name, Type* lhs, Type* rhs, Analyzer& a) override final;
+            OverloadSet* CreateADLOverloadSet(Lexer::TokenType name, Type* lhs, Type* rhs, Lexer::Access access, Analyzer& a) override final;
             std::size_t size(Analyzer& a) override final;
             std::size_t alignment(Analyzer& a) override final;
-            bool IsA(Type* self, Type* other, Analyzer& a) override final;
-            OverloadSet* CreateConstructorOverloadSet(Wide::Semantic::Analyzer&) override final;
-            OverloadSet* CreateOperatorOverloadSet(Type* self, Lexer::TokenType what, Analyzer& a) override final;
+            bool IsA(Type* self, Type* other, Analyzer& a, Lexer::Access access) override final;
+            OverloadSet* CreateConstructorOverloadSet(Wide::Semantic::Analyzer&, Lexer::Access access) override final;
+            OverloadSet* CreateOperatorOverloadSet(Type* self, Lexer::TokenType what, Lexer::Access access, Analyzer& a) override final;
         };
     }
 }

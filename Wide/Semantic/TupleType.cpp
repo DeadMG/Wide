@@ -24,7 +24,7 @@ ConcreteExpression TupleType::ConstructFromLiteral(std::vector<ConcreteExpressio
         std::vector<Type*> types;
         types.push_back(c->GetLvalueType(GetMembers()[i]));
         types.push_back(exprs[i].t);
-        auto call = GetMembers()[i]->GetConstructorOverloadSet(*c)->Resolve(types, *c);
+        auto call = GetMembers()[i]->GetConstructorOverloadSet(*c, Lexer::Access::Public)->Resolve(types, *c, this);
         if (!call)
             throw std::runtime_error("Could not construct tuple value from literal.");
         auto expr = call->Call({ PrimitiveAccessMember(memory, i, *c), exprs[i] }, c).Expr;
@@ -36,9 +36,9 @@ ConcreteExpression TupleType::ConstructFromLiteral(std::vector<ConcreteExpressio
     return memory;
 }
 
-bool TupleType::IsA(Type* self, Type* other, Analyzer& a) {
+bool TupleType::IsA(Type* self, Type* other, Analyzer& a, Lexer::Access access) {
     auto udt = dynamic_cast<TupleInitializable*>(other);
-    if (!udt) return Type::IsA(self, other, a);
+    if (!udt) return Type::IsA(self, other, a, access);
     auto udt_members = udt->GetTypesForTuple(a);
     if (!udt_members) return false;
     if (GetMembers().size() != udt_members->size()) return false;
@@ -47,7 +47,7 @@ bool TupleType::IsA(Type* self, Type* other, Analyzer& a) {
         std::vector<Type*> types;
         types.push_back(a.GetLvalueType(udt_members->at(i)));
         types.push_back(IsLvalueType(self) ? a.GetLvalueType(GetMembers()[i]) : a.GetRvalueType(GetMembers()[i]));
-        is = is && udt_members->at(i)->GetConstructorOverloadSet(a)->Resolve(types, a);
+        is = is && udt_members->at(i)->GetConstructorOverloadSet(a, Lexer::Access::Public)->Resolve(types, a, this);
     }
     return is;
 }

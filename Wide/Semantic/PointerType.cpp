@@ -40,13 +40,14 @@ PointerType::PointerType(Type* point) {
     pointee = point;
 }
 
-OverloadSet* PointerType::CreateConstructorOverloadSet(Analyzer& a) {
+OverloadSet* PointerType::CreateConstructorOverloadSet(Analyzer& a, Lexer::Access access) {
+    if (access != Lexer::Access::Public) return GetConstructorOverloadSet(a, Lexer::Access::Public);
     struct PointerComparableResolvable : OverloadResolvable, Callable {
         PointerComparableResolvable(PointerType* s)
         : self(s) {}
         PointerType* self;
         unsigned GetArgumentCount() override final { return 2; }
-        Type* MatchParameter(Type* t, unsigned num, Analyzer& a) override final {
+        Type* MatchParameter(Type* t, unsigned num, Analyzer& a, Type* source) override final {
             if (num == 0) {
                 if (t == a.GetLvalueType(self))
                     return t;
@@ -55,7 +56,7 @@ OverloadSet* PointerType::CreateConstructorOverloadSet(Analyzer& a) {
             }
             if (t->Decay() == self) return nullptr;
             if (!dynamic_cast<PointerType*>(t->Decay())) return nullptr;
-            if (t->IsA(t, self, a))
+            if (t->IsA(t, self, a, GetAccessSpecifier(source, t, a)))
                 return t;
             return nullptr;
         }
@@ -67,7 +68,7 @@ OverloadSet* PointerType::CreateConstructorOverloadSet(Analyzer& a) {
         }
         Callable* GetCallableForResolution(std::vector<Type*>, Analyzer& a) override final { return this; }
     };
-    auto usual = PrimitiveType::CreateConstructorOverloadSet(a);
+    auto usual = PrimitiveType::CreateConstructorOverloadSet(a, Lexer::Access::Public);
     //return usual;
     std::vector<Type*> types;
     types.push_back(a.GetLvalueType(this));
@@ -85,12 +86,12 @@ Codegen::Expression* PointerType::BuildBooleanConversion(ConcreteExpression obj,
     return c->gen->CreateNegateExpression(c->gen->CreateIsNullExpression(obj.BuildValue(c).Expr));
 }
 
-bool PointerType::IsA(Type* self, Type* other, Analyzer& a) {
+bool PointerType::IsA(Type* self, Type* other, Analyzer& a, Lexer::Access access) {
     // T* is U* if T is derived from U.
     // But reference to T* is not reference to U* so keep that shit under wraps yo.
     // T* or T*&& can be U* or U*&&
     // T*& can be U*
-    if (Type::IsA(self, other, a)) return true;
+    if (Type::IsA(self, other, a, access)) return true;
     if (IsLvalueType(other)) return false;
 
     auto otherptr = dynamic_cast<PointerType*>(other->Decay());
@@ -100,8 +101,10 @@ bool PointerType::IsA(Type* self, Type* other, Analyzer& a) {
     return udt->IsDerivedFrom(otherptr->pointee, a) == InheritanceRelationship::UnambiguouslyDerived;
 }
 
-OverloadSet* PointerType::CreateOperatorOverloadSet(Type* self, Lexer::TokenType what, Analyzer& a) {
-    if (what != Lexer::TokenType::Dereference) return PrimitiveType::CreateOperatorOverloadSet(self, what, a);
+OverloadSet* PointerType::CreateOperatorOverloadSet(Type* self, Lexer::TokenType what, Lexer::Access access, Analyzer& a) {
+    if (access != Lexer::Access::Public)
+        return AccessMember(self, what, Lexer::Access::Public, a);
+    if (what != Lexer::TokenType::Dereference) return PrimitiveType::CreateOperatorOverloadSet(self, what, access, a);
     return a.GetOverloadSet(make_resolvable([this](std::vector<ConcreteExpression> args, Context c) {
         return ConcreteExpression(c->GetLvalueType(pointee), args[0].BuildValue(c).Expr);
     }, { this }, a));

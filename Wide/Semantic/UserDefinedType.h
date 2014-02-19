@@ -51,14 +51,14 @@ namespace Wide {
             clang::QualType GetClangType(ClangTU& TU, Analyzer& a) override final;
             Wide::Util::optional<ConcreteExpression> AccessMember(ConcreteExpression, std::string name, Context c) override final;
 
-            OverloadSet* CreateConstructorOverloadSet(Wide::Semantic::Analyzer&) override final;
-            OverloadSet* CreateOperatorOverloadSet(Type* self, Lexer::TokenType member, Analyzer& a) override final;
+            OverloadSet* CreateConstructorOverloadSet(Wide::Semantic::Analyzer&, Lexer::Access access) override final;
+            OverloadSet* CreateOperatorOverloadSet(Type* self, Lexer::TokenType member, Lexer::Access access, Analyzer& a) override final;
             OverloadSet* CreateDestructorOverloadSet(Analyzer& a) override final;
 
-            bool IsCopyConstructible(Analyzer& a) override final;
-            bool IsMoveConstructible(Analyzer& a) override final;
-            bool IsCopyAssignable(Analyzer& a) override final;
-            bool IsMoveAssignable(Analyzer& a) override final;
+            bool IsCopyConstructible(Analyzer& a, Lexer::Access access) override final;
+            bool IsMoveConstructible(Analyzer& a, Lexer::Access access) override final;
+            bool IsCopyAssignable(Analyzer& a, Lexer::Access access) override final;
+            bool IsMoveAssignable(Analyzer& a, Lexer::Access access) override final;
             bool IsComplexType(Analyzer& a) override final;
 
             Wide::Util::optional<std::vector<Type*>> GetTypesForTuple(Analyzer& a) override final;
