@@ -20,6 +20,7 @@
 #include <Wide/Semantic/ClangTemplateClass.h>
 #include <Wide/Semantic/OverloadSet.h>
 #include <Wide/Semantic/UserDefinedType.h>
+#include <Wide/Semantic/TemplateType.h>
 #include <Wide/Semantic/NullType.h>
 #include <Wide/Semantic/SemanticError.h>
 #include <Wide/Semantic/FloatType.h>
@@ -48,7 +49,6 @@ Analyzer::Analyzer(const Options::Clang& opts, Codegen::Generator& g, const AST:
     , gen(&g)
     , null(nullptr)
 {
-    LiteralStringType = arena.Allocate<StringType>();
     struct NothingCall : public MetaType {
         ConcreteExpression BuildCall(ConcreteExpression val, std::vector<ConcreteExpression> args, Context c) override {
             return val;
@@ -136,7 +136,7 @@ ConcreteExpression Analyzer::AnalyzeExpression(Type* t, const AST::Expression* e
 
         void VisitString(const AST::String* str) {
             out = ConcreteExpression(
-                self->LiteralStringType,
+                self->GetTypeForString(str->val),
                 self->gen->CreateStringExpression(str->val)
             );
         }
@@ -367,10 +367,7 @@ Type* Analyzer::GetClangType(ClangTU& from, clang::QualType t) {
     if (t->isNullPtrType())
         return null;
     if (t->isPointerType()) {
-        auto pt = t->getPointeeType();
-        if (pt->isCharType())
-            return LiteralStringType;
-        return GetPointerType(GetClangType(from, pt));
+        return GetPointerType(GetClangType(from, t->getPointeeType()));
     }
     if (t->isBooleanType())
         return Boolean;
@@ -526,9 +523,6 @@ Type* Analyzer::GetVoidType() {
 }
 Type* Analyzer::GetNothingFunctorType() {
     return NothingFunctor;
-}
-Type* Analyzer::GetLiteralStringType() {
-    return LiteralStringType;
 }
 
 #pragma warning(disable : 4800)
@@ -747,8 +741,10 @@ void ProcessOverloadSet(const AST::FunctionOverloadSet* set, Analyzer& a, Module
 }
 void AnalyzeExportedFunctionsInModule(Analyzer& a, Module* m) {
     auto mod = m->GetASTModule();
-    for (auto overset : mod->functions)
-        ProcessOverloadSet(overset.second, a, m);
+    for (auto decl : mod->decls) {
+        if (auto overset = dynamic_cast<const AST::FunctionOverloadSet*>(decl.second))
+            ProcessOverloadSet(overset, a, m);
+    }
     for (auto overset : mod->opcondecls)
         ProcessOverloadSet(overset.second, a, m);
     for (auto decl : mod->decls)
@@ -757,4 +753,51 @@ void AnalyzeExportedFunctionsInModule(Analyzer& a, Module* m) {
 }
 void Semantic::AnalyzeExportedFunctions(Analyzer& a) {
     AnalyzeExportedFunctionsInModule(a, a.GetGlobalModule());
+}
+OverloadResolvable* Analyzer::GetCallableForTemplateType(const AST::TemplateType* t, Type* context) {
+    if (TemplateTypeCallables.find(t) != TemplateTypeCallables.end())
+        return TemplateTypeCallables[t];
+
+    struct TemplateTypeCallable : OverloadResolvable, Callable {
+        TemplateTypeCallable(const AST::TemplateType* f, Type* con)
+        : templatetype(f), context(con) {}
+        Type* context;
+        const Wide::AST::TemplateType* templatetype;
+        unsigned GetArgumentCount() override final { return templatetype->arguments.size(); }
+
+        Type* MatchParameter(Type* argument, unsigned num, Analyzer& a, Type* source) override final {
+            if (!templatetype->arguments[num].type)
+                throw Wide::Semantic::SemanticError(templatetype->arguments[num].location, Wide::Semantic::Error::ExpressionNoType);
+
+            auto parameter_type = dynamic_cast<ConstructorType*>(a.AnalyzeExpression(context, templatetype->arguments[num].type, [](ConcreteExpression e) {}).t->Decay());
+
+            if (!parameter_type) throw Wide::Semantic::SemanticError(templatetype->arguments[num].location, Wide::Semantic::Error::ExpressionNoType);
+
+            if (!parameter_type->GetConstructedType()->GetConstantContext(a)) throw std::runtime_error("Attempted to use a non-constant type as template parameter argument.");
+
+            if (argument->IsA(argument, parameter_type->GetConstructedType(), a, GetAccessSpecifier(source, argument, a)))
+                return parameter_type->GetConstructedType();
+            return nullptr;
+        }
+        std::vector<ConcreteExpression> AdjustArguments(std::vector<ConcreteExpression> args, Context c) override final { return args; }
+        Callable* GetCallableForResolution(std::vector<Type*> types, Analyzer& a) override final { return this; }
+        ConcreteExpression CallFunction(std::vector<ConcreteExpression> args, Context c) override final {
+            std::vector<Type*> types;
+            for (auto arg : args)
+                types.push_back(arg.t);
+            return c->GetConstructorType(c->GetTemplateType(templatetype, context, types))->BuildValueConstruction({}, c);
+        }
+    };
+
+    return TemplateTypeCallables[t] = arena.Allocate<TemplateTypeCallable>(t, context);
+}
+
+TemplateType* Analyzer::GetTemplateType(const Wide::AST::TemplateType*, Type* context, std::vector<Type*> arguments) {
+    return nullptr;
+}
+
+Type* Analyzer::GetTypeForString(std::string str) {
+    if (LiteralStringTypes.find(str) != LiteralStringTypes.end())
+        return LiteralStringTypes[str];
+    return LiteralStringTypes[str] = arena.Allocate<StringType>(str);
 }

@@ -92,8 +92,9 @@ namespace Wide {
             void CreateFunction(std::string name, std::vector<Statement*> body, std::vector<Statement*> prolog, Lexer::Range where, Lexer::Range r, Type* p, std::vector<FunctionArgument>, std::vector<Variable*> caps, Lexer::Access a);
             void CreateOverloadedOperator(Wide::Lexer::TokenType name, std::vector<Statement*> body, std::vector<Statement*> prolog, Lexer::Range r, Module* p, std::vector<FunctionArgument>, Lexer::Access a);
             void CreateOverloadedOperator(Wide::Lexer::TokenType name, std::vector<Statement*> body, std::vector<Statement*> prolog, Lexer::Range r, Type* p, std::vector<FunctionArgument>, Lexer::Access a);
-            Type* CreateType(std::string name, Module* p, std::vector<Expression*> bases, Lexer::Range loc, Lexer::Access a);
             Type* CreateType(std::vector<Expression*> bases, Lexer::Range loc, Lexer::Access a);
+            void AddTypeToModule(Module* m, std::string name, Type* t);
+            void AddTemplateTypeToModule(Module* m, std::string name, std::vector<FunctionArgument>, Type* t);
             void SetTypeEndLocation(Lexer::Range loc, Type* t);
             void SetModuleEndLocation(Module* m, Lexer::Range loc);            
             std::vector<FunctionArgument> CreateFunctionArgumentGroup();

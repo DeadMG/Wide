@@ -3,5 +3,5 @@ f(bool b) {
     return b;
 }
 Main() {
-    return f(cpp.macro(cpp("JITSuccess/CPPInterop/BooleanMacro.h"), "MACRO"));
+    return f(cpp.macro(cpp.literal("#define MACRO true"), "MACRO"));
 }

@@ -34,15 +34,14 @@ namespace Wide {
             //std::string name;
         };
         struct Function;
-        struct FunctionOverloadSet {
-            FunctionOverloadSet() {}
+        struct FunctionOverloadSet : DeclContext {
+            FunctionOverloadSet(Lexer::Range r) : DeclContext(r, Lexer::Access::Public) {}
             std::unordered_set<Function*> functions;
         };
         struct Module : public DeclContext {
             Module(Lexer::Range where, Lexer::Access a)
                 : DeclContext(where, a) {}
             std::unordered_map<std::string, DeclContext*> decls;
-            std::unordered_map<std::string, FunctionOverloadSet*> functions;
             std::unordered_map<Lexer::TokenType, FunctionOverloadSet*> opcondecls;
         };
         struct Variable;
@@ -85,24 +84,23 @@ namespace Wide {
             Lexer::Range location;
         };
         struct FunctionBase {
-            FunctionBase(std::vector<FunctionArgument> a, std::vector<Statement*> s)
-                : args(std::move(a)), statements(std::move(s)) {}
+            Lexer::Range where;
+            FunctionBase(std::vector<FunctionArgument> a, std::vector<Statement*> s, Lexer::Range loc)
+                : args(std::move(a)), statements(std::move(s)), where(loc) {}
             std::vector<FunctionArgument> args;
             std::vector<Statement*> statements;
             virtual ~FunctionBase() {} // Need dynamic_cast.
-            virtual Lexer::Range where() const = 0;
         };
         struct Lambda : Expression, FunctionBase {
-            Lexer::Range where() const override final { return location; }
             std::vector<Variable*> Captures;
             bool defaultref;
             Lambda(std::vector<Statement*> body, std::vector<FunctionArgument> arg, Lexer::Range r, bool ref, std::vector<Variable*> caps)
-                : Expression(r), FunctionBase(std::move(arg), std::move(body)), Captures(std::move(caps)), defaultref(ref) {}
+                : Expression(r), FunctionBase(std::move(arg), std::move(body), r), Captures(std::move(caps)), defaultref(ref) {}
         };
-        struct Function : DeclContext, FunctionBase {
-            Lexer::Range where() const override final { return DeclContext::where.front(); }
+        struct Function : FunctionBase {
+            Lexer::Access access;
             Function(std::vector<Statement*> b, std::vector<Statement*> prolog, Lexer::Range loc, std::vector<FunctionArgument> ar, Lexer::Access a)
-                : FunctionBase(std::move(ar), std::move(b)), DeclContext(loc, a), prolog(std::move(prolog)) {}
+                : FunctionBase(std::move(ar), std::move(b), loc), access(a), prolog(std::move(prolog)) {}
             std::vector<Statement*> prolog;
         };
         struct Constructor : Function {
@@ -223,6 +221,16 @@ namespace Wide {
 
             Tuple(std::vector<Expression*> exprs, Lexer::Range where)
                 : expressions(std::move(exprs)), Expression(where) {}
+        };
+        struct TemplateType {
+            Type* t;
+            std::vector<FunctionArgument> arguments;
+            TemplateType(Type* what, std::vector<FunctionArgument> args)
+                : t(what), arguments(args) {}
+        };
+        struct TemplateTypeOverloadSet : DeclContext {
+            TemplateTypeOverloadSet(Lexer::Range where) : DeclContext(where, Lexer::Access::Public) {}
+            std::unordered_set<TemplateType*> templatetypes;
         };
         static const std::shared_ptr<std::string> global_module_location;
     }

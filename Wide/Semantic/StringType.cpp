@@ -22,7 +22,7 @@ std::function<llvm::Type*(llvm::Module*)> StringType::GetLLVMType(Analyzer& a) {
     };
 }
 clang::QualType StringType::GetClangType(ClangTU& TU, Analyzer& a) {
-    return TU.GetASTContext().getPointerType(TU.GetASTContext().CharTy);
+    return TU.GetASTContext().getPointerType(TU.GetASTContext().getConstType(TU.GetASTContext().CharTy));
 }
 
 std::size_t StringType::size(Analyzer& a) {

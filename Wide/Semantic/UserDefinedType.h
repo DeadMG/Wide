@@ -6,11 +6,9 @@
 #include <string>
 #include <vector>
 
-#ifndef _MSC_VER
 #pragma warning(push, 0)
 #include <clang/AST/Type.h>
 #pragma warning(pop)
-#endif
 
 namespace Wide {
     namespace AST {

@@ -100,14 +100,3 @@ namespace Wide {
         };
     }
 } 
-/*
-std::string to_string(char c) {
-    std::stringstream strstr;
-    strstr << (short)c;
-    return strstr.str();
-}
-template<typename T> std::string to_string(T t) {
-    std::stringstream strstr;
-    strstr << t;
-    return strstr.str();
-}*/

@@ -5,14 +5,15 @@
 namespace Wide {
     namespace Semantic {
         class StringType : public PrimitiveType {
-            llvm::LLVMContext* con;
+            std::string value;
         public:
-            StringType() {}
+            StringType(std::string val) : value(val) {}
         
-            std::function<llvm::Type*(llvm::Module*)> GetLLVMType(Analyzer& a) override;        
-            clang::QualType GetClangType(ClangTU& TU, Analyzer& a) override;
-            std::size_t size(Analyzer& a) override;
-            std::size_t alignment(Analyzer& a) override;
+            std::string GetValue() { return value; }
+            std::function<llvm::Type*(llvm::Module*)> GetLLVMType(Analyzer& a) override final;
+            clang::QualType GetClangType(ClangTU& TU, Analyzer& a) override final;
+            std::size_t size(Analyzer& a) override final;
+            std::size_t alignment(Analyzer& a) override final;
         }; 
     }
 }

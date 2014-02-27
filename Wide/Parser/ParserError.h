@@ -67,7 +67,8 @@ namespace Wide {
             VariableListNoIdentifier,
             VariableListNoInitializer,
             AccessSpecifierNoColon,
-            ProtectedModuleScope
+            ProtectedModuleScope,
+            TemplateNoArguments
         };         
 
         enum class Warning : int {
@@ -154,6 +155,7 @@ namespace Wide {
                 std::make_pair(Error::VariableListNoInitializer, "Expected to find := after identifier [, identifier]* to create a variable statement."),
                 std::make_pair(Error::AccessSpecifierNoColon, "Expected to find : after private, public, or protected to create an access specifier."),
                 std::make_pair(Error::ProtectedModuleScope, "Cannot define module-scope definitions as protected."),
+                std::make_pair(Error::TemplateNoArguments, "Expected ( to introduce template arguments after template."),
             };
             return std::unordered_map<Error, std::string>(std::begin(strings), std::end(strings));
         }());

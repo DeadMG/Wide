@@ -1088,8 +1088,7 @@ namespace Wide {
                 lex(colon);
                 return group;
             }
-            void ParseTypeDeclaration(ModuleType m, LocationType loc, Lexer::Access a) {
-                auto ident = Check(Error::ModuleScopeTypeNoIdentifier, Lexer::TokenType::Identifier);
+            auto ParseTypeDeclaration(ModuleType m, LocationType loc, Lexer::Access a, TokenType& ident) -> decltype(sema.CreateType(ParseTypeBases(), loc, a)) {
                 auto bases = ParseTypeBases();
                 auto t = Check(Error::ModuleScopeTypeNoCurlyBrace, [&](decltype(lex())& curr) -> bool {
                     if(curr.GetType() == Lexer::TokenType::OpenCurlyBracket)
@@ -1102,8 +1101,9 @@ namespace Wide {
                     }
                     return false;
                 });
-                auto ty = sema.CreateType(ident.GetValue(), m, bases, loc + t.GetLocation(), a);
-                return ParseTypeBody(ty);
+                auto ty = sema.CreateType(bases, loc + t.GetLocation(), a);
+                ParseTypeBody(ty);
+                return ty;
             }
             Lexer::Access ParseModuleLevelDeclaration(ModuleType m, Lexer::Access a) {
                 try {
@@ -1118,6 +1118,13 @@ namespace Wide {
                         ParseFunction(token, m, t.GetLocation(), a);
                         return a;
                     }
+                    if (token.GetType() == Lexer::TokenType::Template){
+                        auto args = ParseFunctionDefinitionArguments(Check(Error::TemplateNoArguments, Lexer::TokenType::OpenBracket).GetLocation());
+                        auto ident = Check(Error::ModuleScopeTypeNoIdentifier, Lexer::TokenType::Identifier);
+                        auto ty = ParseTypeDeclaration(m, token.GetLocation(), a, ident);
+                        sema.AddTemplateTypeToModule(m, ident.GetValue(), args, ty);
+                        return a;
+                    }
                     if(token.GetType() == Lexer::TokenType::Using) {
                         ParseUsingDefinition(m, token, a);
                         return a;
@@ -1126,8 +1133,10 @@ namespace Wide {
                         ParseModuleDeclaration(m, token, a);
                         return a;
                     }
-                    if(token.GetType() == Lexer::TokenType::Type) {
-                        ParseTypeDeclaration(m, token.GetLocation(), a);
+                    if (token.GetType() == Lexer::TokenType::Type) {
+                        auto ident = Check(Error::ModuleScopeTypeNoIdentifier, Lexer::TokenType::Identifier);
+                        auto ty = ParseTypeDeclaration(m, token.GetLocation(), a, ident);
+                        sema.AddTypeToModule(m, ident.GetValue(), ty);
                         return a;
                     }
                     if (token.GetType() == Lexer::TokenType::Private) {

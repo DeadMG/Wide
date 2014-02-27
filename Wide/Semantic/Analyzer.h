@@ -43,6 +43,7 @@ namespace Wide {
         struct Type;
         struct DeclContext;
         struct Identifier;
+        struct TemplateType;
     };
     namespace Semantic {
         class ClangTU;
@@ -67,6 +68,8 @@ namespace Wide {
         struct NullType;
         struct Result;
         class TupleType;
+        class StringType;
+        class TemplateType;
         class Analyzer {
             Module* global;
             std::unordered_map<std::unordered_set<OverloadResolvable*>, OverloadSet*, SetTypeHasher> callable_overload_sets;
@@ -88,12 +91,13 @@ namespace Wide {
             std::unordered_map<Type*, PointerType*> Pointers;
             std::unordered_map<OverloadSet*, std::unordered_map<OverloadSet*, OverloadSet*>> CombinedOverloadSets;
             std::unordered_map<const AST::FunctionBase*, OverloadResolvable*> FunctionCallables;
+            std::unordered_map<const AST::TemplateType*, OverloadResolvable*> TemplateTypeCallables;
             std::unordered_map<std::vector<Type*>, TupleType*, VectorTypeHasher> tupletypes;
+            std::unordered_map<std::string, StringType*> LiteralStringTypes;
 
             const Options::Clang* clangopts;
 
             NullType* null;
-            Type* LiteralStringType;
             Type* Void;
             Type* Boolean;
             Type* NothingFunctor;
@@ -110,7 +114,7 @@ namespace Wide {
             Type* GetNullType();
             Type* GetBooleanType();
             Type* GetNothingFunctorType();
-            Type* GetLiteralStringType();
+            Type* GetTypeForString(std::string str);
             
             // The contract of this function is to return the Wide type that corresponds to that Clang type.
             // Not to return a ClangType instance.
@@ -134,9 +138,10 @@ namespace Wide {
             PointerType* GetPointerType(Type* to);
             FloatType* GetFloatType(unsigned);
             Module* GetGlobalModule();
-            OverloadResolvable* GetCallableForFunction(const AST::FunctionBase* f, Type* context);
             TupleType* GetTupleType(std::vector<Type*> types);
-            
+            OverloadResolvable* GetCallableForFunction(const AST::FunctionBase* f, Type* context);
+            OverloadResolvable* GetCallableForTemplateType(const AST::TemplateType* t, Type* context);
+            TemplateType* GetTemplateType(const AST::TemplateType* t, Type* context, std::vector<Type*> arguments);
             ConcreteExpression AnalyzeExpression(Type* t, const AST::Expression* e, std::function<void(ConcreteExpression)>);
             Wide::Util::optional<ConcreteExpression> LookupIdentifier(Type* context, const AST::Identifier* ident);
 

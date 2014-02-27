@@ -210,7 +210,7 @@ void Function::ComputeBody(Analyzer& a) {
                         throw std::runtime_error("Failed to initialize a reference member.");
                     auto mem = a.gen->CreateFieldExpression(self.Expr, x.num);
                     std::vector<ConcreteExpression> args;
-                    Context c(a, con->where(), [](ConcreteExpression e) {}, this);
+                    Context c(a, con->where, [](ConcreteExpression e) {}, this);
                     exprs.push_back(x.t->BuildInplaceConstruction(mem, std::move(args), c));
                 }
             }
@@ -417,7 +417,7 @@ void Function::CompleteAnalysis(Type* ret, Analyzer& a) {
         if (!ReturnType)
             throw std::runtime_error("Deferred return type was not evaluated prior to completing analysis.");
     if (ReturnType == a.GetVoidType() && !dynamic_cast<Codegen::ReturnStatement*>(exprs.empty() ? nullptr : exprs.back())) {
-        exprs.push_back(current_scope->GetCleanupAllExpression(a, fun->where(), this));
+        exprs.push_back(current_scope->GetCleanupAllExpression(a, fun->where, this));
         exprs.push_back(a.gen->CreateReturn()); 
     }
     s = State::AnalyzeCompleted;

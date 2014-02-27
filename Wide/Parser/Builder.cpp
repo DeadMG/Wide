@@ -24,11 +24,6 @@ void RaiseError(Builder& build, Wide::Lexer::Range loc, std::vector<Wide::Lexer:
 
 Using* Builder::CreateUsing(std::string name, Lexer::Range loc, Expression* val, Module* m, Lexer::Access a) {
     auto p = arena.Allocate<Using>(val, loc, a);
-    if (m->functions.find(name) != m->functions.end()) {
-       for(auto&& x : m->functions[name]->functions)
-           combine_errors[m][name].insert(x);
-       combine_errors[m][name].insert(p);
-    }
     auto ret = m->decls.insert(std::make_pair(name, p));
     if (!ret.second) {
         combine_errors[m][name].insert(ret.first->second);
@@ -39,11 +34,6 @@ Using* Builder::CreateUsing(std::string name, Lexer::Range loc, Expression* val,
 
 Module* Builder::CreateModule(std::string val, Module* m, Lexer::Range l, Lexer::Access a) {
     auto p = arena.Allocate<Module>(l, a);
-    if (m->functions.find(val) != m->functions.end()) {
-       for(auto&& x : m->functions[val]->functions)
-           combine_errors[m][val].insert(x);
-       combine_errors[m][val].insert(p);
-    }
     if (m->decls.find(val) != m->decls.end()) {
         if (auto mod = dynamic_cast<AST::Module*>(m->decls[val])) {
             mod->where.push_back(l);
@@ -70,7 +60,7 @@ void Builder::CreateFunction(
     Lexer::Access a
     ) {
     if (p->Functions.find(name) == p->Functions.end())
-        p->Functions[name] = arena.Allocate<FunctionOverloadSet>();
+        p->Functions[name] = arena.Allocate<FunctionOverloadSet>(where);
     if (name == "type") {
         p->Functions[name]->functions.insert(arena.Allocate<Constructor>(std::move(body), std::move(prolog), where, std::move(args), std::move(caps), a));
         return;
@@ -97,13 +87,16 @@ void Builder::CreateFunction(
     Lexer::Access a
 ) {
     auto func = arena.Allocate<Function>(std::move(body), std::move(prolog), where, std::move(args), a);
+   
     if (m->decls.find(name) != m->decls.end()) {
-        combine_errors[m][name].insert(func);
-        combine_errors[m][name].insert(m->decls[name]);
+        if (auto overset = dynamic_cast<AST::FunctionOverloadSet*>(m->decls.at(name))) {
+            overset->functions.insert(func);
+        } else
+            combine_errors[m][name].insert(m->decls[name]);
     } else {
-        if (m->functions.find(name) == m->functions.end())
-            m->functions[name] = arena.Allocate<FunctionOverloadSet>();
-        m->functions[name]->functions.insert(func);
+        auto overset = arena.Allocate<AST::FunctionOverloadSet>(where);
+        overset->functions.insert(func);
+        m->decls[name] = overset;
     }
     outlining(r, OutliningType::Function);
 }
@@ -118,7 +111,7 @@ void Builder::CreateOverloadedOperator(
     Lexer::Access a
 ) {
     if (m->opcondecls.find(name) == m->opcondecls.end())
-        m->opcondecls[name] = arena.Allocate<FunctionOverloadSet>();
+        m->opcondecls[name] = arena.Allocate<FunctionOverloadSet>(r);
     m->opcondecls[name]->functions.insert(arena.Allocate<Function>(std::move(body), std::move(prolog), r, std::move(args), a));
 }
 void Builder::CreateOverloadedOperator(
@@ -131,26 +124,11 @@ void Builder::CreateOverloadedOperator(
     Lexer::Access a
 ) {
     if (t->opcondecls.find(name) == t->opcondecls.end())
-        t->opcondecls[name] = arena.Allocate<FunctionOverloadSet>();
+        t->opcondecls[name] = arena.Allocate<FunctionOverloadSet>(r);
     t->opcondecls[name]->functions.insert(arena.Allocate<Function>(std::move(body), std::move(prolog), r, std::move(args), a));
 }
 
 Type* Builder::CreateType(std::vector<Expression*> bases, Lexer::Range loc, Lexer::Access a) { return arena.Allocate<Type>(bases, loc, a); }
-Type* Builder::CreateType(std::string name, Module* higher, std::vector<Expression*> bases, Lexer::Range loc, Lexer::Access a) {
-    auto ty = arena.Allocate<Type>(bases, loc, a);
-    if (higher->functions.find(name) != higher->functions.end()) {
-       for(auto&& x : higher->functions[name]->functions)
-           combine_errors[higher][name].insert(x);
-       combine_errors[higher][name].insert(ty);
-    } else if (higher->decls.find(name) != higher->decls.end()) {
-        auto con = higher->decls[name];
-        combine_errors[higher][name].insert(con);
-        combine_errors[higher][name].insert(ty);
-    } else {
-        higher->decls[name] = ty;
-    }
-    return ty;
-}
 
 Identifier* Builder::CreateIdentifier(std::string name, Lexer::Range r) 
 { return arena.Allocate<Identifier>(std::move(name), r); }
@@ -297,7 +275,7 @@ void Builder::AddTypeField(Type* t, Variable* decl, Lexer::Access a) {
         if (t->Functions.find(name) != t->Functions.end()) {
             std::vector<Wide::Lexer::Range> vec;
             for (auto&& x : t->Functions[name]->functions)
-                vec.push_back(x->where());
+                vec.push_back(x->where);
             throw Parser::ParserError(decl->location, vec, Parser::Error::TypeVariableAlreadyFunction);
         }
     }
@@ -386,4 +364,28 @@ While* Builder::CreateWhile(Variable* cond, Statement* body, Lexer::Range loc) {
 
 Tuple* Builder::CreateTuple(std::vector<Expression*> exprs, Lexer::Range where) {
     return arena.Allocate<Tuple>(std::move(exprs), where);
+}
+void Builder::AddTypeToModule(Wide::AST::Module* higher, std::string name, Wide::AST::Type* ty) {
+    if (higher->decls.find(name) != higher->decls.end()) {
+        auto con = higher->decls[name];
+        combine_errors[higher][name].insert(con);
+        combine_errors[higher][name].insert(ty);
+    }
+    else {
+        higher->decls[name] = ty;
+    }
+}
+void Builder::AddTemplateTypeToModule(Wide::AST::Module* higher, std::string name, std::vector<FunctionArgument> args, Wide::AST::Type* ty) {
+    if (higher->decls.find(name) != higher->decls.end()) {
+        if (auto tempoverset = dynamic_cast<Wide::AST::TemplateTypeOverloadSet*>(higher->decls.at(name))) {
+            tempoverset->templatetypes.insert(arena.Allocate<Wide::AST::TemplateType>(ty, args));
+            return;
+        }
+        auto con = higher->decls[name];
+        combine_errors[higher][name].insert(con);
+        combine_errors[higher][name].insert(ty);
+    }
+    auto set = arena.Allocate<TemplateTypeOverloadSet>(ty->where.front());
+    higher->decls[name] = set;
+    set->templatetypes.insert(arena.Allocate<Wide::AST::TemplateType>(ty, args));
 }

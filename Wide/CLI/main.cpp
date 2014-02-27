@@ -45,6 +45,14 @@ Added include path: /usr/lib/gcc/x86_64-linux-gnu/4.7/include-fixed
 Added include path: /usr/include/x86_64-linux-gnu
 Added include path: /usr/include
 */
+// --include="usr/local/lib/gcc/x86_64-unknown-linux-gnu/4.8.2/../../../../include/c++/4.8.2"
+// --include="usr/local/lib/gcc/x86_64-unknown-linux-gnu/4.8.2/../../../../include/c++/4.8.2/x86_64-unknown-linux-gnu/"
+// --include="usr/local/lib/gcc/x86_64-unknown-linux-gnu/4.8.2/../../../../include/c++/4.8.2/backward"
+// --include="usr/local/lib/gcc/x86_64-unknown-linux-gnu/4.8.2/include"
+// --include="usr/local/include"
+// --include="usr/local/lib/gcc/x86_64-unknown-linux-gnu/4.8.2/include-fixed"
+// --include="usr/include/x86_64-linux-gnu"
+// --include="usr/include"
 // --include="/usr/include/c++/4.7" --include="/usr/include/c++/4.7/x86_64-linux-gnu" --include="/usr/include/c++/4.7/backward" --include="/usr/lib/gcc/x86_64-linux-gnu/4.7/include" --include="/usr/local/include" --include="/usr/lib/gcc/x86_64-linux-gnu/4.7/include-fixed" --include="/usr/include/x86_64-linux-gnu" --include="/usr/include" hello.wide
 
 void SearchDirectory(std::string path, std::vector<std::string>& vec) {
@@ -120,6 +128,8 @@ int main(int argc, char** argv)
     ClangOpts.TargetOptions.Triple = input.count("triple") ? input["triple"].as<std::string>() : llvm::sys::getDefaultTargetTriple();
 #endif
 
+    ClangOpts.OnDiagnostic = [](std::string) {};
+
     ClangOpts.FrontendOptions.OutputFile = input.count("output") ? input["output"].as<std::string>() : "a.o";
     ClangOpts.LanguageOptions.CPlusPlus1y = true;
     
@@ -129,7 +139,6 @@ int main(int argc, char** argv)
     ClangOpts.HeaderSearchOptions->AddPath(MinGWInstallPath + "mingw32-dw2\\include\\c++\\4.6.3\\i686-w64-mingw32", clang::frontend::IncludeDirGroup::CXXSystem, false, false);
     ClangOpts.HeaderSearchOptions->AddPath(MinGWInstallPath + "mingw32-dw2\\i686-w64-mingw32\\include", clang::frontend::IncludeDirGroup::CXXSystem, false, false);
 #endif
-
     //LLVMOpts.Passes.push_back(Wide::Options::CreateDeadCodeElimination());
 
     std::vector<std::string> files;
@@ -142,12 +151,12 @@ int main(int argc, char** argv)
 
     if (input.count("include")) {
         for(auto path : input["include"].as<std::vector<std::string>>()) {
-            std::cout << "Added include path: " << path << "\n";
+            //std::cout << "Added include path: " << path << "\n";
             ClangOpts.HeaderSearchOptions->AddPath(path, clang::frontend::IncludeDirGroup::CXXSystem, false, false);
         }
     }
 
-    std::cout << "Triple: " << ClangOpts.TargetOptions.Triple << "\n";
+    //std::cout << "Triple: " << ClangOpts.TargetOptions.Triple << "\n";
     std::string stdlib = input.count("stdlib") ? input["stdlib"].as<std::string>() : "./WideLibrary/";
 
     SearchDirectory(stdlib, files);

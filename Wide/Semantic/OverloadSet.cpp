@@ -6,6 +6,8 @@
 #include <Wide/Semantic/FunctionType.h>
 #include <Wide/Semantic/TupleType.h>
 #include <Wide/Parser/AST.h>
+#include <Wide/Semantic/PointerType.h>
+#include <Wide/Semantic/StringType.h>
 #include <Wide/Semantic/ClangTU.h>
 #include <Wide/Semantic/Analyzer.h>
 #include <Wide/Semantic/SemanticError.h>
@@ -126,11 +128,25 @@ struct cppcallable : public Callable {
             // If the function takes a const lvalue (as kindly provided by the second member),
             // and we provided an rvalue, pretend secretly that it took an rvalue reference instead.
             // Since is-a does not apply here, build construction from the underlying type, rather than going through rvaluetype.
-            // If a type adjustment is necessary, perform it- don't infinitely recurs.
-            if ((types[i].second || IsRvalueType(types[i].first)) && !IsLvalueType(args[i].t) && args[i].t->Decay() != types[i].first->Decay())
+
+            // This section handles stuff like const i32& i = int64() and similar implicit conversions that Wide accepts explicitly.
+            // where C++ accepts the result by rvalue reference or const reference.
+            // As per usual, careful of infinite recursion. Took quite a few tries to get this piece apparently functional.
+            if ((types[i].second || IsRvalueType(types[i].first)) && !IsLvalueType(args[i].t) && args[i].t->Decay() != types[i].first->Decay()) {
                 out.push_back(types[i].first->Decay()->BuildRvalueConstruction({ args[i] }, c));
-            else
-                out.push_back(types[i].first->BuildValueConstruction({ args[i] }, c));
+                continue;
+            }
+
+            // Clang may ask us to build an int8* from a string literal.
+            // Just pretend that the argument was an int8*.
+            if (types[i].first->Decay() == c->GetPointerType(c->GetIntegralType(8, true)) && dynamic_cast<StringType*>(args[i].t->Decay())) {
+                auto copy = args[i].BuildValue(c);
+                copy.t = c->GetPointerType(c->GetIntegralType(8, true));
+                out.push_back(types[i].first->BuildValueConstruction({ copy }, c));
+                continue;
+            }
+            
+            out.push_back(types[i].first->BuildValueConstruction({ args[i] }, c));
         }
         return out;
     }

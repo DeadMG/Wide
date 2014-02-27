@@ -59,22 +59,30 @@ Wide::Util::optional<ConcreteExpression> Module::AccessMember(ConcreteExpression
                 return expr;
             throw std::runtime_error("Attempted to using something that was not a type, template, module, or function");
         }
-        if (auto overdecl = dynamic_cast<const AST::FunctionOverloadSet*>(decl))
-            return c->GetOverloadSet(overdecl, this)->BuildValueConstruction({}, c);
+        if (auto overdecl = dynamic_cast<const AST::FunctionOverloadSet*>(decl)) {
+            std::unordered_set<OverloadResolvable*> resolvable;
+            for (auto func : overdecl->functions) {
+                if (func->access > access)
+                    continue;
+                resolvable.insert(c->GetCallableForFunction(func, this));
+            }
+            if (resolvable.empty()) return Wide::Util::none;
+            return c->GetOverloadSet(resolvable)->BuildValueConstruction({}, c);
+        }
+        if (auto temptydecl = dynamic_cast<const AST::TemplateTypeOverloadSet*>(decl)) {
+            std::unordered_set<OverloadResolvable*> resolvable;
+            for (auto func : temptydecl->templatetypes) {
+                if (func->t->access > access)
+                    continue;
+                resolvable.insert(c->GetCallableForTemplateType(func, this));
+            }
+            if (resolvable.empty()) return Wide::Util::none;
+            return c->GetOverloadSet(resolvable)->BuildValueConstruction({}, c);
+        }
         if (auto tydecl = dynamic_cast<const AST::Type*>(decl)) {
             return c->GetConstructorType(c->GetUDT(tydecl, this))->BuildValueConstruction({}, c);
         }
         throw std::runtime_error("Attempted to access a member of a Wide module, but did not recognize it as a using, a type, or a function.");
-    }
-    if (m->functions.find(name) != m->functions.end()) {
-        std::unordered_set<OverloadResolvable*> resolvable;
-        for (auto func : m->functions.at(name)->functions) {
-            if (func->access > access)
-                continue;
-            resolvable.insert(c->GetCallableForFunction(func, this));
-        }
-        if (resolvable.empty()) return Wide::Util::none;
-        return c->GetOverloadSet(resolvable)->BuildValueConstruction({}, c);
     }
     if (SpecialMembers.find(name) != SpecialMembers.end())
         return SpecialMembers.at(name);

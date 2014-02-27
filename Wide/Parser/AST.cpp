@@ -20,7 +20,7 @@ void Combiner::Add(Module* m) {
                 InsertPoint = to->opcondecls.at(entry.first);
                 assert(owned_overload_sets.find(InsertPoint) != owned_overload_sets.end());
             } else {
-                auto new_set = Wide::Memory::MakeUnique<FunctionOverloadSet>();
+                auto new_set = Wide::Memory::MakeUnique<FunctionOverloadSet>(entry.second->where.front());
                 InsertPoint = to->opcondecls[entry.first] = new_set.get();
                 owned_overload_sets.insert(std::make_pair(InsertPoint, std::move(new_set)));
             }
@@ -30,10 +30,6 @@ void Combiner::Add(Module* m) {
         for(auto&& entry : from->decls) {
             if (auto nested = dynamic_cast<AST::Module*>(entry.second)) {
                 Module* next;
-                if (to->functions.find(entry.first) != to->functions.end()) {
-                    errors[to][entry.first].insert(nested);
-                    continue;
-                }
                 if (to->decls.find(entry.first) != to->decls.end())
                     if (auto mod = dynamic_cast<AST::Module*>(to->decls[entry.first]))
                         next = mod;
@@ -54,10 +50,6 @@ void Combiner::Add(Module* m) {
                     errors[to][entry.first].insert(use);
                     continue;
                 }
-                if (to->functions.find(entry.first) != to->functions.end()) {
-                    errors[to][entry.first].insert(use);
-                    continue;
-                }
                 to->decls[entry.first] = use;
                 continue;
             }
@@ -66,37 +58,26 @@ void Combiner::Add(Module* m) {
                     errors[to][entry.first].insert(ty);
                     continue;
                 }
-                if (to->functions.find(entry.first) != to->functions.end()) {
-                    errors[to][entry.first].insert(ty);
-                    continue;
-                }
-
                 to->decls[entry.first] = ty;
                 continue;
+            }
+            if (auto overset = dynamic_cast<AST::FunctionOverloadSet*>(entry.second)) {
+                if (to->decls.find(entry.first) != to->decls.end()) {
+                    if (auto toset = dynamic_cast<AST::FunctionOverloadSet*>(to->decls.at(entry.first))) {
+                        toset->functions.insert(overset->functions.begin(), overset->functions.end());
+                    }
+                }
+                else {
+                    auto new_set = Wide::Memory::MakeUnique<FunctionOverloadSet>(entry.second->where.front());
+                    new_set->functions.insert(overset->functions.begin(), overset->functions.end());
+                    to->decls[entry.first] = new_set.get();
+                    owned_overload_sets.insert(std::make_pair(new_set.get(), std::move(new_set)));
+                }
             }
 
             std::vector<Lexer::Range> loc = entry.second->where;
             if (to->decls.find(entry.first) != to->decls.end())
                 loc.insert(loc.end(), to->decls.at(entry.first)->where.begin(), to->decls.at(entry.first)->where.end());
-        }
-        for(auto entry : from->functions) {
-            auto overset = entry.second;
-            FunctionOverloadSet* InsertPoint = nullptr;
-            if (to->decls.find(entry.first) != to->decls.end()) {
-                for(auto x : overset->functions)
-                    errors[to][entry.first].insert(x);
-                continue;
-            }
-            if (to->functions.find(entry.first) != to->functions.end()) {
-                InsertPoint = to->functions.at(entry.first);
-                assert(owned_overload_sets.find(InsertPoint) != owned_overload_sets.end());
-            } else {
-                auto new_set = Wide::Memory::MakeUnique<FunctionOverloadSet>();
-                InsertPoint = new_set.get();
-                to->functions[entry.first] = owned_overload_sets.insert(std::make_pair(InsertPoint, std::move(new_set))).first->first;
-            }
-            for(auto x : overset->functions)
-                InsertPoint->functions.insert(x);
         }
     };
     adder(&root, m);    
@@ -106,9 +87,6 @@ void Combiner::Add(Module* m) {
         for(auto con : x.second) {
             if (x.first->decls.find(con.first) != x.first->decls.end())
                 contexts[con.first].insert(x.first->decls.at(con.first));
-            if (x.first->functions.find(con.first) != x.first->functions.end())
-                for (auto fun : x.first->functions.at(con.first)->functions)
-                    contexts[con.first].insert(fun);
             contexts[con.first].insert(con.second.begin(), con.second.end());
         }
         
@@ -142,29 +120,13 @@ void Combiner::Remove(Module* m) {
                 owned_overload_sets.erase(to_overset);
             }
         }
-        for(auto&& entry : from->functions) {
-            auto overset = entry.second;
-            auto to_overset = to->functions[entry.first];
-            assert(to_overset);
-            assert(owned_overload_sets.find(to_overset) != owned_overload_sets.end());
-            for(auto&& fun : overset->functions) {
-                if (errors.find(to) != errors.end())
-                    errors.at(to).at(entry.first).erase(fun);
-                to_overset->functions.erase(fun);
-            }
-            if (to_overset->functions.empty()) {
-                to->functions.erase(entry.first);
-                owned_overload_sets.erase(to_overset);
-            }
-            continue;            
-        }
         for(auto&& entry : from->decls) {
             if (auto module = dynamic_cast<AST::Module*>(entry.second)) {
                 auto to_module = dynamic_cast<AST::Module*>(to->decls[entry.first]);
                 assert(to_module);
                 assert(owned_decl_contexts.find(to_module) != owned_decl_contexts.end());
                 remover(to_module, module);
-                if (to_module->decls.empty() && to_module->opcondecls.empty() && to_module->functions.empty()) {
+                if (to_module->decls.empty() && to_module->opcondecls.empty()) {
                     to->decls.erase(entry.first);
                     owned_decl_contexts.erase(to_module);
                 }

@@ -6,7 +6,8 @@
 #include <Wide/Semantic/IntegralType.h>
 #include <Wide/Semantic/OverloadSet.h>
 #include <Wide/Codegen/Generator.h>
-#include <Wide/Codegen/GeneratorMacros.h>
+#include <Wide/Semantic/StringType.h>
+#include <Wide/Semantic/PointerType.h>
 #include <unordered_map>
 
 #pragma warning(push, 0)
@@ -22,6 +23,8 @@
 
 using namespace Wide;
 using namespace Semantic;
+
+#include <Wide/Codegen/GeneratorMacros.h>
 
 clang::ExprValueKind Semantic::GetKindOfType(Type* t) {
     if (dynamic_cast<Semantic::LvalueType*>(t))
@@ -121,7 +124,7 @@ ConcreteExpression Semantic::InterpretExpression(clang::Expr* expr, ClangTU& tu,
     }
     if (auto str = llvm::dyn_cast<clang::StringLiteral>(expr)) {
         auto string = str->getString();
-        return ConcreteExpression(c->GetLiteralStringType(), c->gen->CreateStringExpression(string));
+        return ConcreteExpression(c->GetTypeForString(string), c->gen->CreateStringExpression(string));
     }
     if (auto declref = llvm::dyn_cast<clang::DeclRefExpr>(expr)) {
         auto decl = declref->getDecl();
@@ -137,7 +140,12 @@ ConcreteExpression Semantic::InterpretExpression(clang::Expr* expr, ClangTU& tu,
         return InterpretExpression(temp->GetTemporaryExpr(), tu, c);
     }
     if (auto cast = llvm::dyn_cast<clang::ImplicitCastExpr>(expr)) {
-        return c->GetClangType(tu, cast->getType())->BuildRvalueConstruction({ InterpretExpression(cast->getSubExpr(), tu, c) }, c);
+        // C++ treats string lits as pointer to character so we need to do the same here.
+        auto castty = c->GetClangType(tu, cast->getType());
+        auto castexpr = InterpretExpression(cast->getSubExpr(), tu, c);
+        if (castty == c->GetPointerType(c->GetIntegralType(8, true)) && dynamic_cast<StringType*>(castexpr.t->Decay()))
+            return castexpr;
+        return castty->BuildRvalueConstruction({ castexpr }, c);
     }
     throw std::runtime_error("Attempted to interpret a Clang expression, but it was of a structure that could not be interpreted.");
 }
