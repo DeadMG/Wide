@@ -90,6 +90,8 @@ int main(int argc, char** argv)
         ("help", "Print all available options")
 #ifdef _MSC_VER
         ("mingw", boost::program_options::value<std::string>(), "The location of MinGW. Defaulted to \".\\MinGW\\\".")
+#else
+        ("gcc", boost::program_options::value<std::string>(), "The GCC version involved.")
 #endif
         ("output", boost::program_options::value<std::string>(), "The output file. Defaulted to \"a.o\".")
         ("triple", boost::program_options::value<std::string>(), "The target triple. Defaulted to "
@@ -132,12 +134,24 @@ int main(int argc, char** argv)
 
     ClangOpts.FrontendOptions.OutputFile = input.count("output") ? input["output"].as<std::string>() : "a.o";
     ClangOpts.LanguageOptions.CPlusPlus1y = true;
-    
 #ifdef _MSC_VER
     const std::string MinGWInstallPath = input.count("mingw") ? input["mingw"].as<std::string>() : ".\\MinGW\\";
     ClangOpts.HeaderSearchOptions->AddPath(MinGWInstallPath + "mingw32-dw2\\include\\c++\\4.6.3", clang::frontend::IncludeDirGroup::CXXSystem, false, false);
     ClangOpts.HeaderSearchOptions->AddPath(MinGWInstallPath + "mingw32-dw2\\include\\c++\\4.6.3\\i686-w64-mingw32", clang::frontend::IncludeDirGroup::CXXSystem, false, false);
     ClangOpts.HeaderSearchOptions->AddPath(MinGWInstallPath + "mingw32-dw2\\i686-w64-mingw32\\include", clang::frontend::IncludeDirGroup::CXXSystem, false, false);
+#else
+    if (input.count("gcc")) {
+        auto gccver = input["gcc"].as<std::string>();
+        auto base = "/usr/local/lib/gcc/x86_64-unknown-linux-gnu/" + gccver;
+        ClangOpts.HeaderSearchOptions->AddPath(base + "/../../../../include/c++/" + gccver, clang::frontend::IncludeDirGroup::CXXSystem, false, false);
+        ClangOpts.HeaderSearchOptions->AddPath(base + "/../../../../include/c++/" + gccver + "/x86_64-unknown-linux-gnu/", clang::frontend::IncludeDirGroup::CXXSystem, false, false);
+        ClangOpts.HeaderSearchOptions->AddPath(base + "/../../../../include/c++/" + gccver + "/backward", clang::frontend::IncludeDirGroup::CXXSystem, false, false);
+        ClangOpts.HeaderSearchOptions->AddPath(base + "/include", clang::frontend::IncludeDirGroup::CXXSystem, false, false);
+        ClangOpts.HeaderSearchOptions->AddPath(base + "/include-fixed", clang::frontend::IncludeDirGroup::CXXSystem, false, false);
+    }
+    ClangOpts.HeaderSearchOptions->AddPath("/usr/local/include", clang::frontend::IncludeDirGroup::CXXSystem, false, false);
+    ClangOpts.HeaderSearchOptions->AddPath("/usr/include/x86_64-linux-gnu", clang::frontend::IncludeDirGroup::CXXSystem, false, false);
+    ClangOpts.HeaderSearchOptions->AddPath("/usr/include", clang::frontend::IncludeDirGroup::CXXSystem, false, false);
 #endif
     //LLVMOpts.Passes.push_back(Wide::Options::CreateDeadCodeElimination());
 
