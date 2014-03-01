@@ -1088,7 +1088,7 @@ namespace Wide {
                 lex(colon);
                 return group;
             }
-            auto ParseTypeDeclaration(ModuleType m, LocationType loc, Lexer::Access a, TokenType& ident) -> decltype(sema.CreateType(ParseTypeBases(), loc, a)) {
+            auto ParseTypeDeclaration(ModuleType m, LocationType loc, Lexer::Access a, TokenType& ident) -> decltype(sema.CreateType(sema.CreateExpressionGroup(), loc, a)) {
                 auto bases = ParseTypeBases();
                 auto t = Check(Error::ModuleScopeTypeNoCurlyBrace, [&](decltype(lex())& curr) -> bool {
                     if(curr.GetType() == Lexer::TokenType::OpenCurlyBracket)
