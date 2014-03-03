@@ -56,7 +56,7 @@ Added include path: /usr/include
 // --include="usr/include"
 // --include="/usr/include/c++/4.7" --include="/usr/include/c++/4.7/x86_64-linux-gnu" --include="/usr/include/c++/4.7/backward" --include="/usr/lib/gcc/x86_64-linux-gnu/4.7/include" --include="/usr/local/include" --include="/usr/lib/gcc/x86_64-linux-gnu/4.7/include-fixed" --include="/usr/include/x86_64-linux-gnu" --include="/usr/include" hello.wide
 
-void SearchDirectory(std::string path, std::vector<std::string>& vec) {
+void SearchDirectory(std::string path, std::vector<std::string>& vec, std::string system) {
     auto end = llvm::sys::fs::directory_iterator();
     llvm::error_code fuck_error_codes;
     bool out = true;
@@ -70,6 +70,13 @@ void SearchDirectory(std::string path, std::vector<std::string>& vec) {
         entries.insert(begin->path());
         begin.increment(fuck_error_codes);
     }
+    if (llvm::sys::path::filename(path) == "System") {
+        llvm::SmallVector<char, 1> fuck_out_parameters;
+        llvm::sys::path::append(fuck_out_parameters, path, system);
+        std::string systempath(fuck_out_parameters.begin(), fuck_out_parameters.end());
+        SearchDirectory(systempath, vec, system);
+        return;
+    }
     for (auto file : entries) {
         bool isfile = false;
         llvm::sys::fs::is_regular_file(file, isfile);
@@ -79,7 +86,7 @@ void SearchDirectory(std::string path, std::vector<std::string>& vec) {
         }
         llvm::sys::fs::is_directory(file, isfile);
         if (isfile) {
-            SearchDirectory(file, vec);
+            SearchDirectory(file, vec, system);
         }
     }
 }
@@ -174,7 +181,16 @@ int main(int argc, char** argv)
     //std::cout << "Triple: " << ClangOpts.TargetOptions.Triple << "\n";
     std::string stdlib = input.count("stdlib") ? input["stdlib"].as<std::string>() : "./WideLibrary/";
 
-    SearchDirectory(stdlib, files);
+    auto trip = llvm::Triple(ClangOpts.TargetOptions.Triple);
+    if (!trip.isOSWindows() && !trip.isOSLinux() && !trip.isMacOSX()) {
+        std::cout << "Error: Wide only supports targetting Windows, Mac, and Linux right now.\n";
+        return 1;
+    }
+    std::string name =
+        trip.isOSWindows() ? "Windows" :
+        trip.isOSLinux() ? "Linux" :
+        "Mac";
+    SearchDirectory(stdlib, files, name);
 
     try {
         Wide::LLVMCodegen::Generator Generator(LLVMOpts, ClangOpts.TargetOptions.Triple, [&](std::unique_ptr<llvm::Module> main) {
