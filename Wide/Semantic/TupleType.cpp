@@ -51,3 +51,14 @@ bool TupleType::IsA(Type* self, Type* other, Analyzer& a, Lexer::Access access) 
     }
     return is;
 }
+std::string TupleType::explain(Analyzer& a) {
+    std::string name = "{ ";
+    for (auto& ty : AggregateType::GetMembers()) {
+        if (&ty != &AggregateType::GetMembers().back()) {
+            name += ty->explain(a) + ", ";
+        } else
+            name += ty->explain(a);
+    }
+    name += " }";
+    return name;
+}

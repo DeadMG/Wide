@@ -25,7 +25,7 @@ OverloadSet* Module::CreateOperatorOverloadSet(Type* t, Wide::Lexer::TokenType t
         for (auto func : m->opcondecls.at(ty)->functions) {
             if (func->access > access)
                 continue;
-            resolvable.insert(a.GetCallableForFunction(func, this));
+            resolvable.insert(a.GetCallableForFunction(func, this, GetNameForOperator(ty)));
         }
         if (resolvable.empty()) return PrimitiveType::CreateOperatorOverloadSet(t, ty, access, a);
         return a.GetOverloadSet(resolvable);
@@ -64,7 +64,7 @@ Wide::Util::optional<ConcreteExpression> Module::AccessMember(ConcreteExpression
             for (auto func : overdecl->functions) {
                 if (func->access > access)
                     continue;
-                resolvable.insert(c->GetCallableForFunction(func, this));
+                resolvable.insert(c->GetCallableForFunction(func, this, name));
             }
             if (resolvable.empty()) return Wide::Util::none;
             return c->GetOverloadSet(resolvable)->BuildValueConstruction({}, c);
@@ -80,11 +80,20 @@ Wide::Util::optional<ConcreteExpression> Module::AccessMember(ConcreteExpression
             return c->GetOverloadSet(resolvable)->BuildValueConstruction({}, c);
         }
         if (auto tydecl = dynamic_cast<const AST::Type*>(decl)) {
-            return c->GetConstructorType(c->GetUDT(tydecl, this))->BuildValueConstruction({}, c);
+            return c->GetConstructorType(c->GetUDT(tydecl, this, name))->BuildValueConstruction({}, c);
         }
         throw std::runtime_error("Attempted to access a member of a Wide module, but did not recognize it as a using, a type, or a function.");
     }
     if (SpecialMembers.find(name) != SpecialMembers.end())
         return SpecialMembers.at(name);
     return Wide::Util::none;
+}
+std::string Module::explain(Analyzer& a) {
+    if (!context) return "global";
+    std::string name;
+    for (auto decl : context->GetASTModule()->decls) {
+        if (decl.second == m)
+            name = decl.first;
+    }
+    return context->explain(a) + "." + name;
 }

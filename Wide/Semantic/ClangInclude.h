@@ -10,8 +10,9 @@ namespace Wide {
             OverloadSet* LiteralOverloadSet = {};
         public:
                 
-            Wide::Util::optional<ConcreteExpression> AccessMember(ConcreteExpression, std::string name, Context c) override;
-            ConcreteExpression BuildCall(ConcreteExpression e, std::vector<ConcreteExpression> args, Context c) override;
+            Wide::Util::optional<ConcreteExpression> AccessMember(ConcreteExpression, std::string name, Context c) override final;
+            ConcreteExpression BuildCall(ConcreteExpression e, std::vector<ConcreteExpression> args, Context c) override final;
+            std::string explain(Analyzer& a) override final;
         };
     }
 }

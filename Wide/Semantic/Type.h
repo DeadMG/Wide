@@ -160,6 +160,7 @@ namespace Wide {
             virtual bool IsA(Type* self, Type* other, Analyzer& a, Lexer::Access access);
             virtual Type* GetConstantContext(Analyzer& a);
 
+            virtual std::string explain(Analyzer& a) = 0;
             virtual ~Type() {}
 
             OverloadSet* PerformADL(Lexer::TokenType what, Type* lhs, Type* rhs, Lexer::Access access, Analyzer& a);

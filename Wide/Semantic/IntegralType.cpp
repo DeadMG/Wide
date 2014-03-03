@@ -188,3 +188,7 @@ OverloadSet* IntegralType::CreateOperatorOverloadSet(Type* self, Lexer::TokenTyp
     }
     return PrimitiveType::CreateOperatorOverloadSet(self, what, access, a);
 }
+std::string IntegralType::explain(Analyzer& a) {
+    auto name = "int" + std::to_string(bits);
+    return !is_signed ? "u" + name : name;
+}

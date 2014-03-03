@@ -15,6 +15,7 @@ namespace Wide {
                 return t;
             }
             Wide::Util::optional<ConcreteExpression> AccessMember(ConcreteExpression, std::string name, Context c) override final;
+            std::string explain(Analyzer& a) override final;
         };
     }
 }

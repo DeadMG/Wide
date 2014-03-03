@@ -18,6 +18,7 @@ namespace Wide {
 
             Type* GetReturnType() { return ReturnType; }
             std::vector<Type*> GetArguments() { return Args; }
+            std::string explain(Analyzer& a) override final;
         };
     }
 }

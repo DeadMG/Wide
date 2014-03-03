@@ -49,13 +49,7 @@ Analyzer::Analyzer(const Options::Clang& opts, Codegen::Generator& g, const AST:
     , gen(&g)
     , null(nullptr)
 {
-    struct NothingCall : public MetaType {
-        ConcreteExpression BuildCall(ConcreteExpression val, std::vector<ConcreteExpression> args, Context c) override {
-            return val;
-        }
-    };
     null = arena.Allocate<NullType>();
-    NothingFunctor = arena.Allocate<NothingCall>();
     struct decltypetype : public MetaType { 
         ConcreteExpression BuildCall(ConcreteExpression obj, std::vector<ConcreteExpression> args, std::vector<ConcreteExpression> destructors, Context c) override {
             if (args.size() != 1)
@@ -68,6 +62,7 @@ Analyzer::Analyzer(const Options::Clang& opts, Codegen::Generator& g, const AST:
                 args[0].t = c->GetRvalueType(args[0].t);
             return c->GetConstructorType(args[0].t)->BuildValueConstruction({}, c);
         }
+        std::string explain(Analyzer& a) override final { return "decltype"; };
     };
 
     struct PointerCastType : public MetaType {
@@ -80,6 +75,7 @@ Analyzer::Analyzer(const Options::Clang& opts, Codegen::Generator& g, const AST:
             if (!dynamic_cast<PointerType*>(args[1].t->Decay())) throw std::runtime_error("Attempted to call reinterpret_cast with a second argument that was not of pointer type.");
             return ConcreteExpression(conty->GetConstructedType(), args[1].Expr);
         }
+        std::string explain(Analyzer& a) override final { return "reinterpret_cast"; }
     };
 
     struct MoveType : public MetaType {
@@ -88,6 +84,7 @@ Analyzer::Analyzer(const Options::Clang& opts, Codegen::Generator& g, const AST:
                 throw std::runtime_error("Attempt to call move with a number of arguments that was not one.");
             return ConcreteExpression(c->GetRvalueType(args[0].t->Decay()), args[0].Expr);
         }
+        std::string explain(Analyzer& a) override final { return "move"; }
     };
 
     static const auto location = Lexer::Range(std::make_shared<std::string>("Analyzer internal."));
@@ -143,7 +140,7 @@ ConcreteExpression Analyzer::AnalyzeExpression(Type* t, const AST::Expression* e
         void VisitMemberAccess(const AST::MemberAccess* access) {
             auto val = self->AnalyzeExpression(t, access->expr, handler);
             auto mem = val.AccessMember(access->mem, Context(*self, access->location, handler, t));
-            if (!mem) throw SemanticError(access->location, Error::NoMember);
+            if (!mem) throw NoMember(val.t, t, access->mem, access->location, *self);
             out = *mem;
         }
         void VisitCall(const AST::FunctionCall* funccall) {
@@ -315,7 +312,7 @@ ConcreteExpression Analyzer::AnalyzeExpression(Type* t, const AST::Expression* e
             out = lhs.BuildIncrement(inc->postfix, Context(*self, inc->location, handler, t));
         }
         void VisitType(const AST::Type* ty) {
-            auto udt = self->GetUDT(ty, t->GetConstantContext(*self) ? t->GetConstantContext(*self) : t);
+            auto udt = self->GetUDT(ty, t->GetConstantContext(*self) ? t->GetConstantContext(*self) : t, "anonymous");
             out = self->GetConstructorType(udt)->BuildValueConstruction({}, Context(*self, ty->location, handler, t));
         }
         void VisitPointerAccess(const AST::PointerMemberAccess* ptr) {
@@ -377,8 +374,11 @@ Type* Analyzer::GetClangType(ClangTU& from, clang::QualType t) {
 }
 
 ClangNamespace* Analyzer::GetClangNamespace(ClangTU& tu, clang::DeclContext* con) {
+    assert(con);
     if (ClangNamespaces.find(con) != ClangNamespaces.end())
         return ClangNamespaces[con];
+    if (con != tu.GetDeclContext())
+        return ClangNamespaces[con] = arena.Allocate<ClangNamespace>(con, &tu);
     return ClangNamespaces[con] = arena.Allocate<ClangNamespace>(con, &tu);
 }
 
@@ -399,11 +399,11 @@ FunctionType* Analyzer::GetFunctionType(Type* ret, const std::vector<Type*>& t) 
     return FunctionTypes[ret][t] = arena.Allocate<FunctionType>(ret, t);
 }
 
-Function* Analyzer::GetWideFunction(const AST::FunctionBase* p, Type* context, const std::vector<Type*>& types) {
+Function* Analyzer::GetWideFunction(const AST::FunctionBase* p, Type* context, const std::vector<Type*>& types, std::string name) {
     if (WideFunctions.find(p) != WideFunctions.end())
         if (WideFunctions[p].find(types) != WideFunctions[p].end())
             return WideFunctions[p][types];
-    return WideFunctions[p][types] = arena.Allocate<Function>(types, p, *this, context);
+    return WideFunctions[p][types] = arena.Allocate<Function>(types, p, *this, context, name);
 }
 
 Module* Analyzer::GetWideModule(const AST::Module* p, Module* higher) {
@@ -418,18 +418,7 @@ LvalueType* Analyzer::GetLvalueType(Type* t) {
 
     if (LvalueTypes.find(t) != LvalueTypes.end())
         return LvalueTypes[t];
-
-    // Prefer hash lookup to dynamic_cast.
-    // if (auto lval = dynamic_cast<LvalueType*>(t)) {
-    //     return LvalueTypes[t] = lval;
-    // }
     
-    // This implements "named rvalue ref is an lvalue", and static_cast<T&&>(T&).
-    // by permitting T&& & to become T&.
-    //if (auto rval = dynamic_cast<RvalueType*>(t)) {
-    //    return LvalueTypes[t] = GetLvalueType(rval->Decay());
-    //}
-
     return LvalueTypes[t] = arena.Allocate<LvalueType>(t);
 }
 
@@ -462,10 +451,10 @@ ClangTemplateClass* Analyzer::GetClangTemplateClass(ClangTU& from, clang::ClassT
     return ClangTemplateClasses[decl] = arena.Allocate<ClangTemplateClass>(decl, &from);
 }
 
-OverloadSet* Analyzer::GetOverloadSet(const AST::FunctionOverloadSet* set, Type* t) {
+OverloadSet* Analyzer::GetOverloadSet(const AST::FunctionOverloadSet* set, Type* t, std::string name) {
     std::unordered_set<OverloadResolvable*> resolvable;
     for (auto x : set->functions)
-        resolvable.insert(GetCallableForFunction(x, t));
+        resolvable.insert(GetCallableForFunction(x, t, name));
     return GetOverloadSet(resolvable, t);
 }
 OverloadSet* Analyzer::GetOverloadSet() {
@@ -489,11 +478,11 @@ void Analyzer::AddClangType(clang::QualType t, Type* match) {
     ClangTypes[t] = match;
 }
 
-UserDefinedType* Analyzer::GetUDT(const AST::Type* t, Type* context) {
+UserDefinedType* Analyzer::GetUDT(const AST::Type* t, Type* context, std::string name) {
     if (UDTs.find(t) != UDTs.end())
         if (UDTs[t].find(context) != UDTs[t].end())
             return UDTs[t][context];
-    auto ty = UDTs[t][context] = arena.Allocate<UserDefinedType>(t, *this, context);
+    auto ty = UDTs[t][context] = arena.Allocate<UserDefinedType>(t, *this, context, name);
     return ty;
 }
 IntegralType* Analyzer::GetIntegralType(unsigned bits, bool sign) {
@@ -521,9 +510,9 @@ Type* Analyzer::GetBooleanType() {
 Type* Analyzer::GetVoidType() {
     return Void;
 }
-Type* Analyzer::GetNothingFunctorType() {
+/*Type* Analyzer::GetNothingFunctorType() {
     return NothingFunctor;
-}
+}*/
 
 #pragma warning(disable : 4800)
 bool Semantic::IsLvalueType(Type* t) {
@@ -602,15 +591,16 @@ OverloadSet* Analyzer::GetOverloadSet(std::unordered_set<clang::NamedDecl*> decl
             return clang_overload_sets[decls][context];
     return clang_overload_sets[decls][context] = arena.Allocate<OverloadSet>(std::move(decls), from, context);
 }
-OverloadResolvable* Analyzer::GetCallableForFunction(const AST::FunctionBase* f, Type* context) {
+OverloadResolvable* Analyzer::GetCallableForFunction(const AST::FunctionBase* f, Type* context, std::string name) {
     if (FunctionCallables.find(f) != FunctionCallables.end())
         return FunctionCallables.at(f);
 
     struct FunctionCallable : public OverloadResolvable {
-        FunctionCallable(const AST::FunctionBase* f, Type* con)
-            : func(f), context(con) {}
+        FunctionCallable(const AST::FunctionBase* f, Type* con, std::string str)
+            : func(f), context(con), name(str) {}
         const AST::FunctionBase* func;
         Type* context;
+        std::string name;
 
         bool HasImplicitThis() {
             // If we are a member without an explicit this, then we have an implicit this.
@@ -664,6 +654,7 @@ OverloadResolvable* Analyzer::GetCallableForFunction(const AST::FunctionBase* f,
                 Type* GetContext(Analyzer& a) override final {
                     return context;
                 }
+                std::string explain(Analyzer& a) { return context->explain(a); }
             };
 
             OverloadSetLookupContext lc;
@@ -671,12 +662,13 @@ OverloadResolvable* Analyzer::GetCallableForFunction(const AST::FunctionBase* f,
             lc.context = context;
             lc.member = dynamic_cast<UserDefinedType*>(context->Decay());
             
-            auto parameter_type = func->args[num].type ? 
-                dynamic_cast<ConstructorType*>(a.AnalyzeExpression(&lc, func->args[num].type, [](ConcreteExpression e) {}).t->Decay()) :
+            auto con_type = func->args[num].type ? a.AnalyzeExpression(&lc, func->args[num].type, [](ConcreteExpression e) {}).t->Decay() : nullptr;
+            auto parameter_type = con_type ? 
+                dynamic_cast<ConstructorType*>(con_type) :
                 a.GetConstructorType(argument->Decay());
 
             if (!parameter_type)
-                throw Wide::Semantic::SemanticError(func->args[num].location, Wide::Semantic::Error::ExpressionNoType);
+                throw Wide::Semantic::NotAType(con_type, func->args[num].location, a);
 
             if (argument->IsA(argument, parameter_type->GetConstructedType(), a, GetAccessSpecifier(source, argument, a)))
                 return parameter_type->GetConstructedType();
@@ -684,10 +676,10 @@ OverloadResolvable* Analyzer::GetCallableForFunction(const AST::FunctionBase* f,
         }
 
         Callable* GetCallableForResolution(std::vector<Type*> types, Analyzer& a) override final {
-            return a.GetWideFunction(func, context, std::move(types));
+            return a.GetWideFunction(func, context, std::move(types), name);
         }
     };
-    return FunctionCallables[f] = arena.Allocate<FunctionCallable>(f, context);
+    return FunctionCallables[f] = arena.Allocate<FunctionCallable>(f, context, name);
 }
 
 Lexer::Access Semantic::GetAccessSpecifier(Type* from, Type* to, Analyzer& a) {
@@ -709,7 +701,7 @@ Lexer::Access Semantic::GetAccessSpecifier(Context c, Type* to) {
     return GetAccessSpecifier(c.source, to, *c);
 }
 
-void ProcessFunction(const AST::Function* f, Analyzer& a, Module* m) {
+void ProcessFunction(const AST::Function* f, Analyzer& a, Module* m, std::string name) {
     bool exported = false;
     for (auto stmt : f->prolog) {
         auto ass = dynamic_cast<const AST::BinaryExpression*>(stmt);
@@ -731,22 +723,27 @@ void ProcessFunction(const AST::Function* f, Analyzer& a, Module* m) {
         else
             return;
     }
-    auto func = a.GetWideFunction(f, m, types);
+    auto func = a.GetWideFunction(f, m, types, name);
     func->ComputeBody(a);
 }
-void ProcessOverloadSet(const AST::FunctionOverloadSet* set, Analyzer& a, Module* m) {
+void ProcessOverloadSet(const AST::FunctionOverloadSet* set, Analyzer& a, Module* m, std::string name) {
     for (auto func : set->functions) {
-        ProcessFunction(func, a, m);
+        ProcessFunction(func, a, m, name);
     }
 }
+
+std::string Semantic::GetNameForOperator(Lexer::TokenType t) {
+    return "";
+}
+
 void AnalyzeExportedFunctionsInModule(Analyzer& a, Module* m) {
     auto mod = m->GetASTModule();
     for (auto decl : mod->decls) {
         if (auto overset = dynamic_cast<const AST::FunctionOverloadSet*>(decl.second))
-            ProcessOverloadSet(overset, a, m);
+            ProcessOverloadSet(overset, a, m, decl.first);
     }
     for (auto overset : mod->opcondecls)
-        ProcessOverloadSet(overset.second, a, m);
+        ProcessOverloadSet(overset.second, a, m, GetNameForOperator(overset.first));
     for (auto decl : mod->decls)
         if (auto nested = dynamic_cast<const AST::Module*>(decl.second))
             AnalyzeExportedFunctionsInModule(a, a.GetWideModule(nested, m));
@@ -766,7 +763,7 @@ OverloadResolvable* Analyzer::GetCallableForTemplateType(const AST::TemplateType
         unsigned GetArgumentCount() override final { return templatetype->arguments.size(); }
 
         Type* MatchParameter(Type* argument, unsigned num, Analyzer& a, Type* source) override final {
-            if (!templatetype->arguments[num].type)
+            /*if (!templatetype->arguments[num].type)
                 throw Wide::Semantic::SemanticError(templatetype->arguments[num].location, Wide::Semantic::Error::ExpressionNoType);
 
             auto parameter_type = dynamic_cast<ConstructorType*>(a.AnalyzeExpression(context, templatetype->arguments[num].type, [](ConcreteExpression e) {}).t->Decay());
@@ -776,7 +773,7 @@ OverloadResolvable* Analyzer::GetCallableForTemplateType(const AST::TemplateType
             if (!parameter_type->GetConstructedType()->GetConstantContext(a)) throw std::runtime_error("Attempted to use a non-constant type as template parameter argument.");
 
             if (argument->IsA(argument, parameter_type->GetConstructedType(), a, GetAccessSpecifier(source, argument, a)))
-                return parameter_type->GetConstructedType();
+                return parameter_type->GetConstructedType();*/
             return nullptr;
         }
         std::vector<ConcreteExpression> AdjustArguments(std::vector<ConcreteExpression> args, Context c) override final { return args; }
@@ -785,14 +782,14 @@ OverloadResolvable* Analyzer::GetCallableForTemplateType(const AST::TemplateType
             std::vector<Type*> types;
             for (auto arg : args)
                 types.push_back(arg.t);
-            return c->GetConstructorType(c->GetTemplateType(templatetype, context, types))->BuildValueConstruction({}, c);
+            return c->GetConstructorType(c->GetTemplateType(templatetype, context, types, ""))->BuildValueConstruction({}, c);
         }
     };
 
-    return TemplateTypeCallables[t] = arena.Allocate<TemplateTypeCallable>(t, context);
+    return nullptr;// TemplateTypeCallables[t] = arena.Allocate<TemplateTypeCallable>(t, context);
 }
 
-TemplateType* Analyzer::GetTemplateType(const Wide::AST::TemplateType*, Type* context, std::vector<Type*> arguments) {
+TemplateType* Analyzer::GetTemplateType(const Wide::AST::TemplateType*, Type* context, std::vector<Type*> arguments, std::string name) {
     return nullptr;
 }
 

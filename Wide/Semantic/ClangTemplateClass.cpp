@@ -75,3 +75,6 @@ ConcreteExpression ClangTemplateClass::BuildCall(ConcreteExpression, std::vector
     
         return c->GetConstructorType(c->GetClangType(*from, from->GetASTContext().getRecordType(spec)))->BuildValueConstruction({}, c);
 }
+std::string ClangTemplateClass::explain(Analyzer& a) {
+    return GetContext(a)->explain(a) + "." + tempdecl->getName().str();
+}

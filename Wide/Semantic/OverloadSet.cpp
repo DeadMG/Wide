@@ -378,7 +378,15 @@ Wide::Util::optional<ConcreteExpression> OverloadSet::AccessMember(ConcreteExpre
             decls.insert(clangfunc->fun);
             return c->GetOverloadSet(decls, clangfunc->from, nullptr)->BuildValueConstruction({}, c);
         }
+        std::string explain(Analyzer& a) {
+            return from->explain(a) + ".resolve";
+        }
     };
     ResolveOverloadSet = c->arena.Allocate<ResolveCallable>(this);
     return ResolveOverloadSet->BuildValueConstruction({}, c);
+}
+std::string OverloadSet::explain(Analyzer& a) {
+    std::stringstream strstr;
+    strstr << this;
+    return "OverloadSet " + strstr.str();
 }

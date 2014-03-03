@@ -17,9 +17,10 @@ namespace Wide {
             ClangNamespace(clang::DeclContext* p, ClangTU* f)
                 : con(p), from(f) {}
         
-            Wide::Util::optional<ConcreteExpression> AccessMember(ConcreteExpression val, std::string name, Context c) override;
-            Type* GetContext(Analyzer& a) override;
+            Wide::Util::optional<ConcreteExpression> AccessMember(ConcreteExpression val, std::string name, Context c) override final;
+            Type* GetContext(Analyzer& a) override final;
             ClangTU* GetTU() { return from; }
+            std::string explain(Analyzer& a) override final;
         };
     }
 }

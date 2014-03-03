@@ -50,10 +50,11 @@ std::vector<Type*> GetTypesFromType(const AST::Type* t, Analyzer& a, Type* conte
     return out;
 }
 
-UserDefinedType::UserDefinedType(const AST::Type* t, Analyzer& a, Type* higher)
+UserDefinedType::UserDefinedType(const AST::Type* t, Analyzer& a, Type* higher, std::string name)
 : AggregateType(GetTypesFromType(t, a, higher), a)
 , context(higher)
-, type(t){
+, type(t)
+, source_name(name) {
     unsigned i = 0;
     for (auto&& var : type->variables)
         members[var.first->name.front()] = i++ + type->bases.size();
@@ -90,7 +91,7 @@ Wide::Util::optional<ConcreteExpression> UserDefinedType::AccessMember(ConcreteE
         std::unordered_set<OverloadResolvable*> resolvables;
         for (auto f : type->Functions.at(name)->functions) {
             if (spec >= f->access)
-                resolvables.insert(c->GetCallableForFunction(f, self.t));
+                resolvables.insert(c->GetCallableForFunction(f, self.t, name));
         }
         if (!resolvables.empty())
             return c->GetOverloadSet(resolvables, self.t)->BuildValueConstruction({ self }, c);
@@ -141,83 +142,6 @@ clang::QualType UserDefinedType::GetClangType(ClangTU& TU, Analyzer& a) {
     }
     // Todo: Expose member functions
     // Only those which are not generic right now
-    if (type->Functions.find("()") != type->Functions.end()) {
-        for(auto&& x : type->Functions.at("()")->functions) {
-            bool skip = false;
-            for(auto&& arg : x->args)
-                if (!arg.type)
-                    skip = true;
-            if (skip) continue;
-            auto f = a.GetWideFunction(x, this);
-            auto sig = f->GetSignature(a);
-            auto ret = sig->GetReturnType();
-            auto args = sig->GetArguments();
-            args.erase(args.begin());
-            sig = a.GetFunctionType(ret, args);
-            auto meth = clang::CXXMethodDecl::Create(
-                TU.GetASTContext(), 
-                recdecl, 
-                clang::SourceLocation(), 
-                clang::DeclarationNameInfo(TU.GetASTContext().DeclarationNames.getCXXOperatorName(clang::OverloadedOperatorKind::OO_Call), clang::SourceLocation()),
-                sig->GetClangType(TU, a),
-                0,
-                clang::FunctionDecl::StorageClass::SC_Extern,
-                false,
-                false,
-                clang::SourceLocation()
-            );      
-            assert(!meth->isStatic());
-            meth->setAccess(clang::AccessSpecifier::AS_public);
-            std::vector<clang::ParmVarDecl*> decls;
-            for(auto&& arg : sig->GetArguments()) {
-                decls.push_back(clang::ParmVarDecl::Create(TU.GetASTContext(),
-                    meth,
-                    clang::SourceLocation(),
-                    clang::SourceLocation(),
-                    nullptr,
-                    arg->GetClangType(TU, a),
-                    nullptr,
-                    clang::VarDecl::StorageClass::SC_Auto,
-                    nullptr
-                ));
-            }
-            meth->setParams(decls);
-            recdecl->addDecl(meth);
-            if (clangtypes.empty()) {
-                auto trampoline = a.gen->CreateFunction([=, &a, &TU](llvm::Module* m) -> llvm::Type* {
-                    auto fty = llvm::dyn_cast<llvm::FunctionType>(sig->GetLLVMType(a)(m)->getPointerElementType());
-                    std::vector<llvm::Type*> args;
-                    for(auto it = fty->param_begin(); it != fty->param_end(); ++it) {
-                        args.push_back(*it);
-                    }
-                    // If T is complex, then "this" is the second argument. Else it is the first.
-                    auto self = TU.GetLLVMTypeFromClangType(TU.GetASTContext().getTypeDeclType(recdecl), a)(m)->getPointerTo();
-                    if (sig->GetReturnType()->IsComplexType(a)) {
-                        args.insert(args.begin() + 1, self);
-                    } else {
-                        args.insert(args.begin(), self);
-                    }
-                    return llvm::FunctionType::get(fty->getReturnType(), args, false)->getPointerTo();
-                }, TU.MangleName(meth), nullptr, true);// If an i8/i1 mismatch, fix it up for us amongst other things.
-                // The only statement is return f().
-                std::vector<Codegen::Expression*> exprs;
-                // Unlike OverloadSet, we wish to simply forward all parameters after ABI adjustment performed by FunctionCall in Codegen.
-                if (sig->GetReturnType()->IsComplexType(a)) {
-                    // Two hidden arguments: ret, this, skip this and do the rest.
-                    for(std::size_t i = 0; i < sig->GetArguments().size() + 2; ++i) {
-                        exprs.push_back(a.gen->CreateParameterExpression(i));
-                    }
-                } else {
-                    // One hidden argument: this, pos 0.
-                    for(std::size_t i = 0; i < sig->GetArguments().size() + 1; ++i) {
-                        exprs.push_back(a.gen->CreateParameterExpression(i));
-                    }
-                }
-                trampoline->AddStatement(a.gen->CreateReturn(a.gen->CreateFunctionCall(a.gen->CreateFunctionValue(f->GetName()), exprs, f->GetLLVMType(a))));
-            }
-        }
-    }
-
     recdecl->completeDefinition();
     auto size = TU.GetASTContext().getTypeSizeInChars(TU.GetASTContext().getTypeDeclType(recdecl).getTypePtr());
     TU.GetDeclContext()->addDecl(recdecl);
@@ -237,7 +161,7 @@ bool UserDefinedType::BinaryComplex(Analyzer& a) {
         std::vector<Type*> copytypes;
         copytypes.push_back(a.GetLvalueType(this));
         copytypes.push_back(copytypes.front());
-        IsBinaryComplex = IsBinaryComplex || a.GetOverloadSet(type->Functions.at("type"), a.GetLvalueType(this))->Resolve(copytypes, a, this);
+        IsBinaryComplex = IsBinaryComplex || a.GetOverloadSet(type->Functions.at("type"), a.GetLvalueType(this), "type")->Resolve(copytypes, a, this);
     }
     if (type->Functions.find("~") != type->Functions.end()) 
         IsBinaryComplex = true;
@@ -257,27 +181,27 @@ bool UserDefinedType::UserDefinedComplex(Analyzer& a) {
         std::vector<Type*> copytypes;
         copytypes.push_back(a.GetLvalueType(this));
         copytypes.push_back(copytypes.front());
-        IsUserDefinedComplex = IsUserDefinedComplex || a.GetOverloadSet(type->Functions.at("type"), a.GetLvalueType(this))->Resolve(copytypes, a, this);
+        IsUserDefinedComplex = IsUserDefinedComplex || a.GetOverloadSet(type->Functions.at("type"), a.GetLvalueType(this), "type")->Resolve(copytypes, a, this);
 
         std::vector<Type*> movetypes;
         movetypes.push_back(a.GetLvalueType(this));
         movetypes.push_back(a.GetRvalueType(this));
-        IsUserDefinedComplex = IsUserDefinedComplex || a.GetOverloadSet(type->Functions.at("type"), a.GetLvalueType(this))->Resolve(movetypes, a, this);
+        IsUserDefinedComplex = IsUserDefinedComplex || a.GetOverloadSet(type->Functions.at("type"), a.GetLvalueType(this), "type")->Resolve(movetypes, a, this);
 
         std::vector<Type*> defaulttypes;
         defaulttypes.push_back(a.GetLvalueType(this));
-        HasDefaultConstructor = a.GetOverloadSet(type->Functions.at("type"), a.GetLvalueType(this))->Resolve(defaulttypes, a, this);
+        HasDefaultConstructor = a.GetOverloadSet(type->Functions.at("type"), a.GetLvalueType(this), "type")->Resolve(defaulttypes, a, this);
     }
     if (type->opcondecls.find(Lexer::TokenType::Assignment) != type->opcondecls.end()) {
         std::vector<Type*> copytypes;
         copytypes.push_back(a.GetLvalueType(this));
         copytypes.push_back(copytypes.front());
-        IsUserDefinedComplex = IsUserDefinedComplex || a.GetOverloadSet(type->opcondecls.at(Lexer::TokenType::Assignment), a.GetLvalueType(this))->Resolve(copytypes, a, this);
+        IsUserDefinedComplex = IsUserDefinedComplex || a.GetOverloadSet(type->opcondecls.at(Lexer::TokenType::Assignment), a.GetLvalueType(this), GetNameForOperator(Lexer::TokenType::Assignment))->Resolve(copytypes, a, this);
 
         std::vector<Type*> movetypes;
         movetypes.push_back(a.GetLvalueType(this));
         movetypes.push_back(a.GetRvalueType(this));
-        IsUserDefinedComplex = IsUserDefinedComplex || a.GetOverloadSet(type->opcondecls.at(Lexer::TokenType::Assignment), a.GetLvalueType(this))->Resolve(movetypes, a, this);
+        IsUserDefinedComplex = IsUserDefinedComplex || a.GetOverloadSet(type->opcondecls.at(Lexer::TokenType::Assignment), a.GetLvalueType(this), GetNameForOperator(Lexer::TokenType::Assignment))->Resolve(movetypes, a, this);
     }
     if (type->Functions.find("~") != type->Functions.end())
         IsUserDefinedComplex = true;
@@ -292,7 +216,7 @@ OverloadSet* UserDefinedType::CreateConstructorOverloadSet(Analyzer& a, Lexer::A
         std::unordered_set<OverloadResolvable*> resolvables;
         for (auto f : type->Functions.at("type")->functions) {
             if (f->access <= access)
-                resolvables.insert(a.GetCallableForFunction(f, a.GetLvalueType(this)));
+                resolvables.insert(a.GetCallableForFunction(f, a.GetLvalueType(this), "type"));
         }
         return a.GetOverloadSet(resolvables, a.GetLvalueType(this));
     };
@@ -316,7 +240,7 @@ OverloadSet* UserDefinedType::CreateOperatorOverloadSet(Type* self, Lexer::Token
             std::unordered_set<OverloadResolvable*> resolvable;
             for (auto&& f : type->opcondecls.at(name)->functions) {
                 if (f->access <= access)
-                    resolvable.insert(a.GetCallableForFunction(f, self));
+                    resolvable.insert(a.GetCallableForFunction(f, self, GetNameForOperator(name)));
             }
             return a.GetOverloadSet(resolvable, self);
         }
@@ -348,7 +272,7 @@ OverloadSet* UserDefinedType::CreateDestructorOverloadSet(Analyzer& a) {
             ConcreteExpression CallFunction(std::vector<ConcreteExpression> args, Context c) override final { 
                 std::vector<Type*> types;
                 types.push_back(args[0].t);
-                auto userdestructor = c->GetOverloadSet(self->type->Functions.at("~"), args[0].t)->Resolve(types, *c, self)->Call({ args[0] }, c).Expr;
+                auto userdestructor = c->GetOverloadSet(self->type->Functions.at("~"), args[0].t, "~type")->Resolve(types, *c, self)->Call({ args[0] }, c).Expr;
                 auto autodestructor = aggset->Resolve(types, *c, self)->Call({ args[0] }, c).Expr;
                 return ConcreteExpression(c->GetLvalueType(self), c->gen->CreateChainExpression(userdestructor, autodestructor));
             }
@@ -435,4 +359,7 @@ Codegen::Expression* UserDefinedType::AccessBase(Type* other, Codegen::Expressio
 
 ConcreteExpression UserDefinedType::PrimitiveAccessMember(ConcreteExpression e, unsigned num, Analyzer& a) {
     return AggregateType::PrimitiveAccessMember(e, num, a);
+}
+std::string UserDefinedType::explain(Analyzer& a) {
+    return GetContext(a)->explain(a) + "." + source_name;
 }

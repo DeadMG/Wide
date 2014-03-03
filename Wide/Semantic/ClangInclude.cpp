@@ -73,20 +73,25 @@ Wide::Util::optional<ConcreteExpression> ClangIncludeEntity::AccessMember(Concre
         return (LiteralOverloadSet = c->GetOverloadSet(c->arena.Allocate<LiteralIncluder>()))->BuildValueConstruction({}, c);
     }
     if (name == "macro") {
-        struct ClangMacroHandler : public MetaType {
-            ConcreteExpression BuildCall(ConcreteExpression, std::vector<ConcreteExpression> args, Context c) override final{
-                if (args.size() < 2)
-                    throw std::runtime_error("Attempt to access a macro but no TU or macro name was passed.");
-                // Should be a ClangNamespace as first argument.
+        if (MacroOverloadSet)
+            return MacroOverloadSet->BuildValueConstruction({}, c);
+        struct ClangMacroHandler : public OverloadResolvable, Callable {
+            unsigned GetArgumentCount() override final { return 2; }
+            Type* MatchParameter(Type* t, unsigned num, Analyzer& a, Type* source) override final {
+                if (num == 0 && dynamic_cast<ClangNamespace*>(t->Decay())) return t;
+                if (num == 1 && dynamic_cast<StringType*>(t->Decay())) return t;
+                return nullptr;
+            }
+            Callable* GetCallableForResolution(std::vector<Type*>, Analyzer& a) override final { return this; }
+            std::vector<ConcreteExpression> AdjustArguments(std::vector<ConcreteExpression> args, Context c) override final { return args; }
+            ConcreteExpression CallFunction(std::vector<ConcreteExpression> args, Context c) override final{
                 auto gnamespace = dynamic_cast<ClangNamespace*>(args[0].t->Decay());
-                if (!gnamespace)
-                    throw std::runtime_error("Attempted to access a macro, but the first argument was not a Clang translation unit.");
-                auto str = dynamic_cast<Codegen::StringExpression*>(args[1].BuildValue(c).Expr);
-                if (!str)
-                    throw std::runtime_error("Attempted to access a macro, but the second argument was not a string literal.");
+                auto str = dynamic_cast<StringType*>(args[1].t->Decay());
+                assert(gnamespace && "Overload resolution picked bad candidate.");
+                assert(str && "Overload resolution picked bad candidate.");
                 auto tu = gnamespace->GetTU();
                 auto&& pp = tu->GetSema().getPreprocessor();
-                auto info = pp.getMacroInfo(tu->GetIdentifierInfo(str->GetContents()));
+                auto info = pp.getMacroInfo(tu->GetIdentifierInfo(str->GetValue()));
                     
                 class SwallowConsumer : public clang::ASTConsumer {
                 public:
@@ -111,10 +116,10 @@ Wide::Util::optional<ConcreteExpression> ClangIncludeEntity::AccessMember(Concre
                 if (expr.isUsable()) {
                     return InterpretExpression(expr.get(), *tu, c);
                 }
-                throw std::runtime_error("Only support constexpr integral macros right now.");
+                throw std::runtime_error("Clang stated that the macro was not a valid expression.");
             }
         };
-        return c->arena.Allocate<ClangMacroHandler>()->BuildValueConstruction({}, c);
+        return (MacroOverloadSet = c->GetOverloadSet(c->arena.Allocate<ClangMacroHandler>()))->BuildValueConstruction({}, c);
     }
     return Wide::Util::none;
 }
@@ -131,4 +136,7 @@ ConcreteExpression ClangIncludeEntity::BuildCall(ConcreteExpression e, std::vect
     auto clangtu = c->LoadCPPHeader(std::move(name), c.where);
 
     return c->GetClangNamespace(*clangtu, clangtu->GetDeclContext())->BuildValueConstruction({}, c);
+}
+std::string ClangIncludeEntity::explain(Analyzer& a) {
+    return "global.cpp";
 }

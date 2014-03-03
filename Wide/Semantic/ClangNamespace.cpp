@@ -61,5 +61,13 @@ Wide::Util::optional<ConcreteExpression> ClangNamespace::AccessMember(ConcreteEx
 }
 
 Type* ClangNamespace::GetContext(Analyzer& a) {
+    if (con == from->GetDeclContext())
+        return nullptr;
     return a.GetClangNamespace(*from, con->getParent());
+}
+std::string ClangNamespace::explain(Analyzer& a) {
+    if (con == from->GetDeclContext())
+        return "cpp(" + from->GetFilename() + ")";
+    auto names = llvm::dyn_cast<clang::NamespaceDecl>(con);
+    return GetContext(a)->explain(a) + "." + names->getName().str();
 }

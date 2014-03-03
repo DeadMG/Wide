@@ -246,7 +246,7 @@ std::size_t ClangType::alignment(Analyzer& a) {
 }
 #pragma warning(default : 4244)
 Type* ClangType::GetContext(Analyzer& a) {
-    return a.GetClangNamespace(*from, type->getAsCXXRecordDecl()->getDeclContext()->getParent());
+    return a.GetClangNamespace(*from, type->getAsCXXRecordDecl()->getDeclContext());
 }
 
 namespace std {
@@ -379,4 +379,7 @@ Codegen::Expression* ClangType::AccessBase(Type* other, Codegen::Expression* exp
     }
     assert(false);
     return nullptr;
+}
+std::string ClangType::explain(Analyzer& a) {
+    return GetContext(a)->explain(a) + "." + type->getAsCXXRecordDecl()->getName().str();
 }

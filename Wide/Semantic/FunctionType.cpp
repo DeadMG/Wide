@@ -120,3 +120,13 @@ ConcreteExpression FunctionType::BuildCall(ConcreteExpression val, std::vector<C
     }
     return out;
 }
+std::string FunctionType::explain(Analyzer& a) {
+    auto begin = ReturnType->explain(a) + "(*)(";
+    for (auto& ty : Args) {
+        if (&ty != &Args.back())
+            begin += ty->explain(a) + ", ";
+        else
+            begin += ty->explain(a);
+    }
+    return begin + ")";
+}

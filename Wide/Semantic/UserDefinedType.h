@@ -23,6 +23,7 @@ namespace Wide {
         class UserDefinedType : public AggregateType, public TupleInitializable, public BaseType, public MemberFunctionContext {
             const AST::Type* type;
             bool HasDefaultConstructor;
+            std::string source_name;
 
             // Actually a list of member variables
             std::unordered_map<std::string, unsigned> members;
@@ -43,7 +44,7 @@ namespace Wide {
             bool BinaryComplex(Analyzer& a);
         public:
             std::vector<member> GetMembers();
-            UserDefinedType(const AST::Type* t, Analyzer& a, Type* context);           
+            UserDefinedType(const AST::Type* t, Analyzer& a, Type* context, std::string);           
             Type* GetContext(Analyzer& a) override final { return context; }
             bool HasMember(std::string name);            
             clang::QualType GetClangType(ClangTU& TU, Analyzer& a) override final;
@@ -63,6 +64,7 @@ namespace Wide {
             ConcreteExpression PrimitiveAccessMember(ConcreteExpression e, unsigned num, Analyzer& a) override final;
             InheritanceRelationship IsDerivedFrom(Type* other, Analyzer& a) override final;
             Codegen::Expression* AccessBase(Type* other, Codegen::Expression*, Analyzer& a) override final;
+            std::string explain(Analyzer& a) override;
         };
     }
 }

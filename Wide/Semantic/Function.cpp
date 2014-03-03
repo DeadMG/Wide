@@ -76,7 +76,7 @@ Wide::Util::optional<ConcreteExpression> Function::Scope::LookupName(std::string
     return Wide::Util::none;
 }
 
-Function::Function(std::vector<Type*> args, const AST::FunctionBase* astfun, Analyzer& a, Type* mem)
+Function::Function(std::vector<Type*> args, const AST::FunctionBase* astfun, Analyzer& a, Type* mem, std::string src_name)
 : analyzer(a)
 , ReturnType(nullptr)
 , fun(astfun)
@@ -84,7 +84,8 @@ Function::Function(std::vector<Type*> args, const AST::FunctionBase* astfun, Ana
 , context(mem)
 , s(State::NotYetAnalyzed)
 , returnstate(ReturnState::NoReturnSeen)
-, root_scope(nullptr) {
+, root_scope(nullptr)
+, source_name(src_name) {
     // Only match the non-concrete arguments.
     current_scope = &root_scope;
     unsigned num = 0;
@@ -489,6 +490,7 @@ Type* Function::GetConstantContext(Analyzer& a) {
                 return Wide::Util::none;
             return constant.at(member).t->Decay()->GetConstantContext(*c)->BuildValueConstruction({}, c);
         }
+        std::string explain(Analyzer& a) { return "function lookup context"; }
     };
     auto context = a.arena.Allocate<FunctionConstantContext>();
     context->context = GetContext(a);
@@ -502,4 +504,16 @@ Type* Function::GetConstantContext(Analyzer& a) {
         }
     }
     return context;
+}
+std::string Function::explain(Analyzer& a) {
+    auto args = std::string("(");
+    for (auto& ty : Args) {
+        if (&ty != &Args.back())
+            args += ty->explain(a) + ", ";
+        else
+            args += ty->explain(a);
+    }
+    args += ")";
+
+    return "(" + context->explain(a) + "." + source_name + args + " at " + fun->where + ")";
 }

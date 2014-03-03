@@ -119,9 +119,9 @@ void Jit(const Wide::Options::Clang& copts, std::string file) {
 void Compile(const Wide::Options::Clang& copts, std::string file) {
     Wide::Driver::NullGenerator mockgen(copts.TargetOptions.Triple);
     Wide::Driver::Compile(copts, [&](Wide::Semantic::Analyzer& a, const Wide::AST::Module* root) {
-        Wide::Test::Test(a, nullptr, root, [&](Wide::Lexer::Range r, Wide::Semantic::Error e) {
-            throw Wide::Semantic::SemanticError(r, e);
-        }, mockgen, false);
+        Wide::Test::Test(a, nullptr, root, [&](Wide::Semantic::Error& r) {
+            throw;
+        }, mockgen);
     }, mockgen, { file });
 }
 

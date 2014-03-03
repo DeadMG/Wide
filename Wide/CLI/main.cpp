@@ -7,6 +7,7 @@
 #include <Wide/Semantic/Module.h>
 #include <Wide/Semantic/Analyzer.h>
 #include <Wide/Semantic/OverloadSet.h>
+#include <Wide/Semantic/SemanticError.h>
 #include <Wide/Semantic/Function.h>
 #include <boost/program_options.hpp>
 #include <memory>
@@ -203,7 +204,12 @@ int main(int argc, char** argv)
             func->SetExportName("main");
             func->ComputeBody(a);
         }, Generator, files);
-    } catch(std::exception& e) {
+    } catch (Wide::Semantic::Error& e) {
+        std::cout << "Error at " << to_string(e.location()) << "\n";
+        std::cout << e.what() << "\n";
+        return 1;
+    }
+    catch (std::exception& e) {
         std::cout << "Error:\n";
         std::cout << e.what() << "\n";
         return 1;

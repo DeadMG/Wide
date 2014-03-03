@@ -142,3 +142,9 @@ OverloadSet* LvalueType::CreateConstructorOverloadSet(Analyzer& a, Lexer::Access
     set.insert(a.arena.Allocate<PointerComparableResolvable>(this));
     return a.GetOverloadSet(set);
 }
+std::string LvalueType::explain(Analyzer& a) {
+    return Decay()->explain(a) + ".lvalue";
+}
+std::string RvalueType::explain(Analyzer& a) {
+    return Decay()->explain(a) + ".rvalue";
+}

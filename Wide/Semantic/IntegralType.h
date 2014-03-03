@@ -22,6 +22,7 @@ namespace Wide {
             bool IsA(Type* self, Type* other, Analyzer& a, Lexer::Access access) override final;
             OverloadSet* CreateConstructorOverloadSet(Wide::Semantic::Analyzer&, Lexer::Access access) override final;
             OverloadSet* CreateOperatorOverloadSet(Type* self, Lexer::TokenType what, Lexer::Access access, Analyzer& a) override final;
+            std::string explain(Analyzer& a) override final;
         };
     }
 }

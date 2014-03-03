@@ -15,7 +15,10 @@ struct TemplateType::TemplateTypeLookupContext : MetaType {
             return c->GetConstructorType(arguments[name])->BuildValueConstruction({}, c);
         return templatecontext->AccessMember(self, name, c);
     }
+    std::string explain(Analyzer& a) override final {
+        return templatecontext->explain(a);
+    }
 };
 
-TemplateType::TemplateType(const AST::Type* t, Analyzer& a, Type* context, std::unordered_map<std::string, Type*>  arguments)
-    : UserDefinedType(t, a, a.arena.Allocate<TemplateTypeLookupContext>(context, arguments)), templatearguments(std::move(arguments)) {}
+TemplateType::TemplateType(const AST::Type* t, Analyzer& a, Type* context, std::unordered_map<std::string, Type*> arguments, std::string name)
+    : UserDefinedType(t, a, a.arena.Allocate<TemplateTypeLookupContext>(context, arguments), name), templatearguments(std::move(arguments)) {}

@@ -18,6 +18,7 @@ namespace Wide {
             std::size_t alignment(Analyzer& a) override final;
             OverloadSet* CreateConstructorOverloadSet(Wide::Semantic::Analyzer&, Lexer::Access access) override final;
             bool IsA(Type* self, Type* other, Analyzer& a, Lexer::Access access) override final;
+            std::string explain(Analyzer& a) override final;
         };
     }
 }

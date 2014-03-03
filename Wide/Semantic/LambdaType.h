@@ -16,6 +16,7 @@ namespace Wide {
             ConcreteExpression BuildLambdaFromCaptures(std::vector<ConcreteExpression> exprs, Context c);
 
             Wide::Util::optional<ConcreteExpression> LookupCapture(ConcreteExpression self, std::string name, Context c);
+            std::string explain(Analyzer& a) override final;
        };
     }
 }

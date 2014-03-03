@@ -3,6 +3,7 @@
 #include <Wide/Semantic/OverloadSet.h>
 #include <Wide/Semantic/Reference.h>
 #include <Wide/Codegen/Generator.h>
+#include <sstream>
 #include <Wide/Parser/AST.h>
 
 #include <Wide/Codegen/GeneratorMacros.h>
@@ -31,7 +32,7 @@ ConcreteExpression LambdaType::BuildCall(ConcreteExpression val, std::vector<Con
     std::vector<Type*> types;
     for (auto arg : args)
         types.push_back(arg.t);
-    auto call = c->GetOverloadSet(c->GetCallableForFunction(lam, val.t))->Resolve(types, *c, c.source);
+    auto call = c->GetOverloadSet(c->GetCallableForFunction(lam, val.t, GetNameForOperator(Lexer::TokenType::OpenBracket)))->Resolve(types, *c, c.source);
     if (!call)
         throw std::runtime_error("Attempted to call a lambda type but overload resolution could not resolve the call.");
     return call->Call(args, c);
@@ -61,4 +62,9 @@ Wide::Util::optional<ConcreteExpression> LambdaType::LookupCapture(ConcreteExpre
     if (names.find(name) != names.end())
         return PrimitiveAccessMember(self, names[name], *c);
     return Wide::Util::none;
+}
+std::string LambdaType::explain(Analyzer& a) {
+    std::stringstream strstream;
+    strstream << this;
+    return "(lambda instantiation " + strstream.str() + " at location " + lam->location + ")";
 }

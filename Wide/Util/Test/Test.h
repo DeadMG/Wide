@@ -11,55 +11,49 @@
 
 namespace Wide {
     namespace Test {
-        template<typename F, typename T> void Try(F&& t, T errorcallback, bool swallow) {
+        template<typename F, typename T> void Try(F&& t, T errorcallback) {
             try {
                 t();
-            } catch(Wide::Semantic::SemanticError& err) {
-                 errorcallback(err.location(), err.error());
-            } catch(...) {
-                if (!swallow)
-                    throw;
+            } catch(Wide::Semantic::Error& err) {
+                 errorcallback(err);
             }
         }
         
-        template<typename T, typename U> void Test(Wide::Semantic::Analyzer& a, Wide::Semantic::Module* higher, const Wide::AST::Module* root, T errorfunc, U& mockgen, bool swallow) {
+        template<typename T, typename U> void Test(Wide::Semantic::Analyzer& a, Wide::Semantic::Module* higher, const Wide::AST::Module* root, T errorfunc, U& mockgen) {
             auto swallow_raii = [](Wide::Semantic::ConcreteExpression e) {};
             auto mod = a.GetWideModule(root, higher);
             for(auto decl : root->decls) {
                 Wide::Semantic::Context c(a, root->where.front(), swallow_raii, mod);
                 if (auto use = dynamic_cast<Wide::AST::Using*>(decl.second)) {
-                    Try([&] { mod->BuildValueConstruction({}, c).AccessMember(decl.first, c); }, errorfunc, swallow);
+                    Try([&] { mod->BuildValueConstruction({}, c).AccessMember(decl.first, c); }, errorfunc);
                 }
                 if (auto module = dynamic_cast<Wide::AST::Module*>(decl.second)) {
-                    Try([&] { mod->BuildValueConstruction({}, c).AccessMember(decl.first, c); }, errorfunc, swallow);
-                    Test(a, mod, module, errorfunc, mockgen, swallow);
+                    Try([&] { mod->BuildValueConstruction({}, c).AccessMember(decl.first, c); }, errorfunc);
+                    Test(a, mod, module, errorfunc, mockgen);
                 }
                 if (auto overset = dynamic_cast<Wide::AST::FunctionOverloadSet*>(decl.second)) {
                     for (auto fun : overset->functions) {
                         Wide::Semantic::Context c(a, fun->where, swallow_raii, mod);
                         if (fun->args.size() == 0) {
-                            Try([&] { a.GetWideFunction(fun, mod)->BuildCall(a.GetWideFunction(fun, mod)->BuildValueConstruction({}, c), std::vector<Wide::Semantic::ConcreteExpression>(), c); }, errorfunc, swallow);
+                            Try([&] { a.GetWideFunction(fun, mod, std::vector<Wide::Semantic::Type*>(), decl.first)->ComputeBody(a); }, errorfunc);
                             continue;
                         }
-                        std::vector<Wide::Semantic::ConcreteExpression> concexpr;
                         try {
+                            std::vector<Wide::Semantic::Type*> types;
                             for (auto arg : fun->args) {
                                 if (!arg.type)
-                                    continue;
+                                    break;
                                 Try([&] {
                                     auto ty = a.AnalyzeExpression(mod, arg.type, swallow_raii);
                                     if (auto conty = dynamic_cast<Wide::Semantic::ConstructorType*>(ty.t->Decay()))
-                                        concexpr.push_back(Wide::Semantic::ConcreteExpression(conty->GetConstructedType(), mockgen.CreateNop()));
-                                }, errorfunc, swallow);
+                                        types.push_back(conty->GetConstructedType());
+                                }, errorfunc);
                             }
-                            if (concexpr.size() == fun->args.size()) {
-                                std::vector<Wide::Semantic::Type*> types;
-                                for (auto x : concexpr)
-                                    types.push_back(x.t);
+                            if (types.size() == fun->args.size()) {
                                 Try([&] {
-                                    auto ty = a.GetWideFunction(fun, mod, std::move(types));
-                                    ty->BuildCall(ty->BuildValueConstruction({}, c), std::move(concexpr), c);
-                                }, errorfunc, swallow);
+                                    auto ty = a.GetWideFunction(fun, mod, std::move(types), decl.first);
+                                    ty->ComputeBody(a);
+                                }, errorfunc);
                             }
                         }
                         catch (...) {}

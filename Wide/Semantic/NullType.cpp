@@ -37,3 +37,6 @@ bool NullType::IsA(Type* self, Type* other, Analyzer& a, Lexer::Access access) {
         return true;
     return Type::IsA(self, other, a, access);
 }
+std::string NullType::explain(Analyzer& a) {
+    return "null";
+}

@@ -40,17 +40,13 @@ extern "C" DLLEXPORT void AddHeaderPath(Wide::Options::Clang* p, const char* pat
 extern "C" DLLEXPORT void AnalyzeWide(
     Wide::AST::Combiner* comb,
     Wide::Options::Clang* clangopts,
-    std::add_pointer<void(CEquivalents::Range, Wide::Semantic::Error, void*)>::type errorcallback,
     void* context
 ) {
     Wide::Driver::NullGenerator mockgen(clangopts->TargetOptions.Triple);
     Wide::Semantic::Analyzer a(*clangopts, mockgen, comb->GetGlobalModule());
-    Wide::Test::Test(a, nullptr, comb->GetGlobalModule(), [&](CEquivalents::Range r, Wide::Semantic::Error e) { errorcallback(r, e, context); }, mockgen, true);
+    Wide::Test::Test(a, nullptr, comb->GetGlobalModule(), [&](Wide::Semantic::Error& e) { }, mockgen);
 }
 
-extern "C" DLLEXPORT const char* GetAnalyzerErrorString(Wide::Semantic::Error err) {
-    auto&& strings = Wide::Semantic::ErrorStrings;
-    if (strings.find(err) != strings.end())
-        return strings.at(err).c_str();
-    return "ICE: Could not locate semantic error string.";
+extern "C" DLLEXPORT const char* GetAnalyzerErrorString(Wide::Semantic::Error* err) {
+    return err->what();
 }

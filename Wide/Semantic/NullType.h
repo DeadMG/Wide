@@ -11,6 +11,7 @@ namespace Wide {
             std::size_t size(Analyzer& a) override final;
             std::size_t alignment(Analyzer& a) override final;
             bool IsA(Type* self, Type* other, Analyzer& a, Lexer::Access) override final;
+            std::string explain(Analyzer& a) override final;
         };
     }
 }

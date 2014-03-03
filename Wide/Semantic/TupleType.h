@@ -10,6 +10,7 @@ namespace Wide {
 
             ConcreteExpression ConstructFromLiteral(std::vector<ConcreteExpression> exprs, Context c);
             bool IsA(Type* self, Type* other, Analyzer& a, Lexer::Access access) override final;
+            std::string explain(Analyzer& a) override final;
         };
     }
 }

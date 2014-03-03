@@ -15,6 +15,7 @@ namespace Wide {
             Codegen::Expression* BuildBooleanConversion(ConcreteExpression, Context c) override final;
             std::size_t size(Analyzer& a) override final;
             std::size_t alignment(Analyzer& a) override final;
+            std::string explain(Analyzer& a) override final;
         };
     }
 }

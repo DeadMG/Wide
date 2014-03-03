@@ -31,3 +31,6 @@ std::size_t StringType::size(Analyzer& a) {
 std::size_t StringType::alignment(Analyzer& a) {
     return llvm::DataLayout(a.gen->GetDataLayout()).getPointerABIAlignment();
 }
+std::string StringType::explain(Analyzer& a) {
+    return "(Constant string: \"" + value + "\")";
+}

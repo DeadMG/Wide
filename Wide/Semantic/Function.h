@@ -57,6 +57,7 @@ namespace Wide {
             struct LocalScope;
             Scope root_scope;
             Scope* current_scope;
+            std::string source_name;
             std::string name;
 
             std::vector<ConcreteExpression> AdjustArguments(std::vector<ConcreteExpression> args, Context c) override final {
@@ -68,7 +69,7 @@ namespace Wide {
         public:
             void ComputeBody(Analyzer& a);
             bool HasLocalVariable(std::string name);
-            Function(std::vector<Type*> args, const AST::FunctionBase* astfun, Analyzer& a, Type* container);        
+            Function(std::vector<Type*> args, const AST::FunctionBase* astfun, Analyzer& a, Type* container, std::string name);        
 
             clang::QualType GetClangType(ClangTU& where, Analyzer& a) override final;
      
@@ -80,6 +81,7 @@ namespace Wide {
             Wide::Util::optional<ConcreteExpression> LookupLocal(std::string name, Context c);
             Type* GetConstantContext(Analyzer& a) override final;
             void SetExportName(std::string name) { trampoline = name; }
+            std::string explain(Analyzer& a) override final;
         };
     }
 }

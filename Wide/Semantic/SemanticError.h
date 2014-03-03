@@ -2,51 +2,54 @@
 
 #include <Wide/Lexer/Token.h>
 #include <stdexcept>
-#include <unordered_map>
+
+#ifndef _MSC_VER
+#define WIDE_NOEXCEPT noexcept
+#else
+#define WIDE_NOEXCEPT
+#endif
 
 namespace Wide {
     namespace Semantic {
-        enum class Error : int {
-            CouldNotFindHeader,
-            NoMember,
-            ExpressionNoType,
-        };
-    }
-}
-#ifndef _MSC_VER
-namespace std {
-    template<> struct hash<Wide::Semantic::Error> {
-        std::size_t operator()(Wide::Semantic::Error p) const {
-            return hash<int>()((int)p);
-        }
-    };
-}
-#endif
-namespace Wide {
-    namespace Semantic {
-        static const std::unordered_map<Error, std::string> ErrorStrings([]() -> std::unordered_map<Error, std::string> {
-            std::pair<Error, std::string> strings[] = {
-                std::make_pair(Error::CouldNotFindHeader, "Clang could not find the specified header."),
-                std::make_pair(Error::NoMember, "The requested member could not be found."),
-                std::make_pair(Error::ExpressionNoType, "The expression did not resolve to a type.")
-            };
-            return std::unordered_map<Error, std::string>(std::begin(strings), std::end(strings));
-        }());
-        class SemanticError : public std::exception {
+        struct Type;
+        class Analyzer;
+        class Error : public std::exception {
             Lexer::Range where;
-            Error err;
+        protected:
+            std::string msg;
         public:
-            SemanticError(Lexer::Range loc, Error wha)
-                : where(loc), err(wha) {}
-            Error error() { return err; }
+            Error(Lexer::Range loc)
+                : where(loc) {}
             Lexer::Range location() { return where; }
-            const char* what() const 
-#ifndef _MSC_VER
-                noexcept
-#endif
-                override {
-                return ErrorStrings.at(err).c_str();
+            const char* what() const WIDE_NOEXCEPT {
+                return msg.c_str();
             }
+        };
+        class NoMember : public Error {
+            Type* which;
+            std::string member;
+            Type* context;
+        public:
+            NoMember(Type* what, Type* con, std::string name, Lexer::Range where, Analyzer& a);
+            Type* GetType() { return which; }
+            Type* GetContext() { return context; }
+            std::string GetMember() { return member; }
+        };
+
+        class NotAType : public Error {
+            Type* real_type;
+        public:
+            NotAType(Type* what, Lexer::Range loc, Analyzer& a);
+            Type* GetType() { return real_type; }
+        };
+
+        class CantFindHeader : public Error {
+            std::string which;
+            std::vector<std::string> includes;
+        public:
+            std::string header() { return which; }
+            std::vector<std::string> includepaths() { return includes; }
+            CantFindHeader(std::string path, std::vector<std::string> paths, Lexer::Range loc);
         };
     }
 }

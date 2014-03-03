@@ -80,65 +80,6 @@ OverloadSet* Bool::CreateOperatorOverloadSet(Type* t, Lexer::TokenType name, Lex
     return a.GetOverloadSet();
 }
 
-/*#pragma warning(disable : 4715)
-ConcreteExpression Bool::BuildBinaryExpression(ConcreteExpression lhs, ConcreteExpression rhs, std::vector<ConcreteExpression> destructors, Lexer::TokenType type, Context c) {
-    // Special-case this short-circuit.
-    // Left-hand-side's destructors already been registered.
-    // destructors only contains right-hand-side destructors.
-    if (type != Lexer::TokenType::Or && type != Lexer::TokenType::And)
-        return Type::BuildBinaryExpression(lhs, rhs, std::move(destructors), type, c);
-
-    if (!shortcircuit_destructor_type) {
-        struct des_type : public MetaType {
-            Wide::Util::optional<ConcreteExpression> AccessMember(ConcreteExpression e, std::string name, Context c) final override {
-                if (name == "~type") {
-                    return ConcreteExpression(c->GetNothingFunctorType(), e.Expr);
-                }
-                return Wide::Util::none;
-            }
-        };
-        shortcircuit_destructor_type = c->arena.Allocate<des_type>();
-    }
-
-    Codegen::Expression* var = c->gen->CreateVariable(GetLLVMType(*c), alignment(*c));
-    auto destruct_rhs = lhs.BuildBooleanConversion(c);
-    destruct_rhs = c->gen->CreateChainExpression(c->gen->CreateStore(var, destruct_rhs), destruct_rhs);
-
-    auto register_destructor_expression = [&] {
-        if (destructors.empty())
-            return;
-        Codegen::Statement* des = c->gen->CreateNop();
-        for (auto it = destructors.rbegin(); it != destructors.rend(); ++it) {
-            if (dynamic_cast<MetaType*>(it->t))
-                continue;
-            std::vector<Type*> types;
-            types.push_back(it->t);
-            des = c->gen->CreateChainStatement(des, it->t->GetDestructorOverloadSet(*c)->Resolve(types, *c)->Call(*it, c).Expr);
-            des = c->gen->CreateChainStatement(des, c->gen->CreateLifetimeEnd(it->Expr));
-        }
-        if (dynamic_cast<Codegen::Nop*>(des))
-            return;
-        c(ConcreteExpression(shortcircuit_destructor_type, c->gen->CreateChainExpression(c->gen->CreateIfStatement(destruct_rhs, des, nullptr), var)));
-    };
-
-    switch(type) {
-        /*
-        a | b
-        var := a;
-        if (~var)
-            var = b;
-        ~a();
-        if (~var)
-            ~b();
-        case Lexer::TokenType::Or: {
-            auto result = c->gen->CreateChainExpression(c->gen->CreateIfStatement(c->gen->CreateNegateExpression(destruct_rhs), c->gen->CreateStore(var, rhs.BuildBooleanConversion(c)), nullptr), c->gen->CreateLoad(var));
-            register_destructor_expression();
-            return ConcreteExpression(this, result);
-        }
-        case Lexer::TokenType::And: {
-            auto result = c->gen->CreateChainExpression(c->gen->CreateIfStatement(destruct_rhs, c->gen->CreateStore(var, rhs.BuildBooleanConversion(c)), nullptr), c->gen->CreateLoad(var));
-            register_destructor_expression();
-            return ConcreteExpression(this, result);
-        }
-    }
-}*/
+std::string Bool::explain(Analyzer& a) {
+    return "bool";
+}

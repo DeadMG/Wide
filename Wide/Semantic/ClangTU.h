@@ -53,6 +53,7 @@ namespace Wide {
             ClangTU(llvm::LLVMContext& c, std::string file, const Wide::Options::Clang&, Lexer::Range where);
             std::function<llvm::Type*(llvm::Module*)> GetLLVMTypeFromClangType(clang::QualType t, Semantic::Analyzer& a);
             std::string MangleName(clang::NamedDecl* D);
+            std::string GetFilename();
 
             bool IsComplexType(clang::CXXRecordDecl* decl);
             clang::ASTContext& GetASTContext();

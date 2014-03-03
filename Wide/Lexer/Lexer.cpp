@@ -105,3 +105,16 @@ const std::unordered_set<TokenType> Arguments::KeywordTypes = []() -> std::unord
         KeywordTypes.insert(x.second);
     return KeywordTypes;
 }();
+
+std::string Lexer::to_string(Lexer::Position p) {
+    return *p.name + ":" + std::to_string(p.line) + ":" + std::to_string(p.column);
+}
+std::string Lexer::to_string(Lexer::Range r) {
+    return to_string(r.begin) + " - " + to_string(r.end);
+}
+std::string Lexer::operator+(std::string s, Lexer::Range r) {
+    return s + to_string(r);
+}
+std::string Lexer::operator+(Lexer::Range r, std::string s) {
+    return to_string(r) + s;
+}

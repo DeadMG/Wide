@@ -113,7 +113,7 @@ namespace Wide {
             Type* GetVoidType();
             Type* GetNullType();
             Type* GetBooleanType();
-            Type* GetNothingFunctorType();
+            //Type* GetNothingFunctorType();
             Type* GetTypeForString(std::string str);
             
             // The contract of this function is to return the Wide type that corresponds to that Clang type.
@@ -122,7 +122,7 @@ namespace Wide {
             ClangNamespace* GetClangNamespace(ClangTU& from, clang::DeclContext* dc);
             FunctionType* GetFunctionType(Type* ret, const std::vector<Type*>& t);
             Module* GetWideModule(const AST::Module* m, Module* higher);
-            Function* GetWideFunction(const AST::FunctionBase* p, Type* context, const std::vector<Type*>& = std::vector<Type*>());
+            Function* GetWideFunction(const AST::FunctionBase* p, Type* context, const std::vector<Type*>&, std::string name);
             LvalueType* GetLvalueType(Type* t);
             Type* GetRvalueType(Type* t);
             ConstructorType* GetConstructorType(Type* t);
@@ -130,18 +130,18 @@ namespace Wide {
             OverloadSet* GetOverloadSet();
             OverloadSet* GetOverloadSet(std::unordered_set<OverloadResolvable*> c, Type* nonstatic = nullptr);
             OverloadSet* GetOverloadSet(OverloadResolvable* c);
-            OverloadSet* GetOverloadSet(const AST::FunctionOverloadSet* set, Type* nonstatic);
+            OverloadSet* GetOverloadSet(const AST::FunctionOverloadSet* set, Type* nonstatic, std::string name);
             OverloadSet* GetOverloadSet(OverloadSet*, OverloadSet*, Type* context = nullptr);
             OverloadSet* GetOverloadSet(std::unordered_set<clang::NamedDecl*> decls, ClangTU* from, Type* context);
-            UserDefinedType* GetUDT(const AST::Type*, Type* context);
+            UserDefinedType* GetUDT(const AST::Type*, Type* context, std::string name);
             IntegralType* GetIntegralType(unsigned, bool);
             PointerType* GetPointerType(Type* to);
             FloatType* GetFloatType(unsigned);
             Module* GetGlobalModule();
             TupleType* GetTupleType(std::vector<Type*> types);
-            OverloadResolvable* GetCallableForFunction(const AST::FunctionBase* f, Type* context);
+            OverloadResolvable* GetCallableForFunction(const AST::FunctionBase* f, Type* context, std::string name);
             OverloadResolvable* GetCallableForTemplateType(const AST::TemplateType* t, Type* context);
-            TemplateType* GetTemplateType(const AST::TemplateType* t, Type* context, std::vector<Type*> arguments);
+            TemplateType* GetTemplateType(const AST::TemplateType* t, Type* context, std::vector<Type*> arguments, std::string name);
             ConcreteExpression AnalyzeExpression(Type* t, const AST::Expression* e, std::function<void(ConcreteExpression)>);
             Wide::Util::optional<ConcreteExpression> LookupIdentifier(Type* context, const AST::Identifier* ident);
 
@@ -156,5 +156,6 @@ namespace Wide {
         Lexer::Access GetAccessSpecifier(Type* from, Type* to, Analyzer& a);
         Lexer::Access GetAccessSpecifier(Context c, Type* to);
         void AnalyzeExportedFunctions(Analyzer& a);
+        std::string GetNameForOperator(Lexer::TokenType t);
     }
 }

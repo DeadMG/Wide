@@ -12,19 +12,22 @@ using namespace Wide;
 using namespace Semantic;
 
 struct EmplaceType : public MetaType {
-    EmplaceType(Type* con)
+    EmplaceType(ConstructorType* con)
         : t(con) {}
-    Type* t;
+    ConstructorType* t;
 
     ConcreteExpression BuildCall(ConcreteExpression obj, std::vector<ConcreteExpression> args, Context c) override final {
+        auto constructed = t->GetConstructedType();
         if (args.size() == 0)
             throw std::runtime_error("Attempted to emplace a type without providing any memory into which to emplace it.");
-        if (args[0].t->Decay() != c->GetPointerType(t))
+        if (args[0].t->Decay() != c->GetPointerType(constructed))
             throw std::runtime_error("Attempted to emplace a T into a type that was not a pointer to T.");
         auto expr = args.front();
         args.erase(args.begin());
-        return ConcreteExpression(c->GetRvalueType(t), c->gen->CreateChainExpression(t->BuildInplaceConstruction(expr.Expr, args, c), expr.Expr));
+        return ConcreteExpression(c->GetRvalueType(constructed), c->gen->CreateChainExpression(constructed->BuildInplaceConstruction(expr.Expr, args, c), expr.Expr));
     }
+
+    std::string explain(Analyzer& a) { return t->explain(a) + ".emplace"; }
 };
 
 ConcreteExpression ConstructorType::BuildCall(ConcreteExpression self, std::vector<ConcreteExpression> args, Context c) {
@@ -47,7 +50,7 @@ Wide::Util::optional<ConcreteExpression> ConstructorType::AccessMember(ConcreteE
     if (name == "alignment")
         return ConcreteExpression(c->GetIntegralType(64, false), c->gen->CreateIntegralExpression(t->alignment(*c), false, c->GetIntegralType(64, false)->GetLLVMType(*c)));
     if (name == "emplace") {
-        if (!emplace) emplace = c->arena.Allocate<EmplaceType>(t);
+        if (!emplace) emplace = c->arena.Allocate<EmplaceType>(this);
         return emplace->BuildValueConstruction({}, c);
     }
     throw std::runtime_error("Attempted to access the special members of a type, but the identifier provided did not name a special member.");
@@ -56,4 +59,7 @@ Wide::Util::optional<ConcreteExpression> ConstructorType::AccessMember(ConcreteE
 ConstructorType::ConstructorType(Type* con) {
     t = con;
     emplace = nullptr;
+}
+std::string ConstructorType::explain(Analyzer& a) {
+    return "decltype(" + t->explain(a) + ")";
 }

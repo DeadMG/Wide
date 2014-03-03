@@ -125,6 +125,12 @@ namespace Wide {
             else 
                 return Range(rhs, lhs);
         }
+        std::string to_string(Lexer::Position p);
+        std::string operator+(std::string, Lexer::Position);
+        std::string operator+(Lexer::Position, std::string);
+        std::string to_string(Lexer::Range r);
+        std::string operator+(std::string, Lexer::Range);
+        std::string operator+(Lexer::Range, std::string);
     }
 }
 namespace std {

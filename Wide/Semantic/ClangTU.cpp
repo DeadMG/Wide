@@ -124,13 +124,16 @@ public:
         mod.setTargetTriple(Options->TargetOptions.Triple);
         clang::InitializePreprocessor(preproc, *Options->PreprocessorOptions, *Options->HeaderSearchOptions, Options->FrontendOptions);
         preproc.getBuiltinInfo().InitializeBuiltins(preproc.getIdentifierTable(), Options->LanguageOptions);
-
+        
+        std::vector<std::string> paths;
+        for (auto it = hs.search_dir_begin(); it != hs.search_dir_end(); ++it)
+            paths.push_back(it->getDir()->getName());
         const clang::DirectoryLookup* directlookup = nullptr;
         auto entry = hs.LookupFile(filename, true, nullptr, directlookup, nullptr, nullptr, nullptr, nullptr);
         if (!entry)
             entry = FileManager.getFile(filename);
         if (!entry)
-            throw Semantic::SemanticError(where, Semantic::Error::CouldNotFindHeader);
+            throw CantFindHeader(filename, paths, where);
         
         auto fileid = sm.createFileID(entry, clang::SourceLocation(), clang::SrcMgr::CharacteristicKind::C_User);
         if (fileid.isInvalid())
@@ -455,4 +458,7 @@ unsigned ClangTU::GetBaseNumber(clang::CXXRecordDecl* self, clang::CXXRecordDecl
 
 clang::SourceLocation ClangTU::GetFileEnd() {
     return impl->sm.getLocForEndOfFile(impl->sm.getMainFileID());
+}
+std::string ClangTU::GetFilename() {
+    return impl->filename;
 }

@@ -37,6 +37,7 @@ namespace Wide {
             ConcreteExpression PrimitiveAccessMember(ConcreteExpression e, unsigned num, Analyzer& a) override final;
             InheritanceRelationship IsDerivedFrom(Type* other, Analyzer& a) override final;
             Codegen::Expression* AccessBase(Type* other, Codegen::Expression*, Analyzer& a) override final;
+            std::string explain(Analyzer& a) override final;
         };
     }
 }

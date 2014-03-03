@@ -109,3 +109,6 @@ OverloadSet* PointerType::CreateOperatorOverloadSet(Type* self, Lexer::TokenType
         return ConcreteExpression(c->GetLvalueType(pointee), args[0].BuildValue(c).Expr);
     }, { this }, a));
 }
+std::string PointerType::explain(Analyzer& a) {
+    return pointee->explain(a) + ".pointer";
+}
