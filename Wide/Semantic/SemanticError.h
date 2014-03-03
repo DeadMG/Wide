@@ -1,6 +1,8 @@
 #pragma once
 
 #include <Wide/Lexer/Token.h>
+#include <string>
+#include <vector>
 #include <stdexcept>
 
 #ifndef _MSC_VER
