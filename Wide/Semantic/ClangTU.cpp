@@ -137,7 +137,7 @@ public:
         
         auto fileid = sm.createFileID(entry, clang::SourceLocation(), clang::SrcMgr::CharacteristicKind::C_User);
         if (fileid.isInvalid())
-            throw std::runtime_error("Error translating file " + filename);
+            throw CannotTranslateFile(filename, where);
         sm.setMainFileID(fileid);
         engine.getClient()->BeginSourceFile(Options->LanguageOptions, &preproc);
         ParseAST(sema);
@@ -270,135 +270,6 @@ bool ClangTU::IsComplexType(clang::CXXRecordDecl* decl) {
 }
 
 std::string ClangTU::MangleName(clang::NamedDecl* D) {    
-    /*auto MarkFunction = [&](clang::FunctionDecl* d) {
-        struct GeneratingVisitor : public clang::RecursiveASTVisitor<GeneratingVisitor> {
-            clang::ASTContext* astcon;
-            clang::Sema* sema;
-            std::unordered_set<clang::FunctionDecl*>* visited;
-            clang::CodeGen::CodeGenModule* module;
-
-            bool VisitFunctionDecl(clang::FunctionDecl* d) {
-                if (!d) return true;
-                if (visited->find(d) != visited->end())
-                    return true;
-                visited->insert(d);
-                if (d->isTemplateInstantiation()) {
-                    if (d->getTemplateSpecializationKind() == clang::TSK_ExplicitInstantiationDeclaration)
-                        d->setTemplateSpecializationKind(clang::TSK_ExplicitInstantiationDefinition);
-                    sema->InstantiateFunctionDefinition(clang::SourceLocation(), d, true, true);
-                }
-                d->setInlineSpecified(false);
-                //d->setUsed(true);
-                //d->setReferenced(true);
-                d->setLateTemplateParsed(false);
-
-                if (d->isExternC())
-                    module->GetAddrOfGlobal(d);
-
-                if (auto con = llvm::dyn_cast<clang::CXXConstructorDecl>(d)) {
-                    module->GetAddrOfGlobal(clang::GlobalDecl(con, clang::CXXCtorType::Ctor_Complete));
-                } else if (auto des = llvm::dyn_cast<clang::CXXDestructorDecl>(d)) {
-                    module->GetAddrOfGlobal(clang::GlobalDecl(des, clang::CXXDtorType::Dtor_Complete));
-                } else
-                    module->GetAddrOfGlobal(d);
-
-                if (d->hasAttrs()) {
-                    d->addAttr(new (*astcon) clang::UsedAttr(clang::SourceLocation(), *astcon));
-                } else {
-                    clang::AttrVec v;
-                    v.push_back(new (*astcon) clang::UsedAttr(clang::SourceLocation(), *astcon));
-                    d->setAttrs(v);
-                }                
-                if (d->hasBody())
-                    TraverseStmt(d->getBody());
-                if (auto con = llvm::dyn_cast<clang::CXXConstructorDecl>(d)) {
-                    for(auto begin = con->decls_begin(); begin != con->decls_end(); ++begin) {
-                        TraverseDecl(*begin);
-                    }
-                    std::unordered_set<clang::FieldDecl*> fields;
-                    for(auto f = con->getParent()->field_begin(); f != con->getParent()->field_end(); ++f)
-                        fields.insert(*f);
-                    std::unordered_set<const clang::Type*> bases;
-                    for(auto f = con->getParent()->bases_begin(); f != con->getParent()->bases_end(); ++f)
-                        bases.insert(f->getType().getTypePtr());
-                    for(auto begin = con->init_begin(); begin != con->init_end(); ++begin) {
-                        TraverseStmt((*begin)->getInit());
-                        fields.erase((*begin)->getMember());
-                        bases.erase((*begin)->getBaseClass());
-                    }
-                    for(auto&& def : fields) {
-                        if (auto rec = def->getType()->getAsCXXRecordDecl())
-                            VisitFunctionDecl(sema->LookupDefaultConstructor(rec));
-                    }
-                    for(auto&& def : bases) {
-                        if (auto rec = def->getAsCXXRecordDecl())
-                            VisitFunctionDecl(sema->LookupDefaultConstructor(rec));
-                    }
-                }
-                return true;
-            }
-            bool VisitCallExpr(clang::CallExpr* s) {
-                if (s->getDirectCallee()) {
-                    VisitFunctionDecl(s->getDirectCallee());
-                }
-                return true;
-            }
-        };
-        
-        GeneratingVisitor v;
-        v.astcon = &impl->astcon;
-        v.sema = &impl->sema;
-        v.visited = &visited;
-        v.module = &impl->codegenmod;
-        v.VisitFunctionDecl(d);
-    };
-    
-    if (auto vardecl = llvm::dyn_cast<clang::VarDecl>(D)) {
-        auto name = impl->codegenmod.getMangledName(vardecl);
-        if (vardecl->hasAttrs()) {
-            vardecl->addAttr(new (impl->astcon) clang::UsedAttr(clang::SourceLocation(), impl->astcon));
-        } else {
-            clang::AttrVec v;
-            v.push_back(new (impl->astcon) clang::UsedAttr(clang::SourceLocation(), impl->astcon));
-            vardecl->setAttrs(v);
-        }
-        impl->codegenmod.GetAddrOfGlobal(vardecl);
-        return name;
-    }
-    if (auto desdecl = llvm::dyn_cast<clang::CXXDestructorDecl>(D)) {
-        MarkFunction(desdecl);
-        //RecursiveMarkTypes(desdecl->getParent());
-        auto gd = clang::GlobalDecl(desdecl, clang::CXXDtorType::Dtor_Complete); 
-        auto name = impl->codegenmod.getMangledName(gd); 
-        return name;
-    }
-    if (auto condecl = llvm::dyn_cast<clang::CXXConstructorDecl>(D)) {
-        assert(!condecl->isTrivial());
-        MarkFunction(condecl);
-        //RecursiveMarkTypes(condecl->getParent());
-        auto gd = clang::GlobalDecl(condecl, clang::CXXCtorType::Ctor_Complete);
-        auto name = impl->codegenmod.getMangledName(gd);  
-
-        // this is always first argument
-        if (!condecl->getParent()->field_empty()) {
-            prebaked_types[GetASTContext().getTypeDeclType(condecl->getParent())] = [=](llvm::Module* mod) -> llvm::Type* {
-                auto func = mod->getFunction(name);
-                auto&& list = func->getArgumentList();
-                auto&& first = list.front();
-                auto type = first.getType();
-                auto ptr = llvm::dyn_cast<llvm::PointerType>(type);
-                auto debug = ptr->getElementType();
-                return debug;
-            };
-        }
-
-        return name;
-    }
-    if (auto funcdecl = llvm::dyn_cast<clang::FunctionDecl>(D)) {
-        MarkFunction(funcdecl);
-        auto name = impl->codegenmod.getMangledName(funcdecl);
-        return name;
-    }*/
     if (auto funcdecl = llvm::dyn_cast<clang::CXXMethodDecl>(D)) {
         if (funcdecl->getType()->getAs<clang::FunctionProtoType>()->getExtProtoInfo().ExceptionSpecType == clang::ExceptionSpecificationType::EST_Unevaluated) {
             GetSema().EvaluateImplicitExceptionSpec(clang::SourceLocation(), funcdecl);
@@ -433,7 +304,7 @@ std::string ClangTU::MangleName(clang::NamedDecl* D) {
         impl->codegenmod.GetAddrOfGlobal(funcdecl);
         return impl->codegenmod.getMangledName(funcdecl);
     }
-    throw std::runtime_error("Attempted to mangle a name that could not be mangled.");
+    assert(false);
 }
 
 clang::ASTContext& ClangTU::GetASTContext() {

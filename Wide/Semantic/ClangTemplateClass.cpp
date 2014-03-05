@@ -3,7 +3,9 @@
 #include <Wide/Semantic/Analyzer.h>
 #include <Wide/Semantic/ClangTU.h>
 #include <Wide/Semantic/IntegralType.h>
+#include <Wide/Semantic/ClangNamespace.h>
 #include <Wide/Codegen/Generator.h>
+#include <Wide/Semantic/SemanticError.h>
 
 #pragma warning(push, 0)
 #include <clang/AST/DeclTemplate.h>
@@ -19,30 +21,32 @@ using namespace Semantic;
 
 ConcreteExpression ClangTemplateClass::BuildCall(ConcreteExpression, std::vector<ConcreteExpression> args, Context c) {
     clang::TemplateArgumentListInfo tl;
+    std::vector<Type*> types;
+    std::list<clang::IntegerLiteral> literals;
     for(auto&& x : args) {
         if (auto con = dynamic_cast<ConstructorType*>(x.t)) {
             auto clangty = con->GetConstructedType()->GetClangType(*from, *c);
+            if (!clangty) throw InvalidTemplateArgument(x.t, c.where, *c);
+            auto tysrcinfo = from->GetASTContext().getTrivialTypeSourceInfo(*clangty);
             
-            auto tysrcinfo = from->GetASTContext().getTrivialTypeSourceInfo(clangty);
-            
-            tl.addArgument(clang::TemplateArgumentLoc(clang::TemplateArgument(clangty), tysrcinfo));
+            tl.addArgument(clang::TemplateArgumentLoc(clang::TemplateArgument(*clangty), tysrcinfo));
+            types.push_back(con->GetConstructedType());
             continue;
         }
         if (auto in = dynamic_cast<IntegralType*>(x.t)) {
             if (auto integral = dynamic_cast<Codegen::IntegralExpression*>(x.Expr)) {
-                clang::IntegerLiteral lit(from->GetASTContext(), llvm::APInt(64, integral->GetValue(), integral->GetSign()), from->GetASTContext().LongLongTy, clang::SourceLocation());
-                tl.addArgument(clang::TemplateArgumentLoc(clang::TemplateArgument(&lit), clang::TemplateArgumentLocInfo()));
+                literals.emplace_back(from->GetASTContext(), llvm::APInt(64, integral->GetValue(), integral->GetSign()), from->GetASTContext().LongLongTy, clang::SourceLocation());
+                tl.addArgument(clang::TemplateArgumentLoc(clang::TemplateArgument(&literals.back()), clang::TemplateArgumentLocInfo(&literals.back())));
+                types.push_back(x.t);
                 continue;
-            } else {
-                throw std::runtime_error("Attempted to pass a non-literal integer to a Clang template.");
             }
         }
-        throw std::runtime_error("Attempted to pass something that was not an integer or a type to a Clang template.");
+        throw InvalidTemplateArgument(x.t, c.where, *c);
     }
     
     llvm::SmallVector<clang::TemplateArgument, 10> tempargs;
     if (from->GetSema().CheckTemplateArgumentList(tempdecl, tempdecl->getLocation(), tl, false, tempargs))
-        throw std::runtime_error("Clang could not resolve the template arguments for this template.");
+        throw UnresolvableTemplate(this, types, c.where, *c);
 
     void* pos = 0;
     auto spec = tempdecl->findSpecialization(tempargs.data(), tempargs.size(), pos);    
@@ -69,12 +73,13 @@ ConcreteExpression ClangTemplateClass::BuildCall(ConcreteExpression, std::vector
 
     if (!spec->getDefinition())
         if (from->GetSema().InstantiateClassTemplateSpecialization(loc, spec, tsk))
-            throw std::runtime_error("Could not instantiate resulting class template specialization.");
+            throw UninstantiableTemplate(c.where);
 
-    //from->GetSema().InstantiateClassTemplateSpecializationMembers(loc, llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(spec->getDefinition()), tsk);
-    
-        return c->GetConstructorType(c->GetClangType(*from, from->GetASTContext().getRecordType(spec)))->BuildValueConstruction({}, c);
+    return c->GetConstructorType(c->GetClangType(*from, from->GetASTContext().getRecordType(spec)))->BuildValueConstruction({}, c);
 }
 std::string ClangTemplateClass::explain(Analyzer& a) {
     return GetContext(a)->explain(a) + "." + tempdecl->getName().str();
+} 
+Type* ClangTemplateClass::GetContext(Analyzer& a) {
+    return a.GetClangNamespace(*from, tempdecl->getDeclContext());
 }

@@ -158,7 +158,7 @@ Function::Function(std::vector<Type*> args, const AST::FunctionBase* astfun, Ana
     }
 }
 
-clang::QualType Function::GetClangType(ClangTU& where, Analyzer& a) {
+Wide::Util::optional<clang::QualType> Function::GetClangType(ClangTU& where, Analyzer& a) {
     return GetSignature(a)->GetClangType(where, a);
 }
 

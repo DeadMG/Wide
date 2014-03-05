@@ -12,7 +12,7 @@ namespace Wide {
             IntegralType(unsigned bit, bool sign)
                 : bits(bit), is_signed(sign) {}
             
-            clang::QualType GetClangType(ClangTU& TU, Analyzer& a) override final;
+            Wide::Util::optional<clang::QualType> GetClangType(ClangTU& TU, Analyzer& a) override final;
             std::function<llvm::Type*(llvm::Module*)> GetLLVMType(Analyzer& a) override final;
 
 

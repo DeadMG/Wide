@@ -9,7 +9,7 @@ namespace Wide {
         public:
             Bool() : shortcircuit_destructor_type(nullptr) {}
             std::function<llvm::Type*(llvm::Module*)> GetLLVMType(Analyzer& a) override final;
-            clang::QualType GetClangType(ClangTU&, Analyzer& a) override final;
+            Wide::Util::optional<clang::QualType> GetClangType(ClangTU&, Analyzer& a) override final;
             
             OverloadSet* CreateOperatorOverloadSet(Type* t, Lexer::TokenType name, Lexer::Access access, Analyzer& a) override final;
             Codegen::Expression* BuildBooleanConversion(ConcreteExpression, Context c) override final;

@@ -9,6 +9,7 @@
 #include <Wide/Semantic/Reference.h>
 #include <Wide/Semantic/ClangTemplateClass.h>
 #include <Wide/Semantic/Util.h>
+#include <Wide/Semantic/SemanticError.h>
 #include <Wide/Semantic/ConstructorType.h>
 #include <Wide/Lexer/Token.h>
 #include <iostream>
@@ -62,6 +63,26 @@ OverloadSet* GetOverloadSet(clang::LookupResult& lr, ClangTU* from, ConcreteExpr
     return GetOverloadSet(lr, from, self, GetAccessSpecifier(c, self.t), *c);
 }
 
+void ClangType::ProcessImplicitSpecialMember(std::function<bool()> needs, std::function<clang::CXXMethodDecl*()> declare, std::function<void(clang::CXXMethodDecl*)> define, std::function<clang::CXXMethodDecl*()> lookup) {
+    if (needs()) {
+        auto decl = declare();
+        from->GetSema().EvaluateImplicitExceptionSpec(clang::SourceLocation(), decl);
+        if (!decl->isDeleted())
+            define(decl);
+    }
+    else {
+        auto decl = lookup();
+        if (decl && decl->isDefaulted() && !decl->isDeleted()) {
+            if (decl->getType()->getAs<clang::FunctionProtoType>()->getExtProtoInfo().ExceptionSpecType == clang::ExceptionSpecificationType::EST_Unevaluated) {
+                from->GetSema().EvaluateImplicitExceptionSpec(clang::SourceLocation(), decl);
+            }
+            if (!decl->doesThisDeclarationHaveABody()) {
+                define(decl);
+            }
+        }
+    }
+};
+
 
 ClangType::ClangType(ClangTU* src, clang::QualType t) 
     : from(src), type(t.getCanonicalType()) 
@@ -70,82 +91,16 @@ ClangType::ClangType(ClangTU* src, clang::QualType t)
     // Also fix up their exception spec because for some reason Clang doesn't until you ask it.
     auto recdecl = type->getAsCXXRecordDecl();
     if (!recdecl) return;
-    //from->GetSema().MarkDeclarationsReferencedInType(clang::SourceLocation(), type);
-
-    auto ProcessImplicitSpecialMember = [this](
-        std::function<bool()> needs,
-        std::function<clang::CXXMethodDecl*()> declare, 
-        std::function<void(clang::CXXMethodDecl*)> define,
-        std::function<clang::CXXMethodDecl*()> lookup
-    ) {
-        if (needs()) {
-            auto decl = declare();
-            from->GetSema().EvaluateImplicitExceptionSpec(clang::SourceLocation(), decl);
-            if (!decl->isDeleted())
-                define(decl);
-        } else {
-            auto decl = lookup();
-            if (decl && decl->isDefaulted() && !decl->isDeleted()) {                
-                if (decl->getType()->getAs<clang::FunctionProtoType>()->getExtProtoInfo().ExceptionSpecType == clang::ExceptionSpecificationType::EST_Unevaluated) {
-                    from->GetSema().EvaluateImplicitExceptionSpec(clang::SourceLocation(), decl);
-                }                
-                if (!decl->doesThisDeclarationHaveABody()) {
-                    define(decl);
-                }
-            }
-        }
-    };
-
     if (!recdecl->hasDefinition()) {
         auto spec = llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(recdecl);
-        if (!spec)
-            throw std::runtime_error("Attempt to use a Clang type which was incomplete.");
         auto loc = from->GetFileEnd();
         auto tsk = clang::TemplateSpecializationKind::TSK_ExplicitInstantiationDefinition;
         from->GetSema().InstantiateClassTemplateSpecialization(loc, spec, tsk);
         //from->GetSema().InstantiateClassTemplateSpecializationMembers(loc, llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(spec->getDefinition()), tsk);
     }
-
-    ProcessImplicitSpecialMember(
-        [&]{ return recdecl->needsImplicitCopyAssignment(); },
-        [&]{ return from->GetSema().DeclareImplicitCopyAssignment(recdecl); },
-        [&](clang::CXXMethodDecl* decl) { return from->GetSema().DefineImplicitCopyAssignment(clang::SourceLocation(), decl); },
-        [&]{ return from->GetSema().LookupCopyingAssignment(recdecl, 0, false, 0); }
-    );
-    ProcessImplicitSpecialMember(
-        [&]{ return recdecl->needsImplicitCopyConstructor(); },
-        [&]{ return from->GetSema().DeclareImplicitCopyConstructor(recdecl); },
-        [&](clang::CXXMethodDecl* decl) { return from->GetSema().DefineImplicitCopyConstructor(clang::SourceLocation(), static_cast<clang::CXXConstructorDecl*>(decl)); },
-        [&]{ return from->GetSema().LookupCopyingConstructor(recdecl, 0); }
-    );
-    ProcessImplicitSpecialMember(
-        [&]{ return recdecl->needsImplicitMoveConstructor(); },
-        [&]{ return from->GetSema().DeclareImplicitMoveConstructor(recdecl); },
-        [&](clang::CXXMethodDecl* decl) { return from->GetSema().DefineImplicitMoveConstructor(clang::SourceLocation(), static_cast<clang::CXXConstructorDecl*>(decl)); },
-        [&]{ return from->GetSema().LookupMovingConstructor(recdecl, 0); }
-    );
-    ProcessImplicitSpecialMember(
-        [&]{ return recdecl->needsImplicitDestructor(); },
-        [&]{ return from->GetSema().DeclareImplicitDestructor(recdecl); },
-        [&](clang::CXXMethodDecl* decl) { return from->GetSema().DefineImplicitDestructor(clang::SourceLocation(), static_cast<clang::CXXDestructorDecl*>(decl)); },
-        [&]{ return from->GetSema().LookupDestructor(recdecl); }
-    );
-    ProcessImplicitSpecialMember(
-        [&]{ return recdecl->needsImplicitMoveAssignment(); },
-        [&]{ return from->GetSema().DeclareImplicitMoveAssignment(recdecl); },
-        [&](clang::CXXMethodDecl* decl) { return from->GetSema().DefineImplicitMoveAssignment(clang::SourceLocation(), decl); },
-        [&]{ return from->GetSema().LookupMovingAssignment(recdecl, 0, false, 0); }
-    );
-    ProcessImplicitSpecialMember(
-        [&]{ return recdecl->needsImplicitDefaultConstructor(); },
-        [&]{ return from->GetSema().DeclareImplicitDefaultConstructor(recdecl); },
-        [&](clang::CXXMethodDecl* decl) { return from->GetSema().DefineImplicitDefaultConstructor(clang::SourceLocation(), static_cast<clang::CXXConstructorDecl*>(decl)); },
-        [&]{ return from->GetSema().LookupDefaultConstructor(recdecl); }
-    );
 }
-clang::QualType ClangType::GetClangType(ClangTU& tu, Analyzer& a) {
-    if (&tu != from)
-        throw std::runtime_error("Attempted to use a C++ type outside the TU where it was declared.");
+Wide::Util::optional<clang::QualType> ClangType::GetClangType(ClangTU& tu, Analyzer& a) {
+    if (&tu != from) return Wide::Util::none;
     return type;
 }
 
@@ -164,7 +119,7 @@ Wide::Util::optional<ConcreteExpression> ClangType::AccessMember(ConcreteExpress
     if (!from->GetSema().LookupQualifiedName(lr, type.getCanonicalType()->getAs<clang::TagType>()->getDecl()))
         return Wide::Util::none;
     if (lr.isAmbiguous())
-        throw std::runtime_error("Attempted to access a member of a Clang type, but Clang said the lookup was ambiguous.");
+        throw ClangLookupAmbiguous(name, this, c.where, *c);
     if (lr.isSingleResult()) {
         auto declaccess = AccessMapping.at(lr.getFoundDecl()->getAccess());
         if (access < declaccess)
@@ -183,7 +138,7 @@ Wide::Util::optional<ConcreteExpression> ClangType::AccessMember(ConcreteExpress
         }
         if (auto tempdecl = llvm::dyn_cast<clang::ClassTemplateDecl>(lr.getFoundDecl()))
             return c->GetClangTemplateClass(*from, tempdecl)->BuildValueConstruction({}, c);
-        throw std::runtime_error("Found a decl but didn't know how to interpret it.");
+        throw ClangUnknownDecl(name, this, c.where, *c);
     }    
     auto set = GetOverloadSet(lr, from, val, c);
     return set ? set->BuildValueConstruction({ val }, c) : Type::AccessMember(val, name, c);
@@ -271,6 +226,22 @@ OverloadSet* ClangType::CreateADLOverloadSet(Lexer::TokenType what, Type* lhs, T
 }
 
 OverloadSet* ClangType::CreateOperatorOverloadSet(Type* self, Lexer::TokenType name, Lexer::Access access, Analyzer& a) {
+    if (!ProcessedAssignmentOperators && name == Lexer::TokenType::Assignment) {
+        ProcessedAssignmentOperators = true;
+        auto recdecl = type->getAsCXXRecordDecl();
+        ProcessImplicitSpecialMember(
+            [&]{ return recdecl->needsImplicitCopyAssignment(); },
+            [&]{ return from->GetSema().DeclareImplicitCopyAssignment(recdecl); },
+            [&](clang::CXXMethodDecl* decl) { return from->GetSema().DefineImplicitCopyAssignment(clang::SourceLocation(), decl); },
+            [&]{ return from->GetSema().LookupCopyingAssignment(recdecl, 0, false, 0); }
+        );
+        ProcessImplicitSpecialMember(
+            [&]{ return recdecl->needsImplicitMoveAssignment(); },
+            [&]{ return from->GetSema().DeclareImplicitMoveAssignment(recdecl); },
+            [&](clang::CXXMethodDecl* decl) { return from->GetSema().DefineImplicitMoveAssignment(clang::SourceLocation(), decl); },
+            [&]{ return from->GetSema().LookupMovingAssignment(recdecl, 0, false, 0); }
+        );        
+    }
     auto opkind = GetTokenMappings().at(name).first;
     clang::LookupResult lr(
         from->GetSema(), 
@@ -290,6 +261,28 @@ OverloadSet* ClangType::CreateOperatorOverloadSet(Type* self, Lexer::TokenType n
 }
 
 OverloadSet* ClangType::CreateConstructorOverloadSet(Analyzer& a, Lexer::Access access) {
+    if (!ProcessedConstructors) {
+        auto recdecl = type->getAsCXXRecordDecl();
+        ProcessImplicitSpecialMember(
+            [&]{ return recdecl->needsImplicitDefaultConstructor(); },
+            [&]{ return from->GetSema().DeclareImplicitDefaultConstructor(recdecl); },
+            [&](clang::CXXMethodDecl* decl) { return from->GetSema().DefineImplicitDefaultConstructor(clang::SourceLocation(), static_cast<clang::CXXConstructorDecl*>(decl)); },
+            [&]{ return from->GetSema().LookupDefaultConstructor(recdecl); }
+        );
+        ProcessImplicitSpecialMember(
+            [&]{ return recdecl->needsImplicitCopyConstructor(); },
+            [&]{ return from->GetSema().DeclareImplicitCopyConstructor(recdecl); },
+            [&](clang::CXXMethodDecl* decl) { return from->GetSema().DefineImplicitCopyConstructor(clang::SourceLocation(), static_cast<clang::CXXConstructorDecl*>(decl)); },
+            [&]{ return from->GetSema().LookupCopyingConstructor(recdecl, 0); }
+        );
+        ProcessImplicitSpecialMember(
+            [&]{ return recdecl->needsImplicitMoveConstructor(); },
+            [&]{ return from->GetSema().DeclareImplicitMoveConstructor(recdecl); },
+            [&](clang::CXXMethodDecl* decl) { return from->GetSema().DefineImplicitMoveConstructor(clang::SourceLocation(), static_cast<clang::CXXConstructorDecl*>(decl)); },
+            [&]{ return from->GetSema().LookupMovingConstructor(recdecl, 0); }
+        );
+        ProcessedConstructors = true;
+    }
     auto cons = from->GetSema().LookupConstructors(type->getAsCXXRecordDecl());
     std::unordered_set<clang::NamedDecl*> decls;
     for (auto con : cons)
@@ -300,6 +293,16 @@ OverloadSet* ClangType::CreateConstructorOverloadSet(Analyzer& a, Lexer::Access 
 }
 
 OverloadSet* ClangType::CreateDestructorOverloadSet(Analyzer& a) {
+    if (!ProcessedDestructors) {
+        auto recdecl = type->getAsCXXRecordDecl();
+        ProcessImplicitSpecialMember(
+            [&]{ return recdecl->needsImplicitDestructor(); },
+            [&]{ return from->GetSema().DeclareImplicitDestructor(recdecl); },
+            [&](clang::CXXMethodDecl* decl) { return from->GetSema().DefineImplicitDestructor(clang::SourceLocation(), static_cast<clang::CXXDestructorDecl*>(decl)); },
+            [&]{ return from->GetSema().LookupDestructor(recdecl); }
+        );
+        ProcessedDestructors = true;
+    }
     auto des = from->GetSema().LookupDestructor(type->getAsCXXRecordDecl());
     if (des->isTrivial())
         return Type::CreateDestructorOverloadSet(a);
@@ -344,7 +347,9 @@ ConcreteExpression ClangType::PrimitiveAccessMember(ConcreteExpression e, unsign
 InheritanceRelationship ClangType::IsDerivedFrom(Type* other, Analyzer& a) {
     auto otherbase = dynamic_cast<BaseType*>(other);
     if (!otherbase) return InheritanceRelationship::NotDerived;
-    auto otherdecl = other->GetClangType(*from, a)->getAsCXXRecordDecl();
+    auto otherclangty = other->GetClangType(*from, a);
+    if (!otherclangty) return InheritanceRelationship::NotDerived;
+    auto otherdecl = (*otherclangty)->getAsCXXRecordDecl();
     auto recdecl = type->getAsCXXRecordDecl();
     InheritanceRelationship result = InheritanceRelationship::NotDerived;
     for (auto base = recdecl->bases_begin(); base != recdecl->bases_end(); ++base) {

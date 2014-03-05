@@ -39,11 +39,16 @@ std::function<llvm::Type*(llvm::Module*)> FunctionType::GetLLVMType(Analyzer& a)
     };
 }
 
-clang::QualType FunctionType::GetClangType(ClangTU& from, Analyzer& a) {
+Wide::Util::optional<clang::QualType> FunctionType::GetClangType(ClangTU& from, Analyzer& a) {
     std::vector<clang::QualType> types;
-    for(auto x : Args)
-        types.push_back(x->GetClangType(from, a));
-    return from.GetASTContext().getFunctionType(ReturnType->GetClangType(from, a), types, clang::FunctionProtoType::ExtProtoInfo());
+    for (auto x : Args) {
+        auto clangty = x->GetClangType(from, a);
+        if (!clangty) return Wide::Util::none;
+        types.push_back(*clangty);
+    }
+    auto retty = ReturnType->GetClangType(from, a);
+    if (!retty) return Wide::Util::none;
+    return from.GetASTContext().getFunctionType(*retty, types, clang::FunctionProtoType::ExtProtoInfo());
 }
 
 ConcreteExpression FunctionType::BuildCall(ConcreteExpression val, std::vector<ConcreteExpression> args, Context c) {

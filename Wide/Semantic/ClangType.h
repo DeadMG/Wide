@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Wide/Semantic/Type.h>
+#include <functional>
 #include <unordered_map>
 
 #pragma warning(push, 0)
@@ -8,6 +9,7 @@
 #pragma warning(pop)
 
 namespace clang {
+    class CXXMethodDecl;
     class LookupResult;
 }
 namespace Wide {
@@ -15,11 +17,15 @@ namespace Wide {
         class ClangTU;
         class ClangType : public virtual Type, public TupleInitializable, public BaseType {
             ClangTU* from;
-            clang::QualType type;
+            clang::QualType type; 
+            void ProcessImplicitSpecialMember(std::function<bool()> needs, std::function<clang::CXXMethodDecl*()> declare, std::function<void(clang::CXXMethodDecl*)> define, std::function<clang::CXXMethodDecl*()> lookup);
+            bool ProcessedConstructors = false;
+            bool ProcessedDestructors = false;
+            bool ProcessedAssignmentOperators = false;
         public:
             ClangType(ClangTU* src, clang::QualType t);         
             std::function<llvm::Type*(llvm::Module*)> GetLLVMType(Analyzer& a) override final;            
-            clang::QualType GetClangType(ClangTU& tu, Analyzer& a) override final;
+            Wide::Util::optional<clang::QualType> GetClangType(ClangTU& tu, Analyzer& a) override final;
 
             Wide::Util::optional<ConcreteExpression> AccessMember(ConcreteExpression val, std::string name, Context c) override final;
             

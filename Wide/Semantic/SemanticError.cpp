@@ -6,14 +6,40 @@ using namespace Wide;
 using namespace Semantic;
 
 NoMember::NoMember(Type* what, Type* con, std::string name, Lexer::Range where, Analyzer& a)
-: Error(where), which(what), context(con), member(name) {
-    msg = "Could not access member \"" + member + "\" of " + which->explain(a) + " from " + context->explain(a) + ".";
-}
+: Error(where, "Could not access member \"" + name + "\" of " + what->explain(a) + " from " + con->explain(a) + "."), which(what), context(con), member(name) {}
+
 NotAType::NotAType(Type* what, Lexer::Range loc, Analyzer& a)
-: Error(loc), real_type(what) {
-    msg = "Found expression of type " + real_type->explain(a) + " instead of a type.";
-}
+: Error(loc, "Found expression of type " + what->explain(a) + " instead of a type."), real_type(what) {}
+
 CantFindHeader::CantFindHeader(std::string path, std::vector<std::string> paths, Lexer::Range loc)
-: Error(loc), which(path), includes(paths) {
-    msg ="Could not find header " + which + ".";
-}
+: Error(loc, "Could not find header " + path + "."), which(path), includes(paths) {}
+
+MacroNotValidExpression::MacroNotValidExpression(std::string expand, std::string nam, Lexer::Range where)
+: Error(where, "Macro " + nam + " expanded to \"" + expand + "\" was not a valid expression."), expanded(expand), name(nam) {}
+
+CannotCreateTemporaryFile::CannotCreateTemporaryFile(Lexer::Range where)
+: Error(where, "Could not create temporary file.") {}
+
+UnqualifiedLookupFailure::UnqualifiedLookupFailure(Type* con, std::string name, Lexer::Range where, Analyzer& a)
+: Error(where, "Could not find unqualified name \"" + name + "\" from " + con->explain(a) + "."), context(con), member(name) {}
+
+ClangLookupAmbiguous::ClangLookupAmbiguous(std::string name, Type* what, Lexer::Range where, Analyzer& a)
+: Error(where, "C++ name lookup for \"" + name + "\" was ambiguous in " + what->explain(a)), name(name), which(what) {}
+
+ClangUnknownDecl::ClangUnknownDecl(std::string name, Type* what, Lexer::Range where, Analyzer& a)
+: Error(where, "C++ name lookup for \"" + name + "\" in " + what->explain(a) + " produced a declaration that could not be interpreted."), name(name), which(what) {}
+
+InvalidTemplateArgument::InvalidTemplateArgument(Type* t, Lexer::Range where, Analyzer& a)
+: Error(where, "Argument of type " + t->explain(a) + " was not a valid template argument."), type(t) {}
+
+UnresolvableTemplate::UnresolvableTemplate(Type* temp, std::vector<Type*> args, Lexer::Range where, Analyzer& a)
+: Error(where, "C++ template resolution of " + temp->explain(a) + " failed."), temp(temp), arguments(args) {}
+
+UninstantiableTemplate::UninstantiableTemplate(Lexer::Range where)
+: Error(where, "C++ template instantiation failed.") {}
+
+IncompleteClangType::IncompleteClangType(Type* what, Lexer::Range where, Analyzer& a)
+: Error(where, "C++ type " + what->explain(a) + " was incomplete."), which(what) {}
+
+CannotTranslateFile::CannotTranslateFile(std::string filepath, Lexer::Range r)
+: Error(r, "Clang could not translate file " + filepath) {}

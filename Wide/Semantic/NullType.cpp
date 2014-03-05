@@ -16,7 +16,7 @@
 using namespace Wide;
 using namespace Semantic;
 
-clang::QualType NullType::GetClangType(ClangTU& TU, Analyzer& a) {
+Wide::Util::optional<clang::QualType> NullType::GetClangType(ClangTU& TU, Analyzer& a) {
     return TU.GetASTContext().NullPtrTy;
 }
 std::function<llvm::Type*(llvm::Module*)> NullType::GetLLVMType(Analyzer& a) {

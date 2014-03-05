@@ -124,7 +124,7 @@ namespace Wide {
             virtual Type* GetContext(Analyzer& a);
 
             virtual bool IsComplexType(Analyzer& a) { return false; }
-            virtual clang::QualType GetClangType(ClangTU& TU, Analyzer& a);
+            virtual Wide::Util::optional<clang::QualType> GetClangType(ClangTU& TU, Analyzer& a);
             virtual std::function<llvm::Type*(llvm::Module*)> GetLLVMType(Analyzer& a) {
                 throw std::runtime_error("This type has no LLVM counterpart.");
             }

@@ -13,7 +13,7 @@ namespace Wide {
                 : ReturnType(ret), Args(std::move(a)) {}
         
             std::function<llvm::Type*(llvm::Module*)> GetLLVMType(Analyzer& a) override final;
-            clang::QualType GetClangType(ClangTU& from, Analyzer& a) override final;
+            Wide::Util::optional<clang::QualType> GetClangType(ClangTU& from, Analyzer& a) override final;
             ConcreteExpression BuildCall(ConcreteExpression val, std::vector<ConcreteExpression> args, Context c) override final;
 
             Type* GetReturnType() { return ReturnType; }

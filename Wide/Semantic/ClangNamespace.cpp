@@ -5,6 +5,7 @@
 #include <Wide/Semantic/OverloadSet.h>
 #include <Wide/Semantic/ConstructorType.h>
 #include <Wide/Semantic/ClangTemplateClass.h>
+#include <Wide/Semantic/SemanticError.h>
 #include <Wide/Semantic/Reference.h>
 #include <Wide/Codegen/Generator.h>
 #include <Wide/Util/Memory/MakeUnique.h>
@@ -32,7 +33,7 @@ Wide::Util::optional<ConcreteExpression> ClangNamespace::AccessMember(ConcreteEx
     if (!from->GetSema().LookupQualifiedName(lr, con))
         return Wide::Util::none;
     if (lr.isAmbiguous())
-        throw std::runtime_error("Attempted to access a member of a Clang namespace, but Clang said the lookup was ambiguous.");
+        throw ClangLookupAmbiguous(name, val.t, c.where, *c);
     if (lr.isSingleResult()) {
         auto result = lr.getFoundDecl()->getCanonicalDecl();
         // If result is a function, namespace, or variable decl, we're good. Else, cry like a little girl. A LITTLE GIRL.
@@ -53,7 +54,7 @@ Wide::Util::optional<ConcreteExpression> ClangNamespace::AccessMember(ConcreteEx
         if (auto tempdecl = llvm::dyn_cast<clang::ClassTemplateDecl>(result)) {
             return c->GetClangTemplateClass(*from, tempdecl)->BuildValueConstruction({}, c);
         }
-        throw std::runtime_error("Found a decl but didn't know how to interpret it.");
+        throw ClangUnknownDecl(name, val.t, c.where, *c); 
     }
     std::unordered_set<clang::NamedDecl*> decls;
     decls.insert(lr.begin(), lr.end());
@@ -67,7 +68,7 @@ Type* ClangNamespace::GetContext(Analyzer& a) {
 }
 std::string ClangNamespace::explain(Analyzer& a) {
     if (con == from->GetDeclContext())
-        return "cpp(" + from->GetFilename() + ")";
+        return "cpp(\"" + from->GetFilename() + "\")";
     auto names = llvm::dyn_cast<clang::NamespaceDecl>(con);
     return GetContext(a)->explain(a) + "." + names->getName().str();
 }

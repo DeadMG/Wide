@@ -8,6 +8,7 @@ namespace Wide {
             OverloadSet* MangleOverloadSet = {};
             OverloadSet* MacroOverloadSet = {};
             OverloadSet* LiteralOverloadSet = {};
+            OverloadSet* HeaderOverloadSet = {};
         public:
                 
             Wide::Util::optional<ConcreteExpression> AccessMember(ConcreteExpression, std::string name, Context c) override final;

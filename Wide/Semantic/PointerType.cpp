@@ -17,8 +17,10 @@
 using namespace Wide;
 using namespace Semantic;
 
-clang::QualType PointerType::GetClangType(ClangTU& tu, Analyzer& a) {
-    return tu.GetASTContext().getPointerType(pointee->GetClangType(tu, a));
+Wide::Util::optional<clang::QualType> PointerType::GetClangType(ClangTU& tu, Analyzer& a) {
+    auto pointeety = pointee->GetClangType(tu, a);
+    if (!pointeety) return Wide::Util::none;
+    return tu.GetASTContext().getPointerType(*pointeety);
 }
 
 std::function<llvm::Type*(llvm::Module*)> PointerType::GetLLVMType(Analyzer& a) {

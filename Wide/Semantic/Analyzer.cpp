@@ -155,7 +155,7 @@ ConcreteExpression Analyzer::AnalyzeExpression(Type* t, const AST::Expression* e
         }
         void VisitIdentifier(const AST::Identifier* ident) {
             auto mem = self->LookupIdentifier(t, ident);
-            if (!mem) throw std::runtime_error("Attempted to access a member that did not exist.");
+            if (!mem) throw UnqualifiedLookupFailure(t, ident->val, ident->location, *self);
             out = *mem;
         }
         void VisitBinaryExpression(const AST::BinaryExpression* bin) {
@@ -176,13 +176,8 @@ ConcreteExpression Analyzer::AnalyzeExpression(Type* t, const AST::Expression* e
             out = ConcreteExpression( self->GetIntegralType(64, true), self->gen->CreateIntegralExpression(std::stoll(integer->integral_value), true, self->GetIntegralType(64, true)->GetLLVMType(*self)));
         }
         void VisitThis(const AST::This* loc) {
-            auto fun = dynamic_cast<Function*>(t);
-            if (fun) {
-                auto mem = fun->LookupLocal("this", Context(*self, loc->location, handler, t));
-                if (!mem) throw std::runtime_error("Attempted to access \"this\", but it was not found, probably because you were not in a member function.");
-                out = *mem;
-            } else
-                out = self->LookupIdentifier(t, self->arena.Allocate<Wide::AST::Identifier>("this", loc->location));
+            AST::Identifier i("this", loc->location);
+            VisitIdentifier(&i);
         }
         void VisitNegate(const AST::Negate* ne) {
             out = self->AnalyzeExpression(t, ne->ex, handler).BuildNegate(Context(*self, ne->location, handler, t));
@@ -316,9 +311,11 @@ ConcreteExpression Analyzer::AnalyzeExpression(Type* t, const AST::Expression* e
             out = self->GetConstructorType(udt)->BuildValueConstruction({}, Context(*self, ty->location, handler, t));
         }
         void VisitPointerAccess(const AST::PointerMemberAccess* ptr) {
-            auto mem = self->AnalyzeExpression(t, ptr->ex, handler).PointerAccessMember(ptr->member, Context(*self, ptr->location, handler, t));
+            auto obj = self->AnalyzeExpression(t, ptr->ex, handler);
+            auto c = Context(*self, ptr->location, handler, t);
+            auto mem = obj.PointerAccessMember(ptr->member, c);
             if (!mem)
-                throw std::runtime_error("Attempted to access a member of a pointer, but it contained no such member.");
+                throw NoMember(obj.BuildDereference(c).t, t, ptr->member, ptr->location, *self);
             out = *mem;
         }
         void VisitAddressOf(const AST::AddressOf* add) {
@@ -414,7 +411,7 @@ Module* Analyzer::GetWideModule(const AST::Module* p, Module* higher) {
 
 LvalueType* Analyzer::GetLvalueType(Type* t) {
     if (t == Void)
-        throw std::runtime_error("Can't get an lvalue ref to void.");
+        assert(false);
 
     if (LvalueTypes.find(t) != LvalueTypes.end())
         return LvalueTypes[t];
@@ -424,7 +421,7 @@ LvalueType* Analyzer::GetLvalueType(Type* t) {
 
 Type* Analyzer::GetRvalueType(Type* t) {    
     if (t == Void)
-        throw std::runtime_error("Can't get an rvalue ref to void.");
+        assert(false);
     
     if (RvalueTypes.find(t) != RvalueTypes.end())
         return RvalueTypes[t];
@@ -474,7 +471,7 @@ OverloadSet* Analyzer::GetOverloadSet(std::unordered_set<OverloadResolvable*> se
 }
 void Analyzer::AddClangType(clang::QualType t, Type* match) {
     if (ClangTypes.find(t) != ClangTypes.end())
-        throw std::runtime_error("Attempt to AddClangType on a type that already had a Clang type.");
+        assert(false);
     ClangTypes[t] = match;
 }
 
@@ -645,7 +642,6 @@ OverloadResolvable* Analyzer::GetCallableForFunction(const AST::FunctionBase* f,
                     if (name == "this") {
                         if (member)
                             return c->GetConstructorType(member->Decay())->BuildValueConstruction({}, c);
-                        throw std::runtime_error("Attempt to access this in a non-member.");
                     }
                     if (name == "auto")
                         return c->GetConstructorType(argument->Decay())->BuildValueConstruction({}, c);

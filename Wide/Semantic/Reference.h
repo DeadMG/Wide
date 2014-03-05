@@ -37,7 +37,7 @@ namespace Wide {
         class LvalueType : public Reference {
         public:
             LvalueType(Type* t) : Reference(t) {}
-            clang::QualType GetClangType(ClangTU& tu, Analyzer& a) override final;
+            Wide::Util::optional<clang::QualType> GetClangType(ClangTU& tu, Analyzer& a) override final;
             bool IsA(Type* self, Type* other, Analyzer& a, Lexer::Access access) override final;
             OverloadSet* CreateConstructorOverloadSet(Analyzer& a, Lexer::Access access) override final;
             std::string explain(Analyzer& a) override final;
@@ -45,7 +45,7 @@ namespace Wide {
         class RvalueType : public Reference {
         public:
             RvalueType(Type* t) : Reference(t) {}
-            clang::QualType GetClangType(ClangTU& tu, Analyzer& a) override final;
+            Wide::Util::optional<clang::QualType> GetClangType(ClangTU& tu, Analyzer& a) override final;
             bool IsA(Type* self, Type* other, Analyzer& a, Lexer::Access access) override final;
             OverloadSet* CreateConstructorOverloadSet(Analyzer& a, Lexer::Access access) override final;
             std::string explain(Analyzer& a) override final;

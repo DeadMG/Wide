@@ -113,7 +113,7 @@ Wide::Util::optional<ConcreteExpression> UserDefinedType::AccessMember(ConcreteE
     }
     return result;
 }
-clang::QualType UserDefinedType::GetClangType(ClangTU& TU, Analyzer& a) {
+Wide::Util::optional<clang::QualType> UserDefinedType::GetClangType(ClangTU& TU, Analyzer& a) {
     if (clangtypes.find(&TU) != clangtypes.end())
         return clangtypes[&TU];
     
@@ -125,13 +125,15 @@ clang::QualType UserDefinedType::GetClangType(ClangTU& TU, Analyzer& a) {
     clangtypes[&TU] = TU.GetASTContext().getTypeDeclType(recdecl);
 
     for (std::size_t i = 0; i < type->variables.size(); ++i) {
+        auto memberty = AggregateType::GetMembers()[i]->GetClangType(TU, a);
+        if (!memberty) return Wide::Util::none;
         auto var = clang::FieldDecl::Create(
             TU.GetASTContext(),
             recdecl,
             clang::SourceLocation(),
             clang::SourceLocation(),
             TU.GetIdentifierInfo(type->variables[i].first->name.front()),
-            AggregateType::GetMembers()[i]->GetClangType(TU, a),
+            *memberty,
             nullptr,
             nullptr,
             false,

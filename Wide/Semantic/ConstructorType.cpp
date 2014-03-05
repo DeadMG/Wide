@@ -39,21 +39,23 @@ Wide::Util::optional<ConcreteExpression> ConstructorType::AccessMember(ConcreteE
     //return t->AccessStaticMember(name, c);
     if (name == "decay")
         return c->GetConstructorType(t->Decay())->BuildValueConstruction({}, c);
-    if (name == "lvalue")
-        return c->GetConstructorType(c->GetLvalueType(t))->BuildValueConstruction({}, c);
-    if (name == "rvalue")
-        return c->GetConstructorType(c->GetRvalueType(t))->BuildValueConstruction({}, c);
     if (name == "pointer")
         return c->GetConstructorType(c->GetPointerType(t))->BuildValueConstruction({}, c);
     if (name == "size")
         return ConcreteExpression(c->GetIntegralType(64, false), c->gen->CreateIntegralExpression(t->size(*c), false, c->GetIntegralType(64, false)->GetLLVMType(*c)));
     if (name == "alignment")
         return ConcreteExpression(c->GetIntegralType(64, false), c->gen->CreateIntegralExpression(t->alignment(*c), false, c->GetIntegralType(64, false)->GetLLVMType(*c)));
+    if (t == c->GetVoidType())
+        return Wide::Util::none;
     if (name == "emplace") {
         if (!emplace) emplace = c->arena.Allocate<EmplaceType>(this);
         return emplace->BuildValueConstruction({}, c);
     }
-    throw std::runtime_error("Attempted to access the special members of a type, but the identifier provided did not name a special member.");
+    if (name == "lvalue")
+        return c->GetConstructorType(c->GetLvalueType(t))->BuildValueConstruction({}, c);
+    if (name == "rvalue")
+        return c->GetConstructorType(c->GetRvalueType(t))->BuildValueConstruction({}, c);
+    return Wide::Util::none;
 }
 
 ConstructorType::ConstructorType(Type* con) {

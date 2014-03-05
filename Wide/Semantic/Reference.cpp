@@ -23,11 +23,17 @@ std::function<llvm::Type*(llvm::Module*)> Reference::GetLLVMType(Analyzer& a) {
         return f(m)->getPointerTo();
     };
 }
-clang::QualType LvalueType::GetClangType(ClangTU& tu, Analyzer& a) {
-    return tu.GetASTContext().getLValueReferenceType(Decay()->GetClangType(tu, a));
+Wide::Util::optional<clang::QualType> LvalueType::GetClangType(ClangTU& tu, Analyzer& a) {
+    auto ty = Decay()->GetClangType(tu, a);
+    if (!ty)
+        return Wide::Util::none;
+    return tu.GetASTContext().getLValueReferenceType(*ty);
 }
-clang::QualType RvalueType::GetClangType(ClangTU& tu, Analyzer& a) {
-    return tu.GetASTContext().getRValueReferenceType(Decay()->GetClangType(tu, a));
+Wide::Util::optional<clang::QualType> RvalueType::GetClangType(ClangTU& tu, Analyzer& a) {
+    auto ty = Decay()->GetClangType(tu, a);
+    if (!ty)
+        return Wide::Util::none;
+    return tu.GetASTContext().getRValueReferenceType(*ty);
 }
 
 std::size_t Reference::size(Analyzer& a) {

@@ -16,6 +16,7 @@ namespace Wide {
 
             ConcreteExpression BuildCall(ConcreteExpression, std::vector<ConcreteExpression>, Context c) override final;
             std::string explain(Analyzer& a) override final;
+            Type* GetContext(Analyzer& a) override final;
         };
     }
 }

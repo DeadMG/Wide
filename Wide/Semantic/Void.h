@@ -7,7 +7,7 @@ namespace Wide {
         class VoidType : public MetaType {
         public:
             std::function<llvm::Type*(llvm::Module*)> GetLLVMType(Analyzer& a) override final;
-            clang::QualType GetClangType(ClangTU& tu, Analyzer& a) override final;
+            Wide::Util::optional<clang::QualType> GetClangType(ClangTU& tu, Analyzer& a) override final;
             std::string explain(Analyzer& a) override final;
         };
     }

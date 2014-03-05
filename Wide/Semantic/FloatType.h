@@ -7,7 +7,7 @@ namespace Wide {
         public:
             FloatType(unsigned bit) : bits(bit) {}
 
-            clang::QualType GetClangType(ClangTU& TU, Analyzer& a) override final;
+            Wide::Util::optional<clang::QualType> GetClangType(ClangTU& TU, Analyzer& a) override final;
             std::function<llvm::Type*(llvm::Module*)> GetLLVMType(Analyzer& a) override final;
 
             std::size_t size(Analyzer& a) override final;

@@ -110,7 +110,7 @@ std::string Lexer::to_string(Lexer::Position p) {
     return *p.name + ":" + std::to_string(p.line) + ":" + std::to_string(p.column);
 }
 std::string Lexer::to_string(Lexer::Range r) {
-    return to_string(r.begin) + " - " + to_string(r.end);
+    return to_string(r.begin) + "-" + std::to_string(r.end.line) + ":" + std::to_string(r.end.column);
 }
 std::string Lexer::operator+(std::string s, Lexer::Range r) {
     return s + to_string(r);

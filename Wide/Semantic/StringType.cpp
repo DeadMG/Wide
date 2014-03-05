@@ -21,7 +21,7 @@ std::function<llvm::Type*(llvm::Module*)> StringType::GetLLVMType(Analyzer& a) {
         return llvm::PointerType::getInt8PtrTy(m->getContext());
     };
 }
-clang::QualType StringType::GetClangType(ClangTU& TU, Analyzer& a) {
+Wide::Util::optional<clang::QualType> StringType::GetClangType(ClangTU& TU, Analyzer& a) {
     return TU.GetASTContext().getPointerType(TU.GetASTContext().getConstType(TU.GetASTContext().CharTy));
 }
 

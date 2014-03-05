@@ -4,7 +4,6 @@
 #include <Wide/Semantic/Function.h>
 #include <Wide/Semantic/ClangType.h>
 #include <Wide/Semantic/FunctionType.h>
-#include <Wide/Semantic/TupleType.h>
 #include <Wide/Parser/AST.h>
 #include <Wide/Semantic/PointerType.h>
 #include <Wide/Semantic/StringType.h>
@@ -212,17 +211,16 @@ Callable* OverloadSet::Resolve(std::vector<Type*> f_args, Analyzer& a, Type* sou
         return nullptr;
     };
 
-    auto is_clang_viable = [&] {
+    std::vector<clang::QualType> clangtypes;
+    if (from) {
         for (auto arg : f_args) {
-            if (dynamic_cast<TupleType*>(arg->Decay()))
-                return false;
+            auto ty = arg->GetClangType(*from, a);
+            if (!ty) return get_wide_or_result();
+            clangtypes.push_back(*ty);
         }
-        return true;
-    };
-    if (from && is_clang_viable()) {    
         std::list<clang::OpaqueValueExpr> exprs;
         for(auto x : f_args)
-            exprs.push_back(clang::OpaqueValueExpr(clang::SourceLocation(), x->GetClangType(*from, a).getNonLValueExprType(from->GetASTContext()), GetKindOfType(x)));
+            exprs.push_back(clang::OpaqueValueExpr(clang::SourceLocation(), x->GetClangType(*from, a)->getNonLValueExprType(from->GetASTContext()), GetKindOfType(x)));
         std::vector<clang::Expr*> exprptrs;
         for(auto&& x : exprs)
             exprptrs.push_back(&x);
@@ -251,7 +249,7 @@ Callable* OverloadSet::Resolve(std::vector<Type*> f_args, Analyzer& a, Type* sou
                     clang::DeclAccessPair d;
                     d.setDecl(decl);
                     d.setAccess(decl->getAccess());
-                    from->GetSema().AddMethodCandidate(d, f_args[0]->GetClangType(*from, a).getNonLValueExprType(from->GetASTContext()), clang::Expr::Classification::makeSimpleLValue(), exprptrs, s, false);
+                    from->GetSema().AddMethodCandidate(d, f_args[0]->GetClangType(*from, a)->getNonLValueExprType(from->GetASTContext()), clang::Expr::Classification::makeSimpleLValue(), exprptrs, s, false);
                     continue;
                 }
             }

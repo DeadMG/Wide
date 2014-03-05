@@ -12,7 +12,7 @@ namespace Wide {
             PointerType(Type* point); 
             OverloadSet* CreateOperatorOverloadSet(Type* self, Lexer::TokenType what, Lexer::Access access, Analyzer& a) override final;
             Codegen::Expression* BuildBooleanConversion(ConcreteExpression val, Context c) override final;
-            clang::QualType GetClangType(ClangTU& TU, Analyzer& a) override final;
+            Wide::Util::optional<clang::QualType> GetClangType(ClangTU& TU, Analyzer& a) override final;
             std::function<llvm::Type*(llvm::Module*)> GetLLVMType(Analyzer& a) override final;
             std::size_t size(Analyzer& a) override final;
             std::size_t alignment(Analyzer& a) override final;

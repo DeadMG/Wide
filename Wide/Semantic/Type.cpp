@@ -26,8 +26,8 @@ using namespace Semantic;
 Type* Type::GetContext(Analyzer& a) {
     return a.GetGlobalModule();
 }
-clang::QualType Type::GetClangType(ClangTU& TU, Analyzer& a) {
-    throw std::runtime_error("This type has no Clang representation.");
+Wide::Util::optional<clang::QualType> Type::GetClangType(ClangTU& TU, Analyzer& a) {
+    return Wide::Util::none;
 }
 
 ConcreteExpression ConcreteExpression::BuildIncrement(bool postfix, Context c) {
