@@ -11,6 +11,7 @@
 #include <Wide/Semantic/Reference.h>
 #include <Wide/Semantic/OverloadSet.h>
 #include <Wide/Semantic/TupleType.h>
+#include <Wide/Semantic/StringType.h>
 #include <Wide/Semantic/LambdaType.h>
 #include <unordered_set>
 #include <sstream>
@@ -142,10 +143,10 @@ Function::Function(std::vector<Type*> args, const AST::FunctionBase* astfun, Ana
                 throw std::runtime_error("Prolog assignment expressions must have a plain identifier on the left-hand-side right now!");
             auto expr = a.AnalyzeExpression(this, ass->rhs, [](ConcreteExpression e) {});
             if (ident->val == "ExportName") {
-                auto str = dynamic_cast<Codegen::StringExpression*>(expr.Expr);
+                auto str = dynamic_cast<StringType*>(expr.t->Decay());
                 if (!str)
                     throw std::runtime_error("Prolog right-hand-sides of ExportName must be of string type!");
-                trampoline = str->GetContents();
+                trampoline = str->GetValue();
             }
             if (ident->val == "ReturnType") {
                 auto ty = dynamic_cast<ConstructorType*>(expr.t);
@@ -176,15 +177,15 @@ void Function::ComputeBody(Analyzer& a) {
             ConcreteExpression self(a.GetLvalueType(member), a.gen->CreateParameterExpression([this, &a] { return ReturnType->IsComplexType(a); }));
             auto members = member->GetMembers();
             for (auto&& x : members) {
-                auto has_initializer = [&](std::string name) -> const AST::Variable*{
-                for (auto&& x : con->initializers) {
-                    // Can only have 1 name- AST restriction
-                    assert(x->name.size() == 1);
-                    if (x->name.front() == name)
-                        return x;
-                }
-                return nullptr;
-            };
+                auto has_initializer = [&](std::string name) -> const AST::Variable* {
+                    for (auto&& x : con->initializers) {
+                        // Can only have 1 name- AST restriction
+                        assert(x->name.size() == 1);
+                        if (x->name.front() == name)
+                            return x;
+                    }
+                    return nullptr;
+                };
                 // For member variables, don't add them to the list, the destructor will handle them.
                 if (auto init = has_initializer(x.name)) {
                     Context c(a, init->location, [](ConcreteExpression e) {}, this);
@@ -199,20 +200,18 @@ void Function::ComputeBody(Analyzer& a) {
                     // Don't care about if x.t is ref because refs can't be default-constructed anyway.
                     /*if (x.InClassInitializer)
                     {
-                    Context c(a, x.InClassInitializer->location, [](ConcreteExpression e) {});
-                    auto expr = a.AnalyzeExpression(this, x.InClassInitializer, [](ConcreteExpression e) {});
-                    auto mem = check(self.t->AccessMember(self, x.name, c));
-                    std::vector<ConcreteExpression> args;
-                    args.push_back(expr);
-                    exprs.push_back(x.t->BuildInplaceConstruction(mem.Expr, std::move(args), c));
-                    continue;
+                        Context c(a, x.InClassInitializer->location, [](ConcreteExpression e) {});
+                        auto expr = a.AnalyzeExpression(this, x.InClassInitializer, [](ConcreteExpression e) {});
+                        auto mem = check(self.t->AccessMember(self, x.name, c));
+                        std::vector<ConcreteExpression> args;
+                        args.push_back(expr);
+                        exprs.push_back(x.t->BuildInplaceConstruction(mem.Expr, std::move(args), c));
+                        continue;
                     }*/
-                    if (x.t->IsReference())
-                        throw std::runtime_error("Failed to initialize a reference member.");
                     auto mem = a.gen->CreateFieldExpression(self.Expr, x.num);
                     std::vector<ConcreteExpression> args;
                     Context c(a, con->where, [](ConcreteExpression e) {}, this);
-                    exprs.push_back(x.t->BuildInplaceConstruction(mem, std::move(args), c));
+                    exprs.push_back(x.t->BuildInplaceConstruction(mem, {}, c));
                 }
             }
             for (auto&& x : con->initializers)

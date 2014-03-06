@@ -7,6 +7,6 @@ private:
 Main() {
     var := { t(), false };
     copy := var;
-	x, y := copy;
-	return y;
+    x, y := copy;
+    return y;
 }

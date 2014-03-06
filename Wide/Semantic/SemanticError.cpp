@@ -58,3 +58,6 @@ NoBooleanConversion::NoBooleanConversion(Type* obj, Lexer::Range where, Analyzer
 
 AddressOfNonLvalue::AddressOfNonLvalue(Type* obj, Lexer::Range where, Analyzer& a)
 : Error(where, "Attempted to take the address of " + obj->explain(a) + " which is a non-lvalue."), obj(obj) {}
+
+DecltypeArgumentMismatch::DecltypeArgumentMismatch(unsigned count, Lexer::Range where)
+: Error(where, "Passed " + std::to_string(count) + " arguments to decltype instead of 1."), num(count) {}

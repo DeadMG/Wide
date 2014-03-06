@@ -96,7 +96,7 @@ namespace Wide {
             llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g) override final;
 
             
-            std::string GetContents() override final {
+            std::string GetContents() {
                 return value;
             }
         };

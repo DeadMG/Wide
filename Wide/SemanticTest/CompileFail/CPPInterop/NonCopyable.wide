@@ -2,5 +2,5 @@ using movable := cpp("CompileFail/CPPInterop/NonCopyable.h").test;
 Main() {
     var := movable();
     copy := var;
-	return false;
+    return false;
 }

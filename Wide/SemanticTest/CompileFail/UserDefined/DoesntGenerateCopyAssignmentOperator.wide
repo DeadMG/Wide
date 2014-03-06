@@ -1,11 +1,11 @@
 type t {
     val := bool;
-	type() : val(true) {}
+    type() : val(true) {}
     operator=(t.rvalue other) { val = false; }
 }
 Main() {
     var := t();
-	copy := t();
-	var = copy;
-	return var.val;
+    copy := t();
+    var = copy;
+    return var.val;
 }

@@ -1,5 +1,5 @@
 type t {
-	type() : val(false) {}
+    type() : val(false) {}
 private:
     val := bool;
 }

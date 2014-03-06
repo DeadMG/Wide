@@ -1,5 +1,5 @@
 type t {
-	operator*() { return true; }
+    operator*() { return true; }
 }
 Main() {
     return *t();

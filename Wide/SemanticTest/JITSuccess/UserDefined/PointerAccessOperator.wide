@@ -1,9 +1,9 @@
 type sub {
     val := bool;
-	type() : val(true) {}
+    type() : val(true) {}
 }
 type outer {
     var := sub;
-	operator*() prolog { ReturnType = sub.lvalue; } { return var; }
+    operator*() prolog { ReturnType = sub.lvalue; } { return var; }
 }
 Main() { return outer()->val; }

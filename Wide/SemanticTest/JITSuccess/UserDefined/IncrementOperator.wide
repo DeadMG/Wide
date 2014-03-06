@@ -1,12 +1,12 @@
 type t {
     val := bool;
-	operator++() { val = true; }
-	type() : val(false) {}
-	type(this.lvalue other) : val(other.val) {}
-	type(this.rvalue other) : val(other.val) {}
+    operator++() { val = true; }
+    type() : val(false) {}
+    type(this.lvalue other) : val(other.val) {}
+    type(this.rvalue other) : val(other.val) {}
 }
 Main() {
     val := t();
-	copy := val++;
-	return val.val & ~copy.val;
+    copy := val++;
+    return val.val & ~copy.val;
 }

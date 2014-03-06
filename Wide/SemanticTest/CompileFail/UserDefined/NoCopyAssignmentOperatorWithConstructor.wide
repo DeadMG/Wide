@@ -1,11 +1,11 @@
 type t {
     val := bool;
-	type(t.lvalue arg) {}
-	type() : val(true) {}
+    type(t.lvalue arg) {}
+    type() : val(true) {}
 }
 Main() {
     arg := t();
-	arg2 := t();
-	arg = arg2;
-	return arg.val;
+    arg2 := t();
+    arg = arg2;
+    return arg.val;
 }

@@ -169,5 +169,12 @@ namespace Wide {
             AddressOfNonLvalue(Type* obj, Lexer::Range r, Analyzer& a);
             Type* GetObjectType() { return obj; }
         };
+
+        class DecltypeArgumentMismatch : public Error {
+            unsigned num;
+        public:
+            DecltypeArgumentMismatch(unsigned count, Lexer::Range where);
+            unsigned GetNumArguments() { return num; }
+        };
     }
 }

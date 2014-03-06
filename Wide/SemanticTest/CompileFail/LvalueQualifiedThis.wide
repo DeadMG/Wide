@@ -1,11 +1,11 @@
 GetTestMetadata() {
     Categories({ Test.OverloadResolution })
-	ExpectedFailure();
+    ExpectedFailure();
 }
 
 type t1 {
     operator()(t1.lvalue this) {
-	    return false;
+        return false;
     }
 }
 Main() {

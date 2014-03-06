@@ -25,10 +25,7 @@ namespace Wide {
         class Expression : public Statement {};
         class Variable : public Expression {};
         class FunctionCall : public Expression {};
-        class StringExpression  : public Expression{
-        public:
-            virtual std::string GetContents() = 0;
-        };
+        class StringExpression  : public Expression{};
         class NamedGlobalVariable : public Expression {};
         class StoreExpression : public Expression {};
         class LoadExpression : public Expression {};

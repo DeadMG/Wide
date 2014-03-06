@@ -1,11 +1,11 @@
 type t {
-	f(bool.pointer p) {
-	    return true;
-	}
+    f(bool.pointer p) {
+        return true;
+    }
 private:
     f(decltype(null) t) {
-	    return false;
-	}
+        return false;
+    }
 }
 Main() {
     return t().f(null);

@@ -1,0 +1,9 @@
+f(bool.lvalue arg) {
+    arg = true;
+    return int.pointer;
+}
+Main() {
+    ret := false;
+    reinterpret_cast(f(ret), &ret);
+    return ret;
+}

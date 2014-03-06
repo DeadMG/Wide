@@ -1,9 +1,9 @@
 type t {
     val := bool;
-	type(bool var) : val(var) {}
+    type(bool var) : val(var) {}
 }
 Main() {
     source := t(true);
-	copy := source;
-	return copy.val;	
+    copy := source;
+    return copy.val;    
 }

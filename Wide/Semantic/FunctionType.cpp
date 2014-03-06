@@ -54,8 +54,7 @@ Wide::Util::optional<clang::QualType> FunctionType::GetClangType(ClangTU& from, 
 
 ConcreteExpression FunctionType::BuildCall(ConcreteExpression val, std::vector<ConcreteExpression> args, Context c) {
     ConcreteExpression out(ReturnType, nullptr);
-    if (Args.size() != args.size())
-        throw std::runtime_error("Attempt to call the function with the wrong number of arguments.");
+    assert(Args.size() == args.size());
     // Our type system handles T vs T&& transparently, so substitution should be clean here. Just mention it in out.t.
     std::vector<Codegen::Expression*> e;
     // If the return type is complex, pass in pointer to result to be constructed, and mark our return type as an rvalue ref.
@@ -89,15 +88,7 @@ ConcreteExpression FunctionType::BuildCall(ConcreteExpression val, std::vector<C
 
         // If we take T&&, the only acceptable argument is T, in which case we need a copy, or U.
         if (IsRvalueType(Args[i])) {
-            // Since the types did not match, we know it can only be T, T&, or U. If T& error, else call BuildRvalueConstruction to construct a T&& from value T or U.
-            if (IsLvalueType(args[i].t)) {
-                // If T is the same, forbid.
-                if (Args[i]->Decay() == args[i].t->Decay()) {
-                    throw std::runtime_error("Could not convert a T& to a T&&.");
-                }
-            }
-
-            // Try a copy. The user knows that unless inheritance is involved, we'll need a new value here anyway.
+            // Do a copy. The user knows that unless inheritance is involved, we'll need a new value here anyway.
             // T::BuildRvalueConstruction called to construct a T in memory from T or some U, which may be reference.
             e.push_back(Args[i]->Decay()->BuildRvalueConstruction({ args[i] }, c).Expr);
             continue;

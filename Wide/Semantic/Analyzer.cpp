@@ -44,16 +44,17 @@ using namespace Semantic;
 // After definition of type
 Analyzer::~Analyzer() {}
 
-Analyzer::Analyzer(const Options::Clang& opts, Codegen::Generator& g, const AST::Module* GlobalModule)    
-    : clangopts(&opts)
-    , gen(&g)
-    , null(nullptr)
+Analyzer::Analyzer(const Options::Clang& opts, Codegen::Generator& g, const AST::Module* GlobalModule)
+: clangopts(&opts)
+, gen(&g)
+, null(nullptr)
 {
     null = arena.Allocate<NullType>();
-    struct decltypetype : public MetaType { 
+
+    struct decltypetype : public MetaType {
         ConcreteExpression BuildCall(ConcreteExpression obj, std::vector<ConcreteExpression> args, std::vector<ConcreteExpression> destructors, Context c) override {
             if (args.size() != 1)
-                throw std::runtime_error("Attempt to call decltype with more or less than 1 argument.");
+                throw DecltypeArgumentMismatch(args.size(), c.where);
 
             if (auto con = dynamic_cast<ConstructorType*>(args[0].t->Decay())) {
                 return c->GetConstructorType(args[0].t)->BuildValueConstruction({}, c);
@@ -65,26 +66,29 @@ Analyzer::Analyzer(const Options::Clang& opts, Codegen::Generator& g, const AST:
         std::string explain(Analyzer& a) override final { return "decltype"; };
     };
 
-    struct PointerCastType : public MetaType {
-        ConcreteExpression BuildCall(ConcreteExpression obj, std::vector<ConcreteExpression> args, Context c) override {
-            if (args.size() != 2)
-                throw std::runtime_error("Attempted to call reinterpret_cast with a number of arguments that was not two.");
-            auto conty = dynamic_cast<ConstructorType*>(args[0].t->Decay());
-            if (!conty) throw std::runtime_error("Attempted to call reinterpret_cast with a first argument that was not a type.");
-            if (!dynamic_cast<PointerType*>(conty->GetConstructedType())) throw std::runtime_error("Attempted to call reinterpret_cast with a first argument that was not a pointer type.");
-            if (!dynamic_cast<PointerType*>(args[1].t->Decay())) throw std::runtime_error("Attempted to call reinterpret_cast with a second argument that was not of pointer type.");
-            return ConcreteExpression(conty->GetConstructedType(), args[1].Expr);
+    struct PointerCastType : OverloadResolvable, Callable {
+        unsigned GetArgumentCount() override final { return 2; }
+        Type* MatchParameter(Type* t, unsigned num, Analyzer& a, Type* source) override final {
+            if (num == 0 && dynamic_cast<ConstructorType*>(t->Decay()) && dynamic_cast<PointerType*>(dynamic_cast<ConstructorType*>(t->Decay())->GetConstructedType())) return t;
+            if (num == 1 && dynamic_cast<PointerType*>(t->Decay())) return t;
+            return nullptr;
         }
-        std::string explain(Analyzer& a) override final { return "reinterpret_cast"; }
+        Callable* GetCallableForResolution(std::vector<Type*>, Analyzer& a) override final { return this; }
+        ConcreteExpression CallFunction(std::vector<ConcreteExpression> args, Context c) override final {
+            auto conty = dynamic_cast<ConstructorType*>(args[0].t->Decay());
+            return ConcreteExpression(conty->GetConstructedType(), c->gen->CreateChainExpression(args[0].Expr, args[1].BuildValue(c).Expr));
+        }
+        std::vector<ConcreteExpression> AdjustArguments(std::vector<ConcreteExpression> args, Context c) override final { return args; }
     };
 
-    struct MoveType : public MetaType {
-        ConcreteExpression BuildCall(ConcreteExpression obj, std::vector<ConcreteExpression> args, Context c) override {
-            if (args.size() != 1)
-                throw std::runtime_error("Attempt to call move with a number of arguments that was not one.");
+    struct MoveType : OverloadResolvable, Callable {
+        unsigned GetArgumentCount() override final { return 1; }
+        Type* MatchParameter(Type* t, unsigned num, Analyzer& a, Type* source) override final { return t; }
+        Callable* GetCallableForResolution(std::vector<Type*>, Analyzer& a) override final { return this; }
+        std::vector<ConcreteExpression> AdjustArguments(std::vector<ConcreteExpression> args, Context c) override final { return args; }
+        ConcreteExpression CallFunction(std::vector<ConcreteExpression> args, Context c) override final {
             return ConcreteExpression(c->GetRvalueType(args[0].t->Decay()), args[0].Expr);
         }
-        std::string explain(Analyzer& a) override final { return "move"; }
     };
 
     static const auto location = Lexer::Range(std::make_shared<std::string>("Analyzer internal."));
@@ -112,16 +116,16 @@ Analyzer::Analyzer(const Options::Clang& opts, Codegen::Generator& g, const AST:
     global->AddSpecialMember("false", ConcreteExpression(Boolean, gen->CreateIntegralExpression(0, false, Boolean->GetLLVMType(*this))));
     global->AddSpecialMember("decltype", arena.Allocate<decltypetype>()->BuildValueConstruction({}, c));
 
-    global->AddSpecialMember("byte",   *global->AccessMember(global_val, "uint8", c));
-    global->AddSpecialMember("int",    *global->AccessMember(global_val, "int32", c));
-    global->AddSpecialMember("short",  *global->AccessMember(global_val, "int16", c));
-    global->AddSpecialMember("long",   *global->AccessMember(global_val, "int64", c));
-    global->AddSpecialMember("float",  *global->AccessMember(global_val, "float32", c));
+    global->AddSpecialMember("byte", *global->AccessMember(global_val, "uint8", c));
+    global->AddSpecialMember("int", *global->AccessMember(global_val, "int32", c));
+    global->AddSpecialMember("short", *global->AccessMember(global_val, "int16", c));
+    global->AddSpecialMember("long", *global->AccessMember(global_val, "int64", c));
+    global->AddSpecialMember("float", *global->AccessMember(global_val, "float32", c));
     global->AddSpecialMember("double", *global->AccessMember(global_val, "float64", c));
 
     global->AddSpecialMember("null", GetNullType()->BuildValueConstruction({}, c));
-    global->AddSpecialMember("reinterpret_cast", arena.Allocate<PointerCastType>()->BuildValueConstruction({}, c));
-    //GetWideModule(GlobalModule)->AddSpecialMember("move", arena.Allocate<MoveType>()->BuildValueConstruction(std::vector<Expression>(), *this));
+    global->AddSpecialMember("reinterpret_cast", GetOverloadSet(arena.Allocate<PointerCastType>())->BuildValueConstruction({}, c));
+    global->AddSpecialMember("move", GetOverloadSet(arena.Allocate<MoveType>())->BuildValueConstruction({}, c));
 }
 
 ConcreteExpression Analyzer::AnalyzeExpression(Type* t, const AST::Expression* e, std::function<void(ConcreteExpression)> handler) {
@@ -759,17 +763,6 @@ OverloadResolvable* Analyzer::GetCallableForTemplateType(const AST::TemplateType
         unsigned GetArgumentCount() override final { return templatetype->arguments.size(); }
 
         Type* MatchParameter(Type* argument, unsigned num, Analyzer& a, Type* source) override final {
-            /*if (!templatetype->arguments[num].type)
-                throw Wide::Semantic::SemanticError(templatetype->arguments[num].location, Wide::Semantic::Error::ExpressionNoType);
-
-            auto parameter_type = dynamic_cast<ConstructorType*>(a.AnalyzeExpression(context, templatetype->arguments[num].type, [](ConcreteExpression e) {}).t->Decay());
-
-            if (!parameter_type) throw Wide::Semantic::SemanticError(templatetype->arguments[num].location, Wide::Semantic::Error::ExpressionNoType);
-
-            if (!parameter_type->GetConstructedType()->GetConstantContext(a)) throw std::runtime_error("Attempted to use a non-constant type as template parameter argument.");
-
-            if (argument->IsA(argument, parameter_type->GetConstructedType(), a, GetAccessSpecifier(source, argument, a)))
-                return parameter_type->GetConstructedType();*/
             return nullptr;
         }
         std::vector<ConcreteExpression> AdjustArguments(std::vector<ConcreteExpression> args, Context c) override final { return args; }
