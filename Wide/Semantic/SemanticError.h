@@ -128,5 +128,46 @@ namespace Wide {
             IncompleteClangType(Type* what, Lexer::Range where, Analyzer& a);
             Type* GetType() { return which; }
         };
+
+        class ClangFileParseError : public Error {
+            std::string filename;
+            std::string errors;
+        public:
+            ClangFileParseError(std::string f, std::string e, Lexer::Range where);
+            std::string GetFilename() { return filename; }
+            std::string GetErrors() { return errors; }
+        };
+
+        class InvalidBase : public Error {
+            Type* base;
+        public:
+            InvalidBase(Type* t, Lexer::Range where, Analyzer& a);
+            Type* GetBaseType() { return base; }
+        };
+
+        class AmbiguousLookup : public Error {
+            std::string name;
+            Type* base1;
+            Type* base2;
+        public:
+            AmbiguousLookup(std::string name, Type* b1, Type* b2, Lexer::Range where, Analyzer& a);
+            std::string GetName();
+            Type* GetFirstBase() { return base1; }
+            Type* GetSecondBase() { return base2; }
+        };
+
+        class NoBooleanConversion : public Error {
+            Type* object;
+        public:
+            NoBooleanConversion(Type* obj, Lexer::Range r, Analyzer& a);
+            Type* GetObjectType() { return object; }
+        };
+
+        class AddressOfNonLvalue : public Error {
+            Type* obj;
+        public:
+            AddressOfNonLvalue(Type* obj, Lexer::Range r, Analyzer& a);
+            Type* GetObjectType() { return obj; }
+        };
     }
 }

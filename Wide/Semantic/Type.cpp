@@ -5,6 +5,7 @@
 #include <Wide/Codegen/Generator.h>
 #include <Wide/Semantic/Function.h>
 #include <Wide/Semantic/Reference.h>
+#include <Wide/Semantic/SemanticError.h>
 #include <Wide/Lexer/Token.h>
 #include <Wide/Semantic/UserDefinedType.h>
 #include <Wide/Semantic/TupleType.h>
@@ -66,8 +67,7 @@ ConcreteExpression ConcreteExpression::BuildCall(ConcreteExpression lhs, Context
 
 ConcreteExpression ConcreteExpression::AddressOf(Context c) {
     // TODO: Remove this restriction, it is not very Wide.
-    if (!IsLvalueType(t))
-        throw std::runtime_error("Attempted to take the address of something that was not an lvalue.");
+    if (!IsLvalueType(t)) throw AddressOfNonLvalue(t, c.where, *c);
     return ConcreteExpression(c->GetPointerType(t->Decay()), Expr);
 }
 
@@ -96,7 +96,7 @@ Wide::Util::optional<ConcreteExpression> ConcreteExpression::AccessMember(std::s
 
 ConcreteExpression ConcreteExpression::BuildValue(Context c) {
     if (t->IsComplexType(*c))
-        throw std::runtime_error("Internal Compiler Error: Attempted to build a complex type into a register.");
+        assert(false && "Internal Compiler Error: Attempted to build a complex type into a register.");
     if (t->IsReference())
         return ConcreteExpression(t->Decay(), c->gen->CreateLoad(Expr));
     return *this;
@@ -225,7 +225,7 @@ Codegen::Expression* Type::BuildInplaceConstruction(Codegen::Expression* mem, st
 
 ConcreteExpression Type::BuildValueConstruction(std::vector<ConcreteExpression> args, Context c) {
     if (IsComplexType(*c))
-        throw std::runtime_error("Internal compiler error: Attempted to value construct a complex UDT.");
+        assert(false && "Internal compiler error: Attempted to value construct a complex UDT.");
     if (args.size() == 1 && args[0].t == this)
         return args[0];
     auto mem = c->gen->CreateVariable(GetLLVMType(*c), alignment(*c));
@@ -502,15 +502,6 @@ ConcreteExpression Type::BuildUnaryExpression(ConcreteExpression self, Lexer::To
     }
     return callable->Call({ self }, c);
 }
-/*
-ConcreteExpression Type::BuildValueConstruction(std::vector<ConcreteExpression> args, Context c) {
-    if (IsComplexType(*c))
-        throw std::runtime_error("Internal compiler error: Attempted to value construct a complex UDT.");
-    if (args.size() == 1 && args[0].t == this)
-        return args[0];
-    auto mem = c->gen->CreateVariable(GetLLVMType(*c), alignment(*c));
-    return ConcreteExpression(this, c->gen->CreateLoad(c->gen->CreateChainExpression(BuildInplaceConstruction(mem, std::move(args), c), mem)));
-}*/
 ConcreteExpression Type::BuildCall(ConcreteExpression val, std::vector<ConcreteExpression> args, Context c) {
     auto set = val.AccessMember(Lexer::TokenType::OpenBracket, c);
     args.insert(args.begin(), val);
@@ -521,4 +512,10 @@ ConcreteExpression Type::BuildCall(ConcreteExpression val, std::vector<ConcreteE
     if (!call)
         throw std::runtime_error("Attempted to call a type but it had no such member.");
     return call->Call(args, c);
+}
+
+Codegen::Expression* Type::BuildBooleanConversion(ConcreteExpression val, Context c) {
+    if (IsReference())
+        return Decay()->BuildBooleanConversion(val, c);
+    throw NoBooleanConversion(val.t, c.where, *c);
 }

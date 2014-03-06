@@ -34,6 +34,7 @@
 #include <llvm/Linker.h>
 #include <clang/AST/RecursiveASTVisitor.h>
 #include <clang/AST/ASTConsumer.h>
+#include <clang/Basic/AllDiagnostics.h>
 #include <llvm/Support/raw_ostream.h>
 #pragma warning(pop)
 
@@ -90,12 +91,6 @@ public:
     // Clang has a really annoying habit of changing it's mind about this
     // producing multiple distinct llvm::Type*s for one QualType, so perform
     // our own caching on top.    
-    void HandleErrors() {
-        if (engine.hasFatalErrorOccurred())
-            throw std::runtime_error(errors);
-        if (!errors.empty()) Options->OnDiagnostic(errors);
-        errors.clear();
-    }
     
     Impl(llvm::LLVMContext& con, std::string file, const Wide::Options::Clang& opts, Lexer::Range where)        
         : Options(&opts)
@@ -124,7 +119,6 @@ public:
         mod.setTargetTriple(Options->TargetOptions.Triple);
         clang::InitializePreprocessor(preproc, *Options->PreprocessorOptions, *Options->HeaderSearchOptions, Options->FrontendOptions);
         preproc.getBuiltinInfo().InitializeBuiltins(preproc.getIdentifierTable(), Options->LanguageOptions);
-        
         std::vector<std::string> paths;
         for (auto it = hs.search_dir_begin(); it != hs.search_dir_end(); ++it)
             paths.push_back(it->getDir()->getName());
@@ -141,9 +135,11 @@ public:
         sm.setMainFileID(fileid);
         engine.getClient()->BeginSourceFile(Options->LanguageOptions, &preproc);
         ParseAST(sema);
-        
-        //engine.getClient()->EndSourceFile();
-        HandleErrors();
+
+        if (engine.hasFatalErrorOccurred())
+            throw ClangFileParseError(filename, errors, where);
+        if (!errors.empty()) Options->OnDiagnostic(errors);
+        errors.clear();
     }
 
     clang::DeclContext* GetDeclContext() {
@@ -172,7 +168,6 @@ void ClangTU::GenerateCodeAndLinkModule(llvm::Module* main) {
 
     llvm::Linker link(main);
     link.linkInModule(&impl->mod, &impl->errors);
-    impl->HandleErrors();
 }
 
 clang::DeclContext* ClangTU::GetDeclContext() {
@@ -186,6 +181,7 @@ clang::QualType Simplify(clang::QualType inc) {
 }
 
 std::function<llvm::Type*(llvm::Module*)> ClangTU::GetLLVMTypeFromClangType(clang::QualType t, Semantic::Analyzer& a) {
+    // The Clang functions that should expose this functionality do not in fact work at all, so hack it horribly.
     auto imp = impl.get();
 
     return [this, imp, t, &a](llvm::Module* mod) -> llvm::Type* {
@@ -195,32 +191,6 @@ std::function<llvm::Type*(llvm::Module*)> ClangTU::GetLLVMTypeFromClangType(clan
         }
         
         auto RD = t.getCanonicalType()->getAsCXXRecordDecl();
-        /*if (!RD->field_empty()) {
-            // If we are non-empty, we can't be an eliminate type
-
-            // Check constructors, methods, and destructors
-            if (RD->ctor_begin() != RD->ctor_end()) {
-            }
-            if (RD->getDestructor()) {
-                auto debug = llvm::dyn_cast<llvm::PointerType>(mod->getFunction(MangleName(RD->getDestructor()))->getArgumentList().front().getType())->getElementType();
-                return debug;
-            }
-            // Methods: Gotta be careful about them complex returns
-            if (RD->method_begin() != RD->method_end()) {
-                auto meth = *RD->method_begin();
-                // Complex T* goes first, this second
-                if (IsComplexType(meth->getResultType()->getAsCXXRecordDecl())) {
-                    auto debug = llvm::dyn_cast<llvm::PointerType>((++mod->getFunction(MangleName(*RD->method_begin()))->getArgumentList().begin())->getType())->getElementType();
-                    return debug;
-
-                }
-                // This first
-                auto debug = llvm::dyn_cast<llvm::PointerType>(mod->getFunction(MangleName(*RD->method_begin()))->getArgumentList().front().getType())->getElementType();
-                return debug;
-            }
-            // If we have no methods, no destructor, and no constructor, seems like an eliminate type
-            // Just fall back to the named type.
-        }*/
         if (prebaked_types.find(t) != prebaked_types.end())
             return prebaked_types[t](mod);
 

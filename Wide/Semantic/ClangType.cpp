@@ -159,7 +159,7 @@ Wide::Codegen::Expression* ClangType::BuildBooleanConversion(ConcreteExpression 
     clang::OpaqueValueExpr ope(clang::SourceLocation(), type.getNonLValueExprType(from->GetASTContext()), Semantic::GetKindOfType(self.t));
     auto p = from->GetSema().PerformContextuallyConvertToBool(&ope);
     if (!p.get())
-        throw std::runtime_error("Attempted to convert an object to bool contextually, but Clang said this was not possible.");
+        throw NoBooleanConversion(self.t, c.where, *c);
     clang::CallExpr* callexpr;
     if (auto ice = llvm::dyn_cast<clang::ImplicitCastExpr>(p.get())) {
         callexpr = llvm::dyn_cast<clang::CallExpr>(ice->getSubExpr());
@@ -189,7 +189,7 @@ Wide::Codegen::Expression* ClangType::BuildBooleanConversion(ConcreteExpression 
     // If the function really returns an i1, the code generator will implicitly patch it up for us.
     if (e.t == c->GetBooleanType())
         return e.Expr;
-    throw std::runtime_error("Attempted to contextually convert to bool, but Clang gave back a function that did not return a bool. WTF.");
+    assert(false && "Attempted to contextually convert to bool, but Clang gave back a function that did not return a bool. WTF.");
 }
 
 #pragma warning(disable : 4244)

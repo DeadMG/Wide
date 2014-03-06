@@ -125,32 +125,26 @@ namespace Wide {
 
             virtual bool IsComplexType(Analyzer& a) { return false; }
             virtual Wide::Util::optional<clang::QualType> GetClangType(ClangTU& TU, Analyzer& a);
-            virtual std::function<llvm::Type*(llvm::Module*)> GetLLVMType(Analyzer& a) {
-                throw std::runtime_error("This type has no LLVM counterpart.");
-            }
+
+            virtual std::function<llvm::Type*(llvm::Module*)> GetLLVMType(Analyzer& a) = 0;
+            virtual std::size_t size(Analyzer& a) = 0;
+            virtual std::size_t alignment(Analyzer& a) = 0;
 
             virtual bool IsMoveConstructible(Analyzer& a, Lexer::Access access);
             virtual bool IsCopyConstructible(Analyzer& a, Lexer::Access access);
 
             virtual bool IsMoveAssignable(Analyzer& a, Lexer::Access access);
             virtual bool IsCopyAssignable(Analyzer& a, Lexer::Access access);
-
-            virtual std::size_t size(Analyzer& a) { throw std::runtime_error("Attempted to size a type that does not have a run-time size."); }
-            virtual std::size_t alignment(Analyzer& a) { throw std::runtime_error("Attempted to align a type that does not have a run-time alignment."); }   
             
             virtual Wide::Util::optional<ConcreteExpression> AccessStaticMember(std::string name, Context c) {
-                throw std::runtime_error("This type does not have any static members.");
+                return Wide::Util::none;
             }
             virtual Wide::Util::optional<ConcreteExpression> AccessMember(ConcreteExpression, std::string name, Context c);
 
             virtual ConcreteExpression BuildMetaCall(ConcreteExpression val, std::vector<ConcreteExpression> args, Context c) {
-                throw std::runtime_error("Attempted to call a type that did not support it.");
+                throw std::runtime_error("Attempted to meta call a type that did not support it.");
             }
-            virtual Codegen::Expression* BuildBooleanConversion(ConcreteExpression val, Context c) {
-                if (IsReference())
-                    return Decay()->BuildBooleanConversion(val, c);
-                throw std::runtime_error("Could not convert a type to boolean.");
-            }
+            virtual Codegen::Expression* BuildBooleanConversion(ConcreteExpression val, Context c);
             virtual ConcreteExpression BuildCall(ConcreteExpression val, std::vector<ConcreteExpression> args, std::vector<ConcreteExpression> destructors, Context c);
             virtual ConcreteExpression BuildCall(ConcreteExpression val, std::vector<ConcreteExpression> args, Context c);
 

@@ -43,3 +43,18 @@ IncompleteClangType::IncompleteClangType(Type* what, Lexer::Range where, Analyze
 
 CannotTranslateFile::CannotTranslateFile(std::string filepath, Lexer::Range r)
 : Error(r, "Clang could not translate file " + filepath) {}
+
+ClangFileParseError::ClangFileParseError(std::string f, std::string e, Lexer::Range where)
+: Error(where, "Clang failed to parse \"" + f + "\"\n" + e), filename(f), errors(e) {}
+
+InvalidBase::InvalidBase(Type* t, Lexer::Range where, Analyzer& a)
+: Error(where, "The type " + t->explain(a) + " is not a valid base class."), base(t) {}
+
+AmbiguousLookup::AmbiguousLookup(std::string name, Type* b1, Type* b2, Lexer::Range where, Analyzer& a)
+: Error(where, "The member " + name + " was found in both " + b1->explain(a) + " and " + b2->explain(a)), name(name), base1(b1), base2(b2) {}
+
+NoBooleanConversion::NoBooleanConversion(Type* obj, Lexer::Range where, Analyzer& a)
+: Error(where, "The type " + obj->explain(a) + " did not have a conversion to bool."), object(obj) {}
+
+AddressOfNonLvalue::AddressOfNonLvalue(Type* obj, Lexer::Range where, Analyzer& a)
+: Error(where, "Attempted to take the address of " + obj->explain(a) + " which is a non-lvalue."), obj(obj) {}

@@ -111,6 +111,7 @@ int main(int argc, char** argv)
         ("input", boost::program_options::value<std::vector<std::string>>(), "One input file. May be specified multiple times.")
         ("stdlib", boost::program_options::value<std::string>(), "The Standard library path. Defaulted to \".\\WideLibrary\\\".")
         ("include", boost::program_options::value<std::vector<std::string>>(), "One include path. May be specified multiple times.")
+        ("version", "The build of Wide.")
     ;
 
     boost::program_options::positional_options_description positional;

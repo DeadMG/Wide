@@ -8,6 +8,7 @@
 #include <clang/AST/Type.h>
 #include <clang/AST/ASTContext.h>
 #include <llvm/IR/DerivedTypes.h>
+#include <llvm/IR/DataLayout.h>
 #pragma warning(pop)
 
 #include <Wide/Codegen/GeneratorMacros.h>
@@ -134,4 +135,10 @@ std::string FunctionType::explain(Analyzer& a) {
             begin += ty->explain(a);
     }
     return begin + ")";
+}
+std::size_t FunctionType::size(Analyzer& a) {
+    return llvm::DataLayout(a.gen->GetDataLayout()).getPointerSize();
+}
+std::size_t FunctionType::alignment(Analyzer& a) {
+    return llvm::DataLayout(a.gen->GetDataLayout()).getPointerABIAlignment();
 }

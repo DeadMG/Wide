@@ -6,6 +6,7 @@
 #include <Wide/Semantic/OverloadSet.h>
 #include <Wide/Semantic/Function.h>
 #include <Wide/Semantic/FunctionType.h>
+#include <Wide/Semantic/SemanticError.h>
 #include <Wide/Semantic/TupleType.h>
 #include <Wide/Semantic/ConstructorType.h>
 #include <Wide/Parser/AST.h>
@@ -34,9 +35,9 @@ std::vector<Type*> GetTypesFromType(const AST::Type* t, Analyzer& a, Type* conte
     for (auto expr : t->bases) {
         auto base = a.AnalyzeExpression(context, expr, [](Wide::Semantic::ConcreteExpression) { assert(false); });
         auto con = dynamic_cast<ConstructorType*>(base.t->Decay());
-        if (!con) throw std::runtime_error("Attempted to define base classes but an expression was not a type.");
+        if (!con) throw NotAType(base.t, expr->location, a);
         auto udt = dynamic_cast<BaseType*>(con->GetConstructedType());
-        if (!udt) throw std::runtime_error("Attempted to inherit from a type but that type was not a user-defined type.");
+        if (!udt) throw InvalidBase(con->GetConstructedType(), expr->location, a);
         out.push_back(udt);
     }
     for (auto&& var : t->variables) {
@@ -45,7 +46,7 @@ std::vector<Type*> GetTypesFromType(const AST::Type* t, Analyzer& a, Type* conte
         if (auto con = dynamic_cast<ConstructorType*>(expr.t))
             out.push_back(con->GetConstructedType());
         else
-            throw std::runtime_error("No longer support in-class member initializers.");
+            throw NotAType(expr.t, var.first->location, a);
     }
     return out;
 }
@@ -98,16 +99,17 @@ Wide::Util::optional<ConcreteExpression> UserDefinedType::AccessMember(ConcreteE
     }
     // Any of our bases have this member?
     Wide::Util::optional<ConcreteExpression> result;
+    Type* basetype = nullptr;
     for (std::size_t i = 0; i < AggregateType::GetMembers().size() - type->variables.size(); ++i) {
         auto base = PrimitiveAccessMember(expr, i, *c);
         if (auto member = base.AccessMember(name, c)) {
             // If there's nothing there, we win.
             // If we're an OS and the existing is an OS, we win by unifying.
             // Else we lose.
-            if (!result) { result = member; continue; }  
+            if (!result) { result = member; basetype = AggregateType::GetMembers()[i];  continue; }
             auto os = dynamic_cast<OverloadSet*>(result->t->Decay());
             auto otheros = dynamic_cast<OverloadSet*>(member->t->Decay());
-            if (!os || !otheros) throw std::runtime_error("Attempted to access a member, but it was ambiguous in more than one base class.");
+            if (!os || !otheros) throw AmbiguousLookup(name, basetype, AggregateType::GetMembers()[i], c.where, *c);
             result = c->GetOverloadSet(os, otheros, self.t)->BuildValueConstruction({ self }, c);
         }
     }

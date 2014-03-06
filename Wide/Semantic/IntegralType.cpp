@@ -40,7 +40,7 @@ Wide::Util::optional<clang::QualType> IntegralType::GetClangType(ClangTU& TU, An
         else
             return TU.GetASTContext().UnsignedLongLongTy;
     }
-    throw std::runtime_error("An integral type whose width was not 8, 16, 32, or 64? dafuq?");
+    assert(false && "Integral types only go up to 64bit.");
 }
 std::function<llvm::Type*(llvm::Module*)> IntegralType::GetLLVMType(Analyzer& a) {
     return [this](llvm::Module* m) {
