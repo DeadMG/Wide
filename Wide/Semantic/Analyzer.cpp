@@ -630,8 +630,15 @@ OverloadResolvable* Analyzer::GetCallableForFunction(const AST::FunctionBase* f,
             
             if (HasImplicitThis()) {
                 if (num == 0) {
-                    if (argument->IsA(argument, context, a, GetAccessSpecifier(source, argument, a))) {
-                        return argument;
+                    if (IsLvalueType(argument)) {
+                        if (argument->IsA(argument, a.GetLvalueType(context), a, GetAccessSpecifier(source, argument, a))) {
+                            return a.GetLvalueType(context);
+                        }
+                    }
+                    if (IsRvalueType(argument)) {
+                        if (argument->IsA(argument, a.GetRvalueType(context), a, GetAccessSpecifier(source, argument, a))) {
+                            return a.GetRvalueType(context);
+                        }
                     }
                     return nullptr;
                 }
@@ -679,7 +686,7 @@ OverloadResolvable* Analyzer::GetCallableForFunction(const AST::FunctionBase* f,
             return a.GetWideFunction(func, context, std::move(types), name);
         }
     };
-    return FunctionCallables[f] = arena.Allocate<FunctionCallable>(f, context, name);
+    return FunctionCallables[f] = arena.Allocate<FunctionCallable>(f, context->Decay(), name);
 }
 
 Lexer::Access Semantic::GetAccessSpecifier(Type* from, Type* to, Analyzer& a) {

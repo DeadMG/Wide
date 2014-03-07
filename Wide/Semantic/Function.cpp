@@ -92,8 +92,8 @@ Function::Function(std::vector<Type*> args, const AST::FunctionBase* astfun, Ana
     unsigned num = 0;
     unsigned metaargs = 0;
     if (mem && (dynamic_cast<MemberFunctionContext*>(mem->Decay()))) {
-        ++num; // Skip the first argument in args if we are a member.
-        Args.push_back(mem == mem->Decay() ? a.GetLvalueType(mem) : mem);
+        ++num; // Match up the ast args with args
+        Args.push_back(args[0] == args[0]->Decay() ? a.GetLvalueType(args[0]) : args[0]);
     }
     for(auto&& arg : astfun->args) {
         Context c(a, arg.location, [this](ConcreteExpression e) {
@@ -102,7 +102,7 @@ Function::Function(std::vector<Type*> args, const AST::FunctionBase* astfun, Ana
         if (arg.name == "this")
             continue;
 #pragma warning(disable : 4800)
-        auto param = [this, num, &a] { return num + ReturnType->IsComplexType(a) + (bool(dynamic_cast<MemberFunctionContext*>(context))); };
+        auto param = [this, num, &a] { return num + ReturnType->IsComplexType(a); };
         Type* ty = args[num];
         // Expr is set.
         ConcreteExpression var(a.GetLvalueType(ty), nullptr);

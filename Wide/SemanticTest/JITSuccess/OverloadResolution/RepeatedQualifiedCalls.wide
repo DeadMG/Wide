@@ -1,0 +1,8 @@
+type t1 {
+    operator()(t1.lvalue this) { return true; }
+    operator()(t1.rvalue this) { return true; }
+}
+Main() {
+    x := t1();
+    return x() & t1()();
+}
