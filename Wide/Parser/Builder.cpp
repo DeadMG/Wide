@@ -86,13 +86,16 @@ void Builder::CreateFunction(
     std::vector<Variable*> caps,
     Lexer::Access a
 ) {
-    auto func = arena.Allocate<Function>(std::move(body), std::move(prolog), where, std::move(args), a);
-   
+    auto func = arena.Allocate<Function>(std::move(body), std::move(prolog), where, std::move(args), a);   
     if (m->decls.find(name) != m->decls.end()) {
         if (auto overset = dynamic_cast<AST::FunctionOverloadSet*>(m->decls.at(name))) {
             overset->functions.insert(func);
-        } else
+        } else {
+            auto local = arena.Allocate<AST::FunctionOverloadSet>(where);
+            local->functions.insert(func);
             combine_errors[m][name].insert(m->decls[name]);
+            combine_errors[m][name].insert(local);
+        }
     } else {
         auto overset = arena.Allocate<AST::FunctionOverloadSet>(where);
         overset->functions.insert(func);

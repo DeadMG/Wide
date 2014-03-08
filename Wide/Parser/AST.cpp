@@ -7,138 +7,164 @@
 using namespace Wide;
 using namespace AST;
 
-void Combiner::Add(Module* m) {
-    assert(modules.find(m) == modules.end());
-    modules.insert(m);
-    auto adder = std::function<void(Module*, Module*)>();
-    adder = [&, this](Module* to, Module* from) {
-        assert(owned_decl_contexts.find(from) == owned_decl_contexts.end());
-        assert(owned_decl_contexts.find(to) != owned_decl_contexts.end() || to == &root);
-        for(auto&& entry : from->opcondecls) {
-            FunctionOverloadSet* InsertPoint = nullptr;
-            if (to->opcondecls.find(entry.first) != to->opcondecls.end()) {
-                InsertPoint = to->opcondecls.at(entry.first);
-                assert(owned_overload_sets.find(InsertPoint) != owned_overload_sets.end());
-            } else {
-                auto new_set = Wide::Memory::MakeUnique<FunctionOverloadSet>(entry.second->where.front());
-                InsertPoint = to->opcondecls[entry.first] = new_set.get();
-                owned_overload_sets.insert(std::make_pair(InsertPoint, std::move(new_set)));
-            }
-            for(auto x : entry.second->functions)
-                InsertPoint->functions.insert(x);
-        }
-        for(auto&& entry : from->decls) {
-            if (auto nested = dynamic_cast<AST::Module*>(entry.second)) {
-                Module* next;
-                if (to->decls.find(entry.first) != to->decls.end())
-                    if (auto mod = dynamic_cast<AST::Module*>(to->decls[entry.first]))
-                        next = mod;
-                    else {
-                        errors[to][entry.first].insert(nested);
-                        continue;
-                    }
-                else {
-                    auto new_mod = Wide::Memory::MakeUnique<Module>(nested->where.front(), nested->access);
-                    new_mod->where = nested->where;
-                    to->decls[entry.first] = owned_decl_contexts.insert(std::make_pair(next = new_mod.get(), std::move(new_mod))).first->first;
-                }
-                adder(next, nested);
-                continue;
-            }
-            if (auto use = dynamic_cast<AST::Using*>(entry.second)) {
-                if (to->decls.find(entry.first) != to->decls.end()) {
-                    errors[to][entry.first].insert(use);
-                    continue;
-                }
-                to->decls[entry.first] = use;
-                continue;
-            }
-            if (auto ty = dynamic_cast<AST::Type*>(entry.second)) {
-                if (to->decls.find(entry.first) != to->decls.end()) {
-                    errors[to][entry.first].insert(ty);
-                    continue;
-                }
-                to->decls[entry.first] = ty;
-                continue;
-            }
-            if (auto overset = dynamic_cast<AST::FunctionOverloadSet*>(entry.second)) {
-                if (to->decls.find(entry.first) != to->decls.end()) {
-                    if (auto toset = dynamic_cast<AST::FunctionOverloadSet*>(to->decls.at(entry.first))) {
-                        toset->functions.insert(overset->functions.begin(), overset->functions.end());
-                    }
-                }
-                else {
-                    auto new_set = Wide::Memory::MakeUnique<FunctionOverloadSet>(entry.second->where.front());
-                    new_set->functions.insert(overset->functions.begin(), overset->functions.end());
-                    to->decls[entry.first] = new_set.get();
-                    owned_overload_sets.insert(std::make_pair(new_set.get(), std::move(new_set)));
-                }
-            }
+void Combiner::CombinedModule::AddModuleToSelf(Module* mod) {
+    for (auto decl : mod->decls)
+        Add(decl.second, decl.first);
 
-            std::vector<Lexer::Range> loc = entry.second->where;
-            if (to->decls.find(entry.first) != to->decls.end())
-                loc.insert(loc.end(), to->decls.at(entry.first)->where.begin(), to->decls.at(entry.first)->where.end());
+    for (auto&& entry : mod->opcondecls) {
+        FunctionOverloadSet* InsertPoint = nullptr;
+        if (opcondecls.find(entry.first) != opcondecls.end()) {
+            InsertPoint = opcondecls.at(entry.first);
+        } else {
+            operator_overload_sets[entry.first] = Wide::Memory::MakeUnique<FunctionOverloadSet>(entry.second->where.front());
+            InsertPoint = operator_overload_sets[entry.first].get();
+            opcondecls[entry.first] = operator_overload_sets[entry.first].get();
         }
-    };
-    adder(&root, m);    
-    for(auto x : errors) {
-        std::unordered_map<std::string, std::unordered_set<DeclContext*>> contexts;
-        // Sort them by name, and grab the dest.
-        for(auto con : x.second) {
-            if (x.first->decls.find(con.first) != x.first->decls.end())
-                contexts[con.first].insert(x.first->decls.at(con.first));
-            contexts[con.first].insert(con.second.begin(), con.second.end());
-        }
-        
-        // Issue each name as a separate list of errors.
-        for(auto list : contexts) {
-            auto vec = std::vector<std::pair<Lexer::Range, DeclContext*>>();
-            for(auto con : list.second)
-                for(auto loc : con->where)
-                    vec.push_back(std::make_pair(loc, con));
-            error(std::move(vec));
-        }
+        for (auto x : entry.second->functions)
+            InsertPoint->functions.insert(x);
     }
 }
 
-void Combiner::Remove(Module* m) {
-    assert(modules.find(m) != modules.end());
-    modules.erase(m);
-    auto remover = std::function<void(Module*, Module*)>();
-    remover = [&, this](Module* to, Module* from) {
-        assert(owned_decl_contexts.find(from) == owned_decl_contexts.end());
-        assert(owned_decl_contexts.find(to) != owned_decl_contexts.end() || to == &root);
-        for(auto&& entry : from->opcondecls) {
-            auto overset = entry.second;
-            auto to_overset = to->opcondecls.at(entry.first);
-            assert(to_overset);
-            assert(owned_overload_sets.find(to_overset) != owned_overload_sets.end());
-            for(auto&& fun : overset->functions)
-                to_overset->functions.erase(fun);
-            if (to_overset->functions.empty()) {
-                to->opcondecls.erase(entry.first);
-                owned_overload_sets.erase(to_overset);
-            }
+void Combiner::CombinedModule::Add(DeclContext* d, std::string name) {
+    if (auto mod = dynamic_cast<Module*>(d)) {
+        CombinedModule* combmod = nullptr;
+        if (combined_modules.find(name) != combined_modules.end()) {
+            combmod = combined_modules[name].get();
+            combmod->where.insert(combmod->where.end(), d->where.begin(), d->where.end());
+        } else {
+            combmod = (combined_modules[name] = Wide::Memory::MakeUnique<CombinedModule>(mod->where.front(), mod->access)).get();
+            combmod->where = mod->where;
+            if (decls.find(name) != decls.end())
+                errors[name].insert(combmod);
+            else
+                decls[name] = combmod;
         }
-        for(auto&& entry : from->decls) {
-            if (auto module = dynamic_cast<AST::Module*>(entry.second)) {
-                auto to_module = dynamic_cast<AST::Module*>(to->decls[entry.first]);
-                assert(to_module);
-                assert(owned_decl_contexts.find(to_module) != owned_decl_contexts.end());
-                remover(to_module, module);
-                if (to_module->decls.empty() && to_module->opcondecls.empty()) {
-                    to->decls.erase(entry.first);
-                    owned_decl_contexts.erase(to_module);
-                }
-                continue;
-            }
-            to->decls.erase(entry.first);
-            if (errors.find(to) != errors.end())
-                errors.at(to).at(entry.first).erase(entry.second);
+        combmod->AddModuleToSelf(mod);
+        // Don't care whether it's an error or not just add the stuff
+        return;
+    }
+
+    if (auto overset = dynamic_cast<AST::FunctionOverloadSet*>(d)) {
+        FunctionOverloadSet* InsertPoint = nullptr;
+        if (combined_overload_sets.find(name) != combined_overload_sets.end()) {
+            InsertPoint = combined_overload_sets[name].get();
+        } else {
+            InsertPoint = (combined_overload_sets[name] = Wide::Memory::MakeUnique<FunctionOverloadSet>(d->where.front())).get();
+            if (decls.find(name) != decls.end())
+                errors[name].insert(InsertPoint);
+            else
+                decls[name] = InsertPoint;
         }
-        if (errors.find(to) != errors.end())
-            if (errors.at(to).size() == 0)
-                errors.erase(to);
+        InsertPoint->functions.insert(overset->functions.begin(), overset->functions.end());
+        return;
+    }
+
+    if (decls.find(name) == decls.end())
+        decls[name] = d;
+    else
+        errors[name].insert(d);
+}
+void Combiner::CombinedModule::Remove(DeclContext* d, std::string name) {
+    auto PopDecl = [this](DeclContext* con, std::string name) {
+        if (decls.at(name) == con) {
+            decls.erase(name);
+            if (errors.find(name) != errors.end()) {
+                decls[name] = *errors[name].begin();
+                errors[name].erase(errors[name].begin());
+                if (errors[name].empty())
+                    errors.erase(name);
+            }
+            return;
+        }
+        if (errors.find(name) != errors.end())
+            errors[name].erase(con);
+        if (errors[name].empty())
+            errors.erase(name);
+        return;
     };
-    remover(&root, m);
+    if (auto mod = dynamic_cast<Module*>(d)) {
+        assert(combined_modules.find(name) != combined_modules.end());
+        auto combmod = combined_modules[name].get();
+        combmod->RemoveModuleFromSelf(mod);
+        if (combmod->decls.empty() && combmod->opcondecls.empty()) {
+            PopDecl(combmod, name);
+            combined_modules.erase(name);
+        }
+        return;
+    }
+
+    if (auto overset = dynamic_cast<FunctionOverloadSet*>(d)) {
+        assert(combined_overload_sets.find(name) != combined_overload_sets.end());
+        for (auto f : overset->functions)
+            combined_overload_sets[name]->functions.erase(f);
+        if (combined_overload_sets[name]->functions.empty()) {
+            PopDecl(combined_overload_sets[name].get(), name);
+            combined_overload_sets.erase(name);
+        }
+        return;
+    }
+
+    PopDecl(d, name);
+}
+void Combiner::CombinedModule::RemoveModuleFromSelf(Module* mod) {
+    for (auto decl : mod->decls)
+        Remove(decl.second, decl.first);
+
+    for (auto&& entry : mod->opcondecls) {
+        assert(opcondecls.find(entry.first) != opcondecls.end());
+        assert(operator_overload_sets.find(entry.first) != operator_overload_sets.end());
+        FunctionOverloadSet* InsertPoint = operator_overload_sets[entry.first].get();
+        for (auto x : entry.second->functions) {
+            assert(InsertPoint->functions.count(x));
+            InsertPoint->functions.erase(x);
+        }
+        if (InsertPoint->functions.empty()) {
+            operator_overload_sets.erase(entry.first);
+            opcondecls.erase(entry.first);
+        }
+    }
+}
+void Combiner::CombinedModule::ReportErrors(std::function<void(std::vector<std::pair<Wide::Lexer::Range*, Wide::AST::DeclContext*>>&)> error, 
+    std::vector<std::pair<Wide::Lexer::Range*, Wide::AST::DeclContext*>>& scratch) {
+    for (auto x : errors) {
+        // Issue each name as a separate list of errors.
+        for (auto&& list : errors) {
+            for (auto con : list.second)
+                for (auto&& loc : con->where)
+                    scratch.push_back(std::make_pair(&loc, con));
+            error(scratch);
+            scratch.clear();
+        }
+    }
+    // Recursively report our submodules- even the error ones.
+    for (auto&& x : combined_modules)
+        x.second->ReportErrors(error, scratch);
+}
+void Combiner::Add(Module* mod) {
+    assert(modules.find(mod) == modules.end());
+    modules.insert(mod);
+    root.AddModuleToSelf(mod);
+}
+void Combiner::Remove(Module* mod) {
+    assert(modules.find(mod) != modules.end());
+    modules.erase(mod);
+    root.RemoveModuleFromSelf(mod);
+}
+void Combiner::ReportErrors(std::function<void(std::vector<std::pair<Wide::Lexer::Range*, Wide::AST::DeclContext*>>&)> error) {
+    std::vector<std::pair<Wide::Lexer::Range*, Wide::AST::DeclContext*>> scratch;
+    scratch.reserve(10);
+    root.ReportErrors(error, scratch);
+}
+void Combiner::SetModules(std::unordered_set<Module*> mods) {
+    std::vector<Module*> removals;
+    for (auto mod : modules) {
+        if (mods.find(mod) == mods.end())
+            removals.push_back(mod);
+    }
+    for (auto mod : removals)
+        Remove(mod);
+    for (auto mod : mods) {
+        if (modules.find(mod) == modules.end())
+            Add(mod);
+    }
 }

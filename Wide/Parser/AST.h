@@ -4,6 +4,7 @@
 #include <string>
 #include <unordered_map>
 #include <functional>
+#include <algorithm>
 #include <unordered_set>
 #include <memory>
 #include <Wide/Lexer/Token.h>
@@ -239,22 +240,36 @@ namespace Wide {
     }
     namespace AST {
         struct Combiner {
-            Module root;
-            std::unordered_map<DeclContext*, std::unique_ptr<Module>> owned_decl_contexts;
-            std::unordered_map<FunctionOverloadSet*, std::unique_ptr<FunctionOverloadSet>> owned_overload_sets;
-
-            std::function<void(std::vector<std::pair<Wide::Lexer::Range, Wide::AST::DeclContext*>>)> error;
             std::unordered_set<Module*> modules;
 
-            std::unordered_map<Module*, std::unordered_map<std::string, std::unordered_set<DeclContext*>>> errors;
+            struct CombinedModule : public AST::Module {
+                using AST::Module::Module;
+
+                std::unordered_map<std::string, std::unique_ptr<CombinedModule>> combined_modules;
+                std::unordered_map<std::string, std::unique_ptr<FunctionOverloadSet>> combined_overload_sets;
+                std::unordered_map<Lexer::TokenType, std::unique_ptr<FunctionOverloadSet>> operator_overload_sets;
+                std::unordered_map<std::string, std::unordered_set<DeclContext*>> errors;
+
+                void Add(DeclContext* d, std::string name);
+                void Remove(DeclContext* d, std::string name);
+                void AddModuleToSelf(Module* m);
+                void RemoveModuleFromSelf(Module* m);
+                void ReportErrors(std::function<void(std::vector<std::pair<Wide::Lexer::Range*, Wide::AST::DeclContext*>>&)> error, std::vector<std::pair<Wide::Lexer::Range*, Wide::AST::DeclContext*>>& scratch);
+            };
+
+            CombinedModule root;
+            
         public:
-            Combiner(std::function<void(std::vector<std::pair<Wide::Lexer::Range, Wide::AST::DeclContext*>>)> err)
-                : root(Lexer::Range(global_module_location), Lexer::Access::Public), error(std::move(err)) {}
+            Combiner() : root(Lexer::Range(global_module_location), Lexer::Access::Public) {}
 
             Module* GetGlobalModule() { return &root; }
 
             void Add(Module* m);
             void Remove(Module* m);
+            bool ContainsModule(Module* m) { return modules.find(m) != modules.end(); }
+            void SetModules(std::unordered_set<Module*> modules);
+
+            void ReportErrors(std::function<void(std::vector<std::pair<Wide::Lexer::Range*, Wide::AST::DeclContext*>>&)> error);
         };
     }
 }

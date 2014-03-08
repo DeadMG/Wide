@@ -2,6 +2,7 @@
 #include <Wide/Parser/Parser.h>
 #include <Wide/Parser/Builder.h>
 #include <Wide/Util/DebugUtilities.h>
+#include <mutex>
 
 namespace CEquivalents {
     struct LexerResult {
@@ -55,11 +56,18 @@ namespace CEquivalents {
         CEquivalents::Range where;
         DeclType type;
     };
+    struct Combiner;
+    struct Builder {
+        std::unordered_set<Combiner*> combiners;
+        Wide::AST::Builder builder;
+    };
+    struct Combiner {
+        std::unordered_set<Builder*> builders;
+        Wide::AST::Combiner combiner;
+    };
 }
 
-std::unordered_set<Wide::AST::Builder*> valid_builders;
-
-extern "C" DLLEXPORT Wide::AST::Builder* ParseWide(
+extern "C" DLLEXPORT CEquivalents::Builder* ParseWide(
     void* context,
     std::add_pointer<CEquivalents::LexerResult(void*)>::type TokenCallback,
     std::add_pointer<void(CEquivalents::Range, Wide::AST::OutliningType, void*)>::type OutliningCallback,
@@ -73,41 +81,67 @@ extern "C" DLLEXPORT Wide::AST::Builder* ParseWide(
             locs.push_back(CEquivalents::Range(x));
         ErrorCallback(locs.size(), locs.data(), what, context);
     };
-    Wide::AST::Builder& builder = *new Wide::AST::Builder(
-         [=](std::vector<Wide::Lexer::Range> where, Wide::Parser::Error what) { onerror(where, what); },
-         [=](Wide::Lexer::Range where, Wide::Parser::Warning what) { return WarningCallback(where, what, context); },
-         [=](Wide::Lexer::Range r, Wide::AST::OutliningType t) { return OutliningCallback(r, t, context); }
-    );
+    CEquivalents::Builder* ret = new CEquivalents::Builder{
+        {},
+        {
+            [=](std::vector<Wide::Lexer::Range> where, Wide::Parser::Error what) { onerror(where, what); },
+            [=](Wide::Lexer::Range where, Wide::Parser::Warning what) { return WarningCallback(where, what, context); },
+            [=](Wide::Lexer::Range r, Wide::AST::OutliningType t) { return OutliningCallback(r, t, context); }
+        }
+    };
     CEquivalents::ParserLexer pl(std::make_shared<std::string>(filename));
     Wide::Parser::AssumeLexer<decltype(pl)> lexer;
     lexer.lex = &pl;
-    Wide::Parser::Parser<decltype(lexer), decltype(builder)> parser(lexer, builder);
+    Wide::Parser::Parser<decltype(lexer), decltype(ret->builder)> parser(lexer, ret->builder);
     pl.context = context;
     pl.TokenCallback = TokenCallback;
     try {
-        parser.ParseGlobalModuleContents(builder.GetGlobalModule());
+        parser.ParseGlobalModuleContents(ret->builder.GetGlobalModule());
     } catch(Wide::Parser::ParserError& e) {
         onerror(e.where(), e.error());
     } catch(...) {
     }
-    valid_builders.insert(&builder);
-    return &builder;
+    return ret;
 }
 
-extern "C" DLLEXPORT void DestroyParser(Wide::AST::Builder* p) {
-    if (valid_builders.find(p) == valid_builders.end())
-        Wide::Util::DebugBreak();
-    valid_builders.erase(p);
+extern "C" DLLEXPORT void DestroyParser(CEquivalents::Builder* p) {
+    for (auto comb : p->combiners) {
+        comb->combiner.Remove(p->builder.GetGlobalModule());
+        comb->builders.erase(p);
+    }
     delete p;
 }
 
-extern "C" DLLEXPORT Wide::AST::Combiner* CreateCombiner(
+extern "C" DLLEXPORT CEquivalents::Combiner* CreateCombiner() {
+    return new CEquivalents::Combiner();
+}
+
+extern "C" DLLEXPORT void DestroyCombiner(CEquivalents::Combiner* p) {
+    for (auto builder : p->builders)
+        builder->combiners.erase(p);
+    delete p;
+}
+
+extern "C" DLLEXPORT void AddParser(CEquivalents::Combiner* c, CEquivalents::Builder** p, unsigned count) {
+    c->builders.clear();
+    c->builders.insert(p, p + count);
+    std::unordered_set<Wide::AST::Module*> modules;
+    for (auto&& x : c->builders) {
+        x->combiners.insert(c);
+        modules.insert(x->builder.GetGlobalModule());
+    }
+    c->combiner.SetModules(std::move(modules));
+}
+
+extern "C" DLLEXPORT void GetCombinerErrors(
+    CEquivalents::Combiner* c,
     std::add_pointer<void(unsigned count, CEquivalents::CombinedError*, void*)>::type ErrorCallback,
     void* context
 ) {
-    auto onerror = [=](std::vector<std::pair<Wide::Lexer::Range, Wide::AST::DeclContext*>> errs) {
-        std::vector<CEquivalents::CombinedError> err;
-        for(auto error : errs) {
+    std::vector<CEquivalents::CombinedError> err;
+    err.reserve(10);
+    auto onerror = [=](std::vector<std::pair<Wide::Lexer::Range*, Wide::AST::DeclContext*>>& errs) mutable {
+        for (auto error : errs) {
             CEquivalents::DeclType d;
             if (dynamic_cast<Wide::AST::Module*>(error.second))
                 d = CEquivalents::DeclType::Module;
@@ -117,25 +151,17 @@ extern "C" DLLEXPORT Wide::AST::Combiner* CreateCombiner(
                 d = CEquivalents::DeclType::Type;
             if (dynamic_cast<Wide::AST::Using*>(error.second))
                 d = CEquivalents::DeclType::Using;
-            err.push_back(CEquivalents::CombinedError(error.first, d));
+            if (auto overset = dynamic_cast<Wide::AST::FunctionOverloadSet*>(error.second)) {
+                for (auto f : overset->functions)
+                    err.push_back(CEquivalents::CombinedError(f->where, CEquivalents::DeclType::Function));
+            }
+            else
+                err.push_back(CEquivalents::CombinedError(*error.first, d));
         }
         ErrorCallback(err.size(), err.data(), context);
+        err.clear();
     };
-    return new Wide::AST::Combiner(onerror);
-}
-
-extern "C" DLLEXPORT void DestroyCombiner(Wide::AST::Combiner* p) {
-    delete p;
-}
-
-extern "C" DLLEXPORT void AddParser(Wide::AST::Combiner* c, Wide::AST::Builder* p) {
-    assert(valid_builders.find(p) != valid_builders.end());
-    c->Add(p->GetGlobalModule());
-}
-
-extern "C" DLLEXPORT void RemoveParser(Wide::AST::Combiner* c, Wide::AST::Builder* p) {
-    assert(valid_builders.find(p) != valid_builders.end());
-    c->Remove(p->GetGlobalModule());
+    c->combiner.ReportErrors(onerror);
 }
 
 extern "C" DLLEXPORT const char* GetParserErrorString(Wide::Parser::Error err) {
@@ -151,25 +177,26 @@ extern "C" DLLEXPORT const char* GetParserWarningString(Wide::Parser::Warning er
 }
 
 extern "C" DLLEXPORT void GetParserCombinedErrors(
-    Wide::AST::Builder* b,
+    CEquivalents::Builder* b,
     std::add_pointer<void(unsigned count, CEquivalents::CombinedError*, void*)>::type callback,
     void* context
-) { 
-    assert(valid_builders.find(b) != valid_builders.end());
-    auto errs = b->GetCombinerErrors();
+) {
+    auto errs = b->builder.GetCombinerErrors();
     for(auto x : errs) {
         std::vector<CEquivalents::CombinedError> err;
         for(auto error : x) {
             CEquivalents::DeclType d;
             if (dynamic_cast<Wide::AST::Module*>(error.second))
                 d = CEquivalents::DeclType::Module;
-            if (dynamic_cast<Wide::AST::Function*>(error.second))
-                d = CEquivalents::DeclType::Function;
             if (dynamic_cast<Wide::AST::Type*>(error.second))
                 d = CEquivalents::DeclType::Type;
             if (dynamic_cast<Wide::AST::Using*>(error.second))
                 d = CEquivalents::DeclType::Using;
-            err.push_back(CEquivalents::CombinedError(error.first, d));
+            if (auto overset = dynamic_cast<Wide::AST::FunctionOverloadSet*>(error.second)) {
+                for (auto f : overset->functions)
+                    err.push_back(CEquivalents::CombinedError(error.first, CEquivalents::DeclType::Function));
+            } else
+                err.push_back(CEquivalents::CombinedError(error.first, d));
         }
         callback(err.size(), err.data(), context);
     }

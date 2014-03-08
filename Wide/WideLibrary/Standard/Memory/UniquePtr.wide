@@ -1,5 +1,4 @@
 module Standard {
-    using Windows := cpp("WideLibrary/test.h");
     module Memory {
         Malloc(size) {
             return Windows.HeapAlloc(Windows.GetProcessHeap(), 0, size);

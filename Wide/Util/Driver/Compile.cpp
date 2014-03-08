@@ -40,9 +40,7 @@ void Wide::Driver::Compile(const Wide::Options::Clang& copts, std::function<void
         str << Wide::Parser::ErrorStrings.at(what);
         excepts.push_back(str.str());
     };
-    auto combineerrorhandler = [=](std::vector<std::pair<Wide::Lexer::Range, Wide::AST::DeclContext*>> errs) {
-    };
-    Wide::AST::Combiner combiner(combineerrorhandler);
+    Wide::AST::Combiner combiner;
     Wide::Concurrency::Vector<std::shared_ptr<Wide::AST::Builder>> builders;
     auto errs = Wide::Concurrency::ParallelForEach(files.begin(), files.end(), [&](const std::string& filename) {
         std::ifstream inputfile(filename, std::ios::binary | std::ios::in);
