@@ -56,7 +56,8 @@ namespace Wide {
             void VisitIf(const If* s) { 
                 crtp_cast().VisitExpression(s->condition);
                 crtp_cast().VisitStatement(s->true_statement);
-                crtp_cast().VisitStatement(s->false_statement); 
+                if (s->false_statement)
+                    crtp_cast().VisitStatement(s->false_statement); 
             }
 
             void VisitBinaryExpression(const BinaryExpression* expr) {

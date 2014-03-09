@@ -243,7 +243,8 @@ namespace Wide {
             std::unordered_set<Module*> modules;
 
             struct CombinedModule : public AST::Module {
-                using AST::Module::Module;
+                CombinedModule(Lexer::Range where, Lexer::Access a)
+                : Module(where, a) {}
 
                 std::unordered_map<std::string, std::unique_ptr<CombinedModule>> combined_modules;
                 std::unordered_map<std::string, std::unique_ptr<FunctionOverloadSet>> combined_overload_sets;

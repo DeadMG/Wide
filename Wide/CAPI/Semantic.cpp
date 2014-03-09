@@ -1,5 +1,6 @@
 #include <Wide/CAPI/Lexer.h>
 #include <Wide/Parser/AST.h>
+#include <Wide/CAPI/Parser.h>
 #include <Wide/Semantic/SemanticError.h>
 #include <Wide/Semantic/ClangOptions.h>
 #include <Wide/Semantic/Analyzer.h>
@@ -38,13 +39,16 @@ extern "C" DLLEXPORT void AddHeaderPath(Wide::Options::Clang* p, const char* pat
 }
 
 extern "C" DLLEXPORT void AnalyzeWide(
-    Wide::AST::Combiner* comb,
+    CEquivalents::Combiner* comb,
     Wide::Options::Clang* clangopts,
+    std::add_pointer<void(CEquivalents::Range, const char* what, void* context)>::type error,
     void* context
 ) {
     Wide::Driver::NullGenerator mockgen(clangopts->TargetOptions.Triple);
-    Wide::Semantic::Analyzer a(*clangopts, mockgen, comb->GetGlobalModule());
-    Wide::Test::Test(a, nullptr, comb->GetGlobalModule(), [&](Wide::Semantic::Error& e) { }, mockgen);
+    Wide::Semantic::Analyzer a(*clangopts, mockgen, comb->combiner.GetGlobalModule());
+    Wide::Test::Test(a, nullptr, comb->combiner.GetGlobalModule(), [&](Wide::Semantic::Error& e) { 
+            error(e.location(), e.what(), context); 
+    }, mockgen);
 }
 
 extern "C" DLLEXPORT const char* GetAnalyzerErrorString(Wide::Semantic::Error* err) {

@@ -1,5 +1,5 @@
 GetTestMetadata() {
-    Categories({ Test.OverloadResolution })
+    Categories({ Test.OverloadResolution });
     ExpectedFailure();
 }
 

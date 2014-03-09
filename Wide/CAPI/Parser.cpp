@@ -1,8 +1,5 @@
-#include <Wide/CAPI/Lexer.h>
-#include <Wide/Parser/Parser.h>
-#include <Wide/Parser/Builder.h>
+#include <Wide/CAPI/Parser.h>
 #include <Wide/Util/DebugUtilities.h>
-#include <mutex>
 
 namespace CEquivalents {
     struct LexerResult {
@@ -60,10 +57,6 @@ namespace CEquivalents {
     struct Builder {
         std::unordered_set<Combiner*> combiners;
         Wide::AST::Builder builder;
-    };
-    struct Combiner {
-        std::unordered_set<Builder*> builders;
-        Wide::AST::Combiner combiner;
     };
 }
 
