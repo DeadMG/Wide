@@ -181,7 +181,7 @@ void Function::ComputeBody(Analyzer& a) {
                     for (auto&& x : con->initializers) {
                         // Can only have 1 name- AST restriction
                         assert(x->name.size() == 1);
-                        if (x->name.front() == name)
+                        if (x->name.front().name == name)
                             return x;
                     }
                     return nullptr;
@@ -215,7 +215,7 @@ void Function::ComputeBody(Analyzer& a) {
                 }
             }
             for (auto&& x : con->initializers)
-                if (std::find_if(members.begin(), members.end(), [&](decltype(*members.begin())& ref) { return ref.name == x->name.front(); }) == members.end())
+                if (std::find_if(members.begin(), members.end(), [&](decltype(*members.begin())& ref) { return ref.name == x->name.front().name; }) == members.end())
                     throw std::runtime_error("Attempted to initialize a member that did not exist.");
         }
         // Now the body.
@@ -274,10 +274,11 @@ void Function::ComputeBody(Analyzer& a) {
             }
             if (auto var = dynamic_cast<const AST::Variable*>(stmt)) {
                 auto result = a.AnalyzeExpression(this, var->initializer, register_local_destructor);
-                
+                if (result.t == a.GetVoidType())
+                    throw std::runtime_error("Attempt to create a variable of type void.");
                 for (auto name : var->name) {
-                    if (auto expr = scope->LookupName(name))
-                        throw std::runtime_error("Error: variable shadowing " + name);
+                    if (auto expr = scope->LookupName(name.name))
+                        throw std::runtime_error("Error: variable shadowing " + name.name);
                 }
 
                 auto handle_variable_expression = [var, register_local_destructor, &a, this](ConcreteExpression result) {
@@ -302,7 +303,8 @@ void Function::ComputeBody(Analyzer& a) {
 
                 if (var->name.size() == 1) {
                     auto expr = handle_variable_expression(result);
-                    scope->named_variables.insert(std::make_pair(var->name.front(), expr));
+                    scope->named_variables.insert(std::make_pair(var->name.front().name, expr));
+                    a.QuickInfo(var->name.front().where, expr.t);
                     return expr.Expr;
                 }
                 auto tupty = dynamic_cast<TupleType*>(result.t->Decay());
@@ -315,7 +317,8 @@ void Function::ComputeBody(Analyzer& a) {
                 Codegen::Statement* stmt = nullptr;
                 for (unsigned index = 0; index < members.size(); ++index) {
                     auto expr = handle_variable_expression(tupty->PrimitiveAccessMember(result, index, a));
-                    scope->named_variables.insert(std::make_pair(var->name[index], expr));
+                    scope->named_variables.insert(std::make_pair(var->name[index].name, expr));
+                    a.QuickInfo(var->name[index].where, expr.t);
                     stmt = stmt ? a.gen->CreateChainExpression(stmt, expr.Expr) : expr.Expr;
                 }
                 return stmt;

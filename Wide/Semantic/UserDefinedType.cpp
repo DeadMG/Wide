@@ -58,7 +58,7 @@ UserDefinedType::UserDefinedType(const AST::Type* t, Analyzer& a, Type* higher, 
 , source_name(name) {
     unsigned i = 0;
     for (auto&& var : type->variables)
-        members[var.first->name.front()] = i++ + type->bases.size();
+        members[var.first->name.front().name] = i++ + type->bases.size();
 }
 
 std::vector<UserDefinedType::member> UserDefinedType::GetMembers() {
@@ -73,7 +73,7 @@ std::vector<UserDefinedType::member> UserDefinedType::GetMembers() {
     for (unsigned i = 0; i < type->variables.size(); ++i) {
         member m;
         m.t = AggregateType::GetMembers()[i + type->bases.size()];
-        m.name = type->variables[i].first->name.front();
+        m.name = type->variables[i].first->name.front().name;
         m.num = AggregateType::GetFieldIndex(i) + type->bases.size();
         out.push_back(m);
     }
@@ -134,7 +134,7 @@ Wide::Util::optional<clang::QualType> UserDefinedType::GetClangType(ClangTU& TU,
             recdecl,
             clang::SourceLocation(),
             clang::SourceLocation(),
-            TU.GetIdentifierInfo(type->variables[i].first->name.front()),
+            TU.GetIdentifierInfo(type->variables[i].first->name.front().name),
             *memberty,
             nullptr,
             nullptr,

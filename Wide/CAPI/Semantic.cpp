@@ -42,10 +42,14 @@ extern "C" DLLEXPORT void AnalyzeWide(
     CEquivalents::Combiner* comb,
     Wide::Options::Clang* clangopts,
     std::add_pointer<void(CEquivalents::Range, const char* what, void* context)>::type error,
+    std::add_pointer<void(CEquivalents::Range, const char* what, void* context)>::type quickinfo,
     void* context
 ) {
     Wide::Driver::NullGenerator mockgen(clangopts->TargetOptions.Triple);
     Wide::Semantic::Analyzer a(*clangopts, mockgen, comb->combiner.GetGlobalModule());
+    a.QuickInfo = [&](Wide::Lexer::Range r, Wide::Semantic::Type* t) {
+        quickinfo(r, t->explain(a).c_str(), context);
+    };
     Wide::Test::Test(a, nullptr, comb->combiner.GetGlobalModule(), [&](Wide::Semantic::Error& e) { 
             error(e.location(), e.what(), context); 
     }, mockgen);

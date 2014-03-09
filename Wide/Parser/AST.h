@@ -64,10 +64,11 @@ namespace Wide {
             std::string val;
         };
         struct MemberAccess : Expression {
-            MemberAccess(std::string nam, Expression* e, Lexer::Range r)
-                : Expression(r), mem(std::move(nam)), expr(e) {}
+            MemberAccess(std::string nam, Expression* e, Lexer::Range r, Lexer::Range mem)
+                : Expression(r), mem(std::move(nam)), expr(e), memloc(mem) {}
             std::string mem;
             Expression* expr;
+            Lexer::Range memloc;
         };
         struct BinaryExpression : public Expression {
             BinaryExpression(Expression* l, Expression* r, Lexer::TokenType t)
@@ -129,9 +130,13 @@ namespace Wide {
             Expression* RetExpr;
         };
         struct Variable : public Statement {
-            Variable(std::vector<std::string> nam, Expression* expr, Lexer::Range r)
+            struct Name {
+                std::string name;
+                Lexer::Range where;
+            };
+            Variable(std::vector<Name> nam, Expression* expr, Lexer::Range r)
                 : Statement(r), name(std::move(nam)), initializer(expr) {}
-            std::vector<std::string> name;
+            std::vector<Name> name;
             Expression* initializer;
         };
         struct Integer : public Expression {
@@ -164,9 +169,10 @@ namespace Wide {
             Expression* ex;
         };
         struct PointerMemberAccess : public UnaryExpression {
+            Lexer::Range memloc;
             std::string member;
-            PointerMemberAccess(std::string name, Expression* expr, Lexer::Range loc)
-                : UnaryExpression(expr, loc), member(std::move(name)) {}
+            PointerMemberAccess(std::string name, Expression* expr, Lexer::Range loc, Lexer::Range mem)
+                : UnaryExpression(expr, loc), member(std::move(name)), memloc(mem) {}
         };
         struct Dereference : public UnaryExpression {
             Dereference(Expression* e, Lexer::Range pos)

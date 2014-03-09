@@ -104,6 +104,8 @@ namespace Wide {
             OverloadSet* EmptyOverloadSet;
 
         public:
+            std::function<void(Lexer::Range where, Type* t)> QuickInfo;
+
             void AddClangType(clang::QualType t, Type* match);
 
             Wide::Memory::Arena arena;

@@ -48,6 +48,7 @@ Analyzer::Analyzer(const Options::Clang& opts, Codegen::Generator& g, const AST:
 : clangopts(&opts)
 , gen(&g)
 , null(nullptr)
+, QuickInfo([](Lexer::Range, Type*) {})
 {
     null = arena.Allocate<NullType>();
 
@@ -145,6 +146,7 @@ ConcreteExpression Analyzer::AnalyzeExpression(Type* t, const AST::Expression* e
             auto val = self->AnalyzeExpression(t, access->expr, handler);
             auto mem = val.AccessMember(access->mem, Context(*self, access->location, handler, t));
             if (!mem) throw NoMember(val.t, t, access->mem, access->location, *self);
+            self->QuickInfo(access->memloc, mem->t);
             out = *mem;
         }
         void VisitCall(const AST::FunctionCall* funccall) {
@@ -160,6 +162,7 @@ ConcreteExpression Analyzer::AnalyzeExpression(Type* t, const AST::Expression* e
         void VisitIdentifier(const AST::Identifier* ident) {
             auto mem = self->LookupIdentifier(t, ident);
             if (!mem) throw UnqualifiedLookupFailure(t, ident->val, ident->location, *self);
+            self->QuickInfo(ident->location, mem->t);
             out = *mem;
         }
         void VisitBinaryExpression(const AST::BinaryExpression* bin) {
@@ -208,11 +211,11 @@ ConcreteExpression Analyzer::AnalyzeExpression(Type* t, const AST::Expression* e
                 std::unordered_set<std::string>* captures;
                 void VisitVariableStatement(const AST::Variable* v) {
                     for(auto&& name : v->name)
-                        lambda_locals->back().insert(name);
+                        lambda_locals->back().insert(name.name);
                 }
                 void VisitLambdaCapture(const AST::Variable* v) {
                     for (auto&& name : v->name)
-                        lambda_locals->back().insert(name);
+                        lambda_locals->back().insert(name.name);
                 }
                 void VisitLambdaArgument(const AST::FunctionArgument* arg) {
                     lambda_locals->back().insert(arg->name);
@@ -284,11 +287,11 @@ ConcreteExpression Analyzer::AnalyzeExpression(Type* t, const AST::Expression* e
             // but I'll hunt down any bugs caused by eliminating it later.
             for(auto&& arg : lam->Captures)
                 for(auto&& name : arg->name)
-                    captures.erase(name);
+                    captures.erase(name.name);
 
             std::vector<std::pair<std::string, ConcreteExpression>> cap_expressions;
             for(auto&& arg : lam->Captures) {
-                cap_expressions.push_back(std::make_pair(arg->name.front(), self->AnalyzeExpression(t, arg->initializer, handler)));
+                cap_expressions.push_back(std::make_pair(arg->name.front().name, self->AnalyzeExpression(t, arg->initializer, handler)));
             }
             for(auto&& name : captures) {                
                 AST::Identifier ident(name, lam->location);
@@ -318,8 +321,8 @@ ConcreteExpression Analyzer::AnalyzeExpression(Type* t, const AST::Expression* e
             auto obj = self->AnalyzeExpression(t, ptr->ex, handler);
             auto c = Context(*self, ptr->location, handler, t);
             auto mem = obj.PointerAccessMember(ptr->member, c);
-            if (!mem)
-                throw NoMember(obj.BuildDereference(c).t, t, ptr->member, ptr->location, *self);
+            if (!mem) throw NoMember(obj.BuildDereference(c).t, t, ptr->member, ptr->location, *self);
+            self->QuickInfo(ptr->memloc, mem->t);
             out = *mem;
         }
         void VisitAddressOf(const AST::AddressOf* add) {

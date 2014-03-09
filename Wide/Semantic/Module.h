@@ -13,6 +13,7 @@ namespace Wide {
             const AST::Module* m;
             Module* context;
             std::unordered_map<std::string, ConcreteExpression> SpecialMembers;
+            std::unordered_map<std::string, ConcreteExpression> CachedLookups;
         public:
             Module(const AST::Module* p, Module* higher);
             Module* GetContext(Analyzer& a) override { return context; }

@@ -35,14 +35,14 @@ namespace Wide {
             Tuple* CreateTuple(std::vector<Expression*> expressions, Lexer::Range r);
             Identifier* CreateIdentifier(std::string name, Lexer::Range r);
             String* CreateString(std::string val, Lexer::Range r);
-            MemberAccess* CreateMemberAccess(std::string mem, Expression* e, Lexer::Range r);
+            MemberAccess* CreateMemberAccess(std::string mem, Expression* e, Lexer::Range r, Lexer::Range);
             BinaryExpression* CreateLeftShift(Expression* lhs, Expression* rhs);
             FunctionCall* CreateFunctionCall(Expression* e, std::vector<Expression*> args, Lexer::Range r);
             Return* CreateReturn(Expression* expr, Lexer::Range r);
             Return* CreateReturn(Lexer::Range r);
-            Variable* CreateVariable(std::vector<std::string> name, Expression* value, Lexer::Range r);
-            Variable* CreateVariable(std::string name, Expression* value, Lexer::Range r);
-            Variable* CreateVariable(std::string name, Lexer::Range r);
+            Variable* CreateVariable(std::vector<Variable::Name> name, Expression* value, Lexer::Range r);
+            Variable* CreateVariable(std::string name, Expression* value, Lexer::Range r, Lexer::Range nameloc);
+            Variable* CreateVariable(std::string name, Lexer::Range r, Lexer::Range nameloc);
             BinaryExpression* CreateAssignment(Expression* lhs, Expression* rhs, Lexer::TokenType type);
             Integer* CreateInteger(std::string val, Lexer::Range r);
             BinaryExpression* CreateRightShift(Expression* lhs, Expression* rhs);
@@ -60,7 +60,7 @@ namespace Wide {
             Lambda* CreateLambda(std::vector<FunctionArgument> args, std::vector<Statement*> body, Lexer::Range loc, bool defaultref, std::vector<Variable*> caps);
             Negate* CreateNegate(Expression* e, Lexer::Range loc);
             Dereference* CreateDereference(Expression* e, Lexer::Range loc);
-            PointerMemberAccess* CreatePointerAccess(std::string mem, Expression* e, Lexer::Range r);
+            PointerMemberAccess* CreatePointerAccess(std::string mem, Expression* e, Lexer::Range r, Lexer::Range);
             BinaryExpression* CreateOr(Expression* lhs, Expression* rhs);
             BinaryExpression* CreateXor(Expression* lhs, Expression* rhs);
             BinaryExpression* CreateAnd(Expression* lhs, Expression* rhs);
@@ -107,8 +107,8 @@ namespace Wide {
             void AddExpressionToGroup(std::vector<Expression*>& grp, Expression* expr);
             Lexer::Range GetLocation(Statement* s);
             void OutlineFunction(Lexer::Range r);
-            std::vector<std::string> CreateVariableNameGroup();
-            void AddNameToGroup(std::vector<std::string>&, std::string);
+            std::vector<Variable::Name> CreateVariableNameGroup();
+            void AddNameToGroup(std::vector<Variable::Name>&, std::string, Lexer::Range where);
 
             void Error(std::vector<Wide::Lexer::Range>, Parser::Error);
             void Error(Wide::Lexer::Range, Parser::Error);

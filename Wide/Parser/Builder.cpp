@@ -58,7 +58,7 @@ void Builder::CreateFunction(
     std::vector<FunctionArgument> args, 
     std::vector<Variable*> caps, 
     Lexer::Access a
-    ) {
+) {
     if (p->Functions.find(name) == p->Functions.end())
         p->Functions[name] = arena.Allocate<FunctionOverloadSet>(where);
     if (name == "type") {
@@ -66,7 +66,7 @@ void Builder::CreateFunction(
         return;
     }
     for(auto var : p->variables)
-        if (std::find(var.first->name.begin(), var.first->name.end(), name) != var.first->name.end()) {
+        if (std::find_if(var.first->name.begin(), var.first->name.end(), [&](Variable::Name arg) { return arg.name == name; }) != var.first->name.end()) {
             std::vector<Lexer::Range> err;
             err.push_back(var.first->location);
             RaiseError(*this, where, err, Parser::Error::TypeFunctionAlreadyVariable);
@@ -139,8 +139,8 @@ Identifier* Builder::CreateIdentifier(std::string name, Lexer::Range r)
 String* Builder::CreateString(std::string val, Lexer::Range r) 
 { return arena.Allocate<String>(std::move(val), r); }
 
-MemberAccess* Builder::CreateMemberAccess(std::string mem, Expression* e, Lexer::Range r) 
-{ return arena.Allocate<MemberAccess>(std::move(mem), e, r); }
+MemberAccess* Builder::CreateMemberAccess(std::string mem, Expression* e, Lexer::Range r, Lexer::Range memloc)
+{ return arena.Allocate<MemberAccess>(std::move(mem), e, r, memloc); }
 
 BinaryExpression* Builder::CreateLeftShift(Expression* lhs, Expression* rhs) 
 { return arena.Allocate<BinaryExpression>(lhs, rhs, Lexer::TokenType::LeftShift); }
@@ -154,11 +154,16 @@ Return* Builder::CreateReturn(Expression* expr, Lexer::Range r)
 Return* Builder::CreateReturn(Lexer::Range r) 
 { return arena.Allocate<Return>(r); }
 
-Variable* Builder::CreateVariable(std::string name, Expression* value, Lexer::Range r) 
-{ std::vector<std::string> names; names.push_back(name); return CreateVariable(std::move(names), value, r); }
+Variable* Builder::CreateVariable(std::string name, Expression* value, Lexer::Range r, Lexer::Range nameloc)
+{
+    std::vector<Variable::Name> names; names.push_back({ name, nameloc }); 
+    return CreateVariable(std::move(names), value, r);
+}
 
-Variable* Builder::CreateVariable(std::string name, Lexer::Range r) 
-{ return CreateVariable(std::move(name), nullptr, r); }
+Variable* Builder::CreateVariable(std::string name, Lexer::Range r, Lexer::Range nameloc)
+{ 
+    return CreateVariable(std::move(name), nullptr, r, nameloc); 
+}
 
 BinaryExpression* Builder::CreateAssignment(Expression* lhs, Expression* rhs, Lexer::TokenType type) 
 { return arena.Allocate<BinaryExpression>(lhs, rhs, type); }
@@ -208,8 +213,8 @@ Negate* Builder::CreateNegate(Expression* e, Lexer::Range loc)
 Dereference* Builder::CreateDereference(Expression* e, Lexer::Range loc) 
 { return arena.Allocate<Dereference>(e, loc); }
 
-PointerMemberAccess* Builder::CreatePointerAccess(std::string mem, Expression* e, Lexer::Range r) 
-{ return arena.Allocate<PointerMemberAccess>(std::move(mem), e, r); }
+PointerMemberAccess* Builder::CreatePointerAccess(std::string mem, Expression* e, Lexer::Range r, Lexer::Range memloc)
+{ return arena.Allocate<PointerMemberAccess>(std::move(mem), e, r, memloc); }
 
 BinaryExpression* Builder::CreateOr(Expression* lhs, Expression* rhs) 
 { return arena.Allocate<BinaryExpression>(lhs, rhs, Lexer::TokenType::Or); }
@@ -275,9 +280,9 @@ std::vector<FunctionArgument> Builder::CreateFunctionArgumentGroup() { return st
 
 void Builder::AddTypeField(Type* t, Variable* decl, Lexer::Access a) {
     for (auto&& name : decl->name) {
-        if (t->Functions.find(name) != t->Functions.end()) {
+        if (t->Functions.find(name.name) != t->Functions.end()) {
             std::vector<Wide::Lexer::Range> vec;
-            for (auto&& x : t->Functions[name]->functions)
+            for (auto&& x : t->Functions[name.name]->functions)
                 vec.push_back(x->where);
             throw Parser::ParserError(decl->location, vec, Parser::Error::TypeVariableAlreadyFunction);
         }
@@ -296,13 +301,13 @@ void Builder::AddCaptureToGroup(std::vector<Variable*>& l, Variable* cap) { retu
 void Builder::AddInitializerToGroup(std::vector<Variable*>& l, Variable* b) { return AddCaptureToGroup(l, b); }
 void Builder::AddStatementToGroup(std::vector<Statement*>& grp, Statement* stmt) { return grp.push_back(stmt); }
 void Builder::AddExpressionToGroup(std::vector<Expression*>& grp, Expression* expr) { return grp.push_back(expr); }
-void Builder::AddNameToGroup(std::vector<std::string>& grp, std::string str) { return grp.push_back(std::move(str)); }
+void Builder::AddNameToGroup(std::vector<Variable::Name>& grp, std::string str, Lexer::Range where) { return grp.push_back({ std::move(str), where }); }
 
-std::vector<std::string> Builder::CreateVariableNameGroup() {
-    return std::vector<std::string>();
+std::vector<Variable::Name> Builder::CreateVariableNameGroup() {
+    return std::vector<Variable::Name>();
 }
 
-Variable* Builder::CreateVariable(std::vector<std::string> names, Expression* init, Lexer::Range r) {
+Variable* Builder::CreateVariable(std::vector<Variable::Name> names, Expression* init, Lexer::Range r) {
     if (names.size() == 0)
         Wide::Util::DebugBreak();
     return arena.Allocate<Variable>(std::move(names), init, r);

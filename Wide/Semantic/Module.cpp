@@ -34,6 +34,8 @@ OverloadSet* Module::CreateOperatorOverloadSet(Type* t, Wide::Lexer::TokenType t
 }
 Wide::Util::optional<ConcreteExpression> Module::AccessMember(ConcreteExpression val, std::string name, Context c) {
     auto access = GetAccessSpecifier(c, this);
+    if (CachedLookups.find(name) != CachedLookups.end())
+        return CachedLookups.at(name);
     if (m->decls.find(name) != m->decls.end()) {
         auto decl = m->decls.at(name);
         if (decl->access > access)
@@ -89,7 +91,7 @@ Wide::Util::optional<ConcreteExpression> Module::AccessMember(ConcreteExpression
     return Wide::Util::none;
 }
 std::string Module::explain(Analyzer& a) {
-    if (!context) return "global";
+    if (!context) return "";
     std::string name;
     for (auto decl : context->GetASTModule()->decls) {
         if (decl.second == m)

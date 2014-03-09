@@ -142,7 +142,7 @@ namespace Wide {
                     if(varassign.GetType() != Lexer::TokenType::VarCreate)
                         throw std::runtime_error("Expected := after identifer when parsing lambda capture.");
                     auto init = ParseExpression();
-                    sema.AddCaptureToGroup(caps, sema.CreateVariable(tok.GetValue(), init, tok.GetLocation() + sema.GetLocation(init)));
+                    sema.AddCaptureToGroup(caps, sema.CreateVariable(tok.GetValue(), init, tok.GetLocation() + sema.GetLocation(init), tok.GetLocation()));
                     tok = lex();
                     if(tok.GetType() == Lexer::TokenType::CloseSquareBracket)
                         break;
@@ -320,13 +320,13 @@ namespace Wide {
                     if(t.GetType() == Lexer::TokenType::Dot) {
                         Check(Error::MemberAccessNoIdentifierOrDestructor, [&](decltype(lex())& tok) {
                             if(tok.GetType() == Lexer::TokenType::Identifier) {
-                                expr = sema.CreateMemberAccess(tok.GetValue(), std::move(expr), sema.GetLocation(expr) + tok.GetLocation());
+                                expr = sema.CreateMemberAccess(tok.GetValue(), std::move(expr), sema.GetLocation(expr) + tok.GetLocation(), tok.GetLocation());
                                 return true;
                             }
                             if(tok.GetType() != Lexer::TokenType::Negate)
                                 return false;
                             Check(Error::MemberAccessNoTypeAfterNegate, Lexer::TokenType::Type);
-                            expr = sema.CreateMemberAccess("~type", std::move(expr), sema.GetLocation(expr) + tok.GetLocation());
+                            expr = sema.CreateMemberAccess("~type", std::move(expr), sema.GetLocation(expr) + tok.GetLocation(), tok.GetLocation());
                             return true;
                         });
                         continue;
@@ -334,13 +334,13 @@ namespace Wide {
                     if(t.GetType() == Lexer::TokenType::PointerAccess) {
                         Check(Error::PointerAccessNoIdentifierOrDestructor, [&](decltype(lex())& tok) {
                             if(tok.GetType() == Lexer::TokenType::Identifier) {
-                                expr = sema.CreatePointerAccess(tok.GetValue(), std::move(expr), sema.GetLocation(expr) + tok.GetLocation());
+                                expr = sema.CreatePointerAccess(tok.GetValue(), std::move(expr), sema.GetLocation(expr) + tok.GetLocation(), tok.GetLocation());
                                 return true;
                             }
                             if(tok.GetType() != Lexer::TokenType::Negate)
                                 return false;
                             Check(Error::PointerAccessNoTypeAfterNegate, Lexer::TokenType::Type);
-                            expr = sema.CreatePointerAccess("~type", std::move(expr), sema.GetLocation(expr) + tok.GetLocation());
+                            expr = sema.CreatePointerAccess("~type", std::move(expr), sema.GetLocation(expr) + tok.GetLocation(), tok.GetLocation());
                             return true;
                         });
                         continue;
@@ -608,11 +608,11 @@ namespace Wide {
                 return ParseAssignmentExpression();
             }
             
-            auto ParseVariableStatement(TokenType t) -> decltype(sema.CreateVariable(t.GetValue(), std::declval<ExpressionType>(), t.GetLocation())) {
+            auto ParseVariableStatement(TokenType t) -> decltype(sema.CreateVariable(t.GetValue(), std::declval<ExpressionType>(), t.GetLocation(), t.GetLocation())) {
                 // Expect to have already seen :=
                 auto expr = ParseExpression();
                 auto semi = Check(Error::VariableStatementNoSemicolon, Lexer::TokenType::Semicolon);
-                return sema.CreateVariable(t.GetValue(), std::move(expr), t.GetLocation() + semi.GetLocation());
+                return sema.CreateVariable(t.GetValue(), std::move(expr), t.GetLocation() + semi.GetLocation(), t.GetLocation());
             }
 
             StatementType ParseStatement() {
@@ -638,7 +638,7 @@ namespace Wide {
                         auto var = lex();
                         if(var.GetType() == Lexer::TokenType::VarCreate) {
                             auto expr = ParseExpression();
-                            auto variable = sema.CreateVariable(ident.GetValue(), std::move(expr), t.GetLocation() + sema.GetLocation(expr));
+                            auto variable = sema.CreateVariable(ident.GetValue(), std::move(expr), t.GetLocation() + sema.GetLocation(expr), ident.GetLocation());
                             Check(Error::IfNoCloseBracket, Lexer::TokenType::CloseBracket);
                             auto body = ParseStatement();
                             auto next = lex();
@@ -684,7 +684,7 @@ namespace Wide {
                         auto var = lex();
                         if(var.GetType() == Lexer::TokenType::VarCreate) {
                             auto expr = ParseExpression();
-                            auto variable = sema.CreateVariable(ident.GetValue(), std::move(expr), t.GetLocation() + sema.GetLocation(expr));
+                            auto variable = sema.CreateVariable(ident.GetValue(), std::move(expr), t.GetLocation() + sema.GetLocation(expr), ident.GetLocation());
                             Check(Error::WhileNoCloseBracket, Lexer::TokenType::CloseBracket);
                             auto body = ParseStatement();
                             return sema.CreateWhile(variable, body, t.GetLocation() + sema.GetLocation(body));
@@ -700,7 +700,7 @@ namespace Wide {
                 // If identifier, check the next for := or ,
                 if(t.GetType() == Lexer::TokenType::Identifier) {
                     auto group = sema.CreateVariableNameGroup();
-                    sema.AddNameToGroup(group, t.GetValue());
+                    sema.AddNameToGroup(group, t.GetValue(), t.GetLocation());
                     auto next = lex();
                     if (next.GetType() != Lexer::TokenType::VarCreate && next.GetType() != Lexer::TokenType::Comma)
                         // If it's not := or , then we're probably just looking at expression statement so put it back.
@@ -708,7 +708,7 @@ namespace Wide {
                     else {
                         while (next.GetType() == Lexer::TokenType::Comma) {
                             auto ident = Check(Error::VariableListNoIdentifier, Lexer::TokenType::Identifier);
-                            sema.AddNameToGroup(group, ident.GetValue());
+                            sema.AddNameToGroup(group, ident.GetValue(), ident.GetLocation());
                             next = lex();
                         }
                         lex(next);
@@ -884,7 +884,7 @@ namespace Wide {
                         auto next = lex();
                         if(next.GetType() == Lexer::TokenType::CloseBracket) {
                             // Empty initializer- e.g. : x()
-                            sema.AddInitializerToGroup(initializers, sema.CreateVariable(name.GetValue(), t.GetLocation() + next.GetLocation()));
+                            sema.AddInitializerToGroup(initializers, sema.CreateVariable(name.GetValue(), t.GetLocation() + next.GetLocation(), name.GetLocation()));
                             t = lex();
                             continue;
                         }
@@ -892,7 +892,7 @@ namespace Wide {
                         try {
                             auto expr = ParseExpression();
                             next = Check(Error::ConstructorNoBracketClosingInitializer, Lexer::TokenType::CloseBracket);
-                            sema.AddInitializerToGroup(initializers, sema.CreateVariable(name.GetValue(), std::move(expr), t.GetLocation() + next.GetLocation()));
+                            sema.AddInitializerToGroup(initializers, sema.CreateVariable(name.GetValue(), std::move(expr), t.GetLocation() + next.GetLocation(), name.GetLocation()));
                         } catch(ParserError& e) {
                             if(!lex) throw;
                             auto t = lex();
