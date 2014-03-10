@@ -657,6 +657,7 @@ OverloadResolvable* Analyzer::GetCallableForFunction(const AST::FunctionBase* f,
             auto get_con_type = [&]() -> ConstructorType* {
                 if (lookups.find(num) != lookups.end())
                     return lookups[num];
+                
                 if (!func->args[num].type) {
                     a.ParameterHighlight(func->args[num].location);
                     return a.GetConstructorType(argument->Decay());
@@ -688,10 +689,11 @@ OverloadResolvable* Analyzer::GetCallableForFunction(const AST::FunctionBase* f,
                 auto p_type = a.AnalyzeExpression(&lc, func->args[num].type, [](ConcreteExpression e) {}).t->Decay();
                 auto con_type = dynamic_cast<ConstructorType*>(p_type);
                 if (!con_type)
-                    throw Wide::Semantic::NotAType(con_type, func->args[num].location, a);
+                    throw Wide::Semantic::NotAType(p_type, func->args[num].location, a);
                 a.QuickInfo(func->args[num].location, con_type->GetConstructedType());
                 a.ParameterHighlight(func->args[num].location);
-                lookups[num] = con_type;
+                if (!IsMultiTyped(func->args[num]))
+                    lookups[num] = con_type;
                 return con_type;
             };
             auto parameter_type = get_con_type();
@@ -812,4 +814,22 @@ Type* Analyzer::GetTypeForString(std::string str) {
     if (LiteralStringTypes.find(str) != LiteralStringTypes.end())
         return LiteralStringTypes[str];
     return LiteralStringTypes[str] = arena.Allocate<StringType>(str);
+}
+bool Semantic::IsMultiTyped(const AST::FunctionArgument& f) {
+    if (!f.type) return true;
+    struct Visitor : public AST::Visitor<Visitor> {
+        bool auto_found = false;
+        void VisitIdentifier(const AST::Identifier* i) {
+            auto_found = i->val == "auto";
+        }
+    };
+    Visitor v;
+    v.VisitExpression(f.type);
+    return v.auto_found;
+}
+bool Semantic::IsMultiTyped(const AST::FunctionBase* f) {
+    bool ret = false;
+    for (auto&& var : f->args)
+        ret = ret || IsMultiTyped(var);
+    return ret;
 }

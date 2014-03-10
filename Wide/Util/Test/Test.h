@@ -38,6 +38,8 @@ namespace Wide {
                 }
                 if (auto overset = dynamic_cast<Wide::AST::FunctionOverloadSet*>(decl.second)) {
                     for (auto fun : overset->functions) {
+                        if (Wide::Semantic::IsMultiTyped(fun))
+                            continue;
                         Wide::Semantic::Context c(a, fun->where, swallow_raii, mod);
                         if (fun->args.size() == 0) {
                             result = result | Try([&] { a.GetWideFunction(fun, mod, std::vector<Wide::Semantic::Type*>(), decl.first)->ComputeBody(a); }, errorfunc);
@@ -45,8 +47,6 @@ namespace Wide {
                         }
                         std::vector<Wide::Semantic::Type*> types;
                         for (auto arg : fun->args) {
-                            if (!arg.type)
-                                break;
                             result = result | Try([&] {
                                 auto ty = a.AnalyzeExpression(mod, arg.type, swallow_raii);
                                 if (auto conty = dynamic_cast<Wide::Semantic::ConstructorType*>(ty.t->Decay()))

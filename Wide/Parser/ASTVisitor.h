@@ -69,7 +69,7 @@ namespace Wide {
                 for(auto&& x : l->statements)
                     crtp_cast().VisitStatement(x);
                 for(auto&& x : l->Captures)
-                    crtp_cast().VisitLambdaCapture(&x);
+                    crtp_cast().VisitLambdaCapture(x);
                 for(auto&& x : l->args)
                     crtp_cast().VisitLambdaArgument(&x);
             }
@@ -84,7 +84,7 @@ namespace Wide {
                     crtp_cast().VisitExpression(x);
             }
             void VisitLambdaCapture(const Variable* l) {
-                crtp_cast().VisitVariableStatement(l);
+                crtp_cast().VisitVariable(l);
             }
             void VisitLambdaArgument(const FunctionArgument* arg) {
                 crtp_cast().VisitExpression(arg->type);

@@ -41,6 +41,7 @@ namespace Wide {
         struct ModuleLevelDeclaration;
         struct FunctionOverloadSet;
         struct Type;
+        struct FunctionArgument;
         struct DeclContext;
         struct Identifier;
         struct TemplateType;
@@ -160,5 +161,7 @@ namespace Wide {
         Lexer::Access GetAccessSpecifier(Context c, Type* to);
         void AnalyzeExportedFunctions(Analyzer& a);
         std::string GetNameForOperator(Lexer::TokenType t);
+        bool IsMultiTyped(const AST::FunctionArgument& f); 
+        bool IsMultiTyped(const AST::FunctionBase* f);
     }
 }
