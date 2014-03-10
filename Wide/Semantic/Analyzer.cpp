@@ -168,7 +168,12 @@ ConcreteExpression Analyzer::AnalyzeExpression(Type* t, const AST::Expression* e
                         out = overset->BuildCall(*mem, args, c);
                         return;
                     }
+                    self->QuickInfo(ident->location, mem->t);
+                    out = overset->BuildCall(*mem, args, c);
+                    return;
                 }
+                out = mem->BuildCall(args, destructors, c);
+                return;
             }
             if (auto member = dynamic_cast<const AST::MemberAccess*>(funccall->callee)) {
                 auto val = self->AnalyzeExpression(t, member->expr, handler);
@@ -184,7 +189,12 @@ ConcreteExpression Analyzer::AnalyzeExpression(Type* t, const AST::Expression* e
                         out = overset->BuildCall(*mem, args, c);
                         return;
                     }
+                    self->QuickInfo(member->memloc, mem->t);
+                    out = overset->BuildCall(*mem, args, c);
+                    return;
                 }
+                out = mem->BuildCall(args, destructors, c);
+                return;
             }
             auto fun = self->AnalyzeExpression(t, funccall->callee, handler);
             
