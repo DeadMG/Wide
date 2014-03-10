@@ -365,5 +365,7 @@ ConcreteExpression UserDefinedType::PrimitiveAccessMember(ConcreteExpression e, 
     return AggregateType::PrimitiveAccessMember(e, num, a);
 }
 std::string UserDefinedType::explain(Analyzer& a) {
+    if (context == a.GetGlobalModule())
+        return source_name;
     return GetContext(a)->explain(a) + "." + source_name;
 }

@@ -517,5 +517,8 @@ std::string Function::explain(Analyzer& a) {
     }
     args += ")";
 
-    return "(" + context->explain(a) + "." + source_name + args + " at " + fun->where + ")";
+    std::string context_name = context->explain(a) + "." + source_name;
+    if (context == a.GetGlobalModule())
+        context_name = source_name;
+    return "(" + context_name + args + " at " + fun->where + ")";
 }

@@ -35,6 +35,11 @@ namespace Wide {
             std::function<llvm::Type*(llvm::Module*)> GetLLVMType(Analyzer& a) override final;
             ConcreteExpression BuildCall(ConcreteExpression, std::vector<ConcreteExpression> args, Context c) override final;
             Callable* Resolve(std::vector<Type*> types, Analyzer& a, Type* source);
+            Callable* ResolveMember(std::vector<Type*> types, Analyzer& a, Type* source) {
+                if (nonstatic)
+                    types.insert(types.begin(), nonstatic);
+                return Resolve(types, a, source);
+            }
             std::size_t size(Analyzer& a) override final;
             std::size_t alignment(Analyzer& a) override final;
 

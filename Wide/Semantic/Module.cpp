@@ -97,5 +97,7 @@ std::string Module::explain(Analyzer& a) {
         if (decl.second == m)
             name = decl.first;
     }
+    if (context == a.GetGlobalModule())
+        return name;
     return context->explain(a) + "." + name;
 }

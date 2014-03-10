@@ -11,6 +11,7 @@
 #include <Wide/Semantic/ConstructorType.h>
 #include <Wide/Util/Driver/NullCodeGenerator.h>
 #include <Wide/Util/Test/Test.h>
+#include <Wide/Semantic/FunctionType.h>
 #include <Wide/Util/DebugUtilities.h>
 #pragma warning(push, 0)
 #include <llvm/Support/TargetSelect.h>
@@ -60,17 +61,31 @@ extern "C" DLLEXPORT void AnalyzeWide(
     Wide::Driver::NullGenerator mockgen(clangopts->TargetOptions.Triple);
     Wide::Semantic::Analyzer a(*clangopts, mockgen, comb->combiner.GetGlobalModule());
     a.QuickInfo = [&](Wide::Lexer::Range r, Wide::Semantic::Type* t) {
+        std::string content = t->explain(a);
         ContextType cty = ContextType::Unknown;
-        if (dynamic_cast<Wide::Semantic::Module*>(t->Decay())) {
+        if (dynamic_cast<Wide::Semantic::Module*>(t->Decay()))
             cty = ContextType::Module;
-        }
-        if (dynamic_cast<Wide::Semantic::ConstructorType*>(t->Decay())) {
+        if (dynamic_cast<Wide::Semantic::ConstructorType*>(t->Decay()))
             cty = ContextType::Type;
-        }
-        if (dynamic_cast<Wide::Semantic::OverloadSet*>(t->Decay())) {
+        if (dynamic_cast<Wide::Semantic::OverloadSet*>(t->Decay()))
             cty = ContextType::OverloadSet;
+        if (auto func = dynamic_cast<Wide::Semantic::Function*>(t->Decay())) {
+            cty = ContextType::OverloadSet;
+            if (func->GetContext(a) != a.GetGlobalModule())
+                content = func->GetContext(a)->explain(a) + ".";
+            else
+                content = "";
+            content += func->GetSourceName();
+            auto args = func->GetSignature(a)->GetArguments();
+            content += "(";
+            for (auto arg : args) {
+                content += arg->explain(a);
+                if (arg != args.back())
+                    content += ", ";
+            }
+            content += ")";
         }
-        quickinfo(r, t->explain(a).c_str(), cty, context);
+        quickinfo(r, content.c_str(), cty, context);
     };
     a.ParameterHighlight = [&](Wide::Lexer::Range r) {
         paramhighlight(r, context);

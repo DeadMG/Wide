@@ -58,11 +58,6 @@ Analyzer::Analyzer(const Options::Clang& opts, Codegen::Generator& g, const AST:
             if (args.size() != 1)
                 throw DecltypeArgumentMismatch(args.size(), c.where);
 
-            if (auto con = dynamic_cast<ConstructorType*>(args[0].t->Decay())) {
-                return c->GetConstructorType(args[0].t)->BuildValueConstruction({}, c);
-            }
-            if (!dynamic_cast<LvalueType*>(args[0].t))
-                args[0].t = c->GetRvalueType(args[0].t);
             return c->GetConstructorType(args[0].t)->BuildValueConstruction({}, c);
         }
         std::string explain(Analyzer& a) override final { return "decltype"; };
@@ -152,13 +147,48 @@ ConcreteExpression Analyzer::AnalyzeExpression(Type* t, const AST::Expression* e
         }
         void VisitCall(const AST::FunctionCall* funccall) {
             std::vector<ConcreteExpression> destructors;
-            auto fun = self->AnalyzeExpression(t, funccall->callee, handler);
             std::vector<ConcreteExpression> args;
-            for(auto&& arg : funccall->args) {
+            for (auto&& arg : funccall->args) {
                 args.push_back(self->AnalyzeExpression(t, arg, [&](ConcreteExpression e) { destructors.push_back(e); }));
             }
+            Context c(*self, funccall->location, handler, t);
+            // When encountering f(args...)
+            // or x.f(args...)
+            // cheat and resolve the overload, then notify QuickInfo if we've got something better than "Overload Set".
+            if (auto ident = dynamic_cast<const AST::Identifier*>(funccall->callee)) {
+                auto mem = self->LookupIdentifier(t, ident);
+                if (!mem) throw UnqualifiedLookupFailure(t, ident->val, ident->location, *self);
+                if (auto overset = dynamic_cast<OverloadSet*>(mem->t->Decay())) {
+                    std::vector<Type*> types;
+                    for (auto arg : args)
+                        types.push_back(arg.t);
+                    auto callable = overset->ResolveMember(types, *self, t);
+                    if (auto func = dynamic_cast<Function*>(callable)) {
+                        self->QuickInfo(ident->location, func);
+                        out = overset->BuildCall(*mem, args, c);
+                        return;
+                    }
+                }
+            }
+            if (auto member = dynamic_cast<const AST::MemberAccess*>(funccall->callee)) {
+                auto val = self->AnalyzeExpression(t, member->expr, handler);
+                auto mem = val.AccessMember(member->mem, Context(*self, member->location, handler, t));
+                if (!mem) throw NoMember(val.t, t, member->mem, member->location, *self);
+                if (auto overset = dynamic_cast<OverloadSet*>(mem->t->Decay())) {
+                    std::vector<Type*> types;
+                    for (auto arg : args)
+                        types.push_back(arg.t);
+                    auto callable = overset->ResolveMember(types, *self, t);
+                    if (auto func = dynamic_cast<Function*>(callable)) {
+                        self->QuickInfo(member->memloc, func);
+                        out = overset->BuildCall(*mem, args, c);
+                        return;
+                    }
+                }
+            }
+            auto fun = self->AnalyzeExpression(t, funccall->callee, handler);
             
-            out = fun.BuildCall(std::move(args), std::move(destructors), Context(*self, funccall->location, handler, t));
+            out = fun.BuildCall(std::move(args), std::move(destructors), c);
         }
         void VisitIdentifier(const AST::Identifier* ident) {
             auto mem = self->LookupIdentifier(t, ident);
@@ -603,7 +633,7 @@ OverloadResolvable* Analyzer::GetCallableForFunction(const AST::FunctionBase* f,
 
     struct FunctionCallable : public OverloadResolvable {
         FunctionCallable(const AST::FunctionBase* f, Type* con, std::string str)
-            : func(f), context(con), name(str) {}
+        : func(f), context(con), name(str) {}
         const AST::FunctionBase* func;
         Type* context;
         std::string name;
@@ -619,7 +649,7 @@ OverloadResolvable* Analyzer::GetCallableForFunction(const AST::FunctionBase* f,
             }
             return true;
         }
-        
+
         unsigned GetArgumentCount() override final {
             if (HasImplicitThis())
                 return func->args.size() + 1;
@@ -634,7 +664,7 @@ OverloadResolvable* Analyzer::GetCallableForFunction(const AST::FunctionBase* f,
             // If we are a member and we have an explicit this then treat the first normally.
             // Else if we are a member, blindly accept whatever is given for argument 0 as long as it's the member type.
             // Else, treat the first argument normally.
-            
+
             if (HasImplicitThis()) {
                 if (num == 0) {
                     if (IsLvalueType(argument)) {
@@ -651,13 +681,13 @@ OverloadResolvable* Analyzer::GetCallableForFunction(const AST::FunctionBase* f,
                 }
                 --num;
             }
-            
+
             auto context = this->context;
 
             auto get_con_type = [&]() -> ConstructorType* {
                 if (lookups.find(num) != lookups.end())
                     return lookups[num];
-                
+
                 if (!func->args[num].type) {
                     a.ParameterHighlight(func->args[num].location);
                     return a.GetConstructorType(argument->Decay());

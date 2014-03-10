@@ -81,6 +81,7 @@ namespace Wide {
             Type* GetConstantContext(Analyzer& a) override final;
             void SetExportName(std::string name) { trampoline = name; }
             std::string explain(Analyzer& a) override final;
+            std::string GetSourceName() { return source_name; }
         };
     }
 }
