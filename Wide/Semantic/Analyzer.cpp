@@ -49,6 +49,7 @@ Analyzer::Analyzer(const Options::Clang& opts, Codegen::Generator& g, const AST:
 , gen(&g)
 , null(nullptr)
 , QuickInfo([](Lexer::Range, Type*) {})
+, ParameterHighlight([](Lexer::Range){})
 {
     null = arena.Allocate<NullType>();
 
@@ -267,13 +268,14 @@ ConcreteExpression Analyzer::AnalyzeExpression(Type* t, const AST::Expression* e
             l.lambda_locals = &lambda_locals;
             l.VisitLambda(lam);
 
+            Context c(*self, lam->location, handler, t);
             // We obviously don't want to capture module-scope names.
             // Only capture from the local scope, and from "this".
             {
                 auto caps = std::move(captures);
                 for (auto&& name : caps) {
                     if (auto fun = dynamic_cast<Function*>(t)) {
-                        if (fun->HasLocalVariable(name))
+                        if (fun->LookupLocal(name, c))
                             captures.insert(name);
                         if (auto udt = dynamic_cast<UserDefinedType*>(fun->GetContext(*self))) {
                             if (udt->HasMember(name))
@@ -304,7 +306,7 @@ ConcreteExpression Analyzer::AnalyzeExpression(Type* t, const AST::Expression* e
                 expressions.push_back(cap.second);
             }
             auto type = self->arena.Allocate<LambdaType>(types, lam, *self);
-            out = type->BuildLambdaFromCaptures(expressions, Context(*self, lam->location, handler, t));
+            out = type->BuildLambdaFromCaptures(expressions, c);
         }
         void VisitDereference(const AST::Dereference* deref) {
             out = self->AnalyzeExpression(t, deref->ex, handler).BuildDereference(Context(*self, deref->location, handler, t));
@@ -624,6 +626,8 @@ OverloadResolvable* Analyzer::GetCallableForFunction(const AST::FunctionBase* f,
             return func->args.size();
         }
 
+        std::unordered_map<unsigned, ConstructorType*> lookups;
+
         Type* MatchParameter(Type* argument, unsigned num, Analyzer& a, Type* source) override final {
             assert(num <= GetArgumentCount());
 
@@ -647,38 +651,50 @@ OverloadResolvable* Analyzer::GetCallableForFunction(const AST::FunctionBase* f,
                 }
                 --num;
             }
-
-            struct OverloadSetLookupContext : public MetaType {
-                Type* context;
-                Type* member;
-                Type* argument;
-                Wide::Util::optional<ConcreteExpression> AccessMember(ConcreteExpression, std::string name, Context c) override final {
-                    if (name == "this") {
-                        if (member)
-                            return c->GetConstructorType(member->Decay())->BuildValueConstruction({}, c);
-                    }
-                    if (name == "auto")
-                        return c->GetConstructorType(argument->Decay())->BuildValueConstruction({}, c);
-                    return Wide::Util::none;
-                }
-                Type* GetContext(Analyzer& a) override final {
-                    return context;
-                }
-                std::string explain(Analyzer& a) { return context->explain(a); }
-            };
-
-            OverloadSetLookupContext lc;
-            lc.argument = argument;
-            lc.context = context;
-            lc.member = dynamic_cast<UserDefinedType*>(context->Decay());
             
-            auto con_type = func->args[num].type ? a.AnalyzeExpression(&lc, func->args[num].type, [](ConcreteExpression e) {}).t->Decay() : nullptr;
-            auto parameter_type = con_type ? 
-                dynamic_cast<ConstructorType*>(con_type) :
-                a.GetConstructorType(argument->Decay());
+            auto context = this->context;
 
-            if (!parameter_type)
-                throw Wide::Semantic::NotAType(con_type, func->args[num].location, a);
+            auto get_con_type = [&]() -> ConstructorType* {
+                if (lookups.find(num) != lookups.end())
+                    return lookups[num];
+                if (!func->args[num].type) {
+                    a.ParameterHighlight(func->args[num].location);
+                    return a.GetConstructorType(argument->Decay());
+                }
+
+                struct OverloadSetLookupContext : public MetaType {
+                    Type* context;
+                    Type* member;
+                    Type* argument;
+                    Wide::Util::optional<ConcreteExpression> AccessMember(ConcreteExpression, std::string name, Context c) override final {
+                        if (name == "this") {
+                            if (member)
+                                return c->GetConstructorType(member->Decay())->BuildValueConstruction({}, c);
+                        }
+                        if (name == "auto")
+                            return c->GetConstructorType(argument->Decay())->BuildValueConstruction({}, c);
+                        return Wide::Util::none;
+                    }
+                    Type* GetContext(Analyzer& a) override final {
+                        return context;
+                    }
+                    std::string explain(Analyzer& a) { return context->explain(a); }
+                };
+
+                OverloadSetLookupContext lc;
+                lc.argument = argument;
+                lc.context = context;
+                lc.member = dynamic_cast<UserDefinedType*>(context->Decay());
+                auto p_type = a.AnalyzeExpression(&lc, func->args[num].type, [](ConcreteExpression e) {}).t->Decay();
+                auto con_type = dynamic_cast<ConstructorType*>(p_type);
+                if (!con_type)
+                    throw Wide::Semantic::NotAType(con_type, func->args[num].location, a);
+                a.QuickInfo(func->args[num].location, con_type->GetConstructedType());
+                a.ParameterHighlight(func->args[num].location);
+                lookups[num] = con_type;
+                return con_type;
+            };
+            auto parameter_type = get_con_type();
 
             if (argument->IsA(argument, parameter_type->GetConstructedType(), a, GetAccessSpecifier(source, argument, a)))
                 return parameter_type->GetConstructedType();

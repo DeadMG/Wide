@@ -105,6 +105,7 @@ namespace Wide {
 
         public:
             std::function<void(Lexer::Range where, Type* t)> QuickInfo;
+            std::function<void(Lexer::Range where)> ParameterHighlight;
 
             void AddClangType(clang::QualType t, Type* match);
 

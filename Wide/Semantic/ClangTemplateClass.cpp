@@ -46,7 +46,7 @@ ConcreteExpression ClangTemplateClass::BuildCall(ConcreteExpression, std::vector
     
     llvm::SmallVector<clang::TemplateArgument, 10> tempargs;
     if (from->GetSema().CheckTemplateArgumentList(tempdecl, tempdecl->getLocation(), tl, false, tempargs))
-        throw UnresolvableTemplate(this, types, c.where, *c);
+        throw UnresolvableTemplate(this, types, from->PopLastDiagnostic(), c.where, *c);
 
     void* pos = 0;
     auto spec = tempdecl->findSpecialization(tempargs.data(), tempargs.size(), pos);    

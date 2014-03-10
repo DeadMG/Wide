@@ -4,6 +4,8 @@
 
 namespace clang {
     class ClassTemplateDecl;
+    class ClassTemplateSpecializationDecl;
+    class TemplateArgument;
 }
 namespace Wide {
     namespace Semantic {

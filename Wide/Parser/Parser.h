@@ -760,7 +760,7 @@ namespace Wide {
                                     return true;
                                 return false;
                             });
-                            sema.AddArgumentToFunctionGroup(ret, ident.GetValue(), ident.GetLocation() + sema.GetLocation(ty), ty);
+                            sema.AddArgumentToFunctionGroup(ret, ident.GetValue(), ident.GetLocation(), ty);
                             auto brace = Check(Error::FunctionArgumentNoBracketOrComma, [&](decltype(lex())& tok) {
                                 if(tok.GetType() == Lexer::TokenType::CloseBracket || tok.GetType() == Lexer::TokenType::Comma)
                                     return true;

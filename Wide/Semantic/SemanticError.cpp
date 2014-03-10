@@ -32,8 +32,8 @@ ClangUnknownDecl::ClangUnknownDecl(std::string name, Type* what, Lexer::Range wh
 InvalidTemplateArgument::InvalidTemplateArgument(Type* t, Lexer::Range where, Analyzer& a)
 : Error(where, "Argument of type " + t->explain(a) + " was not a valid template argument."), type(t) {}
 
-UnresolvableTemplate::UnresolvableTemplate(Type* temp, std::vector<Type*> args, Lexer::Range where, Analyzer& a)
-: Error(where, "C++ template resolution of " + temp->explain(a) + " failed."), temp(temp), arguments(args) {}
+UnresolvableTemplate::UnresolvableTemplate(Type* temp, std::vector<Type*> args, std::string diag, Lexer::Range where, Analyzer& a)
+: Error(where, "C++ template resolution of " + temp->explain(a) + " failed.\n" + diag), temp(temp), arguments(args), clangdiag(diag) {}
 
 UninstantiableTemplate::UninstantiableTemplate(Lexer::Range where)
 : Error(where, "C++ template instantiation failed.") {}

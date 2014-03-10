@@ -9,6 +9,7 @@
 #include <functional>
 #include <string>
 #include <fstream>
+#include <vector>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -64,12 +65,28 @@ clang::TargetInfo* CreateTargetInfoFromTriple(clang::DiagnosticsEngine& engine, 
     return targetinfo;
 }
 
+class ClangTUDiagnosticConsumer : public clang::DiagnosticConsumer {
+public:
+    std::vector<std::string> diagnostics;
+    ClangTUDiagnosticConsumer() {}
+
+    void BeginSourceFile(const clang::LangOptions& langopts, const clang::Preprocessor* PP) override final {}
+    void EndSourceFile() override final {}
+    void finish() override final {}
+    bool IncludeInDiagnosticCounts() const override final { return true; }
+    void HandleDiagnostic(clang::DiagnosticsEngine::Level level, const clang::Diagnostic& Info) {
+        llvm::SmallVector<char, 5> diagnostic;
+        Info.FormatDiagnostic(diagnostic);
+        diagnostics.emplace_back(diagnostic.begin(), diagnostic.end());
+        clang::DiagnosticConsumer::HandleDiagnostic(level, Info);
+    }
+};
+
 class ClangTU::Impl {
 public:    
     const Options::Clang* Options;
     clang::FileManager FileManager;
-    std::string errors;
-    llvm::raw_string_ostream error_stream;
+    ClangTUDiagnosticConsumer DiagnosticConsumer;
     clang::DiagnosticsEngine engine;
     clang::SourceManager sm;
     std::unique_ptr<clang::TargetInfo> targetinfo;
@@ -94,9 +111,8 @@ public:
     
     Impl(llvm::LLVMContext& con, std::string file, const Wide::Options::Clang& opts, Lexer::Range where)        
         : Options(&opts)
-        , error_stream(errors)
         , FileManager(opts.FileSearchOptions)
-        , engine(opts.DiagnosticIDs, opts.DiagnosticOptions.getPtr(), new clang::TextDiagnosticPrinter(error_stream, opts.DiagnosticOptions.getPtr()), false)
+        , engine(opts.DiagnosticIDs, opts.DiagnosticOptions.getPtr(), &DiagnosticConsumer, false)
         , targetinfo(CreateTargetInfoFromTriple(engine, opts.TargetOptions.Triple))
         , sm(engine, FileManager)
         , hs(opts.HeaderSearchOptions, sm, engine, opts.LanguageOptions, targetinfo.get())
@@ -136,6 +152,9 @@ public:
         engine.getClient()->BeginSourceFile(Options->LanguageOptions, &preproc);
         ParseAST(sema);
 
+        std::string errors;
+        for (auto diag : DiagnosticConsumer.diagnostics)
+            errors += diag;
         if (engine.hasFatalErrorOccurred())
             throw ClangFileParseError(filename, errors, where);
         if (!errors.empty()) Options->OnDiagnostic(errors);
@@ -148,6 +167,12 @@ public:
 };
 
 ClangTU::~ClangTU() {}
+
+std::string ClangTU::PopLastDiagnostic() {
+    auto lastdiag = std::move(impl->DiagnosticConsumer.diagnostics.back());
+    impl->DiagnosticConsumer.diagnostics.pop_back();
+    return lastdiag;
+}
 
 ClangTU::ClangTU(llvm::LLVMContext& c, std::string file, const Wide::Options::Clang& ccs, Lexer::Range where)
     : impl(Wide::Memory::MakeUnique<Impl>(c, file, ccs, where)) 
@@ -167,7 +192,8 @@ void ClangTU::GenerateCodeAndLinkModule(llvm::Module* main) {
     impl->mod.print(stream, nullptr);
 
     llvm::Linker link(main);
-    link.linkInModule(&impl->mod, &impl->errors);
+    std::string fuck;
+    link.linkInModule(&impl->mod, &fuck);
 }
 
 clang::DeclContext* ClangTU::GetDeclContext() {

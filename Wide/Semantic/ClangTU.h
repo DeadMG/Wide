@@ -62,6 +62,7 @@ namespace Wide {
             unsigned GetFieldNumber(clang::FieldDecl*);
             unsigned GetBaseNumber(clang::CXXRecordDecl* self, clang::CXXRecordDecl* base);
             clang::SourceLocation GetFileEnd();
+            std::string PopLastDiagnostic();
         };
     }
 }

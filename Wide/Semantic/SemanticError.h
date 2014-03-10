@@ -104,10 +104,12 @@ namespace Wide {
         class UnresolvableTemplate : public Error {
             Type* temp;
             std::vector<Type*> arguments;
+            std::string clangdiag;
         public:
-            UnresolvableTemplate(Type*, std::vector<Type*>, Lexer::Range, Analyzer& a);
+            UnresolvableTemplate(Type*, std::vector<Type*>, std::string diag, Lexer::Range, Analyzer& a);
             Type* GetTemplate() { return temp; }
             std::vector<Type*> GetArgumentTypes() { return arguments; }
+            std::string GetClangDiagnostic() { return clangdiag; }
         };
 
         class UninstantiableTemplate : public Error {

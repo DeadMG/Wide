@@ -69,11 +69,14 @@ Codegen::Statement* Function::Scope::GetCleanupAllExpression(Analyzer& a, Lexer:
         return a.gen->CreateChainStatement(GetCleanupExpression(a, where, f), parent->GetCleanupAllExpression(a, where, f));
     return GetCleanupExpression(a, where, f);
 }
-Wide::Util::optional<ConcreteExpression> Function::Scope::LookupName(std::string name) {
-    if (named_variables.find(name) != named_variables.end())
+Wide::Util::optional<ConcreteExpression> Function::Scope::LookupName(std::string name, Context c) {
+    if (named_variables.find(name) != named_variables.end()) {
+        if (!parent)
+            c->ParameterHighlight(c.where);
         return named_variables.at(name);
+    }
     if (parent)
-        return parent->LookupName(name);
+        return parent->LookupName(name, c);
     return Wide::Util::none;
 }
 
@@ -273,18 +276,18 @@ void Function::ComputeBody(Analyzer& a) {
                 }
             }
             if (auto var = dynamic_cast<const AST::Variable*>(stmt)) {
+                Context c(a, var->location, register_local_destructor, this);
                 auto result = a.AnalyzeExpression(this, var->initializer, register_local_destructor);
                 if (result.t == a.GetVoidType())
                     throw std::runtime_error("Attempt to create a variable of type void.");
                 for (auto name : var->name) {
-                    if (auto expr = scope->LookupName(name.name))
+                    if (auto expr = scope->LookupName(name.name, c))
                         throw std::runtime_error("Error: variable shadowing " + name.name);
                 }
 
-                auto handle_variable_expression = [var, register_local_destructor, &a, this](ConcreteExpression result) {
+                auto handle_variable_expression = [var, register_local_destructor, &a, this, c](ConcreteExpression result) {
                     std::vector<ConcreteExpression> args;
                     args.push_back(result);
-                    Context c(a, var->location, register_local_destructor, this);
                     if (result.t->IsReference()) {
                         // If it's a function call, and it returns a complex T, then the return expression already points to
                         // a memory variable of type T. Just use that.
@@ -464,7 +467,7 @@ Wide::Util::optional<ConcreteExpression> Function::LookupLocal(std::string name,
     Analyzer& a = *c;
     if (name == "this" && dynamic_cast<MemberFunctionContext*>(context->Decay()))
         return ConcreteExpression(c->GetLvalueType(context->Decay()), c->gen->CreateParameterExpression([this, &a] { return ReturnType->IsComplexType(a); }));
-    return current_scope->LookupName(name);
+    return current_scope->LookupName(name, c);
 }
 std::string Function::GetName() {
     return name;
@@ -475,9 +478,6 @@ FunctionType* Function::GetSignature(Analyzer& a) {
     if (s == State::AnalyzeInProgress)
         assert(false && "Attempted to call GetSignature whilst a function was still being analyzed.");
     return a.GetFunctionType(ReturnType, Args);
-}
-bool Function::HasLocalVariable(std::string name) {
-    return current_scope->LookupName(name);
 }
 
 Type* Function::GetConstantContext(Analyzer& a) {

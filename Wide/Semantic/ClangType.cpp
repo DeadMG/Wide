@@ -386,5 +386,17 @@ Codegen::Expression* ClangType::AccessBase(Type* other, Codegen::Expression* exp
     return nullptr;
 }
 std::string ClangType::explain(Analyzer& a) {
-    return GetContext(a)->explain(a) + "." + type->getAsCXXRecordDecl()->getName().str();
+    auto basename = GetContext(a)->explain(a) + "." + type->getAsCXXRecordDecl()->getName().str();
+    if (auto tempspec = llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(type->getAsCXXRecordDecl())) {
+        basename += "(";
+        for (auto&& arg : tempspec->getTemplateArgs().asArray()) {
+            if (arg.getKind() == clang::TemplateArgument::ArgKind::Type) {
+                basename += a.GetClangType(*from, arg.getAsType())->explain(a);
+            }
+            if (&arg != &tempspec->getTemplateArgs().asArray().back())
+                basename += ", ";
+        }
+        basename += ")";
+    }
+    return basename;
 }

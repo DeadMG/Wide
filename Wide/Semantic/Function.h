@@ -52,7 +52,7 @@ namespace Wide {
                 Codegen::Statement* GetCleanupExpression(Analyzer& a, Lexer::Range where, Function* f);
                 Codegen::Statement* GetCleanupAllExpression(Analyzer& a, Lexer::Range where, Function* f);
 
-                Wide::Util::optional<ConcreteExpression> LookupName(std::string name);
+                Wide::Util::optional<ConcreteExpression> LookupName(std::string name, Context c);
             };
             struct LocalScope;
             Scope root_scope;
@@ -68,7 +68,6 @@ namespace Wide {
             }
         public:
             void ComputeBody(Analyzer& a);
-            bool HasLocalVariable(std::string name);
             Function(std::vector<Type*> args, const AST::FunctionBase* astfun, Analyzer& a, Type* container, std::string name);        
 
             Wide::Util::optional<clang::QualType> GetClangType(ClangTU& where, Analyzer& a) override final;
