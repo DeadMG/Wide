@@ -1,0 +1,7 @@
+using f := cpp("JITSuccess/CPPInterop/DoubleHeaderTemplate.h").f;
+using argument := cpp("JITSuccess/CPPInterop/DoubleHeaderArgument.h").argument;
+Main() {
+    f;
+    argument;
+    return f(argument());
+}

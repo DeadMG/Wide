@@ -376,7 +376,6 @@ for name, proj in pairs(WideProjects) do
                 configuration { plat, conf }
                 if plat == "x32" then plat = "x86" end
                 if proj.configure then proj.configure(plat, conf) end
-                objdir(path.join("Wide/Obj", plat, conf))
                 if conf == "Debug" then 
                     flags("Symbols")
                 else

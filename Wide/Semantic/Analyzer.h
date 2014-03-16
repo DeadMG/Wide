@@ -72,6 +72,7 @@ namespace Wide {
         class StringType;
         class TemplateType;
         class Analyzer {
+            std::unique_ptr<ClangTU> AggregateTU;
             Module* global;
             std::unordered_map<std::unordered_set<OverloadResolvable*>, OverloadSet*, SetTypeHasher> callable_overload_sets;
             std::unordered_map<std::string, ClangTU> headers;
@@ -152,6 +153,7 @@ namespace Wide {
             Analyzer(const Options::Clang&, Codegen::Generator&, const AST::Module*);     
 
             ClangTU* LoadCPPHeader(std::string file, Lexer::Range where);
+            ClangTU* AggregateCPPHeader(std::string file, Lexer::Range where);
             
             ~Analyzer();
         };

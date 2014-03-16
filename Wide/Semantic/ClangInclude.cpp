@@ -89,35 +89,7 @@ Wide::Util::optional<ConcreteExpression> ClangIncludeEntity::AccessMember(Concre
                 assert(gnamespace && "Overload resolution picked bad candidate.");
                 assert(str && "Overload resolution picked bad candidate.");
                 auto tu = gnamespace->GetTU();
-                auto&& pp = tu->GetSema().getPreprocessor();
-                auto info = pp.getMacroInfo(tu->GetIdentifierInfo(str->GetValue()));
-                class SwallowConsumer : public clang::ASTConsumer {
-                public:
-                    SwallowConsumer() {}
-                    bool HandleTopLevelDecl(clang::DeclGroupRef arg) { return true; }
-                }; 
-
-                SwallowConsumer consumer;
-                clang::Sema s(pp, tu->GetASTContext(), consumer);
-                clang::Parser p(tu->GetSema().getPreprocessor(), s, true);
-                std::vector<clang::Token> tokens;
-                for(std::size_t num = 0; num < info->getNumTokens(); ++num)
-                    tokens.push_back(info->getReplacementToken(num));
-                tokens.emplace_back();
-                clang::Token& eof = tokens.back();
-                eof.setKind(clang::tok::TokenKind::eof);
-                eof.setLocation(tu->GetFileEnd());
-                eof.setIdentifierInfo(nullptr);
-                pp.EnterTokenStream(tokens.data(), tokens.size(), false, false);
-                p.Initialize();
-                auto expr = p.ParseExpression();
-                if (expr.isUsable()) {
-                    return InterpretExpression(expr.get(), *tu, c);
-                }
-                auto begin = tu->GetSema().getSourceManager().getCharacterData(info->getDefinitionLoc()) + str->GetValue().size() + 1;
-                auto end = begin + info->getDefinitionLength(tu->GetSema().getSourceManager());
-                auto macro = std::string(begin, end);
-                throw MacroNotValidExpression(macro, str->GetValue(), c.where);
+                return InterpretExpression(tu->ParseMacro(str->GetValue(), c.where), *tu, c);
             }
         };
         return (MacroOverloadSet = c->GetOverloadSet(c->arena.Allocate<ClangMacroHandler>()))->BuildValueConstruction({}, c);
@@ -149,7 +121,18 @@ Wide::Util::optional<ConcreteExpression> ClangIncludeEntity::AccessMember(Concre
 }
 
 ConcreteExpression ClangIncludeEntity::BuildCall(ConcreteExpression e, std::vector<ConcreteExpression> args, Context c) {
-    return AccessMember(e, "header", c)->BuildCall(args, c);
+    if (!dynamic_cast<StringType*>(args[0].BuildValue(c).t))
+        throw std::runtime_error("fuck");
+    if (args.size() != 1)
+        throw std::runtime_error("fuck");
+    auto str = dynamic_cast<StringType*>(args[0].BuildValue(c).t);
+    auto name = str->GetValue();
+    if (name.size() > 1 && name[0] == '<')
+        name = std::string(name.begin() + 1, name.end());
+    if (name.size() > 1 && name.back() == '>')
+        name = std::string(name.begin(), name.end() - 1);
+    auto clangtu = c->AggregateCPPHeader(std::move(name), c.where);
+    return c->GetClangNamespace(*clangtu, clangtu->GetDeclContext())->BuildValueConstruction({}, c);
 }
 
 std::string ClangIncludeEntity::explain(Analyzer& a) {

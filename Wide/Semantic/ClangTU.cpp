@@ -27,6 +27,7 @@
 #include <llvm/Support/TargetRegistry.h>
 #include <clang/Sema/Sema.h>
 #include <clang/Frontend/TextDiagnosticPrinter.h>
+#include <clang/Parse/Parser.h>
 #include <clang/Frontend/Utils.h>
 #include <clang/Basic/TargetInfo.h>
 #include <clang/Parse/ParseAST.h>
@@ -84,6 +85,7 @@ public:
 
 class ClangTU::Impl {
 public:    
+    std::unordered_set<const clang::FileEntry*> files;
     const Options::Clang* Options;
     clang::FileManager FileManager;
     ClangTUDiagnosticConsumer DiagnosticConsumer;
@@ -104,6 +106,7 @@ public:
     std::unordered_map<clang::QualType, std::function<llvm::Type*(llvm::Module*)>, ClangTypeHasher> DeferredTypeMap;
     llvm::Module mod;
     clang::CodeGen::CodeGenModule codegenmod;
+    clang::Parser p;
     
     // Clang has a really annoying habit of changing it's mind about this
     // producing multiple distinct llvm::Type*s for one QualType, so perform
@@ -125,7 +128,9 @@ public:
         , mod("", con)
         , codegenmod(astcon, Options->CodegenOptions, mod, layout, engine)
         , filename(std::move(file))   
+        , p(preproc, sema, false)
     {
+        preproc.enableIncrementalProcessing(true);
         Codegen::InitializeLLVM();
         std::string err;
         const llvm::Target& llvmtarget = *llvm::TargetRegistry::lookupTarget(opts.TargetOptions.Triple, err);
@@ -148,9 +153,25 @@ public:
         auto fileid = sm.createFileID(entry, clang::SourceLocation(), clang::SrcMgr::CharacteristicKind::C_User);
         if (fileid.isInvalid())
             throw CannotTranslateFile(filename, where);
+        files.insert(entry);
         sm.setMainFileID(fileid);
         engine.getClient()->BeginSourceFile(Options->LanguageOptions, &preproc);
-        ParseAST(sema);
+        preproc.EnterMainSourceFile();
+        p.Initialize();
+        auto Consumer = &sema.getASTConsumer();
+        auto External = sema.getASTContext().getExternalSource();
+        if (External)
+            External->StartTranslationUnit(Consumer);
+        clang::Parser::DeclGroupPtrTy ADecl;
+        do {
+            if (ADecl && !Consumer->HandleTopLevelDecl(ADecl.get()))
+                return;
+        } while (!p.ParseTopLevelDecl(ADecl));
+        for (auto I = sema.WeakTopLevelDecls().begin(),
+            E = sema.WeakTopLevelDecls().end(); I != E; ++I)
+            Consumer->HandleTopLevelDecl(clang::DeclGroupRef(*I));
+
+        Consumer->HandleTranslationUnit(sema.getASTContext());
 
         std::string errors;
         for (auto diag : DiagnosticConsumer.diagnostics)
@@ -163,6 +184,50 @@ public:
 
     clang::DeclContext* GetDeclContext() {
         return astcon.getTranslationUnitDecl();
+    }
+
+    void AddFile(std::string filename, Lexer::Range where) {
+        std::vector<std::string> paths;
+        for (auto it = hs.search_dir_begin(); it != hs.search_dir_end(); ++it)
+            paths.push_back(it->getDir()->getName());
+        const clang::DirectoryLookup* directlookup = nullptr;
+        auto entry = hs.LookupFile(filename, true, nullptr, directlookup, nullptr, nullptr, nullptr, nullptr);
+        if (!entry)
+            entry = FileManager.getFile(filename);
+        if (!entry)
+            throw CantFindHeader(filename, paths, where);
+
+        auto fileid = sm.createFileID(entry, clang::SourceLocation(), clang::SrcMgr::CharacteristicKind::C_User);
+        if (fileid.isInvalid())
+            throw CannotTranslateFile(filename, where);
+        if (files.find(entry) != files.end())
+            return;
+        files.insert(entry);
+        // Partially a re-working of clang::ParseAST's implementation
+
+        preproc.EnterSourceFile(fileid, preproc.GetCurDirLookup(), clang::SourceLocation());
+       
+        auto Consumer = &sema.getASTConsumer();
+        auto External = sema.getASTContext().getExternalSource();
+        if (External)
+            External->StartTranslationUnit(Consumer);
+        clang::Parser::DeclGroupPtrTy ADecl;
+        do {
+            if (ADecl && !Consumer->HandleTopLevelDecl(ADecl.get()))
+                return;
+        } while (!p.ParseTopLevelDecl(ADecl));
+        for (auto I = sema.WeakTopLevelDecls().begin(),
+            E = sema.WeakTopLevelDecls().end(); I != E; ++I)
+            Consumer->HandleTopLevelDecl(clang::DeclGroupRef(*I));
+
+        Consumer->HandleTranslationUnit(sema.getASTContext());
+        std::string errors;
+        for (auto diag : DiagnosticConsumer.diagnostics)
+            errors += diag;
+        if (engine.hasFatalErrorOccurred())
+            throw ClangFileParseError(filename, errors, where);
+        if (!errors.empty()) Options->OnDiagnostic(errors);
+        errors.clear();
     }
 };
 
@@ -178,11 +243,15 @@ ClangTU::ClangTU(llvm::LLVMContext& c, std::string file, const Wide::Options::Cl
     : impl(Wide::Memory::MakeUnique<Impl>(c, file, ccs, where)) 
 {
 }
+void ClangTU::AddFile(std::string filename, Lexer::Range where) {
+    return impl->AddFile(filename, where);
+}
 
 ClangTU::ClangTU(ClangTU&& other)
     : impl(std::move(other.impl)) {}
 
 void ClangTU::GenerateCodeAndLinkModule(llvm::Module* main) {
+    impl->sema.ActOnEndOfTranslationUnit();
     for(auto x : impl->stuff)
         impl->codegenmod.EmitTopLevelDecl(x);
     impl->codegenmod.Release();
@@ -328,4 +397,29 @@ clang::SourceLocation ClangTU::GetFileEnd() {
 }
 std::string ClangTU::GetFilename() {
     return impl->filename;
+}
+clang::Expr* ClangTU::ParseMacro(std::string macro, Lexer::Range where) {
+    auto&& pp = GetSema().getPreprocessor();
+    auto info = pp.getMacroInfo(GetIdentifierInfo(macro));
+
+    auto&& s = impl->sema;
+    auto&& p = impl->p;
+    std::vector<clang::Token> tokens;
+    for (std::size_t num = 0; num < info->getNumTokens(); ++num)
+        tokens.push_back(info->getReplacementToken(num));
+    tokens.emplace_back();
+    clang::Token& eof = tokens.back();
+    eof.setKind(clang::tok::TokenKind::eof);
+    eof.setLocation(GetFileEnd());
+    eof.setIdentifierInfo(nullptr);
+    pp.EnterTokenStream(tokens.data(), tokens.size(), false, false);
+    p.ConsumeToken();// Eat the eof we will have been left with.
+    auto expr = p.ParseExpression();
+    if (expr.isUsable()) {
+        return expr.get();
+    }
+    auto begin = GetSema().getSourceManager().getCharacterData(info->getDefinitionLoc()) + macro.size() + 1;
+    auto end = begin + info->getDefinitionLength(GetSema().getSourceManager());
+    auto macrodata = std::string(begin, end);
+    throw MacroNotValidExpression(macrodata, macro, where);
 }

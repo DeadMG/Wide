@@ -24,6 +24,7 @@ namespace llvm {
 namespace clang {
     class DeclContext;
     class ASTContext;
+    class Expr; 
     class Sema;
     class QualType;
     class NamedDecl;
@@ -63,6 +64,8 @@ namespace Wide {
             unsigned GetBaseNumber(clang::CXXRecordDecl* self, clang::CXXRecordDecl* base);
             clang::SourceLocation GetFileEnd();
             std::string PopLastDiagnostic();
+            void AddFile(std::string filename, Lexer::Range where);
+            clang::Expr* ParseMacro(std::string macro, Lexer::Range where);
         };
     }
 }

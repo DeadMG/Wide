@@ -155,10 +155,22 @@ ConcreteExpression Analyzer::AnalyzeExpression(Type* t, const AST::Expression* e
             // When encountering f(args...)
             // or x.f(args...)
             // cheat and resolve the overload, then notify QuickInfo if we've got something better than "Overload Set".
+            auto totally_not_t = t;
+            auto get_overload_set = [&, totally_not_t](ConcreteExpression mem) -> OverloadSet* {
+                auto t = totally_not_t;
+                if (auto overset = dynamic_cast<OverloadSet*>(mem.t->Decay()))
+                    return overset;
+                /*if (auto conty = dynamic_cast<ConstructorType*>(mem.t->Decay())) {
+                    auto ty = conty->GetConstructedType();
+                    auto spec = GetAccessSpecifier(t, ty, *self);
+                    return ty->GetConstructorOverloadSet(*self, spec);
+                }*/
+                return nullptr;
+            };
             if (auto ident = dynamic_cast<const AST::Identifier*>(funccall->callee)) {
                 auto mem = self->LookupIdentifier(t, ident);
                 if (!mem) throw UnqualifiedLookupFailure(t, ident->val, ident->location, *self);
-                if (auto overset = dynamic_cast<OverloadSet*>(mem->t->Decay())) {
+                if (auto overset = get_overload_set(*mem)) {
                     std::vector<Type*> types;
                     for (auto arg : args)
                         types.push_back(arg.t);
@@ -179,7 +191,7 @@ ConcreteExpression Analyzer::AnalyzeExpression(Type* t, const AST::Expression* e
                 auto val = self->AnalyzeExpression(t, member->expr, handler);
                 auto mem = val.AccessMember(member->mem, Context(*self, member->location, handler, t));
                 if (!mem) throw NoMember(val.t, t, member->mem, member->location, *self);
-                if (auto overset = dynamic_cast<OverloadSet*>(mem->t->Decay())) {
+                if (auto overset = get_overload_set(*mem)) {
                     std::vector<Type*> types;
                     for (auto arg : args)
                         types.push_back(arg.t);
@@ -872,4 +884,14 @@ bool Semantic::IsMultiTyped(const AST::FunctionBase* f) {
     for (auto&& var : f->args)
         ret = ret || IsMultiTyped(var);
     return ret;
+}
+ClangTU* Analyzer::AggregateCPPHeader(std::string file, Lexer::Range where) {
+    if (!AggregateTU) {
+        AggregateTU = Wide::Memory::MakeUnique<ClangTU>(gen->GetContext(), file, *clangopts, where);
+        auto ptr = AggregateTU.get();
+        gen->AddClangTU([=](llvm::Module* main) { ptr->GenerateCodeAndLinkModule(main); });
+        return ptr;
+    }
+    AggregateTU->AddFile(file, where);
+    return AggregateTU.get();
 }
