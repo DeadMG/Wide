@@ -64,11 +64,13 @@ Analyzer::Analyzer(const Options::Clang& opts, Codegen::Generator& g, const AST:
     };
 
     struct PointerCastType : OverloadResolvable, Callable {
-        unsigned GetArgumentCount() override final { return 2; }
-        Type* MatchParameter(Type* t, unsigned num, Analyzer& a, Type* source) override final {
-            if (num == 0 && dynamic_cast<ConstructorType*>(t->Decay()) && dynamic_cast<PointerType*>(dynamic_cast<ConstructorType*>(t->Decay())->GetConstructedType())) return t;
-            if (num == 1 && dynamic_cast<PointerType*>(t->Decay())) return t;
-            return nullptr;
+        Util::optional<std::vector<Type*>> MatchParameter(std::vector<Type*> types, Analyzer& a, Type* source) override final {
+            if (types.size() != 2) return Util::none;
+            auto conty = dynamic_cast<ConstructorType*>(types[0]->Decay());
+            if (!conty) return Util::none;
+            if (!dynamic_cast<PointerType*>(conty->GetConstructedType())) return Util::none;
+            if (!dynamic_cast<PointerType*>(types[1]->Decay())) return Util::none;
+            return types;
         }
         Callable* GetCallableForResolution(std::vector<Type*>, Analyzer& a) override final { return this; }
         ConcreteExpression CallFunction(std::vector<ConcreteExpression> args, Context c) override final {
@@ -79,8 +81,7 @@ Analyzer::Analyzer(const Options::Clang& opts, Codegen::Generator& g, const AST:
     };
 
     struct MoveType : OverloadResolvable, Callable {
-        unsigned GetArgumentCount() override final { return 1; }
-        Type* MatchParameter(Type* t, unsigned num, Analyzer& a, Type* source) override final { return t; }
+        Util::optional<std::vector<Type*>> MatchParameter(std::vector<Type*> types, Analyzer& a, Type* source) override final { if (types.size() == 1) return types; return Util::none; }
         Callable* GetCallableForResolution(std::vector<Type*>, Analyzer& a) override final { return this; }
         std::vector<ConcreteExpression> AdjustArguments(std::vector<ConcreteExpression> args, Context c) override final { return args; }
         ConcreteExpression CallFunction(std::vector<ConcreteExpression> args, Context c) override final {
@@ -672,87 +673,84 @@ OverloadResolvable* Analyzer::GetCallableForFunction(const AST::FunctionBase* f,
             return true;
         }
 
-        unsigned GetArgumentCount() override final {
-            if (HasImplicitThis())
-                return func->args.size() + 1;
-            return func->args.size();
-        }
-
         std::unordered_map<unsigned, ConstructorType*> lookups;
 
-        Type* MatchParameter(Type* argument, unsigned num, Analyzer& a, Type* source) override final {
-            assert(num <= GetArgumentCount());
-
+        Util::optional<std::vector<Type*>> MatchParameter(std::vector<Type*> types, Analyzer& a, Type* source) override final {
+            if (types.size() != func->args.size() + HasImplicitThis()) return Util::none;
             // If we are a member and we have an explicit this then treat the first normally.
             // Else if we are a member, blindly accept whatever is given for argument 0 as long as it's the member type.
             // Else, treat the first argument normally.
 
+            std::vector<Type*> result;
             if (HasImplicitThis()) {
-                if (num == 0) {
-                    if (IsLvalueType(argument)) {
-                        if (argument->IsA(argument, a.GetLvalueType(context), a, GetAccessSpecifier(source, argument, a))) {
-                            return a.GetLvalueType(context);
-                        }
-                    }
-                    if (IsRvalueType(argument)) {
-                        if (argument->IsA(argument, a.GetRvalueType(context), a, GetAccessSpecifier(source, argument, a))) {
-                            return a.GetRvalueType(context);
-                        }
-                    }
-                    return nullptr;
+                if (IsLvalueType(types[0])) {
+                    if (types[0]->IsA(types[0], a.GetLvalueType(context), a, GetAccessSpecifier(source, types[0], a))) {
+                        result.push_back(a.GetLvalueType(context));
+                    } else
+                        return Util::none;
                 }
-                --num;
+                if (IsRvalueType(types[0])) {
+                    if (types[0]->IsA(types[0], a.GetRvalueType(context), a, GetAccessSpecifier(source, types[0], a))) {
+                        result.push_back(a.GetRvalueType(context));
+                    } else
+                        return Util::none;
+                }
+                types.erase(types.begin());
             }
 
-            auto context = this->context;
+            unsigned num = 0;
+            for (auto argument : types) {
+                auto context = this->context;
+                auto get_con_type = [&]() -> ConstructorType* {
+                    if (lookups.find(num) != lookups.end())
+                        return lookups[num];
 
-            auto get_con_type = [&]() -> ConstructorType* {
-                if (lookups.find(num) != lookups.end())
-                    return lookups[num];
+                    if (!func->args[num].type) {
+                        a.ParameterHighlight(func->args[num].location);
+                        return a.GetConstructorType(argument->Decay());
+                    }
 
-                if (!func->args[num].type) {
-                    a.ParameterHighlight(func->args[num].location);
-                    return a.GetConstructorType(argument->Decay());
-                }
-
-                struct OverloadSetLookupContext : public MetaType {
-                    Type* context;
-                    Type* member;
-                    Type* argument;
-                    Wide::Util::optional<ConcreteExpression> AccessMember(ConcreteExpression, std::string name, Context c) override final {
-                        if (name == "this") {
-                            if (member)
-                                return c->GetConstructorType(member->Decay())->BuildValueConstruction({}, c);
+                    struct OverloadSetLookupContext : public MetaType {
+                        Type* context;
+                        Type* member;
+                        Type* argument;
+                        Wide::Util::optional<ConcreteExpression> AccessMember(ConcreteExpression, std::string name, Context c) override final {
+                            if (name == "this") {
+                                if (member)
+                                    return c->GetConstructorType(member->Decay())->BuildValueConstruction({}, c);
+                            }
+                            if (name == "auto")
+                                return c->GetConstructorType(argument->Decay())->BuildValueConstruction({}, c);
+                            return Wide::Util::none;
                         }
-                        if (name == "auto")
-                            return c->GetConstructorType(argument->Decay())->BuildValueConstruction({}, c);
-                        return Wide::Util::none;
-                    }
-                    Type* GetContext(Analyzer& a) override final {
-                        return context;
-                    }
-                    std::string explain(Analyzer& a) { return context->explain(a); }
+                        Type* GetContext(Analyzer& a) override final {
+                            return context;
+                        }
+                        std::string explain(Analyzer& a) { return context->explain(a); }
+                    };
+
+                    OverloadSetLookupContext lc;
+                    lc.argument = argument;
+                    lc.context = context;
+                    lc.member = dynamic_cast<UserDefinedType*>(context->Decay());
+                    auto p_type = a.AnalyzeExpression(&lc, func->args[num].type, [](ConcreteExpression e) {}).t->Decay();
+                    auto con_type = dynamic_cast<ConstructorType*>(p_type);
+                    if (!con_type)
+                        throw Wide::Semantic::NotAType(p_type, func->args[num].location, a);
+                    a.QuickInfo(func->args[num].location, con_type->GetConstructedType());
+                    a.ParameterHighlight(func->args[num].location);
+                    if (!IsMultiTyped(func->args[num]))
+                        lookups[num] = con_type;
+                    return con_type;
                 };
-
-                OverloadSetLookupContext lc;
-                lc.argument = argument;
-                lc.context = context;
-                lc.member = dynamic_cast<UserDefinedType*>(context->Decay());
-                auto p_type = a.AnalyzeExpression(&lc, func->args[num].type, [](ConcreteExpression e) {}).t->Decay();
-                auto con_type = dynamic_cast<ConstructorType*>(p_type);
-                if (!con_type)
-                    throw Wide::Semantic::NotAType(p_type, func->args[num].location, a);
-                a.QuickInfo(func->args[num].location, con_type->GetConstructedType());
-                a.ParameterHighlight(func->args[num].location);
-                if (!IsMultiTyped(func->args[num]))
-                    lookups[num] = con_type;
-                return con_type;
-            };
-            auto parameter_type = get_con_type();
-
-            if (argument->IsA(argument, parameter_type->GetConstructedType(), a, GetAccessSpecifier(source, argument, a)))
-                return parameter_type->GetConstructedType();
-            return nullptr;
+                auto parameter_type = get_con_type();
+                ++num;
+                if (argument->IsA(argument, parameter_type->GetConstructedType(), a, GetAccessSpecifier(source, argument, a)))
+                    result.push_back(parameter_type->GetConstructedType());
+                else
+                    return Util::none;
+            }
+            return result;
         }
 
         Callable* GetCallableForResolution(std::vector<Type*> types, Analyzer& a) override final {
@@ -840,10 +838,8 @@ OverloadResolvable* Analyzer::GetCallableForTemplateType(const AST::TemplateType
         : templatetype(f), context(con) {}
         Type* context;
         const Wide::AST::TemplateType* templatetype;
-        unsigned GetArgumentCount() override final { return templatetype->arguments.size(); }
-
-        Type* MatchParameter(Type* argument, unsigned num, Analyzer& a, Type* source) override final {
-            return nullptr;
+        Util::optional<std::vector<Type*>> MatchParameter(std::vector<Type*> types, Analyzer& a, Type* source) override final {
+            return Util::none;
         }
         std::vector<ConcreteExpression> AdjustArguments(std::vector<ConcreteExpression> args, Context c) override final { return args; }
         Callable* GetCallableForResolution(std::vector<Type*> types, Analyzer& a) override final { return this; }

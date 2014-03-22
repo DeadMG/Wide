@@ -153,24 +153,13 @@ struct cppcallable : public Callable {
 
 Callable* OverloadSet::Resolve(std::vector<Type*> f_args, Analyzer& a, Type* source) {
     std::vector<std::pair<OverloadResolvable*, std::vector<Type*>>> call;
+    auto adjusted_args = f_args;
+    for (auto& arg : adjusted_args)
+        if (!arg->IsReference())
+            arg = a.GetRvalueType(arg);
     for(auto funcobj : callables) {
-        std::vector<Type*> matched_types;
-        if (funcobj->GetArgumentCount() != f_args.size())
-            continue;
-        bool fail = false;
-        for(std::size_t i = 0; i < f_args.size(); ++i) {
-            auto argty = f_args[i];
-            if (!argty->IsReference())
-                argty = a.GetRvalueType(f_args[i]);
-            auto paramty = funcobj->MatchParameter(f_args[i], i, a, source);
-            if (!paramty) {
-                fail = true;
-                break;
-            }
-            matched_types.push_back(paramty);
-        }
-        if (!fail)
-            call.push_back(std::make_pair(funcobj, std::move(matched_types)));
+        auto matched_types = funcobj->MatchParameter(adjusted_args, a, source);
+        if (matched_types) call.push_back(std::make_pair(funcobj, std::move(*matched_types)));
     }
     // returns true if lhs is more specialized than rhs
     auto is_more_specialized = [&](

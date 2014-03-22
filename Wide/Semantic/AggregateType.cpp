@@ -266,8 +266,10 @@ OverloadSet* AggregateType::CreateDestructorOverloadSet(Analyzer& a) {
     struct Destructor : OverloadResolvable, Callable {
         AggregateType* self;
         Destructor(AggregateType* ty) : self(ty) {}
-        unsigned GetArgumentCount() override final { return 1; }
-        Type* MatchParameter(Type* t, unsigned num, Analyzer& a, Type* source) override final { assert(num == 0); return t; }
+        Util::optional<std::vector<Type*>> MatchParameter(std::vector<Type*> types, Analyzer& a, Type* source) override final { 
+            if (types.size() == 1) return types;
+            return Util::none;
+        }
         Callable* GetCallableForResolution(std::vector<Type*> tys, Analyzer& a) override final { return this; }
         std::vector<ConcreteExpression> AdjustArguments(std::vector<ConcreteExpression> args, Context c) override final { return args; }
         ConcreteExpression CallFunction(std::vector<ConcreteExpression> args, Context c) override final {

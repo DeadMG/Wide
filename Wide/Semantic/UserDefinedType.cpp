@@ -269,8 +269,10 @@ OverloadSet* UserDefinedType::CreateDestructorOverloadSet(Analyzer& a) {
             UserDefinedType* self;
             OverloadSet* aggset;
 
-            unsigned GetArgumentCount() override final { return 1; }
-            Type* MatchParameter(Type* t, unsigned num, Analyzer& a, Type* source) override final { assert(num == 0); return t; }
+            Util::optional<std::vector<Type*>> MatchParameter(std::vector<Type*> args, Analyzer& a, Type* source) override final { 
+                if (args.size() == 1) return args;
+                return Util::none;
+            }
             Callable* GetCallableForResolution(std::vector<Type*> tys, Analyzer& a) override final { return this; }
             std::vector<ConcreteExpression> AdjustArguments(std::vector<ConcreteExpression> args, Context c) override final { return args; }
             ConcreteExpression CallFunction(std::vector<ConcreteExpression> args, Context c) override final { 

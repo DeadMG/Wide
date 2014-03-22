@@ -67,19 +67,13 @@ struct PointerComparableResolvable : OverloadResolvable, Callable {
     PointerComparableResolvable(Reference* s)
     : self(s) {}
     Reference* self;
-    unsigned GetArgumentCount() override final { return 2; }
-    Type* MatchParameter(Type* t, unsigned num, Analyzer& a, Type* source) override final {
-        if (num == 0) {
-            if (t == a.GetLvalueType(self))
-                return t;
-            else
-                return nullptr;
-        }
-        auto ptrt = a.GetPointerType(t->Decay());
+    Util::optional<std::vector<Type*>> MatchParameter(std::vector<Type*> types, Analyzer& a, Type* source) override final {
+        if (types.size() != 2) return Util::none;
+        if (types[0] != a.GetLvalueType(self)) return Util::none;
+        auto ptrt = a.GetPointerType(types[1]->Decay());
         auto ptrself = a.GetPointerType(self->Decay());
-        if (ptrt->IsA(ptrt, ptrself, a, GetAccessSpecifier(source, ptrt, a)))
-            return t;
-        return nullptr;
+        if (!ptrt->IsA(ptrt, ptrself, a, GetAccessSpecifier(source, ptrt, a))) return Util::none;
+        return types;
     }
     std::vector<ConcreteExpression> AdjustArguments(std::vector<ConcreteExpression> args, Context c) override final { return args; }
     ConcreteExpression CallFunction(std::vector<ConcreteExpression> args, Context c) override final {
@@ -102,25 +96,17 @@ OverloadSet* RvalueType::CreateConstructorOverloadSet(Analyzer& a, Lexer::Access
         rvalueconvertible(RvalueType* s)
         : self(s) {}
         RvalueType* self;
-        unsigned GetArgumentCount() override final { return 2; }
         Callable* GetCallableForResolution(std::vector<Type*>, Analyzer& a) override final { return this; }
         std::vector<ConcreteExpression> AdjustArguments(std::vector<ConcreteExpression> args, Context c) override final { return args; }
-        Type* MatchParameter(Type* t, unsigned num, Analyzer& a, Type* source) override final {
-            if (num == 0) {
-                if (t == a.GetLvalueType(self))
-                    return t;
-                return nullptr;
-            }
-            if (IsLvalueType(t)) return nullptr;
+        Util::optional<std::vector<Type*>> MatchParameter(std::vector<Type*> types, Analyzer& a, Type* source) override final {
+            if (types.size() != 2) return Util::none;
+            if (types[0] != a.GetLvalueType(self)) return Util::none;
+            if (IsLvalueType(types[1])) return Util::none;
             // If it is or pointer-is then yay, else nay.
-            auto ptrt = a.GetPointerType(t->Decay());
+            auto ptrt = a.GetPointerType(types[1]->Decay());
             auto ptrself = a.GetPointerType(self->Decay());
-            if (ptrt->IsA(ptrt, ptrself, a, GetAccessSpecifier(source, ptrt, a)))
-                return t;
-
-            if (t->Decay()->IsA(t->Decay(), self->Decay(), a, GetAccessSpecifier(source, t, a)))
-                return t;
-            return nullptr;
+            if (!ptrt->IsA(ptrt, ptrself, a, GetAccessSpecifier(source, ptrt, a)) && !types[1]->Decay()->IsA(types[1]->Decay(), self->Decay(), a, GetAccessSpecifier(source, types[1], a))) return Util::none;
+            return types;
         }
         ConcreteExpression CallFunction(std::vector<ConcreteExpression> args, Context c) override final {
             // If pointer-is then use that, else go with value-is.

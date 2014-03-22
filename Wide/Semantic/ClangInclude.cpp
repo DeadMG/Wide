@@ -31,11 +31,10 @@ Wide::Util::optional<ConcreteExpression> ClangIncludeEntity::AccessMember(Concre
         if (MangleOverloadSet)
             return MangleOverloadSet->BuildValueConstruction({}, c);
         struct NameMangler : OverloadResolvable, Callable {
-            unsigned GetArgumentCount() override final { return 1; }
-            Type* MatchParameter(Type* t, unsigned, Analyzer& a, Type* source) override final {
-                if (dynamic_cast<OverloadSet*>(t->Decay()))
-                    return t;
-                return nullptr;
+            Util::optional<std::vector<Type*>> MatchParameter(std::vector<Type*> types, Analyzer& a, Type* source) override final {
+                if (types.size() != 1) return Util::none;
+                if (!dynamic_cast<OverloadSet*>(types[0]->Decay())) return Util::none;
+                return types;
             }
             Callable* GetCallableForResolution(std::vector<Type*>, Analyzer& a) override final { return this; }
             std::vector<ConcreteExpression> AdjustArguments(std::vector<ConcreteExpression> args, Context c) override final { return args; }
@@ -49,10 +48,10 @@ Wide::Util::optional<ConcreteExpression> ClangIncludeEntity::AccessMember(Concre
     if (name == "literal") {
         if (LiteralOverloadSet) return LiteralOverloadSet->BuildValueConstruction({}, c);
         struct LiteralIncluder : OverloadResolvable, Callable {
-            unsigned GetArgumentCount() override final { return 1; }
-            Type* MatchParameter(Type* t, unsigned, Analyzer& a, Type* source) override final { 
-                if (dynamic_cast<StringType*>(t->Decay())) return t; 
-                return nullptr; 
+            Util::optional<std::vector<Type*>> MatchParameter(std::vector<Type*> types, Analyzer& a, Type* source) override final {
+                if (types.size() != 1) return Util::none;
+                if (!dynamic_cast<StringType*>(types[0]->Decay())) return Util::none;
+                return types;
             }
             Callable* GetCallableForResolution(std::vector<Type*>, Analyzer& a) override final { return this; }
             std::vector<ConcreteExpression> AdjustArguments(std::vector<ConcreteExpression> args, Context c) override final { return args; }
@@ -75,11 +74,11 @@ Wide::Util::optional<ConcreteExpression> ClangIncludeEntity::AccessMember(Concre
     if (name == "macro") {
         if (MacroOverloadSet) return MacroOverloadSet->BuildValueConstruction({}, c);
         struct ClangMacroHandler : public OverloadResolvable, Callable {
-            unsigned GetArgumentCount() override final { return 2; }
-            Type* MatchParameter(Type* t, unsigned num, Analyzer& a, Type* source) override final {
-                if (num == 0 && dynamic_cast<ClangNamespace*>(t->Decay())) return t;
-                if (num == 1 && dynamic_cast<StringType*>(t->Decay())) return t;
-                return nullptr;
+            Util::optional<std::vector<Type*>> MatchParameter(std::vector<Type*> types, Analyzer& a, Type* source) override final {
+                if (types.size() != 2) return Util::none;
+                if (!dynamic_cast<ClangNamespace*>(types[0]->Decay())) return Util::none;
+                if (!dynamic_cast<StringType*>(types[1]->Decay())) return Util::none;
+                return types;
             }
             Callable* GetCallableForResolution(std::vector<Type*>, Analyzer& a) override final { return this; }
             std::vector<ConcreteExpression> AdjustArguments(std::vector<ConcreteExpression> args, Context c) override final { return args; }
@@ -97,10 +96,10 @@ Wide::Util::optional<ConcreteExpression> ClangIncludeEntity::AccessMember(Concre
     if (name == "header") {
         if (HeaderOverloadSet) return HeaderOverloadSet->BuildValueConstruction({}, c);
         struct ClangHeaderHandler : OverloadResolvable, Callable {
-            unsigned GetArgumentCount() override final { return 1; }
-            Type* MatchParameter(Type* t, unsigned num, Analyzer& a, Type* source) override final {
-                if (num == 0 && dynamic_cast<StringType*>(t->Decay())) return t;
-                return nullptr;
+            Util::optional<std::vector<Type*>> MatchParameter(std::vector<Type*> types, Analyzer& a, Type* source) override final {
+                if (types.size() != 1) return Util::none;
+                if (!dynamic_cast<StringType*>(types[0]->Decay())) return Util::none;
+                return types;
             }
             Callable* GetCallableForResolution(std::vector<Type*>, Analyzer& a) override final { return this; }
             std::vector<ConcreteExpression> AdjustArguments(std::vector<ConcreteExpression> args, Context c) override final { return args; }

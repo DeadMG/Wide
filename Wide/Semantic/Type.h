@@ -185,8 +185,7 @@ namespace Wide {
             virtual std::vector<ConcreteExpression> AdjustArguments(std::vector<ConcreteExpression> args, Context c) = 0;
         };
         struct OverloadResolvable {
-            virtual unsigned GetArgumentCount() = 0;
-            virtual Type* MatchParameter(Type*, unsigned, Analyzer& a, Type* source) = 0;
+            virtual Wide::Util::optional<std::vector<Type*>> MatchParameter(std::vector<Type*>, Analyzer& a, Type* source) = 0;
             virtual Callable* GetCallableForResolution(std::vector<Type*>, Analyzer& a) = 0;
         };
 

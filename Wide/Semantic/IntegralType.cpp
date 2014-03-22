@@ -56,16 +56,13 @@ OverloadSet* IntegralType::CreateConstructorOverloadSet(Wide::Semantic::Analyzer
             : integral(self) {}
 
         IntegralType* integral;
-        unsigned GetArgumentCount() override final { return 2; }
-        Type* MatchParameter(Type* t, unsigned num, Analyzer& a, Type* source) override final {
-            if (num == 0 && t == a.GetLvalueType(integral)) return t;
-            if (num == 1)
-                if (auto intty = dynamic_cast<IntegralType*>(t->Decay()))
-                    if (intty->bits > integral->bits && intty->is_signed != integral->is_signed)
-                        return nullptr;
-                    else
-                        return t;
-            return nullptr;
+        Util::optional<std::vector<Type*>> MatchParameter(std::vector<Type*> types, Analyzer& a, Type* source) override final {
+            if (types.size() != 2) return Util::none;
+            if (types[0] != a.GetLvalueType(integral)) return Util::none;
+            auto intty = dynamic_cast<IntegralType*>(types[1]->Decay());
+            if (!intty) return Util::none;
+            if (intty->bits > integral->bits && intty->is_signed != integral->is_signed) return Util::none;
+            return types;
         }
         Callable* GetCallableForResolution(std::vector<Type*> types, Analyzer& a) override final { return this; }
         ConcreteExpression CallFunction(std::vector<ConcreteExpression> args, Context c) override final {

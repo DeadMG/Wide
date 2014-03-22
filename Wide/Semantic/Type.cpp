@@ -389,8 +389,10 @@ std::vector<ConcreteExpression> Semantic::AdjustArgumentsForTypes(std::vector<Co
 
 OverloadSet* Type::CreateDestructorOverloadSet(Analyzer& a) {
     struct DestructNothing : OverloadResolvable, Callable {
-        unsigned GetArgumentCount() override final { return 1; }
-        Type* MatchParameter(Type* t, unsigned num, Analyzer& a, Type* source) override final { assert(num == 0); return t; }
+        Util::optional<std::vector<Type*>> MatchParameter(std::vector<Type*> args, Analyzer& a, Type* source) override final { 
+            if (args.size() != 1) return Util::none;
+            return args;
+        }
         Callable* GetCallableForResolution(std::vector<Type*> tys, Analyzer& a) override final { return this; }
         std::vector<ConcreteExpression> AdjustArguments(std::vector<ConcreteExpression> args, Context c) override final { return args; }
         ConcreteExpression CallFunction(std::vector<ConcreteExpression> args, Context c) override final { return args[0]; }
@@ -404,11 +406,14 @@ struct assign : OverloadResolvable, Callable {
     assign(std::vector<Type*> tys, std::function<ConcreteExpression(std::vector<ConcreteExpression>, Context)> func)
         : types(tys), action(std::move(func)) {}
 
-    unsigned GetArgumentCount() override final { return types.size(); }
-    Type* MatchParameter(Type* t, unsigned num, Analyzer& a, Type* source) override final {
-        if (t->IsA(t, types[num], a, GetAccessSpecifier(source, t, a)))
-            return types[num];
-        return nullptr;
+    Util::optional<std::vector<Type*>> MatchParameter(std::vector<Type*> args, Analyzer& a, Type* source) override final {
+        if (args.size() != types.size()) return Util::none;
+        for (unsigned num = 0; num < types.size(); ++num) {
+            auto t = args[num];
+            if (!t->IsA(t, types[num], a, GetAccessSpecifier(source, t, a)))
+                return Util::none;
+        }
+        return types;
     }
     Callable* GetCallableForResolution(std::vector<Type*> tys, Analyzer& a) override final {
         assert(types == tys);
@@ -432,20 +437,14 @@ OverloadSet* TupleInitializable::CreateConstructorOverloadSet(Analyzer& a, Lexer
     struct TupleConstructor : public OverloadResolvable, Callable {
         TupleConstructor(TupleInitializable* p) : self(p) {}
         TupleInitializable* self;
-        unsigned GetArgumentCount() override final { return 2; }
         Callable* GetCallableForResolution(std::vector<Type*>, Analyzer& a) { return this; }
-        Type* MatchParameter(Type* t, unsigned num, Analyzer& a, Type* source) override final {
-            if (num == 0) {
-                if (t == a.GetLvalueType(self))
-                    return t;
-                else
-                    return nullptr;
-            }
-            auto tup = dynamic_cast<TupleType*>(t->Decay());
-            if (!tup) return nullptr;
-            if (tup->IsA(t, self, a, GetAccessSpecifier(source, tup, a)))
-                return t;
-            return nullptr;
+        Util::optional<std::vector<Type*>> MatchParameter(std::vector<Type*> args, Analyzer& a, Type* source) override final {
+            if (args.size() != 2) return Util::none;
+            if (args[0] != a.GetLvalueType(self)) return Util::none;
+            auto tup = dynamic_cast<TupleType*>(args[1]->Decay());
+            if (!tup) return Util::none;
+            if (!tup->IsA(args[1], self, a, GetAccessSpecifier(source, tup, a))) return Util::none;
+            return args;
         }
         std::vector<ConcreteExpression> AdjustArguments(std::vector<ConcreteExpression> args, Context c) override final { return args; }
         ConcreteExpression CallFunction(std::vector<ConcreteExpression> args, Context c) {

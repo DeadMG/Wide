@@ -415,9 +415,11 @@ clang::Expr* ClangTU::ParseMacro(std::string macro, Lexer::Range where) {
     pp.EnterTokenStream(tokens.data(), tokens.size(), false, false);
     p.ConsumeToken();// Eat the eof we will have been left with.
     auto expr = p.ParseExpression();
-    if (expr.isUsable()) {
+    if (expr.isUsable() || p.getCurToken().getKind() != clang::tok::TokenKind::eof) {
         return expr.get();
     }
+    // Skip forward until eof so that we can keep using this parser/preprocessor in future.
+    p.SkipUntil(clang::tok::TokenKind::eof);
     auto begin = GetSema().getSourceManager().getCharacterData(info->getDefinitionLoc()) + macro.size() + 1;
     auto end = begin + info->getDefinitionLength(GetSema().getSourceManager());
     auto macrodata = std::string(begin, end);
