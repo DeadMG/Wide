@@ -45,8 +45,9 @@ std::vector<Type*> GetTypesFromType(const AST::Type* t, Analyzer& a, Type* conte
         expr.t = expr.t->Decay();
         if (auto con = dynamic_cast<ConstructorType*>(expr.t))
             out.push_back(con->GetConstructedType());
-        else
-            throw NotAType(expr.t, var.first->location, a);
+        else {
+            out.push_back(expr.t);  
+        }
     }
     return out;
 }
@@ -57,8 +58,17 @@ UserDefinedType::UserDefinedType(const AST::Type* t, Analyzer& a, Type* higher, 
 , type(t)
 , source_name(name) {
     unsigned i = 0;
-    for (auto&& var : type->variables)
+    for (auto& var : type->variables) {
         members[var.first->name.front().name] = i++ + type->bases.size();
+        auto expr = a.AnalyzeExpression(higher, var.first->initializer, [](ConcreteExpression e) {});
+        expr.t = expr.t->Decay();
+        if (!dynamic_cast<ConstructorType*>(expr.t)) {
+            HasNSDMI = true;
+            NSDMIs.push_back(var.first->initializer);
+        }
+        else
+            NSDMIs.push_back(nullptr);
+    }
 }
 
 std::vector<UserDefinedType::member> UserDefinedType::GetMembers() {
@@ -68,6 +78,7 @@ std::vector<UserDefinedType::member> UserDefinedType::GetMembers() {
         m.t = AggregateType::GetMembers()[i];
         m.name = dynamic_cast<AST::Identifier*>(type->bases[i])->val;
         m.num = AggregateType::GetFieldIndex(i);
+        m.InClassInitializer = nullptr;
         out.push_back(m);
     }
     for (unsigned i = 0; i < type->variables.size(); ++i) {
@@ -75,6 +86,7 @@ std::vector<UserDefinedType::member> UserDefinedType::GetMembers() {
         m.t = AggregateType::GetMembers()[i + type->bases.size()];
         m.name = type->variables[i].first->name.front().name;
         m.num = AggregateType::GetFieldIndex(i) + type->bases.size();
+        m.InClassInitializer = NSDMIs[i];
         out.push_back(m);
     }
     return out;
@@ -235,6 +247,47 @@ OverloadSet* UserDefinedType::CreateConstructorOverloadSet(Analyzer& a, Lexer::A
     types.push_back(a.GetLvalueType(this));
     if (auto default_constructor = user_defined_constructors->Resolve(types, a, this))
         return a.GetOverloadSet(user_defined_constructors, AggregateType::CreateNondefaultConstructorOverloadSet(a));
+    if (HasNSDMI) {
+        bool shouldgenerate = true;
+        for (auto mem : GetMembers()) {
+            // If we are not default constructible *and* we don't have an NSDMI to construct us, then we cannot generate a default constructor.
+            if (mem.InClassInitializer)
+                continue;
+            if (!mem.t->GetConstructorOverloadSet(a, GetAccessSpecifier(this, mem.t, a))->Resolve({ a.GetLvalueType(mem.t) }, a, this))
+                shouldgenerate = false;
+        }
+        if (!shouldgenerate)
+            return a.GetOverloadSet(user_defined_constructors, AggregateType::CreateNondefaultConstructorOverloadSet(a));
+        // Our automatically generated default constructor needs to initialize each member appropriately.
+        struct DefaultConstructor : OverloadResolvable, Callable {
+            DefaultConstructor(UserDefinedType* ty) : self(ty) {}
+            UserDefinedType* self;
+
+            Util::optional<std::vector<Type*>> MatchParameter(std::vector<Type*> args, Analyzer& a, Type* source) override final {
+                if (args.size() != 1) return Util::none;
+                if (args[0] != a.GetLvalueType(self)) return Util::none;
+                return args;
+            }
+            Callable* GetCallableForResolution(std::vector<Type*> tys, Analyzer& a) override final { return this; }
+            std::vector<ConcreteExpression> AdjustArguments(std::vector<ConcreteExpression> args, Context c) override final { return args; }
+            ConcreteExpression CallFunction(std::vector<ConcreteExpression> args, Context c) override final {
+                Codegen::Expression* expr = nullptr;
+                for (auto mem : self->GetMembers()) {
+                    if (mem.InClassInitializer) {
+                        auto subobj = c->gen->CreateFieldExpression(args[0].Expr, mem.num);
+                        auto subinit = mem.t->BuildInplaceConstruction(subobj, { c->AnalyzeExpression(self->GetContext(*c), mem.InClassInitializer, c.RAIIHandler) }, c);
+                        expr = expr ? c->gen->CreateChainExpression(expr, subinit) : subinit;
+                        continue;
+                    }
+                    auto subobj = c->gen->CreateFieldExpression(args[0].Expr, mem.num);
+                    auto subinit = mem.t->BuildInplaceConstruction(subobj, {}, c);
+                    expr = expr ? c->gen->CreateChainExpression(expr, subinit) : subinit;
+                }
+                return ConcreteExpression(c->GetLvalueType(self), expr);
+            }
+        };
+        return a.GetOverloadSet(a.GetOverloadSet(a.arena.Allocate<DefaultConstructor>(this)), AggregateType::CreateNondefaultConstructorOverloadSet(a));
+    }
     return a.GetOverloadSet(user_defined_constructors, AggregateType::CreateConstructorOverloadSet(a, access));
 }
 

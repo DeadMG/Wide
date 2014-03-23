@@ -1,0 +1,6 @@
+type t {
+    var := true;
+}
+Main() {
+    return t().var;
+}

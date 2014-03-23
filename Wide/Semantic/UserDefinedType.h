@@ -28,13 +28,15 @@ namespace Wide {
             // Actually a list of member variables
             std::unordered_map<std::string, unsigned> members;
             std::unordered_map<ClangTU*, clang::QualType> clangtypes;
+            std::vector<const AST::Expression*> NSDMIs;
             Type* context;
             struct member {
                 std::string name;
                 Type* t;
                 unsigned num;
+                const AST::Expression* InClassInitializer;
             };
-
+            bool HasNSDMI = false;
             // User Defined Complex
             Wide::Util::optional<bool> UDCCache;
             bool UserDefinedComplex(Analyzer& a);

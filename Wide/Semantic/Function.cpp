@@ -201,16 +201,16 @@ void Function::ComputeBody(Analyzer& a) {
                     exprs.push_back(x.t->BuildInplaceConstruction(mem, std::move(args), c));
                 } else {
                     // Don't care about if x.t is ref because refs can't be default-constructed anyway.
-                    /*if (x.InClassInitializer)
+                    if (x.InClassInitializer)
                     {
-                        Context c(a, x.InClassInitializer->location, [](ConcreteExpression e) {});
-                        auto expr = a.AnalyzeExpression(this, x.InClassInitializer, [](ConcreteExpression e) {});
+                        Context c(a, x.InClassInitializer->location, [](ConcreteExpression e) {}, this);
+                        auto expr = a.AnalyzeExpression(member->GetContext(a), x.InClassInitializer, [](ConcreteExpression e) {});
                         auto mem = check(self.t->AccessMember(self, x.name, c));
                         std::vector<ConcreteExpression> args;
                         args.push_back(expr);
                         exprs.push_back(x.t->BuildInplaceConstruction(mem.Expr, std::move(args), c));
                         continue;
-                    }*/
+                    }
                     auto mem = a.gen->CreateFieldExpression(self.Expr, x.num);
                     std::vector<ConcreteExpression> args;
                     Context c(a, con->where, [](ConcreteExpression e) {}, this);
