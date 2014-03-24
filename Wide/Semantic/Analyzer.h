@@ -80,6 +80,7 @@ namespace Wide {
             std::unordered_map<clang::DeclContext*, ClangNamespace*> ClangNamespaces;
             std::unordered_map<Type*, std::unordered_map<std::vector<Type*>, FunctionType*, VectorTypeHasher>> FunctionTypes;
             std::unordered_map<const AST::FunctionBase*, std::unordered_map<std::vector<Type*>, Function*, VectorTypeHasher>> WideFunctions;
+            std::unordered_map<const AST::TemplateType*, std::unordered_map<std::vector<Type*>, TemplateType*, VectorTypeHasher>> WideTemplateInstantiations;
             std::unordered_map<Type*, LvalueType*> LvalueTypes;
             std::unordered_map<Type*, Type*> RvalueTypes;
             std::unordered_map<Type*, ConstructorType*> ConstructorTypes;

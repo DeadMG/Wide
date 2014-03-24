@@ -109,7 +109,7 @@ Analyzer::Analyzer(const Options::Clang& opts, Codegen::Generator& g, const AST:
     global->AddSpecialMember("uint64", GetConstructorType(GetIntegralType(64, false))->BuildValueConstruction({}, c));
     global->AddSpecialMember("float32", GetConstructorType(GetFloatType(32))->BuildValueConstruction({}, c));
     global->AddSpecialMember("float64", GetConstructorType(GetFloatType(64))->BuildValueConstruction({}, c));
-    global->AddSpecialMember("bool", ConcreteExpression(GetConstructorType(Boolean = arena.Allocate<Bool>()), nullptr));
+    global->AddSpecialMember("bool", GetConstructorType(Boolean = arena.Allocate<Bool>())->BuildValueConstruction({}, c));
     global->AddSpecialMember("true", ConcreteExpression(Boolean, gen->CreateIntegralExpression(1, false, Boolean->GetLLVMType(*this))));
     global->AddSpecialMember("false", ConcreteExpression(Boolean, gen->CreateIntegralExpression(0, false, Boolean->GetLLVMType(*this))));
     global->AddSpecialMember("decltype", arena.Allocate<decltypetype>()->BuildValueConstruction({}, c));
@@ -833,29 +833,79 @@ OverloadResolvable* Analyzer::GetCallableForTemplateType(const AST::TemplateType
     if (TemplateTypeCallables.find(t) != TemplateTypeCallables.end())
         return TemplateTypeCallables[t];
 
-    struct TemplateTypeCallable : OverloadResolvable, Callable {
-        TemplateTypeCallable(const AST::TemplateType* f, Type* con)
-        : templatetype(f), context(con) {}
+
+    struct TemplateTypeCallable : Callable {
         Type* context;
         const Wide::AST::TemplateType* templatetype;
-        Util::optional<std::vector<Type*>> MatchParameter(std::vector<Type*> types, Analyzer& a, Type* source) override final {
-            return Util::none;
-        }
+        std::vector<Type*> types;
         std::vector<ConcreteExpression> AdjustArguments(std::vector<ConcreteExpression> args, Context c) override final { return args; }
-        Callable* GetCallableForResolution(std::vector<Type*> types, Analyzer& a) override final { return this; }
-        ConcreteExpression CallFunction(std::vector<ConcreteExpression> args, Context c) override final {
-            std::vector<Type*> types;
-            for (auto arg : args)
-                types.push_back(arg.t);
+        ConcreteExpression CallFunction(std::vector<ConcreteExpression>, Context c) override final {
             return c->GetConstructorType(c->GetTemplateType(templatetype, context, types, ""))->BuildValueConstruction({}, c);
         }
     };
+    struct TemplateTypeResolvable : OverloadResolvable {
+        TemplateTypeResolvable(const AST::TemplateType* f, Type* con)
+        : templatetype(f), context(con) {}
+        Type* context;
+        const Wide::AST::TemplateType* templatetype;
+        std::unordered_map<std::vector<Type*>, TemplateTypeCallable*, VectorTypeHasher> Callables;
 
-    return nullptr;// TemplateTypeCallables[t] = arena.Allocate<TemplateTypeCallable>(t, context);
+        Util::optional<std::vector<Type*>> MatchParameter(std::vector<Type*> types, Analyzer& a, Type* source) override final {
+            if (types.size() != templatetype->arguments.size()) return Util::none;
+            std::vector<Type*> valid;
+            for (unsigned num = 0; num < types.size(); ++num) {
+                auto arg = types[num]->Decay()->GetConstantContext(a);
+                if (!arg) return Util::none;
+                if (!templatetype->arguments[num].type) {
+                    a.ParameterHighlight(templatetype->arguments[num].location); 
+                    valid.push_back(arg);
+                    continue;
+                }
+
+                auto p_type = a.AnalyzeExpression(context, templatetype->arguments[num].type, [](ConcreteExpression e) {}).t->Decay();
+                auto con_type = dynamic_cast<ConstructorType*>(p_type);
+                if (!con_type)
+                    throw Wide::Semantic::NotAType(p_type, templatetype->arguments[num].location, a);
+                a.QuickInfo(templatetype->arguments[num].location, con_type->GetConstructedType());
+                a.ParameterHighlight(templatetype->arguments[num].location);
+                if (arg->IsA(arg, con_type->GetConstructedType(), a, GetAccessSpecifier(source, arg, a)))
+                    valid.push_back(con_type->GetConstructedType());
+                else
+                    return Util::none;
+            }
+            return valid;
+        }
+        Callable* GetCallableForResolution(std::vector<Type*> types, Analyzer& a) override final { 
+            if (Callables.find(types) != Callables.end())
+                return Callables[types];
+            auto callable = a.arena.Allocate<TemplateTypeCallable>();
+            callable->context = context;
+            callable->templatetype = templatetype;
+            callable->types = types;
+            return Callables[types] = callable;
+        }
+    };
+
+    return TemplateTypeCallables[t] = arena.Allocate<TemplateTypeResolvable>(t, context);
 }
 
-TemplateType* Analyzer::GetTemplateType(const Wide::AST::TemplateType*, Type* context, std::vector<Type*> arguments, std::string name) {
-    return nullptr;
+TemplateType* Analyzer::GetTemplateType(const Wide::AST::TemplateType* ty, Type* context, std::vector<Type*> arguments, std::string name) {
+    if (WideTemplateInstantiations.find(ty) != WideTemplateInstantiations.end()) {
+        if (WideTemplateInstantiations[ty].find(arguments) != WideTemplateInstantiations[ty].end())
+            return WideTemplateInstantiations[ty][arguments];
+    }
+    
+    name += "(";
+    std::unordered_map<std::string, Type*> args;
+    for (unsigned num = 0; num < ty->arguments.size(); ++num) {
+        args[ty->arguments[num].name] = arguments[num];
+        name += arguments[num]->explain(*this);
+        if (num != arguments.size() - 1)
+            name += ", ";
+    }
+    name += ")";
+
+    return WideTemplateInstantiations[ty][arguments] = arena.Allocate<TemplateType>(ty->t, *this, context, args, name);
 }
 
 Type* Analyzer::GetTypeForString(std::string str) {

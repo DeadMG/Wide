@@ -1120,6 +1120,7 @@ namespace Wide {
                     }
                     if (token.GetType() == Lexer::TokenType::Template){
                         auto args = ParseFunctionDefinitionArguments(Check(Error::TemplateNoArguments, Lexer::TokenType::OpenBracket).GetLocation());
+                        auto type = Check(Error::ModuleScopeTemplateNoType, Lexer::TokenType::Type);
                         auto ident = Check(Error::ModuleScopeTypeNoIdentifier, Lexer::TokenType::Identifier);
                         auto ty = ParseTypeDeclaration(m, token.GetLocation(), a, ident);
                         sema.AddTemplateTypeToModule(m, ident.GetValue(), args, ty);

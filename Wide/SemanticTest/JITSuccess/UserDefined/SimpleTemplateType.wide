@@ -1,0 +1,7 @@
+template(t) type f {
+    var := t;
+    type(t arg) : var(arg) {}
+}
+Main() {
+    return f(bool)(true).var;
+}

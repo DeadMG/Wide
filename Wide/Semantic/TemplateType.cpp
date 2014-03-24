@@ -12,7 +12,7 @@ struct TemplateType::TemplateTypeLookupContext : MetaType {
     std::unordered_map<std::string, Type*> arguments;
     Wide::Util::optional<ConcreteExpression> AccessMember(ConcreteExpression self, std::string name, Context c) override final {
         if (arguments.find(name) != arguments.end())
-            return c->GetConstructorType(arguments[name])->BuildValueConstruction({}, c);
+            return arguments[name]->BuildValueConstruction({}, c);
         return templatecontext->AccessMember(self, name, c);
     }
     std::string explain(Analyzer& a) override final {

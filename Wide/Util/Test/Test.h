@@ -17,7 +17,7 @@ namespace Wide {
             } catch(Wide::Semantic::Error& err) {
                  errorcallback(err);
                  return true;
-            } catch (std::runtime_error& e) {
+            } catch (std::runtime_error&) {
                 return true;
             }
             return false;
