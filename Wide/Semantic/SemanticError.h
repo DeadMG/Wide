@@ -178,5 +178,59 @@ namespace Wide {
             DecltypeArgumentMismatch(unsigned count, Lexer::Range where);
             unsigned GetNumArguments() { return num; }
         };
+
+        class NoMetaCall : public Error {
+            Type* which;
+        public:
+            NoMetaCall(Type* what, Lexer::Range where, Analyzer& a);
+            Type* GetType() { return which; }
+        };
+
+        class NoMemberToInitialize : public Error {
+            std::string name;
+            Type* which;
+        public:
+            NoMemberToInitialize(Type* what, std::string name, Lexer::Range where, Analyzer& a);
+            Type* GetType() { return which; }
+            std::string GetName() { return name; }
+        };
+
+        class ReturnTypeMismatch : public Error {
+            Type* new_ret_type;
+            Type* existing_ret_type;
+        public:
+            ReturnTypeMismatch(Type* new_r, Type* old_r, Lexer::Range where, Analyzer& a);
+            Type* GetNewReturnType() { return new_ret_type; }
+            Type* GetExistingReturnType() { return existing_ret_type; }
+        };
+
+        class VariableTypeVoid : public Error {
+            std::string name;
+        public:
+            VariableTypeVoid(std::string name, Lexer::Range where);
+        };
+
+        class VariableShadowing : public Error {
+            std::string name;
+            Lexer::Range previousdecl;
+        public:
+            VariableShadowing(std::string name, Lexer::Range previous, Lexer::Range where);
+        };
+
+        class TupleUnpackWrongCount : public Error {
+            Type* tupletype;
+        public:
+            TupleUnpackWrongCount(Type* tupty, Lexer::Range where, Analyzer& a);
+        };
+
+        class NoControlFlowStatement : public Error {
+        public:
+            NoControlFlowStatement(Lexer::Range where);
+        };
+
+        class FunctionTypeRecursion : public Error {
+        public:
+            FunctionTypeRecursion(Lexer::Range where);
+        };
     }
 }

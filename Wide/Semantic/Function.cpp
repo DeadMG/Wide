@@ -13,6 +13,7 @@
 #include <Wide/Semantic/TupleType.h>
 #include <Wide/Semantic/StringType.h>
 #include <Wide/Semantic/LambdaType.h>
+#include <Wide/Semantic/SemanticError.h>
 #include <unordered_set>
 #include <sstream>
 #include <iostream>
@@ -69,7 +70,7 @@ Codegen::Statement* Function::Scope::GetCleanupAllExpression(Analyzer& a, Lexer:
         return a.gen->CreateChainStatement(GetCleanupExpression(a, where, f), parent->GetCleanupAllExpression(a, where, f));
     return GetCleanupExpression(a, where, f);
 }
-Wide::Util::optional<ConcreteExpression> Function::Scope::LookupName(std::string name, Context c) {
+Wide::Util::optional<std::pair<ConcreteExpression, Lexer::Range>> Function::Scope::LookupName(std::string name, Context c) {
     if (named_variables.find(name) != named_variables.end()) {
         if (!parent)
             c->ParameterHighlight(c.where);
@@ -126,7 +127,7 @@ Function::Function(std::vector<Type*> args, const AST::FunctionBase* astfun, Ana
             }
         }
         ++num;
-        current_scope->named_variables.insert(std::make_pair(arg.name, var));
+        current_scope->named_variables.insert(std::make_pair(arg.name, std::make_pair(var, arg.location)));
         exprs.push_back(var.Expr);
         Args.push_back(ty);
     }
@@ -219,7 +220,7 @@ void Function::ComputeBody(Analyzer& a) {
             }
             for (auto&& x : con->initializers)
                 if (std::find_if(members.begin(), members.end(), [&](decltype(*members.begin())& ref) { return ref.name == x->name.front().name; }) == members.end())
-                    throw std::runtime_error("Attempted to initialize a member that did not exist.");
+                    throw NoMemberToInitialize(member, x->name.front().name, x->location, a);
         }
         // Now the body.
         LocalScope base_scope(&root_scope, this);
@@ -247,11 +248,11 @@ void Function::ComputeBody(Analyzer& a) {
                     if (returnstate == ReturnState::ConcreteReturnSeen) {
                         if (!ReturnType->IsReference()) {
                             if (ReturnType != result.t->Decay()) {
-                                throw std::runtime_error("Return mismatch: In a deduced function, all returns must return the same type.");
+                                throw ReturnTypeMismatch(result.t->Decay(), ReturnType, ret->location, a);
                             }
                         } else {
                             if (ReturnType != result.t)
-                                throw std::runtime_error("Return type mismatch- not all returns had the same type.");
+                                throw ReturnTypeMismatch(result.t, ReturnType, ret->location, a);
                         }
                     }
                     returnstate = ReturnState::ConcreteReturnSeen;                        
@@ -279,10 +280,10 @@ void Function::ComputeBody(Analyzer& a) {
                 Context c(a, var->location, register_local_destructor, this);
                 auto result = a.AnalyzeExpression(this, var->initializer, register_local_destructor);
                 if (result.t == a.GetVoidType())
-                    throw std::runtime_error("Attempt to create a variable of type void.");
+                    throw VariableTypeVoid(var->name.front().name, var->location);
                 for (auto name : var->name) {
                     if (auto expr = scope->LookupName(name.name, c))
-                        throw std::runtime_error("Error: variable shadowing " + name.name);
+                        throw VariableShadowing(name.name, expr->second, name.where);
                 }
 
                 auto handle_variable_expression = [var, register_local_destructor, &a, this, c](ConcreteExpression result) {
@@ -306,7 +307,7 @@ void Function::ComputeBody(Analyzer& a) {
 
                 if (var->name.size() == 1) {
                     auto expr = handle_variable_expression(result);
-                    scope->named_variables.insert(std::make_pair(var->name.front().name, expr));
+                    scope->named_variables.insert(std::make_pair(var->name.front().name, std::make_pair(expr, var->name.front().where)));
                     a.QuickInfo(var->name.front().where, expr.t);
                     return expr.Expr;
                 }
@@ -314,13 +315,13 @@ void Function::ComputeBody(Analyzer& a) {
                 // Each name refers to each member in order.
                 auto members = tupty->GetMembers();
                 if (members.size() != var->name.size())
-                    throw std::runtime_error("Attempted to unpack a tuple, but the number of elements was wrong.");
+                    throw TupleUnpackWrongCount(tupty, var->location, a);
 
                 // The number of elements has gotta be >0 for this to parse so don't need a nop.
                 Codegen::Statement* stmt = nullptr;
                 for (unsigned index = 0; index < members.size(); ++index) {
                     auto expr = handle_variable_expression(tupty->PrimitiveAccessMember(result, index, a));
-                    scope->named_variables.insert(std::make_pair(var->name[index].name, expr));
+                    scope->named_variables.insert(std::make_pair(var->name[index].name, std::make_pair(expr, var->name[index].where)));
                     a.QuickInfo(var->name[index].where, expr.t);
                     stmt = stmt ? a.gen->CreateChainExpression(stmt, expr.Expr) : expr.Expr;
                 }
@@ -341,7 +342,7 @@ void Function::ComputeBody(Analyzer& a) {
                 LocalScope condscope(scope, this);
                 Context c(a, if_stmt->condition ? if_stmt->condition->location : if_stmt->var_condition->location, register_local_destructor, this);
                 ConcreteExpression cond = if_stmt->var_condition
-                    ? AnalyzeStatement(if_stmt->var_condition, condscope.get()), condscope->named_variables.begin()->second
+                    ? AnalyzeStatement(if_stmt->var_condition, condscope.get()), condscope->named_variables.begin()->second.first
                     : a.AnalyzeExpression(this, if_stmt->condition, register_local_destructor);
                 auto expr = cond.BuildBooleanConversion(c);
                 LocalScope true_scope(condscope.get(), this);
@@ -360,7 +361,7 @@ void Function::ComputeBody(Analyzer& a) {
                 Context c(a, while_stmt->condition ? while_stmt->condition->location : while_stmt->var_condition->location, register_local_destructor, this);
                 LocalScope condscope(scope, this);
                 ConcreteExpression cond = while_stmt->var_condition
-                    ? AnalyzeStatement(while_stmt->var_condition, condscope.get()), condscope->named_variables.begin()->second
+                    ? AnalyzeStatement(while_stmt->var_condition, condscope.get()), condscope->named_variables.begin()->second.first
                     : a.AnalyzeExpression(this, while_stmt->condition, register_local_destructor);
                 auto ret = condscope->current_while = a.gen->CreateWhile(cond.BuildBooleanConversion(c));
                 LocalScope bodyscope(condscope.get(), this);
@@ -382,7 +383,7 @@ void Function::ComputeBody(Analyzer& a) {
                     des = a.gen->CreateChainStatement(des, currscope->GetCleanupExpression(a, break_stmt->location, this));
                     currscope = currscope->parent;
                 }
-                throw std::runtime_error("Used a break but could not find a control flow statement to break out of.");
+                throw NoControlFlowStatement(break_stmt->location);
             }
 
             if (auto continue_stmt = dynamic_cast<const AST::Continue*>(stmt)) {
@@ -395,10 +396,9 @@ void Function::ComputeBody(Analyzer& a) {
                         return a.gen->CreateChainStatement(des, a.gen->CreateContinue(currscope->current_while));
                     currscope = currscope->parent;
                 }
-                throw std::runtime_error("Used a continue but could not find a control flow statement to break out of.");
+                throw NoControlFlowStatement(continue_stmt->location);
             }
-        
-            throw std::runtime_error("Unsupported statement.");
+            assert(false && "Unsupported statement.");
         };
         for (std::size_t i = 0; i < fun->statements.size(); ++i) {
             exprs.push_back(AnalyzeStatement(fun->statements[i], base_scope.get()));
@@ -407,26 +407,16 @@ void Function::ComputeBody(Analyzer& a) {
         // Else GetLLVMType() will call us again to prepare the return type.
         
         if (returnstate == ReturnState::NoReturnSeen)
-            CompleteAnalysis(nullptr, a);
-        if (returnstate == ReturnState::ConcreteReturnSeen)
-            CompleteAnalysis(ReturnType, a);
+            ReturnType = a.GetVoidType();
+        s = State::AnalyzeCompleted;
+        CompleteAnalysis(a);
     }
 }
-void Function::CompleteAnalysis(Type* ret, Analyzer& a) {
-    if (ReturnType)
-        if (ret != ReturnType)
-            throw std::runtime_error("Attempted to resolve a function with a return type, but it was already resolved with a different return type.");
-    ReturnType = ret;
-    if (returnstate == ReturnState::NoReturnSeen)
-        ReturnType = a.GetVoidType();
-    else
-        if (!ReturnType)
-            throw std::runtime_error("Deferred return type was not evaluated prior to completing analysis.");
+void Function::CompleteAnalysis(Analyzer& a) {
     if (ReturnType == a.GetVoidType() && !dynamic_cast<Codegen::ReturnStatement*>(exprs.empty() ? nullptr : exprs.back())) {
         exprs.push_back(current_scope->GetCleanupAllExpression(a, fun->where, this));
         exprs.push_back(a.gen->CreateReturn()); 
     }
-    s = State::AnalyzeCompleted;
     if (!codefun)
         codefun = a.gen->CreateFunction(GetSignature(a)->GetLLVMType(a), name, this);
     for (auto&& x : exprs)
@@ -461,13 +451,16 @@ ConcreteExpression Function::BuildCall(ConcreteExpression ex, std::vector<Concre
         ComputeBody(*c);
         return BuildCall(ex, std::move(args), c);
     }
-    throw std::runtime_error("Attempted to call a function, but the analysis was not yet completed. This means that you used recursion that the type system cannot handle.");
+    throw FunctionTypeRecursion(c.where);
 }
 Wide::Util::optional<ConcreteExpression> Function::LookupLocal(std::string name, Context c) {
     Analyzer& a = *c;
     if (name == "this" && dynamic_cast<MemberFunctionContext*>(context->Decay()))
         return ConcreteExpression(c->GetLvalueType(context->Decay()), c->gen->CreateParameterExpression([this, &a] { return ReturnType->IsComplexType(a); }));
-    return current_scope->LookupName(name, c);
+    auto expr = current_scope->LookupName(name, c);
+    if (expr)
+        return expr->first;
+    return Util::none;
 }
 std::string Function::GetName() {
     return name;
@@ -499,7 +492,7 @@ Type* Function::GetConstantContext(Analyzer& a) {
     for(auto scope = current_scope; scope; scope = scope->parent) {
         for (auto&& var : scope->named_variables) {
             if (context->constant.find(var.first) == context->constant.end()) {
-                auto& e = var.second;
+                auto& e = var.second.first;
                 if (e.t->Decay()->GetConstantContext(a))
                     context->constant.insert(std::make_pair(var.first, e));
              }

@@ -38,21 +38,21 @@ namespace Wide {
             ReturnState returnstate;
             Type* context;
             Wide::Util::optional<std::string> trampoline;
-            void CompleteAnalysis(Type* ret, Analyzer& a);
+            void CompleteAnalysis(Analyzer& a);
 
             std::vector<Codegen::Statement*> exprs;
             struct Scope {
                 Scope(Scope* s) : parent(s), current_while(nullptr) {}
                 Scope* parent;
                 std::vector<std::unique_ptr<Scope>> children;
-                std::unordered_map<std::string, ConcreteExpression> named_variables;
+                std::unordered_map<std::string, std::pair<ConcreteExpression, Lexer::Range>> named_variables;
                 std::vector<ConcreteExpression> needs_destruction;
                 Codegen::WhileStatement* current_while;
 
                 Codegen::Statement* GetCleanupExpression(Analyzer& a, Lexer::Range where, Function* f);
                 Codegen::Statement* GetCleanupAllExpression(Analyzer& a, Lexer::Range where, Function* f);
 
-                Wide::Util::optional<ConcreteExpression> LookupName(std::string name, Context c);
+                Wide::Util::optional<std::pair<ConcreteExpression, Lexer::Range>> LookupName(std::string name, Context c);
             };
             struct LocalScope;
             Scope root_scope;

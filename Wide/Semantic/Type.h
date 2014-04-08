@@ -3,6 +3,7 @@
 #include <Wide/Lexer/Token.h>
 #include <Wide/Util/Ranges/Optional.h>
 #include <boost/variant.hpp>
+#include <Wide/Semantic/SemanticError.h>
 #include <vector>
 #include <stdexcept>
 #include <unordered_map>
@@ -52,11 +53,9 @@ namespace Wide {
         struct ConcreteExpression;
         struct Context {
             Context(const Context& other) = default;
-            Context(Context&& other) = default;
-
-            //Context(Analyzer* an, Lexer::Range loc, std::function<void(ConcreteExpression)> handler, Type* t)
-            //    : a(an), where(loc), RAIIHandler(std::move(handler)), source(t) {}
-
+            Context(Context&& other)
+                : where(other.where), a(other.a), source(other.source), RAIIHandler(other.RAIIHandler) {}
+            
             Context(Analyzer& an, Lexer::Range loc, std::function<void(ConcreteExpression)> handler, Type* s)
                 : a(&an), where(loc), RAIIHandler(std::move(handler)), source(s) {}
 
@@ -142,15 +141,14 @@ namespace Wide {
             virtual Wide::Util::optional<ConcreteExpression> AccessMember(ConcreteExpression, std::string name, Context c);
 
             virtual ConcreteExpression BuildMetaCall(ConcreteExpression val, std::vector<ConcreteExpression> args, Context c) {
-                throw std::runtime_error("Attempted to meta call a type that did not support it.");
+                throw NoMetaCall(val.t, c.where, *c);
             }
             virtual Codegen::Expression* BuildBooleanConversion(ConcreteExpression val, Context c);
             virtual ConcreteExpression BuildCall(ConcreteExpression val, std::vector<ConcreteExpression> args, std::vector<ConcreteExpression> destructors, Context c);
             virtual ConcreteExpression BuildCall(ConcreteExpression val, std::vector<ConcreteExpression> args, Context c);
 
             virtual ConcreteExpression BuildBinaryExpression(ConcreteExpression lhs, ConcreteExpression rhs, std::vector<ConcreteExpression> destructors, Lexer::TokenType type, Context c);
-
-
+            
             virtual bool IsA(Type* self, Type* other, Analyzer& a, Lexer::Access access);
             virtual Type* GetConstantContext(Analyzer& a);
 
@@ -209,12 +207,22 @@ namespace Wide {
         class MetaType : public PrimitiveType {
         public:
             MetaType() {}
-            using Type::BuildValueConstruction;
             std::function<llvm::Type*(llvm::Module*)> GetLLVMType(Analyzer& a) override;            
             std::size_t size(Analyzer& a) override;
             std::size_t alignment(Analyzer& a) override;
             Type* GetConstantContext(Analyzer& a) override;
             OverloadSet* CreateConstructorOverloadSet(Analyzer& a, Lexer::Access access) override final;
+        };
+        class Concept {
+        protected:
+            virtual Type* ConstrainType(Type* t) = 0;
+        public:
+            virtual bool CanConstrainType(Type* t) = 0;
+            Type* GetConstrainedType(Type* t) {
+                if (CanConstrainType(t))
+                    return ConstrainType(t);
+                return nullptr;
+            }
         };
         std::vector<ConcreteExpression> AdjustArgumentsForTypes(std::vector<ConcreteExpression>, std::vector<Type*>, Context c);
         OverloadResolvable* make_resolvable(std::function<ConcreteExpression(std::vector<ConcreteExpression>, Context)> f, std::vector<Type*> types, Analyzer& a);

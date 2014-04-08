@@ -61,3 +61,27 @@ AddressOfNonLvalue::AddressOfNonLvalue(Type* obj, Lexer::Range where, Analyzer& 
 
 DecltypeArgumentMismatch::DecltypeArgumentMismatch(unsigned count, Lexer::Range where)
 : Error(where, "Passed " + std::to_string(count) + " arguments to decltype instead of 1."), num(count) {}
+
+NoMetaCall::NoMetaCall(Type* what, Lexer::Range where, Analyzer& a)
+: Error(where, "The type " + what->explain(a) + " has no meta call operator."), which(what) {}
+
+NoMemberToInitialize::NoMemberToInitialize(Type* what, std::string name, Lexer::Range where, Analyzer& a)
+: Error(where, "The type " + what->explain(a) + " did not contain a member \"" + name + "\" to initialize."), which(what), name(name) {}
+
+ReturnTypeMismatch::ReturnTypeMismatch(Type* new_r, Type* old_r, Lexer::Range where, Analyzer& a)
+: Error(where, "The function had a return type of " + old_r->explain(a) + " but tried to return " + new_r->explain(a) + "."), new_ret_type(new_r), existing_ret_type(old_r) {}
+
+VariableTypeVoid::VariableTypeVoid(std::string name, Lexer::Range where)
+: Error(where, "The variable \"" + name + "\" was of type void."), name(name) {}
+
+VariableShadowing::VariableShadowing(std::string name, Lexer::Range previous, Lexer::Range where)
+: Error(where, "The variable \"" + name + "\" would shadow an existing variable at " + to_string(previous) + "."), name(name), previousdecl(previous) {}
+
+TupleUnpackWrongCount::TupleUnpackWrongCount(Type* tupty, Lexer::Range where, Analyzer& a)
+: Error(where, "Unpacking " + tupty->explain(a) + " failed because the variables had the wrong count."), tupletype(tupty) {}
+
+NoControlFlowStatement::NoControlFlowStatement(Lexer::Range where)
+: Error(where, "No appropriate control flow statement could be found.") {}
+
+FunctionTypeRecursion::FunctionTypeRecursion(Lexer::Range where)
+: Error(where, "The return type of this function had a recursive dependency that could not be computed.") {}

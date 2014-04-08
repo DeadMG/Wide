@@ -65,7 +65,6 @@ OverloadSet* PointerType::CreateConstructorOverloadSet(Analyzer& a, Lexer::Acces
         Callable* GetCallableForResolution(std::vector<Type*>, Analyzer& a) override final { return this; }
     };
     auto usual = PrimitiveType::CreateConstructorOverloadSet(a, Lexer::Access::Public);
-    //return usual;
     std::vector<Type*> types;
     types.push_back(a.GetLvalueType(this));
     types.push_back(a.GetNullType());

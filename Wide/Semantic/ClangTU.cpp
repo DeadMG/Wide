@@ -103,7 +103,6 @@ public:
     CodeGenConsumer consumer;
     clang::Sema sema;
     std::string filename;
-    std::unordered_map<clang::QualType, std::function<llvm::Type*(llvm::Module*)>, ClangTypeHasher> DeferredTypeMap;
     llvm::Module mod;
     clang::CodeGen::CodeGenModule codegenmod;
     clang::Parser p;
@@ -286,8 +285,6 @@ std::function<llvm::Type*(llvm::Module*)> ClangTU::GetLLVMTypeFromClangType(clan
         }
         
         auto RD = t.getCanonicalType()->getAsCXXRecordDecl();
-        if (prebaked_types.find(t) != prebaked_types.end())
-            return prebaked_types[t](mod);
 
         // Below logic copy pastad from CodeGenModule::addRecordTypeName
         std::string TypeName;
