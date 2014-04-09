@@ -186,7 +186,7 @@ ConcreteExpression Type::BuildBinaryExpression(ConcreteExpression lhs, ConcreteE
     case Lexer::TokenType::And:
         return ConcreteExpression(c->GetBooleanType(), lhs.BuildBooleanConversion(c)).BuildBinaryExpression(ConcreteExpression(c->GetBooleanType(), rhs.BuildBooleanConversion(c)), Wide::Lexer::TokenType::And, c);
     }
-    throw std::runtime_error("Attempted to build a binary expression; but it could not be found by the type, and a default could not be applied.");
+    adlset->IssueResolutionError(arguments, c);
 }
 
 ConcreteExpression Type::BuildRvalueConstruction(std::vector<ConcreteExpression> args, Context c) {
@@ -218,8 +218,7 @@ Codegen::Expression* Type::BuildInplaceConstruction(Codegen::Expression* mem, st
         types.push_back(arg.t);
     auto set = GetConstructorOverloadSet(*c, GetAccessSpecifier(c, this));
     auto call = set->Resolve(types, *c, c.source);
-    if (!call)
-        throw std::runtime_error("Attempted to construct a type, but no constructor could be called.");
+    if (!call) set->IssueResolutionError(types, c);
     return c->gen->CreateChainExpression(call->Call(std::move(args), c).Expr, mem);
 }
 
@@ -496,7 +495,7 @@ ConcreteExpression Type::BuildUnaryExpression(ConcreteExpression self, Lexer::To
     auto callable = opset->Resolve({ self.t }, *c, c.source);
     if (!callable) {
         if (type != Lexer::TokenType::Negate)
-            throw std::runtime_error("Could not resolve unary operator call.");
+            opset->IssueResolutionError({ self.t }, c);
         return ConcreteExpression(c->GetBooleanType(), c->gen->CreateNegateExpression(self.BuildBooleanConversion(c)));
     }
     return callable->Call({ self }, c);
@@ -508,8 +507,7 @@ ConcreteExpression Type::BuildCall(ConcreteExpression val, std::vector<ConcreteE
     for (auto arg : args)
         types.push_back(arg.t);
     auto call = set->Resolve(types, *c, c.source);
-    if (!call)
-        throw std::runtime_error("Attempted to call a type but it had no such member.");
+    if (!call) set->IssueResolutionError(types, c);
     return call->Call(args, c);
 }
 

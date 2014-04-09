@@ -232,5 +232,33 @@ namespace Wide {
         public:
             FunctionTypeRecursion(Lexer::Range where);
         };
+
+        class BadMacroExpression : public Error {
+            std::string expr;
+        public:
+            BadMacroExpression(Lexer::Range where, std::string expression);
+            std::string GetExpression() { return expr; }
+        };
+        
+        class BadUsingTarget : public Error {
+            Type* dest;
+        public:
+            BadUsingTarget(Type* con, Lexer::Range where, Analyzer& a);
+        };
+        
+        class PrologNonAssignment : public Error {
+        public:
+            PrologNonAssignment(Lexer::Range where);
+        };
+
+        class PrologAssignmentNotIdentifier : public Error {
+        public:
+            PrologAssignmentNotIdentifier(Lexer::Range where);
+        };
+
+        class PrologExportNotAString : public Error {
+        public:
+            PrologExportNotAString(Lexer::Range where);
+        };
     }
 }

@@ -94,7 +94,10 @@ ConcreteExpression Semantic::InterpretExpression(clang::Expr* expr, ClangTU& tu,
                 return lhs.BuildBinaryExpression(rhs, pair.first, c);
             }
         }
-        throw std::runtime_error("Could not interpret C++ binary expression");
+        std::string str;
+        llvm::raw_string_ostream ostr(str);
+        expr->dump(ostr, tu.GetASTContext().getSourceManager());
+        throw BadMacroExpression(c.where, str);
     }
     if (auto call = llvm::dyn_cast<clang::CallExpr>(expr)) {
         auto func = InterpretExpression(call->getCallee(), tu, c);
@@ -134,18 +137,24 @@ ConcreteExpression Semantic::InterpretExpression(clang::Expr* expr, ClangTU& tu,
             decls.insert(func);
             return c->GetOverloadSet(decls, &tu, nullptr)->BuildValueConstruction({}, c);
         }
-        throw std::runtime_error("Attempted to interpret a Clang expression, but it referenced a decl which could not be interpreted.");
+        std::string str;
+        llvm::raw_string_ostream ostr(str);
+        expr->dump(ostr, tu.GetASTContext().getSourceManager());
+        throw BadMacroExpression(c.where, str);
     }
     if (auto temp = llvm::dyn_cast<clang::MaterializeTemporaryExpr>(expr)) {
         return InterpretExpression(temp->GetTemporaryExpr(), tu, c);
     }
     if (auto cast = llvm::dyn_cast<clang::ImplicitCastExpr>(expr)) {
-        // C++ treats string lits as pointer to character so we need to do the same here.
+        // C++ treats string lits as pointer to character so we need to special-case here.
         auto castty = c->GetClangType(tu, cast->getType());
         auto castexpr = InterpretExpression(cast->getSubExpr(), tu, c);
         if (castty == c->GetPointerType(c->GetIntegralType(8, true)) && dynamic_cast<StringType*>(castexpr.t->Decay()))
             return castexpr;
         return castty->BuildRvalueConstruction({ castexpr }, c);
     }
-    throw std::runtime_error("Attempted to interpret a Clang expression, but it was of a structure that could not be interpreted.");
+    std::string str;
+    llvm::raw_string_ostream ostr(str);
+    expr->dump(ostr, tu.GetASTContext().getSourceManager());
+    throw BadMacroExpression(c.where, str);
 }

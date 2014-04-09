@@ -1,0 +1,8 @@
+type t {
+    x := int;
+    t(int i) : x(i) {}
+}
+using arg := t(5);
+Main() {
+    return arg.x == 5;
+}

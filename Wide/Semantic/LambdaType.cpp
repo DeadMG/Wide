@@ -32,9 +32,9 @@ ConcreteExpression LambdaType::BuildCall(ConcreteExpression val, std::vector<Con
     std::vector<Type*> types;
     for (auto arg : args)
         types.push_back(arg.t);
-    auto call = c->GetOverloadSet(c->GetCallableForFunction(lam, val.t, GetNameForOperator(Lexer::TokenType::OpenBracket)))->Resolve(types, *c, c.source);
-    if (!call)
-        throw std::runtime_error("Attempted to call a lambda type but overload resolution could not resolve the call.");
+    auto overset = c->GetOverloadSet(c->GetCallableForFunction(lam, val.t, GetNameForOperator(Lexer::TokenType::OpenBracket)));
+    auto call = overset->Resolve(types, *c, c.source);
+    if (!call) overset->IssueResolutionError(types, c);
     return call->Call(args, c);
 }
 ConcreteExpression LambdaType::BuildLambdaFromCaptures(std::vector<ConcreteExpression> exprs, Context c) {
@@ -46,9 +46,9 @@ ConcreteExpression LambdaType::BuildLambdaFromCaptures(std::vector<ConcreteExpre
         std::vector<Type*> types;
         types.push_back(c->GetLvalueType(GetMembers()[i]));
         types.push_back(exprs[i].t);
-        auto call = GetMembers()[i]->GetConstructorOverloadSet(*c, Lexer::Access::Public)->Resolve(types, *c, c.source);
-        if (!call)
-            throw std::runtime_error("Could not construct lambda from literal.");
+        auto conset = GetMembers()[i]->GetConstructorOverloadSet(*c, Lexer::Access::Public);
+        auto call = conset->Resolve(types, *c, c.source);
+        if (!call) conset->IssueResolutionError(types, c);
         auto expr = call->Call({ PrimitiveAccessMember(memory, i, *c), exprs[i] }, c).Expr;
         construct = construct ? c->gen->CreateChainExpression(construct, expr) : expr;
     }

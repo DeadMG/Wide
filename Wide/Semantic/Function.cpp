@@ -141,21 +141,21 @@ Function::Function(std::vector<Type*> args, const AST::FunctionBase* astfun, Ana
         for (auto&& prolog : fun->prolog) {
             auto ass = dynamic_cast<const AST::BinaryExpression*>(prolog);
             if (!ass || ass->type != Lexer::TokenType::Assignment)
-                throw std::runtime_error("Prologs can only be composed of assignment expressions right now!");
+                throw PrologNonAssignment(prolog->location);
             auto ident = dynamic_cast<const AST::Identifier*>(ass->lhs);
             if (!ident)
-                throw std::runtime_error("Prolog assignment expressions must have a plain identifier on the left-hand-side right now!");
+                throw PrologAssignmentNotIdentifier(ass->lhs->location);
             auto expr = a.AnalyzeExpression(this, ass->rhs, [](ConcreteExpression e) {});
             if (ident->val == "ExportName") {
                 auto str = dynamic_cast<StringType*>(expr.t->Decay());
                 if (!str)
-                    throw std::runtime_error("Prolog right-hand-sides of ExportName must be of string type!");
+                    throw PrologExportNotAString(ass->rhs->location);
                 trampoline = str->GetValue();
             }
             if (ident->val == "ReturnType") {
-                auto ty = dynamic_cast<ConstructorType*>(expr.t);
+                auto ty = dynamic_cast<ConstructorType*>(expr.t->Decay());
                 if (!ty)
-                    throw std::runtime_error("Prolog right-hand-side of ReturnType must be a type.");
+                    throw NotAType(expr.t->Decay(), ass->rhs->location, a);
                 ReturnType = ty->GetConstructedType();
                 returnstate = ReturnState::ConcreteReturnSeen;
             }

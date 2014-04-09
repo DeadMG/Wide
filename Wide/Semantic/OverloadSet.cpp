@@ -79,9 +79,8 @@ ConcreteExpression OverloadSet::BuildCall(ConcreteExpression e, std::vector<Conc
 
     for(auto x : args)
         targs.push_back(x.t);
-    auto call = Resolve(std::move(targs), *c, c.source);
-    if (!call)
-        throw std::runtime_error("Fuck!");
+    auto call = Resolve(targs, *c, c.source);
+    if (!call) IssueResolutionError(targs, c);
 
     if (nonstatic)
         args.insert(args.begin(), ConcreteExpression(nonstatic, c->gen->CreateFieldExpression(e.BuildValue(c).Expr, 0)));
@@ -358,8 +357,7 @@ Wide::Util::optional<ConcreteExpression> OverloadSet::AccessMember(ConcreteExpre
                 types.push_back(con->GetConstructedType());
             }
             auto call = from->Resolve(types, *c, c.source);
-            if (!call)
-                throw std::runtime_error("Could not resolve a single function from this overload set.");
+            if (!call) from->IssueResolutionError(types, c);
             auto clangfunc = dynamic_cast<cppcallable*>(call);
             std::unordered_set<clang::NamedDecl*> decls;
             decls.insert(clangfunc->fun);
@@ -376,4 +374,8 @@ std::string OverloadSet::explain(Analyzer& a) {
     std::stringstream strstr;
     strstr << this;
     return "OverloadSet " + strstr.str();
+}
+
+void OverloadSet::IssueResolutionError(std::vector<Type*> types, Context c) {
+    throw std::runtime_error("Overload resolution failure.");
 }

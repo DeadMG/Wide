@@ -46,20 +46,9 @@ Wide::Util::optional<ConcreteExpression> Module::AccessMember(ConcreteExpression
         }
         if (auto usedecl = dynamic_cast<const AST::Using*>(decl)) {
             auto expr = c->AnalyzeExpression(this, usedecl->expr, [](ConcreteExpression e) {});
-            if (auto conty = dynamic_cast<ConstructorType*>(expr.t->Decay())) {
-                return conty->BuildValueConstruction({}, c);
-            }
-            if (auto fun = dynamic_cast<OverloadSet*>(expr.t->Decay()))
-                return expr;
-            if (auto temp = dynamic_cast<ClangTemplateClass*>(expr.t->Decay()))
-                return expr;
-            if (IsLvalueType(expr.t))
-                return expr;
-            if (auto nam = dynamic_cast<ClangNamespace*>(expr.t->Decay()))
-                return expr;
-            if (auto mod = dynamic_cast<Module*>(expr.t->Decay()))
-                return expr;
-            throw std::runtime_error("Attempted to using something that was not a type, template, module, or function");
+            if (auto constant = expr.t->Decay()->GetConstantContext(*c))
+                return constant->BuildValueConstruction({}, c);
+            throw BadUsingTarget(expr.t->Decay(), c.where, *c);
         }
         if (auto overdecl = dynamic_cast<const AST::FunctionOverloadSet*>(decl)) {
             std::unordered_set<OverloadResolvable*> resolvable;
@@ -84,7 +73,7 @@ Wide::Util::optional<ConcreteExpression> Module::AccessMember(ConcreteExpression
         if (auto tydecl = dynamic_cast<const AST::Type*>(decl)) {
             return c->GetConstructorType(c->GetUDT(tydecl, this, name))->BuildValueConstruction({}, c);
         }
-        throw std::runtime_error("Attempted to access a member of a Wide module, but did not recognize it as a using, a type, or a function.");
+        assert(false && "Looked up a member of a module but did not recognize the AST node used.");
     }
     if (SpecialMembers.find(name) != SpecialMembers.end())
         return SpecialMembers.at(name);

@@ -75,7 +75,7 @@ VariableTypeVoid::VariableTypeVoid(std::string name, Lexer::Range where)
 : Error(where, "The variable \"" + name + "\" was of type void."), name(name) {}
 
 VariableShadowing::VariableShadowing(std::string name, Lexer::Range previous, Lexer::Range where)
-: Error(where, "The variable \"" + name + "\" would shadow an existing variable at " + to_string(previous) + "."), name(name), previousdecl(previous) {}
+: Error(where, "The variable \"" + name + "\" would shadow an existing variable at " + previous + "."), name(name), previousdecl(previous) {}
 
 TupleUnpackWrongCount::TupleUnpackWrongCount(Type* tupty, Lexer::Range where, Analyzer& a)
 : Error(where, "Unpacking " + tupty->explain(a) + " failed because the variables had the wrong count."), tupletype(tupty) {}
@@ -85,3 +85,18 @@ NoControlFlowStatement::NoControlFlowStatement(Lexer::Range where)
 
 FunctionTypeRecursion::FunctionTypeRecursion(Lexer::Range where)
 : Error(where, "The return type of this function had a recursive dependency that could not be computed.") {}
+
+PrologNonAssignment::PrologNonAssignment(Lexer::Range where)
+: Error(where, "Prolog statements can only be assignments right now.") {}
+
+PrologAssignmentNotIdentifier::PrologAssignmentNotIdentifier(Lexer::Range where)
+: Error(where, "Prolog assignment statement left-hand-sides can only be identifiers.") {}
+
+PrologExportNotAString::PrologExportNotAString(Lexer::Range where)
+: Error(where, "Prolog ExportName assignment right-hand-side must be a constant string.") {}
+
+BadMacroExpression::BadMacroExpression(Lexer::Range where, std::string expression)
+: Error(where, "Could not interpret macro expression:\n" + expression) {}
+
+BadUsingTarget::BadUsingTarget(Type* con, Lexer::Range where, Analyzer& a)
+: Error(where, "The using target " + con->explain(a) + " was not a constant expression.") {}

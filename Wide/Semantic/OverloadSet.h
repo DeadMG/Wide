@@ -46,6 +46,8 @@ namespace Wide {
             std::string explain(Analyzer& a) override final;
             Type* GetConstantContext(Analyzer& a) override final;
             std::string GetCPPMangledName();
+
+            void IssueResolutionError(std::vector<Type*> types, Context c);
         };
     }
 }

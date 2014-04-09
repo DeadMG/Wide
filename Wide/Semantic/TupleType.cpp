@@ -24,9 +24,9 @@ ConcreteExpression TupleType::ConstructFromLiteral(std::vector<ConcreteExpressio
         std::vector<Type*> types;
         types.push_back(c->GetLvalueType(GetMembers()[i]));
         types.push_back(exprs[i].t);
-        auto call = GetMembers()[i]->GetConstructorOverloadSet(*c, Lexer::Access::Public)->Resolve(types, *c, this);
-        if (!call)
-            throw std::runtime_error("Could not construct tuple value from literal.");
+        auto conset = GetMembers()[i]->GetConstructorOverloadSet(*c, Lexer::Access::Public);
+        auto call = conset->Resolve(types, *c, this);
+        if (!call) conset->IssueResolutionError(types, c);
         auto expr = call->Call({ PrimitiveAccessMember(memory, i, *c), exprs[i] }, c).Expr;
         construct = construct ? c->gen->CreateChainExpression(construct, expr) : expr;
     }
