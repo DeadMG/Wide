@@ -1,0 +1,4 @@
+using header := cpp("JITSuccess/CPPInterop/ABI/Virtuals/SimpleVirtualFunction.h");
+Main() {
+    return header.x().f();
+}

@@ -309,3 +309,10 @@ BreakStatement* Generator::CreateBreak(Codegen::WhileStatement* s) {
 LifetimeEnd* Generator::CreateLifetimeEnd(Codegen::Expression* e) {
     return arena.Allocate<LifetimeEnd>(AssertExpression(e));
 }
+
+PointerIndex* Generator::CreatePointerIndex(Codegen::Expression* e, int index) {
+    return arena.Allocate<PointerIndex>(AssertExpression(e), index);
+}
+PointerCast* Generator::CreatePointerCast(Codegen::Expression* e, std::function<llvm::Type*(llvm::Module*)> ty) {
+    return arena.Allocate<PointerCast>(AssertExpression(e), ty);
+}

@@ -39,7 +39,7 @@ llvm::Value* FunctionCall::ComputeValue(llvm::IRBuilder<>& builder, Generator& g
     if (!obj)
         Wide::Util::DebugBreak();
     auto fun = llvm::dyn_cast<llvm::Function>(obj);
-    auto funty = fun->getFunctionType();
+    auto funty = fun ? fun->getFunctionType() : llvm::dyn_cast<llvm::FunctionType>(llvm::dyn_cast<llvm::PointerType>(obj->getType())->getElementType());
     std::set<std::size_t> ignoredparams;
     std::vector<llvm::Value*> values;    
     for(unsigned int i = 0; i < arguments.size(); ++i) {
@@ -50,52 +50,59 @@ llvm::Value* FunctionCall::ComputeValue(llvm::IRBuilder<>& builder, Generator& g
     std::vector<unsigned> byval;
     if (CastTy) {
         auto t = llvm::dyn_cast<llvm::FunctionType>(llvm::dyn_cast<llvm::PointerType>(CastTy(mod))->getElementType());
-        if (funty != t) {
-            // The numerous ways in which this can occur even in well-formed code are:
-        
-            // i1/i8 mismatch
-            // Clang return type coercion
-            // Clang dropping last-parameter empty types
-            // Clang using byval to confuse us
-            // Clang can generate functions and then use bitcasts itself to call them (not currently covered as no test cases)
-            // Clang can coerce parameters sometimes (not yet encountered)
-        
-            // Handle the parameters for now, check the return type after the call has been generated.            
-            // Check for Clang dropping last-parameter empty types
-            if (funty->getNumParams() != t->getNumParams())
+        if (!fun) {
+            // We have nothing to go on so just blindly cast I guess.
+            obj = builder.CreateBitCast(obj, t->getPointerTo());
+        } else {
+            if (funty != t) {
+                // The numerous ways in which this can occur even in well-formed code are:
+
+                // i1/i8 mismatch
+                // Clang return type coercion
+                // Clang dropping last-parameter empty types
+                // Clang using byval to confuse us
+                // Clang can generate functions and then use bitcasts itself to call them (not currently covered as no test cases)
+                // Clang can coerce parameters sometimes (not yet encountered)
+
+                // Handle the parameters for now, check the return type after the call has been generated.            
+                // Check for Clang dropping last-parameter empty types
+                if (funty->getNumParams() != t->getNumParams())
                 if (t->getNumParams() == funty->getNumParams() + 1)
-                    if (g.IsEliminateType(t->getParamType(t->getNumParams() - 1)))
-                        values.pop_back();
-            if (values.size() != funty->getNumParams())
-                assert(false && "The number of parameters was a mismatch that was not covered by empty-type elimination.");
+                if (g.IsEliminateType(t->getParamType(t->getNumParams() - 1)))
+                    values.pop_back();
+                if (values.size() != funty->getNumParams())
+                    assert(false && "The number of parameters was a mismatch that was not covered by empty-type elimination.");
 
 
-            for(auto arg_begin = fun->arg_begin(); arg_begin != fun->arg_end(); ++arg_begin) {
-                // If this argument is a match then great
-                auto arg_ty = arg_begin->getType();
-                auto param_ty = t->getParamType(arg_begin->getArgNo());
-                auto argnum = arg_begin->getArgNo();
-                if (arg_ty == param_ty)
-                    continue;
+                for (auto arg_begin = fun->arg_begin(); arg_begin != fun->arg_end(); ++arg_begin) {
+                    // If this argument is a match then great
+                    auto arg_ty = arg_begin->getType();
+                    auto param_ty = t->getParamType(arg_begin->getArgNo());
+                    auto argnum = arg_begin->getArgNo();
+                    if (arg_ty == param_ty)
+                        continue;
 
-                // Check for Clang using byval to confuse us.
-                if (auto ptrty = llvm::dyn_cast<llvm::PointerType>(arg_ty)) {
-                    if (ptrty->getElementType() != param_ty)
-                        assert(false && "The parameter types did not match and byval could not explain the mismatch.");
+                    // Check for Clang using byval to confuse us.
+                    if (auto ptrty = llvm::dyn_cast<llvm::PointerType>(arg_ty)) {
+                        if (ptrty->getElementType() != param_ty)
+                            assert(false && "The parameter types did not match and byval could not explain the mismatch.");
                         // If byval, then ignore this mismatch.
-                    if (!arg_begin->hasByValAttr())
-                        assert(false && "The parameter types did not match and byval could not explain the mismatch.");
+                        if (!arg_begin->hasByValAttr())
+                            assert(false && "The parameter types did not match and byval could not explain the mismatch.");
 
-                    auto alloc = builder.CreateAlloca(param_ty);
-                    alloc->setAlignment(arg_begin->getParamAlignment());
-                    builder.CreateStore(values[argnum], alloc);
-                    values[argnum] = alloc;
-                    byval.push_back(argnum);
-                } else if (arg_ty == llvm::IntegerType::getInt1Ty(mod->getContext()) && param_ty == llvm::IntegerType::getInt8Ty(mod->getContext()))  {
-                    // i8-i1 mismatch, fix them up with a trunc
-                    values[argnum] = builder.CreateTrunc(values[argnum], llvm::IntegerType::getInt1Ty(mod->getContext()));
-                } else
-                    assert(false && "The parameter types did not match and (byval) || (i1/i8) could not explain the mismatch.");
+                        auto alloc = builder.CreateAlloca(param_ty);
+                        alloc->setAlignment(arg_begin->getParamAlignment());
+                        builder.CreateStore(values[argnum], alloc);
+                        values[argnum] = alloc;
+                        byval.push_back(argnum);
+                    }
+                    else if (arg_ty == llvm::IntegerType::getInt1Ty(mod->getContext()) && param_ty == llvm::IntegerType::getInt8Ty(mod->getContext()))  {
+                        // i8-i1 mismatch, fix them up with a trunc
+                        values[argnum] = builder.CreateTrunc(values[argnum], llvm::IntegerType::getInt1Ty(mod->getContext()));
+                    }
+                    else
+                        assert(false && "The parameter types did not match and (byval) || (i1/i8) could not explain the mismatch.");
+                }
             }
         }
     }
@@ -180,9 +187,9 @@ llvm::Value* ChainExpression::ComputeValue(llvm::IRBuilder<>& builder, Generator
 
 llvm::Value* FieldExpression::ComputeValue(llvm::IRBuilder<>& builder, Generator& g) {
     auto val = obj->GetValue(builder, g);
-    if (val->getType()->isPointerTy())
+    if (val->getType()->isPointerTy()) {
         return builder.CreateStructGEP(obj->GetValue(builder, g), fieldnum());
-    else {
+    } else {
         std::vector<uint32_t> args;
         args.push_back(fieldnum());
         return builder.CreateExtractValue(val, args);
@@ -326,4 +333,13 @@ llvm::Value* Nop::ComputeValue(llvm::IRBuilder<>& builder, Generator& g) {
 llvm::Value* DeferredExpr::ComputeValue(llvm::IRBuilder<>& b, Generator& g) {
     auto expr = dynamic_cast<LLVMCodegen::Expression*>(func());
     return expr->GetValue(b, g);
+}
+
+llvm::Value* PointerIndex::ComputeValue(llvm::IRBuilder<>& b, Generator& g) {
+    auto val = pointer->GetValue(b, g);
+    return b.CreateConstGEP1_32(val, index);
+}
+llvm::Value* PointerCast::ComputeValue(llvm::IRBuilder<>& builder, Generator& g) {
+    auto val = pointer->GetValue(builder, g);
+    return builder.CreateBitCast(val, type(builder.GetInsertBlock()->getParent()->getParent()));
 }

@@ -352,6 +352,10 @@ std::string ClangTU::MangleName(clang::NamedDecl* D) {
         return impl->codegenmod.getMangledName(gd);
     }
     if (auto condecl = llvm::dyn_cast<clang::CXXConstructorDecl>(D)) {
+        // Gotta consider virtual tables and RTTI descriptors.
+        if (condecl->getParent()->isPolymorphic()) {
+            RTTITypes.insert(GetASTContext().getRecordType(condecl->getParent()));
+        }
         auto gd = clang::GlobalDecl(condecl, clang::CXXCtorType::Ctor_Complete);
         impl->codegenmod.GetAddrOfGlobal(gd);
         return impl->codegenmod.getMangledName(gd);
@@ -385,7 +389,7 @@ unsigned ClangTU::GetFieldNumber(clang::FieldDecl* f) {
     return impl->codegenmod.getTypes().getCGRecordLayout(f->getParent()).getLLVMFieldNo(f);
 }
 
-unsigned ClangTU::GetBaseNumber(clang::CXXRecordDecl* self, clang::CXXRecordDecl* f) {
+unsigned ClangTU::GetBaseNumber(const clang::CXXRecordDecl* self, const clang::CXXRecordDecl* f) {
     return impl->codegenmod.getTypes().getCGRecordLayout(self).getNonVirtualBaseLLVMFieldNo(f);
 }
 
@@ -421,4 +425,7 @@ clang::Expr* ClangTU::ParseMacro(std::string macro, Lexer::Range where) {
     auto end = begin + info->getDefinitionLength(GetSema().getSourceManager());
     auto macrodata = std::string(begin, end);
     throw MacroNotValidExpression(macrodata, macro, where);
+}
+unsigned int ClangTU::GetVirtualFunctionOffset(clang::CXXMethodDecl* meth) {
+    return impl->codegenmod.getItaniumVTableContext().getMethodVTableIndex(clang::GlobalDecl(meth));
 }

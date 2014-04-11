@@ -11,6 +11,7 @@
 #include <Wide/Semantic/Util.h>
 #include <Wide/Semantic/SemanticError.h>
 #include <Wide/Semantic/ConstructorType.h>
+#include <Wide/Semantic/PointerType.h>
 #include <Wide/Lexer/Token.h>
 #include <iostream>
 #include <array>
@@ -129,8 +130,9 @@ Wide::Util::optional<ConcreteExpression> ClangType::AccessMember(ConcreteExpress
             auto ty = IsLvalueType(val.t) ? c->GetLvalueType(c->GetClangType(*from, field->getType())) : c->GetRvalueType(c->GetClangType(*from, field->getType()));
             return ConcreteExpression(ty, c->gen->CreateFieldExpression(val.Expr, from->GetFieldNumber(field)));
         }        
-        if (auto fun = llvm::dyn_cast<clang::CXXMethodDecl>(lr.getFoundDecl()))
+        if (auto fun = llvm::dyn_cast<clang::CXXMethodDecl>(lr.getFoundDecl())) {
             return GetOverloadSet(fun, from, val, c);
+        }
         if (auto ty = llvm::dyn_cast<clang::TypeDecl>(lr.getFoundDecl()))
             return c->GetConstructorType(c->GetClangType(*from, from->GetASTContext().getTypeDeclType(ty)))->BuildValueConstruction({}, c);
         if (auto vardecl = llvm::dyn_cast<clang::VarDecl>(lr.getFoundDecl())) {    
@@ -353,10 +355,12 @@ InheritanceRelationship ClangType::IsDerivedFrom(Type* other, Analyzer& a) {
     auto recdecl = type->getAsCXXRecordDecl();
     InheritanceRelationship result = InheritanceRelationship::NotDerived;
     for (auto base = recdecl->bases_begin(); base != recdecl->bases_end(); ++base) {
-        if (base->getType()->getAsCXXRecordDecl() == otherdecl) {
+        auto basedecl = base->getType()->getAsCXXRecordDecl();
+        if (basedecl == otherdecl) {
             if (result == InheritanceRelationship::NotDerived)
                 result = InheritanceRelationship::UnambiguouslyDerived;
-            result = InheritanceRelationship::AmbiguouslyDerived;
+            else
+                result = InheritanceRelationship::AmbiguouslyDerived;
             continue;
         }
         auto Base = dynamic_cast<BaseType*>(a.GetClangType(*from, base->getType()));
@@ -377,8 +381,12 @@ Codegen::Expression* ClangType::AccessBase(Type* other, Codegen::Expression* exp
     assert(IsDerivedFrom(other, a) == InheritanceRelationship::UnambiguouslyDerived);
     for (auto baseit = recdecl->bases_begin(); baseit != recdecl->bases_end(); ++baseit) {
         auto base = dynamic_cast<BaseType*>(a.GetClangType(*from, baseit->getType()));
-        if (base == other)
+        if (base == other) {
+            // EBO can result in this function failing.
+            if (baseit->getType()->getAsCXXRecordDecl()->isEmpty())
+                return a.gen->CreatePointerCast(expr, a.GetPointerType(other)->GetLLVMType(a));
             return a.gen->CreateFieldExpression(expr, from->GetBaseNumber(recdecl, baseit->getType()->getAsCXXRecordDecl()));
+        }
         if (base->IsDerivedFrom(other, a) == InheritanceRelationship::UnambiguouslyDerived)
             return base->AccessBase(other, a.gen->CreateFieldExpression(expr, from->GetBaseNumber(recdecl, baseit->getType()->getAsCXXRecordDecl())), a);
     }

@@ -9,6 +9,9 @@
 int main(int argc, char** argv) {
     Wide::Options::Clang clangopts;
     clangopts.TargetOptions.Triple = "i686-pc-mingw32";
+    // Enabling RTTI requires a Standard Library to be linked.
+    // Else, there is an undefined reference to an ABI support class.
+    clangopts.LanguageOptions.RTTI = false;
     boost::program_options::options_description desc;
     desc.add_options()
         ("input", boost::program_options::value<std::string>(), "One input file. May be specified multiple times.")
@@ -75,7 +78,7 @@ int main(int argc, char** argv) {
         total_failed += result.fails;
     }
     std::cout << "Total succeeded: " << total_succeeded << " failed: " << total_failed;
-    //Jit(clangopts, "JITSuccess/CPPInterop/SimpleUserDefinedType.wide");
+    //Jit(clangopts, "JITSuccess/CPPInterop/ABI/Virtuals/DerivedMultipleInheritance.wide");
     if (input.count("break"))
         Wide::Util::DebugBreak();
     return total_failed != 0;

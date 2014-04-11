@@ -113,6 +113,8 @@ namespace Wide {
             virtual Codegen::FPExtension* CreateFPExtension(Codegen::Expression*, std::function < llvm::Type*(llvm::Module*)>) { return nullptr;  }
             virtual Codegen::Nop* CreateNop() { return nullptr; }
             virtual Codegen::Deferred* CreateDeferredStatement(std::function<Codegen::Statement*()>) { return nullptr; }
+            virtual Codegen::PointerIndex* CreatePointerIndex(Codegen::Expression*, int) { return nullptr;  }
+            virtual Codegen::PointerCast* CreatePointerCast(Codegen::Expression*, std::function<llvm::Type*(llvm::Module*)>) override final { return nullptr; }
         };
     }
 }

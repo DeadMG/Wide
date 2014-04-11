@@ -1,0 +1,9 @@
+using header := cpp("JITSuccess/CPPInterop/ABI/Virtuals/DerivedSingleInheritance.h");
+f(header.x.rvalue arg) prolog {
+    ExportName = cpp.mangle(header.f.resolve(header.x.rvalue));
+} {
+    return arg.f();
+}
+Main() {
+    return header.g() & header.y().f();
+}

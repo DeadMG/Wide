@@ -73,6 +73,8 @@ namespace Wide {
         class Continue : public Statement {};
         class Break : public Statement {};
         class LifetimeEnd : public Statement {};
+        class PointerIndex : public Expression {};
+        class PointerCast : public Expression {};
         class Function {
         public:
             virtual ~Function() {}
@@ -112,8 +114,11 @@ namespace Wide {
             StoreExpression* CreateStoreFileLine(Expression* lhs, Expression* rhs, const char* file, int line) {
                 return AddDebugData(CreateStore(lhs, rhs), file, line);
             }
-
+            virtual PointerIndex* CreatePointerIndex(Expression*, int index) = 0;
             virtual LoadExpression* CreateLoad(Expression*) = 0;
+            LoadExpression* CreateLoadFileLine(Expression* arg, const char* file, int line) {
+                return AddDebugData(CreateLoad(arg), file, line);
+            }
             virtual ReturnStatement* CreateReturn() = 0;
             virtual ReturnStatement* CreateReturn(std::function<Expression*()>) = 0;
             virtual Continue* CreateContinue(WhileStatement* s) = 0;
@@ -126,7 +131,13 @@ namespace Wide {
             virtual IntegralExpression* CreateIntegralExpression(std::uint64_t val, bool is_signed, std::function<llvm::Type*(llvm::Module*)> ty) = 0;
             virtual ChainExpression* CreateChainExpression(Statement*, Expression*) = 0;
             virtual FieldExpression* CreateFieldExpression(Expression*, unsigned) = 0;
+            FieldExpression* CreateFieldExpressionFileLine(Expression* e, unsigned u, const char* file, int line) {
+                return AddDebugData(CreateFieldExpression(e, u), file, line);
+            }
             virtual FieldExpression* CreateFieldExpression(Expression*, std::function<unsigned()>) = 0;
+            FieldExpression* CreateFieldExpressionFileLine(Expression* e, std::function<unsigned()> u, const char* file, int line) {
+                return AddDebugData(CreateFieldExpression(e, u), file, line);
+            }
             virtual ParamExpression* CreateParameterExpression(unsigned) = 0;
             virtual ParamExpression* CreateParameterExpression(std::function<unsigned()>) = 0;
             virtual IfStatement* CreateIfStatement(Expression* expr, Statement* t, Statement* f) {
@@ -165,7 +176,7 @@ namespace Wide {
             virtual std::size_t GetInt8AllocSize() = 0;
             virtual void AddEliminateType(llvm::Type*) = 0;
             virtual llvm::LLVMContext& GetContext() = 0;
-
+            virtual PointerCast* CreatePointerCast(Expression* e, std::function<llvm::Type*(llvm::Module*)>) = 0;
             virtual void AddClangTU(std::function<void(llvm::Module* m)>) = 0;
 
             virtual void operator()() {}

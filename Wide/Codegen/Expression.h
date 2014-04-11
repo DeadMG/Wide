@@ -346,5 +346,23 @@ namespace Wide {
         public:
             llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g) override final;
         };
+
+        class PointerIndex : public Expression, public Codegen::PointerIndex {
+            LLVMCodegen::Expression* pointer;
+            unsigned index;
+        public:
+            PointerIndex(LLVMCodegen::Expression* e, unsigned ind)
+                : pointer(e), index(ind) {}
+            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g) override final;
+        };
+
+        class PointerCast : public Expression, public Codegen::PointerCast {
+            LLVMCodegen::Expression* pointer;
+            std::function<llvm::Type*(llvm::Module*)> type;
+        public:
+            PointerCast(LLVMCodegen::Expression* ptr, std::function<llvm::Type*(llvm::Module*)> ty)
+                : pointer(ptr), type(ty) {}
+            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g) override final;
+        };
     }
 }

@@ -21,6 +21,7 @@
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Module.h>
 #include <llvm/IR/DerivedTypes.h>
+#include <clang/AST/RecordLayout.h>
 #include <clang/AST/Type.h>
 #include <clang/AST/DeclCXX.h>
 #include <clang/AST/ASTContext.h>
@@ -96,11 +97,27 @@ struct cppcallable : public Callable {
     ClangTU* from;
     std::vector<std::pair<Type*, bool>> types;
 
+    Codegen::Expression* GetVTablePointer(Codegen::Expression* self, const clang::CXXRecordDecl* current, Analyzer& a) {
+        auto&& layout = from->GetASTContext().getASTRecordLayout(current);
+        // This is a pointer to the vtable. So load it to get the actual vtable pointer.
+        if (layout.hasOwnVFPtr())
+            return a.gen->CreateLoad(a.gen->CreateFieldExpression(self, 0));
+        self = a.gen->CreateFieldExpression(self, from->GetBaseNumber(current, layout.getPrimaryBase()));
+        return GetVTablePointer(self, layout.getPrimaryBase(), a);
+    }
+
     ConcreteExpression CallFunction(std::vector<ConcreteExpression> args, Context c) override final {
         std::vector<Type*> local;
         for (auto x : types)
             local.push_back(x.first);
-        return ConcreteExpression(c->GetFunctionType(c->GetClangType(*from, fun->getResultType()), local), c->gen->CreateFunctionValue(from->MangleName(fun))).BuildCall(args, c);
+        auto fty = c->GetFunctionType(c->GetClangType(*from, fun->getResultType()), local);
+        auto meth = llvm::dyn_cast<clang::CXXMethodDecl>(fun);
+        if (!meth || !meth->isVirtual()) {
+            return ConcreteExpression(fty, c->gen->CreateFunctionValue(from->MangleName(fun))).BuildCall(args, c);
+        }
+        auto vtable = GetVTablePointer(args[0].Expr, meth->getParent(), *c);
+        auto vfptr = c->gen->CreateLoad(c->gen->CreatePointerIndex(vtable, from->GetVirtualFunctionOffset(meth)));
+        return ConcreteExpression(fty, vfptr).BuildCall(args, c);       
     }
     std::vector<ConcreteExpression> AdjustArguments(std::vector<ConcreteExpression> args, Context c) override final {
         // Clang may ask us to call an overload that doesn't have the right number of arguments
@@ -123,6 +140,16 @@ struct cppcallable : public Callable {
         // so do the conversion ourselves if lvalues were not involved.
         std::vector<ConcreteExpression> out;
         for (std::size_t i = 0; i < types.size(); ++i) {
+            // Handle base type mismatches first because else they are mishandled by the next check.
+            if (auto derived = dynamic_cast<BaseType*>(args[i].t->Decay())) {
+                if (auto base = dynamic_cast<BaseType*>(types[i].first->Decay())) {
+                    if (derived->IsDerivedFrom(base, *c) == InheritanceRelationship::UnambiguouslyDerived) {
+                        out.push_back(types[i].first->BuildValueConstruction({ args[i] }, c));
+                        continue;
+                    }
+                }
+            }
+            
             // If the function takes a const lvalue (as kindly provided by the second member),
             // and we provided an rvalue, pretend secretly that it took an rvalue reference instead.
             // Since is-a does not apply here, build construction from the underlying type, rather than going through rvaluetype.
@@ -130,9 +157,13 @@ struct cppcallable : public Callable {
             // This section handles stuff like const i32& i = int64() and similar implicit conversions that Wide accepts explicitly.
             // where C++ accepts the result by rvalue reference or const reference.
             // As per usual, careful of infinite recursion. Took quite a few tries to get this piece apparently functional.
-            if ((types[i].second || IsRvalueType(types[i].first)) && !IsLvalueType(args[i].t) && args[i].t->Decay() != types[i].first->Decay()) {
-                out.push_back(types[i].first->Decay()->BuildRvalueConstruction({ args[i] }, c));
-                continue;
+            if (
+                (types[i].second || IsRvalueType(types[i].first)) && 
+                !IsLvalueType(args[i].t) && 
+                args[i].t->Decay() != types[i].first->Decay()
+            ) {
+                    out.push_back(types[i].first->Decay()->BuildRvalueConstruction({ args[i] }, c));
+                    continue;
             }
 
             // Clang may ask us to build an int8* from a string literal.
@@ -256,8 +287,13 @@ Callable* OverloadSet::Resolve(std::vector<Type*> f_args, Analyzer& a, Type* sou
         auto p = new cppcallable();
         p->fun = fun;
         p->from = from;
-        if (llvm::dyn_cast<clang::CXXMethodDecl>(p->fun))
-            p->types.push_back(std::make_pair(f_args[0], false));
+        // The function may be expecting a base type.
+        if (auto meth = llvm::dyn_cast<clang::CXXMethodDecl>(p->fun)) {
+            if (IsLvalueType(f_args[0]))
+                p->types.push_back(std::make_pair(a.GetLvalueType(a.GetClangType(*from, from->GetASTContext().getRecordType(meth->getParent()))), false));
+            else
+                p->types.push_back(std::make_pair(a.GetRvalueType(a.GetClangType(*from, from->GetASTContext().getRecordType(meth->getParent()))), false));
+        }
         for (unsigned i = 0; i < fun->getNumParams(); ++i) {
             auto argty = fun->getParamDecl(i)->getType();            
             auto arg_is_const_ref = argty->isReferenceType() && (argty->getPointeeType().isConstQualified() || argty->getPointeeType().isLocalConstQualified());

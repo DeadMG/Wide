@@ -112,11 +112,14 @@ namespace Wide {
             FPMod* CreateFPMod(Codegen::Expression* r, Codegen::Expression* l) override final;
             FPDiv* CreateFPDiv(Codegen::Expression* r, Codegen::Expression* l) override final;
             FPLT* CreateFPLT(Codegen::Expression* r, Codegen::Expression* l) override final;
+            PointerIndex* CreatePointerIndex(Codegen::Expression* pointer, int index) override final;
+            PointerCast* CreatePointerCast(Codegen::Expression* e, std::function<llvm::Type*(llvm::Module*)>) override final;
             ContinueStatement* CreateContinue(Codegen::WhileStatement* s) override final;
             BreakStatement* CreateBreak(Codegen::WhileStatement* s) override final;
             LifetimeEnd* CreateLifetimeEnd(Codegen::Expression* e) override final;
             llvm::DataLayout GetDataLayout() override final;
             void AddClangTU(std::function<void(llvm::Module* m)>) override final;
+
             llvm::LLVMContext& GetContext() override final;
             std::size_t GetInt8AllocSize() override final;
 

@@ -33,6 +33,7 @@ namespace clang {
     class FieldDecl;
     class SourceLocation;
     class CXXRecordDecl;
+    class CXXMethodDecl;
     class FunctionDecl;
 }
 
@@ -42,6 +43,7 @@ namespace Wide {
         class ClangTU {
             class Impl;
             std::unordered_set<clang::FunctionDecl*> visited;
+            std::unordered_set<clang::QualType, ClangTypeHasher> RTTITypes;
         public:
             std::unique_ptr<Impl> impl;
             ~ClangTU();
@@ -60,11 +62,12 @@ namespace Wide {
             clang::Sema& GetSema();
             clang::IdentifierInfo* GetIdentifierInfo(std::string ident);
             unsigned GetFieldNumber(clang::FieldDecl*);
-            unsigned GetBaseNumber(clang::CXXRecordDecl* self, clang::CXXRecordDecl* base);
+            unsigned GetBaseNumber(const clang::CXXRecordDecl* self, const clang::CXXRecordDecl* base);
             clang::SourceLocation GetFileEnd();
             std::string PopLastDiagnostic();
             void AddFile(std::string filename, Lexer::Range where);
             clang::Expr* ParseMacro(std::string macro, Lexer::Range where);
+            unsigned int GetVirtualFunctionOffset(clang::CXXMethodDecl*);
         };
     }
 }
