@@ -74,7 +74,8 @@ namespace Wide {
             ConceptMap,
             Public,
             Private,
-            Protected
+            Protected,
+            Dynamic
         };
         enum Access {
             Public,

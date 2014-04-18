@@ -101,13 +101,14 @@ namespace Wide {
         };
         struct Function : FunctionBase {
             Lexer::Access access;
-            Function(std::vector<Statement*> b, std::vector<Statement*> prolog, Lexer::Range loc, std::vector<FunctionArgument> ar, Lexer::Access a)
-                : FunctionBase(std::move(ar), std::move(b), loc), access(a), prolog(std::move(prolog)) {}
+            Function(std::vector<Statement*> b, std::vector<Statement*> prolog, Lexer::Range loc, std::vector<FunctionArgument> ar, Lexer::Access a, bool dyn)
+                : FunctionBase(std::move(ar), std::move(b), loc), access(a), prolog(std::move(prolog)), dynamic(dyn) {}
             std::vector<Statement*> prolog;
+            bool dynamic;
         };
         struct Constructor : Function {
             Constructor(std::vector<Statement*> b, std::vector<Statement*> prolog, Lexer::Range loc, std::vector<FunctionArgument> ar, std::vector<Variable*> caps, Lexer::Access a)
-                : Function(std::move(b), std::move(prolog), loc, std::move(ar), a), initializers(std::move(caps)) {}
+                : Function(std::move(b), std::move(prolog), loc, std::move(ar), a, false), initializers(std::move(caps)) {}
             std::vector<Variable*> initializers;
         };
         struct FunctionCall : Expression {

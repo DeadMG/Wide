@@ -9,6 +9,7 @@
 #include <Wide/Semantic/OverloadSet.h>
 #include <Wide/Semantic/SemanticError.h>
 #include <Wide/Semantic/Function.h>
+#include <Wide/Util/Driver/IncludePaths.h>
 #include <boost/program_options.hpp>
 #include <memory>
 #include <fstream>
@@ -25,36 +26,6 @@
 #include <llvm/Support/FileSystem.h>
 #include <llvm/Support/raw_os_ostream.h>
 #pragma warning(pop)
-
-/*
- /usr/include/c++/4.7
- /usr/include/c++/4.7/x86_64-linux-gnu
- /usr/include/c++/4.7/backward
- /usr/lib/gcc/x86_64-linux-gnu/4.7/include
- /usr/local/include
- /usr/lib/gcc/x86_64-linux-gnu/4.7/include-fixed
- /usr/include/x86_64-linux-gnu
- /usr/include
-*/
-/*
-Added include path: /usr/include/c++/4.7
-Added include path: /usr/include/c++/4.7/x86_64-linux-gnu
-Added include path: /usr/include/c++/4.7/backward
-Added include path: /usr/lib/gcc/x86_64-linux-gnu/4.7/include
-Added include path: /usr/local/include
-Added include path: /usr/lib/gcc/x86_64-linux-gnu/4.7/include-fixed
-Added include path: /usr/include/x86_64-linux-gnu
-Added include path: /usr/include
-*/
-// --include="usr/local/lib/gcc/x86_64-unknown-linux-gnu/4.8.2/../../../../include/c++/4.8.2"
-// --include="usr/local/lib/gcc/x86_64-unknown-linux-gnu/4.8.2/../../../../include/c++/4.8.2/x86_64-unknown-linux-gnu/"
-// --include="usr/local/lib/gcc/x86_64-unknown-linux-gnu/4.8.2/../../../../include/c++/4.8.2/backward"
-// --include="usr/local/lib/gcc/x86_64-unknown-linux-gnu/4.8.2/include"
-// --include="usr/local/include"
-// --include="usr/local/lib/gcc/x86_64-unknown-linux-gnu/4.8.2/include-fixed"
-// --include="usr/include/x86_64-linux-gnu"
-// --include="usr/include"
-// --include="/usr/include/c++/4.7" --include="/usr/include/c++/4.7/x86_64-linux-gnu" --include="/usr/include/c++/4.7/backward" --include="/usr/lib/gcc/x86_64-linux-gnu/4.7/include" --include="/usr/local/include" --include="/usr/lib/gcc/x86_64-linux-gnu/4.7/include-fixed" --include="/usr/include/x86_64-linux-gnu" --include="/usr/include" hello.wide
 
 void SearchDirectory(std::string path, std::vector<std::string>& vec, std::string system) {
     auto end = llvm::sys::fs::directory_iterator();
@@ -144,23 +115,18 @@ int main(int argc, char** argv)
     ClangOpts.FrontendOptions.OutputFile = input.count("output") ? input["output"].as<std::string>() : "a.o";
     ClangOpts.LanguageOptions.CPlusPlus1y = true;
 #ifdef _MSC_VER
-    const std::string MinGWInstallPath = input.count("mingw") ? input["mingw"].as<std::string>() : ".\\MinGW\\";
-    ClangOpts.HeaderSearchOptions->AddPath(MinGWInstallPath + "mingw32-dw2\\include\\c++\\4.6.3", clang::frontend::IncludeDirGroup::CXXSystem, false, false);
-    ClangOpts.HeaderSearchOptions->AddPath(MinGWInstallPath + "mingw32-dw2\\include\\c++\\4.6.3\\i686-w64-mingw32", clang::frontend::IncludeDirGroup::CXXSystem, false, false);
-    ClangOpts.HeaderSearchOptions->AddPath(MinGWInstallPath + "mingw32-dw2\\i686-w64-mingw32\\include", clang::frontend::IncludeDirGroup::CXXSystem, false, false);
+    Wide::Driver::AddMinGWIncludePaths(ClangOpts, input.count("mingw") ? input["mingw"].as<std::string>() : ".\\MinGW\\");
 #else
-    if (input.count("gcc")) {
-        auto gccver = input["gcc"].as<std::string>();
-        auto base = "/usr/local/lib/gcc/x86_64-unknown-linux-gnu/" + gccver;
-        ClangOpts.HeaderSearchOptions->AddPath(base + "/../../../../include/c++/" + gccver, clang::frontend::IncludeDirGroup::CXXSystem, false, false);
-        ClangOpts.HeaderSearchOptions->AddPath(base + "/../../../../include/c++/" + gccver + "/x86_64-unknown-linux-gnu/", clang::frontend::IncludeDirGroup::CXXSystem, false, false);
-        ClangOpts.HeaderSearchOptions->AddPath(base + "/../../../../include/c++/" + gccver + "/backward", clang::frontend::IncludeDirGroup::CXXSystem, false, false);
-        ClangOpts.HeaderSearchOptions->AddPath(base + "/include", clang::frontend::IncludeDirGroup::CXXSystem, false, false);
-        ClangOpts.HeaderSearchOptions->AddPath(base + "/include-fixed", clang::frontend::IncludeDirGroup::CXXSystem, false, false);
+    if (input.count("gcc"))
+        Wide::Driver::AddLinuxIncludePaths(ClangOpts,  input["gcc"].as<std::string>());
+    else {
+        try {
+            Wide::Driver::AddLinuxIncludePaths(ClangOpts);
+        } catch(std::exception& e) {
+            std::cout << e.what();
+            return 1;
+        }
     }
-    ClangOpts.HeaderSearchOptions->AddPath("/usr/local/include", clang::frontend::IncludeDirGroup::CXXSystem, false, false);
-    ClangOpts.HeaderSearchOptions->AddPath("/usr/include/x86_64-linux-gnu", clang::frontend::IncludeDirGroup::CXXSystem, false, false);
-    ClangOpts.HeaderSearchOptions->AddPath("/usr/include", clang::frontend::IncludeDirGroup::CXXSystem, false, false);
 #endif
     //LLVMOpts.Passes.push_back(Wide::Options::CreateDeadCodeElimination());
 

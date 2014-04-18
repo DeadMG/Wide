@@ -70,6 +70,8 @@ namespace Wide {
             ProtectedModuleScope,
             TemplateNoArguments,
             ModuleScopeTemplateNoType,
+            TypeScopeExpectedIdentifierAfterDynamic,
+            TypeExpectedBracketAfterIdentifier,
         };         
 
         enum class Warning : int {
@@ -158,6 +160,8 @@ namespace Wide {
                 std::make_pair(Error::ProtectedModuleScope, "Cannot define module-scope definitions as protected."),
                 std::make_pair(Error::TemplateNoArguments, "Expected ( to introduce template arguments after template."),
                 std::make_pair(Error::ModuleScopeTemplateNoType, "Expected type after template arguments for a template type."),
+                std::make_pair(Error::TypeScopeExpectedIdentifierAfterDynamic, "Expected identifier after dynamic to introduce a dynamic member function."),
+                std::make_pair(Error::TypeExpectedBracketAfterIdentifier, "Expected ( after dynamic identifier to introduce dynamic member function."),
             };
             return std::unordered_map<Error, std::string>(std::begin(strings), std::end(strings));
         }());

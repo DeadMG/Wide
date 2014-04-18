@@ -11,7 +11,7 @@ int main(int argc, char** argv) {
     clangopts.TargetOptions.Triple = "i686-pc-mingw32";
     // Enabling RTTI requires a Standard Library to be linked.
     // Else, there is an undefined reference to an ABI support class.
-    clangopts.LanguageOptions.RTTI = false;
+    //clangopts.LanguageOptions.RTTI = false;
     boost::program_options::options_description desc;
     desc.add_options()
         ("input", boost::program_options::value<std::string>(), "One input file. May be specified multiple times.")

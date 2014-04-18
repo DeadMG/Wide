@@ -862,7 +862,7 @@ namespace Wide {
                 }
                 sema.CreateOverloadedOperator(first.GetType(), std::move(stmts), std::move(prolog), loc + t.GetLocation(), m, std::move(group), a);
             }
-            template<typename Scope> void ParseFunction(const TokenType& first, Scope& m, LocationType open, Lexer::Access a)
+            template<typename Scope> void ParseFunction(const TokenType& first, Scope& m, LocationType open, Lexer::Access a, bool dynamic = false)
             {
                 // Identifier ( consumed
                 // The first two must be () but we can find either prolog then body, or body.
@@ -914,7 +914,7 @@ namespace Wide {
                     throw ParserError(lex.GetLastPosition(), Error::FunctionNoClosingCurly);
                 t = lex();
                 if(t.GetType() == Lexer::TokenType::CloseCurlyBracket) {
-                    sema.CreateFunction(first.GetValue(), std::move(stmts), std::move(prolog), first.GetLocation() + close, loc + t.GetLocation(), m, std::move(group), std::move(initializers), a);
+                    sema.CreateFunction(first.GetValue(), std::move(stmts), std::move(prolog), first.GetLocation() + close, loc + t.GetLocation(), m, std::move(group), std::move(initializers), a, dynamic);
                     return;
                 }
                 lex(t);
@@ -958,7 +958,7 @@ namespace Wide {
                     }
                     lex(t);
                 }
-                sema.CreateFunction(first.GetValue(), std::move(stmts), std::move(prolog), first.GetLocation() + close, loc + t.GetLocation(), m, std::move(group), std::move(initializers), a);
+                sema.CreateFunction(first.GetValue(), std::move(stmts), std::move(prolog), first.GetLocation() + close, loc + t.GetLocation(), m, std::move(group), std::move(initializers), a, dynamic);
             }
             void ParseUsingDefinition(ModuleType& m, const TokenType& first, Lexer::Access a) {
                 // We got the "using". Now we have either identifier :=, identifier;, or identifer. We only support identifier := expr right now.
@@ -1025,6 +1025,13 @@ namespace Wide {
                     if (t.GetType() == Lexer::TokenType::Protected) {
                         Check(Error::AccessSpecifierNoColon, Lexer::TokenType::Colon);
                         access = Lexer::Access::Protected;
+                        t = lex();
+                        continue;
+                    }
+                    if (t.GetType() == Lexer::TokenType::Dynamic) {
+                        auto ident = Check(Error::TypeScopeExpectedIdentifierAfterDynamic, Lexer::TokenType::Identifier);
+                        auto open = Check(Error::TypeExpectedBracketAfterIdentifier, Lexer::TokenType::OpenBracket);
+                        ParseFunction(ident, ty, open.GetLocation(), access, true);
                         t = lex();
                         continue;
                     }

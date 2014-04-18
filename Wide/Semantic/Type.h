@@ -96,8 +96,38 @@ namespace Wide {
             
             ConcreteExpression BuildBinaryExpression(ConcreteExpression rhs, Lexer::TokenType type, std::vector<ConcreteExpression> destructors, Context c);
         };
+
+        struct Node {
+            std::unordered_set<Node*> listeners;
+            std::unordered_set<Node*> listening_to;
+            void AddChangedListener(Node* n) { listeners.insert(n); }
+            void RemoveChangedListener(Node* n) { listeners.erase(n); }
+        protected:
+            virtual void OnNodeChanged(Node* n) {}
+            void ListenToNode(Node* n) {
+                n->AddChangedListener(this);
+                listening_to.insert(n);
+            }
+            void StopListeningToNode(Node* n) {
+                n->RemoveChangedListener(this);
+                listening_to.erase(n);
+            }
+            void OnChange() {
+                for (auto node : listeners)
+                    node->OnNodeChanged(this);
+            }
+        public:
+            virtual ~Node() {
+                for (auto node : listening_to)
+                    node->RemoveChangedListener(this);
+            }
+        };
+        struct Expression : public Node {
+            virtual Type* GetType() = 0;
+            virtual Codegen::Expression* GenerateCode(Codegen::Generator* g) = 0;
+        };
         
-        struct Type  {
+        struct Type {
             std::unordered_map<Lexer::Access, OverloadSet*> ConstructorOverloadSet;
             std::unordered_map<Type*, std::unordered_map<Lexer::Access, std::unordered_map<Lexer::TokenType, OverloadSet*>>> OperatorOverloadSets;
             OverloadSet* DestructorOverloadSet;

@@ -88,8 +88,8 @@ namespace Wide {
             std::vector<Variable*> CreateInitializerGroup();            
             Module* CreateModule(std::string val, Module* p, Lexer::Range decl, Lexer::Access a);
             Using* CreateUsing(std::string val, Lexer::Range loc, Expression* expr, Module* p, Lexer::Access a);
-            void CreateFunction(std::string name, std::vector<Statement*> body, std::vector<Statement*> prolog, Lexer::Range where, Lexer::Range r, Module* p, std::vector<FunctionArgument>, std::vector<Variable*> caps, Lexer::Access a);
-            void CreateFunction(std::string name, std::vector<Statement*> body, std::vector<Statement*> prolog, Lexer::Range where, Lexer::Range r, Type* p, std::vector<FunctionArgument>, std::vector<Variable*> caps, Lexer::Access a);
+            void CreateFunction(std::string name, std::vector<Statement*> body, std::vector<Statement*> prolog, Lexer::Range where, Lexer::Range r, Module* p, std::vector<FunctionArgument>, std::vector<Variable*> caps, Lexer::Access a, bool dynamic);
+            void CreateFunction(std::string name, std::vector<Statement*> body, std::vector<Statement*> prolog, Lexer::Range where, Lexer::Range r, Type* p, std::vector<FunctionArgument>, std::vector<Variable*> caps, Lexer::Access a, bool dynamic);
             void CreateOverloadedOperator(Wide::Lexer::TokenType name, std::vector<Statement*> body, std::vector<Statement*> prolog, Lexer::Range r, Module* p, std::vector<FunctionArgument>, Lexer::Access a);
             void CreateOverloadedOperator(Wide::Lexer::TokenType name, std::vector<Statement*> body, std::vector<Statement*> prolog, Lexer::Range r, Type* p, std::vector<FunctionArgument>, Lexer::Access a);
             Type* CreateType(std::vector<Expression*> bases, Lexer::Range loc, Lexer::Access a);

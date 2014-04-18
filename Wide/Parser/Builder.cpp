@@ -57,7 +57,8 @@ void Builder::CreateFunction(
     Type* p, 
     std::vector<FunctionArgument> args, 
     std::vector<Variable*> caps, 
-    Lexer::Access a
+    Lexer::Access a,
+    bool dynamic
 ) {
     if (p->Functions.find(name) == p->Functions.end())
         p->Functions[name] = arena.Allocate<FunctionOverloadSet>(where);
@@ -71,7 +72,7 @@ void Builder::CreateFunction(
             err.push_back(var.first->location);
             RaiseError(*this, where, err, Parser::Error::TypeFunctionAlreadyVariable);
         }
-    p->Functions[name]->functions.insert(arena.Allocate<Function>(std::move(body), std::move(prolog), where, std::move(args), a));
+    p->Functions[name]->functions.insert(arena.Allocate<Function>(std::move(body), std::move(prolog), where, std::move(args), a, dynamic));
     outlining(r, OutliningType::Function);
 }
 
@@ -84,9 +85,10 @@ void Builder::CreateFunction(
     Module* m, 
     std::vector<FunctionArgument> args, 
     std::vector<Variable*> caps,
-    Lexer::Access a
+    Lexer::Access a,
+    bool dynamic
 ) {
-    auto func = arena.Allocate<Function>(std::move(body), std::move(prolog), where, std::move(args), a);   
+    auto func = arena.Allocate<Function>(std::move(body), std::move(prolog), where, std::move(args), a, false);   
     if (m->decls.find(name) != m->decls.end()) {
         if (auto overset = dynamic_cast<AST::FunctionOverloadSet*>(m->decls.at(name))) {
             overset->functions.insert(func);
@@ -115,7 +117,7 @@ void Builder::CreateOverloadedOperator(
 ) {
     if (m->opcondecls.find(name) == m->opcondecls.end())
         m->opcondecls[name] = arena.Allocate<FunctionOverloadSet>(r);
-    m->opcondecls[name]->functions.insert(arena.Allocate<Function>(std::move(body), std::move(prolog), r, std::move(args), a));
+    m->opcondecls[name]->functions.insert(arena.Allocate<Function>(std::move(body), std::move(prolog), r, std::move(args), a, false));
 }
 void Builder::CreateOverloadedOperator(
     Wide::Lexer::TokenType name, 
@@ -128,7 +130,7 @@ void Builder::CreateOverloadedOperator(
 ) {
     if (t->opcondecls.find(name) == t->opcondecls.end())
         t->opcondecls[name] = arena.Allocate<FunctionOverloadSet>(r);
-    t->opcondecls[name]->functions.insert(arena.Allocate<Function>(std::move(body), std::move(prolog), r, std::move(args), a));
+    t->opcondecls[name]->functions.insert(arena.Allocate<Function>(std::move(body), std::move(prolog), r, std::move(args), a, false));
 }
 
 Type* Builder::CreateType(std::vector<Expression*> bases, Lexer::Range loc, Lexer::Access a) { return arena.Allocate<Type>(bases, loc, a); }
