@@ -199,9 +199,10 @@ namespace Wide {
             OverloadSet* GetConstructorOverloadSet(Analyzer& a, Lexer::Access access);
             OverloadSet* GetDestructorOverloadSet(Analyzer& a);
         };
-        struct TupleInitializable : public virtual Type {
+        struct TupleInitializable {
+            virtual Type* GetSelfAsType() = 0;
             virtual Wide::Util::optional<std::vector<Type*>> GetTypesForTuple(Analyzer& a) = 0;
-            virtual OverloadSet* CreateConstructorOverloadSet(Analyzer& a, Lexer::Access access) override;
+            OverloadSet* CreateConstructorOverloadSet(Analyzer& a, Lexer::Access access);
             virtual ConcreteExpression PrimitiveAccessMember(ConcreteExpression e, unsigned num, Analyzer& a) = 0;
         };
 
@@ -222,12 +223,13 @@ namespace Wide {
             AmbiguouslyDerived,
             UnambiguouslyDerived
         };
-        struct BaseType : public virtual Type {
+        struct BaseType {
+            virtual Type* GetSelfAsType() = 0;
             virtual InheritanceRelationship IsDerivedFrom(Type* other, Analyzer& a) = 0;
             virtual Codegen::Expression* AccessBase(Type* other, Codegen::Expression*, Analyzer& a) = 0;
         };
         struct MemberFunctionContext { virtual ~MemberFunctionContext() {} };
-        class PrimitiveType : public virtual Type {
+        class PrimitiveType : public Type {
         protected:
             PrimitiveType() {}
         public:

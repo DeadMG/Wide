@@ -380,8 +380,9 @@ Codegen::Expression* ClangType::AccessBase(Type* other, Codegen::Expression* exp
     auto recdecl = type->getAsCXXRecordDecl();
     assert(IsDerivedFrom(other, a) == InheritanceRelationship::UnambiguouslyDerived);
     for (auto baseit = recdecl->bases_begin(); baseit != recdecl->bases_end(); ++baseit) {
-        auto base = dynamic_cast<BaseType*>(a.GetClangType(*from, baseit->getType()));
-        if (base == other) {
+        auto basety = a.GetClangType(*from, baseit->getType());
+        auto base = dynamic_cast<BaseType*>(basety);
+        if (basety == other) {
             // EBO can result in this function failing.
             if (baseit->getType()->getAsCXXRecordDecl()->isEmpty())
                 return a.gen->CreatePointerCast(expr, a.GetPointerType(other)->GetLLVMType(a));

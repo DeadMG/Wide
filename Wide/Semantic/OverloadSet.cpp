@@ -143,7 +143,7 @@ struct cppcallable : public Callable {
             // Handle base type mismatches first because else they are mishandled by the next check.
             if (auto derived = dynamic_cast<BaseType*>(args[i].t->Decay())) {
                 if (auto base = dynamic_cast<BaseType*>(types[i].first->Decay())) {
-                    if (derived->IsDerivedFrom(base, *c) == InheritanceRelationship::UnambiguouslyDerived) {
+                    if (derived->IsDerivedFrom(types[i].first->Decay(), *c) == InheritanceRelationship::UnambiguouslyDerived) {
                         out.push_back(types[i].first->BuildValueConstruction({ args[i] }, c));
                         continue;
                     }

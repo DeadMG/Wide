@@ -38,7 +38,7 @@ std::vector<Type*> GetTypesFromType(const AST::Type* t, Analyzer& a, Type* conte
         if (!con) throw NotAType(base.t, expr->location, a);
         auto udt = dynamic_cast<BaseType*>(con->GetConstructedType());
         if (!udt) throw InvalidBase(con->GetConstructedType(), expr->location, a);
-        out.push_back(udt);
+        out.push_back(con->GetConstructedType());
     }
     for (auto&& var : t->variables) {
         auto expr = a.AnalyzeExpression(context, var.first->initializer, [](ConcreteExpression e) {});
@@ -403,7 +403,7 @@ InheritanceRelationship UserDefinedType::IsDerivedFrom(Type* other, Analyzer& a)
     for (std::size_t i = 0; i < type->bases.size(); ++i) {
         auto ourbase = dynamic_cast<BaseType*>(AggregateType::GetMembers()[i]);
         assert(ourbase);
-        if (ourbase == other) {
+        if (ourbase == base) {
             if (result == InheritanceRelationship::NotDerived)
                 result = InheritanceRelationship::UnambiguouslyDerived;
             else if (result == InheritanceRelationship::UnambiguouslyDerived)
@@ -424,10 +424,11 @@ InheritanceRelationship UserDefinedType::IsDerivedFrom(Type* other, Analyzer& a)
 }
 Codegen::Expression* UserDefinedType::AccessBase(Type* other, Codegen::Expression* current, Analyzer& a) {
     assert(IsDerivedFrom(other, a) == InheritanceRelationship::UnambiguouslyDerived);
+    auto otherbase = dynamic_cast<BaseType*>(other);
     // It is unambiguous so just hit on the first base we come across
     for (std::size_t i = 0; i < type->bases.size(); ++i) {
         auto base = dynamic_cast<BaseType*>(AggregateType::GetMembers()[i]);
-        if (base == other)
+        if (base == otherbase)
             return a.gen->CreateFieldExpression(current, GetFieldIndex(i));
         if (base->IsDerivedFrom(other, a) == InheritanceRelationship::UnambiguouslyDerived)
             return base->AccessBase(other, a.gen->CreateFieldExpression(current, GetFieldIndex(i)), a);

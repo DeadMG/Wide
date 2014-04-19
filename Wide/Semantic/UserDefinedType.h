@@ -44,6 +44,7 @@ namespace Wide {
             // Binary Complex
             Wide::Util::optional<bool> BCCache;
             bool BinaryComplex(Analyzer& a);
+            Type* GetSelfAsType() override final { return this; }
         public:
             std::vector<member> GetMembers();
             UserDefinedType(const AST::Type* t, Analyzer& a, Type* context, std::string);           

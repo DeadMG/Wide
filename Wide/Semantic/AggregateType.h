@@ -4,7 +4,7 @@
 
 namespace Wide {
     namespace Semantic {
-        class AggregateType : public virtual Type {
+        class AggregateType : public Type {
             std::vector<Type*> contents;
 
             std::size_t allocsize;

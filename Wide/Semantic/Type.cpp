@@ -439,10 +439,10 @@ OverloadSet* TupleInitializable::CreateConstructorOverloadSet(Analyzer& a, Lexer
         Callable* GetCallableForResolution(std::vector<Type*>, Analyzer& a) { return this; }
         Util::optional<std::vector<Type*>> MatchParameter(std::vector<Type*> args, Analyzer& a, Type* source) override final {
             if (args.size() != 2) return Util::none;
-            if (args[0] != a.GetLvalueType(self)) return Util::none;
+            if (args[0] != a.GetLvalueType(self->GetSelfAsType())) return Util::none;
             auto tup = dynamic_cast<TupleType*>(args[1]->Decay());
             if (!tup) return Util::none;
-            if (!tup->IsA(args[1], self, a, GetAccessSpecifier(source, tup, a))) return Util::none;
+            if (!tup->IsA(args[1], self->GetSelfAsType(), a, GetAccessSpecifier(source, tup, a))) return Util::none;
             return args;
         }
         std::vector<ConcreteExpression> AdjustArguments(std::vector<ConcreteExpression> args, Context c) override final { return args; }
@@ -465,7 +465,7 @@ OverloadSet* TupleInitializable::CreateConstructorOverloadSet(Analyzer& a, Lexer
                 auto expr = members[i]->BuildInplaceConstruction(memory.Expr, { argument }, c);
                 p = p ? c->gen->CreateChainExpression(p, expr) : expr;
             }
-            return ConcreteExpression(c->GetLvalueType(self), c->gen->CreateChainExpression(p, args[0].Expr));
+            return ConcreteExpression(c->GetLvalueType(self->GetSelfAsType()), c->gen->CreateChainExpression(p, args[0].Expr));
         }
     };
     return a.GetOverloadSet(a.arena.Allocate<TupleConstructor>(this));

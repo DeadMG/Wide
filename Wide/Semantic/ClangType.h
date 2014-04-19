@@ -15,13 +15,14 @@ namespace clang {
 namespace Wide {
     namespace Semantic {     
         class ClangTU;
-        class ClangType : public virtual Type, public TupleInitializable, public BaseType {
+        class ClangType : public Type, public TupleInitializable, public BaseType {
             ClangTU* from;
             clang::QualType type; 
             void ProcessImplicitSpecialMember(std::function<bool()> needs, std::function<clang::CXXMethodDecl*()> declare, std::function<void(clang::CXXMethodDecl*)> define, std::function<clang::CXXMethodDecl*()> lookup);
             bool ProcessedConstructors = false;
             bool ProcessedDestructors = false;
             bool ProcessedAssignmentOperators = false;
+            Type* GetSelfAsType() override final { return this; }
         public:
             ClangType(ClangTU* src, clang::QualType t);         
             std::function<llvm::Type*(llvm::Module*)> GetLLVMType(Analyzer& a) override final;            
