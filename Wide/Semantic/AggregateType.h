@@ -5,29 +5,37 @@
 namespace Wide {
     namespace Semantic {
         class AggregateType : public Type {
-            std::vector<Type*> contents;
 
-            std::size_t allocsize;
-            std::size_t align;
+            virtual const std::vector<Type*>& GetContents() = 0;
 
-            std::vector<unsigned> FieldIndices;
-            std::vector<std::function<llvm::Type*(llvm::Module*)>> llvmtypes;
+            struct Layout {
+                Layout(const std::vector<Type*>& types, Analyzer& a);
 
-            bool IsComplex;
-            bool copyconstructible;
-            bool copyassignable;
-            bool moveconstructible;
-            bool moveassignable;
-            bool constant;
+                std::size_t allocsize;
+                std::size_t align;
 
+                std::vector<unsigned> Offsets;
+                std::vector<unsigned> FieldIndices;
+                std::vector<std::function<llvm::Type*(llvm::Module*)>> llvmtypes;
+
+                bool IsComplex;
+                bool copyconstructible;
+                bool copyassignable;
+                bool moveconstructible;
+                bool moveassignable;
+                bool constant;
+            };
+            Wide::Util::optional<Layout> layout;
+            Layout& GetLayout(Analyzer& a) {
+                if (!layout) layout = Layout(GetContents(), a);
+                return *layout;
+            }
         public:
-            unsigned GetFieldIndex(unsigned num) { return FieldIndices[num]; }
+            unsigned GetFieldIndex(Analyzer& a, unsigned num) { return GetLayout(a).FieldIndices[num]; }
+            unsigned GetOffset(Analyzer& a, unsigned num) { return GetLayout(a).Offsets[num]; }
 
-            std::vector<Type*> GetMembers();
             ConcreteExpression PrimitiveAccessMember(ConcreteExpression e, unsigned num, Analyzer& a);
-
-            AggregateType(std::vector<Type*> types, Analyzer& a);
-
+            
             std::size_t size(Analyzer& a) override final;
             std::size_t alignment(Analyzer& a) override final;
             Type* GetConstantContext(Analyzer& a) override;

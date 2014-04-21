@@ -18,7 +18,7 @@ std::vector<Type*> GetTypesFrom(std::vector<std::pair<std::string, Type*>>& vec)
     return out;
 }
 LambdaType::LambdaType(std::vector<std::pair<std::string, Type*>> capturetypes, const AST::Lambda* l, Analyzer& a)
-    : AggregateType(GetTypesFrom(capturetypes), a), lam(l) 
+    : contents(GetTypesFrom(capturetypes)), lam(l) 
 {
     std::size_t i = 0;
     for (auto pair : capturetypes)
@@ -39,14 +39,14 @@ ConcreteExpression LambdaType::BuildCall(ConcreteExpression val, std::vector<Con
 }
 ConcreteExpression LambdaType::BuildLambdaFromCaptures(std::vector<ConcreteExpression> exprs, Context c) {
     auto memory = ConcreteExpression(c->GetLvalueType(this), c->gen->CreateVariable(GetLLVMType(*c), alignment(*c)));
-    if (GetMembers().size() == 0)
+    if (GetContents().size() == 0)
         return memory;
     Codegen::Expression* construct = 0;
     for (std::size_t i = 0; i < exprs.size(); ++i) {
         std::vector<Type*> types;
-        types.push_back(c->GetLvalueType(GetMembers()[i]));
+        types.push_back(c->GetLvalueType(GetContents()[i]));
         types.push_back(exprs[i].t);
-        auto conset = GetMembers()[i]->GetConstructorOverloadSet(*c, Lexer::Access::Public);
+        auto conset = GetContents()[i]->GetConstructorOverloadSet(*c, Lexer::Access::Public);
         auto call = conset->Resolve(types, *c, c.source);
         if (!call) conset->IssueResolutionError(types, c);
         auto expr = call->Call({ PrimitiveAccessMember(memory, i, *c), exprs[i] }, c).Expr;

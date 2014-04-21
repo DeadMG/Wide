@@ -441,16 +441,6 @@ ClangNamespace* Analyzer::GetClangNamespace(ClangTU& tu, clang::DeclContext* con
     return ClangNamespaces[con] = arena.Allocate<ClangNamespace>(con, &tu);
 }
 
-std::size_t VectorTypeHasher::operator()(const std::vector<Type*>& t) const {
-    std::size_t hash = 0;
-    for(unsigned index = 0; index < t.size(); index++) {
-#pragma warning(disable : 4244)
-        hash += pow(31u, index) * std::hash<Type*>()(t[index]);
-#pragma warning(default : 4244)
-    }
-    return hash;
-}
-
 FunctionType* Analyzer::GetFunctionType(Type* ret, const std::vector<Type*>& t) {
     if (FunctionTypes[ret].find(t) != FunctionTypes[ret].end()) {
         return FunctionTypes[ret][t];
@@ -754,6 +744,13 @@ OverloadResolvable* Analyzer::GetCallableForFunction(const AST::FunctionBase* f,
         }
 
         Callable* GetCallableForResolution(std::vector<Type*> types, Analyzer& a) override final {
+            // Might call a different function, if this one is dynamic.
+            if (auto function = dynamic_cast<const AST::Function*>(func)) {
+                if (function->dynamic) {
+                    auto udt = dynamic_cast<UserDefinedType*>(context);
+                    return udt->GetCallableForDynamicCall(function, types, name, a);
+                }
+            }
             return a.GetWideFunction(func, context, std::move(types), name);
         }
     };
@@ -918,7 +915,7 @@ bool Semantic::IsMultiTyped(const AST::FunctionArgument& f) {
     struct Visitor : public AST::Visitor<Visitor> {
         bool auto_found = false;
         void VisitIdentifier(const AST::Identifier* i) {
-            auto_found = i->val == "auto";
+            auto_found = auto_found || i->val == "auto";
         }
     };
     Visitor v;

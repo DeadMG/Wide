@@ -179,8 +179,13 @@ void Function::ComputeBody(Analyzer& a) {
         if (auto con = dynamic_cast<const AST::Constructor*>(fun)) {
             auto member = dynamic_cast<UserDefinedType*>(context->Decay());
             ConcreteExpression self(a.GetLvalueType(member), a.gen->CreateParameterExpression([this, &a] { return ReturnType->IsComplexType(a); }));
-            auto members = member->GetMembers();
+            auto members = member->GetMembers(a);
             for (auto&& x : members) {
+                // First bases, then members, then vptr.
+                if (x.vptr) {
+                    exprs.push_back(member->SetVirtualPointers({ { member, 0 } }, self.Expr, a));
+                    continue;
+                }
                 auto has_initializer = [&](std::string name) -> const AST::Variable* {
                     for (auto&& x : con->initializers) {
                         // Can only have 1 name- AST restriction
@@ -313,7 +318,7 @@ void Function::ComputeBody(Analyzer& a) {
                 }
                 auto tupty = dynamic_cast<TupleType*>(result.t->Decay());
                 // Each name refers to each member in order.
-                auto members = tupty->GetMembers();
+                auto members = tupty->GetContents();
                 if (members.size() != var->name.size())
                     throw TupleUnpackWrongCount(tupty, var->location, a);
 

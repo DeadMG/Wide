@@ -1,0 +1,14 @@
+type t {
+    type() {}
+    dynamic f() { return false; }
+}
+type x : t {
+    type() {}
+    f() { return true; }
+}
+f(t.rvalue arg) {
+    return arg.f();
+}
+Main() {
+    return f(x());
+}

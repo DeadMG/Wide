@@ -57,6 +57,7 @@ namespace Wide {
 
             Generator(const Options::LLVM&, std::string triple, std::function<void(std::unique_ptr<llvm::Module>)> action);
 
+            ConstantArray* CreateConstantArray(std::function<llvm::Type*(llvm::Module*)>, std::vector<Codegen::Expression*> exprs) override final;
             Function* CreateFunction(std::function<llvm::Type*(llvm::Module*)>, std::string, Semantic::Function* debug, bool trampoline = false) override final;
             Deferred* CreateDeferredStatement(const std::function<Codegen::Statement*()>) override final;
             DeferredExpr* CreateDeferredExpression(const std::function<Codegen::Expression*()>) override final;

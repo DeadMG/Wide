@@ -9,6 +9,8 @@
 #include <Wide/Semantic/SemanticError.h>
 #include <Wide/Semantic/TupleType.h>
 #include <Wide/Semantic/ConstructorType.h>
+#include <Wide/Semantic/IntegralType.h>
+#include <Wide/Semantic/PointerType.h>
 #include <Wide/Parser/AST.h>
 #include <Wide/Semantic/Reference.h>
 #include <sstream>
@@ -30,63 +32,111 @@
 using namespace Wide;
 using namespace Semantic;
 
-std::vector<Type*> GetTypesFromType(const AST::Type* t, Analyzer& a, Type* context) {
-    std::vector<Type*> out;
+// I only store MY OWN dynamic functions in my vtable.
+// My base's dynamic functions can go in my base's vtable.
+
+bool UserDefinedType::IsDynamic(Analyzer& a) {
+    return GetVtableLayout(a).size() != 0;
+}
+UserDefinedType::UserDefinedType(const AST::Type* t, Analyzer& a, Type* higher, std::string name)
+: context(higher)
+, type(t)
+, source_name(name) 
+{
     for (auto expr : t->bases) {
         auto base = a.AnalyzeExpression(context, expr, [](Wide::Semantic::ConcreteExpression) { assert(false); });
         auto con = dynamic_cast<ConstructorType*>(base.t->Decay());
         if (!con) throw NotAType(base.t, expr->location, a);
         auto udt = dynamic_cast<BaseType*>(con->GetConstructedType());
         if (!udt) throw InvalidBase(con->GetConstructedType(), expr->location, a);
-        out.push_back(con->GetConstructedType());
+        bases.push_back(udt);
+        contents.push_back(con->GetConstructedType());
     }
     for (auto&& var : t->variables) {
+        members[var.first->name.front().name] = contents.size();
         auto expr = a.AnalyzeExpression(context, var.first->initializer, [](ConcreteExpression e) {});
         expr.t = expr.t->Decay();
-        if (auto con = dynamic_cast<ConstructorType*>(expr.t))
-            out.push_back(con->GetConstructedType());
-        else {
-            out.push_back(expr.t);  
-        }
-    }
-    return out;
-}
-
-UserDefinedType::UserDefinedType(const AST::Type* t, Analyzer& a, Type* higher, std::string name)
-: AggregateType(GetTypesFromType(t, a, higher), a)
-, context(higher)
-, type(t)
-, source_name(name) {
-    unsigned i = 0;
-    for (auto& var : type->variables) {
-        members[var.first->name.front().name] = i++ + type->bases.size();
-        auto expr = a.AnalyzeExpression(higher, var.first->initializer, [](ConcreteExpression e) {});
-        expr.t = expr.t->Decay();
-        if (!dynamic_cast<ConstructorType*>(expr.t)) {
+        if (auto con = dynamic_cast<ConstructorType*>(expr.t)) {
+            contents.push_back(con->GetConstructedType());
+            NSDMIs.push_back(nullptr);
+        } else {
+            contents.push_back(expr.t->Decay());
             HasNSDMI = true;
             NSDMIs.push_back(var.first->initializer);
         }
-        else
-            NSDMIs.push_back(nullptr);
     }
+    unsigned index = 0;
+    for (auto overset : type->Functions) {
+        if (overset.first == "type") continue; // Do not check constructors.
+        for (auto func : overset.second->functions) {
+            // The function has to be not explicitly marked dynamic *and* not dynamic by any base class.
+            if (IsMultiTyped(func)) continue;
+
+            VirtualFunction f;
+            f.name = overset.first;
+            if (func->args.size() == 0 || func->args.front().name != "this")
+                f.args.push_back(a.GetLvalueType(this));
+            for (auto arg : func->args) {
+                auto ty = a.AnalyzeExpression(GetContext(a), arg.type, [](ConcreteExpression) {}).t->Decay();
+                auto con_type = dynamic_cast<ConstructorType*>(ty);
+                if (!con_type)
+                    throw Wide::Semantic::NotAType(ty, arg.location, a);
+                f.args.push_back(con_type->GetConstructedType());
+            }
+            auto is_dynamic = [&, this] {
+                if (func->dynamic) return true;
+                for (auto base : bases) {
+                    for (auto func : base->GetVtableLayout(a)) {
+                        if (func.name != overset.first) continue;
+                        // The this arguments will be different.
+                        if (f.args.size() != func.args.size()) continue;
+                        for (auto i = 1; i < f.args.size(); ++i) {
+                            if (func.args[i] != f.args[i])
+                                continue;
+                        }
+                        return true;
+                    }
+                }
+                return false;
+            };
+            if (!is_dynamic()) continue;
+
+            f.abstract = false;
+            funcs.push_back(f);
+            VTableIndices[func] = index++;
+        }
+    }
+    if (!funcs.empty())
+        contents.push_back(a.GetPointerType(a.GetFunctionType(a.GetIntegralType(32, false), {})));
 }
 
-std::vector<UserDefinedType::member> UserDefinedType::GetMembers() {
+std::vector<UserDefinedType::member> UserDefinedType::GetMembers(Analyzer& a) {
     std::vector<UserDefinedType::member> out;
     for (unsigned i = 0; i < type->bases.size(); ++i) {
         member m;
-        m.t = AggregateType::GetMembers()[i];
+        m.t = GetContents()[i];
         m.name = dynamic_cast<AST::Identifier*>(type->bases[i])->val;
-        m.num = AggregateType::GetFieldIndex(i);
+        m.num = GetFieldIndex(a, i);
         m.InClassInitializer = nullptr;
+        m.vptr = false;
         out.push_back(m);
     }
     for (unsigned i = 0; i < type->variables.size(); ++i) {
         member m;
-        m.t = AggregateType::GetMembers()[i + type->bases.size()];
+        m.t = GetContents()[i + type->bases.size()];
         m.name = type->variables[i].first->name.front().name;
-        m.num = AggregateType::GetFieldIndex(i) + type->bases.size();
+        m.num = GetFieldIndex(a, i) + type->bases.size();
         m.InClassInitializer = NSDMIs[i];
+        m.vptr = false;
+        out.push_back(m);
+    }
+    if (IsDynamic(a)) {
+        member m;
+        m.num = GetFieldIndex(a, type->bases.size() + type->variables.size());
+        m.t = GetContents()[type->bases.size() + type->variables.size()];
+        m.name = "__vfptr";
+        m.InClassInitializer = nullptr;
+        m.vptr = true;
         out.push_back(m);
     }
     return out;
@@ -112,16 +162,16 @@ Wide::Util::optional<ConcreteExpression> UserDefinedType::AccessMember(ConcreteE
     // Any of our bases have this member?
     Wide::Util::optional<ConcreteExpression> result;
     Type* basetype = nullptr;
-    for (std::size_t i = 0; i < AggregateType::GetMembers().size() - type->variables.size(); ++i) {
+    for (std::size_t i = 0; i < GetContents().size() - type->variables.size(); ++i) {
         auto base = PrimitiveAccessMember(expr, i, *c);
         if (auto member = base.AccessMember(name, c)) {
             // If there's nothing there, we win.
             // If we're an OS and the existing is an OS, we win by unifying.
             // Else we lose.
-            if (!result) { result = member; basetype = AggregateType::GetMembers()[i];  continue; }
+            if (!result) { result = member; basetype = GetContents()[i];  continue; }
             auto os = dynamic_cast<OverloadSet*>(result->t->Decay());
             auto otheros = dynamic_cast<OverloadSet*>(member->t->Decay());
-            if (!os || !otheros) throw AmbiguousLookup(name, basetype, AggregateType::GetMembers()[i], c.where, *c);
+            if (!os || !otheros) throw AmbiguousLookup(name, basetype, GetContents()[i], c.where, *c);
             result = c->GetOverloadSet(os, otheros, self.t)->BuildValueConstruction({ self }, c);
         }
     }
@@ -130,6 +180,7 @@ Wide::Util::optional<ConcreteExpression> UserDefinedType::AccessMember(ConcreteE
 Wide::Util::optional<clang::QualType> UserDefinedType::GetClangType(ClangTU& TU, Analyzer& a) {
     if (clangtypes.find(&TU) != clangtypes.end())
         return clangtypes[&TU];
+    if (IsDynamic(a)) return Wide::Util::none;
     
     std::stringstream stream;
     // The name of the LLVM type is generated by AggregateType based on "this".
@@ -143,7 +194,7 @@ Wide::Util::optional<clang::QualType> UserDefinedType::GetClangType(ClangTU& TU,
     if (type->bases.size() != 0) return Util::none;
 
     for (std::size_t i = 0; i < type->variables.size(); ++i) {
-        auto memberty = AggregateType::GetMembers()[i]->GetClangType(TU, a);
+        auto memberty = GetContents()[i]->GetClangType(TU, a);
         if (!memberty) return Wide::Util::none;
         auto var = clang::FieldDecl::Create(
             TU.GetASTContext(),
@@ -224,10 +275,6 @@ bool UserDefinedType::UserDefinedComplex(Analyzer& a) {
         movetypes.push_back(a.GetLvalueType(this));
         movetypes.push_back(a.GetRvalueType(this));
         IsUserDefinedComplex = IsUserDefinedComplex || a.GetOverloadSet(type->Functions.at("type"), a.GetLvalueType(this), "type")->Resolve(movetypes, a, this);
-
-        std::vector<Type*> defaulttypes;
-        defaulttypes.push_back(a.GetLvalueType(this));
-        HasDefaultConstructor = a.GetOverloadSet(type->Functions.at("type"), a.GetLvalueType(this), "type")->Resolve(defaulttypes, a, this);
     }
     if (type->opcondecls.find(Lexer::TokenType::Assignment) != type->opcondecls.end()) {
         std::vector<Type*> copytypes;
@@ -267,10 +314,10 @@ OverloadSet* UserDefinedType::CreateConstructorOverloadSet(Analyzer& a, Lexer::A
     std::vector<Type*> types;
     types.push_back(a.GetLvalueType(this));
     if (auto default_constructor = user_defined_constructors->Resolve(types, a, this))
-        return a.GetOverloadSet(user_defined_constructors, AggregateType::CreateNondefaultConstructorOverloadSet(a));
+        return a.GetOverloadSet(user_defined_constructors, CreateNondefaultConstructorOverloadSet(a));
     if (HasNSDMI) {
         bool shouldgenerate = true;
-        for (auto mem : GetMembers()) {
+        for (auto mem : GetMembers(a)) {
             // If we are not default constructible *and* we don't have an NSDMI to construct us, then we cannot generate a default constructor.
             if (mem.InClassInitializer)
                 continue;
@@ -278,7 +325,7 @@ OverloadSet* UserDefinedType::CreateConstructorOverloadSet(Analyzer& a, Lexer::A
                 shouldgenerate = false;
         }
         if (!shouldgenerate)
-            return a.GetOverloadSet(user_defined_constructors, AggregateType::CreateNondefaultConstructorOverloadSet(a));
+            return a.GetOverloadSet(user_defined_constructors, CreateNondefaultConstructorOverloadSet(a));
         // Our automatically generated default constructor needs to initialize each member appropriately.
         struct DefaultConstructor : OverloadResolvable, Callable {
             DefaultConstructor(UserDefinedType* ty) : self(ty) {}
@@ -293,7 +340,7 @@ OverloadSet* UserDefinedType::CreateConstructorOverloadSet(Analyzer& a, Lexer::A
             std::vector<ConcreteExpression> AdjustArguments(std::vector<ConcreteExpression> args, Context c) override final { return args; }
             ConcreteExpression CallFunction(std::vector<ConcreteExpression> args, Context c) override final {
                 Codegen::Expression* expr = nullptr;
-                for (auto mem : self->GetMembers()) {
+                for (auto mem : self->GetMembers(*c)) {
                     if (mem.InClassInitializer) {
                         auto subobj = c->gen->CreateFieldExpression(args[0].Expr, mem.num);
                         auto subinit = mem.t->BuildInplaceConstruction(subobj, { c->AnalyzeExpression(self->GetContext(*c), mem.InClassInitializer, c.RAIIHandler) }, c);
@@ -307,7 +354,7 @@ OverloadSet* UserDefinedType::CreateConstructorOverloadSet(Analyzer& a, Lexer::A
                 return ConcreteExpression(c->GetLvalueType(self), expr);
             }
         };
-        return a.GetOverloadSet(a.GetOverloadSet(a.arena.Allocate<DefaultConstructor>(this)), AggregateType::CreateNondefaultConstructorOverloadSet(a));
+        return a.GetOverloadSet(a.GetOverloadSet(a.arena.Allocate<DefaultConstructor>(this)), CreateNondefaultConstructorOverloadSet(a));
     }
     return a.GetOverloadSet(user_defined_constructors, AggregateType::CreateConstructorOverloadSet(a, access));
 }
@@ -393,7 +440,7 @@ bool UserDefinedType::IsComplexType(Analyzer& a) {
 Wide::Util::optional<std::vector<Type*>> UserDefinedType::GetTypesForTuple(Analyzer& a) {
     if (UserDefinedComplex(a))
         return Wide::Util::none;
-    return AggregateType::GetMembers();
+    return GetContents();
 }
 
 InheritanceRelationship UserDefinedType::IsDerivedFrom(Type* other, Analyzer& a) {
@@ -401,7 +448,7 @@ InheritanceRelationship UserDefinedType::IsDerivedFrom(Type* other, Analyzer& a)
     if (!base) return InheritanceRelationship::NotDerived;
     InheritanceRelationship result = InheritanceRelationship::NotDerived;
     for (std::size_t i = 0; i < type->bases.size(); ++i) {
-        auto ourbase = dynamic_cast<BaseType*>(AggregateType::GetMembers()[i]);
+        auto ourbase = dynamic_cast<BaseType*>(GetContents()[i]);
         assert(ourbase);
         if (ourbase == base) {
             if (result == InheritanceRelationship::NotDerived)
@@ -427,22 +474,105 @@ Codegen::Expression* UserDefinedType::AccessBase(Type* other, Codegen::Expressio
     auto otherbase = dynamic_cast<BaseType*>(other);
     // It is unambiguous so just hit on the first base we come across
     for (std::size_t i = 0; i < type->bases.size(); ++i) {
-        auto base = dynamic_cast<BaseType*>(AggregateType::GetMembers()[i]);
+        auto base = dynamic_cast<BaseType*>(GetContents()[i]);
         if (base == otherbase)
-            return a.gen->CreateFieldExpression(current, GetFieldIndex(i));
+            return a.gen->CreateFieldExpression(current, GetFieldIndex(a, i));
         if (base->IsDerivedFrom(other, a) == InheritanceRelationship::UnambiguouslyDerived)
-            return base->AccessBase(other, a.gen->CreateFieldExpression(current, GetFieldIndex(i)), a);
+            return base->AccessBase(other, a.gen->CreateFieldExpression(current, GetFieldIndex(a, i)), a);
     }
     assert(false);
     return nullptr;
     // shush warning
 }
 
+// Is there really a purpose to this method?
 ConcreteExpression UserDefinedType::PrimitiveAccessMember(ConcreteExpression e, unsigned num, Analyzer& a) {
     return AggregateType::PrimitiveAccessMember(e, num, a);
 }
+
 std::string UserDefinedType::explain(Analyzer& a) {
     if (context == a.GetGlobalModule())
         return source_name;
     return GetContext(a)->explain(a) + "." + source_name;
+} 
+std::vector<BaseType::VirtualFunction> UserDefinedType::ComputeVTableLayout(Analyzer& a) {
+    for (auto vfunc : VTableIndices) {
+        funcs[vfunc.second].ret = a.GetWideFunction(vfunc.first, this, funcs[vfunc.second].args, funcs[vfunc.second].name)->GetSignature(a)->GetReturnType();
+    }
+    return funcs;
+}
+
+Codegen::Expression* UserDefinedType::FunctionPointerFor(std::string name, std::vector<Type*> args, Type* ret, unsigned offset, Analyzer& a)  {
+    if (type->Functions.find(name) == type->Functions.end())
+        return nullptr;
+    // args includes this, which will have a different type here.
+    // Pretend that it really has our type.
+    if (IsLvalueType(args[0]))
+        args[0] = a.GetLvalueType(this);
+    else
+        args[0] = a.GetRvalueType(this);
+    for (auto func : type->Functions.at(name)->functions) {
+        std::vector<Type*> f_args;
+        if (func->args.size() == 0 || func->args.front().name != "this")
+            f_args.push_back(a.GetLvalueType(this));
+        for (auto arg : func->args) {
+            auto ty = a.AnalyzeExpression(GetContext(a), arg.type, [](ConcreteExpression) {}).t->Decay();
+            auto con_type = dynamic_cast<ConstructorType*>(ty);
+            if (!con_type)
+                throw Wide::Semantic::NotAType(ty, arg.location, a);
+            f_args.push_back(con_type->GetConstructedType());
+        }
+        auto widefunc = a.GetWideFunction(func, this, f_args, name);
+        widefunc->ComputeBody(a);
+        if (offset == 0) {
+            if (args == f_args && ret == widefunc->GetSignature(a)->GetReturnType()) {
+                return a.gen->CreateFunctionValue(widefunc->GetName());
+            }
+        }
+    }
+    return nullptr;
+}
+
+Codegen::Expression* UserDefinedType::GetVirtualPointer(Codegen::Expression* self, Analyzer& a) {
+    if (GetContents().size() != type->variables.size() + type->bases.size())
+        return a.gen->CreateFieldExpression(self, GetFieldIndex(a, type->variables.size() + type->bases.size()));
+    return nullptr;
+}
+
+std::function<llvm::Type*(llvm::Module*)> UserDefinedType::GetVirtualPointerType(Analyzer& a) {
+    return a.GetPointerType(a.GetFunctionType(a.GetIntegralType(32, false), {}))->GetLLVMType(a);
+}
+
+std::vector<std::pair<BaseType*, unsigned>> UserDefinedType::GetBases(Analyzer& a) {
+    std::vector<std::pair<BaseType*, unsigned>> out;
+    for (unsigned i = 0; i < type->bases.size(); ++i) {
+        out.push_back(std::make_pair(bases[i], GetOffset(a, i)));
+    }
+    return out;
+}
+Callable* UserDefinedType::GetCallableForDynamicCall(const AST::Function* func, std::vector<Type*> types, std::string name, Analyzer& a) {
+    if (VTableIndices.size() == 0)
+        ComputeVTableLayout(a);
+    struct DynamicCallable : Callable {
+        std::vector<Type*> types;
+        Type* ret;
+        unsigned index;
+        UserDefinedType* self;
+        ConcreteExpression CallFunction(std::vector<ConcreteExpression> args, Context c) {
+            auto vtableptr = c->gen->CreateLoad(self->GetVirtualPointer(args[0].Expr, *c));
+            // Index, then bitcast, then call.
+            auto fty = c->GetFunctionType(ret, types);
+            auto fptr = ConcreteExpression(fty, c->gen->CreatePointerCast(c->gen->CreateLoad(c->gen->CreatePointerIndex(vtableptr, index)), fty->GetLLVMType(*c)));
+            return fptr.BuildCall(args, c);
+        }
+        std::vector<ConcreteExpression> AdjustArguments(std::vector<ConcreteExpression> args, Context c) {
+            return AdjustArgumentsForTypes(args, types, c);
+        }
+    };
+    auto callable = new DynamicCallable();
+    callable->types = types;
+    callable->self = this;
+    callable->index = VTableIndices[func];
+    callable->ret = a.GetWideFunction(func, this, types, name)->GetSignature(a)->GetReturnType();
+    return callable;
 }

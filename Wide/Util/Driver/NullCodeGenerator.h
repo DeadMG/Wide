@@ -55,7 +55,7 @@ namespace Wide {
             virtual void AddEliminateType(llvm::Type* t) {}
             virtual void AddClangTU(std::function<void(llvm::Module*)>) {}
             virtual std::size_t GetInt8AllocSize() { return 1; }
-
+            virtual Codegen::Array* CreateConstantArray(std::function<llvm::Type*(llvm::Module*)>, std::vector<Codegen::Expression*>) { return nullptr; }
             virtual Codegen::DeferredExpr* CreateDeferredExpression(std::function<Codegen::Expression*()>) { return nullptr; }
             virtual Codegen::Function* CreateFunction(std::function<llvm::Type*(llvm::Module*)>, std::string, Semantic::Function* debug, bool trampoline = false) { return &mockfunc; }
             virtual Codegen::Variable* CreateVariable(std::function<llvm::Type*(llvm::Module*)>, unsigned alignment) { return nullptr; }

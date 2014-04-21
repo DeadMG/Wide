@@ -4,6 +4,7 @@
 #include <Wide/Codegen/Function.h>
 #include <set>
 #include <array>
+#include <sstream>
 
 #pragma warning(push, 0)
 #include <llvm/IR/IRBuilder.h>
@@ -342,4 +343,19 @@ llvm::Value* PointerIndex::ComputeValue(llvm::IRBuilder<>& b, Generator& g) {
 llvm::Value* PointerCast::ComputeValue(llvm::IRBuilder<>& builder, Generator& g) {
     auto val = pointer->GetValue(builder, g);
     return builder.CreateBitCast(val, type(builder.GetInsertBlock()->getParent()->getParent()));
+}
+llvm::Value* ConstantArray::ComputeValue(llvm::IRBuilder<>& builder, Generator& g) {
+    std::vector<llvm::Constant*> constants;
+    for (auto val : elements)
+        constants.push_back(llvm::dyn_cast<llvm::Constant>(val->GetValue(builder, g)));
+    auto mod = builder.GetInsertBlock()->getParent()->getParent();
+    auto arrty = llvm::ArrayType::get(type(builder.GetInsertBlock()->getParent()->getParent()), elements.size());
+    auto constarr = llvm::ConstantArray::get(arrty, constants);
+    std::stringstream strstr;
+    strstr << this;
+    auto global = llvm::dyn_cast<llvm::GlobalVariable>(mod->getOrInsertGlobal(strstr.str(), arrty));
+    global->setInitializer(constarr);
+    global->setLinkage(llvm::GlobalValue::LinkageTypes::InternalLinkage);
+    global->setConstant(true);
+    return builder.CreateConstGEP2_32(global, 0, 0);
 }

@@ -515,4 +515,58 @@ Codegen::Expression* Type::BuildBooleanConversion(ConcreteExpression val, Contex
     if (IsReference())
         return Decay()->BuildBooleanConversion(val, c);
     throw NoBooleanConversion(val.t, c.where, *c);
+}            
+
+Codegen::Expression* BaseType::CreateVTable(std::vector<std::pair<BaseType*, unsigned>> path, Analyzer& a) {
+    auto vptrty = GetVirtualPointerType(a);
+    auto base_vfunc_ty = [=](llvm::Module* mod) -> llvm::Type* {
+        // The vtable pointer should be pointer to function pointer.
+        // We use i32()**, Clang uses i32(...)**, either way.
+        auto ptrty = llvm::dyn_cast<llvm::PointerType>(vptrty(mod));
+        return ptrty->getElementType();
+    };
+    std::vector<Codegen::Expression*> elements;
+    for (auto func : GetVtableLayout(a)) {
+        bool found = false;
+        auto offset_total = 0;
+        for (auto more_derived : path) {
+            offset_total += more_derived.second;
+            if (auto expr = more_derived.first->FunctionPointerFor(func.name, func.args, func.ret, offset_total, a)) {
+                elements.push_back(a.gen->CreatePointerCast(expr, base_vfunc_ty));
+                found = true;
+                break;
+            }
+        }
+        if (func.abstract && !found) {
+            // It's possible we didn't find a more derived impl.
+            // Just use a null pointer instead of the Itanium ABI function for now.
+            elements.push_back(a.gen->CreateNull(base_vfunc_ty));
+        }
+        // Should have found base class impl!
+        if (!found)
+            throw std::runtime_error("le fuck");
+    }
+    return a.gen->CreateConstantArray(base_vfunc_ty, elements);
+}      
+
+Codegen::Expression* BaseType::GetVTablePointer(std::vector<std::pair<BaseType*, unsigned>> path, Analyzer& a) {
+    if (ComputedVTables.find(path) != ComputedVTables.end())
+        return ComputedVTables.at(path);
+    return ComputedVTables[path] = CreateVTable(path, a);
+}
+
+Codegen::Expression* BaseType::SetVirtualPointers(std::vector<std::pair<BaseType*, unsigned>> path, Codegen::Expression* self, Analyzer& a) {
+    // Set the base vptrs first, because some Clang types share vtables with their base and this would give the shared base the wrong vtable.
+    auto nop = (Codegen::Expression*)a.gen->CreateNop();
+    for (auto base : GetBases(a)) {
+        path.push_back(base);
+        auto more = base.first->SetVirtualPointers(path, AccessBase(base.first->GetSelfAsType(), self, a), a);
+        nop = a.gen->CreateChainExpression(nop, more);
+        path.pop_back();
+    }
+    // If we actually have a vptr, then set it; else just set the bases.
+    auto vptr = GetVirtualPointer(self, a);
+    if (!vptr)
+        return nop;
+    return a.gen->CreateChainExpression(nop, a.gen->CreateStore(vptr, GetVTablePointer(path, a)));
 }

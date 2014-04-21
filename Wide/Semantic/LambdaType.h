@@ -10,6 +10,8 @@ namespace Wide {
         class LambdaType : public AggregateType, public MemberFunctionContext {
             const AST::Lambda* lam;
             std::unordered_map<std::string, std::size_t> names;
+            std::vector<Type*> contents;
+            const std::vector<Type*>& GetContents() { return contents; }
         public:
             LambdaType(std::vector<std::pair<std::string, Type*>> capturetypes, const AST::Lambda* l, Analyzer& a);
             ConcreteExpression BuildCall(ConcreteExpression val, std::vector<ConcreteExpression> args, Context c) override final;

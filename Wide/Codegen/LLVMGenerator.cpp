@@ -316,3 +316,9 @@ PointerIndex* Generator::CreatePointerIndex(Codegen::Expression* e, int index) {
 PointerCast* Generator::CreatePointerCast(Codegen::Expression* e, std::function<llvm::Type*(llvm::Module*)> ty) {
     return arena.Allocate<PointerCast>(AssertExpression(e), ty);
 }
+ConstantArray* Generator::CreateConstantArray(std::function<llvm::Type*(llvm::Module*)> ty, std::vector<Codegen::Expression*> exprs) {
+    std::vector<LLVMCodegen::Expression*> arg;
+    for (auto expr : exprs)
+        arg.push_back(AssertExpression(expr));
+    return arena.Allocate<ConstantArray>(ty, arg);
+}

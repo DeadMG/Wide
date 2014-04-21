@@ -17,12 +17,14 @@
 #include <array>
 
 #pragma warning(push, 0)
+#include <clang/AST/RecordLayout.h>
 #include <clang/AST/ASTContext.h>
 #include <clang/Sema/Sema.h>
 #include <clang/Sema/Lookup.h>
 #include <llvm/Support/raw_os_ostream.h>
 #include <llvm/IR/DerivedTypes.h>
 #include <clang/Sema/Overload.h>
+#include <llvm/IR/Module.h>
 #pragma warning(pop)
 
 #include <Wide/Codegen/GeneratorMacros.h>
@@ -408,4 +410,36 @@ std::string ClangType::explain(Analyzer& a) {
         basename += ")";
     }
     return basename;
+}
+std::vector<std::pair<BaseType*, unsigned>> ClangType::GetBases(Analyzer& a) {
+    auto&& layout = from->GetASTContext().getASTRecordLayout(type->getAsCXXRecordDecl());
+    std::vector<std::pair<BaseType*, unsigned>> out;
+    for (auto basespec = type->getAsCXXRecordDecl()->bases_begin(); basespec != type->getAsCXXRecordDecl()->bases_end(); basespec++) {
+        out.push_back(std::make_pair(dynamic_cast<BaseType*>(a.GetClangType(*from, basespec->getType())), layout.getBaseClassOffset(basespec->getType()->getAsCXXRecordDecl()).getQuantity()));
+    }
+    return out;
+}
+
+Codegen::Expression* GetVTablePointer(Codegen::Expression* self, const clang::CXXRecordDecl* current, Analyzer& a, ClangTU* from) {
+    auto&& layout = from->GetASTContext().getASTRecordLayout(current);
+    if (layout.hasOwnVFPtr())
+        return a.gen->CreateFieldExpression(self, 0);
+    self = a.gen->CreateFieldExpression(self, from->GetBaseNumber(current, layout.getPrimaryBase()));
+    return GetVTablePointer(self, layout.getPrimaryBase(), a, from);
+}
+
+Codegen::Expression* ClangType::GetVirtualPointer(Codegen::Expression* self, Analyzer& a) {
+    return ::GetVTablePointer(self, type->getAsCXXRecordDecl(), a, from);
+}
+
+std::function<llvm::Type*(llvm::Module*)> ClangType::GetVirtualPointerType(Analyzer& a) {
+    return [](llvm::Module* m) {
+        return llvm::PointerType::get(llvm::FunctionType::get(llvm::IntegerType::get(m->getContext(), 32), true), 0);
+    };
+}
+std::vector<BaseType::VirtualFunction> ClangType::ComputeVTableLayout(Analyzer& a) {
+    return std::vector<VirtualFunction>();
+}
+Codegen::Expression* ClangType::FunctionPointerFor(std::string name, std::vector<Type*> args, Type* ret, unsigned offset, Analyzer& a) {
+    return nullptr;
 }

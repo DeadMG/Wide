@@ -75,6 +75,7 @@ namespace Wide {
         class LifetimeEnd : public Statement {};
         class PointerIndex : public Expression {};
         class PointerCast : public Expression {};
+        class Array : public Expression {};
         class Function {
         public:
             virtual ~Function() {}
@@ -89,6 +90,8 @@ namespace Wide {
                 return s;
             }
         public:
+            virtual Array* CreateConstantArray(std::function<llvm::Type*(llvm::Module*)>, std::vector<Expression*>) = 0;
+
             virtual Function* CreateFunction(std::function<llvm::Type*(llvm::Module*)>, std::string, Semantic::Function* debug, bool trampoline = false) = 0;
 
             virtual LifetimeEnd* CreateLifetimeEnd(Codegen::Expression* pointer) = 0;

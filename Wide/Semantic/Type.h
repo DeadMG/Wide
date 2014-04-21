@@ -4,6 +4,7 @@
 #include <Wide/Util/Ranges/Optional.h>
 #include <boost/variant.hpp>
 #include <Wide/Semantic/SemanticError.h>
+#include <Wide/Semantic/Hashers.h>
 #include <vector>
 #include <stdexcept>
 #include <unordered_map>
@@ -224,6 +225,32 @@ namespace Wide {
             UnambiguouslyDerived
         };
         struct BaseType {
+        public:
+            struct VirtualFunction {
+                std::string name;
+                std::vector<Type*> args;
+                Type* ret;
+                bool abstract;
+            };
+        private:
+            std::unordered_map<std::vector<std::pair<BaseType*, unsigned>>, Codegen::Expression*, VectorTypeHasher> ComputedVTables;
+            Wide::Util::optional<std::vector<VirtualFunction>> VtableLayout;
+            Codegen::Expression* CreateVTable(std::vector<std::pair<BaseType*, unsigned>> path, Analyzer& a);
+            Codegen::Expression* GetVTablePointer(std::vector<std::pair<BaseType*, unsigned>> path, Analyzer& a);
+            virtual std::vector<VirtualFunction> ComputeVTableLayout(Analyzer& a) = 0;
+            virtual Codegen::Expression* GetVirtualPointer(Codegen::Expression* self, Analyzer& a) = 0;
+            virtual std::function<llvm::Type*(llvm::Module*)> GetVirtualPointerType(Analyzer& a) = 0;
+            virtual Codegen::Expression* FunctionPointerFor(std::string name, std::vector<Type*> args, Type* ret, unsigned offset, Analyzer& a) = 0;
+            virtual std::vector<std::pair<BaseType*, unsigned>> GetBases(Analyzer& a) = 0;
+        public:
+            std::vector<VirtualFunction> GetVtableLayout(Analyzer& a) {
+                if (!VtableLayout)
+                    VtableLayout = ComputeVTableLayout(a);
+                return *VtableLayout;
+            }
+
+            Codegen::Expression* SetVirtualPointers(std::vector<std::pair<BaseType*, unsigned>> path, Codegen::Expression* self, Analyzer& a);
+
             virtual Type* GetSelfAsType() = 0;
             virtual InheritanceRelationship IsDerivedFrom(Type* other, Analyzer& a) = 0;
             virtual Codegen::Expression* AccessBase(Type* other, Codegen::Expression*, Analyzer& a) = 0;

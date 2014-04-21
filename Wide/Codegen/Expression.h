@@ -364,5 +364,14 @@ namespace Wide {
                 : pointer(ptr), type(ty) {}
             llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g) override final;
         };
+
+        class ConstantArray : public Expression, public Codegen::Array {
+            std::vector<LLVMCodegen::Expression*> elements;
+            std::function<llvm::Type*(llvm::Module*)> type;
+        public:
+            ConstantArray(std::function<llvm::Type*(llvm::Module*)> ty, std::vector<LLVMCodegen::Expression*> elems)
+                : type(ty), elements(std::move(elems)) {}
+            llvm::Value* ComputeValue(llvm::IRBuilder<>& builder, Generator& g) override final;
+        };
     }
 }

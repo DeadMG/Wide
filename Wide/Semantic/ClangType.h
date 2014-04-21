@@ -23,6 +23,11 @@ namespace Wide {
             bool ProcessedDestructors = false;
             bool ProcessedAssignmentOperators = false;
             Type* GetSelfAsType() override final { return this; }
+            std::vector<std::pair<BaseType*, unsigned>> GetBases(Analyzer& a) override final;
+            Codegen::Expression* GetVirtualPointer(Codegen::Expression* self, Analyzer& a) override final;
+            std::function<llvm::Type*(llvm::Module*)> GetVirtualPointerType(Analyzer&) override final;
+            std::vector<VirtualFunction> ComputeVTableLayout(Analyzer& a) override final;
+            Codegen::Expression* FunctionPointerFor(std::string name, std::vector<Type*> args, Type* ret, unsigned offset, Analyzer& a)override final;
         public:
             ClangType(ClangTU* src, clang::QualType t);         
             std::function<llvm::Type*(llvm::Module*)> GetLLVMType(Analyzer& a) override final;            
