@@ -183,7 +183,7 @@ void Function::ComputeBody(Analyzer& a) {
             for (auto&& x : members) {
                 // First bases, then members, then vptr.
                 if (x.vptr) {
-                    exprs.push_back(member->SetVirtualPointers({ { member, 0 } }, self.Expr, a));
+                    exprs.push_back(member->SetVirtualPointers(self.Expr, a));
                     continue;
                 }
                 auto has_initializer = [&](std::string name) -> const AST::Variable* {

@@ -1,0 +1,20 @@
+type b1 {
+    type() {}
+    dynamic f() { return false; }
+}
+type b2 {
+    type() {}
+    dynamic g() { return false; }
+}
+type der : b1 : b2 {
+    type() {}
+    f() { return true; }
+    g() { return true; }
+}
+f(b1.lvalue arg1, b2.lvalue arg2) {
+    return arg1.f() & arg2.g();
+}
+Main() {
+    var := der();
+    return f(var, var);
+}

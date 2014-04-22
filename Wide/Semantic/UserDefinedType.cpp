@@ -524,11 +524,31 @@ Codegen::Expression* UserDefinedType::FunctionPointerFor(std::string name, std::
         }
         auto widefunc = a.GetWideFunction(func, this, f_args, name);
         widefunc->ComputeBody(a);
-        if (offset == 0) {
-            if (args == f_args && ret == widefunc->GetSignature(a)->GetReturnType()) {
-                return a.gen->CreateFunctionValue(widefunc->GetName());
+        if (args != f_args)
+            continue;
+        if (widefunc->GetSignature(a)->GetReturnType() != ret)
+            throw std::runtime_error("fuck");
+        auto func = a.gen->CreateFunctionValue(widefunc->GetName());
+        if (offset == 0)
+            return func;
+        std::stringstream strstr;
+        strstr << name << "__" << this << offset;
+
+        auto thunk = a.gen->CreateFunction(a.GetFunctionType(ret, args)->GetLLVMType(a), strstr.str(), nullptr, true);
+        auto self = a.gen->CreateParameterExpression(ret->IsComplexType(a));
+        auto offset_this = a.gen->CreatePointerIndex(a.gen->CreatePointerCast(self, a.GetPointerType(a.GetIntegralType(8, true))->GetLLVMType(a)), -(int)offset);
+        auto cast_this = a.gen->CreatePointerCast(offset_this, f_args[0]->GetLLVMType(a));
+        std::vector<Codegen::Expression*> thunkargs;
+        for (int i = 0; i < args.size() + ret->IsComplexType(a); ++i) {
+            if (i == (int)ret->IsComplexType(a)) {
+                thunkargs.push_back(cast_this);
+            } else {
+                thunkargs.push_back(a.gen->CreateParameterExpression(i));
             }
         }
+        auto call = a.gen->CreateFunctionCall(func, thunkargs);
+        thunk->AddStatement(a.gen->CreateReturn(call));
+        return thunk;
     }
     return nullptr;
 }

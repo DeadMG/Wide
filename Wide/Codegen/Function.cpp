@@ -138,3 +138,9 @@ void Function::AddStatement(Codegen::Statement* s) {
     assert(p);
     statements.push_back(p);
 }
+llvm::Value* Function::ComputeValue(llvm::IRBuilder<>& bb, Generator& g) {
+    auto mod = bb.GetInsertBlock()->getParent()->getParent();
+    if (!f)
+        Declare(mod, mod->getContext(), g);
+    return f;
+}

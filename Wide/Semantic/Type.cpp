@@ -526,16 +526,19 @@ Codegen::Expression* BaseType::CreateVTable(std::vector<std::pair<BaseType*, uns
         return ptrty->getElementType();
     };
     std::vector<Codegen::Expression*> elements;
+    unsigned offset_total = 0;
+    for (auto base : path)
+        offset_total += base.second;
     for (auto func : GetVtableLayout(a)) {
         bool found = false;
-        auto offset_total = 0;
+        auto local_copy = offset_total;
         for (auto more_derived : path) {
-            offset_total += more_derived.second;
-            if (auto expr = more_derived.first->FunctionPointerFor(func.name, func.args, func.ret, offset_total, a)) {
+            if (auto expr = more_derived.first->FunctionPointerFor(func.name, func.args, func.ret, local_copy, a)) {
                 elements.push_back(a.gen->CreatePointerCast(expr, base_vfunc_ty));
                 found = true;
                 break;
             }
+            local_copy -= more_derived.second;
         }
         if (func.abstract && !found) {
             // It's possible we didn't find a more derived impl.
@@ -555,11 +558,15 @@ Codegen::Expression* BaseType::GetVTablePointer(std::vector<std::pair<BaseType*,
     return ComputedVTables[path] = CreateVTable(path, a);
 }
 
+Codegen::Expression* BaseType::SetVirtualPointers(Codegen::Expression* self, Analyzer& a) {
+    return SetVirtualPointers({}, self, a);
+}
+
 Codegen::Expression* BaseType::SetVirtualPointers(std::vector<std::pair<BaseType*, unsigned>> path, Codegen::Expression* self, Analyzer& a) {
     // Set the base vptrs first, because some Clang types share vtables with their base and this would give the shared base the wrong vtable.
     auto nop = (Codegen::Expression*)a.gen->CreateNop();
     for (auto base : GetBases(a)) {
-        path.push_back(base);
+        path.push_back(std::make_pair(this, base.second));
         auto more = base.first->SetVirtualPointers(path, AccessBase(base.first->GetSelfAsType(), self, a), a);
         nop = a.gen->CreateChainExpression(nop, more);
         path.pop_back();
@@ -568,5 +575,6 @@ Codegen::Expression* BaseType::SetVirtualPointers(std::vector<std::pair<BaseType
     auto vptr = GetVirtualPointer(self, a);
     if (!vptr)
         return nop;
+    path.push_back(std::make_pair(this, 0));
     return a.gen->CreateChainExpression(nop, a.gen->CreateStore(vptr, GetVTablePointer(path, a)));
 }

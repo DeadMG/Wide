@@ -76,7 +76,7 @@ namespace Wide {
         class PointerIndex : public Expression {};
         class PointerCast : public Expression {};
         class Array : public Expression {};
-        class Function {
+        class Function : public Expression {
         public:
             virtual ~Function() {}
             virtual void AddStatement(Statement* s) = 0;

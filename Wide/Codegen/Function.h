@@ -3,7 +3,7 @@
 #include <functional>
 #include <unordered_map>
 #include <string>
-#include <Wide/Codegen/Generator.h>
+#include <Wide/Codegen/Expression.h>
 
 namespace llvm {
     class Type;
@@ -20,8 +20,8 @@ namespace Wide {
     namespace LLVMCodegen {
         class Statement;
         class Generator;
-        class Function : public Codegen::Function {
-            std::vector<Statement*> statements;
+        class Function : public Codegen::Function, public LLVMCodegen::Expression {
+            std::vector<LLVMCodegen::Statement*> statements;
             std::function<llvm::Type*(llvm::Module*)> Type;
             std::string name;
             bool tramp;
@@ -35,6 +35,7 @@ namespace Wide {
             void Clear() { statements.clear(); }
             
             void EmitCode(llvm::Module*, llvm::LLVMContext& con, Generator&);
+            llvm::Value* ComputeValue(llvm::IRBuilder<>&, Generator& g) override final;
                         
             Function(std::function<llvm::Type*(llvm::Module*)> ty, std::string name, Semantic::Function* debug, bool trampoline = false);
         };

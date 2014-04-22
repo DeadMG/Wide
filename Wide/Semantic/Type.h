@@ -242,14 +242,14 @@ namespace Wide {
             virtual std::function<llvm::Type*(llvm::Module*)> GetVirtualPointerType(Analyzer& a) = 0;
             virtual Codegen::Expression* FunctionPointerFor(std::string name, std::vector<Type*> args, Type* ret, unsigned offset, Analyzer& a) = 0;
             virtual std::vector<std::pair<BaseType*, unsigned>> GetBases(Analyzer& a) = 0;
+            Codegen::Expression* SetVirtualPointers(std::vector<std::pair<BaseType*, unsigned>> path, Codegen::Expression* self, Analyzer& a);
         public:
             std::vector<VirtualFunction> GetVtableLayout(Analyzer& a) {
                 if (!VtableLayout)
                     VtableLayout = ComputeVTableLayout(a);
                 return *VtableLayout;
             }
-
-            Codegen::Expression* SetVirtualPointers(std::vector<std::pair<BaseType*, unsigned>> path, Codegen::Expression* self, Analyzer& a);
+            Codegen::Expression* SetVirtualPointers(Codegen::Expression* self, Analyzer& a);
 
             virtual Type* GetSelfAsType() = 0;
             virtual InheritanceRelationship IsDerivedFrom(Type* other, Analyzer& a) = 0;
