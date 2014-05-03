@@ -63,7 +63,7 @@ namespace Wide {
                 const AST::Expression* InClassInitializer;
                 bool vptr;
             };
-            std::vector<member> GetMembers(Analyzer& a);
+            std::vector<member> GetMembers();
             UserDefinedType(const AST::Type* t, Analyzer& a, Type* context, std::string);           
             Type* GetContext(Analyzer& a) override final { return context; }
             bool HasMember(std::string name);            

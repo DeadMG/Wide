@@ -97,6 +97,7 @@ const std::unordered_map<std::string, TokenType> Arguments::keywords = []() -> s
     keywords["private"] = TokenType::Private;
     keywords["protected"] = TokenType::Protected;
     keywords["dynamic"] = TokenType::Dynamic;
+    keywords["decltype"] = TokenType::Decltype;
     return keywords;
 }();
 

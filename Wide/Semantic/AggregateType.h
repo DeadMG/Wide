@@ -34,23 +34,22 @@ namespace Wide {
             unsigned GetFieldIndex(Analyzer& a, unsigned num) { return GetLayout(a).FieldIndices[num]; }
             unsigned GetOffset(Analyzer& a, unsigned num) { return GetLayout(a).Offsets[num]; }
 
-            ConcreteExpression PrimitiveAccessMember(ConcreteExpression e, unsigned num, Analyzer& a);
+            std::unique_ptr<Expression> PrimitiveAccessMember(Expression* self, unsigned num);
             
-            std::size_t size(Analyzer& a) override final;
-            std::size_t alignment(Analyzer& a) override final;
-            Type* GetConstantContext(Analyzer& a) override;
-            std::function<llvm::Type*(llvm::Module*)> GetLLVMType(Analyzer& a) override final;
+            std::size_t size() override final;
+            std::size_t alignment() override final;
+            Type* GetConstantContext() override;
+            llvm::Type* GetLLVMType(Codegen::Generator& g) override final;
             
-            OverloadSet* CreateNondefaultConstructorOverloadSet(Analyzer& a);
-            OverloadSet* CreateOperatorOverloadSet(Type* t, Lexer::TokenType type, Lexer::Access access, Analyzer& a) override;
-            OverloadSet* CreateConstructorOverloadSet(Analyzer& a, Lexer::Access access) override;
-            OverloadSet* CreateDestructorOverloadSet(Analyzer& a) override;
+            OverloadSet* CreateNondefaultConstructorOverloadSet();
+            OverloadSet* CreateOperatorOverloadSet(Type* t, Lexer::TokenType type, Lexer::Access access) override;
+            OverloadSet* CreateConstructorOverloadSet(Lexer::Access access) override;
 
-            bool IsCopyConstructible(Analyzer& a, Lexer::Access access) override;
-            bool IsMoveConstructible(Analyzer& a, Lexer::Access access) override;
-            bool IsCopyAssignable(Analyzer& a, Lexer::Access access) override;
-            bool IsMoveAssignable(Analyzer& a, Lexer::Access access) override;
-            bool IsComplexType(Analyzer& a) override;
+            bool IsCopyConstructible(Lexer::Access access) override;
+            bool IsMoveConstructible(Lexer::Access access) override;
+            bool IsCopyAssignable(Lexer::Access access) override;
+            bool IsMoveAssignable(Lexer::Access access) override;
+            bool IsComplexType() override;
         };
     }
 }

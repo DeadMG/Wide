@@ -1,0 +1,9 @@
+using header := cpp("JITSuccess/CPPInterop/ABI/Virtuals/InheritCPPInterface.h");
+using x := header.x;
+type t : x {
+    type() {}
+    f() { return true; }
+}
+Main() {
+    return header.f(t());
+}

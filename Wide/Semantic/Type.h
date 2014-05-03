@@ -30,17 +30,14 @@ namespace llvm {
     class Type;
     class LLVMContext;
     class Module;
+    class Value;
 }
 namespace clang {
     class QualType;
 }
 namespace Wide {
     namespace Codegen {
-        class Expression;
         class Generator;
-    }
-    namespace AST {
-        struct DeclContext;
     }
     namespace Lexer {
         enum class TokenType : int;
@@ -49,54 +46,8 @@ namespace Wide {
         class ClangTU;
         class Analyzer;
         class OverloadSet;
+        class Error;
         struct Type;
-        struct DeferredExpression;
-        struct ConcreteExpression;
-        struct Context {
-            Context(const Context& other) = default;
-            Context(Context&& other)
-                : where(other.where), a(other.a), source(other.source), RAIIHandler(other.RAIIHandler) {}
-            
-            Context(Analyzer& an, Lexer::Range loc, std::function<void(ConcreteExpression)> handler, Type* s)
-                : a(&an), where(loc), RAIIHandler(std::move(handler)), source(s) {}
-
-            Analyzer* a;
-            Analyzer* operator->() const { return a; }
-            Analyzer& operator*() const { return *a; }
-
-            Lexer::Range where;
-            void operator()(ConcreteExpression e);
-            std::function<void(ConcreteExpression)> RAIIHandler;
-            Type* source;
-        };
-        
-        struct ConcreteExpression {
-            ConcreteExpression(Type* ty, Codegen::Expression* ex)
-                : t(ty), Expr(ex), steal(false) {}
-            Type* t;
-            Codegen::Expression* Expr;
-            bool steal;
-            
-            ConcreteExpression BuildValue(Context c);
-            OverloadSet* AccessMember(Lexer::TokenType name, Context c);
-            Wide::Util::optional<ConcreteExpression> AccessMember(std::string name, Context c);
-            ConcreteExpression BuildDereference(Context c);
-            ConcreteExpression BuildIncrement(bool postfix, Context c);
-            ConcreteExpression BuildNegate(Context c);
-            ConcreteExpression BuildCall(Context c);
-            ConcreteExpression BuildCall(ConcreteExpression arg, Context c);
-            ConcreteExpression BuildCall(ConcreteExpression lhs, ConcreteExpression rhs, Context c);
-            ConcreteExpression BuildCall(std::vector<ConcreteExpression> args, Context c);
-            ConcreteExpression BuildCall(std::vector<ConcreteExpression> args, std::vector<ConcreteExpression> destructors, Context c);
-            ConcreteExpression BuildMetaCall(std::vector<ConcreteExpression>, Context c);
-
-            Wide::Util::optional<ConcreteExpression> PointerAccessMember(std::string name, Context c);
-            ConcreteExpression AddressOf(Context c);
-            Codegen::Expression* BuildBooleanConversion(Context c);
-            ConcreteExpression BuildBinaryExpression(ConcreteExpression rhs, Lexer::TokenType type, Context c);
-            
-            ConcreteExpression BuildBinaryExpression(ConcreteExpression rhs, Lexer::TokenType type, std::vector<ConcreteExpression> destructors, Context c);
-        };
 
         struct Node {
             std::unordered_set<Node*> listeners;
@@ -123,83 +74,78 @@ namespace Wide {
                     node->RemoveChangedListener(this);
             }
         };
-        struct Expression : public Node {
-            virtual Type* GetType() = 0;
-            virtual Codegen::Expression* GenerateCode(Codegen::Generator* g) = 0;
+        struct Statement : public Node {
+            virtual void GenerateCode(Codegen::Generator& g) = 0;
+            virtual void DestroyLocals(Codegen::Generator& g) = 0;
         };
+        struct Expression : public Statement {
+            virtual Type* GetType() = 0; // If the type is unknown then nullptr
+            llvm::Value* GetValue(Codegen::Generator& g) {
+                if (!val) val = ComputeValue(g);
+                return val;
+            }
+        private:
+            llvm::Value* val = nullptr;
+            void GenerateCode(Codegen::Generator& g) override final {
+                GetValue(g);
+            }
+            virtual llvm::Value* ComputeValue(Codegen::Generator& g) = 0;
+        };
+
         
-        struct Type {
+        struct Type : public Node {
             std::unordered_map<Lexer::Access, OverloadSet*> ConstructorOverloadSet;
             std::unordered_map<Type*, std::unordered_map<Lexer::Access, std::unordered_map<Lexer::TokenType, OverloadSet*>>> OperatorOverloadSets;
-            OverloadSet* DestructorOverloadSet;
             std::unordered_map<Type*, std::unordered_map<Type*, std::unordered_map<Lexer::Access, std::unordered_map<Lexer::TokenType, OverloadSet*>>>> ADLResults;
 
-            virtual OverloadSet* CreateOperatorOverloadSet(Type* self, Lexer::TokenType what, Lexer::Access access, Analyzer& a);
-            virtual OverloadSet* CreateConstructorOverloadSet(Analyzer& a, Lexer::Access access) = 0;
-            virtual OverloadSet* CreateDestructorOverloadSet(Analyzer& a);
-            virtual OverloadSet* CreateADLOverloadSet(Lexer::TokenType name, Type* lhs, Type* rhs, Lexer::Access access, Analyzer& a);
+            virtual OverloadSet* CreateOperatorOverloadSet(Type* self, Lexer::TokenType what, Lexer::Access access);
+            virtual OverloadSet* CreateConstructorOverloadSet(Lexer::Access access) = 0;
+            virtual OverloadSet* CreateADLOverloadSet(Lexer::TokenType name, Type* lhs, Type* rhs, Lexer::Access access);
+        protected:
+            Analyzer& analyzer;
         public:
-            Type() : DestructorOverloadSet(nullptr) {}
+            Type(Analyzer& a) : analyzer(a) {}
 
-            virtual bool IsReference(Type* to) {
-                return false;
-            }
-            virtual bool IsReference() {
-                return false;
-            } 
-            virtual Type* Decay() {
-                return this;
-            }
+            virtual llvm::Type* GetLLVMType(Codegen::Generator& g) = 0;
+            virtual std::size_t size() = 0;
+            virtual std::size_t alignment() = 0;
+            virtual std::string explain() = 0;
 
-            virtual Type* GetContext(Analyzer& a);
+            virtual bool IsReference(Type* to);
+            virtual bool IsReference();
+            virtual Type* Decay();
+            virtual Type* GetContext();
+            virtual bool IsComplexType() { return false; }
+            virtual Wide::Util::optional<clang::QualType> GetClangType(ClangTU& TU);
+            virtual bool IsMoveConstructible(Lexer::Access access);
+            virtual bool IsCopyConstructible(Lexer::Access access);
+            virtual bool IsMoveAssignable(Lexer::Access access);
+            virtual bool IsCopyAssignable(Lexer::Access access);
+            virtual bool IsA(Type* self, Type* other, Lexer::Access access);
+            virtual Type* GetConstantContext();
 
-            virtual bool IsComplexType(Analyzer& a) { return false; }
-            virtual Wide::Util::optional<clang::QualType> GetClangType(ClangTU& TU, Analyzer& a);
+            virtual std::unique_ptr<Expression> AccessStaticMember(std::string name);
+            virtual std::unique_ptr<Expression> AccessMember(Expression* t, std::string name, Lexer::Access);
+            virtual std::unique_ptr<Expression> BuildValueConstruction(std::vector<Expression*> types);
+            virtual std::unique_ptr<Expression> BuildMetaCall(Expression* val, std::vector<Expression*> args);
+            virtual std::unique_ptr<Expression> BuildCall(Expression* val, std::vector<Expression*> args);
 
-            virtual std::function<llvm::Type*(llvm::Module*)> GetLLVMType(Analyzer& a) = 0;
-            virtual std::size_t size(Analyzer& a) = 0;
-            virtual std::size_t alignment(Analyzer& a) = 0;
+            virtual std::function<llvm::Value*(llvm::Value*, Codegen::Generator&)> BuildBooleanConversion(Type* t);
+            virtual std::function<void(llvm::Value*, Codegen::Generator&)> BuildDestructorCall();
 
-            virtual bool IsMoveConstructible(Analyzer& a, Lexer::Access access);
-            virtual bool IsCopyConstructible(Analyzer& a, Lexer::Access access);
+            virtual ~Type();
 
-            virtual bool IsMoveAssignable(Analyzer& a, Lexer::Access access);
-            virtual bool IsCopyAssignable(Analyzer& a, Lexer::Access access);
-            
-            virtual Wide::Util::optional<ConcreteExpression> AccessStaticMember(std::string name, Context c) {
-                return Wide::Util::none;
-            }
-            virtual Wide::Util::optional<ConcreteExpression> AccessMember(ConcreteExpression, std::string name, Context c);
+            OverloadSet* GetConstructorOverloadSet(Lexer::Access access);
+            OverloadSet* PerformADL(Lexer::TokenType what, Type* lhs, Type* rhs, Lexer::Access access);
+            OverloadSet* AccessMember(Type* t, Lexer::TokenType type, Lexer::Access access);
 
-            virtual ConcreteExpression BuildMetaCall(ConcreteExpression val, std::vector<ConcreteExpression> args, Context c) {
-                throw NoMetaCall(val.t, c.where, *c);
-            }
-            virtual Codegen::Expression* BuildBooleanConversion(ConcreteExpression val, Context c);
-            virtual ConcreteExpression BuildCall(ConcreteExpression val, std::vector<ConcreteExpression> args, std::vector<ConcreteExpression> destructors, Context c);
-            virtual ConcreteExpression BuildCall(ConcreteExpression val, std::vector<ConcreteExpression> args, Context c);
-
-            virtual ConcreteExpression BuildBinaryExpression(ConcreteExpression lhs, ConcreteExpression rhs, std::vector<ConcreteExpression> destructors, Lexer::TokenType type, Context c);
-            
-            virtual bool IsA(Type* self, Type* other, Analyzer& a, Lexer::Access access);
-            virtual Type* GetConstantContext(Analyzer& a);
-
-            virtual std::string explain(Analyzer& a) = 0;
-            virtual ~Type() {}
-
-            OverloadSet* PerformADL(Lexer::TokenType what, Type* lhs, Type* rhs, Lexer::Access access, Analyzer& a);
-            
-            Codegen::Expression* BuildInplaceConstruction(Codegen::Expression* mem, std::vector<ConcreteExpression> args, Context c);
-            OverloadSet* AccessMember(Type* t, Lexer::TokenType type, Lexer::Access access, Analyzer& a);
-            ConcreteExpression BuildValueConstruction(std::vector<ConcreteExpression> args, Context c);
-            ConcreteExpression BuildRvalueConstruction(std::vector<ConcreteExpression> args, Context c);
-            ConcreteExpression BuildLvalueConstruction(std::vector<ConcreteExpression> args, Context c);
-
-            ConcreteExpression BuildUnaryExpression(ConcreteExpression self, Lexer::TokenType type, Context c);
-            ConcreteExpression BuildBinaryExpression(ConcreteExpression lhs, ConcreteExpression rhs, Lexer::TokenType type, Context c);
-
-            OverloadSet* GetConstructorOverloadSet(Analyzer& a, Lexer::Access access);
-            OverloadSet* GetDestructorOverloadSet(Analyzer& a);
+            std::unique_ptr<Expression> BuildInplaceConstruction(std::function<llvm::Value*()>, std::vector<Expression*> exprs);
+            std::unique_ptr<Expression> BuildRvalueConstruction(std::vector<Expression*> exprs);
+            std::unique_ptr<Expression> BuildLvalueConstruction(std::vector<Expression*> exprs);
+            std::unique_ptr<Expression> BuildUnaryExpression(Expression* self, Lexer::TokenType type);
+            std::unique_ptr<Expression> BuildBinaryExpression(Expression* lhs, Expression* rhs, Lexer::TokenType type);
         };
+
         struct TupleInitializable {
             virtual Type* GetSelfAsType() = 0;
             virtual Wide::Util::optional<std::vector<Type*>> GetTypesForTuple(Analyzer& a) = 0;
@@ -233,15 +179,16 @@ namespace Wide {
                 bool abstract;
             };
         private:
-            std::unordered_map<std::vector<std::pair<BaseType*, unsigned>>, Codegen::Expression*, VectorTypeHasher> ComputedVTables;
-            Wide::Util::optional<std::vector<VirtualFunction>> VtableLayout;
-            Codegen::Expression* CreateVTable(std::vector<std::pair<BaseType*, unsigned>> path, Analyzer& a);
-            Codegen::Expression* GetVTablePointer(std::vector<std::pair<BaseType*, unsigned>> path, Analyzer& a);
             virtual std::vector<VirtualFunction> ComputeVTableLayout(Analyzer& a) = 0;
             virtual Codegen::Expression* GetVirtualPointer(Codegen::Expression* self, Analyzer& a) = 0;
             virtual std::function<llvm::Type*(llvm::Module*)> GetVirtualPointerType(Analyzer& a) = 0;
             virtual Codegen::Expression* FunctionPointerFor(std::string name, std::vector<Type*> args, Type* ret, unsigned offset, Analyzer& a) = 0;
             virtual std::vector<std::pair<BaseType*, unsigned>> GetBases(Analyzer& a) = 0;
+
+            std::unordered_map<std::vector<std::pair<BaseType*, unsigned>>, Codegen::Expression*, VectorTypeHasher> ComputedVTables;
+            Wide::Util::optional<std::vector<VirtualFunction>> VtableLayout;
+            Codegen::Expression* CreateVTable(std::vector<std::pair<BaseType*, unsigned>> path, Analyzer& a);
+            Codegen::Expression* GetVTablePointer(std::vector<std::pair<BaseType*, unsigned>> path, Analyzer& a);
             Codegen::Expression* SetVirtualPointers(std::vector<std::pair<BaseType*, unsigned>> path, Codegen::Expression* self, Analyzer& a);
         public:
             std::vector<VirtualFunction> GetVtableLayout(Analyzer& a) {
@@ -249,7 +196,7 @@ namespace Wide {
                     VtableLayout = ComputeVTableLayout(a);
                 return *VtableLayout;
             }
-            Codegen::Expression* SetVirtualPointers(Codegen::Expression* self, Analyzer& a);
+            std::function<void(llvm::Value*, Codegen::Generator&)> SetVirtualPointers();
 
             virtual Type* GetSelfAsType() = 0;
             virtual InheritanceRelationship IsDerivedFrom(Type* other, Analyzer& a) = 0;
@@ -266,22 +213,11 @@ namespace Wide {
         class MetaType : public PrimitiveType {
         public:
             MetaType() {}
-            std::function<llvm::Type*(llvm::Module*)> GetLLVMType(Analyzer& a) override;            
-            std::size_t size(Analyzer& a) override;
-            std::size_t alignment(Analyzer& a) override;
+            llvm::Type* GetLLVMType(Codegen::Generator& g) {}
+            std::size_t size() override;
+            std::size_t alignment() override;
             Type* GetConstantContext(Analyzer& a) override;
             OverloadSet* CreateConstructorOverloadSet(Analyzer& a, Lexer::Access access) override final;
-        };
-        class Concept {
-        protected:
-            virtual Type* ConstrainType(Type* t) = 0;
-        public:
-            virtual bool CanConstrainType(Type* t) = 0;
-            Type* GetConstrainedType(Type* t) {
-                if (CanConstrainType(t))
-                    return ConstrainType(t);
-                return nullptr;
-            }
         };
         std::vector<ConcreteExpression> AdjustArgumentsForTypes(std::vector<ConcreteExpression>, std::vector<Type*>, Context c);
         OverloadResolvable* make_resolvable(std::function<ConcreteExpression(std::vector<ConcreteExpression>, Context)> f, std::vector<Type*> types, Analyzer& a);

@@ -1,7 +1,6 @@
 #pragma once
 
 #include <Wide/Semantic/Type.h>
-#include <Wide/Codegen/Expression.h>
 #include <vector>
 #include <unordered_map>
 
@@ -11,6 +10,7 @@ namespace llvm {
 namespace Wide {
     namespace AST {
         struct FunctionBase;
+        struct Statement;
     }
     namespace Codegen {
         class Function;
@@ -19,46 +19,62 @@ namespace Wide {
         class FunctionType;
         class UserDefinedType;
         class Function : public MetaType, public Callable {
+            // Implementation detail helpers
+            struct ReturnStatement;
+            struct CompoundStatement;
+            struct WhileStatement;
+            struct VariableStatement;
+            struct Scope;
+            struct LocalScope;
+            struct LocalVariable;
+            struct IfStatement;
+            struct VariableReference;
+            struct ConditionVariable;
+            struct BreakStatement;
+            struct ContinueStatement;
+            struct InitVTable;
+            struct InitMember;
+            struct Parameter;
+            llvm::Function* llvmfunc = nullptr;
+            std::unique_ptr<Statement> AnalyzeStatement(const AST::Statement*);
+            std::unordered_set<ReturnStatement*> returns;
+            std::vector<std::unique_ptr<Statement>> stmts;
+            std::unique_ptr<Scope> root_scope;
+            Scope* current_scope;
+            Wide::Util::optional<Type*> ExplicitReturnType;
+            Type* ReturnType = nullptr;
+            Analyzer& analyzer;
+            std::vector<Type*> Args;
+            const AST::FunctionBase* fun;
+            Type* context;
+            std::string source_name;
+            std::string name;
+            Wide::Util::optional<std::string> trampoline;
             enum class State {
                 NotYetAnalyzed,
                 AnalyzeInProgress,
                 AnalyzeCompleted
             };
-            enum ReturnState {
-                NoReturnSeen,
-                DeferredReturnSeen,
-                ConcreteReturnSeen
-            };
             State s;
-            Type* ReturnType;
-            std::vector<Type*> Args;
-            Analyzer& analyzer;
-            const AST::FunctionBase* fun;
+            
+            /*
             Codegen::Function* codefun;
-            ReturnState returnstate;
-            Type* context;
-            Wide::Util::optional<std::string> trampoline;
             void CompleteAnalysis(Analyzer& a);
 
-            std::vector<Codegen::Statement*> exprs;
+            std::vector<std::unique_ptr<Statement>> exprs;
             struct Scope {
-                Scope(Scope* s) : parent(s), current_while(nullptr) {}
+                Scope(Scope* s) : parent(s) {}
                 Scope* parent;
                 std::vector<std::unique_ptr<Scope>> children;
                 std::unordered_map<std::string, std::pair<ConcreteExpression, Lexer::Range>> named_variables;
                 std::vector<ConcreteExpression> needs_destruction;
-                Codegen::WhileStatement* current_while;
-
-                Codegen::Statement* GetCleanupExpression(Analyzer& a, Lexer::Range where, Function* f);
-                Codegen::Statement* GetCleanupAllExpression(Analyzer& a, Lexer::Range where, Function* f);
 
                 Wide::Util::optional<std::pair<ConcreteExpression, Lexer::Range>> LookupName(std::string name, Context c);
             };
             struct LocalScope;
             Scope root_scope;
-            Scope* current_scope;
-            std::string source_name;
-            std::string name;
+            Scope* current_scope;*/
+            void ComputeReturnType();
 
             std::vector<ConcreteExpression> AdjustArguments(std::vector<ConcreteExpression> args, Context c) override final {
                 return AdjustArgumentsForTypes(args, Args, c);
@@ -67,21 +83,23 @@ namespace Wide {
                 return BuildCall(BuildValueConstruction({}, c), std::move(exprs), c);
             }
         public:
-            void ComputeBody(Analyzer& a);
+            void ComputeBody();
+            void EmitCode(Codegen::Generator& g);
             Function(std::vector<Type*> args, const AST::FunctionBase* astfun, Analyzer& a, Type* container, std::string name);        
 
-            Wide::Util::optional<clang::QualType> GetClangType(ClangTU& where, Analyzer& a) override final;
+            Wide::Util::optional<clang::QualType> GetClangType(ClangTU& where) override final;
      
-            ConcreteExpression BuildCall(ConcreteExpression, std::vector<ConcreteExpression> args, Context c) override final;
+            std::unique_ptr<Expression> BuildCall(Expression* val, std::vector<Expression*> args) override final;
             std::string GetName();
-            Type* GetContext(Analyzer& a) override final { return context; }
+            Type* GetContext() override final { return context; }
 
-            FunctionType* GetSignature(Analyzer& a);
-            Wide::Util::optional<ConcreteExpression> LookupLocal(std::string name, Context c);
-            Type* GetConstantContext(Analyzer& a) override final;
+            FunctionType* GetSignature();
+            Wide::Util::optional<ConcreteExpression> LookupLocal(std::string name);
+            Type* GetConstantContext() override final;
             void SetExportName(std::string name) { trampoline = name; }
-            std::string explain(Analyzer& a) override final;
+            std::string explain() override final;
             std::string GetSourceName() { return source_name; }
+            ~Function();
         };
     }
 }

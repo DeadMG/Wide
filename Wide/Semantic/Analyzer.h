@@ -111,11 +111,7 @@ namespace Wide {
             std::function<void(Lexer::Range where)> ParameterHighlight;
 
             void AddClangType(clang::QualType t, Type* match);
-
-            Wide::Memory::Arena arena;
-
-            Codegen::Generator* gen;
-
+            
             Type* GetVoidType();
             Type* GetNullType();
             Type* GetBooleanType();
@@ -166,5 +162,6 @@ namespace Wide {
         std::string GetNameForOperator(Lexer::TokenType t);
         bool IsMultiTyped(const AST::FunctionArgument& f); 
         bool IsMultiTyped(const AST::FunctionBase* f);
+        std::unique_ptr<Expression> AnalyzeExpression(Type* lookup, const AST::Expression* e);
     }
 }

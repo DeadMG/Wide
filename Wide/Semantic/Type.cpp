@@ -22,14 +22,61 @@ using namespace Semantic;
 #include <clang/AST/AST.h>
 #pragma warning(pop)
 
-#include <Wide/Codegen/GeneratorMacros.h>
+Type* Type::GetContext() {
+    return analyzer.GetGlobalModule();
+}
 
-Type* Type::GetContext(Analyzer& a) {
-    return a.GetGlobalModule();
+bool Type::IsReference(Type* to) { return false; }
+bool Type::IsReference() { return false; }
+Type* Type::Decay() { return this; }
+std::function<void(llvm::Value*, Codegen::Generator& g)> Type::BuildDestructorCall() { return [](llvm::Value*, Codegen::Generator&) {}; }
+Wide::Util::optional<clang::QualType> Type::GetClangType(ClangTU& TU) { return Wide::Util::none; }
+bool Type::IsComplexType() { return false; }
+Type::~Type() {}
+Type* Type::GetConstantContext() { return nullptr; }
+Wide::Util::optional<UniqueExpression> Type::AccessStaticMember(std::string name) { return Wide::Util::none; }
+Wide::Util::optional<UniqueExpression> AccessMember(Type* t, std::string name, Lexer::Access) { return Wide::Util::none; }
+
+bool Type::IsMoveConstructible(Lexer::Access access) {
+    auto set = GetConstructorOverloadSet(access);
+    std::vector<Type*> arguments;
+    arguments.push_back(analyzer.GetLvalueType(this));
+    arguments.push_back(analyzer.GetRvalueType(this));
+    return set->Resolve(std::move(arguments), this);
 }
-Wide::Util::optional<clang::QualType> Type::GetClangType(ClangTU& TU, Analyzer& a) {
-    return Wide::Util::none;
+
+bool Type::IsCopyConstructible(Lexer::Access access) {
+    // A Clang struct with a deleted copy constructor can be both noncomplex and non-copyable at the same time.
+    auto set = GetConstructorOverloadSet(access);
+    std::vector<Type*> arguments;
+    arguments.push_back(analyzer.GetLvalueType(this));
+    arguments.push_back(analyzer.GetLvalueType(this));
+    return set->Resolve(std::move(arguments), this);
 }
+
+bool Type::IsCopyAssignable(Lexer::Access access) {
+    auto set = AccessMember(analyzer.GetLvalueType(this), Lexer::TokenType::Assignment, access);
+    std::vector<Type*> arguments;
+    arguments.push_back(analyzer.GetLvalueType(this));
+    arguments.push_back(analyzer.GetLvalueType(this));
+    return set->Resolve(std::move(arguments), this);
+}
+
+bool Type::IsMoveAssignable(Lexer::Access access) {
+    auto set = AccessMember(analyzer.GetLvalueType(this), Lexer::TokenType::Assignment, access);
+    std::vector<Type*> arguments;
+    arguments.push_back(analyzer.GetLvalueType(this));
+    arguments.push_back(analyzer.GetRvalueType(this));
+    return set->Resolve(std::move(arguments), this);
+}
+bool Type::IsA(Type* self, Type* other, Lexer::Access access) {
+    return
+        other == self ||
+        other == analyzer.GetRvalueType(self) ||
+        self == analyzer.GetLvalueType(other) && other->IsCopyConstructible(access) ||
+        self == analyzer.GetRvalueType(other) && other->IsMoveConstructible(access);
+}
+
 
 ConcreteExpression ConcreteExpression::BuildIncrement(bool postfix, Context c) {
     if (postfix) {
@@ -278,48 +325,8 @@ std::function<llvm::Type*(llvm::Module*)> MetaType::GetLLVMType(Analyzer& a) {
         return llvm::StructType::create(nam, llvm::IntegerType::getInt8Ty(mod->getContext()), nullptr);
     };
 }
-bool Type::IsA(Type* self, Type* other, Analyzer& a, Lexer::Access access) {
-    return
-        other == self ||
-        other == a.GetRvalueType(self) ||
-        self == a.GetLvalueType(other) && other->IsCopyConstructible(a, access) ||
-        self == a.GetRvalueType(other) && other->IsMoveConstructible(a, access);
-}
-
 #pragma warning(disable : 4800)
 
-bool Type::IsMoveConstructible(Analyzer& a, Lexer::Access access) {
-    auto set = GetConstructorOverloadSet(a, access);
-    std::vector<Type*> arguments;
-    arguments.push_back(a.GetLvalueType(this));
-    arguments.push_back(a.GetRvalueType(this));
-    return set->Resolve(std::move(arguments), a, this);
-}
-
-bool Type::IsCopyConstructible(Analyzer& a, Lexer::Access access) {
-    // A Clang struct with a deleted copy constructor can be both noncomplex and non-copyable at the same time.
-    auto set = GetConstructorOverloadSet(a, access);
-    std::vector<Type*> arguments;
-    arguments.push_back(a.GetLvalueType(this));
-    arguments.push_back(a.GetLvalueType(this));
-    return set->Resolve(std::move(arguments), a, this);
-}
-
-bool Type::IsCopyAssignable(Analyzer& a, Lexer::Access access) {
-    auto set = AccessMember(a.GetLvalueType(this), Lexer::TokenType::Assignment, access, a);
-    std::vector<Type*> arguments;
-    arguments.push_back(a.GetLvalueType(this));
-    arguments.push_back(a.GetLvalueType(this));
-    return set->Resolve(std::move(arguments), a, this);
-}
-
-bool Type::IsMoveAssignable(Analyzer& a, Lexer::Access access) {
-    auto set = AccessMember(a.GetLvalueType(this), Lexer::TokenType::Assignment, access, a);
-    std::vector<Type*> arguments;
-    arguments.push_back(a.GetLvalueType(this));
-    arguments.push_back(a.GetRvalueType(this));
-    return set->Resolve(std::move(arguments), a, this);
-}
 
 Type* MetaType::GetConstantContext(Wide::Semantic::Analyzer& a) {
     return this;
@@ -484,9 +491,6 @@ ConcreteExpression Type::BuildCall(ConcreteExpression val, std::vector<ConcreteE
     for (auto x : destructors)
         c(x);
     return val.BuildCall(std::move(args), c);
-}
-Type* Type::GetConstantContext(Analyzer& a) {
-    return nullptr;
 }
 
 ConcreteExpression Type::BuildUnaryExpression(ConcreteExpression self, Lexer::TokenType type, Context c) {
