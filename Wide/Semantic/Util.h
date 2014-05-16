@@ -2,6 +2,7 @@
 
 #include <string>
 #include <unordered_map>
+#include <Wide/Semantic/Type.h>
 
 namespace clang {
     class QualType;
@@ -20,11 +21,9 @@ namespace Wide {
     }
     namespace Semantic {
         struct Type;
-        struct Context;
-        struct ConcreteExpression;    
         clang::ExprValueKind GetKindOfType(Type* t);
         class ClangTU;
         const std::unordered_map<Lexer::TokenType, std::pair<clang::OverloadedOperatorKind, clang::BinaryOperatorKind>>& GetTokenMappings();
-        ConcreteExpression InterpretExpression(clang::Expr* p, ClangTU& from, Context c);
+        std::unique_ptr<Expression> InterpretExpression(clang::Expr* p, ClangTU& from, Type* src);
     }
 }

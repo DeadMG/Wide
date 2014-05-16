@@ -14,44 +14,40 @@
 #include <clang/Sema/Sema.h>
 #pragma warning(pop)
 
-#include <Wide/Codegen/GeneratorMacros.h>
-
 using namespace Wide;
 using namespace Semantic;
 
-ConcreteExpression ClangTemplateClass::BuildCall(ConcreteExpression, std::vector<ConcreteExpression> args, Context c) {
+std::unique_ptr<Expression> ClangTemplateClass::BuildCall(std::unique_ptr<Expression> val, std::vector<std::unique_ptr<Expression>> args, Context c){
     clang::TemplateArgumentListInfo tl;
     std::vector<Type*> types;
     std::list<clang::IntegerLiteral> literals;
     for(auto&& x : args) {
-        if (auto con = dynamic_cast<ConstructorType*>(x.t)) {
-            auto clangty = con->GetConstructedType()->GetClangType(*from, *c);
-            if (!clangty) throw InvalidTemplateArgument(x.t, c.where, *c);
+        if (auto con = dynamic_cast<ConstructorType*>(x->GetType())) {
+            auto clangty = con->GetConstructedType()->GetClangType(*from);
+            if (!clangty) throw InvalidTemplateArgument(x->GetType(), c.where);
             auto tysrcinfo = from->GetASTContext().getTrivialTypeSourceInfo(*clangty);
             
             tl.addArgument(clang::TemplateArgumentLoc(clang::TemplateArgument(*clangty), tysrcinfo));
             types.push_back(con->GetConstructedType());
             continue;
         }
-        if (auto in = dynamic_cast<IntegralType*>(x.t)) {
-            if (auto integral = dynamic_cast<Codegen::IntegralExpression*>(x.Expr)) {
-                literals.emplace_back(from->GetASTContext(), llvm::APInt(64, integral->GetValue(), integral->GetSign()), from->GetASTContext().LongLongTy, clang::SourceLocation());
-                tl.addArgument(clang::TemplateArgumentLoc(clang::TemplateArgument(&literals.back()), clang::TemplateArgumentLocInfo(&literals.back())));
-                types.push_back(x.t);
-                continue;
-            }
+        if (auto in = dynamic_cast<Integer*>(x.get())) {
+            literals.emplace_back(from->GetASTContext(), in->value, from->GetASTContext().LongLongTy, clang::SourceLocation());
+            tl.addArgument(clang::TemplateArgumentLoc(clang::TemplateArgument(&literals.back()), clang::TemplateArgumentLocInfo(&literals.back())));
+            types.push_back(x->GetType());
+            continue;
         }
-        throw InvalidTemplateArgument(x.t, c.where, *c);
+        throw InvalidTemplateArgument(x->GetType(), c.where);
     }
     
     llvm::SmallVector<clang::TemplateArgument, 10> tempargs;
     if (from->GetSema().CheckTemplateArgumentList(tempdecl, tempdecl->getLocation(), tl, false, tempargs))
-        throw UnresolvableTemplate(this, types, from->PopLastDiagnostic(), c.where, *c);
+        throw UnresolvableTemplate(this, types, from->PopLastDiagnostic(), c.where);
 
     void* pos = 0;
     auto spec = tempdecl->findSpecialization(tempargs.data(), tempargs.size(), pos);    
     if (spec)    
-        return c->GetConstructorType(c->GetClangType(*from, from->GetASTContext().getRecordType(spec)))->BuildValueConstruction({}, c);
+        return analyzer.GetConstructorType(analyzer.GetClangType(*from, from->GetASTContext().getRecordType(spec)))->BuildValueConstruction({}, { this, c.where });
     auto loc = from->GetFileEnd();
     if (!spec) {
         spec = clang::ClassTemplateSpecializationDecl::Create(
@@ -75,11 +71,11 @@ ConcreteExpression ClangTemplateClass::BuildCall(ConcreteExpression, std::vector
         if (from->GetSema().InstantiateClassTemplateSpecialization(loc, spec, tsk))
             throw UninstantiableTemplate(c.where);
 
-    return c->GetConstructorType(c->GetClangType(*from, from->GetASTContext().getRecordType(spec)))->BuildValueConstruction({}, c);
+    return analyzer.GetConstructorType(analyzer.GetClangType(*from, from->GetASTContext().getRecordType(spec)))->BuildValueConstruction({}, { this, c.where });
 }
-std::string ClangTemplateClass::explain(Analyzer& a) {
-    return GetContext(a)->explain(a) + "." + tempdecl->getName().str();
+std::string ClangTemplateClass::explain() {
+    return GetContext()->explain() + "." + tempdecl->getName().str();
 } 
-Type* ClangTemplateClass::GetContext(Analyzer& a) {
-    return a.GetClangNamespace(*from, tempdecl->getDeclContext());
+Type* ClangTemplateClass::GetContext() {
+    return analyzer.GetClangNamespace(*from, tempdecl->getDeclContext());
 }

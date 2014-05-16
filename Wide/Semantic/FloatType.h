@@ -5,14 +5,14 @@ namespace Wide {
         class FloatType : public PrimitiveType {
             unsigned bits;
         public:
-            FloatType(unsigned bit) : bits(bit) {}
+            FloatType(unsigned bit, Analyzer& a) : bits(bit), PrimitiveType(a) {}
 
-            Wide::Util::optional<clang::QualType> GetClangType(ClangTU& TU, Analyzer& a) override final;
-            std::function<llvm::Type*(llvm::Module*)> GetLLVMType(Analyzer& a) override final;
+            Wide::Util::optional<clang::QualType> GetClangType(ClangTU& TU) override final;
+            llvm::Type* GetLLVMType(Codegen::Generator& g) override final;
 
-            std::size_t size(Analyzer& a) override final;
-            std::size_t alignment(Analyzer& a) override final;
-            std::string explain(Analyzer& a) override final;
+            std::size_t size() override final;
+            std::size_t alignment() override final;
+            std::string explain() override final;
         };
     }
 }

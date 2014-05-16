@@ -31,7 +31,7 @@ namespace Wide {
             std::string member;
             Type* context;
         public:
-            NoMember(Type* what, Type* con, std::string name, Lexer::Range where, Analyzer& a);
+            NoMember(Type* what, Type* con, std::string name, Lexer::Range where);
             Type* GetType() { return which; }
             Type* GetContext() { return context; }
             std::string GetMember() { return member; }
@@ -40,7 +40,7 @@ namespace Wide {
         class NotAType : public Error {
             Type* real_type;
         public:
-            NotAType(Type* what, Lexer::Range loc, Analyzer& a);
+            NotAType(Type* what, Lexer::Range loc);
             Type* GetType() { return real_type; }
         };
 
@@ -71,7 +71,7 @@ namespace Wide {
             std::string member;
             Type* context;
         public:
-            UnqualifiedLookupFailure(Type* con, std::string name, Lexer::Range where, Analyzer& a);
+            UnqualifiedLookupFailure(Type* con, std::string name, Lexer::Range where);
             Type* GetContext() { return context; }
             std::string GetMember() { return member; }
         };
@@ -80,7 +80,7 @@ namespace Wide {
             std::string name;
             Type* which;
         public:
-            ClangLookupAmbiguous(std::string name, Type* what, Lexer::Range where, Analyzer& a);
+            ClangLookupAmbiguous(std::string name, Type* what, Lexer::Range where);
             std::string GetName() { return name; }
             Type* GetObject() { return which; }
         };
@@ -89,7 +89,7 @@ namespace Wide {
             std::string name;
             Type* which;
         public:
-            ClangUnknownDecl(std::string name, Type* what, Lexer::Range where, Analyzer& a);
+            ClangUnknownDecl(std::string name, Type* what, Lexer::Range where);
             std::string GetName() { return name; }
             Type* GetType() { return which; }
         };
@@ -97,7 +97,7 @@ namespace Wide {
         class InvalidTemplateArgument : public Error {
             Type* type;
         public:
-            InvalidTemplateArgument(Type* t, Lexer::Range where, Analyzer& a);
+            InvalidTemplateArgument(Type* t, Lexer::Range where);
             Type* GetType() { return type; }
         };
 
@@ -106,7 +106,7 @@ namespace Wide {
             std::vector<Type*> arguments;
             std::string clangdiag;
         public:
-            UnresolvableTemplate(Type*, std::vector<Type*>, std::string diag, Lexer::Range, Analyzer& a);
+            UnresolvableTemplate(Type*, std::vector<Type*>, std::string diag, Lexer::Range);
             Type* GetTemplate() { return temp; }
             std::vector<Type*> GetArgumentTypes() { return arguments; }
             std::string GetClangDiagnostic() { return clangdiag; }
@@ -127,7 +127,7 @@ namespace Wide {
         class IncompleteClangType : public Error {
             Type* which;
         public:
-            IncompleteClangType(Type* what, Lexer::Range where, Analyzer& a);
+            IncompleteClangType(Type* what, Lexer::Range where);
             Type* GetType() { return which; }
         };
 
@@ -143,7 +143,7 @@ namespace Wide {
         class InvalidBase : public Error {
             Type* base;
         public:
-            InvalidBase(Type* t, Lexer::Range where, Analyzer& a);
+            InvalidBase(Type* t, Lexer::Range where);
             Type* GetBaseType() { return base; }
         };
 
@@ -152,7 +152,7 @@ namespace Wide {
             Type* base1;
             Type* base2;
         public:
-            AmbiguousLookup(std::string name, Type* b1, Type* b2, Lexer::Range where, Analyzer& a);
+            AmbiguousLookup(std::string name, Type* b1, Type* b2, Lexer::Range where);
             std::string GetName();
             Type* GetFirstBase() { return base1; }
             Type* GetSecondBase() { return base2; }
@@ -161,14 +161,14 @@ namespace Wide {
         class NoBooleanConversion : public Error {
             Type* object;
         public:
-            NoBooleanConversion(Type* obj, Lexer::Range r, Analyzer& a);
+            NoBooleanConversion(Type* obj, Lexer::Range r);
             Type* GetObjectType() { return object; }
         };
 
         class AddressOfNonLvalue : public Error {
             Type* obj;
         public:
-            AddressOfNonLvalue(Type* obj, Lexer::Range r, Analyzer& a);
+            AddressOfNonLvalue(Type* obj, Lexer::Range r);
             Type* GetObjectType() { return obj; }
         };
 
@@ -182,7 +182,7 @@ namespace Wide {
         class NoMetaCall : public Error {
             Type* which;
         public:
-            NoMetaCall(Type* what, Lexer::Range where, Analyzer& a);
+            NoMetaCall(Type* what, Lexer::Range where);
             Type* GetType() { return which; }
         };
 
@@ -190,7 +190,7 @@ namespace Wide {
             std::string name;
             Type* which;
         public:
-            NoMemberToInitialize(Type* what, std::string name, Lexer::Range where, Analyzer& a);
+            NoMemberToInitialize(Type* what, std::string name, Lexer::Range where);
             Type* GetType() { return which; }
             std::string GetName() { return name; }
         };
@@ -199,7 +199,7 @@ namespace Wide {
             Type* new_ret_type;
             Type* existing_ret_type;
         public:
-            ReturnTypeMismatch(Type* new_r, Type* old_r, Lexer::Range where, Analyzer& a);
+            ReturnTypeMismatch(Type* new_r, Type* old_r, Lexer::Range where);
             Type* GetNewReturnType() { return new_ret_type; }
             Type* GetExistingReturnType() { return existing_ret_type; }
         };
@@ -220,7 +220,7 @@ namespace Wide {
         class TupleUnpackWrongCount : public Error {
             Type* tupletype;
         public:
-            TupleUnpackWrongCount(Type* tupty, Lexer::Range where, Analyzer& a);
+            TupleUnpackWrongCount(Type* tupty, Lexer::Range where);
         };
 
         class NoControlFlowStatement : public Error {
@@ -243,7 +243,7 @@ namespace Wide {
         class BadUsingTarget : public Error {
             Type* dest;
         public:
-            BadUsingTarget(Type* con, Lexer::Range where, Analyzer& a);
+            BadUsingTarget(Type* con, Lexer::Range where);
         };
         
         class PrologNonAssignment : public Error {

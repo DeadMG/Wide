@@ -13,9 +13,11 @@
 #include <cassert>
 #include <memory>
 
-#ifndef _MSC_VER
-#include <Wide/Semantic/Analyzer.h>
-#endif
+#pragma warning(push, 0)
+#include <llvm/IR/IRBuilder.h>
+#include <llvm/ADT/APInt.h>
+#pragma warning(pop)
+
 #pragma warning(disable : 4250)
 
 namespace std {
@@ -75,36 +77,39 @@ namespace Wide {
             }
         };
         struct Statement : public Node {
-            virtual void GenerateCode(Codegen::Generator& g) = 0;
-            virtual void DestroyLocals(Codegen::Generator& g) = 0;
+            virtual void GenerateCode(Codegen::Generator& g, llvm::IRBuilder<>& bb) = 0;
+            virtual void DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) = 0;
         };
         struct Expression : public Statement {
             virtual Type* GetType() = 0; // If the type is unknown then nullptr
-            llvm::Value* GetValue(Codegen::Generator& g) {
-                if (!val) val = ComputeValue(g);
-                return val;
-            }
+            llvm::Value* GetValue(Codegen::Generator& g, llvm::IRBuilder<>& bb);
+            virtual Expression* GetImplementation() { return this; }
         private:
             llvm::Value* val = nullptr;
-            void GenerateCode(Codegen::Generator& g) override final {
-                GetValue(g);
+            void GenerateCode(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
+                GetValue(g, bb);
             }
-            virtual llvm::Value* ComputeValue(Codegen::Generator& g) = 0;
+            virtual llvm::Value* ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) = 0;
         };
 
+        struct Context {
+            Context(Type* f, Lexer::Range r) : from(f), where(r) {}
+            Type* from;
+            Lexer::Range where;
+        };
         
         struct Type : public Node {
-            std::unordered_map<Lexer::Access, OverloadSet*> ConstructorOverloadSet;
+            std::unordered_map<Lexer::Access, OverloadSet*> ConstructorOverloadSets;
             std::unordered_map<Type*, std::unordered_map<Lexer::Access, std::unordered_map<Lexer::TokenType, OverloadSet*>>> OperatorOverloadSets;
             std::unordered_map<Type*, std::unordered_map<Type*, std::unordered_map<Lexer::Access, std::unordered_map<Lexer::TokenType, OverloadSet*>>>> ADLResults;
 
             virtual OverloadSet* CreateOperatorOverloadSet(Type* self, Lexer::TokenType what, Lexer::Access access);
             virtual OverloadSet* CreateConstructorOverloadSet(Lexer::Access access) = 0;
             virtual OverloadSet* CreateADLOverloadSet(Lexer::TokenType name, Type* lhs, Type* rhs, Lexer::Access access);
-        protected:
-            Analyzer& analyzer;
         public:
             Type(Analyzer& a) : analyzer(a) {}
+
+            Analyzer& analyzer;
 
             virtual llvm::Type* GetLLVMType(Codegen::Generator& g) = 0;
             virtual std::size_t size() = 0;
@@ -115,7 +120,7 @@ namespace Wide {
             virtual bool IsReference();
             virtual Type* Decay();
             virtual Type* GetContext();
-            virtual bool IsComplexType() { return false; }
+            virtual bool IsComplexType(Codegen::Generator& g);
             virtual Wide::Util::optional<clang::QualType> GetClangType(ClangTU& TU);
             virtual bool IsMoveConstructible(Lexer::Access access);
             virtual bool IsCopyConstructible(Lexer::Access access);
@@ -125,45 +130,172 @@ namespace Wide {
             virtual Type* GetConstantContext();
 
             virtual std::unique_ptr<Expression> AccessStaticMember(std::string name);
-            virtual std::unique_ptr<Expression> AccessMember(Expression* t, std::string name, Lexer::Access);
-            virtual std::unique_ptr<Expression> BuildValueConstruction(std::vector<Expression*> types);
-            virtual std::unique_ptr<Expression> BuildMetaCall(Expression* val, std::vector<Expression*> args);
-            virtual std::unique_ptr<Expression> BuildCall(Expression* val, std::vector<Expression*> args);
+            virtual std::unique_ptr<Expression> AccessMember(std::unique_ptr<Expression> t, std::string name, Context c);
+            virtual std::unique_ptr<Expression> BuildMetaCall(std::unique_ptr<Expression> val, std::vector<std::unique_ptr<Expression>> args);
+            virtual std::unique_ptr<Expression> BuildCall(std::unique_ptr<Expression> val, std::vector<std::unique_ptr<Expression>> args, Context c);
 
-            virtual std::function<llvm::Value*(llvm::Value*, Codegen::Generator&)> BuildBooleanConversion(Type* t);
-            virtual std::function<void(llvm::Value*, Codegen::Generator&)> BuildDestructorCall();
+            virtual std::unique_ptr<Expression> BuildBooleanConversion(std::unique_ptr<Expression>, Context);
+            virtual std::unique_ptr<Expression> BuildDestructorCall(std::unique_ptr<Expression> self, Context c);
 
-            virtual ~Type();
+            virtual ~Type() {}
 
             OverloadSet* GetConstructorOverloadSet(Lexer::Access access);
             OverloadSet* PerformADL(Lexer::TokenType what, Type* lhs, Type* rhs, Lexer::Access access);
             OverloadSet* AccessMember(Type* t, Lexer::TokenType type, Lexer::Access access);
 
-            std::unique_ptr<Expression> BuildInplaceConstruction(std::function<llvm::Value*()>, std::vector<Expression*> exprs);
-            std::unique_ptr<Expression> BuildRvalueConstruction(std::vector<Expression*> exprs);
-            std::unique_ptr<Expression> BuildLvalueConstruction(std::vector<Expression*> exprs);
-            std::unique_ptr<Expression> BuildUnaryExpression(Expression* self, Lexer::TokenType type);
-            std::unique_ptr<Expression> BuildBinaryExpression(Expression* lhs, Expression* rhs, Lexer::TokenType type);
+            std::unique_ptr<Expression> BuildInplaceConstruction(std::unique_ptr<Expression> self, std::vector<std::unique_ptr<Expression>> exprs, Context c);
+            std::unique_ptr<Expression> BuildValueConstruction(std::vector<std::unique_ptr<Expression>> args, Context c);
+            std::unique_ptr<Expression> BuildRvalueConstruction(std::vector<std::unique_ptr<Expression>> exprs, Context c);
+            std::unique_ptr<Expression> BuildLvalueConstruction(std::vector<std::unique_ptr<Expression>> exprs, Context c);
+            std::unique_ptr<Expression> BuildUnaryExpression(std::unique_ptr<Expression> self, Lexer::TokenType type, Context c);
+            std::unique_ptr<Expression> BuildBinaryExpression(std::unique_ptr<Expression> lhs, std::unique_ptr<Expression> rhs, Lexer::TokenType type, Context c);
         };
 
-        struct TupleInitializable {
-            virtual Type* GetSelfAsType() = 0;
-            virtual Wide::Util::optional<std::vector<Type*>> GetTypesForTuple(Analyzer& a) = 0;
-            OverloadSet* CreateConstructorOverloadSet(Analyzer& a, Lexer::Access access);
-            virtual ConcreteExpression PrimitiveAccessMember(ConcreteExpression e, unsigned num, Analyzer& a) = 0;
-        };
 
         struct Callable {
         public:
-            ConcreteExpression Call(std::vector<ConcreteExpression> args, Context c);
+            std::unique_ptr<Expression> Call(std::vector<std::unique_ptr<Expression>> args, Context c);
         private:
-            virtual ConcreteExpression CallFunction(std::vector<ConcreteExpression> args, Context c) = 0;
-            virtual std::vector<ConcreteExpression> AdjustArguments(std::vector<ConcreteExpression> args, Context c) = 0;
+            virtual std::unique_ptr<Expression> CallFunction(std::vector<std::unique_ptr<Expression>> args, Context c) = 0;
+            virtual std::vector<std::unique_ptr<Expression>> AdjustArguments(std::vector<std::unique_ptr<Expression>> args, Context c) = 0;
         };
         struct OverloadResolvable {
             virtual Wide::Util::optional<std::vector<Type*>> MatchParameter(std::vector<Type*>, Analyzer& a, Type* source) = 0;
             virtual Callable* GetCallableForResolution(std::vector<Type*>, Analyzer& a) = 0;
         };
+
+        std::vector<std::unique_ptr<Expression>> AdjustArgumentsForTypes(std::vector<std::unique_ptr<Expression>> args, std::vector<Type*> types, Context c);
+        std::unique_ptr<OverloadResolvable> MakeResolvable(std::function<std::unique_ptr<Expression>(std::vector<std::unique_ptr<Expression>>, Context)> f, std::vector<Type*> types);
+
+        struct TupleInitializable {
+        private:
+            std::unique_ptr<OverloadResolvable> TupleConstructor;
+        public:
+            OverloadSet* CreateConstructorOverloadSet(Lexer::Access access);
+            virtual Type* GetSelfAsType() = 0;
+            virtual Wide::Util::optional<std::vector<Type*>> GetTypesForTuple() = 0;
+            virtual std::unique_ptr<Expression> PrimitiveAccessMember(std::unique_ptr<Expression> self, unsigned num) = 0;
+        };
+
+
+        struct MemberFunctionContext { virtual ~MemberFunctionContext() {} };
+
+        class PrimitiveType : public Type {
+            std::unique_ptr<OverloadResolvable> CopyConstructor;
+            std::unique_ptr<OverloadResolvable> MoveConstructor;
+            std::unique_ptr<OverloadResolvable> AssignmentOperator;
+        protected:
+            PrimitiveType(Analyzer& a) : Type(a) {}
+        public:
+            OverloadSet* CreateConstructorOverloadSet(Lexer::Access access) override;
+            OverloadSet* CreateOperatorOverloadSet(Type* t, Lexer::TokenType what, Lexer::Access access) override;
+        };
+        class MetaType : public PrimitiveType {
+            std::unique_ptr<OverloadResolvable> DefaultConstructor;
+        public:
+            MetaType(Analyzer& a) : PrimitiveType(a) {}
+
+            // NullType is an annoying special case needing to override these members for Reasons
+            // nobody else should.
+            llvm::Type* GetLLVMType(Codegen::Generator& g) override;
+            std::size_t size() override;
+            std::size_t alignment() override;
+            Type* GetConstantContext() override;
+            OverloadSet* CreateConstructorOverloadSet(Lexer::Access access) override final;
+        };
+
+        struct ImplicitLoadExpr : public Expression {
+            ImplicitLoadExpr(std::unique_ptr<Expression> expr);
+            std::unique_ptr<Expression> src;
+            Type* GetType() override final;
+            llvm::Value* ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final;
+            void DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final;
+        };
+
+        struct ImplicitStoreExpr : public Expression {
+            ImplicitStoreExpr(std::unique_ptr<Expression> memory, std::unique_ptr<Expression> value);
+            std::unique_ptr<Expression> mem, val;
+            Type* GetType() override final;
+            llvm::Value* ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final;
+            void DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final;
+        };
+
+        struct ImplicitTemporaryExpr : public Expression {
+            ImplicitTemporaryExpr(Type* what);
+            Type* of;
+            llvm::Value* alloc;
+            Type* GetType() override final;
+            llvm::Value* ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final;
+            void DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final;
+        };
+
+        struct LvalueCast : public Expression {
+            LvalueCast(std::unique_ptr<Expression> expr);
+            std::unique_ptr<Expression> expr;
+            Type* GetType() override final;
+            llvm::Value* ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final;
+            void DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final;
+        };
+
+        struct RvalueCast : public Expression {
+            RvalueCast(std::unique_ptr<Expression> expr);
+            std::unique_ptr<Expression> expr;
+            Type* GetType() override final;
+            llvm::Value* ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final;
+            void DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final;
+        };
+
+        struct ExpressionReference : public Expression {
+            ExpressionReference(Expression* e);
+            Expression* expr;
+            Type* GetType() override final;
+            llvm::Value* ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final;
+            void DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final;
+            Expression* GetImplementation() override final;
+        };
+
+        struct ImplicitAddressOf : public Expression {
+            ImplicitAddressOf(std::unique_ptr<Expression>);
+            std::unique_ptr<Expression> expr;
+            Type* GetType() override final;
+            llvm::Value* ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final;
+            void DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final;
+        };
+
+        struct String : Expression {
+            String(std::string s, Analyzer& an)
+            : str(s), a(an) {}
+            std::string str;
+            Analyzer& a;
+            Type* GetType() override final;
+            llvm::Value* ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final;
+            void DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final;
+        };
+
+        struct Integer : Expression {
+            Integer(llvm::APInt val, Analyzer& an)
+            : value(val), a(an) {}
+            llvm::APInt value;
+            Analyzer& a;
+            Type* GetType() override final;
+            llvm::Value* ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final;
+            void DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final;
+        };
+
+        std::unique_ptr<Expression> CreatePrimUnOp(std::unique_ptr<Expression> self, std::function<llvm::Value*(llvm::Value*, Codegen::Generator&, llvm::IRBuilder<>&)>);
+        std::unique_ptr<Expression> CreatePrimUnOp(std::unique_ptr<Expression> self, Type* ret, std::function<llvm::Value*(llvm::Value*, Codegen::Generator&, llvm::IRBuilder<>&)>);
+        std::unique_ptr<Expression> CreatePrimOp(std::unique_ptr<Expression> lhs, std::unique_ptr<Expression> rhs, std::function<llvm::Value*(llvm::Value*, llvm::Value*, Codegen::Generator&, llvm::IRBuilder<>&)>);
+        std::unique_ptr<Expression> CreatePrimOp(std::unique_ptr<Expression> lhs, std::unique_ptr<Expression> rhs, Type* ret, std::function<llvm::Value*(llvm::Value*, llvm::Value*, Codegen::Generator&, llvm::IRBuilder<>&)>);
+        std::unique_ptr<Expression> CreatePrimAssOp(std::unique_ptr<Expression> lhs, std::unique_ptr<Expression> rhs, std::function<llvm::Value*(llvm::Value*, llvm::Value*, Codegen::Generator&, llvm::IRBuilder<>&)>);
+        std::unique_ptr<Expression> BuildValue(std::unique_ptr<Expression>);
+
+        // Fuck you, C++ fail. This is basically just { args } but it doesn't fail super hard for move-only types
+        template<typename... Args> std::vector<std::unique_ptr<Expression>> Expressions(Args&&... args) {
+            using swallow = int[];
+            std::vector<std::unique_ptr<Expression>> ret;
+            swallow x = { 0, (ret.push_back(std::forward<Args>(args)), void(), 0)... };
+            return std::move(ret);
+        }
 
         enum InheritanceRelationship {
             NotDerived,
@@ -179,47 +311,29 @@ namespace Wide {
                 bool abstract;
             };
         private:
-            virtual std::vector<VirtualFunction> ComputeVTableLayout(Analyzer& a) = 0;
-            virtual Codegen::Expression* GetVirtualPointer(Codegen::Expression* self, Analyzer& a) = 0;
-            virtual std::function<llvm::Type*(llvm::Module*)> GetVirtualPointerType(Analyzer& a) = 0;
-            virtual Codegen::Expression* FunctionPointerFor(std::string name, std::vector<Type*> args, Type* ret, unsigned offset, Analyzer& a) = 0;
-            virtual std::vector<std::pair<BaseType*, unsigned>> GetBases(Analyzer& a) = 0;
+            virtual std::vector<VirtualFunction> ComputeVTableLayout() = 0;
+            virtual Type* GetVirtualPointerType() = 0;
+            virtual std::unique_ptr<Expression> FunctionPointerFor(std::string name, std::vector<Type*> args, Type* ret, unsigned offset) = 0;
+            virtual std::vector<std::pair<BaseType*, unsigned>> GetBases() = 0;
 
-            std::unordered_map<std::vector<std::pair<BaseType*, unsigned>>, Codegen::Expression*, VectorTypeHasher> ComputedVTables;
+            std::unordered_map<std::vector<std::pair<BaseType*, unsigned>>, std::unique_ptr<Expression>, VectorTypeHasher> ComputedVTables;
             Wide::Util::optional<std::vector<VirtualFunction>> VtableLayout;
-            Codegen::Expression* CreateVTable(std::vector<std::pair<BaseType*, unsigned>> path, Analyzer& a);
-            Codegen::Expression* GetVTablePointer(std::vector<std::pair<BaseType*, unsigned>> path, Analyzer& a);
-            Codegen::Expression* SetVirtualPointers(std::vector<std::pair<BaseType*, unsigned>> path, Codegen::Expression* self, Analyzer& a);
+
+            std::unique_ptr<Expression> CreateVTable(std::vector<std::pair<BaseType*, unsigned>> path);
+            std::unique_ptr<Expression> GetVTablePointer(std::vector<std::pair<BaseType*, unsigned>> path);
+            std::unique_ptr<Expression> SetVirtualPointers(std::vector<std::pair<BaseType*, unsigned>> path, std::unique_ptr<Expression> self);
         public:
-            std::vector<VirtualFunction> GetVtableLayout(Analyzer& a) {
+            std::vector<VirtualFunction> GetVtableLayout() {
                 if (!VtableLayout)
-                    VtableLayout = ComputeVTableLayout(a);
+                    VtableLayout = ComputeVTableLayout();
                 return *VtableLayout;
             }
-            std::function<void(llvm::Value*, Codegen::Generator&)> SetVirtualPointers();
+            std::unique_ptr<Expression> SetVirtualPointers(std::unique_ptr<Expression>);
 
+            virtual std::unique_ptr<Expression> GetVirtualPointer(std::unique_ptr<Expression> self) = 0;
             virtual Type* GetSelfAsType() = 0;
-            virtual InheritanceRelationship IsDerivedFrom(Type* other, Analyzer& a) = 0;
-            virtual Codegen::Expression* AccessBase(Type* other, Codegen::Expression*, Analyzer& a) = 0;
+            virtual InheritanceRelationship IsDerivedFrom(Type* other) = 0;
+            virtual std::unique_ptr<Expression> AccessBase(std::unique_ptr<Expression> self, Type* other) = 0;
         };
-        struct MemberFunctionContext { virtual ~MemberFunctionContext() {} };
-        class PrimitiveType : public Type {
-        protected:
-            PrimitiveType() {}
-        public:
-            OverloadSet* CreateConstructorOverloadSet(Analyzer& a, Lexer::Access access) override;
-            OverloadSet* CreateOperatorOverloadSet(Type* t, Lexer::TokenType what, Lexer::Access access, Analyzer& a) override;
-        };
-        class MetaType : public PrimitiveType {
-        public:
-            MetaType() {}
-            llvm::Type* GetLLVMType(Codegen::Generator& g) {}
-            std::size_t size() override;
-            std::size_t alignment() override;
-            Type* GetConstantContext(Analyzer& a) override;
-            OverloadSet* CreateConstructorOverloadSet(Analyzer& a, Lexer::Access access) override final;
-        };
-        std::vector<ConcreteExpression> AdjustArgumentsForTypes(std::vector<ConcreteExpression>, std::vector<Type*>, Context c);
-        OverloadResolvable* make_resolvable(std::function<ConcreteExpression(std::vector<ConcreteExpression>, Context)> f, std::vector<Type*> types, Analyzer& a);
     }
 }

@@ -1,7 +1,6 @@
 #include <Wide/Semantic/Bool.h>
 #include <Wide/Semantic/ClangTU.h>
 #include <Wide/Semantic/Analyzer.h>
-#include <Wide/Codegen/Generator.h>
 #include <Wide/Semantic/Reference.h>
 #include <Wide/Semantic/OverloadSet.h>
 #include <Wide/Lexer/Token.h>
@@ -13,73 +12,78 @@
 #include <llvm/IR/DataLayout.h>
 #pragma warning(pop)
 
-#include <Wide/Codegen/GeneratorMacros.h>
-
 using namespace Wide;
 using namespace Semantic;
 
-std::function<llvm::Type*(llvm::Module*)> Bool::GetLLVMType(Analyzer& a) {
-    return [](llvm::Module* m) {
-        return llvm::Type::getInt8Ty(m->getContext());
-    };
+llvm::Type* Bool::GetLLVMType(Codegen::Generator& g) {
+    return llvm::IntegerType::getInt8Ty(g.module->getContext());
 }
 
-Wide::Util::optional<clang::QualType> Bool::GetClangType(ClangTU& where, Analyzer& a) {
+Wide::Util::optional<clang::QualType> Bool::GetClangType(ClangTU& where) {
     return where.GetASTContext().BoolTy;
 }
-std::size_t Bool::size(Analyzer& a) {
-    return a.gen->GetInt8AllocSize();
-}
-std::size_t Bool::alignment(Analyzer& a) {
-    return llvm::DataLayout(a.gen->GetDataLayout()).getABIIntegerTypeAlignment(8);
+
+std::size_t Bool::size() {
+    return 1;
 }
 
-Codegen::Expression* Bool::BuildBooleanConversion(ConcreteExpression e, Context c) {
-    return e.BuildValue(c).Expr;
+std::size_t Bool::alignment() {
+    return analyzer.GetDataLayout().getABIIntegerTypeAlignment(8);
 }
 
-OverloadSet* Bool::CreateOperatorOverloadSet(Type* t, Lexer::TokenType name, Lexer::Access access, Analyzer& a) {
+std::unique_ptr<Expression> BuildBooleanConversion(std::unique_ptr<Expression> arg, Context c) {
+    return BuildValue(std::move(arg));
+}
+
+OverloadSet* Bool::CreateOperatorOverloadSet(Type* t, Lexer::TokenType name, Lexer::Access access) {
     if (access != Lexer::Access::Public)
-        return AccessMember(t, name, Lexer::Access::Public, a);
+        return AccessMember(t, name, Lexer::Access::Public);
 
-    if (t == a.GetLvalueType(this)) {
-        std::vector<Type*> types;
-        types.push_back(a.GetLvalueType(this));
-        types.push_back(this);
+    if (t == analyzer.GetLvalueType(this)) {
         switch (name) {
         case Lexer::TokenType::OrAssign:
-            return a.GetOverloadSet(make_resolvable([](std::vector<ConcreteExpression> args, Context c) {
-                auto stmt = c->gen->CreateStore(args[0].Expr, c->gen->CreateOrExpression(args[0].BuildValue(c).Expr, args[1].BuildValue(c).Expr));                
-                return ConcreteExpression(args[0].t, c->gen->CreateChainExpression(stmt, args[0].Expr));
-            }, types, a));
+            OrAssignOperator = MakeResolvable([](std::vector<std::unique_ptr<Expression>> args, Context c) -> std::unique_ptr<Expression> {
+                return CreatePrimAssOp(std::move(args[0]), std::move(args[1]), [](llvm::Value* lhs, llvm::Value* rhs, Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+                    return bb.CreateOr(lhs, rhs);
+                });
+            }, { analyzer.GetLvalueType(this), this });
+            return analyzer.GetOverloadSet(OrAssignOperator.get());
         case Lexer::TokenType::AndAssign:
-            return a.GetOverloadSet(make_resolvable([](std::vector<ConcreteExpression> args, Context c) {
-                auto stmt = c->gen->CreateStore(args[0].Expr, c->gen->CreateAndExpression(args[0].BuildValue(c).Expr, args[1].BuildValue(c).Expr));
-                return ConcreteExpression(args[0].t, c->gen->CreateChainExpression(stmt, args[0].Expr));
-            }, types, a));
+            AndAssignOperator = MakeResolvable([](std::vector<std::unique_ptr<Expression>> args, Context c) -> std::unique_ptr<Expression> {
+                return CreatePrimAssOp(std::move(args[0]), std::move(args[1]), [](llvm::Value* lhs, llvm::Value* rhs, Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+                    return bb.CreateAnd(lhs, rhs);
+                });
+            }, { analyzer.GetLvalueType(this), this });
+            return analyzer.GetOverloadSet(AndAssignOperator.get());
         case Lexer::TokenType::XorAssign:
-            return a.GetOverloadSet(make_resolvable([](std::vector<ConcreteExpression> args, Context c) {
-                return ConcreteExpression(args[0].t, c->gen->CreateStore(args[0].Expr, c->gen->CreateXorExpression(c->gen->CreateLoad(args[0].Expr), args[1].Expr)));
-            }, types, a));
+            XorAssignOperator = MakeResolvable([](std::vector<std::unique_ptr<Expression>> args, Context c) -> std::unique_ptr<Expression> {
+                return CreatePrimAssOp(std::move(args[0]), std::move(args[1]), [](llvm::Value* lhs, llvm::Value* rhs, Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+                    return bb.CreateXor(lhs, rhs);
+                });
+            }, { analyzer.GetLvalueType(this), this });
+            return analyzer.GetOverloadSet(XorAssignOperator.get());
         }
-        return PrimitiveType::CreateOperatorOverloadSet(t, name, access, a);
+        return PrimitiveType::CreateOperatorOverloadSet(t, name, access);
     }
-    std::vector<Type*> types;
-    types.push_back(this);
-    types.push_back(this);
     switch(name) {
     case Lexer::TokenType::LT:
-        return a.GetOverloadSet(make_resolvable([](std::vector<ConcreteExpression> args, Context c) {
-            return ConcreteExpression(c->GetBooleanType(), c->gen->CreateLT(args[0].Expr, args[1].Expr, false));
-        }, types, a));
+        LTOperator = MakeResolvable([](std::vector<std::unique_ptr<Expression>> args, Context c) -> std::unique_ptr<Expression> {
+            return CreatePrimOp(std::move(args[0]), std::move(args[1]), c.from->analyzer.GetBooleanType(), [](llvm::Value* lhs, llvm::Value* rhs, Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+                return bb.CreateICmpSLT(lhs, rhs);
+            });
+        }, { this, this });
+        return analyzer.GetOverloadSet(LTOperator.get());
     case Lexer::TokenType::EqCmp:
-        return a.GetOverloadSet(make_resolvable([](std::vector<ConcreteExpression> args, Context c) {
-            return ConcreteExpression(c->GetBooleanType(), c->gen->CreateEqualityExpression(args[0].Expr, args[1].Expr));
-        }, types, a));
+        EQOperator = MakeResolvable([](std::vector<std::unique_ptr<Expression>> args, Context c) -> std::unique_ptr<Expression> {
+            return CreatePrimOp(std::move(args[0]), std::move(args[1]), c.from->analyzer.GetBooleanType(), [](llvm::Value* lhs, llvm::Value* rhs, Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+                return bb.CreateICmpEQ(lhs, rhs);
+            });
+        }, { this, this });
+        return analyzer.GetOverloadSet(EQOperator.get());
     }
-    return a.GetOverloadSet();
+    return analyzer.GetOverloadSet();
 }
 
-std::string Bool::explain(Analyzer& a) {
+std::string Bool::explain() {
     return "bool";
 }

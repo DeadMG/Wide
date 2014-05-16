@@ -5,13 +5,13 @@
 namespace Wide {
     namespace Semantic {
         struct NullType : public MetaType {    
-            NullType() {}
-            Wide::Util::optional<clang::QualType> GetClangType(ClangTU& TU, Analyzer& a) override final;
-            std::function<llvm::Type*(llvm::Module*)> GetLLVMType(Analyzer& a) override final;
-            std::size_t size(Analyzer& a) override final;
-            std::size_t alignment(Analyzer& a) override final;
-            bool IsA(Type* self, Type* other, Analyzer& a, Lexer::Access) override final;
-            std::string explain(Analyzer& a) override final;
+            NullType(Analyzer& a) : MetaType(a) {}
+            Wide::Util::optional<clang::QualType> GetClangType(ClangTU& TUa) override final;
+            llvm::Type* GetLLVMType(Codegen::Generator& g) override final;
+            std::size_t size() override final;
+            std::size_t alignment() override final;
+            bool IsA(Type* self, Type* other, Lexer::Access) override final;
+            std::string explain() override final;
         };
     }
 }

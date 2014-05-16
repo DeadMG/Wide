@@ -7,129 +7,95 @@
 #pragma warning(push, 0)
 #include <clang/AST/Type.h>
 #include <clang/AST/ASTContext.h>
-#include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/DataLayout.h>
 #pragma warning(pop)
-
-#include <Wide/Codegen/GeneratorMacros.h>
 
 using namespace Wide;
 using namespace Semantic;
 
-std::function<llvm::Type*(llvm::Module*)> FunctionType::GetLLVMType(Analyzer& a) {
-    std::function<llvm::Type*(llvm::Module*)> ret;
-    std::vector<std::function<llvm::Type*(llvm::Module*)>> args;
-    if (ReturnType->IsComplexType(a)) {
-        ret = a.GetVoidType()->GetLLVMType(a);
-        args.push_back(a.GetRvalueType(ReturnType)->GetLLVMType(a));
+llvm::PointerType* FunctionType::GetLLVMType(Codegen::Generator& g) {
+    llvm::Type* ret;
+    std::vector<llvm::Type*> args;
+    if (ReturnType->IsComplexType(g)) {
+        ret = analyzer.GetVoidType()->GetLLVMType(g);
+        args.push_back(analyzer.GetRvalueType(ReturnType)->GetLLVMType(g));
     } else {
-        ret = ReturnType->GetLLVMType(a);
+        ret = ReturnType->GetLLVMType(g);
     }
     for(auto&& x : Args) {
-        if (x->IsComplexType(a)) {
-            args.push_back(a.GetRvalueType(x)->GetLLVMType(a));
+        if (x->IsComplexType(g)) {
+            args.push_back(analyzer.GetRvalueType(x)->GetLLVMType(g));
         } else {
-            args.push_back(x->GetLLVMType(a));
+            args.push_back(x->GetLLVMType(g));
         }
     }
-    return [=](llvm::Module* m) -> llvm::Type* {
-        std::vector<llvm::Type*> types;
-        for(auto x : args)
-            types.push_back(x(m));
-        return llvm::FunctionType::get(ret(m), types, false)->getPointerTo();
-    };
+    return llvm::FunctionType::get(ret, args, false)->getPointerTo();
 }
 
-Wide::Util::optional<clang::QualType> FunctionType::GetClangType(ClangTU& from, Analyzer& a) {
+Wide::Util::optional<clang::QualType> FunctionType::GetClangType(ClangTU& from) {
     std::vector<clang::QualType> types;
     for (auto x : Args) {
-        auto clangty = x->GetClangType(from, a);
+        auto clangty = x->GetClangType(from);
         if (!clangty) return Wide::Util::none;
         types.push_back(*clangty);
     }
-    auto retty = ReturnType->GetClangType(from, a);
+    auto retty = ReturnType->GetClangType(from);
     if (!retty) return Wide::Util::none;
     return from.GetASTContext().getFunctionType(*retty, types, clang::FunctionProtoType::ExtProtoInfo());
 }
 
-ConcreteExpression FunctionType::BuildCall(ConcreteExpression val, std::vector<ConcreteExpression> args, Context c) {
-    ConcreteExpression out(ReturnType, nullptr);
-    assert(Args.size() == args.size());
-    // Our type system handles T vs T&& transparently, so substitution should be clean here. Just mention it in out.t.
-    std::vector<Codegen::Expression*> e;
-    // If the return type is complex, pass in pointer to result to be constructed, and mark our return type as an rvalue ref.
-    if (out.t->IsComplexType(*c)) {
-        e.push_back(c->gen->CreateVariable(out.t->GetLLVMType(*c), out.t->alignment(*c)));
-    }
-    for(unsigned int i = 0; i < args.size(); ++i) {
-        // If we take T, and the argument is T, then wahey.
-        if (Args[i] == args[i].t) {
-            e.push_back(args[i].Expr);
-            continue;
-        }
+std::unique_ptr<Expression> FunctionType::BuildCall(std::unique_ptr<Expression> val, std::vector<std::unique_ptr<Expression>> args, Context c) {
+    struct Call : Expression {
+        Call(Analyzer& an, std::unique_ptr<Expression> self, std::vector<std::unique_ptr<Expression>> args)
+        : a(an), args(std::move(args)), val(std::move(self))
+        {}
 
-        // If T is complex and we take some U, then consider T as T&&.
-        if (Args[i]->IsComplexType(*c)) {
-            // If T is complex, and we already have a reference, take that.
-            if (args[i].t->IsReference(Args[i])) {
-                e.push_back(args[i].Expr);
-                continue;
+        Analyzer& a;
+        std::vector<std::unique_ptr<Expression>> args;
+        std::unique_ptr<Expression> val;
+        std::unique_ptr<Expression> Ret;
+        
+        Type* GetType() override final {
+            auto fty = dynamic_cast<FunctionType*>(val->GetType());
+            return fty->GetReturnType();
+        }
+        void DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
+            if (Ret)
+                Ret->DestroyLocals(g, bb);
+            for (auto rit = args.rbegin(); rit != args.rend(); ++rit)
+                (*rit)->DestroyLocals(g, bb);
+            val->DestroyLocals(g, bb);
+        }
+        llvm::Value* ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
+            llvm::Value* llvmfunc = val->GetValue(g, bb);
+            std::vector<llvm::Value*> llvmargs;
+            if (GetType()->IsComplexType(g)) {
+                Ret = Wide::Memory::MakeUnique<ImplicitTemporaryExpr>(GetType());
+                llvmargs.push_back(Ret->GetValue(g, bb));
             }
-            // Else, we have a complex T from some U, in which case, perform rvalue construction.
-            e.push_back(Args[i]->BuildRvalueConstruction({ args[i] }, c).Expr);
-            continue;
+            for (auto&& arg : args)
+                llvmargs.push_back(arg->GetValue(g, bb));
+            auto call = bb.CreateCall(llvmfunc, llvmargs);
+            if (Ret)
+                return Ret->GetValue(g, bb);
+            return call;
         }
-
-        // If we take value T, and the argument is T& or T&&, then just decay no problem.
-        if (args[i].t->IsReference(Args[i])) {
-            e.push_back(args[i].BuildValue(c).Expr);
-            continue;
-        }
-
-        // If we take T&&, the only acceptable argument is T, in which case we need a copy, or U.
-        if (IsRvalueType(Args[i])) {
-            // Do a copy. The user knows that unless inheritance is involved, we'll need a new value here anyway.
-            // T::BuildRvalueConstruction called to construct a T in memory from T or some U, which may be reference.
-            e.push_back(Args[i]->Decay()->BuildRvalueConstruction({ args[i] }, c).Expr);
-            continue;
-        }
-
-        // If we take T&, then the only acceptable target is T& or U. We already discarded T&, so go for U.
-        // The only way this can work is if U inherits from T, or offers a UDC to T&, neither of which we support right now.
-        // Except where Clang takes as const T& an rvalue, in which case we need to create an rvalue of U but pretend it's an lvalue.
-        if (IsLvalueType(Args[i])) {
-            e.push_back(Args[i]->Decay()->BuildLvalueConstruction({ args[i] }, c).Expr);
-            continue;
-        }
-
-        // We take a value T, and we need to construct from some U. Use ValueConstruction.
-        // Type::BuildValueConstruction called.
-        e.push_back(Args[i]->BuildValueConstruction({ args[i] }, c).Expr);
-    }
-    // Insert a bit cast because Clang sucks.
-    out.Expr = c->gen->CreateFunctionCall(val.Expr, e, GetLLVMType(*c));
-    // If out's T is complex, then call f() and return e[0], which is the memory we allocated to store T, which is now constructed.
-    // Also mark it for stealing
-    if (out.t->IsComplexType(*c)) {
-        out.Expr = c->gen->CreateChainExpression(out.Expr, e[0]);
-        out.t = c->GetRvalueType(out.t);
-        out.steal = true;
-    }
-    return out;
+    };
+    return Wide::Memory::MakeUnique<Call>(analyzer, std::move(val), std::move(args));
 }
-std::string FunctionType::explain(Analyzer& a) {
-    auto begin = ReturnType->explain(a) + "(*)(";
+std::string FunctionType::explain() {
+    auto begin = ReturnType->explain() + "(*)(";
     for (auto& ty : Args) {
         if (&ty != &Args.back())
-            begin += ty->explain(a) + ", ";
+            begin += ty->explain() + ", ";
         else
-            begin += ty->explain(a);
+            begin += ty->explain();
     }
     return begin + ")";
 }
-std::size_t FunctionType::size(Analyzer& a) {
-    return llvm::DataLayout(a.gen->GetDataLayout()).getPointerSize();
+std::size_t FunctionType::size() {
+    return analyzer.GetDataLayout().getPointerSize();
 }
-std::size_t FunctionType::alignment(Analyzer& a) {
-    return llvm::DataLayout(a.gen->GetDataLayout()).getPointerABIAlignment();
+std::size_t FunctionType::alignment() {
+    return analyzer.GetDataLayout().getPointerABIAlignment();
 }

@@ -76,7 +76,9 @@ namespace Wide {
             Private,
             Protected,
             Dynamic,
-            Decltype
+            Decltype,
+            True,
+            False
         };
         enum Access {
             Public,

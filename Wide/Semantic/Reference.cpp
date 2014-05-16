@@ -12,57 +12,79 @@
 #include <llvm/IR/DataLayout.h>
 #pragma warning(pop)
 
-#include <Wide/Codegen/GeneratorMacros.h>
-
 using namespace Wide;
 using namespace Semantic;
 
-std::function<llvm::Type*(llvm::Module*)> Reference::GetLLVMType(Analyzer& a) {
-    auto f = Decay()->GetLLVMType(a);
-    return [=](llvm::Module* m) {
-        return f(m)->getPointerTo();
-    };
+llvm::Type* Reference::GetLLVMType(Codegen::Generator& g) {
+    return Decay()->GetLLVMType(g)->getPointerTo();
 }
-Wide::Util::optional<clang::QualType> LvalueType::GetClangType(ClangTU& tu, Analyzer& a) {
-    auto ty = Decay()->GetClangType(tu, a);
+Wide::Util::optional<clang::QualType> LvalueType::GetClangType(ClangTU& tu) {
+    auto ty = Decay()->GetClangType(tu);
     if (!ty)
         return Wide::Util::none;
     return tu.GetASTContext().getLValueReferenceType(*ty);
 }
-Wide::Util::optional<clang::QualType> RvalueType::GetClangType(ClangTU& tu, Analyzer& a) {
-    auto ty = Decay()->GetClangType(tu, a);
+Wide::Util::optional<clang::QualType> RvalueType::GetClangType(ClangTU& tu) {
+    auto ty = Decay()->GetClangType(tu);
     if (!ty)
         return Wide::Util::none;
     return tu.GetASTContext().getRValueReferenceType(*ty);
 }
 
-std::size_t Reference::size(Analyzer& a) {
-    return llvm::DataLayout(a.gen->GetDataLayout()).getPointerSize();
+std::size_t Reference::size() {
+    return analyzer.GetDataLayout().getPointerSize();
 }
-std::size_t Reference::alignment(Analyzer& a) {
-    return llvm::DataLayout(a.gen->GetDataLayout()).getPointerABIAlignment();
+std::size_t Reference::alignment() {
+    return analyzer.GetDataLayout().getPointerABIAlignment();
 }
 
-bool RvalueType::IsA(Type* self, Type* other, Analyzer& a, Lexer::Access access) {
+bool RvalueType::IsA(Type* self, Type* other, Lexer::Access access) {
     if (other == this)
         return true;
-    if (other == a.GetLvalueType(Decay()))
+    if (other == analyzer.GetLvalueType(Decay()))
         return false;
     // T&& is-a U&& if T* is-a U*
-    if (IsRvalueType(other) && a.GetPointerType(Decay())->IsA(a.GetPointerType(Decay()), a.GetPointerType(other->Decay()), a, access))
+    if (IsRvalueType(other) && analyzer.GetPointerType(Decay())->IsA(analyzer.GetPointerType(Decay()), analyzer.GetPointerType(other->Decay()), access))
         return true;
-    return Decay()->IsA(self, other, a, access);
+    return Decay()->IsA(self, other, access);
 }
-bool LvalueType::IsA(Type* self, Type* other, Analyzer& a, Lexer::Access access) {
+bool LvalueType::IsA(Type* self, Type* other, Lexer::Access access) {
     if (other == this)
         return true;
-    if (other == a.GetRvalueType(Decay()))
+    if (other == analyzer.GetRvalueType(Decay()))
         return false;
     // T& is-a U& if T* is-a U*
-    if (IsLvalueType(other) && a.GetPointerType(Decay())->IsA(a.GetPointerType(Decay()), a.GetPointerType(other->Decay()), a, access))
+    if (IsLvalueType(other) && analyzer.GetPointerType(Decay())->IsA(analyzer.GetPointerType(Decay()), analyzer.GetPointerType(other->Decay()), access))
         return true;
-    return Decay()->IsA(self, other, a, access);
+    return Decay()->IsA(self, other, access);
 }
+struct rvalueconvertible : OverloadResolvable, Callable {
+    rvalueconvertible(RvalueType* s)
+    : self(s) {}
+    RvalueType* self;
+    Callable* GetCallableForResolution(std::vector<Type*>, Analyzer& a) override final { return this; }
+    std::vector<std::unique_ptr<Expression>> AdjustArguments(std::vector<std::unique_ptr<Expression>> args, Context c) override final { return args; }
+    Util::optional<std::vector<Type*>> MatchParameter(std::vector<Type*> types, Analyzer& a, Type* source) override final {
+        if (types.size() != 2) return Util::none;
+        if (types[0] != a.GetLvalueType(self)) return Util::none;
+        if (IsLvalueType(types[1])) return Util::none;
+        // If it is or pointer-is then yay, else nay.
+        auto ptrt = a.GetPointerType(types[1]->Decay());
+        auto ptrself = a.GetPointerType(self->Decay());
+        if (!ptrt->IsA(ptrt, ptrself, GetAccessSpecifier(source, ptrt)) && !types[1]->Decay()->IsA(types[1]->Decay(), self->Decay(), GetAccessSpecifier(source, types[1]))) return Util::none;
+        return types;
+    }
+    std::unique_ptr<Expression> CallFunction(std::vector<std::unique_ptr<Expression>> args, Context c) override final {
+        // If pointer-is then use that, else go with value-is.
+        auto ptrt = self->analyzer.GetPointerType(args[1]->GetType()->Decay());
+        auto ptrself = self->analyzer.GetPointerType(self->Decay());
+        if (ptrt->IsA(ptrt, ptrself, GetAccessSpecifier(c.from, ptrt))) {
+            auto basety = dynamic_cast<BaseType*>(args[1]->GetType()->Decay());
+            return Wide::Memory::MakeUnique<ImplicitStoreExpr>(std::move(args[0]), basety->AccessBase(std::move(args[1]), self));
+        }
+        return self->Decay()->BuildRvalueConstruction(Expressions( std::move(args[1]) ), c);
+    }
+};
 struct PointerComparableResolvable : OverloadResolvable, Callable {
     PointerComparableResolvable(Reference* s)
     : self(s) {}
@@ -72,71 +94,45 @@ struct PointerComparableResolvable : OverloadResolvable, Callable {
         if (types[0] != a.GetLvalueType(self)) return Util::none;
         auto ptrt = a.GetPointerType(types[1]->Decay());
         auto ptrself = a.GetPointerType(self->Decay());
-        if (!ptrt->IsA(ptrt, ptrself, a, GetAccessSpecifier(source, ptrt, a))) return Util::none;
+        if (!ptrt->IsA(ptrt, ptrself, GetAccessSpecifier(source, ptrt))) return Util::none;
         return types;
     }
-    std::vector<ConcreteExpression> AdjustArguments(std::vector<ConcreteExpression> args, Context c) override final { return args; }
-    ConcreteExpression CallFunction(std::vector<ConcreteExpression> args, Context c) override final {
-        auto ptr = ConcreteExpression(c->GetPointerType(args[1].t->Decay()), args[1].Expr);
-        return ConcreteExpression(args[0].t, c->GetPointerType(self->Decay())->BuildInplaceConstruction(args[0].Expr, { ptr }, c));
+    std::vector<std::unique_ptr<Expression>> AdjustArguments(std::vector<std::unique_ptr<Expression>> args, Context c) override final { return args; }
+    std::unique_ptr<Expression> CallFunction(std::vector<std::unique_ptr<Expression>> args, Context c) override final {
+        auto basety = dynamic_cast<BaseType*>(args[1]->GetType()->Decay());        
+        return Wide::Memory::MakeUnique<ImplicitStoreExpr>(std::move(args[0]), basety->AccessBase(std::move(args[1]), self));
     }
     Callable* GetCallableForResolution(std::vector<Type*>, Analyzer& a) override final { return this; }
 };
-OverloadSet* RvalueType::CreateConstructorOverloadSet(Analyzer& a, Lexer::Access access) {
-    if (access != Lexer::Access::Public) return GetConstructorOverloadSet(a, Lexer::Access::Public);
-    std::vector<Type*> types;
-    types.push_back(a.GetLvalueType(this)); 
-    types.push_back(this);
+OverloadSet* RvalueType::CreateConstructorOverloadSet(Lexer::Access access) {
+    if (access != Lexer::Access::Public) return GetConstructorOverloadSet(Lexer::Access::Public);
+
+    CopyMoveConstructor = MakeResolvable([](std::vector<std::unique_ptr<Expression>> args, Context c) {
+        return Wide::Memory::MakeUnique<ImplicitStoreExpr>(std::move(args[0]), std::move(args[1]));
+    }, { analyzer.GetLvalueType(this), this });
+    RvalueConvertible = Wide::Memory::MakeUnique<rvalueconvertible>(this);
+
     std::unordered_set<OverloadResolvable*> set;
-    set.insert(make_resolvable([](std::vector<ConcreteExpression> args, Context c) {
-        return ConcreteExpression(args[0].t, c->gen->CreateStore(args[0].Expr, args[1].Expr));
-    }, types, a));
-    //set.insert(a.arena.Allocate<PointerComparableResolvable>(this));
-    struct rvalueconvertible : OverloadResolvable, Callable {
-        rvalueconvertible(RvalueType* s)
-        : self(s) {}
-        RvalueType* self;
-        Callable* GetCallableForResolution(std::vector<Type*>, Analyzer& a) override final { return this; }
-        std::vector<ConcreteExpression> AdjustArguments(std::vector<ConcreteExpression> args, Context c) override final { return args; }
-        Util::optional<std::vector<Type*>> MatchParameter(std::vector<Type*> types, Analyzer& a, Type* source) override final {
-            if (types.size() != 2) return Util::none;
-            if (types[0] != a.GetLvalueType(self)) return Util::none;
-            if (IsLvalueType(types[1])) return Util::none;
-            // If it is or pointer-is then yay, else nay.
-            auto ptrt = a.GetPointerType(types[1]->Decay());
-            auto ptrself = a.GetPointerType(self->Decay());
-            if (!ptrt->IsA(ptrt, ptrself, a, GetAccessSpecifier(source, ptrt, a)) && !types[1]->Decay()->IsA(types[1]->Decay(), self->Decay(), a, GetAccessSpecifier(source, types[1], a))) return Util::none;
-            return types;
-        }
-        ConcreteExpression CallFunction(std::vector<ConcreteExpression> args, Context c) override final {
-            // If pointer-is then use that, else go with value-is.
-            auto ptrt = c->GetPointerType(args[1].t->Decay());
-            auto ptrself = c->GetPointerType(self->Decay());
-            if (ptrt->IsA(ptrt, ptrself, *c, GetAccessSpecifier(c, ptrt))) {
-                auto ptr = ConcreteExpression(c->GetPointerType(args[1].t->Decay()), args[1].Expr);
-                return ConcreteExpression(args[0].t, c->GetPointerType(self->Decay())->BuildInplaceConstruction(args[0].Expr, { ptr }, c));
-            }
-            return self->Decay()->BuildRvalueConstruction({ args[1] }, c);
-        }
-    };
-    set.insert(a.arena.Allocate<rvalueconvertible>(this));
-    return a.GetOverloadSet(set);
+    set.insert(RvalueConvertible.get());
+    set.insert(CopyMoveConstructor.get());
+    return analyzer.GetOverloadSet(set);
 }
-OverloadSet* LvalueType::CreateConstructorOverloadSet(Analyzer& a, Lexer::Access access) {
-    if (access != Lexer::Access::Public) return GetConstructorOverloadSet(a, Lexer::Access::Public);
-    std::vector<Type*> types;
-    types.push_back(a.GetLvalueType(this));
-    types.push_back(this);
+OverloadSet* LvalueType::CreateConstructorOverloadSet(Lexer::Access access) {
+    if (access != Lexer::Access::Public) return GetConstructorOverloadSet(Lexer::Access::Public);
+
+    DerivedConstructor = Wide::Memory::MakeUnique<PointerComparableResolvable>(this);
+    CopyMoveConstructor = MakeResolvable([](std::vector<std::unique_ptr<Expression>> args, Context c) {
+        return Wide::Memory::MakeUnique<ImplicitStoreExpr>(std::move(args[0]), std::move(args[1]));
+    }, { analyzer.GetLvalueType(this), this });
+
     std::unordered_set<OverloadResolvable*> set;
-    set.insert(make_resolvable([](std::vector<ConcreteExpression> args, Context c) {
-        return ConcreteExpression(args[0].t, c->gen->CreateStore(args[0].Expr, args[1].Expr));
-    }, types, a));
-    set.insert(a.arena.Allocate<PointerComparableResolvable>(this));
-    return a.GetOverloadSet(set);
+    set.insert(DerivedConstructor.get());
+    set.insert(CopyMoveConstructor.get());
+    return analyzer.GetOverloadSet(set);
 }
-std::string LvalueType::explain(Analyzer& a) {
-    return Decay()->explain(a) + ".lvalue";
+std::string LvalueType::explain() {
+    return Decay()->explain() + ".lvalue";
 }
-std::string RvalueType::explain(Analyzer& a) {
-    return Decay()->explain(a) + ".rvalue";
+std::string RvalueType::explain() {
+    return Decay()->explain() + ".rvalue";
 }

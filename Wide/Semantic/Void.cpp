@@ -10,15 +10,13 @@
 using namespace Wide;
 using namespace Semantic;
 
-std::function<llvm::Type*(llvm::Module*)> VoidType::GetLLVMType(Analyzer& a) {
-    return [](llvm::Module* m) -> llvm::Type* {
-        return llvm::Type::getVoidTy(m->getContext());
-    };
+llvm::Type* VoidType::GetLLVMType(Codegen::Generator& g) {
+    return llvm::Type::getVoidTy(g.module->getContext());
 }
 
-Wide::Util::optional<clang::QualType> VoidType::GetClangType(ClangTU& tu, Analyzer& a) {
+Wide::Util::optional<clang::QualType> VoidType::GetClangType(ClangTU& tu) {
     return tu.GetASTContext().VoidTy;
 }
-std::string VoidType::explain(Analyzer& a) {
+std::string VoidType::explain() {
     return "void";
 }

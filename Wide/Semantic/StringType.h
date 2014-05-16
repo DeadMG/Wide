@@ -7,14 +7,14 @@ namespace Wide {
         class StringType : public PrimitiveType {
             std::string value;
         public:
-            StringType(std::string val) : value(val) {}
+            StringType(std::string val, Analyzer& a) : value(val), PrimitiveType(a) {}
         
             std::string GetValue() { return value; }
-            std::function<llvm::Type*(llvm::Module*)> GetLLVMType(Analyzer& a) override final;
-            Wide::Util::optional<clang::QualType> GetClangType(ClangTU& TU, Analyzer& a) override final;
-            std::size_t size(Analyzer& a) override final;
-            std::size_t alignment(Analyzer& a) override final;
-            std::string explain(Analyzer& a) override final;
+            llvm::Type* GetLLVMType(Codegen::Generator& g) override final;
+            Wide::Util::optional<clang::QualType> GetClangType(ClangTU& TU) override final;
+            std::size_t size() override final;
+            std::size_t alignment() override final;
+            std::string explain() override final;
         }; 
     }
 }

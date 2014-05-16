@@ -6,16 +6,16 @@ namespace Wide {
     namespace Semantic {
         class ConstructorType : public MetaType {
             Type* t;
-            Type* emplace;
+            std::unique_ptr<Type> emplace;
         public:
-            ConstructorType(Type* con);
-            ConcreteExpression BuildCall(ConcreteExpression, std::vector<ConcreteExpression>, Context c) override final;
+            ConstructorType(Type* con, Analyzer& a);
+            std::unique_ptr<Expression> BuildCall(std::unique_ptr<Expression> val, std::vector<std::unique_ptr<Expression>> args, Context c) override final;
 
             Type* GetConstructedType() {
                 return t;
             }
-            Wide::Util::optional<ConcreteExpression> AccessMember(ConcreteExpression, std::string name, Context c) override final;
-            std::string explain(Analyzer& a) override final;
+            std::unique_ptr<Expression> AccessMember(std::unique_ptr<Expression> t, std::string name, Context c) override final;
+            std::string explain() override final;
         };
     }
 }

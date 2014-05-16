@@ -11,32 +11,29 @@
 #include <llvm/IR/Module.h>
 #pragma warning(pop)
 
-#include <Wide/Codegen/GeneratorMacros.h>
-
 using namespace Wide;
 using namespace Semantic;
 
-Wide::Util::optional<clang::QualType> NullType::GetClangType(ClangTU& TU, Analyzer& a) {
+Wide::Util::optional<clang::QualType> NullType::GetClangType(ClangTU& TU) {
     return TU.GetASTContext().NullPtrTy;
 }
-std::function<llvm::Type*(llvm::Module*)> NullType::GetLLVMType(Analyzer& a) {
-    return [](llvm::Module* m) {
-        return llvm::IntegerType::getInt8PtrTy(m->getContext());
-    };
+// Odd choice but required for Clang interop.
+llvm::Type* NullType::GetLLVMType(Codegen::Generator& g) {
+    return llvm::IntegerType::getInt8PtrTy(g.module->getContext());
 }
-std::size_t NullType::size(Analyzer& a) {
-    return a.gen->GetDataLayout().getPointerSize();
+std::size_t NullType::size() {
+    return analyzer.GetDataLayout().getPointerSize();
 }
-std::size_t NullType::alignment(Analyzer& a) {
-    return a.gen->GetDataLayout().getPointerABIAlignment();
+std::size_t NullType::alignment() {
+    return analyzer.GetDataLayout().getPointerABIAlignment();
 }
-bool NullType::IsA(Type* self, Type* other, Analyzer& a, Lexer::Access access) {
+bool NullType::IsA(Type* self, Type* other, Lexer::Access access) {
     if (dynamic_cast<PointerType*>(other))
         return true;
     if (dynamic_cast<PointerType*>(other->Decay()) && IsRvalueType(other))
         return true;
-    return Type::IsA(self, other, a, access);
+    return Type::IsA(self, other, access);
 }
-std::string NullType::explain(Analyzer& a) {
+std::string NullType::explain() {
     return "null";
 }

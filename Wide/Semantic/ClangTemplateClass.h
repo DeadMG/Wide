@@ -13,12 +13,12 @@ namespace Wide {
             clang::ClassTemplateDecl* tempdecl;
             ClangTU* from;
         public:
-            ClangTemplateClass(clang::ClassTemplateDecl* decl, ClangTU* ptr)
-                : tempdecl(decl), from(ptr) {}
+            ClangTemplateClass(clang::ClassTemplateDecl* decl, ClangTU* ptr, Analyzer& a)
+                : tempdecl(decl), from(ptr), MetaType(a) {}
 
-            ConcreteExpression BuildCall(ConcreteExpression, std::vector<ConcreteExpression>, Context c) override final;
-            std::string explain(Analyzer& a) override final;
-            Type* GetContext(Analyzer& a) override final;
+            std::unique_ptr<Expression> BuildCall(std::unique_ptr<Expression> val, std::vector<std::unique_ptr<Expression>> args, Context c) override final;
+            std::string explain() override final;
+            Type* GetContext() override final;
         };
     }
 }

@@ -6,62 +6,61 @@
 #include <Wide/Semantic/Reference.h>
 #include <sstream>
 
-#include <Wide/Codegen/GeneratorMacros.h>
-
 using namespace Wide;
 using namespace Semantic;
 
 struct EmplaceType : public MetaType {
-    EmplaceType(ConstructorType* con)
-        : t(con) {}
+    EmplaceType(ConstructorType* con, Analyzer& a)
+        : t(con), MetaType(a) {}
     ConstructorType* t;
 
-    ConcreteExpression BuildCall(ConcreteExpression obj, std::vector<ConcreteExpression> args, Context c) override final {
+    std::unique_ptr<Expression> BuildCall(std::unique_ptr<Expression> val, std::vector<std::unique_ptr<Expression>> args, Context c) override final {
         auto constructed = t->GetConstructedType();
         if (args.size() == 0)
             throw std::runtime_error("Attempted to emplace a type without providing any memory into which to emplace it.");
-        if (args[0].t->Decay() != c->GetPointerType(constructed))
+        if (args[0]->GetType()->Decay() != analyzer.GetPointerType(constructed))
             throw std::runtime_error("Attempted to emplace a T into a type that was not a pointer to T.");
-        auto expr = args.front();
+        auto expr = std::move(args.front());
         args.erase(args.begin());
-        return ConcreteExpression(c->GetRvalueType(constructed), c->gen->CreateChainExpression(constructed->BuildInplaceConstruction(expr.Expr, args, c), expr.Expr));
+        return constructed->BuildInplaceConstruction(std::move(expr), std::move(args), c);
     }
 
-    std::string explain(Analyzer& a) { return t->explain(a) + ".emplace"; }
+    std::string explain() override final { return t->explain() + ".emplace"; }
 };
 
-ConcreteExpression ConstructorType::BuildCall(ConcreteExpression self, std::vector<ConcreteExpression> args, Context c) {
-    assert(self.t->Decay() == this);
+std::unique_ptr<Expression> ConstructorType::BuildCall(std::unique_ptr<Expression> val, std::vector<std::unique_ptr<Expression>> args, Context c) {
+    assert(val->GetType()->Decay() == this);
     return t->BuildRvalueConstruction(std::move(args), c);
 }
-Wide::Util::optional<ConcreteExpression> ConstructorType::AccessMember(ConcreteExpression self, std::string name, Context c) {
-    assert(self.t->Decay() == this);
+std::unique_ptr<Expression> ConstructorType::AccessMember(std::unique_ptr<Expression> self, std::string name, Context c) {
+    assert(self->GetType()->Decay() == this);
     //return t->AccessStaticMember(name, c);
     if (name == "decay")
-        return c->GetConstructorType(t->Decay())->BuildValueConstruction({}, c);
+        return analyzer.GetConstructorType(t->Decay())->BuildValueConstruction({}, { this, c.where });
     if (name == "pointer")
-        return c->GetConstructorType(c->GetPointerType(t))->BuildValueConstruction({}, c);
+        return analyzer.GetConstructorType(analyzer.GetPointerType(t))->BuildValueConstruction({}, { this, c.where });
     if (name == "size")
-        return ConcreteExpression(c->GetIntegralType(64, false), c->gen->CreateIntegralExpression(t->size(*c), false, c->GetIntegralType(64, false)->GetLLVMType(*c)));
+        return Wide::Memory::MakeUnique<Integer>(llvm::APInt(64, t->size()), analyzer);
     if (name == "alignment")
-        return ConcreteExpression(c->GetIntegralType(64, false), c->gen->CreateIntegralExpression(t->alignment(*c), false, c->GetIntegralType(64, false)->GetLLVMType(*c)));
-    if (t == c->GetVoidType())
-        return Wide::Util::none;
+        return Wide::Memory::MakeUnique<Integer>(llvm::APInt(64, t->alignment()), analyzer);
+    if (t == analyzer.GetVoidType())
+        return nullptr;
     if (name == "emplace") {
-        if (!emplace) emplace = c->arena.Allocate<EmplaceType>(this);
-        return emplace->BuildValueConstruction({}, c);
+        if (!emplace) emplace = Wide::Memory::MakeUnique<EmplaceType>(this, analyzer);
+        return emplace->BuildValueConstruction({}, { this, c.where });
     }
     if (name == "lvalue")
-        return c->GetConstructorType(c->GetLvalueType(t))->BuildValueConstruction({}, c);
+        return analyzer.GetConstructorType(analyzer.GetLvalueType(t))->BuildValueConstruction({}, { this, c.where });
     if (name == "rvalue")
-        return c->GetConstructorType(c->GetRvalueType(t))->BuildValueConstruction({}, c);
-    return Wide::Util::none;
+        return analyzer.GetConstructorType(analyzer.GetRvalueType(t))->BuildValueConstruction({}, { this, c.where });
+    return nullptr;
 }
 
-ConstructorType::ConstructorType(Type* con) {
+ConstructorType::ConstructorType(Type* con, Analyzer& a)
+: MetaType(a) {
     t = con;
     emplace = nullptr;
 }
-std::string ConstructorType::explain(Analyzer& a) {
-    return "decltype(" + t->explain(a) + ")";
+std::string ConstructorType::explain() {
+    return "decltype(" + t->explain() + ")";
 }

@@ -11,26 +11,22 @@
 #include <llvm/IR/DataLayout.h>
 #pragma warning(pop)
 
-#include <Wide/Codegen/GeneratorMacros.h>
-
 using namespace Wide;
 using namespace Semantic;
 
-std::function<llvm::Type*(llvm::Module*)> StringType::GetLLVMType(Analyzer& a) { 
-    return [](llvm::Module* m) -> llvm::Type* {
-        return llvm::PointerType::getInt8PtrTy(m->getContext());
-    };
+llvm::Type* StringType::GetLLVMType(Codegen::Generator& g) { 
+    return llvm::PointerType::getInt8PtrTy(g.module->getContext());
 }
-Wide::Util::optional<clang::QualType> StringType::GetClangType(ClangTU& TU, Analyzer& a) {
+Wide::Util::optional<clang::QualType> StringType::GetClangType(ClangTU& TU) {
     return TU.GetASTContext().getPointerType(TU.GetASTContext().getConstType(TU.GetASTContext().CharTy));
 }
 
-std::size_t StringType::size(Analyzer& a) {
-    return llvm::DataLayout(a.gen->GetDataLayout()).getPointerSize();
+std::size_t StringType::size() {
+    return analyzer.GetDataLayout().getPointerSize();
 }
-std::size_t StringType::alignment(Analyzer& a) {
-    return llvm::DataLayout(a.gen->GetDataLayout()).getPointerABIAlignment();
+std::size_t StringType::alignment() {
+    return analyzer.GetDataLayout().getPointerABIAlignment();
 }
-std::string StringType::explain(Analyzer& a) {
+std::string StringType::explain() {
     return "(Constant string: \"" + value + "\")";
 }

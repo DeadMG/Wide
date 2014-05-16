@@ -31,26 +31,36 @@ using namespace Wide;
 using namespace Semantic;
 
 struct Function::LocalVariable : public Expression {
-    LocalVariable(Expression* ex, Analyzer& a)
-    : init_expr(std::move(ex)), analyzer(a)
+    LocalVariable(Expression* ex, Function* self, Lexer::Range where)
+    : init_expr(std::move(ex)), self(self), where(where)
     {
+        ListenToNode(init_expr);
         OnNodeChanged(init_expr);
     }
-    LocalVariable(Expression* ex, unsigned u, Analyzer& a)
-        : init_expr(std::move(ex)), tuple_num(u), analyzer(a)
+    LocalVariable(Expression* ex, unsigned u, Function* self, Lexer::Range where)
+        : init_expr(std::move(ex)), tuple_num(u), self(self), where(where)
     {
+        ListenToNode(init_expr);
         OnNodeChanged(init_expr);
     }
 
     void OnNodeChanged(Node* n) override final {
         if (init_expr->GetType()) {
+            // If we're a value we just steal.
+            if (init_expr->GetType() == init_expr->GetType()->Decay()) {
+                if (init_expr->GetType() != var_type) {
+                    var_type = init_expr->GetType();
+                    OnChange();
+                    return;
+                }
+            }
             auto newty = init_expr->GetType()->Decay();
             if (tuple_num) {
                 if (auto tupty = dynamic_cast<TupleType*>(newty)) {
-                    tuple_access = tupty->PrimitiveAccessMember(init_expr, *tuple_num);
+                    auto tuple_access = tupty->PrimitiveAccessMember(Wide::Memory::MakeUnique<ExpressionReference>(init_expr), *tuple_num);
                     newty = tuple_access->GetType()->Decay();
-                    construction = newty->BuildInplaceConstruction([this] { return alloc; }, { tuple_access.get() });
-                    destruct = newty->BuildDestructorCall();
+                    variable = Wide::Memory::MakeUnique<ImplicitTemporaryExpr>(newty);
+                    construction = newty->BuildInplaceConstruction(Wide::Memory::MakeUnique<ExpressionReference>(variable.get()), Expressions(std::move(tuple_access)), { self, where });
                     if (newty != var_type) {
                         OnChange();
                     }
@@ -60,8 +70,8 @@ struct Function::LocalVariable : public Expression {
             }
             if (newty != var_type) {
                 if (newty) {
-                    construction = newty->BuildInplaceConstruction([this] { return alloc; }, { init_expr });
-                    destruct = newty->BuildDestructorCall();
+                    variable = Wide::Memory::MakeUnique<ImplicitTemporaryExpr>(newty);
+                    construction = newty->BuildInplaceConstruction(Wide::Memory::MakeUnique<ExpressionReference>(variable.get()), Expressions(Wide::Memory::MakeUnique<ExpressionReference>(init_expr)), { self, where });
                 }
                 var_type = newty;
                 OnChange();
@@ -74,28 +84,29 @@ struct Function::LocalVariable : public Expression {
         }
     }
 
-    std::unique_ptr<Expression> tuple_access;
     std::unique_ptr<Expression> construction;
     Wide::Util::optional<unsigned> tuple_num;
     Type* tup_ty = nullptr;
     Type* var_type = nullptr;
-    llvm::Value* alloc = nullptr;
+    std::unique_ptr<ImplicitTemporaryExpr> variable;
     Expression* init_expr;
-    std::function<void(llvm::Value*, Codegen::Generator& g)> destruct;
-    Analyzer& analyzer;
+    Function* self;
+    Lexer::Range where;
 
-    void DestroyLocals(Codegen::Generator& g) {
-        destruct(alloc, g);
+    void DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+        if (!init_expr->GetType()->IsComplexType(g) || !(init_expr->GetType() == var_type))
+            variable->DestroyLocals(g, bb);
         // If any temporaries were created during construction, destroy them.
-        construction->DestroyLocals(g);
+        construction->DestroyLocals(g, bb);
     }
-    llvm::Value* ComputeValue(Codegen::Generator& g) {
-        alloc = g.builder.CreateAlloca(var_type->GetLLVMType(g));
-        return construction->GetValue(g);
+    llvm::Value* ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+        // If they return a complex value, just steal it.
+        if (init_expr->GetType()->IsComplexType(g) && init_expr->GetType() == var_type) return init_expr->GetValue(g, bb);
+        return construction->GetValue(g, bb);
     }
     Type* GetType() {
         if (var_type)
-            return analyzer.GetLvalueType(var_type);
+            return self->analyzer.GetLvalueType(var_type);
         return nullptr;
     }
 };
@@ -107,29 +118,32 @@ struct Function::Scope {
     Scope* parent;
     std::vector<std::unique_ptr<Scope>> children;
     std::unordered_map<std::string, std::pair<std::unique_ptr<Expression>, Lexer::Range>> named_variables;
-    std::vector<Statement*> active;
+    std::vector<std::unique_ptr<Statement>> active;
     WhileStatement* current_while;
+    std::unique_ptr<Expression> LookupLocal(std::string name);
 
-    std::function<void(Codegen::Generator&)> DestroyLocals() {
-        auto copy = active;
-        return [copy](Codegen::Generator& g) {
-            for (auto stmt : copy)
-                stmt->DestroyLocals(g);
+    std::function<void(Codegen::Generator&, llvm::IRBuilder<>&)> DestroyLocals() {
+        std::vector<Statement*> current;
+        for (auto&& stmt : active)
+            current.push_back(stmt.get());
+        return [current](Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+            for (auto stmt : current)
+                stmt->DestroyLocals(g, bb);
         };
     }
-    std::function<void(Codegen::Generator&)> DestroyAllLocals() {
+    std::function<void(Codegen::Generator&, llvm::IRBuilder<>&)> DestroyAllLocals() {
         auto local = DestroyLocals();
         if (parent) {
             auto uppers = parent->DestroyAllLocals();
-            return [local, uppers](Codegen::Generator& g) {
-                local(g);
-                uppers(g);
+            return [local, uppers](Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+                local(g, bb);
+                uppers(g, bb);
             };
         }
         return local;
     }
 
-    std::function<void(Codegen::Generator&)> DestroyWhileBody() {
+    std::function<void(Codegen::Generator&, llvm::IRBuilder<>&)> DestroyWhileBody() {
         // The while is attached to the CONDITION SCOPE
         // We only want to destroy the body.
         if (parent) {
@@ -137,15 +151,15 @@ struct Function::Scope {
             if (parent->current_while)
                 return local;
             auto uppers = parent->DestroyWhileBody();
-            return [local, uppers](Codegen::Generator& g) {
-                local(g);
-                uppers(g);
+            return [local, uppers](Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+                local(g, bb);
+                uppers(g, bb);
             };            
         }
         throw std::runtime_error("fuck");
     }
 
-    std::function<void(Codegen::Generator&)> DestroyWhileBodyAndCond() {
+    std::function<void(Codegen::Generator&, llvm::IRBuilder<>&)> DestroyWhileBodyAndCond() {
         // The while is attached to the CONDITION SCOPE
         // So keep going until we have it.
         if (parent) {
@@ -153,9 +167,9 @@ struct Function::Scope {
             if (current_while)
                 return local;
             auto uppers = parent->DestroyWhileBodyAndCond();
-            return [local, uppers](Codegen::Generator& g) {
-                local(g);
-                uppers(g);
+            return [local, uppers](Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+                local(g, bb);
+                uppers(g, bb);
             };
         }
         throw std::runtime_error("fuck");
@@ -173,91 +187,102 @@ struct Function::Scope {
 Function::~Function() {}
 
 struct Function::CompoundStatement : public Statement {
-    CompoundStatement(std::vector<std::unique_ptr<Statement>> stmts)
-        : statements(std::move(stmts)) {}
-    std::vector<std::unique_ptr<Statement>> statements;
-    void DestroyLocals(Codegen::Generator& g) override final {
+    CompoundStatement(Scope* s)
+        : s(s) {}
+    void DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
         // After code generation, I ain't got no locals left to destroy.
     }
-    void GenerateCode(Codegen::Generator& g) override final {
-        for (auto&& stmt : statements)
-            stmt->GenerateCode(g);
-        // Destroy all the locals after executing the statements.
-        // Unless the block was already terminated in which case they're already destroyed.
-        if (!g.builder.GetInsertBlock()->getTerminator())
-            for (auto rit = statements.rbegin(); rit != statements.rend(); ++rit)
-                rit->get()->DestroyLocals(g);
+    Scope* s;
+    void GenerateCode(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
+        for (auto&& stmt : s->active)
+            stmt->GenerateCode(g, bb);
+        for (auto rit = s->active.rbegin(); rit != s->active.rend(); ++rit)
+            rit->get()->DestroyLocals(g, bb);
     }
 };
 
 struct Function::ReturnStatement : public Statement {
-    ReturnStatement(Function* f, std::unique_ptr<Expression> expr, Scope* current)
-    : self(f), ret_expr(std::move(expr))
+    ReturnStatement(Function* f, std::unique_ptr<Expression> expr, Scope* current, Lexer::Range where)
+    : self(f), ret_expr(std::move(expr)), where(where)
     {
         self->returns.insert(this);
         if (ret_expr) {
-            current->active.push_back(ret_expr.get());
             ListenToNode(ret_expr.get());
         }
-        destructors = current->DestroyAllLocals();
+        auto scope_destructors = current->DestroyAllLocals();
+        destructors = [this, scope_destructors](Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+            if (ret_expr)
+                ret_expr->DestroyLocals(g, bb);
+            scope_destructors(g, bb);
+        };
         OnNodeChanged(ret_expr.get());
     }
     void OnNodeChanged(Node* n) {
         if (self->ReturnType != self->analyzer.GetVoidType()) {
-            if (!self->ReturnType->IsComplexType()) {
-                if (ret_expr && ret_expr->GetType() && ret_expr->GetType() != self->ReturnType) {
-                    build = self->ReturnType->BuildValueConstruction({ ret_expr.get() });
+            struct ReturnEmplaceValue : Expression {
+                ReturnEmplaceValue(Function* f)
+                : self(f) {}
+                Function* self;
+                Type* GetType() override final {
+                    return self->analyzer.GetLvalueType(self->ReturnType);
                 }
-                return;
-            }
-            build = self->ReturnType->BuildInplaceConstruction([this] { return self->llvmfunc->arg_begin(); }, { ret_expr.get() });
+                void DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {}
+                llvm::Value* ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
+                    return self->llvmfunc->arg_begin();
+                }
+            };
+            build = self->ReturnType->BuildInplaceConstruction(Wide::Memory::MakeUnique<ReturnEmplaceValue>(self), Expressions(Wide::Memory::MakeUnique<ExpressionReference>(ret_expr.get())), { self, where });
         } else
             build = nullptr;
     }
+    Lexer::Range where;
     Function* self;
-    std::function<void(Codegen::Generator& g)> destructors;
+    std::function<void(Codegen::Generator& g, llvm::IRBuilder<>&)> destructors;
     std::unique_ptr<Expression> ret_expr;
     std::unique_ptr<Expression> build;
-    void DestroyLocals(Codegen::Generator& g) override final {
+    void DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
         // When we're codegenned, there's no more need to destroy *any* locals, let alone ours.
     }
-    void GenerateCode(Codegen::Generator& g) override final {
+    void GenerateCode(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
         // Consider the simple cases first.
         // If our return type is void
         if (self->ReturnType == g.a->GetVoidType()) {
-            // If we have a void-returning expression, evaluate it.
-            if (ret_expr) 
-                ret_expr->GetValue(g);
-            destructors(g);
-            g.builder.CreateRetVoid();
+            // If we have a void-returning expression, evaluate it, destroy it, then return.
+            if (ret_expr) {
+                ret_expr->GetValue(g, bb);
+            }
+            destructors(g, bb);
+            bb.CreateRetVoid();
             return;
         }
 
         // If we return a simple type
-        if (!self->ReturnType->IsComplexType()) {
+        if (!self->ReturnType->IsComplexType(g)) {
             // and we already have an expression of that type
             if (ret_expr->GetType() == self->ReturnType) {
                 // then great, just return it directly.
-                auto val = ret_expr->GetValue(g);
-                destructors(g);
-                g.builder.CreateRet(val);
+                auto val = ret_expr->GetValue(g, bb);
+                destructors(g, bb);
+                bb.CreateRet(val);
                 return;
             }
-            // build should be a function taking our ret's value and returning one of the type we need.
-            auto val = build->GetValue(g);
-            build->DestroyLocals(g);
-            destructors(g);
-            g.builder.CreateRet(val);
+            // Build will inplace construct this in our first argument, which is INCREDIBLY UNHELPFUL here.
+            // We would fix this up, but, cannot query the complexity of a type prior to code generation.
+            build = self->ReturnType->BuildValueConstruction(Expressions(Wide::Memory::MakeUnique<ExpressionReference>(ret_expr.get())), { self, where });
+            auto val = build->GetValue(g, bb);
+            build->DestroyLocals(g, bb);
+            destructors(g, bb);
+            bb.CreateRet(val);
             return;
         }
 
         // If we return a complex type, the 0th parameter will be memory into which to place the return value.
         // build should be a function taking the memory and our ret's value and emplacing it.
         // Then return void.
-        build->GetValue(g);
-        build->DestroyLocals(g);
-        destructors(g);
-        g.builder.CreateRetVoid();
+        build->GetValue(g, bb);
+        build->DestroyLocals(g, bb);
+        destructors(g, bb);
+        bb.CreateRetVoid();
         return;
     }
 };
@@ -267,28 +292,29 @@ bool is_terminated(llvm::BasicBlock* bb) {
 }
 
 struct Function::WhileStatement : public Statement {
-    WhileStatement(std::unique_ptr<Expression> ex)
-    : cond(std::move(ex)) 
+    WhileStatement(Expression* ex, Lexer::Range where, Function* s)
+    : cond(std::move(ex)), where(where), self(s)
     {
-        ListenToNode(cond.get());
-        OnNodeChanged(cond.get());
+        ListenToNode(cond);
+        OnNodeChanged(cond);
     }
     void OnNodeChanged(Node* n) override final {
         if (cond->GetType())
-            boolconvert = cond->GetType()->Decay()->BuildBooleanConversion(cond->GetType());
+            boolconvert = cond->GetType()->Decay()->BuildBooleanConversion(Wide::Memory::MakeUnique<ExpressionReference>(cond), { self, where });
     }
 
-    std::unique_ptr<Expression> cond;
-    std::unique_ptr<Statement> body;
-    std::function<llvm::Value*(llvm::Value*, Codegen::Generator&)> boolconvert;
+    Function* self;
+    Lexer::Range where;
+    Expression* cond;
+    Statement* body;
+    std::unique_ptr<Expression> boolconvert;
     llvm::BasicBlock* continue_bb = nullptr;
     llvm::BasicBlock* check_bb = nullptr;
 
-    void DestroyLocals(Codegen::Generator& g) override final {
+    void DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
         // After code generation, I ain't got no locals left to destroy.
     }
-    void GenerateCode(Codegen::Generator& g) override final {
-        auto&& bb = g.builder;
+    void GenerateCode(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
         check_bb = llvm::BasicBlock::Create(bb.getContext(), "check_bb", bb.GetInsertBlock()->getParent());
         auto loop_bb = llvm::BasicBlock::Create(bb.getContext(), "loop_bb", bb.GetInsertBlock()->getParent());
         continue_bb = llvm::BasicBlock::Create(bb.getContext(), "continue_bb", bb.GetInsertBlock()->getParent());
@@ -297,60 +323,61 @@ struct Function::WhileStatement : public Statement {
         // Both of these branches need to destroy the cond's locals.
         // In the case of the loop, so that when check_bb is re-entered, it's clear.
         // In the case of the continue, so that the check's locals are cleaned up properly.
-        bb.CreateCondBr(boolconvert(cond->GetValue(g), g), loop_bb, continue_bb);
+        bb.CreateCondBr(boolconvert->GetValue(g, bb), loop_bb, continue_bb);
         bb.SetInsertPoint(loop_bb);
-        body->GenerateCode(g);
-        body->DestroyLocals(g);
-        cond->DestroyLocals(g);
+        body->GenerateCode(g, bb);
+        body->DestroyLocals(g, bb);
+        cond->DestroyLocals(g, bb);
         // If, for example, we unconditionally return or break/continue, it can happen that we were already terminated.
-        if (!is_terminated(g.builder.GetInsertBlock()))
+        if (!is_terminated(bb.GetInsertBlock()))
             bb.CreateBr(check_bb);
         bb.SetInsertPoint(continue_bb);
-        cond->DestroyLocals(g);
+        cond->DestroyLocals(g, bb);
     }
 };
 struct Function::IfStatement : public Statement{
-    IfStatement(std::unique_ptr<Expression> cond, std::unique_ptr<Statement> true_b, std::unique_ptr<Statement> false_b)
-    : cond(std::move(cond)), true_br(std::move(true_b)), false_br(std::move(false_b)) 
+    IfStatement(Expression* cond, Statement* true_b, Statement* false_b, Lexer::Range where, Function* s)
+    : cond(std::move(cond)), true_br(std::move(true_b)), false_br(std::move(false_b)), where(where), self(s)
     {
-        ListenToNode(cond.get());
-        OnNodeChanged(cond.get());
+        ListenToNode(cond);
+        OnNodeChanged(cond);
     }
     void OnNodeChanged(Node* n) override final {
         if (cond->GetType())
-            boolconvert = cond->GetType()->Decay()->BuildBooleanConversion(cond->GetType());
+            boolconvert = cond->GetType()->Decay()->BuildBooleanConversion(Wide::Memory::MakeUnique<ExpressionReference>(cond), { self, where });
     }
 
-    std::unique_ptr<Expression> cond;
-    std::unique_ptr<Statement> true_br;
-    std::unique_ptr<Statement> false_br;
-    std::function<llvm::Value*(llvm::Value*, Codegen::Generator&)> boolconvert;
+    Function* self; 
+    Lexer::Range where;
+    Expression* cond;
+    Statement* true_br;
+    Statement* false_br;
+    std::unique_ptr<Expression> boolconvert;
 
-    void DestroyLocals(Codegen::Generator& g) override final {
+    void DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
         // After code generation, I ain't got no locals left to destroy.
     }
-    void GenerateCode(Codegen::Generator& g) override final {
-        auto&& bb = g.builder;
+    void GenerateCode(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
         auto true_bb = llvm::BasicBlock::Create(bb.getContext(), "true_bb", bb.GetInsertBlock()->getParent());
         auto continue_bb = llvm::BasicBlock::Create(bb.getContext(), "continue_bb", bb.GetInsertBlock()->getParent());
         auto else_bb = false_br ? llvm::BasicBlock::Create(bb.getContext(), "false_bb", bb.GetInsertBlock()->getParent()) : continue_bb;
-        bb.CreateCondBr(boolconvert(cond->GetValue(g), g), true_bb, else_bb);
+        bb.CreateCondBr(boolconvert->GetValue(g, bb), true_bb, else_bb);
         bb.SetInsertPoint(true_bb);
-        true_br->GenerateCode(g);
-        true_br->DestroyLocals(g);
+        true_br->GenerateCode(g, bb);
+        true_br->DestroyLocals(g, bb);
         if (!is_terminated(bb.GetInsertBlock()))
             bb.CreateBr(continue_bb);
 
         if (false_br) {
             bb.SetInsertPoint(else_bb);
-            false_br->GenerateCode(g);
-            false_br->DestroyLocals(g);
+            false_br->GenerateCode(g, bb);
+            false_br->DestroyLocals(g, bb);
             if (!is_terminated(bb.GetInsertBlock()))
                 bb.CreateBr(continue_bb);
         }
 
         bb.SetInsertPoint(continue_bb);
-        cond->DestroyLocals(g);
+        cond->DestroyLocals(g, bb);
     }
 };
 struct Function::VariableStatement : public Statement {
@@ -358,56 +385,24 @@ struct Function::VariableStatement : public Statement {
     : locals(std::move(locs)), init_expr(std::move(expr)){}
     std::unique_ptr<Expression> init_expr;
     std::vector<LocalVariable*> locals;
-    void DestroyLocals(Codegen::Generator& g) {
+    void DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) {
         for (auto local : locals)
-            local->DestroyLocals(g);
+            local->DestroyLocals(g, bb);
+        init_expr->DestroyLocals(g, bb);
     }
-    void GenerateCode(Codegen::Generator& g) {
+    void GenerateCode(Codegen::Generator& g, llvm::IRBuilder<>& bb) {
         for (auto local : locals)
-            local->GetValue(g);
+            local->GetValue(g, bb);
+        init_expr->GetValue(g, bb); // Just in case
     }
 };
-struct Function::ConditionVariable : public Expression {
-    ConditionVariable(Function::LocalVariable* expr, Analyzer& a)
-    : var(std::move(expr)), analyzer(&a)
-    {
-        ListenToNode(var);
-        OnChange();
-    }
-    Analyzer* analyzer;
-    Function::LocalVariable* var;
-    void OnNodeChanged(Node* n) {
-        OnChange();
-    }
-    Type* GetType() {
-        return var->GetType();
-    }
-    void DestroyLocals(Codegen::Generator& g) override final {
-        var->DestroyLocals(g);
-    }
-    llvm::Value* ComputeValue(Codegen::Generator& g) override final {
-        return var->GetValue(g);
-    }
-};
-struct Function::VariableReference : public Expression {
-    VariableReference(LocalVariable* v, Analyzer& a) {
-        what = v;
-        ListenToNode(what);
-        OnChange();
-    }
-    void OnNodeChanged(Node* n) {
-        OnChange();
-    }
-    Analyzer* analyzer;
-    LocalVariable* what;
-    Type* GetType() {
-        return what->GetType();
-    }
-    void DestroyLocals(Codegen::Generator& g) override final {}
-    llvm::Value* ComputeValue(Codegen::Generator& g) override final {
-        return what->alloc;
-    }
-};
+std::unique_ptr<Expression> Function::Scope::LookupLocal(std::string name) {
+    if (named_variables.find(name) != named_variables.end())
+        return Wide::Memory::MakeUnique<ExpressionReference>(named_variables.find(name)->second.first.get());
+    if (parent)
+        return parent->LookupLocal(name);
+    return nullptr;
+}
 struct Function::LocalScope {
     LocalScope(Function* f) 
     : func(f) {
@@ -430,11 +425,11 @@ struct Function::BreakStatement : public Statement {
         while_stmt = s->GetCurrentWhile();
     }
     WhileStatement* while_stmt;
-    std::function<void(Codegen::Generator&)> destroy_locals;
-    void DestroyLocals(Codegen::Generator& g) override final {}
-    void GenerateCode(Codegen::Generator& g) override final {
-        destroy_locals(g);
-        g.builder.CreateBr(while_stmt->continue_bb);
+    std::function<void(Codegen::Generator&, llvm::IRBuilder<>&)> destroy_locals;
+    void DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {}
+    void GenerateCode(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
+        destroy_locals(g, bb);
+        bb.CreateBr(while_stmt->continue_bb);
     }
 };
 struct Function::ContinueStatement : public Statement {
@@ -445,52 +440,49 @@ struct Function::ContinueStatement : public Statement {
         while_stmt = s->GetCurrentWhile();
     }
     WhileStatement* while_stmt;
-    std::function<void(Codegen::Generator&)> destroy_locals;
-    void DestroyLocals(Codegen::Generator& g) override final {}
-    void GenerateCode(Codegen::Generator& g) override final {
-        destroy_locals(g);
-        g.builder.CreateBr(while_stmt->check_bb);
+    std::function<void(Codegen::Generator&, llvm::IRBuilder<>&)> destroy_locals;
+    void DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {}
+    void GenerateCode(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
+        destroy_locals(g, bb);
+        bb.CreateBr(while_stmt->check_bb);
     }
 };
 std::unique_ptr<Statement> Function::AnalyzeStatement(const AST::Statement* s) {
     if (auto ret = dynamic_cast<const AST::Return*>(s)) {
         if (ret->RetExpr) {
-            return Wide::Memory::MakeUnique<ReturnStatement>(this, AnalyzeExpression(this, ret->RetExpr), current_scope);
+            return Wide::Memory::MakeUnique<ReturnStatement>(this, AnalyzeExpression(this, ret->RetExpr, analyzer), current_scope, ret->location);
         }
-        return Wide::Memory::MakeUnique<ReturnStatement>(this, nullptr, current_scope);
+        return Wide::Memory::MakeUnique<ReturnStatement>(this, nullptr, current_scope, ret->location);
     }
 
     if (auto comp = dynamic_cast<const AST::CompoundStatement*>(s)) {
         LocalScope compound(this);
-        std::vector<std::unique_ptr<Statement>> statements;
-        for (auto stmt : comp->stmts) {
-            statements.push_back(AnalyzeStatement(stmt));
-            compound->active.push_back(statements.back().get());
-        }
-        return Wide::Memory::MakeUnique<CompoundStatement>(std::move(statements));
+        for (auto stmt : comp->stmts)
+            compound->active.push_back(AnalyzeStatement(stmt));
+        return Wide::Memory::MakeUnique<CompoundStatement>(compound.s);
     }
 
     if (auto expr = dynamic_cast<const AST::Expression*>(s))
-        return AnalyzeExpression(this, expr);
+        return AnalyzeExpression(this, expr, analyzer);
 
     if (auto var = dynamic_cast<const AST::Variable*>(s)) {
         std::vector<LocalVariable*> locals;
-        auto init_expr = AnalyzeExpression(this, var->initializer);
+        auto init_expr = AnalyzeExpression(this, var->initializer, analyzer);
         if (var->name.size() == 1) {
-            auto var_stmt = Wide::Memory::MakeUnique<LocalVariable>(init_expr.get());
+            auto var_stmt = Wide::Memory::MakeUnique<LocalVariable>(init_expr.get(), this, var->name.front().where);
             auto&& name = var->name.front();
             locals.push_back(var_stmt.get());
             if (current_scope->named_variables.find(var->name.front().name) != current_scope->named_variables.end())
-                throw VariableShadowing(name.name, current_scope->named_variables[name.name].second, name.where);
-            current_scope->named_variables[name.name] = std::make_pair(std::move(var_stmt), name.where);
+                throw VariableShadowing(name.name, current_scope->named_variables.at(name.name).second, name.where);
+            current_scope->named_variables.insert(std::make_pair(name.name, std::make_pair(std::move(var_stmt), name.where)));
         }
         unsigned i = 0;
         for (auto&& name : var->name) {
-            auto var_stmt = Wide::Memory::MakeUnique<LocalVariable>(init_expr.get(), i);
+            auto var_stmt = Wide::Memory::MakeUnique<LocalVariable>(init_expr.get(), i, this, name.where);
             locals.push_back(var_stmt.get());
             if (current_scope->named_variables.find(name.name) != current_scope->named_variables.end())
                 throw VariableShadowing(name.name, current_scope->named_variables[name.name].second, name.where);
-            current_scope->named_variables[name.name] = std::make_pair(std::move(var_stmt), name.where);
+            current_scope->named_variables.insert(std::make_pair(name.name, std::make_pair(std::move(var_stmt), name.where)));
         }
         return Wide::Memory::MakeUnique<VariableStatement>(std::move(locals), std::move(init_expr));
     }
@@ -501,19 +493,18 @@ std::unique_ptr<Statement> Function::AnalyzeStatement(const AST::Statement* s) {
             if (whil->var_condition) {
                 if (whil->var_condition->name.size() != 1)
                     throw std::runtime_error("fuck");
-                AnalyzeStatement(whil->var_condition);
-                return Wide::Memory::MakeUnique<ConditionVariable>(condscope->named_variables.begin()->second.first.get());
+                condscope->active.push_back(AnalyzeStatement(whil->var_condition));
+                return Wide::Memory::MakeUnique<ExpressionReference>(condscope->named_variables.begin()->second.first.get());
             }
-            return AnalyzeExpression(this, whil->condition);
+            return AnalyzeExpression(this, whil->condition, analyzer);
         };
         auto cond = get_expr();
-        condscope->active.push_back(cond.get());
-        auto while_stmt = Wide::Memory::MakeUnique<WhileStatement>(std::move(cond));
+        auto while_stmt = Wide::Memory::MakeUnique<WhileStatement>(cond.get(), whil->location, this);
+        condscope->active.push_back(std::move(cond));
         condscope->current_while = while_stmt.get();
         LocalScope bodyscope(this);
-        auto body = AnalyzeStatement(whil->body);
-        bodyscope->active.push_back(body.get());
-        while_stmt->body = std::move(body);
+        bodyscope->active.push_back(AnalyzeStatement(whil->body));
+        while_stmt->body = bodyscope->active.back().get();
         return std::move(while_stmt);
     }
 
@@ -534,39 +525,43 @@ std::unique_ptr<Statement> Function::AnalyzeStatement(const AST::Statement* s) {
             if (if_stmt->var_condition) {
                 if (if_stmt->var_condition->name.size() != 1)
                     throw std::runtime_error("fuck");
-                AnalyzeStatement(if_stmt->var_condition);
-                return Wide::Memory::MakeUnique<ConditionVariable>(condscope->named_variables.begin()->second.first.get(), analyzer);
+                condscope->active.push_back(AnalyzeStatement(if_stmt->var_condition));
+                return Wide::Memory::MakeUnique<ExpressionReference>(condscope->named_variables.begin()->second.first.get());
             }
-            return AnalyzeExpression(this, if_stmt->condition);
+            return AnalyzeExpression(this, if_stmt->condition, analyzer);
         };
         auto cond = get_expr();
-        condscope->active.push_back(cond.get());
-        std::unique_ptr<Statement> true_br;
+        Expression* condexpr = cond.get();
+        condscope->active.push_back(std::move(cond));
+        Statement* true_br;
         {
             LocalScope truescope(this);
-            true_br = AnalyzeStatement(if_stmt->true_statement);
+            truescope->active.push_back(AnalyzeStatement(if_stmt->true_statement));
+            true_br = truescope->active.back().get();
         }
-        std::unique_ptr<Statement> false_br;
+        Statement* false_br;
         if (if_stmt->false_statement) {
             LocalScope falsescope(this);
-            false_br = AnalyzeStatement(if_stmt->false_statement);
+            falsescope->active.push_back(AnalyzeStatement(if_stmt->true_statement));
+            false_br = falsescope->active.back().get();
         }
-        return Wide::Memory::MakeUnique<IfStatement>(std::move(cond), std::move(true_br), std::move(false_br));
+        return Wide::Memory::MakeUnique<IfStatement>(condexpr, true_br, false_br, if_stmt->location, this);
     }
 
     assert(false && "Unsupported statement.");
 }
 
 struct Function::Parameter : public Expression {
-    Parameter(Function* s, unsigned n)
-    : self(s), num(n) 
+    Parameter(Function* s, unsigned n, Lexer::Range where)
+    : self(s), num(n), where(where)
     {
         OnNodeChanged(s);
         ListenToNode(self);
     }
+    Lexer::Range where;
     Function* self;
     unsigned num;
-    std::function<void(llvm::Value*, Codegen::Generator& g)> destructor;
+    std::unique_ptr<Expression> destructor;
     Type* cur_ty = nullptr;
 
     void OnNodeChanged(Node* n) {
@@ -579,38 +574,36 @@ struct Function::Parameter : public Expression {
         auto new_ty = get_new_ty();
         if (new_ty != cur_ty) {
             cur_ty = new_ty;
-            destructor = cur_ty->BuildDestructorCall();
+            destructor = cur_ty->BuildDestructorCall(Wide::Memory::MakeUnique<ExpressionReference>(this), { self, where });
             OnChange();
         }
     }
-
-
     Type* GetType() override final {
         return cur_ty;
     }
-    void DestroyLocals(Codegen::Generator& g) override final {
-        if (self->Args[num]->IsComplexType())
-            destructor(GetValue(g), g);
+    void DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
+        if (self->Args[num]->IsComplexType(g))
+            destructor->GetValue(g, bb);
     }
 
-    llvm::Value* ComputeValue(Codegen::Generator& g) override final {
+    llvm::Value* ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
         auto argnum = num;
-        if (self->ReturnType->IsComplexType())
+        if (self->ReturnType->IsComplexType(g))
             ++argnum;
         auto llvm_argument = std::next(self->llvmfunc->arg_begin(), argnum);
 
-        if (self->Args[num]->IsComplexType() || self->Args[num]->IsReference())
+        if (self->Args[num]->IsComplexType(g) || self->Args[num]->IsReference())
             return llvm_argument;
 
-        auto alloc = g.builder.CreateAlloca(self->Args[num]->GetLLVMType(g));
+        auto alloc = bb.CreateAlloca(self->Args[num]->GetLLVMType(g));
         alloc->setAlignment(self->Args[num]->alignment());
-        g.builder.CreateStore(llvm_argument, alloc);
+        bb.CreateStore(llvm_argument, alloc);
         return alloc;
     }
 };
 
 Function::Function(std::vector<Type*> args, const AST::FunctionBase* astfun, Analyzer& a, Type* mem, std::string src_name)
-: analyzer(a)
+: MetaType(a)
 , ReturnType(nullptr)
 , fun(astfun)
 , context(mem)
@@ -622,15 +615,17 @@ Function::Function(std::vector<Type*> args, const AST::FunctionBase* astfun, Ana
     current_scope = root_scope.get();
     unsigned num = 0;
     if (mem && (dynamic_cast<MemberFunctionContext*>(mem->Decay()))) {
-        ++num; // Match up the ast args with args
         Args.push_back(args[0] == args[0]->Decay() ? a.GetLvalueType(args[0]) : args[0]);
+        auto param = Wide::Memory::MakeUnique<Parameter>(this, num++, Lexer::Range(nullptr));
+        root_scope->named_variables.insert(std::make_pair("this", std::make_pair(Wide::Memory::MakeUnique<ExpressionReference>(param.get()), Lexer::Range(nullptr))));
+        root_scope->active.push_back(std::move(param));
     }
     for(auto&& arg : astfun->args) {
         if (arg.name == "this")
             continue;
-        auto param = Wide::Memory::MakeUnique<Parameter>(this, ++num, analyzer);
-        root_scope->active.push_back(param.get());
-        root_scope->named_variables[arg.name] = std::make_pair(std::move(param), arg.location);
+        auto param = Wide::Memory::MakeUnique<Parameter>(this, num++, arg.location);
+        root_scope->named_variables.insert(std::make_pair(arg.name, std::make_pair(Wide::Memory::MakeUnique<ExpressionReference>(param.get()), arg.location)));
+        root_scope->active.push_back(std::move(param));
     }
 
     std::stringstream strstr;
@@ -646,7 +641,7 @@ Function::Function(std::vector<Type*> args, const AST::FunctionBase* astfun, Ana
             auto ident = dynamic_cast<const AST::Identifier*>(ass->lhs);
             if (!ident)
                 throw PrologAssignmentNotIdentifier(ass->lhs->location);
-            auto expr = AnalyzeExpression(this, ass->rhs);
+            auto expr = AnalyzeExpression(this, ass->rhs, analyzer);
             if (ident->val == "ExportName") {
                 auto str = dynamic_cast<StringType*>(expr->GetType()->Decay());
                 if (!str)
@@ -656,7 +651,7 @@ Function::Function(std::vector<Type*> args, const AST::FunctionBase* astfun, Ana
             if (ident->val == "ReturnType") {
                 auto ty = dynamic_cast<ConstructorType*>(expr->GetType()->Decay());
                 if (!ty)
-                    throw NotAType(expr->GetType()->Decay(), ass->rhs->location, a);
+                    throw NotAType(expr->GetType()->Decay(), ass->rhs->location);
                 ExplicitReturnType = ty->GetConstructedType();
                 ReturnType = *ExplicitReturnType;
             }
@@ -668,60 +663,6 @@ Wide::Util::optional<clang::QualType> Function::GetClangType(ClangTU& where) {
     return GetSignature()->GetClangType(where);
 }
 
-struct Function::InitVTable : Statement {
-    InitVTable(Function* arg)
-    : self(arg) 
-    {
-        // Only called if it's a UDT.
-        auto member = dynamic_cast<UserDefinedType*>(self->context->Decay());
-        assert(member);
-        init = member->SetVirtualPointers();
-    }
-    Function* self;
-    std::function<void(llvm::Value*, Codegen::Generator& g)> init;
-    virtual void DestroyLocals(Codegen::Generator& g) override final {}
-    virtual void GenerateCode(Codegen::Generator& g) override final {
-        auto this_arg = self->llvmfunc->arg_begin();
-        init(this_arg, g);
-    }
-};
-
-struct Function::InitMember : Statement {
-    InitMember(Function* func, unsigned membernum, std::unique_ptr<Expression> init, Type* mem_ty)
-    : self(func), num(membernum), init_expr(std::move(init)), member_ty(mem_ty) 
-    {
-        OnNodeChanged(init_expr.get());
-    }
-    Function* self;
-    unsigned num;
-    std::unique_ptr<Expression> init_expr;
-    std::unique_ptr<Expression> inplacefunc;
-    Type* member_ty;
-    llvm::Value* member = nullptr;
-
-    void OnNodeChanged(Node* n) {
-        if (init_expr) {
-            if (init_expr->GetType()) {
-                inplacefunc = member_ty->BuildInplaceConstruction([this] { return member; }, { init_expr.get() });
-            }
-            return;
-        }
-        inplacefunc = member_ty->BuildInplaceConstruction([this] { return member; }, {});
-    }
-    void DestroyLocals(Codegen::Generator& g) override final {
-        if (init_expr)
-            init_expr->DestroyLocals(g);
-        inplacefunc->DestroyLocals(g);
-    }
-    void GenerateCode(Codegen::Generator& g) override final {
-        member = g.builder.CreateStructGEP(self->llvmfunc->arg_begin(), num);
-        if (init_expr)
-            inplacefunc->GetValue(g);
-        else
-            inplacefunc->GetValue(g);
-    }
-};
-
 void Function::ComputeBody() {
     if (s == State::NotYetAnalyzed) {
         s = State::AnalyzeInProgress;
@@ -730,9 +671,8 @@ void Function::ComputeBody() {
             auto member = dynamic_cast<UserDefinedType*>(context->Decay());
             auto members = member->GetMembers();
             for (auto&& x : members) {
-                // First bases, then members, then vptr.
                 if (x.vptr) {
-                    stmts.push_back(Wide::Memory::MakeUnique<InitVTable>(this));
+                    stmts.push_back(x.InClassInitializer(LookupLocal("this")));
                     continue;
                 }
                 auto has_initializer = [&](std::string name) -> const AST::Variable* {
@@ -744,23 +684,31 @@ void Function::ComputeBody() {
                     }
                     return nullptr;
                 };
+                auto num = x.num;
                 // For member variables, don't add them to the list, the destructor will handle them.
+                auto member = CreatePrimUnOp(LookupLocal("this"), [num](llvm::Value* val, Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+                    return bb.CreateStructGEP(val, num);
+                });
                 if (auto init = has_initializer(x.name)) {
                     // AccessMember will automatically give us back a T*, but we need the T** here
                     // if the type of this member is a reference.
-                    stmts.push_back(Wide::Memory::MakeUnique<InitMember>(this, x.num, init->initializer ? AnalyzeExpression(this, init->initializer) : nullptr, x.t));
-                    continue;
-                } 
-                // Don't care about if x.t is ref because refs can't be default-constructed anyway.
-                if (x.InClassInitializer) {
-                    stmts.push_back(Wide::Memory::MakeUnique<InitMember>(this, x.num, AnalyzeExpression(this, x.InClassInitializer), x.t));
+                    
+                    if (init->initializer)
+                        stmts.push_back(x.t->BuildInplaceConstruction(std::move(member), Expressions(AnalyzeExpression(this, init->initializer, analyzer)), { this, init->location }));
+                    else
+                        stmts.push_back(x.t->BuildInplaceConstruction(std::move(member), Expressions(), { this, init->location }));
                     continue;
                 }
-                stmts.push_back(Wide::Memory::MakeUnique<InitMember>(this, x.num, nullptr, x.t));
+                // Don't care about if x.t is ref because refs can't be default-constructed anyway.
+                if (x.InClassInitializer) {
+                    stmts.push_back(x.t->BuildInplaceConstruction(std::move(member), Expressions(x.InClassInitializer(LookupLocal("this"))), { this, x.location }));
+                    continue;
+                }
+                stmts.push_back(x.t->BuildInplaceConstruction(std::move(member), Expressions(), { this, fun->where }));
             }
             for (auto&& x : con->initializers)
                 if (std::find_if(members.begin(), members.end(), [&](decltype(*members.begin())& ref) { return ref.name == x->name.front().name; }) == members.end())
-                    throw NoMemberToInitialize(member, x->name.front().name, x->location, analyzer);
+                    throw NoMemberToInitialize(member, x->name.front().name, x->location);
         }
         // Now the body.
         for (std::size_t i = 0; i < fun->statements.size(); ++i) {
@@ -799,17 +747,16 @@ void Function::EmitCode(Codegen::Generator& g) {
 
     llvm::BasicBlock* bb = llvm::BasicBlock::Create(g.module->getContext(), "entry", llvmfunc);
     llvm::IRBuilder<> irbuilder(bb);
-    g.builder = irbuilder;
     for (auto&& stmt : stmts)
-        stmt->GenerateCode(g);
+        stmt->GenerateCode(g, irbuilder);
 
-    if (!is_terminated(g.builder.GetInsertBlock())) {
+    if (!is_terminated(irbuilder.GetInsertBlock())) {
         if (ReturnType == analyzer.GetVoidType()) {
-            g.builder.CreateRetVoid();
-            current_scope->DestroyAllLocals()(g);
+            irbuilder.CreateRetVoid();
+            current_scope->DestroyAllLocals()(g, irbuilder);
         }
         else
-            g.builder.CreateUnreachable();
+            irbuilder.CreateUnreachable();
     }
 
     if (llvm::verifyFunction(*llvmfunc, llvm::VerifierFailureAction::PrintMessageAction))
@@ -932,63 +879,45 @@ void Function::EmitCode(Codegen::Generator& g) {
     }
 }
 
-std::unique_ptr<Expression> Function::BuildCall(Expression* val, std::vector<Expression*> args) {
+std::unique_ptr<Expression> Function::BuildCall(std::unique_ptr<Expression> val, std::vector<std::unique_ptr<Expression>> args, Context c) {
     if (s == State::NotYetAnalyzed)
         ComputeBody();
-    struct Call : public Expression {
-        Call(Function* s, std::vector<Expression*> args)
-        : self(s), args(std::move(args)) 
+    struct Self : public Expression {
+        Self(Function* self, Expression* expr)
+        : self(self) 
         {
-            ListenToNode(self);
-            OnNodeChanged(self);
-        }
-        Function* self;
-        Type* ret_ty = nullptr;
-        std::vector<Expression*> args;
-        std::function<void(llvm::Value*, Codegen::Generator& g)> destruct;
-        void OnNodeChanged(Node* n) {
-            if (self->ReturnType != ret_ty) {
-                ret_ty = self->ReturnType;
-                if (ret_ty->IsComplexType())
-                    destruct = ret_ty->BuildDestructorCall();
-                OnChange();
+            if (auto func = dynamic_cast<const AST::Function*>(self->fun)) {
+                if (func->dynamic) {
+                    auto udt = dynamic_cast<UserDefinedType*>(expr->GetType()->Decay());
+                    obj = udt->GetVirtualPointer(Wide::Memory::MakeUnique<ExpressionReference>(expr));
+                    index = udt->GetVirtualFunctionIndex(func);
+                }
             }
         }
+        unsigned index;
+        std::unique_ptr<Expression> obj;
+        Function* self;
         Type* GetType() override final {
-            return ret_ty;
+            return self->GetSignature();
         }
-        llvm::Value* ret_temp = nullptr;
-        void DestroyLocals(Codegen::Generator& g) {
-            destruct(ret_temp, g);
-        }
-        llvm::Value* ComputeValue(Codegen::Generator& g) override final {
-            // We should be protected against type mismatches by OR and the Callable interface.
-            // But we must keep respecting our ABI.
-            std::vector<llvm::Value*> llvmargs;
-            if (ret_ty->IsComplexType())
-                llvmargs.push_back(ret_temp = g.builder.CreateAlloca(ret_ty->GetLLVMType(g)));
-            
-            for (auto arg : args)
-                llvmargs.push_back(arg->GetValue(g));
+        llvm::Value* ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
             if (!self->llvmfunc)
                 self->EmitCode(g);
-            
-            auto call = g.builder.CreateCall(self->llvmfunc, llvmargs);
-            if (ret_temp)
-                return ret_temp;
-            return call;
+            if (obj) {
+                auto vptr = bb.CreateLoad(obj->GetValue(g, bb));
+                return bb.CreatePointerCast(bb.CreateLoad(bb.CreateConstGEP1_32(vptr, index)), self->GetSignature()->GetLLVMType(g));
+            }
+            return self->llvmfunc;
         }
+        void DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {}
     };
-    return Wide::Memory::MakeUnique<Call>(this, std::move(args));
+    return GetSignature()->BuildCall(Wide::Memory::MakeUnique<Self>(this, !args.empty() ? args[0].get() : nullptr), std::move(args), c);
 }
-Wide::Util::optional<ConcreteExpression> Function::LookupLocal(std::string name) {
-    Analyzer& a = *c;
-    if (name == "this" && dynamic_cast<MemberFunctionContext*>(context->Decay()))
-        return ConcreteExpression(c->GetLvalueType(context->Decay()), c->gen->CreateParameterExpression([this, &a] { return ReturnType->IsComplexType(a); }));
-    auto expr = current_scope->LookupName(name, c);
-    if (expr)
-        return expr->first;
-    return Util::none;
+
+std::unique_ptr<Expression> Function::LookupLocal(std::string name) {
+    //if (name == "this" && dynamic_cast<MemberFunctionContext*>(context->Decay()))
+    //    return ConcreteExpression(c->GetLvalueType(context->Decay()), c->gen->CreateParameterExpression([this, &a] { return ReturnType->IsComplexType(a); }));
+    return current_scope->LookupLocal(name);
 }
 std::string Function::GetName() {
     return name;
@@ -1002,31 +931,7 @@ FunctionType* Function::GetSignature() {
 }
 
 Type* Function::GetConstantContext() {
-    struct FunctionConstantContext : public MetaType {
-        Type* context;
-        std::unordered_map<std::string, ConcreteExpression> constant;
-        Type* GetContext(Analyzer& a) override final {
-            return context;
-        }
-        Wide::Util::optional<ConcreteExpression> AccessMember(ConcreteExpression e, std::string member, Context c) override final {
-            if (constant.find(member) == constant.end())
-                return Wide::Util::none;
-            return constant.at(member).t->Decay()->GetConstantContext(*c)->BuildValueConstruction({}, c);
-        }
-        std::string explain(Analyzer& a) { return "function lookup context"; }
-    };
-    auto context = a.arena.Allocate<FunctionConstantContext>();
-    context->context = GetContext(a);
-    for(auto scope = current_scope; scope; scope = scope->parent) {
-        for (auto&& var : scope->named_variables) {
-            if (context->constant.find(var.first) == context->constant.end()) {
-                auto& e = var.second.first;
-                if (e.t->Decay()->GetConstantContext(a))
-                    context->constant.insert(std::make_pair(var.first, e));
-             }
-        }
-    }
-    return context;
+    return nullptr;
 }
 std::string Function::explain() {
     auto args = std::string("(");

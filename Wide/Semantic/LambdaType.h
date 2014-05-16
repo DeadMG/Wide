@@ -14,11 +14,11 @@ namespace Wide {
             const std::vector<Type*>& GetContents() { return contents; }
         public:
             LambdaType(std::vector<std::pair<std::string, Type*>> capturetypes, const AST::Lambda* l, Analyzer& a);
-            ConcreteExpression BuildCall(ConcreteExpression val, std::vector<ConcreteExpression> args, Context c) override final;
-            ConcreteExpression BuildLambdaFromCaptures(std::vector<ConcreteExpression> exprs, Context c);
+            std::unique_ptr<Expression> BuildCall(std::unique_ptr<Expression> val, std::vector<std::unique_ptr<Expression>> args, Context c) override final;
+            std::unique_ptr<Expression> BuildLambdaFromCaptures(std::vector<std::unique_ptr<Expression>> exprs, Context c);
 
-            Wide::Util::optional<ConcreteExpression> LookupCapture(ConcreteExpression self, std::string name, Context c);
-            std::string explain(Analyzer& a) override final;
+            std::unique_ptr<Expression> LookupCapture(std::unique_ptr<Expression> self, std::string name);
+            std::string explain() override final;
        };
     }
 }

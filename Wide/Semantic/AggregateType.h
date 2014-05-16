@@ -9,6 +9,11 @@ namespace Wide {
             virtual const std::vector<Type*>& GetContents() = 0;
 
             struct Layout {
+                struct CodeGen {
+                    CodeGen(AggregateType* self, Layout& lay, Codegen::Generator& g);
+                    bool IsComplex;
+                    llvm::Type* llvmtype;
+                };
                 Layout(const std::vector<Type*>& types, Analyzer& a);
 
                 std::size_t allocsize;
@@ -16,25 +21,37 @@ namespace Wide {
 
                 std::vector<unsigned> Offsets;
                 std::vector<unsigned> FieldIndices;
-                std::vector<std::function<llvm::Type*(llvm::Module*)>> llvmtypes;
+                std::vector<std::function<llvm::Type*(Codegen::Generator& g)>> llvmtypes;
 
-                bool IsComplex;
                 bool copyconstructible;
                 bool copyassignable;
                 bool moveconstructible;
                 bool moveassignable;
                 bool constant;
+                Wide::Util::optional<CodeGen> codegen;
+                CodeGen& GetCodegen(AggregateType* self, Codegen::Generator& g) {
+                    if (!codegen) codegen = CodeGen(self, *this, g);
+                    return *codegen;
+                }
             };
+            std::unique_ptr<OverloadResolvable> CopyAssignmentOperator;
+            std::unique_ptr<OverloadResolvable> MoveAssignmentOperator;
+            std::unique_ptr<OverloadResolvable> CopyConstructor;
+            std::unique_ptr<OverloadResolvable> MoveConstructor;
+            std::unique_ptr<OverloadResolvable> DefaultConstructor;
+
             Wide::Util::optional<Layout> layout;
-            Layout& GetLayout(Analyzer& a) {
-                if (!layout) layout = Layout(GetContents(), a);
+            Layout& GetLayout() {
+                if (!layout) layout = Layout(GetContents(), analyzer);
                 return *layout;
             }
         public:
-            unsigned GetFieldIndex(Analyzer& a, unsigned num) { return GetLayout(a).FieldIndices[num]; }
-            unsigned GetOffset(Analyzer& a, unsigned num) { return GetLayout(a).Offsets[num]; }
+            AggregateType(Analyzer& a) : Type(a) {}
 
-            std::unique_ptr<Expression> PrimitiveAccessMember(Expression* self, unsigned num);
+            unsigned GetFieldIndex(unsigned num) { return GetLayout().FieldIndices[num]; }
+            unsigned GetOffset(unsigned num) { return GetLayout().Offsets[num]; }
+
+            std::unique_ptr<Expression> PrimitiveAccessMember(std::unique_ptr<Expression> self, unsigned num);
             
             std::size_t size() override final;
             std::size_t alignment() override final;
@@ -43,13 +60,14 @@ namespace Wide {
             
             OverloadSet* CreateNondefaultConstructorOverloadSet();
             OverloadSet* CreateOperatorOverloadSet(Type* t, Lexer::TokenType type, Lexer::Access access) override;
-            OverloadSet* CreateConstructorOverloadSet(Lexer::Access access) override;
+            OverloadSet* CreateConstructorOverloadSet(Lexer::Access access) override; 
+            std::unique_ptr<Expression> BuildDestructorCall(std::unique_ptr<Expression> self, Context c) override;
 
             bool IsCopyConstructible(Lexer::Access access) override;
             bool IsMoveConstructible(Lexer::Access access) override;
             bool IsCopyAssignable(Lexer::Access access) override;
             bool IsMoveAssignable(Lexer::Access access) override;
-            bool IsComplexType() override;
+            bool IsComplexType(Codegen::Generator& g) override;
         };
     }
 }

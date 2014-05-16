@@ -6,9 +6,10 @@ namespace Wide {
     namespace Semantic {
         class VoidType : public MetaType {
         public:
-            std::function<llvm::Type*(llvm::Module*)> GetLLVMType(Analyzer& a) override final;
-            Wide::Util::optional<clang::QualType> GetClangType(ClangTU& tu, Analyzer& a) override final;
-            std::string explain(Analyzer& a) override final;
+            VoidType(Analyzer& a) : MetaType(a) {}
+            llvm::Type* GetLLVMType(Codegen::Generator& g) override final;
+            Wide::Util::optional<clang::QualType> GetClangType(ClangTU& tu) override final;
+            std::string explain() override final;
         };
     }
 }

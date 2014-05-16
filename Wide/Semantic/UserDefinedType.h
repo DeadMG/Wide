@@ -28,10 +28,10 @@ namespace Wide {
             std::string source_name;
 
             Wide::Util::optional<bool> UDCCache;
-            bool UserDefinedComplex(Analyzer& a);
+            bool UserDefinedComplex();
 
             Wide::Util::optional<bool> BCCache;
-            bool BinaryComplex(Analyzer& a);
+            bool BinaryComplex(Codegen::Generator& g);
 
             std::vector<Type*> contents;
             std::vector<BaseType*> bases;
@@ -42,6 +42,7 @@ namespace Wide {
             std::vector<const AST::Expression*> NSDMIs;
             Type* context;
             bool HasNSDMI = false;
+            std::unique_ptr<OverloadResolvable> DefaultConstructor;
             // User Defined Complex
             std::unordered_map<const AST::Function*, unsigned> VTableIndices;
             // Binary Complex
@@ -49,43 +50,52 @@ namespace Wide {
 
             // Virtual function support functions.
             std::vector<VirtualFunction> funcs;
-            Codegen::Expression* FunctionPointerFor(std::string name, std::vector<Type*> args, Type* ret, unsigned offset, Analyzer& a) override final;
-            std::vector<VirtualFunction> ComputeVTableLayout(Analyzer& a) override final;
-            Codegen::Expression* GetVirtualPointer(Codegen::Expression* self, Analyzer& a) override final;
-            std::function<llvm::Type*(llvm::Module*)> GetVirtualPointerType(Analyzer& a) override final;
-            std::vector<std::pair<BaseType*, unsigned>> GetBases(Analyzer& a) override final;
-            bool IsDynamic(Analyzer& a);
+            std::unique_ptr<Expression> FunctionPointerFor(std::string name, std::vector<Type*> args, Type* ret, unsigned offset) override final;
+            std::vector<VirtualFunction> ComputeVTableLayout() override final;
+            Type* GetVirtualPointerType() override final;
+            std::vector<std::pair<BaseType*, unsigned>> GetBases() override final;
+            bool IsDynamic();
         public:
             struct member {
+                member(Lexer::Range where)
+                : location(where) {}
+                member(const member&) = delete;
+                member(member&& other)
+                    : name(std::move(other.name))
+                    , t(other.t)
+                    , num(other.num)
+                    , InClassInitializer(std::move(other.InClassInitializer))
+                    , location(std::move(other.location)) {}
                 std::string name;
                 Type* t;
                 unsigned num;
-                const AST::Expression* InClassInitializer;
+                std::function<std::unique_ptr<Expression>(std::unique_ptr<Expression>)> InClassInitializer;
+                Lexer::Range location;
                 bool vptr;
             };
             std::vector<member> GetMembers();
             UserDefinedType(const AST::Type* t, Analyzer& a, Type* context, std::string);           
-            Type* GetContext(Analyzer& a) override final { return context; }
+            Type* GetContext() override final { return context; }
             bool HasMember(std::string name);            
-            Wide::Util::optional<clang::QualType> GetClangType(ClangTU& TU, Analyzer& a) override final;
-            Wide::Util::optional<ConcreteExpression> AccessMember(ConcreteExpression, std::string name, Context c) override final;
+            Wide::Util::optional<clang::QualType> GetClangType(ClangTU& TU) override final;
+            std::unique_ptr<Expression> AccessMember(std::unique_ptr<Expression> t, std::string name, Context) override final;
+            std::unique_ptr<Expression> UserDefinedType::BuildDestructorCall(std::unique_ptr<Expression> self, Context c) override final;
+            OverloadSet* CreateConstructorOverloadSet(Lexer::Access access) override final;
+            OverloadSet* CreateOperatorOverloadSet(Type* self, Lexer::TokenType member, Lexer::Access access) override final;
 
-            OverloadSet* CreateConstructorOverloadSet(Wide::Semantic::Analyzer&, Lexer::Access access) override final;
-            OverloadSet* CreateOperatorOverloadSet(Type* self, Lexer::TokenType member, Lexer::Access access, Analyzer& a) override final;
-            OverloadSet* CreateDestructorOverloadSet(Analyzer& a) override final;
+            bool IsCopyConstructible(Lexer::Access access) override final;
+            bool IsMoveConstructible(Lexer::Access access) override final;
+            bool IsCopyAssignable(Lexer::Access access) override final;
+            bool IsMoveAssignable(Lexer::Access access) override final;
+            bool IsComplexType(Codegen::Generator& g) override final;
 
-            bool IsCopyConstructible(Analyzer& a, Lexer::Access access) override final;
-            bool IsMoveConstructible(Analyzer& a, Lexer::Access access) override final;
-            bool IsCopyAssignable(Analyzer& a, Lexer::Access access) override final;
-            bool IsMoveAssignable(Analyzer& a, Lexer::Access access) override final;
-            bool IsComplexType(Analyzer& a) override final;
-
-            Wide::Util::optional<std::vector<Type*>> GetTypesForTuple(Analyzer& a) override final;
-            ConcreteExpression PrimitiveAccessMember(ConcreteExpression e, unsigned num, Analyzer& a) override final;
-            InheritanceRelationship IsDerivedFrom(Type* other, Analyzer& a) override final;
-            Codegen::Expression* AccessBase(Type* other, Codegen::Expression*, Analyzer& a) override final;
-            std::string explain(Analyzer& a) override final;
-            Callable* GetCallableForDynamicCall(const AST::Function* func, std::vector<Type*> types, std::string name, Analyzer& a);
+            Wide::Util::optional<std::vector<Type*>> GetTypesForTuple() override final;
+            std::unique_ptr<Expression> PrimitiveAccessMember(std::unique_ptr<Expression> self, unsigned num) override final;
+            InheritanceRelationship IsDerivedFrom(Type* other) override final;
+            std::unique_ptr<Expression> AccessBase(std::unique_ptr<Expression> self, Type* other) override final;
+            std::string explain() override final;
+            unsigned GetVirtualFunctionIndex(const AST::Function* func);
+            std::unique_ptr<Expression> GetVirtualPointer(std::unique_ptr<Expression> self) override final;
         };
     }
 }

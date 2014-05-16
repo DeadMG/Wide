@@ -10,9 +10,9 @@ namespace Wide {
             TupleType(std::vector<Type*> types, Analyzer& a);
             const std::vector<Type*>& GetContents() { return contents; }
 
-            ConcreteExpression ConstructFromLiteral(std::vector<ConcreteExpression> exprs, Context c);
-            bool IsA(Type* self, Type* other, Analyzer& a, Lexer::Access access) override final;
-            std::string explain(Analyzer& a) override final;
+            std::unique_ptr<Expression> ConstructFromLiteral(std::vector<std::unique_ptr<Expression>> exprs);
+            bool IsA(Type* self, Type* other, Lexer::Access access) override final;
+            std::string explain() override final;
         };
     }
 }

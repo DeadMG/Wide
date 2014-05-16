@@ -40,7 +40,6 @@
 #include <llvm/Support/raw_ostream.h>
 #pragma warning(pop)
 
-#include <Wide/Codegen/GeneratorMacros.h>
 
 using namespace Wide;
 using namespace Semantic;   
@@ -85,6 +84,7 @@ public:
 
 class ClangTU::Impl {
 public:    
+    std::unordered_set<clang::NamedDecl*> addrs;
     std::unordered_set<const clang::FileEntry*> files;
     const Options::Clang* Options;
     clang::FileManager FileManager;
@@ -94,7 +94,6 @@ public:
     std::unique_ptr<clang::TargetInfo> targetinfo;
     clang::CompilerInstance ci;
     clang::HeaderSearch hs;
-    llvm::DataLayout layout;
 
     clang::LangOptions langopts;
     std::vector<clang::Decl*> stuff;
@@ -103,40 +102,38 @@ public:
     CodeGenConsumer consumer;
     clang::Sema sema;
     std::string filename;
-    llvm::Module mod;
-    clang::CodeGen::CodeGenModule codegenmod;
     clang::Parser p;
-    
+private:
+    std::unique_ptr<clang::CodeGen::CodeGenModule> codegenmod;
+public:
+    void CreateCodegen(llvm::Module& mod, llvm::DataLayout& layout) {
+        codegenmod = Wide::Memory::MakeUnique<clang::CodeGen::CodeGenModule>(astcon, Options->CodegenOptions, mod, layout, engine);
+    }
+    clang::CodeGen::CodeGenModule& GetCodegenModule(Codegen::Generator& g) {
+        return *codegenmod;
+    }
     // Clang has a really annoying habit of changing it's mind about this
     // producing multiple distinct llvm::Type*s for one QualType, so perform
     // our own caching on top.    
     
-    Impl(llvm::LLVMContext& con, std::string file, const Wide::Options::Clang& opts, Lexer::Range where)        
+    Impl(std::string file, const Wide::Options::Clang& opts, Lexer::Range where)        
         : Options(&opts)
         , FileManager(opts.FileSearchOptions)
         , engine(opts.DiagnosticIDs, opts.DiagnosticOptions.getPtr(), &DiagnosticConsumer, false)
         , targetinfo(CreateTargetInfoFromTriple(engine, opts.TargetOptions.Triple))
         , sm(engine, FileManager)
         , hs(opts.HeaderSearchOptions, sm, engine, opts.LanguageOptions, targetinfo.get())
-        , layout(targetinfo->getTargetDescription())
         , langopts(Options->LanguageOptions)
         , preproc(Options->PreprocessorOptions, engine, langopts, targetinfo.get(), sm, hs, ci)
         , astcon(langopts, sm, targetinfo.get(), preproc.getIdentifierTable(), preproc.getSelectorTable(), preproc.getBuiltinInfo(), 1000)
         , consumer(stuff)
         , sema(preproc, astcon, consumer, clang::TranslationUnitKind::TU_Complete) 
-        , mod("", con)
-        , codegenmod(astcon, Options->CodegenOptions, mod, layout, engine)
         , filename(std::move(file))   
         , p(preproc, sema, false)
     {
         preproc.enableIncrementalProcessing(true);
         Codegen::InitializeLLVM();
         std::string err;
-        const llvm::Target& llvmtarget = *llvm::TargetRegistry::lookupTarget(opts.TargetOptions.Triple, err);
-        llvm::TargetOptions llvmtargetopts;
-        auto targetmachine = std::unique_ptr<llvm::TargetMachine>(llvmtarget.createTargetMachine(opts.TargetOptions.Triple, llvm::Triple(opts.TargetOptions.Triple).getArchName(), "", llvmtargetopts));
-        mod.setDataLayout(targetmachine->getDataLayout()->getStringRepresentation());  
-        mod.setTargetTriple(Options->TargetOptions.Triple);
         clang::InitializePreprocessor(preproc, *Options->PreprocessorOptions, *Options->HeaderSearchOptions, Options->FrontendOptions);
         preproc.getBuiltinInfo().InitializeBuiltins(preproc.getIdentifierTable(), Options->LanguageOptions);
         std::vector<std::string> paths;
@@ -238,8 +235,8 @@ std::string ClangTU::PopLastDiagnostic() {
     return lastdiag;
 }
 
-ClangTU::ClangTU(llvm::LLVMContext& c, std::string file, const Wide::Options::Clang& ccs, Lexer::Range where)
-    : impl(Wide::Memory::MakeUnique<Impl>(c, file, ccs, where)) 
+ClangTU::ClangTU(std::string file, const Wide::Options::Clang& ccs, Lexer::Range where, Analyzer& an)
+: impl(Wide::Memory::MakeUnique<Impl>(file, ccs, where)), a(an)
 {
 }
 void ClangTU::AddFile(std::string filename, Lexer::Range where) {
@@ -247,21 +244,45 @@ void ClangTU::AddFile(std::string filename, Lexer::Range where) {
 }
 
 ClangTU::ClangTU(ClangTU&& other)
-    : impl(std::move(other.impl)) {}
+    : impl(std::move(other.impl)), a(other.a) {}
 
-void ClangTU::GenerateCodeAndLinkModule(llvm::Module* main) {
+void ClangTU::GenerateCodeAndLinkModule(Codegen::Generator& g) {
     impl->sema.ActOnEndOfTranslationUnit();
-    for(auto x : impl->stuff)
-        impl->codegenmod.EmitTopLevelDecl(x);
-    impl->codegenmod.Release();
+    llvm::Module mod("", g.module->getContext());
+    llvm::DataLayout layout(impl->targetinfo->getTargetDescription());
+    impl->CreateCodegen(mod, layout);
+    mod.setDataLayout(layout.getStringRepresentation());
+    mod.setTargetTriple(impl->Options->TargetOptions.Triple);
+    
+    for (auto&& decl : impl->addrs) {
+        if (auto vardecl = llvm::dyn_cast<clang::VarDecl>(decl)) {
+            impl->GetCodegenModule(g).GetAddrOfGlobal(vardecl);
+        }
+        if (auto condecl = llvm::dyn_cast<clang::CXXConstructorDecl>(decl)) {
+            auto gd = clang::GlobalDecl(condecl, clang::CXXCtorType::Ctor_Complete);
+            impl->GetCodegenModule(g).GetAddrOfGlobal(gd);
+            continue;
+        }
+        if (auto condecl = llvm::dyn_cast<clang::CXXDestructorDecl>(decl)) {
+            auto gd = clang::GlobalDecl(condecl, clang::CXXDtorType::Dtor_Complete);
+            impl->GetCodegenModule(g).GetAddrOfGlobal(gd);
+            continue;
+        }
+        if (auto funcdecl = llvm::dyn_cast<clang::FunctionDecl>(decl)) {
+            impl->GetCodegenModule(g).GetAddrOfGlobal(funcdecl);
+        }
+    }
+    for (auto x : impl->stuff)
+        impl->GetCodegenModule(g).EmitTopLevelDecl(x);
+    impl->GetCodegenModule(g).Release();
 
-    std::string mod;
-    llvm::raw_string_ostream stream(mod);
-    impl->mod.print(stream, nullptr);
+    std::string module;
+    llvm::raw_string_ostream stream(module);
+    mod.print(stream, nullptr);
 
-    llvm::Linker link(main);
+    llvm::Linker link(g.module.get());
     std::string fuck;
-    link.linkInModule(&impl->mod, &fuck);
+    link.linkInModule(&mod, &fuck);
 }
 
 clang::DeclContext* ClangTU::GetDeclContext() {
@@ -274,55 +295,48 @@ clang::QualType Simplify(clang::QualType inc) {
     return inc;
 }
 
-std::function<llvm::Type*(llvm::Module*)> ClangTU::GetLLVMTypeFromClangType(clang::QualType t, Semantic::Analyzer& a) {
+llvm::Type* ClangTU::GetLLVMTypeFromClangType(clang::QualType t, Codegen::Generator& g) {
     // The Clang functions that should expose this functionality do not in fact work at all, so hack it horribly.
     auto imp = impl.get();
-
-    return [this, imp, t, &a](llvm::Module* mod) -> llvm::Type* {
-        // If we were converted from some Wide type, go to them instead of going through LLVM named type.
-        if (!dynamic_cast<Semantic::ClangType*>(a.GetClangType(*this, t))) {
-            return a.GetClangType(*this, t)->GetLLVMType(a)(mod);
-        }
-        
-        auto RD = t.getCanonicalType()->getAsCXXRecordDecl();
-
-        // Below logic copy pastad from CodeGenModule::addRecordTypeName
-        std::string TypeName;
-        llvm::raw_string_ostream OS(TypeName);
-        OS << RD->getKindName() << '.';
-        if (RD->getIdentifier()) {
-          if (RD->getDeclContext())
+    // If we were converted from some Wide type, go to them instead of going through LLVM named type.
+    if (!dynamic_cast<Semantic::ClangType*>(a.GetClangType(*this, t))) {
+        return a.GetClangType(*this, t)->GetLLVMType(g);
+    }
+    
+    auto RD = t.getCanonicalType()->getAsCXXRecordDecl();
+    
+    // Below logic copy pastad from CodeGenModule::addRecordTypeName
+    std::string TypeName;
+    llvm::raw_string_ostream OS(TypeName);
+    OS << RD->getKindName() << '.';
+    if (RD->getIdentifier()) {
+        if (RD->getDeclContext())
             RD->printQualifiedName(OS);
-          else
+        else
             RD->printName(OS);
-        } else if (const clang::TypedefNameDecl *TDD = RD->getTypedefNameForAnonDecl()) {
-          if (TDD->getDeclContext())
+    } else if (const clang::TypedefNameDecl *TDD = RD->getTypedefNameForAnonDecl()) {
+        if (TDD->getDeclContext())
             TDD->printQualifiedName(OS);
-          else
+        else
             TDD->printName(OS);
-        } else
-          OS << "anon";
+    } else
+        OS << "anon";
+    
+    OS.flush();
+    auto ty = g.module->getTypeByName(TypeName);
+    if (ty) return ty;
         
-        OS.flush();
-        auto ty = mod->getTypeByName(TypeName);      
-        if (ty) {
-            if (t->getAsCXXRecordDecl()->field_empty())
-                a.gen->AddEliminateType(ty);
-            return ty;
-        }
-        
-        std::string s;
-        llvm::raw_string_ostream stream(s);
-        mod->print(stream, nullptr);
-        assert(false && "Attempted to look up a Clang type, but it did not exist in the module. You need to find out where this type came from- is it some unconverted primitive type?");
-        return nullptr; // Shut up control path warning
-    };
+    std::string s;
+    llvm::raw_string_ostream stream(s);
+    g.module->print(stream, nullptr);
+    assert(false && "Attempted to look up a Clang type, but it did not exist in the module. You need to find out where this type came from- is it some unconverted primitive type?");
+    return nullptr; // Shut up control path warning
 }
 
-bool ClangTU::IsComplexType(clang::CXXRecordDecl* decl) {
+bool ClangTU::IsComplexType(clang::CXXRecordDecl* decl, Codegen::Generator& g) {
     if (!decl) return false;
-    auto indirect = impl->codegenmod.getCXXABI().isReturnTypeIndirect(decl);
-    auto arg = impl->codegenmod.getCXXABI().getRecordArgABI(decl);
+    auto indirect = impl->GetCodegenModule(g).getCXXABI().isReturnTypeIndirect(decl);
+    auto arg = impl->GetCodegenModule(g).getCXXABI().getRecordArgABI(decl);
     auto t = impl->astcon.getTypeDeclType(decl);
     if (!indirect && arg != clang::CodeGen::CGCXXABI::RecordArgABI::RAA_Default)
         assert(false);
@@ -331,7 +345,7 @@ bool ClangTU::IsComplexType(clang::CXXRecordDecl* decl) {
     return indirect;
 }
 
-std::string ClangTU::MangleName(clang::NamedDecl* D) {    
+std::function<std::string(Codegen::Generator&)> ClangTU::MangleName(clang::NamedDecl* D) {
     if (auto funcdecl = llvm::dyn_cast<clang::CXXMethodDecl>(D)) {
         if (funcdecl->getType()->getAs<clang::FunctionProtoType>()->getExtProtoInfo().ExceptionSpecType == clang::ExceptionSpecificationType::EST_Unevaluated) {
             GetSema().EvaluateImplicitExceptionSpec(clang::SourceLocation(), funcdecl);
@@ -347,28 +361,33 @@ std::string ClangTU::MangleName(clang::NamedDecl* D) {
     impl->sema.MarkAnyDeclReferenced(clang::SourceLocation(), D, true);
 
     if (auto desdecl = llvm::dyn_cast<clang::CXXDestructorDecl>(D)) {
-        auto gd = clang::GlobalDecl(desdecl, clang::CXXDtorType::Dtor_Complete);
-        impl->codegenmod.GetAddrOfGlobal(gd);
-        return impl->codegenmod.getMangledName(gd);
+        impl->addrs.insert(desdecl);
+        return [this, desdecl](Codegen::Generator& g) { 
+            clang::GlobalDecl gd(desdecl, clang::CXXDtorType::Dtor_Complete);
+            return impl->GetCodegenModule(g).getMangledName(gd); 
+        };
     }
     if (auto condecl = llvm::dyn_cast<clang::CXXConstructorDecl>(D)) {
         // Gotta consider virtual tables and RTTI descriptors.
-        if (condecl->getParent()->isPolymorphic()) {
-            RTTITypes.insert(GetASTContext().getRecordType(condecl->getParent()));
-        }
-        auto gd = clang::GlobalDecl(condecl, clang::CXXCtorType::Ctor_Complete);
-        impl->codegenmod.GetAddrOfGlobal(gd);
-        return impl->codegenmod.getMangledName(gd);
+        impl->addrs.insert(condecl);
+        return [this, condecl](Codegen::Generator& g) {
+            auto gd = clang::GlobalDecl(condecl, clang::CXXCtorType::Ctor_Complete);
+            return impl->GetCodegenModule(g).getMangledName(gd);
+        };
     }
     if (auto vardecl = llvm::dyn_cast<clang::VarDecl>(D)) {
-        impl->codegenmod.GetAddrOfGlobal(vardecl);
-        return impl->codegenmod.getMangledName(vardecl);
+        impl->addrs.insert(vardecl);
+        return [this, vardecl](Codegen::Generator& g) {
+            auto gd = clang::GlobalDecl(vardecl);
+            return impl->GetCodegenModule(g).getMangledName(gd);
+        };
     }
     if (auto funcdecl = llvm::dyn_cast<clang::FunctionDecl>(D)) {
-        //funcdecl->setInlineSpecified(false);
-        //funcdecl->setLateTemplateParsed(false);
-        impl->codegenmod.GetAddrOfGlobal(funcdecl);
-        return impl->codegenmod.getMangledName(funcdecl);
+        impl->addrs.insert(funcdecl);
+        return [this, funcdecl](Codegen::Generator& g) {
+            auto gd = clang::GlobalDecl(funcdecl);
+            return impl->GetCodegenModule(g).getMangledName(gd);
+        };
     }
     assert(false);
 }
@@ -385,12 +404,12 @@ clang::IdentifierInfo* ClangTU::GetIdentifierInfo(std::string name) {
     return impl->preproc.getIdentifierInfo(name);
 }
 
-unsigned ClangTU::GetFieldNumber(clang::FieldDecl* f) {
-    return impl->codegenmod.getTypes().getCGRecordLayout(f->getParent()).getLLVMFieldNo(f);
+unsigned ClangTU::GetFieldNumber(clang::FieldDecl* f, Codegen::Generator& g) {
+    return impl->GetCodegenModule(g).getTypes().getCGRecordLayout(f->getParent()).getLLVMFieldNo(f);
 }
 
-unsigned ClangTU::GetBaseNumber(const clang::CXXRecordDecl* self, const clang::CXXRecordDecl* f) {
-    return impl->codegenmod.getTypes().getCGRecordLayout(self).getNonVirtualBaseLLVMFieldNo(f);
+unsigned ClangTU::GetBaseNumber(const clang::CXXRecordDecl* self, const clang::CXXRecordDecl* f, Codegen::Generator& g) {
+    return impl->GetCodegenModule(g).getTypes().getCGRecordLayout(self).getNonVirtualBaseLLVMFieldNo(f);
 }
 
 clang::SourceLocation ClangTU::GetFileEnd() {
@@ -426,6 +445,6 @@ clang::Expr* ClangTU::ParseMacro(std::string macro, Lexer::Range where) {
     auto macrodata = std::string(begin, end);
     throw MacroNotValidExpression(macrodata, macro, where);
 }
-unsigned int ClangTU::GetVirtualFunctionOffset(clang::CXXMethodDecl* meth) {
-    return impl->codegenmod.getItaniumVTableContext().getMethodVTableIndex(clang::GlobalDecl(meth));
+unsigned int ClangTU::GetVirtualFunctionOffset(clang::CXXMethodDecl* meth, Codegen::Generator& g) {
+    return impl->GetCodegenModule(g).getItaniumVTableContext().getMethodVTableIndex(clang::GlobalDecl(meth));
 }

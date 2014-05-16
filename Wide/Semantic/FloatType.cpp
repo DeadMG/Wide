@@ -12,27 +12,12 @@
 #include <clang/AST/ASTContext.h>
 #pragma warning(pop)
 
-#include <Wide/Codegen/GeneratorMacros.h>
-
 using namespace Wide;
 using namespace Semantic;
 
 #pragma warning(disable : 4715)
-llvm::Type* GetLLVMTypeForBits(unsigned bits, llvm::LLVMContext& con) {
-    switch(bits) {
-    case 16:
-        return llvm::Type::getHalfTy(con);
-    case 32:
-        return llvm::Type::getFloatTy(con);
-    case 64:
-        return llvm::Type::getDoubleTy(con);
-    case 128:
-        return llvm::Type::getFP128Ty(con);
-    }
-    assert(false && "Bad number of bits for floating-point type.");
-}
 
-Wide::Util::optional<clang::QualType> FloatType::GetClangType(ClangTU& from, Analyzer& a) {
+Wide::Util::optional<clang::QualType> FloatType::GetClangType(ClangTU& from) {
     switch(bits) {
     case 16:
         return from.GetASTContext().HalfTy;
@@ -44,21 +29,29 @@ Wide::Util::optional<clang::QualType> FloatType::GetClangType(ClangTU& from, Ana
     assert(false && "Bad number of bits for floating-point type.");
 }
 #pragma warning(disable : 4715)
-std::function<llvm::Type*(llvm::Module*)> FloatType::GetLLVMType(Analyzer& a) {
-    return [=](llvm::Module* m) -> llvm::Type* {
-        return GetLLVMTypeForBits(bits, m->getContext());
-    };
+llvm::Type* FloatType::GetLLVMType(Codegen::Generator& g) {
+    switch (bits) {
+    case 16:
+        return llvm::Type::getHalfTy(g.module->getContext());
+    case 32:
+        return llvm::Type::getFloatTy(g.module->getContext());
+    case 64:
+        return llvm::Type::getDoubleTy(g.module->getContext());
+    case 128:
+        return llvm::Type::getFP128Ty(g.module->getContext());
+    }
+    assert(false && "Bad number of bits for floating-point type.");
 }
 
 #pragma warning(disable : 4244)
-std::size_t FloatType::size(Analyzer& a) {
-    return a.gen->GetDataLayout().getTypeAllocSize(GetLLVMTypeForBits(bits, a.gen->GetContext()));
+std::size_t FloatType::size() {
+    return bits / 8;
 }
-std::size_t FloatType::alignment(Analyzer& a) {
-    return a.gen->GetDataLayout().getABITypeAlignment(GetLLVMTypeForBits(bits, a.gen->GetContext()));
+std::size_t FloatType::alignment() {
+    return bits / 8;
 }
 #pragma warning(default : 4244)
 
-std::string FloatType::explain(Analyzer& a) {
+std::string FloatType::explain() {
     return "float" + std::to_string(bits);
 }

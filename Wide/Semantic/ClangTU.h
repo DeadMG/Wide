@@ -4,6 +4,7 @@
 #include <Wide/Semantic/Util.h>
 #include <Wide/Semantic/ClangOptions.h>
 #include <Wide/Semantic/Hashers.h>
+#include <Wide/Codegen/Generator.h>
 #include <memory>
 #include <string>
 #include <functional>
@@ -43,31 +44,31 @@ namespace Wide {
         class ClangTU {
             class Impl;
             std::unordered_set<clang::FunctionDecl*> visited;
-            std::unordered_set<clang::QualType, ClangTypeHasher> RTTITypes;
+            Analyzer& a;
         public:
             std::unique_ptr<Impl> impl;
             ~ClangTU();
-            void GenerateCodeAndLinkModule(llvm::Module* main);
+            void GenerateCodeAndLinkModule(Codegen::Generator& g);
             clang::DeclContext* GetDeclContext();
 
             ClangTU(ClangTU&&);
 
-            ClangTU(llvm::LLVMContext& c, std::string file, const Wide::Options::Clang&, Lexer::Range where);
-            std::function<llvm::Type*(llvm::Module*)> GetLLVMTypeFromClangType(clang::QualType t, Semantic::Analyzer& a);
-            std::string MangleName(clang::NamedDecl* D);
+            ClangTU(std::string file, const Wide::Options::Clang&, Lexer::Range where, Analyzer& an);
+            llvm::Type* GetLLVMTypeFromClangType(clang::QualType t, Codegen::Generator& g);
             std::string GetFilename();
 
-            bool IsComplexType(clang::CXXRecordDecl* decl);
+            std::function<std::string(Codegen::Generator&)> MangleName(clang::NamedDecl* D);
+            bool IsComplexType(clang::CXXRecordDecl* decl, Codegen::Generator& g);
             clang::ASTContext& GetASTContext();
             clang::Sema& GetSema();
             clang::IdentifierInfo* GetIdentifierInfo(std::string ident);
-            unsigned GetFieldNumber(clang::FieldDecl*);
-            unsigned GetBaseNumber(const clang::CXXRecordDecl* self, const clang::CXXRecordDecl* base);
+            unsigned GetFieldNumber(clang::FieldDecl*, Codegen::Generator& g);
+            unsigned GetBaseNumber(const clang::CXXRecordDecl* self, const clang::CXXRecordDecl* base, Codegen::Generator& g);
             clang::SourceLocation GetFileEnd();
             std::string PopLastDiagnostic();
             void AddFile(std::string filename, Lexer::Range where);
             clang::Expr* ParseMacro(std::string macro, Lexer::Range where);
-            unsigned int GetVirtualFunctionOffset(clang::CXXMethodDecl*);
+            unsigned int GetVirtualFunctionOffset(clang::CXXMethodDecl*, Codegen::Generator& g);
         };
     }
 }

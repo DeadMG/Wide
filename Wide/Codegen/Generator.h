@@ -14,7 +14,6 @@ namespace Wide {
         class Generator {
         public:
             std::unique_ptr<llvm::Module> module;
-            llvm::IRBuilder<>& builder;
             Semantic::Analyzer* a;
         };
     }

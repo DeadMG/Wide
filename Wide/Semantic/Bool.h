@@ -5,17 +5,21 @@
 namespace Wide {
     namespace Semantic {
         class Bool : public PrimitiveType {
-            Type* shortcircuit_destructor_type;
+            std::unique_ptr<OverloadResolvable> OrAssignOperator;
+            std::unique_ptr<OverloadResolvable> XorAssignOperator;
+            std::unique_ptr<OverloadResolvable> AndAssignOperator;
+            std::unique_ptr<OverloadResolvable> LTOperator;
+            std::unique_ptr<OverloadResolvable> EQOperator;
         public:
-            Bool() : shortcircuit_destructor_type(nullptr) {}
-            std::function<llvm::Type*(llvm::Module*)> GetLLVMType(Analyzer& a) override final;
-            Wide::Util::optional<clang::QualType> GetClangType(ClangTU&, Analyzer& a) override final;
+            Bool(Analyzer& a) : PrimitiveType(a) {}
+            llvm::Type* GetLLVMType(Codegen::Generator& g) override final;
+            Wide::Util::optional<clang::QualType> GetClangType(ClangTU&) override final;
             
-            OverloadSet* CreateOperatorOverloadSet(Type* t, Lexer::TokenType name, Lexer::Access access, Analyzer& a) override final;
-            Codegen::Expression* BuildBooleanConversion(ConcreteExpression, Context c) override final;
-            std::size_t size(Analyzer& a) override final;
-            std::size_t alignment(Analyzer& a) override final;
-            std::string explain(Analyzer& a) override final;
+            OverloadSet* CreateOperatorOverloadSet(Type* t, Lexer::TokenType name, Lexer::Access access) override final;
+            std::unique_ptr<Expression> BuildBooleanConversion(std::unique_ptr<Expression>, Context c) override final;
+            std::size_t size() override final;
+            std::size_t alignment() override final;
+            std::string explain() override final;
         };
     }
 }

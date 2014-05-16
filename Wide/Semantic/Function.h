@@ -43,7 +43,6 @@ namespace Wide {
             Scope* current_scope;
             Wide::Util::optional<Type*> ExplicitReturnType;
             Type* ReturnType = nullptr;
-            Analyzer& analyzer;
             std::vector<Type*> Args;
             const AST::FunctionBase* fun;
             Type* context;
@@ -56,32 +55,9 @@ namespace Wide {
                 AnalyzeCompleted
             };
             State s;
-            
-            /*
-            Codegen::Function* codefun;
-            void CompleteAnalysis(Analyzer& a);
-
-            std::vector<std::unique_ptr<Statement>> exprs;
-            struct Scope {
-                Scope(Scope* s) : parent(s) {}
-                Scope* parent;
-                std::vector<std::unique_ptr<Scope>> children;
-                std::unordered_map<std::string, std::pair<ConcreteExpression, Lexer::Range>> named_variables;
-                std::vector<ConcreteExpression> needs_destruction;
-
-                Wide::Util::optional<std::pair<ConcreteExpression, Lexer::Range>> LookupName(std::string name, Context c);
-            };
-            struct LocalScope;
-            Scope root_scope;
-            Scope* current_scope;*/
-            void ComputeReturnType();
-
-            std::vector<ConcreteExpression> AdjustArguments(std::vector<ConcreteExpression> args, Context c) override final {
-                return AdjustArgumentsForTypes(args, Args, c);
-            }
-            ConcreteExpression CallFunction(std::vector<ConcreteExpression> exprs, Context c) override final {
-                return BuildCall(BuildValueConstruction({}, c), std::move(exprs), c);
-            }
+            void ComputeReturnType(); 
+            std::unique_ptr<Expression> CallFunction(std::vector<std::unique_ptr<Expression>> args, Context c) override final;
+            std::vector<std::unique_ptr<Expression>> AdjustArguments(std::vector<std::unique_ptr<Expression>> args, Context c) override final;
         public:
             void ComputeBody();
             void EmitCode(Codegen::Generator& g);
@@ -89,12 +65,12 @@ namespace Wide {
 
             Wide::Util::optional<clang::QualType> GetClangType(ClangTU& where) override final;
      
-            std::unique_ptr<Expression> BuildCall(Expression* val, std::vector<Expression*> args) override final;
+            std::unique_ptr<Expression> BuildCall(std::unique_ptr<Expression> val, std::vector<std::unique_ptr<Expression>> args, Context c) override final;
             std::string GetName();
             Type* GetContext() override final { return context; }
 
             FunctionType* GetSignature();
-            Wide::Util::optional<ConcreteExpression> LookupLocal(std::string name);
+            std::unique_ptr<Expression> LookupLocal(std::string name);
             Type* GetConstantContext() override final;
             void SetExportName(std::string name) { trampoline = name; }
             std::string explain() override final;

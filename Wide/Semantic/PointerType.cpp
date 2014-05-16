@@ -12,38 +12,35 @@
 #include <llvm/IR/DerivedTypes.h>
 #pragma warning(pop)
 
-#include <Wide/Codegen/GeneratorMacros.h>
-
 using namespace Wide;
 using namespace Semantic;
 
-Wide::Util::optional<clang::QualType> PointerType::GetClangType(ClangTU& tu, Analyzer& a) {
-    auto pointeety = pointee->GetClangType(tu, a);
+Wide::Util::optional<clang::QualType> PointerType::GetClangType(ClangTU& tu) {
+    auto pointeety = pointee->GetClangType(tu);
     if (!pointeety) return Wide::Util::none;
     return tu.GetASTContext().getPointerType(*pointeety);
 }
 
-std::function<llvm::Type*(llvm::Module*)> PointerType::GetLLVMType(Analyzer& a) {
-    return [=, &a](llvm::Module* mod) {
-        auto ty = pointee->GetLLVMType(a)(mod);
-        if (ty->isVoidTy())
-            ty = llvm::IntegerType::getInt8Ty(mod->getContext());
-        return llvm::PointerType::get(ty, 0);
-    };
+llvm::Type* PointerType::GetLLVMType(Codegen::Generator& g) {
+    auto ty = pointee->GetLLVMType(g);
+    if (ty->isVoidTy())
+        ty = llvm::IntegerType::getInt8Ty(g.module->getContext());
+    return llvm::PointerType::get(ty, 0);
 }
-std::size_t PointerType::size(Analyzer& a) {
-    return llvm::DataLayout(a.gen->GetDataLayout()).getPointerSize();
+std::size_t PointerType::size() {
+    return analyzer.GetDataLayout().getPointerSize();
 }
-std::size_t PointerType::alignment(Analyzer& a) {
-    return llvm::DataLayout(a.gen->GetDataLayout()).getPointerABIAlignment();
+std::size_t PointerType::alignment() {
+    return analyzer.GetDataLayout().getPointerABIAlignment();
 }
 
-PointerType::PointerType(Type* point) {
+PointerType::PointerType(Type* point, Analyzer& a)
+: PrimitiveType(a) {
     pointee = point;
 }
 
-OverloadSet* PointerType::CreateConstructorOverloadSet(Analyzer& a, Lexer::Access access) {
-    if (access != Lexer::Access::Public) return GetConstructorOverloadSet(a, Lexer::Access::Public);
+OverloadSet* PointerType::CreateConstructorOverloadSet(Lexer::Access access) {
+    if (access != Lexer::Access::Public) return GetConstructorOverloadSet(Lexer::Access::Public);
     struct PointerComparableResolvable : OverloadResolvable, Callable {
         PointerComparableResolvable(PointerType* s)
         : self(s) {}
@@ -53,57 +50,61 @@ OverloadSet* PointerType::CreateConstructorOverloadSet(Analyzer& a, Lexer::Acces
             if (types[0] != a.GetLvalueType(self)) return Util::none;
             if (types[1]->Decay() == self) return Util::none;
             if (!dynamic_cast<PointerType*>(types[1]->Decay())) return Util::none;
-            if (!types[1]->IsA(types[1], self, a, GetAccessSpecifier(source, types[1], a))) return Util::none;
+            if (!types[1]->IsA(types[1], self, GetAccessSpecifier(source, types[1]))) return Util::none;
             return types;
         }
-        std::vector<ConcreteExpression> AdjustArguments(std::vector<ConcreteExpression> args, Context c) override final { return args; }
-        ConcreteExpression CallFunction(std::vector<ConcreteExpression> args, Context c) override final {
-            auto other = args[1].BuildValue(c);
-            auto udt = dynamic_cast<BaseType*>(dynamic_cast<PointerType*>(other.t)->pointee);
-            return ConcreteExpression(args[0].t, c->gen->CreateStore(args[0].Expr, udt->AccessBase(self->pointee, other.Expr, *c)));
+        std::vector<std::unique_ptr<Expression>> AdjustArguments(std::vector<std::unique_ptr<Expression>> args, Context c) override final { return args; }
+        std::unique_ptr<Expression> CallFunction(std::vector<std::unique_ptr<Expression>> args, Context c) override final {
+            auto other = BuildValue(std::move(args[1]));
+            auto udt = dynamic_cast<BaseType*>(dynamic_cast<PointerType*>(other->GetType())->pointee);
+            return Wide::Memory::MakeUnique<ImplicitStoreExpr>(std::move(args[0]), udt->AccessBase(std::move(other), self->pointee));
         }
         Callable* GetCallableForResolution(std::vector<Type*>, Analyzer& a) override final { return this; }
     };
-    auto usual = PrimitiveType::CreateConstructorOverloadSet(a, Lexer::Access::Public);
-    std::vector<Type*> types;
-    types.push_back(a.GetLvalueType(this));
-    types.push_back(a.GetNullType());
-    auto null = make_resolvable([this](std::vector<ConcreteExpression> args, Context c) {
-        return ConcreteExpression(args[0].t, c->gen->CreateStore(args[0].Expr, c->gen->CreateNull(GetLLVMType(*c))));
-    }, types, a);
-    auto derived_conversion = a.arena.Allocate<PointerComparableResolvable>(this);
+    auto usual = PrimitiveType::CreateConstructorOverloadSet(Lexer::Access::Public);
+    NullConstructor = MakeResolvable([this](std::vector<std::unique_ptr<Expression>> args, Context c) {
+        return CreatePrimOp(std::move(args[0]), std::move(args[1]), [this](llvm::Value* lhs, llvm::Value* rhs, Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+            return bb.CreateStore(lhs, llvm::Constant::getNullValue(GetLLVMType(g)));
+        });
+    }, { analyzer.GetLvalueType(this), analyzer.GetNullType() });
+    DerivedConstructor = Wide::Memory::MakeUnique<PointerComparableResolvable>(this);
     // T* can be constructed from U* if U* is-a T*
 
-    return a.GetOverloadSet(a.GetOverloadSet(usual, a.GetOverloadSet(null)), a.GetOverloadSet(derived_conversion)); 
+    return analyzer.GetOverloadSet(analyzer.GetOverloadSet(usual, analyzer.GetOverloadSet(NullConstructor.get())), analyzer.GetOverloadSet(DerivedConstructor.get())); 
 }
 
-Codegen::Expression* PointerType::BuildBooleanConversion(ConcreteExpression obj, Context c) {
-    return c->gen->CreateNegateExpression(c->gen->CreateIsNullExpression(obj.BuildValue(c).Expr));
+std::unique_ptr<Expression> PointerType::BuildBooleanConversion(std::unique_ptr<Expression> c, Context) {
+    return CreatePrimUnOp(BuildValue(std::move(c)), [](llvm::Value* v, Codegen::Generator& g, llvm::IRBuilder<>& b) {
+        return b.CreateIsNotNull(v);
+    });
 }
 
-bool PointerType::IsA(Type* self, Type* other, Analyzer& a, Lexer::Access access) {
+bool PointerType::IsA(Type* self, Type* other, Lexer::Access access) {
     // T* is U* if T is derived from U.
     // But reference to T* is not reference to U* so keep that shit under wraps yo.
     // T* or T*&& can be U* or U*&&
     // T*& can be U*
-    if (Type::IsA(self, other, a, access)) return true;
+    if (Type::IsA(self, other, access)) return true;
     if (IsLvalueType(other)) return false;
 
     auto otherptr = dynamic_cast<PointerType*>(other->Decay());
     if (!otherptr) return false;
     auto udt = dynamic_cast<BaseType*>(pointee);
     if (!udt) return false;
-    return udt->IsDerivedFrom(otherptr->pointee, a) == InheritanceRelationship::UnambiguouslyDerived;
+    return udt->IsDerivedFrom(otherptr->pointee) == InheritanceRelationship::UnambiguouslyDerived;
 }
 
-OverloadSet* PointerType::CreateOperatorOverloadSet(Type* self, Lexer::TokenType what, Lexer::Access access, Analyzer& a) {
+OverloadSet* PointerType::CreateOperatorOverloadSet(Type* self, Lexer::TokenType what, Lexer::Access access) {
     if (access != Lexer::Access::Public)
-        return AccessMember(self, what, Lexer::Access::Public, a);
-    if (what != Lexer::TokenType::Dereference) return PrimitiveType::CreateOperatorOverloadSet(self, what, access, a);
-    return a.GetOverloadSet(make_resolvable([this](std::vector<ConcreteExpression> args, Context c) {
-        return ConcreteExpression(c->GetLvalueType(pointee), args[0].BuildValue(c).Expr);
-    }, { this }, a));
+        return AccessMember(self, what, Lexer::Access::Public);
+    if (what != Lexer::TokenType::Dereference) return PrimitiveType::CreateOperatorOverloadSet(self, what, access);
+    DereferenceOperator = MakeResolvable([this](std::vector<std::unique_ptr<Expression>> args, Context c) {
+        return CreatePrimUnOp(std::move(args[0]), analyzer.GetLvalueType(pointee), [](llvm::Value* val, Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+            return val;
+        });
+    }, { this });
+    return analyzer.GetOverloadSet(DereferenceOperator.get());
 }
-std::string PointerType::explain(Analyzer& a) {
-    return pointee->explain(a) + ".pointer";
+std::string PointerType::explain() {
+    return pointee->explain() + ".pointer";
 }

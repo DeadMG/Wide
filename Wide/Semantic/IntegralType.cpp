@@ -12,12 +12,10 @@
 #include <llvm/IR/Module.h>
 #pragma warning(pop)
 
-#include <Wide/Codegen/GeneratorMacros.h>
-
 using namespace Wide;
 using namespace Semantic;
 
-Wide::Util::optional<clang::QualType> IntegralType::GetClangType(ClangTU& TU, Analyzer& a) {
+Wide::Util::optional<clang::QualType> IntegralType::GetClangType(ClangTU& TU) {
     switch(bits) {
     case 8:
         if (is_signed)
@@ -42,16 +40,13 @@ Wide::Util::optional<clang::QualType> IntegralType::GetClangType(ClangTU& TU, An
     }
     assert(false && "Integral types only go up to 64bit.");
 }
-std::function<llvm::Type*(llvm::Module*)> IntegralType::GetLLVMType(Analyzer& a) {
-    return [this](llvm::Module* m) {
-        return llvm::IntegerType::get(m->getContext(), bits);
-    };
+llvm::Type* IntegralType::GetLLVMType(Codegen::Generator& g) {
+    return llvm::IntegerType::get(g.module->getContext(), bits);
 }
 
-OverloadSet* IntegralType::CreateConstructorOverloadSet(Wide::Semantic::Analyzer& a, Lexer::Access access) {
-    if (access != Lexer::Access::Public) return GetConstructorOverloadSet(a, Lexer::Access::Public);
+OverloadSet* IntegralType::CreateConstructorOverloadSet(Lexer::Access access) {
+    if (access != Lexer::Access::Public) return GetConstructorOverloadSet(Lexer::Access::Public);
     struct integral_constructor : public OverloadResolvable, Callable {
-
         integral_constructor(IntegralType* self)
             : integral(self) {}
 
@@ -65,98 +60,137 @@ OverloadSet* IntegralType::CreateConstructorOverloadSet(Wide::Semantic::Analyzer
             return types;
         }
         Callable* GetCallableForResolution(std::vector<Type*> types, Analyzer& a) override final { return this; }
-        ConcreteExpression CallFunction(std::vector<ConcreteExpression> args, Context c) override final {
-            args[1] = args[1].BuildValue(c);
-            if (args[1].t == integral)
-                return ConcreteExpression(args[0].t, c->gen->CreateStore(args[0].Expr, args[1].Expr));
-            auto inttype = dynamic_cast<IntegralType*>(args[1].t);
+        std::unique_ptr<Expression> CallFunction(std::vector<std::unique_ptr<Expression>> args, Context c) override final {
+            if (args[1]->GetType()->IsReference())
+                args[1] = Wide::Memory::MakeUnique<ImplicitLoadExpr>(std::move(args[1]));
+            if (args[1]->GetType() == integral)
+                return Wide::Memory::MakeUnique<ImplicitStoreExpr>(std::move(args[0]), std::move(args[1]));
+            auto inttype = dynamic_cast<IntegralType*>(args[1]->GetType());
             if (integral->bits < inttype->bits)
-                return ConcreteExpression(args[0].t, c->gen->CreateStore(args[0].Expr, c->gen->CreateTruncate(args[1].Expr, integral->GetLLVMType(*c))));
+                return CreatePrimAssOp(std::move(args[0]), std::move(args[1]), [this](llvm::Value* lhs, llvm::Value* rhs, Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+                    return bb.CreateTrunc(rhs, integral->GetLLVMType(g));
+                });
+            //    return ConcreteExpression(args[0].t, c->gen->CreateStore(args[0].Expr, c->gen->CreateTruncate(args[1].Expr, integral->GetLLVMType(*c))));
             if (integral->is_signed && inttype->is_signed)
-                return ConcreteExpression(args[0].t, c->gen->CreateStore(args[0].Expr, c->gen->CreateSignedExtension(args[1].Expr, integral->GetLLVMType(*c))));
+                return CreatePrimAssOp(std::move(args[0]), std::move(args[1]), [this](llvm::Value* lhs, llvm::Value* rhs, Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+                    return bb.CreateSExt(rhs, integral->GetLLVMType(g));
+                });
             if (!integral->is_signed && !inttype->is_signed)
-                return ConcreteExpression(args[0].t, c->gen->CreateStore(args[0].Expr, c->gen->CreateZeroExtension(args[1].Expr, integral->GetLLVMType(*c))));
+                return CreatePrimAssOp(std::move(args[0]), std::move(args[1]), [this](llvm::Value* lhs, llvm::Value* rhs, Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+                    return bb.CreateZExt(rhs, integral->GetLLVMType(g));
+                });
             if (integral->bits == inttype->bits)
-                return ConcreteExpression(args[0].t, c->gen->CreateStore(args[0].Expr, args[1].Expr));
+                return CreatePrimAssOp(std::move(args[0]), std::move(args[1]), [this](llvm::Value* lhs, llvm::Value* rhs, Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+                    return rhs;
+                }); 
             assert(false && "Integer constructor called with conditions that OR should have prevented.");
-            return ConcreteExpression(nullptr, nullptr);// shush warning
+            return nullptr;
         }
-        std::vector<ConcreteExpression> AdjustArguments(std::vector<ConcreteExpression> args, Context c) override final {
+        std::vector<std::unique_ptr<Expression>> AdjustArguments(std::vector<std::unique_ptr<Expression>> args, Context c) override final {
             return args;
         }
     };
-    return a.GetOverloadSet(a.arena.Allocate<integral_constructor>(this));
+    if (!ConvertingConstructor) ConvertingConstructor = Wide::Memory::MakeUnique<integral_constructor>(this);
+    return analyzer.GetOverloadSet(ConvertingConstructor.get());
 }
 
-std::size_t IntegralType::size(Analyzer& a) {
-    return a.gen->GetInt8AllocSize() * (bits / 8);
+std::size_t IntegralType::size() {
+    return (bits / 8);
 }
-std::size_t IntegralType::alignment(Analyzer& a) {
-    return a.gen->GetDataLayout().getABIIntegerTypeAlignment(bits);
+
+std::size_t IntegralType::alignment() {
+    return analyzer.GetDataLayout().getABIIntegerTypeAlignment(bits);
 }
-OverloadSet* IntegralType::CreateADLOverloadSet(Lexer::TokenType name, Type* lhs, Type* rhs, Lexer::Access access, Analyzer& a) {
-    if (access != Lexer::Access::Public) return CreateADLOverloadSet(name, lhs, rhs, Lexer::Access::Public, a);
-    std::vector<Type*> types;
-    types.push_back(a.GetLvalueType(this));
-    types.push_back(this);
+
+OverloadSet* IntegralType::CreateADLOverloadSet(Lexer::TokenType name, Type* lhs, Type* rhs, Lexer::Access access) {
+    if (access != Lexer::Access::Public) return CreateADLOverloadSet(name, lhs, rhs, Lexer::Access::Public);
+    auto CreateAssOp = [this](std::function<llvm::Value*(llvm::Value*, llvm::Value*, Codegen::Generator&, llvm::IRBuilder<>& bb)> func) {
+        return MakeResolvable([this, func](std::vector<std::unique_ptr<Expression>> args, Context c) {
+            return CreatePrimAssOp(std::move(args[0]), std::move(args[1]), func);
+        }, { analyzer.GetLvalueType(this), this });
+    };
     switch (name) {
     case Lexer::TokenType::RightShiftAssign:
-        return a.GetOverloadSet(make_resolvable([this](std::vector<ConcreteExpression> args, Context c) {
-            return ConcreteExpression(args[0].t, c->gen->CreateStore(args[0].Expr, c->gen->CreateRightShift(c->gen->CreateLoad(args[0].Expr), args[1].Expr, is_signed)));
-        }, types, a));
+        RightShiftAssign = CreateAssOp([this](llvm::Value* lhs, llvm::Value* rhs, Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+            if (is_signed)
+                return bb.CreateAShr(lhs, rhs);
+            return bb.CreateLShr(lhs, rhs);
+        });
+        return analyzer.GetOverloadSet(RightShiftAssign.get());
     case Lexer::TokenType::LeftShiftAssign:
-        return a.GetOverloadSet(make_resolvable([](std::vector<ConcreteExpression> args, Context c) {
-            return ConcreteExpression(args[0].t, c->gen->CreateStore(args[0].Expr, c->gen->CreateLeftShift(c->gen->CreateLoad(args[0].Expr), args[1].Expr)));
-        }, types, a));
+        LeftShiftAssign = CreateAssOp([](llvm::Value* lhs, llvm::Value* rhs, Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+            return bb.CreateShl(lhs, rhs);
+        });
+        return analyzer.GetOverloadSet(LeftShiftAssign.get());
     case Lexer::TokenType::MulAssign:
-        return a.GetOverloadSet(make_resolvable([](std::vector<ConcreteExpression> args, Context c) {
-            return ConcreteExpression(args[0].t, c->gen->CreateStore(args[0].Expr, c->gen->CreateMultiplyExpression(c->gen->CreateLoad(args[0].Expr), args[1].Expr)));
-        }, types, a));
+        MulAssign = CreateAssOp([](llvm::Value* lhs, llvm::Value* rhs, Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+            return bb.CreateMul(lhs, rhs);
+        });
+        return analyzer.GetOverloadSet(MulAssign.get());
     case Lexer::TokenType::PlusAssign:
-        return a.GetOverloadSet(make_resolvable([](std::vector<ConcreteExpression> args, Context c) {
-            return ConcreteExpression(args[0].t, c->gen->CreateStore(args[0].Expr, c->gen->CreatePlusExpression(c->gen->CreateLoad(args[0].Expr), args[1].Expr)));
-        }, types, a));
+        PlusAssign = CreateAssOp([](llvm::Value* lhs, llvm::Value* rhs, Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+            return bb.CreateAdd(lhs, rhs);
+        });
+        return analyzer.GetOverloadSet(PlusAssign.get());
     case Lexer::TokenType::OrAssign:
-        return a.GetOverloadSet(make_resolvable([](std::vector<ConcreteExpression> args, Context c) {
-            return ConcreteExpression(args[0].t, c->gen->CreateStore(args[0].Expr, c->gen->CreateOrExpression(c->gen->CreateLoad(args[0].Expr), args[1].Expr)));
-        }, types, a));
+        OrAssign = CreateAssOp([](llvm::Value* lhs, llvm::Value* rhs, Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+            return bb.CreateOr(lhs, rhs);
+        });
+        return analyzer.GetOverloadSet(OrAssign.get());
     case Lexer::TokenType::AndAssign:
-        return a.GetOverloadSet(make_resolvable([](std::vector<ConcreteExpression> args, Context c) {
-            return ConcreteExpression(args[0].t, c->gen->CreateStore(args[0].Expr, c->gen->CreateAndExpression(c->gen->CreateLoad(args[0].Expr), args[1].Expr)));
-        }, types, a));
+        AndAssign = CreateAssOp([](llvm::Value* lhs, llvm::Value* rhs, Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+            return bb.CreateAnd(lhs, rhs);
+        });
+        return analyzer.GetOverloadSet(AndAssign.get());
     case Lexer::TokenType::XorAssign:
-        return a.GetOverloadSet(make_resolvable([](std::vector<ConcreteExpression> args, Context c) {
-            return ConcreteExpression(args[0].t, c->gen->CreateStore(args[0].Expr, c->gen->CreateXorExpression(c->gen->CreateLoad(args[0].Expr), args[1].Expr)));
-        }, types, a));
+        XorAssign = CreateAssOp([](llvm::Value* lhs, llvm::Value* rhs, Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+            return bb.CreateXor(lhs, rhs);
+        });
+        return analyzer.GetOverloadSet(XorAssign.get());
     case Lexer::TokenType::MinusAssign:
-        return a.GetOverloadSet(make_resolvable([](std::vector<ConcreteExpression> args, Context c) {
-            return ConcreteExpression(args[0].t, c->gen->CreateStore(args[0].Expr, c->gen->CreateSubExpression(c->gen->CreateLoad(args[0].Expr), args[1].Expr)));
-        }, types, a));
+        MinusAssign = CreateAssOp([](llvm::Value* lhs, llvm::Value* rhs, Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+            return bb.CreateSub(lhs, rhs);
+        });
+        return analyzer.GetOverloadSet(MinusAssign.get());
     case Lexer::TokenType::ModAssign:
-        return a.GetOverloadSet(make_resolvable([this](std::vector<ConcreteExpression> args, Context c) {
-            return ConcreteExpression(args[0].t, c->gen->CreateStore(args[0].Expr, c->gen->CreateModExpression(c->gen->CreateLoad(args[0].Expr), args[1].Expr, is_signed)));
-        }, types, a));
+        ModAssign = CreateAssOp([this](llvm::Value* lhs, llvm::Value* rhs, Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+            if (is_signed)
+                return bb.CreateSRem(lhs, rhs);
+            return bb.CreateURem(lhs, rhs);
+        });
+        return analyzer.GetOverloadSet(ModAssign.get());
     case Lexer::TokenType::DivAssign:
-        return a.GetOverloadSet(make_resolvable([this](std::vector<ConcreteExpression> args, Context c) {
-            return ConcreteExpression(args[0].t, c->gen->CreateStore(args[0].Expr, c->gen->CreateDivExpression(c->gen->CreateLoad(args[0].Expr), args[1].Expr, is_signed)));
-        }, types, a));
+        DivAssign = CreateAssOp([this](llvm::Value* lhs, llvm::Value* rhs, Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+            if (is_signed)
+                return bb.CreateSDiv(lhs, rhs);
+            return bb.CreateUDiv(lhs, rhs);
+        });
+        return analyzer.GetOverloadSet(DivAssign.get());
     }
-    types[0] = this;
+    auto CreateOp = [this](std::function<llvm::Value*(llvm::Value*, llvm::Value*, Codegen::Generator&, llvm::IRBuilder<>& bb)> func) {
+        return MakeResolvable([this, func](std::vector<std::unique_ptr<Expression>> args, Context c) {
+            return CreatePrimOp(std::move(args[0]), std::move(args[1]), func);
+        }, { this, this });
+    };
     switch(name) {
     case Lexer::TokenType::LT:
-        return a.GetOverloadSet(make_resolvable([this](std::vector<ConcreteExpression> args, Context c) {
-            return ConcreteExpression(c->GetBooleanType(), c->gen->CreateLT(args[0].Expr, args[1].Expr, is_signed));
-        }, types, a));
+        LT = CreateOp([this](llvm::Value* lhs, llvm::Value* rhs, Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+            if (is_signed)
+                return bb.CreateICmpSLT(lhs, rhs);
+            return bb.CreateICmpULT(lhs, rhs);
+        });
+        return analyzer.GetOverloadSet(LT.get());
     case Lexer::TokenType::EqCmp:
-        return a.GetOverloadSet(make_resolvable([](std::vector<ConcreteExpression> args, Context c) {
-            return ConcreteExpression(c->GetBooleanType(), c->gen->CreateEqualityExpression(args[0].Expr, args[1].Expr));
-        }, types, a));
+        EQ = CreateOp([](llvm::Value* lhs, llvm::Value* rhs, Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+            return bb.CreateICmpEQ(lhs, rhs);
+        });
+        return analyzer.GetOverloadSet(EQ.get());
     }
-    return PrimitiveType::CreateADLOverloadSet(name, lhs, rhs, access, a);
+    return PrimitiveType::CreateADLOverloadSet(name, lhs, rhs, access);
 }
-bool IntegralType::IsA(Type* self, Type* other, Analyzer& a, Lexer::Access access) {
+bool IntegralType::IsA(Type* self, Type* other, Lexer::Access access) {
     // If we already are, then don't bother.
-    if (Type::IsA(self, other, a, access)) return true;
+    if (Type::IsA(self, other, access)) return true;
 
     // T to U conversion
     // Cannot be U&
@@ -172,20 +206,22 @@ bool IntegralType::IsA(Type* self, Type* other, Analyzer& a, Lexer::Access acces
         return true;
     return false;
 }
-OverloadSet* IntegralType::CreateOperatorOverloadSet(Type* self, Lexer::TokenType what, Lexer::Access access, Analyzer& a) {
+OverloadSet* IntegralType::CreateOperatorOverloadSet(Type* self, Lexer::TokenType what, Lexer::Access access) {
     if (access != Lexer::Access::Public)
-        return AccessMember(self, what, Lexer::Access::Public, a);
+        return AccessMember(self, what, Lexer::Access::Public);
     switch (what) {
     case Lexer::TokenType::Increment:
-        return a.GetOverloadSet(make_resolvable([this](std::vector<ConcreteExpression> args, Context c) {
-            auto curr = c->gen->CreateLoad(args[0].Expr);
-            auto next = c->gen->CreatePlusExpression(curr, c->gen->CreateIntegralExpression(1, false, GetLLVMType(*c)));
-            return ConcreteExpression(this, c->gen->CreateStore(args[0].Expr, next));
-        }, { a.GetLvalueType(this) }, a));
+        Increment = MakeResolvable([this](std::vector<std::unique_ptr<Expression>> args, Context c) {
+            return CreatePrimUnOp(std::move(args[0]), [this](llvm::Value* self, Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+                bb.CreateStore(bb.CreateAdd(bb.CreateLoad(self), llvm::ConstantInt::get(GetLLVMType(g), 1, is_signed)), self);
+                return self;
+            });
+        }, { analyzer.GetLvalueType(this) });
+        return analyzer.GetOverloadSet(Increment.get());
     }
-    return PrimitiveType::CreateOperatorOverloadSet(self, what, access, a);
+    return PrimitiveType::CreateOperatorOverloadSet(self, what, access);
 }
-std::string IntegralType::explain(Analyzer& a) {
+std::string IntegralType::explain() {
     auto name = "int" + std::to_string(bits);
     return !is_signed ? "u" + name : name;
 }

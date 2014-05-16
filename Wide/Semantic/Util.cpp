@@ -24,8 +24,6 @@
 using namespace Wide;
 using namespace Semantic;
 
-#include <Wide/Codegen/GeneratorMacros.h>
-
 clang::ExprValueKind Semantic::GetKindOfType(Type* t) {
     if (dynamic_cast<Semantic::LvalueType*>(t))
         return clang::ExprValueKind::VK_LValue;
@@ -76,7 +74,7 @@ const std::unordered_map<Lexer::TokenType, std::pair<clang::OverloadedOperatorKi
     return BinaryTokenMapping;
 }
 
-ConcreteExpression Semantic::InterpretExpression(clang::Expr* expr, ClangTU& tu, Context c) {
+std::unique_ptr<Expression> Semantic::InterpretExpression(clang::Expr* p, ClangTU& from, Type* src) {
     // Fun...
     llvm::APSInt out;
     if (expr->EvaluateAsInt(out, tu.GetASTContext())) {

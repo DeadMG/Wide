@@ -19,56 +19,54 @@
 #include <clang/AST/AST.h>
 #pragma warning(pop)
 
-#include <Wide/Codegen/GeneratorMacros.h>
-
 using namespace Wide;
 using namespace Semantic;
 
-Wide::Util::optional<ConcreteExpression> ClangNamespace::AccessMember(ConcreteExpression val, std::string name, Context c) {
+std::unique_ptr<Expression> ClangNamespace::AccessMember(std::unique_ptr<Expression> t, std::string name, Context c) {
     clang::LookupResult lr(
         from->GetSema(), 
         clang::DeclarationNameInfo(clang::DeclarationName(from->GetIdentifierInfo(name)), clang::SourceLocation()),
         clang::Sema::LookupNameKind::LookupOrdinaryName);
 
     if (!from->GetSema().LookupQualifiedName(lr, con))
-        return Wide::Util::none;
+        return nullptr;
     if (lr.isAmbiguous())
-        throw ClangLookupAmbiguous(name, val.t, c.where, *c);
+        throw ClangLookupAmbiguous(name, t->GetType()->Decay(), c.where);
     if (lr.isSingleResult()) {
         auto result = lr.getFoundDecl()->getCanonicalDecl();
         // If result is a function, namespace, or variable decl, we're good. Else, cry like a little girl. A LITTLE GIRL.
         if (auto fundecl = llvm::dyn_cast<clang::FunctionDecl>(result)) {
             std::unordered_set<clang::NamedDecl*> decls;
             decls.insert(fundecl);
-            return c->GetOverloadSet(std::move(decls), from, GetContext(*c))->BuildValueConstruction({}, c);
+            return analyzer.GetOverloadSet(std::move(decls), from, GetContext())->BuildValueConstruction({}, { this, c.where });
         }
-        if (auto vardecl = llvm::dyn_cast<clang::VarDecl>(result)) {
+        /*if (auto vardecl = llvm::dyn_cast<clang::VarDecl>(result)) {
             return ConcreteExpression(c->GetLvalueType(c->GetClangType(*from, vardecl->getType())), c->gen->CreateGlobalVariable(from->MangleName(vardecl)));
-        }
+        }*/
         if (auto namedecl = llvm::dyn_cast<clang::NamespaceDecl>(result)) {
-            return c->GetClangNamespace(*from, namedecl)->BuildValueConstruction({}, c);
+            return analyzer.GetClangNamespace(*from, namedecl)->BuildValueConstruction({}, { this, c.where });
         }
         if (auto typedefdecl = llvm::dyn_cast<clang::TypeDecl>(result)) {
-            return c->GetConstructorType(c->GetClangType(*from, from->GetASTContext().getTypeDeclType(typedefdecl)))->BuildValueConstruction({}, c);
+            return analyzer.GetConstructorType(analyzer.GetClangType(*from, from->GetASTContext().getTypeDeclType(typedefdecl)))->BuildValueConstruction({}, { this, c.where });
         }
         if (auto tempdecl = llvm::dyn_cast<clang::ClassTemplateDecl>(result)) {
-            return c->GetClangTemplateClass(*from, tempdecl)->BuildValueConstruction({}, c);
+            return analyzer.GetClangTemplateClass(*from, tempdecl)->BuildValueConstruction({}, { this, c.where });
         }
-        throw ClangUnknownDecl(name, val.t, c.where, *c); 
+        throw ClangUnknownDecl(name, t->GetType()->Decay(), c.where); 
     }
     std::unordered_set<clang::NamedDecl*> decls;
     decls.insert(lr.begin(), lr.end());
-    return c->GetOverloadSet(std::move(decls), from, GetContext(*c))->BuildValueConstruction({}, c);
+    return analyzer.GetOverloadSet(std::move(decls), from, GetContext())->BuildValueConstruction({}, { this, c.where });
 }
 
-Type* ClangNamespace::GetContext(Analyzer& a) {
+Type* ClangNamespace::GetContext() {
     if (con == from->GetDeclContext())
         return nullptr;
-    return a.GetClangNamespace(*from, con->getParent());
+    return analyzer.GetClangNamespace(*from, con->getParent());
 }
-std::string ClangNamespace::explain(Analyzer& a) {
+std::string ClangNamespace::explain() {
     if (con == from->GetDeclContext())
         return "cpp(\"" + from->GetFilename() + "\")";
     auto names = llvm::dyn_cast<clang::NamespaceDecl>(con);
-    return GetContext(a)->explain(a) + "." + names->getName().str();
+    return GetContext()->explain() + "." + names->getName().str();
 }

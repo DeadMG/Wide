@@ -27,8 +27,6 @@
 #include <llvm/IR/Module.h>
 #pragma warning(pop)
 
-#include <Wide/Codegen/GeneratorMacros.h>
-
 using namespace Wide;
 using namespace Semantic;
 
@@ -45,13 +43,13 @@ const std::unordered_map<clang::AccessSpecifier, Lexer::Access> AccessMapping = 
     { clang::AccessSpecifier::AS_protected, Lexer::Access::Protected },
 };
 
-ConcreteExpression GetOverloadSet(clang::NamedDecl* d, ClangTU* from, ConcreteExpression self, Context c) {
+std::unique_ptr<Expression> GetOverloadSet(clang::NamedDecl* d, ClangTU* from, std::unique_ptr<Expression> self, Context c, Analyzer& a) {
     std::unordered_set<clang::NamedDecl*> decls;
     if (d)
         decls.insert(d);
-    return c->GetOverloadSet(std::move(decls), from, self.t)->BuildValueConstruction({ self }, c);
+    return a.GetOverloadSet(std::move(decls), from, self->GetType())->BuildValueConstruction(Expressions(std::move(self)), c);
 }
-OverloadSet* GetOverloadSet(clang::LookupResult& lr, ClangTU* from, ConcreteExpression self, Lexer::Access access, Analyzer& a) {
+OverloadSet* GetOverloadSet(clang::LookupResult& lr, ClangTU* from, Type* self, Lexer::Access access, Analyzer& a) {
     std::unordered_set<clang::NamedDecl*> decls;
     for (auto decl : lr) {
         if (access < AccessMapping.at(decl->getAccess()))
@@ -60,10 +58,7 @@ OverloadSet* GetOverloadSet(clang::LookupResult& lr, ClangTU* from, ConcreteExpr
     }
     if (decls.empty())
         return nullptr;
-    return a.GetOverloadSet(std::move(decls), from, self.t);
-}
-OverloadSet* GetOverloadSet(clang::LookupResult& lr, ClangTU* from, ConcreteExpression self, Context c) {
-    return GetOverloadSet(lr, from, self, GetAccessSpecifier(c, self.t), *c);
+    return a.GetOverloadSet(std::move(decls), from, self);
 }
 
 void ClangType::ProcessImplicitSpecialMember(std::function<bool()> needs, std::function<clang::CXXMethodDecl*()> declare, std::function<void(clang::CXXMethodDecl*)> define, std::function<clang::CXXMethodDecl*()> lookup) {
@@ -87,8 +82,8 @@ void ClangType::ProcessImplicitSpecialMember(std::function<bool()> needs, std::f
 };
 
 
-ClangType::ClangType(ClangTU* src, clang::QualType t) 
-    : from(src), type(t.getCanonicalType()) 
+ClangType::ClangType(ClangTU* src, clang::QualType t, Analyzer& a) 
+: from(src), type(t.getCanonicalType()), Type(a)
 {
     // Declare any special members that need it.    
     // Also fix up their exception spec because for some reason Clang doesn't until you ask it.
@@ -102,16 +97,16 @@ ClangType::ClangType(ClangTU* src, clang::QualType t)
         //from->GetSema().InstantiateClassTemplateSpecializationMembers(loc, llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(spec->getDefinition()), tsk);
     }
 }
-Wide::Util::optional<clang::QualType> ClangType::GetClangType(ClangTU& tu, Analyzer& a) {
+Wide::Util::optional<clang::QualType> ClangType::GetClangType(ClangTU& tu) {
     if (&tu != from) return Wide::Util::none;
     return type;
 }
 
-Wide::Util::optional<ConcreteExpression> ClangType::AccessMember(ConcreteExpression val, std::string name, Context c) {
-    auto access = GetAccessSpecifier(c, this);
+std::unique_ptr<Expression> ClangType::AccessMember(std::unique_ptr<Expression> val, std::string name, Context c) {
+    auto access = GetAccessSpecifier(c.from, this);
 
-    if (val.t->Decay() == val.t)
-        val = BuildRvalueConstruction({ val }, c);
+    if (!val->GetType()->IsReference())
+        val = BuildRvalueConstruction({ std::move(val) }, c);
 
     clang::LookupResult lr(
         from->GetSema(), 
@@ -120,50 +115,58 @@ Wide::Util::optional<ConcreteExpression> ClangType::AccessMember(ConcreteExpress
     lr.suppressDiagnostics();
 
     if (!from->GetSema().LookupQualifiedName(lr, type.getCanonicalType()->getAs<clang::TagType>()->getDecl()))
-        return Wide::Util::none;
+        return nullptr;
     if (lr.isAmbiguous())
-        throw ClangLookupAmbiguous(name, this, c.where, *c);
+        throw ClangLookupAmbiguous(name, this, c.where);
     if (lr.isSingleResult()) {
         auto declaccess = AccessMapping.at(lr.getFoundDecl()->getAccess());
         if (access < declaccess)
-            return Type::AccessMember(val, name, c);
+            return Type::AccessMember(std::move(val), name, c);
 
         if (auto field = llvm::dyn_cast<clang::FieldDecl>(lr.getFoundDecl())) {
-            auto ty = IsLvalueType(val.t) ? c->GetLvalueType(c->GetClangType(*from, field->getType())) : c->GetRvalueType(c->GetClangType(*from, field->getType()));
-            return ConcreteExpression(ty, c->gen->CreateFieldExpression(val.Expr, from->GetFieldNumber(field)));
+            auto ty = IsLvalueType(val->GetType()) ? analyzer.GetLvalueType(analyzer.GetClangType(*from, field->getType())) : analyzer.GetRvalueType(analyzer.GetClangType(*from, field->getType()));
+            return CreatePrimUnOp(std::move(val), ty, [this, field](llvm::Value* val, Codegen::Generator& g, llvm::IRBuilder<>& b) {
+                return b.CreateStructGEP(val, from->GetFieldNumber(field, g));
+            });
         }        
         if (auto fun = llvm::dyn_cast<clang::CXXMethodDecl>(lr.getFoundDecl())) {
-            return GetOverloadSet(fun, from, val, c);
+            return GetOverloadSet(fun, from, std::move(val), { this, c.where }, analyzer);
         }
         if (auto ty = llvm::dyn_cast<clang::TypeDecl>(lr.getFoundDecl()))
-            return c->GetConstructorType(c->GetClangType(*from, from->GetASTContext().getTypeDeclType(ty)))->BuildValueConstruction({}, c);
+            return analyzer.GetConstructorType(analyzer.GetClangType(*from, from->GetASTContext().getTypeDeclType(ty)))->BuildValueConstruction({}, c);
         if (auto vardecl = llvm::dyn_cast<clang::VarDecl>(lr.getFoundDecl())) {    
-            return ConcreteExpression(c->GetLvalueType(c->GetClangType(*from, vardecl->getType())), c->gen->CreateGlobalVariable(from->MangleName(vardecl)));
+            auto mangle = from->MangleName(vardecl);
+            return CreatePrimUnOp(std::move(val), analyzer.GetLvalueType(analyzer.GetClangType(*from, vardecl->getType())), [mangle](llvm::Value* self, Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+                return g.module->getGlobalVariable(mangle(g));
+            });
         }
         if (auto tempdecl = llvm::dyn_cast<clang::ClassTemplateDecl>(lr.getFoundDecl()))
-            return c->GetClangTemplateClass(*from, tempdecl)->BuildValueConstruction({}, c);
-        throw ClangUnknownDecl(name, this, c.where, *c);
+            return analyzer.GetClangTemplateClass(*from, tempdecl)->BuildValueConstruction({}, c);
+        throw ClangUnknownDecl(name, this, c.where);
     }    
-    auto set = GetOverloadSet(lr, from, val, c);
-    return set ? set->BuildValueConstruction({ val }, c) : Type::AccessMember(val, name, c);
+    auto set = GetOverloadSet(lr, from, val->GetType(), access, analyzer);
+    return set ? set->BuildValueConstruction(Expressions(std::move(val)), c) : Type::AccessMember(std::move(val), name, c);
 }
 
-std::function<llvm::Type*(llvm::Module*)> ClangType::GetLLVMType(Analyzer& a) {
-    return from->GetLLVMTypeFromClangType(type, a);
+llvm::Type* ClangType::GetLLVMType(Codegen::Generator& g) {
+    return from->GetLLVMTypeFromClangType(type, g);
 }
            
-bool ClangType::IsComplexType(Analyzer& a) {
+bool ClangType::IsComplexType(Codegen::Generator& g) {
     auto decl = type.getCanonicalType()->getAsCXXRecordDecl();
-    return decl && from->IsComplexType(decl);
+    return decl && from->IsComplexType(decl, g);
 }
 
-Wide::Codegen::Expression* ClangType::BuildBooleanConversion(ConcreteExpression self, Context c) {
-    if (self.t->Decay() == self.t)
-        self = BuildRvalueConstruction({ self }, c);
-    clang::OpaqueValueExpr ope(clang::SourceLocation(), type.getNonLValueExprType(from->GetASTContext()), Semantic::GetKindOfType(self.t));
+std::unique_ptr<Expression> ClangType::BuildBooleanConversion(std::unique_ptr<Expression> ex, Context c) {
+    /*if (self.t->Decay() == self.t)
+        self = BuildRvalueConstruction({ self }, c);*/
+    if (!ex->GetType()->IsReference())
+        ex = ex->GetType()->Decay()->BuildRvalueConstruction({ std::move(ex) }, c);
+
+    clang::OpaqueValueExpr ope(clang::SourceLocation(), type.getNonLValueExprType(from->GetASTContext()), Semantic::GetKindOfType(ex->GetType()));
     auto p = from->GetSema().PerformContextuallyConvertToBool(&ope);
     if (!p.get())
-        throw NoBooleanConversion(self.t, c.where, *c);
+        throw NoBooleanConversion(ex->GetType(), c.where);
     clang::CallExpr* callexpr;
     if (auto ice = llvm::dyn_cast<clang::ImplicitCastExpr>(p.get())) {
         callexpr = llvm::dyn_cast<clang::CallExpr>(ice->getSubExpr());
@@ -179,33 +182,19 @@ Wide::Codegen::Expression* ClangType::BuildBooleanConversion(ConcreteExpression 
         assert(false && "Attempted to contextually convert to bool, but Clang gave back an expression that did not involve a function call.");
     }
 
-    Type* ret = c->GetClangType(*from, fun->getResultType());
-    // As a conversion operator, it has to be a member method only taking this as argument.
-    std::vector<Type*> types;
-    types.insert(types.begin(), self.t);
-    auto funty = c->GetFunctionType(ret, types);    
-    ConcreteExpression clangfunc(funty, c->gen->CreateFunctionValue(from->MangleName(fun)));
-    std::vector<ConcreteExpression> expressions;
-    expressions.push_back(self);
-    auto e = funty->BuildCall(clangfunc, std::move(expressions), c);
-
-    // The return type should be bool.
-    // If the function really returns an i1, the code generator will implicitly patch it up for us.
-    if (e.t == c->GetBooleanType())
-        return e.Expr;
-    assert(false && "Attempted to contextually convert to bool, but Clang gave back a function that did not return a bool. WTF.");
+    return GetOverloadSet(fun, from, std::move(ex), c, analyzer);
 }
 
 #pragma warning(disable : 4244)
-std::size_t ClangType::size(Analyzer& a) {
+std::size_t ClangType::size() {
     return from->GetASTContext().getTypeSizeInChars(type).getQuantity();
 }
-std::size_t ClangType::alignment(Analyzer& a) {
+std::size_t ClangType::alignment() {
     return from->GetASTContext().getTypeAlignInChars(type).getQuantity();
 }
 #pragma warning(default : 4244)
-Type* ClangType::GetContext(Analyzer& a) {
-    return a.GetClangNamespace(*from, type->getAsCXXRecordDecl()->getDeclContext());
+Type* ClangType::GetContext() {
+    return analyzer .GetClangNamespace(*from, type->getAsCXXRecordDecl()->getDeclContext());
 }
 
 namespace std {
@@ -215,8 +204,8 @@ namespace std {
     };
 }
 
-OverloadSet* ClangType::CreateADLOverloadSet(Lexer::TokenType what, Type* lhs, Type* rhs, Lexer::Access access, Analyzer& a) {
-    if (access != Lexer::Access::Public) return CreateADLOverloadSet(what, lhs, rhs, access, a);
+OverloadSet* ClangType::CreateADLOverloadSet(Lexer::TokenType what, Type* lhs, Type* rhs, Lexer::Access access) {
+    if (access != Lexer::Access::Public) return CreateADLOverloadSet(what, lhs, rhs, access);
     clang::ADLResult res;
     clang::OpaqueValueExpr lhsexpr(clang::SourceLocation(), type.getNonLValueExprType(from->GetASTContext()), Semantic::GetKindOfType(lhs));
     clang::OpaqueValueExpr rhsexpr(clang::SourceLocation(), type.getNonLValueExprType(from->GetASTContext()), Semantic::GetKindOfType(rhs));
@@ -226,10 +215,10 @@ OverloadSet* ClangType::CreateADLOverloadSet(Lexer::TokenType what, Type* lhs, T
     from->GetSema().ArgumentDependentLookup(from->GetASTContext().DeclarationNames.getCXXOperatorName(GetTokenMappings().at(what).first), true, clang::SourceLocation(), exprs, res);
     std::unordered_set<clang::NamedDecl*> decls;
     decls.insert(res.begin(), res.end());
-    return a.GetOverloadSet(std::move(decls), from, GetContext(a));
+    return analyzer.GetOverloadSet(std::move(decls), from, GetContext());
 }
 
-OverloadSet* ClangType::CreateOperatorOverloadSet(Type* self, Lexer::TokenType name, Lexer::Access access, Analyzer& a) {
+OverloadSet* ClangType::CreateOperatorOverloadSet(Type* self, Lexer::TokenType name, Lexer::Access access) {
     if (!ProcessedAssignmentOperators && name == Lexer::TokenType::Assignment) {
         ProcessedAssignmentOperators = true;
         auto recdecl = type->getAsCXXRecordDecl();
@@ -255,16 +244,16 @@ OverloadSet* ClangType::CreateOperatorOverloadSet(Type* self, Lexer::TokenType n
     );
     lr.suppressDiagnostics();
     if (!from->GetSema().LookupQualifiedName(lr, type.getCanonicalType()->getAs<clang::TagType>()->getDecl()))
-        return a.GetOverloadSet();
+        return analyzer.GetOverloadSet();
 
     std::unordered_set<clang::NamedDecl*> decls;
     for (auto decl : lr)
         if (AccessMapping.at(decl->getAccess()) <= access)
             decls.insert(decl);
-    return a.GetOverloadSet(std::move(decls), from, self);
+    return analyzer.GetOverloadSet(std::move(decls), from, self);
 }
 
-OverloadSet* ClangType::CreateConstructorOverloadSet(Analyzer& a, Lexer::Access access) {
+OverloadSet* ClangType::CreateConstructorOverloadSet(Lexer::Access access) {
     if (!ProcessedConstructors) {
         auto recdecl = type->getAsCXXRecordDecl();
         ProcessImplicitSpecialMember(
@@ -292,11 +281,11 @@ OverloadSet* ClangType::CreateConstructorOverloadSet(Analyzer& a, Lexer::Access 
     for (auto con : cons)
         if (AccessMapping.at(con->getAccess()) <= access)
             decls.insert(con);
-    auto tupcon = GetTypesForTuple(a) ? TupleInitializable::CreateConstructorOverloadSet(a, Lexer::Access::Public) : a.GetOverloadSet();
-    return a.GetOverloadSet(a.GetOverloadSet(decls, from, a.GetLvalueType(this)), tupcon);
+    auto tupcon = GetTypesForTuple() ? TupleInitializable::CreateConstructorOverloadSet(Lexer::Access::Public) : analyzer.GetOverloadSet();
+    return analyzer.GetOverloadSet(analyzer.GetOverloadSet(decls, from, analyzer.GetLvalueType(this)), tupcon);
 }
 
-OverloadSet* ClangType::CreateDestructorOverloadSet(Analyzer& a) {
+std::unique_ptr<Expression> ClangType::BuildDestructorCall(std::unique_ptr<Expression> self, Context c) {
     if (!ProcessedDestructors) {
         auto recdecl = type->getAsCXXRecordDecl();
         ProcessImplicitSpecialMember(
@@ -309,12 +298,14 @@ OverloadSet* ClangType::CreateDestructorOverloadSet(Analyzer& a) {
     }
     auto des = from->GetSema().LookupDestructor(type->getAsCXXRecordDecl());
     if (des->isTrivial())
-        return Type::CreateDestructorOverloadSet(a);
+        return Type::BuildDestructorCall(std::move(self), c);
     std::unordered_set<clang::NamedDecl*> decls;
     decls.insert(des);
-    return a.GetOverloadSet(decls, from, a.GetLvalueType(this));
+    auto set = analyzer.GetOverloadSet(decls, from, analyzer.GetLvalueType(this))->BuildValueConstruction(Expressions(std::move(self)), { this, c.where });
+    return set->GetType()->BuildCall(std::move(set), Expressions(), c);
 }
-Wide::Util::optional<std::vector<Type*>> ClangType::GetTypesForTuple(Analyzer& a) {
+
+Wide::Util::optional<std::vector<Type*>> ClangType::GetTypesForTuple() {
     auto recdecl = type->getAsCXXRecordDecl();
     if (!recdecl) return Wide::Util::none;
     if (recdecl->hasUserDeclaredCopyAssignment()
@@ -325,33 +316,28 @@ Wide::Util::optional<std::vector<Type*>> ClangType::GetTypesForTuple(Analyzer& a
         return Wide::Util::none;
     std::vector<Type*> types;
     for (auto it = recdecl->bases_begin(); it != recdecl->bases_end(); ++it) {
-        types.push_back(a.GetClangType(*from, it->getType()));
+        types.push_back(analyzer.GetClangType(*from, it->getType()));
     }
     for (auto it = recdecl->field_begin(); it != recdecl->field_end(); ++it) {
-        types.push_back(a.GetClangType(*from, it->getType()));
+        types.push_back(analyzer.GetClangType(*from, it->getType()));
     }
     return types;
 }
 
-ConcreteExpression ClangType::PrimitiveAccessMember(ConcreteExpression e, unsigned num, Analyzer& a) {
-    std::size_t numbases = type->getAsCXXRecordDecl()->bases_end() - type->getAsCXXRecordDecl()->bases_begin();
-    Codegen::Expression* fieldexpr = num >= numbases
-        ? a.gen->CreateFieldExpression(e.Expr, from->GetFieldNumber(*std::next(type->getAsCXXRecordDecl()->field_begin(), num - numbases)))
-        : a.gen->CreateFieldExpression(e.Expr, from->GetBaseNumber(type->getAsCXXRecordDecl(), (type->getAsCXXRecordDecl()->bases_begin() + num)->getType()->getAsCXXRecordDecl()));
-    auto ty = GetTypesForTuple(a)->at(num);
-    if (!e.t->IsReference())
-        return ConcreteExpression(ty, fieldexpr);
-    if (e.t->IsReference() && ty->IsReference())
-        return ConcreteExpression(ty, a.gen->CreateLoad(fieldexpr));
-    if (IsLvalueType(e.t))
-        return ConcreteExpression(a.GetLvalueType(ty), fieldexpr);
-    return ConcreteExpression(a.GetRvalueType(ty), fieldexpr);
+std::unique_ptr<Expression> ClangType::PrimitiveAccessMember(std::unique_ptr<Expression> self, unsigned num) {
+    return CreatePrimUnOp(std::move(self), [this, num](llvm::Value* self, Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+        std::size_t numbases = type->getAsCXXRecordDecl()->bases_end() - type->getAsCXXRecordDecl()->bases_begin();
+        auto fieldnum = num >= numbases
+            ? from->GetFieldNumber(*std::next(type->getAsCXXRecordDecl()->field_begin(), num - numbases), g)
+            : from->GetBaseNumber(type->getAsCXXRecordDecl(), (type->getAsCXXRecordDecl()->bases_begin() + num)->getType()->getAsCXXRecordDecl(), g);
+        return bb.CreateStructGEP(self, fieldnum);
+    });
 }
 
-InheritanceRelationship ClangType::IsDerivedFrom(Type* other, Analyzer& a) {
+InheritanceRelationship ClangType::IsDerivedFrom(Type* other) {
     auto otherbase = dynamic_cast<BaseType*>(other);
     if (!otherbase) return InheritanceRelationship::NotDerived;
-    auto otherclangty = other->GetClangType(*from, a);
+    auto otherclangty = other->GetClangType(*from);
     if (!otherclangty) return InheritanceRelationship::NotDerived;
     auto otherdecl = (*otherclangty)->getAsCXXRecordDecl();
     auto recdecl = type->getAsCXXRecordDecl();
@@ -365,8 +351,8 @@ InheritanceRelationship ClangType::IsDerivedFrom(Type* other, Analyzer& a) {
                 result = InheritanceRelationship::AmbiguouslyDerived;
             continue;
         }
-        auto Base = dynamic_cast<BaseType*>(a.GetClangType(*from, base->getType()));
-        auto subresult = Base->IsDerivedFrom(other, a);
+        auto Base = dynamic_cast<BaseType*>(analyzer.GetClangType(*from, base->getType()));
+        auto subresult = Base->IsDerivedFrom(other);
         if (subresult == InheritanceRelationship::AmbiguouslyDerived)
             result = InheritanceRelationship::AmbiguouslyDerived;
         if (subresult == InheritanceRelationship::UnambiguouslyDerived) {
@@ -378,31 +364,45 @@ InheritanceRelationship ClangType::IsDerivedFrom(Type* other, Analyzer& a) {
     }
     return result;
 }
-Codegen::Expression* ClangType::AccessBase(Type* other, Codegen::Expression* expr, Analyzer& a) {
+std::unique_ptr<Expression> ClangType::AccessBase(std::unique_ptr<Expression> self, Type* other) {
     auto recdecl = type->getAsCXXRecordDecl();
-    assert(IsDerivedFrom(other, a) == InheritanceRelationship::UnambiguouslyDerived);
+    assert(IsDerivedFrom(other) == InheritanceRelationship::UnambiguouslyDerived);
     for (auto baseit = recdecl->bases_begin(); baseit != recdecl->bases_end(); ++baseit) {
-        auto basety = a.GetClangType(*from, baseit->getType());
+        auto basety = analyzer.GetClangType(*from, baseit->getType());
         auto base = dynamic_cast<BaseType*>(basety);
-        if (basety == other) {
-            // EBO can result in this function failing.
-            if (baseit->getType()->getAsCXXRecordDecl()->isEmpty())
-                return a.gen->CreatePointerCast(expr, a.GetPointerType(other)->GetLLVMType(a));
-            return a.gen->CreateFieldExpression(expr, from->GetBaseNumber(recdecl, baseit->getType()->getAsCXXRecordDecl()));
+        Type* result;
+        if (auto ptr = dynamic_cast<PointerType*>(self->GetType()->Decay())) {
+            result = analyzer.GetPointerType(other);
         }
-        if (base->IsDerivedFrom(other, a) == InheritanceRelationship::UnambiguouslyDerived)
-            return base->AccessBase(other, a.gen->CreateFieldExpression(expr, from->GetBaseNumber(recdecl, baseit->getType()->getAsCXXRecordDecl())), a);
+        if (IsLvalueType(self->GetType()))
+            result = analyzer.GetLvalueType(other);
+        else
+            result = analyzer.GetRvalueType(other);
+        if (basety == other) {
+            // Gotta account for EBO
+            // We have the same pointer/value category as the argument.
+            if (baseit->getType()->getAsCXXRecordDecl()->isEmpty()) {
+                return CreatePrimUnOp(std::move(self), result, [other](llvm::Value* v, Codegen::Generator& g, llvm::IRBuilder<>& b) {
+                    return b.CreatePointerCast(v, other->GetLLVMType(g));
+                });
+            }
+            return CreatePrimUnOp(std::move(self), result, [this, baseit](llvm::Value* v, Codegen::Generator& g, llvm::IRBuilder<>& b) {
+                return b.CreateStructGEP(v, from->GetBaseNumber(type->getAsCXXRecordDecl(), baseit->getType()->getAsCXXRecordDecl(), g));
+            });
+        }
+        if (base->IsDerivedFrom(other) == InheritanceRelationship::UnambiguouslyDerived)
+            return base->AccessBase(AccessBase(std::move(self), basety), other);
     }
     assert(false);
     return nullptr;
 }
-std::string ClangType::explain(Analyzer& a) {
-    auto basename = GetContext(a)->explain(a) + "." + type->getAsCXXRecordDecl()->getName().str();
+std::string ClangType::explain() {
+    auto basename = GetContext()->explain() + "." + type->getAsCXXRecordDecl()->getName().str();
     if (auto tempspec = llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(type->getAsCXXRecordDecl())) {
         basename += "(";
         for (auto&& arg : tempspec->getTemplateArgs().asArray()) {
             if (arg.getKind() == clang::TemplateArgument::ArgKind::Type) {
-                basename += a.GetClangType(*from, arg.getAsType())->explain(a);
+                basename += analyzer.GetClangType(*from, arg.getAsType())->explain();
             }
             if (&arg != &tempspec->getTemplateArgs().asArray().back())
                 basename += ", ";
@@ -411,35 +411,36 @@ std::string ClangType::explain(Analyzer& a) {
     }
     return basename;
 }
-std::vector<std::pair<BaseType*, unsigned>> ClangType::GetBases(Analyzer& a) {
+std::vector<std::pair<BaseType*, unsigned>> ClangType::GetBases() {
     auto&& layout = from->GetASTContext().getASTRecordLayout(type->getAsCXXRecordDecl());
     std::vector<std::pair<BaseType*, unsigned>> out;
     for (auto basespec = type->getAsCXXRecordDecl()->bases_begin(); basespec != type->getAsCXXRecordDecl()->bases_end(); basespec++) {
-        out.push_back(std::make_pair(dynamic_cast<BaseType*>(a.GetClangType(*from, basespec->getType())), layout.getBaseClassOffset(basespec->getType()->getAsCXXRecordDecl()).getQuantity()));
+        out.push_back(std::make_pair(dynamic_cast<BaseType*>(analyzer.GetClangType(*from, basespec->getType())), layout.getBaseClassOffset(basespec->getType()->getAsCXXRecordDecl()).getQuantity()));
     }
     return out;
 }
-
-Codegen::Expression* GetVTablePointer(Codegen::Expression* self, const clang::CXXRecordDecl* current, Analyzer& a, ClangTU* from) {
+std::unique_ptr<Expression> GetVTablePointer(std::unique_ptr<Expression> self, const clang::CXXRecordDecl* current, Analyzer& a, ClangTU* from, Type* vptrty) {
     auto&& layout = from->GetASTContext().getASTRecordLayout(current);
     if (layout.hasOwnVFPtr())
-        return a.gen->CreateFieldExpression(self, 0);
-    self = a.gen->CreateFieldExpression(self, from->GetBaseNumber(current, layout.getPrimaryBase()));
-    return GetVTablePointer(self, layout.getPrimaryBase(), a, from);
+        return CreatePrimUnOp(std::move(self), a.GetPointerType(vptrty), [](llvm::Value* val, Codegen::Generator& g, llvm::IRBuilder<>& b) {
+            return b.CreateStructGEP(val, 0);
+        });
+    self = CreatePrimUnOp(std::move(self), a.GetPointerType(a.GetClangType(*from, from->GetASTContext().getTypeDeclType(layout.getPrimaryBase()))), [from, current, &layout](llvm::Value* val, Codegen::Generator& g, llvm::IRBuilder<>& b) {
+        return b.CreateStructGEP(val, from->GetBaseNumber(current, layout.getPrimaryBase(), g));
+    });
+    return GetVTablePointer(std::move(self), layout.getPrimaryBase(), a, from, vptrty);
 }
 
-Codegen::Expression* ClangType::GetVirtualPointer(Codegen::Expression* self, Analyzer& a) {
-    return ::GetVTablePointer(self, type->getAsCXXRecordDecl(), a, from);
+std::unique_ptr<Expression> ClangType::GetVirtualPointer(std::unique_ptr<Expression> self) {
+    return ::GetVTablePointer(std::move(self), type->getAsCXXRecordDecl(), analyzer, from, GetVirtualPointerType());
 }
 
-std::function<llvm::Type*(llvm::Module*)> ClangType::GetVirtualPointerType(Analyzer& a) {
-    return [](llvm::Module* m) {
-        return llvm::PointerType::get(llvm::FunctionType::get(llvm::IntegerType::get(m->getContext(), 32), true), 0);
-    };
+Type* ClangType::GetVirtualPointerType() {
+    return nullptr;
 }
-std::vector<BaseType::VirtualFunction> ClangType::ComputeVTableLayout(Analyzer& a) {
+std::vector<BaseType::VirtualFunction> ClangType::ComputeVTableLayout() {
     return std::vector<VirtualFunction>();
 }
-Codegen::Expression* ClangType::FunctionPointerFor(std::string name, std::vector<Type*> args, Type* ret, unsigned offset, Analyzer& a) {
+std::unique_ptr<Expression> ClangType::FunctionPointerFor(std::string name, std::vector<Type*> args, Type* ret, unsigned offset) {
     return nullptr;
 }

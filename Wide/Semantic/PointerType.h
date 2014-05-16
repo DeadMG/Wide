@@ -5,20 +5,23 @@
 namespace Wide {
     namespace Semantic {
         class PointerType : public PrimitiveType {
+            std::unique_ptr<OverloadResolvable> NullConstructor;
+            std::unique_ptr<OverloadResolvable> DerivedConstructor;
+            std::unique_ptr<OverloadResolvable> DereferenceOperator;
             Type* pointee;
         public:
             using Type::BuildInplaceConstruction;
 
-            PointerType(Type* point); 
-            OverloadSet* CreateOperatorOverloadSet(Type* self, Lexer::TokenType what, Lexer::Access access, Analyzer& a) override final;
-            Codegen::Expression* BuildBooleanConversion(ConcreteExpression val, Context c) override final;
-            Wide::Util::optional<clang::QualType> GetClangType(ClangTU& TU, Analyzer& a) override final;
-            std::function<llvm::Type*(llvm::Module*)> GetLLVMType(Analyzer& a) override final;
-            std::size_t size(Analyzer& a) override final;
-            std::size_t alignment(Analyzer& a) override final;
-            OverloadSet* CreateConstructorOverloadSet(Wide::Semantic::Analyzer&, Lexer::Access access) override final;
-            bool IsA(Type* self, Type* other, Analyzer& a, Lexer::Access access) override final;
-            std::string explain(Analyzer& a) override final;
+            PointerType(Type* point, Analyzer& a); 
+            OverloadSet* CreateOperatorOverloadSet(Type* self, Lexer::TokenType what, Lexer::Access access) override final;
+            std::unique_ptr<Expression> BuildBooleanConversion(std::unique_ptr<Expression>, Context) override final;
+            Wide::Util::optional<clang::QualType> GetClangType(ClangTU& TU) override final;
+            llvm::Type* GetLLVMType(Codegen::Generator& g) override final;
+            std::size_t size() override final;
+            std::size_t alignment() override final;
+            OverloadSet* CreateConstructorOverloadSet(Lexer::Access access) override final;
+            bool IsA(Type* self, Type* other, Lexer::Access access) override final;
+            std::string explain() override final;
         };
     }
 }

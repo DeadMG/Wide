@@ -3,17 +3,19 @@
 #include <Wide/Lexer/Token.h>
 #include <Wide/Util/Memory/MemoryArena.h>
 #include <Wide/Semantic/Util.h>
+#include <Wide/Semantic/Type.h>
 #include <Wide/Util/Ranges/Optional.h>
 #include <Wide/Semantic/ClangOptions.h>
 #include <Wide/Semantic/Hashers.h>
+#include <Wide/Semantic/ClangTU.h>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
-#ifndef _MSC_VER
-#include <Wide/Semantic/ClangTU.h>
+#pragma warning(push, 0)
 #include <clang/AST/Type.h>
-#endif
+#include <llvm/IR/DataLayout.h>
+#pragma warning(pop)
 
 namespace llvm {
     class Type;
@@ -55,7 +57,6 @@ namespace Wide {
         class ClangType;
         struct Type;
         class ConstructorType;
-        struct ConcreteExpression;
         class LvalueType;
         class RvalueType;
         class FunctionType;
@@ -63,53 +64,62 @@ namespace Wide {
         class OverloadSet;       
         class UserDefinedType;
         class IntegralType;
+        class ClangIncludeEntity;
         class PointerType;
         struct OverloadResolvable;
         class FloatType;
         struct NullType;
         struct Result;
         class TupleType;
+        class VoidType;
+        class Bool;
         class StringType;
         class TemplateType;
         class Analyzer {
             std::unique_ptr<ClangTU> AggregateTU;
             Module* global;
-            std::unordered_map<std::unordered_set<OverloadResolvable*>, OverloadSet*, SetTypeHasher> callable_overload_sets;
+
+            std::unordered_map<std::unordered_set<OverloadResolvable*>, std::unique_ptr<OverloadSet>, SetTypeHasher> callable_overload_sets;
             std::unordered_map<std::string, ClangTU> headers;
-            std::unordered_map<clang::QualType, Type*, ClangTypeHasher> ClangTypes;
-            std::unordered_map<clang::DeclContext*, ClangNamespace*> ClangNamespaces;
-            std::unordered_map<Type*, std::unordered_map<std::vector<Type*>, FunctionType*, VectorTypeHasher>> FunctionTypes;
-            std::unordered_map<const AST::FunctionBase*, std::unordered_map<std::vector<Type*>, Function*, VectorTypeHasher>> WideFunctions;
-            std::unordered_map<const AST::TemplateType*, std::unordered_map<std::vector<Type*>, TemplateType*, VectorTypeHasher>> WideTemplateInstantiations;
-            std::unordered_map<Type*, LvalueType*> LvalueTypes;
-            std::unordered_map<Type*, Type*> RvalueTypes;
-            std::unordered_map<Type*, ConstructorType*> ConstructorTypes;
-            std::unordered_map<clang::ClassTemplateDecl*, ClangTemplateClass*> ClangTemplateClasses;
-            std::unordered_map<const AST::FunctionOverloadSet*, std::unordered_map<Type*, OverloadSet*>> OverloadSets;
-            std::unordered_map<unsigned, FloatType*> FloatTypes;
-            std::unordered_map<std::unordered_set<clang::NamedDecl*>, std::unordered_map<Type*, OverloadSet*>, SetTypeHasher> clang_overload_sets;
-            std::unordered_map<const AST::Type*, std::unordered_map<Type*, UserDefinedType*>> UDTs;
-            std::unordered_map<const AST::Module*, Module*> WideModules;
-            std::unordered_map<unsigned, std::unordered_map<bool, IntegralType*>> integers;
-            std::unordered_map<Type*, PointerType*> Pointers;
-            std::unordered_map<OverloadSet*, std::unordered_map<OverloadSet*, OverloadSet*>> CombinedOverloadSets;
-            std::unordered_map<const AST::FunctionBase*, OverloadResolvable*> FunctionCallables;
-            std::unordered_map<const AST::TemplateType*, OverloadResolvable*> TemplateTypeCallables;
-            std::unordered_map<std::vector<Type*>, TupleType*, VectorTypeHasher> tupletypes;
-            std::unordered_map<std::string, StringType*> LiteralStringTypes;
+            std::unordered_map<clang::QualType, Type*, ClangTypeHasher> GeneratedClangTypes;
+            std::unordered_map<clang::QualType, std::unique_ptr<ClangType>, ClangTypeHasher> ClangTypes;
+            std::unordered_map<clang::DeclContext*, std::unique_ptr<ClangNamespace>> ClangNamespaces;
+            std::unordered_map<Type*, std::unordered_map<std::vector<Type*>, std::unique_ptr<FunctionType>, VectorTypeHasher>> FunctionTypes;
+            std::unordered_map<const AST::FunctionBase*, std::unordered_map<std::vector<Type*>, std::unique_ptr<Function>, VectorTypeHasher>> WideFunctions;
+            std::unordered_map<const AST::TemplateType*, std::unordered_map<std::vector<Type*>, std::unique_ptr<TemplateType>, VectorTypeHasher>> WideTemplateInstantiations;
+            std::unordered_map<Type*, std::unique_ptr<LvalueType>> LvalueTypes;
+            std::unordered_map<Type*, std::unique_ptr<RvalueType>> RvalueTypes;
+            std::unordered_map<Type*, std::unique_ptr<ConstructorType>> ConstructorTypes;
+            std::unordered_map<clang::ClassTemplateDecl*, std::unique_ptr<ClangTemplateClass>> ClangTemplateClasses;
+            std::unordered_map<unsigned, std::unique_ptr<FloatType>> FloatTypes;
+            std::unordered_map<std::unordered_set<clang::NamedDecl*>, std::unordered_map<Type*, std::unique_ptr<OverloadSet>>, SetTypeHasher> clang_overload_sets;
+            std::unordered_map<const AST::Type*, std::unordered_map<Type*, std::unique_ptr<UserDefinedType>>> UDTs;
+            std::unordered_map<const AST::Module*, std::unique_ptr<Module>> WideModules;
+            std::unordered_map<unsigned, std::unordered_map<bool, std::unique_ptr<IntegralType>>> integers;
+            std::unordered_map<Type*, std::unique_ptr<PointerType>> Pointers;
+            std::unordered_map<OverloadSet*, std::unordered_map<OverloadSet*, std::unique_ptr<OverloadSet>>> CombinedOverloadSets;
+            std::unordered_map<const AST::FunctionBase*, std::unique_ptr<OverloadResolvable>> FunctionCallables;
+            std::unordered_map<const AST::TemplateType*, std::unique_ptr<OverloadResolvable>> TemplateTypeCallables;
+            std::unordered_map<std::vector<Type*>, std::unique_ptr<TupleType>, VectorTypeHasher> tupletypes;
+            std::unordered_map<std::string, std::unique_ptr<StringType>> LiteralStringTypes;
 
             const Options::Clang* clangopts;
 
-            NullType* null;
-            Type* Void;
-            Type* Boolean;
-            Type* NothingFunctor;
-            OverloadSet* EmptyOverloadSet;
+            std::unique_ptr<ClangIncludeEntity> ClangInclude;
+            std::unique_ptr<NullType> null;
+            std::unique_ptr<VoidType> Void;
+            std::unique_ptr<Bool> Boolean;
+            std::unique_ptr<OverloadSet> EmptyOverloadSet;
+            std::unique_ptr<OverloadResolvable> PointerCast;
+            std::unique_ptr<OverloadResolvable> Move;
+
+            llvm::DataLayout layout;
 
         public:
             std::function<void(Lexer::Range where, Type* t)> QuickInfo;
             std::function<void(Lexer::Range where)> ParameterHighlight;
 
+            const llvm::DataLayout& GetDataLayout();
             void AddClangType(clang::QualType t, Type* match);
             
             Type* GetVoidType();
@@ -117,6 +127,7 @@ namespace Wide {
             Type* GetBooleanType();
             //Type* GetNothingFunctorType();
             Type* GetTypeForString(std::string str);
+            Type* GetTypeForInteger(llvm::APInt val);
             
             // The contract of this function is to return the Wide type that corresponds to that Clang type.
             // Not to return a ClangType instance.
@@ -144,24 +155,23 @@ namespace Wide {
             OverloadResolvable* GetCallableForFunction(const AST::FunctionBase* f, Type* context, std::string name);
             OverloadResolvable* GetCallableForTemplateType(const AST::TemplateType* t, Type* context);
             TemplateType* GetTemplateType(const AST::TemplateType* t, Type* context, std::vector<Type*> arguments, std::string name);
-            ConcreteExpression AnalyzeExpression(Type* t, const AST::Expression* e, std::function<void(ConcreteExpression)>);
-            Wide::Util::optional<ConcreteExpression> LookupIdentifier(Type* context, const AST::Identifier* ident);
 
-            Analyzer(const Options::Clang&, Codegen::Generator&, const AST::Module*);     
+            Analyzer(const Options::Clang&, const AST::Module*);     
 
             ClangTU* LoadCPPHeader(std::string file, Lexer::Range where);
             ClangTU* AggregateCPPHeader(std::string file, Lexer::Range where);
             
             ~Analyzer();
+
+            void GenerateCode(Codegen::Generator& g);
         };
         bool IsRvalueType(Type* t);
         bool IsLvalueType(Type* t);
-        Lexer::Access GetAccessSpecifier(Type* from, Type* to, Analyzer& a);
-        Lexer::Access GetAccessSpecifier(Context c, Type* to);
+        Lexer::Access GetAccessSpecifier(Type* from, Type* to);
         void AnalyzeExportedFunctions(Analyzer& a);
         std::string GetNameForOperator(Lexer::TokenType t);
         bool IsMultiTyped(const AST::FunctionArgument& f); 
         bool IsMultiTyped(const AST::FunctionBase* f);
-        std::unique_ptr<Expression> AnalyzeExpression(Type* lookup, const AST::Expression* e);
+        std::unique_ptr<Expression> AnalyzeExpression(Type* lookup, const AST::Expression* e, Analyzer& a);
     }
 }

@@ -47,11 +47,6 @@ Generator::Generator(const Options::LLVM& l, std::string trip, std::function<voi
     , main(Wide::Memory::MakeUnique<llvm::Module>("Wide", context))
 {
     Codegen::InitializeLLVM();
-    std::unique_ptr<llvm::TargetMachine> targetmachine;
-    std::string err;
-    const llvm::Target& target = *llvm::TargetRegistry::lookupTarget(triple, err);
-    llvm::TargetOptions targetopts;
-    targetmachine = std::unique_ptr<llvm::TargetMachine>(target.createTargetMachine(triple, llvm::Triple(triple).getArchName(), "", targetopts));
     main->setDataLayout(targetmachine->getDataLayout()->getStringRepresentation());  
     main->setTargetTriple(triple);
     layout = main->getDataLayout();
