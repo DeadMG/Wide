@@ -1,0 +1,197 @@
+#include <Wide/Semantic/Type.h>
+#include <Wide/Semantic/Reference.h>
+#include <Wide/Semantic/PointerType.h>
+#include <Wide/Semantic/IntegralType.h>
+#include <Wide/Util/Memory/MakeUnique.h>
+#include <Wide/Semantic/Analyzer.h>
+
+using namespace Wide;
+using namespace Semantic;
+
+ImplicitLoadExpr::ImplicitLoadExpr(std::unique_ptr<Expression> arg)
+: src(std::move(arg)) {}
+Type* ImplicitLoadExpr::GetType() {
+    assert(src->GetType()->IsReference());
+    return src->GetType()->Decay();
+}
+llvm::Value* ImplicitLoadExpr::ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+    return bb.CreateLoad(src->GetValue(g, bb));
+}
+void ImplicitLoadExpr::DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+    return src->DestroyLocals(g, bb);
+}
+
+ImplicitStoreExpr::ImplicitStoreExpr(std::unique_ptr<Expression> memory, std::unique_ptr<Expression> value)
+: mem(std::move(memory)), val(std::move(value)) {}
+Type* ImplicitStoreExpr::GetType() {
+    assert(mem->GetType()->IsReference(val->GetType()));
+    return mem->GetType();
+}
+llvm::Value* ImplicitStoreExpr::ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+    auto memory = mem->GetValue(g, bb);
+    auto value = val->GetValue(g, bb);
+    bb.CreateStore(value, memory);
+    return memory;
+}
+void ImplicitStoreExpr::DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+    val->DestroyLocals(g, bb);
+    mem->DestroyLocals(g, bb);
+}
+
+ImplicitTemporaryExpr::ImplicitTemporaryExpr(Type* what, Context c)
+: of(what) 
+{
+    destructor = of->BuildDestructorCall(Wide::Memory::MakeUnique<ExpressionReference>(this), c);
+}
+Type* ImplicitTemporaryExpr::GetType() {
+    return of->analyzer.GetRvalueType(of);
+}
+llvm::Value* ImplicitTemporaryExpr::ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+    auto local = bb.CreateAlloca(of->GetLLVMType(g));
+    local->setAlignment(of->alignment());
+    alloc = local;
+    return alloc;
+}
+void ImplicitTemporaryExpr::DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+    destructor->GetValue(g, bb);
+}
+
+LvalueCast::LvalueCast(std::unique_ptr<Expression> expr)
+: expr(std::move(expr)) {}
+Type* LvalueCast::GetType() {
+    assert(IsRvalueType(expr->GetType()));
+    return expr->GetType()->analyzer.GetLvalueType(expr->GetType()->Decay());
+}
+llvm::Value* LvalueCast::ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+    return expr->GetValue(g, bb);
+}
+void LvalueCast::DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+    return expr->DestroyLocals(g, bb);
+}
+
+RvalueCast::RvalueCast(std::unique_ptr<Expression> expr)
+: expr(std::move(expr)) {}
+Type* RvalueCast::GetType() {
+    assert(IsLvalueType(expr->GetType()));
+    return expr->GetType()->analyzer.GetRvalueType(expr->GetType()->Decay());
+}
+llvm::Value* RvalueCast::ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+    return expr->GetValue(g, bb);
+}
+void RvalueCast::DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+    expr->DestroyLocals(g, bb);
+}
+
+ExpressionReference::ExpressionReference(Expression* e)
+: expr(e) {}
+Type* ExpressionReference::GetType() {
+    return expr->GetType();
+}
+llvm::Value* ExpressionReference::ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+    return expr->GetValue(g, bb);
+}
+void ExpressionReference::DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) {}
+Expression* ExpressionReference::GetImplementation() {
+    return expr->GetImplementation();
+}
+
+ImplicitAddressOf::ImplicitAddressOf(std::unique_ptr<Expression> expr)
+: expr(std::move(expr)) {}
+Type* ImplicitAddressOf::GetType() {
+    assert(IsLvalueType(expr->GetType()));
+    return expr->GetType()->analyzer.GetPointerType(expr->GetType()->Decay());
+}
+llvm::Value* ImplicitAddressOf::ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+    return expr->GetValue(g, bb);
+}
+void ImplicitAddressOf::DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+    return expr->DestroyLocals(g, bb);
+}
+
+String::String(std::string str, Analyzer& a)
+: str(std::move(str)), a(a){}
+Type* String::GetType() {
+    return a.GetTypeForString(str);
+}
+llvm::Value* String::ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+    return bb.CreateGlobalStringPtr(str);
+}
+void String::DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) {}
+
+Integer::Integer(llvm::APInt val, Analyzer& an)
+: a(an), value(std::move(val)) {}
+Type* Integer::GetType() {
+    auto width = value.getBitWidth();
+    if (width < 8)
+        width = 8;
+    width = std::pow(std::ceil(std::log2(width)), 2);
+    return a.GetIntegralType(width, value.isNegative());
+}
+llvm::Value* Integer::ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+    return llvm::ConstantInt::get(GetType()->GetLLVMType(g), value);
+}
+void Integer::DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) {}
+
+Boolean::Boolean(bool b, Analyzer& a)
+: b(b), a(a) {}
+Type* Boolean::GetType() {
+    return a.GetBooleanType();
+}
+llvm::Value* Boolean::ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+    return bb.getInt8(b);
+}
+void Boolean::DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) {}
+
+std::unique_ptr<Expression> Semantic::CreatePrimUnOp(std::unique_ptr<Expression> self, Type* ret, std::function<llvm::Value*(llvm::Value*, Codegen::Generator&, llvm::IRBuilder<>&)> func) {
+    struct PrimUnOp : Expression {
+        PrimUnOp(std::unique_ptr<Expression> expr, Type* r, std::function<llvm::Value*(llvm::Value*, Codegen::Generator& g, llvm::IRBuilder<>&)> func)
+        : src(std::move(expr)), ret(std::move(r)), action(std::move(func)) {}
+
+        std::unique_ptr<Expression> src;
+        Type* ret;
+        std::function<llvm::Value*(llvm::Value*, Codegen::Generator& g, llvm::IRBuilder<>& bb)> action;
+
+        Type* GetType() override final {
+            return ret;
+        }
+        llvm::Value* ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+            return action(src->GetValue(g, bb), g, bb);
+        }
+        void DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+            src->DestroyLocals(g, bb);
+        }
+    };
+    return Wide::Memory::MakeUnique<PrimUnOp>(std::move(self), ret, func);
+}
+std::unique_ptr<Expression> Semantic::CreatePrimOp(std::unique_ptr<Expression> lhs, std::unique_ptr<Expression> rhs, std::function<llvm::Value*(llvm::Value*, llvm::Value*, Codegen::Generator&, llvm::IRBuilder<>&)> func) {
+    return CreatePrimOp(std::move(lhs), std::move(rhs), lhs->GetType(), func);
+}
+std::unique_ptr<Expression> Semantic::CreatePrimAssOp(std::unique_ptr<Expression> lhs, std::unique_ptr<Expression> rhs, std::function<llvm::Value*(llvm::Value*, llvm::Value*, Codegen::Generator&, llvm::IRBuilder<>&)> func) {
+    return Wide::Memory::MakeUnique<ImplicitStoreExpr>(Wide::Memory::MakeUnique<ExpressionReference>(lhs.get()), CreatePrimOp(Wide::Memory::MakeUnique<ImplicitLoadExpr>(std::move(lhs)), std::move(rhs), func));
+}
+std::unique_ptr<Expression> Semantic::CreatePrimOp(std::unique_ptr<Expression> lhs, std::unique_ptr<Expression> rhs, Type* ret, std::function<llvm::Value*(llvm::Value*, llvm::Value*, Codegen::Generator&, llvm::IRBuilder<>&)> func) {
+    struct PrimBinOp : Expression {
+        PrimBinOp(std::unique_ptr<Expression> left, std::unique_ptr<Expression> right, Type* t, std::function<llvm::Value*(llvm::Value*, llvm::Value*, Codegen::Generator&, llvm::IRBuilder<>&)> func)
+        : lhs(std::move(left)), rhs(std::move(right)), ret(t), action(std::move(func)) {}
+        std::unique_ptr<Expression> lhs, rhs;
+        Type* ret;
+        std::function<llvm::Value*(llvm::Value*, llvm::Value*, Codegen::Generator&, llvm::IRBuilder<>&)> action;
+        Type* GetType() override final { return ret; }
+        void DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+            rhs->DestroyLocals(g, bb);
+            lhs->DestroyLocals(g, bb);
+        }
+        llvm::Value* ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+            // Strict order of evaluation.
+            auto left = lhs->GetValue(g, bb);
+            auto right = rhs->GetValue(g, bb);
+            return action(left, right, g, bb);
+        }
+    };
+    return Wide::Memory::MakeUnique<PrimBinOp>(std::move(lhs), std::move(rhs), ret, std::move(func));
+}
+std::unique_ptr<Expression> Semantic::BuildValue(std::unique_ptr<Expression> e) {
+    if (e->GetType()->IsReference())
+        return Wide::Memory::MakeUnique<ImplicitLoadExpr>(std::move(e));
+    return std::move(e);
+}

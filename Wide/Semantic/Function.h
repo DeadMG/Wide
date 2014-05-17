@@ -56,8 +56,12 @@ namespace Wide {
             };
             State s;
             void ComputeReturnType(); 
-            std::unique_ptr<Expression> CallFunction(std::vector<std::unique_ptr<Expression>> args, Context c) override final;
-            std::vector<std::unique_ptr<Expression>> AdjustArguments(std::vector<std::unique_ptr<Expression>> args, Context c) override final;
+            std::unique_ptr<Expression> CallFunction(std::vector<std::unique_ptr<Expression>> args, Context c) override final { 
+                return BuildCall(BuildValueConstruction(Expressions(), c), std::move(args), c);
+            }
+            std::vector<std::unique_ptr<Expression>> AdjustArguments(std::vector<std::unique_ptr<Expression>> args, Context c) override final {
+                return AdjustArgumentsForTypes(std::move(args), Args, c);
+            }
         public:
             void ComputeBody();
             void EmitCode(Codegen::Generator& g);

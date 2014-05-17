@@ -3,61 +3,77 @@
 #include <Wide/Semantic/OverloadSet.h>
 #include <Wide/Semantic/Reference.h>
 #include <Wide/Codegen/Generator.h>
-#include <Wide/Codegen/GeneratorMacros.h>
 
 using namespace Wide;
 using namespace Semantic;
 
 TupleType::TupleType(std::vector<Type*> types, Analyzer& a)
-: contents(std::move(types)) {}
+: contents(std::move(types)), AggregateType(a) {}
 
-ConcreteExpression TupleType::ConstructFromLiteral(std::vector<ConcreteExpression> exprs, Context c) {
+std::unique_ptr<Expression> TupleType::ConstructFromLiteral(std::vector<std::unique_ptr<Expression>> exprs, Context c) {
     assert(exprs.size() == GetContents().size());
     for (std::size_t i = 0; i < exprs.size(); ++i)
-        assert(GetContents()[i] == exprs[i].t->Decay());
+        assert(GetContents()[i] == exprs[i]->GetType()->Decay());
 
-    auto memory = ConcreteExpression(c->GetLvalueType(this), c->gen->CreateVariable(GetLLVMType(*c), alignment(*c)));
+    auto self = Wide::Memory::MakeUnique<ImplicitTemporaryExpr>(this, c);
     if (GetContents().size() == 0)
-        return memory;
-    Codegen::Expression* construct = 0;
+        return std::move(self);
+    std::vector<std::unique_ptr<Expression>> initializers;
     for (std::size_t i = 0; i < exprs.size(); ++i) {
         std::vector<Type*> types;
-        types.push_back(c->GetLvalueType(GetContents()[i]));
-        types.push_back(exprs[i].t);
-        auto conset = GetContents()[i]->GetConstructorOverloadSet(*c, Lexer::Access::Public);
-        auto call = conset->Resolve(types, *c, this);
-        if (!call) conset->IssueResolutionError(types, c);
-        auto expr = call->Call({ PrimitiveAccessMember(memory, i, *c), exprs[i] }, c).Expr;
-        construct = construct ? c->gen->CreateChainExpression(construct, expr) : expr;
+        types.push_back(analyzer.GetLvalueType(GetContents()[i]));
+        types.push_back(exprs[i]->GetType());
+        auto conset = GetContents()[i]->GetConstructorOverloadSet(GetAccessSpecifier(c.from, GetContents()[i]));
+        auto call = conset->Resolve(types, c.from);
+        if (!call) conset->IssueResolutionError(types);
+        initializers.push_back(call->Call(Expressions(PrimitiveAccessMember(std::move(self), i), std::move(exprs[i])), c));
     }
-    memory.t = c->GetRvalueType(this);
-    memory.Expr = c->gen->CreateChainExpression(construct, memory.Expr);
-    memory.steal = true;
-    return memory;
+
+    struct LambdaConstruction : Expression {
+        LambdaConstruction(std::unique_ptr<Expression> self, std::vector<std::unique_ptr<Expression>> inits)
+        : self(std::move(self)), inits(std::move(inits)) {}
+        std::vector<std::unique_ptr<Expression>> inits;
+        std::unique_ptr<Expression> self;
+        Type* GetType() override final {
+            return self->GetType();
+        }
+        llvm::Value* ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
+            for (auto&& init : inits)
+                init->GetValue(g, bb);
+            return self->GetValue(g, bb);
+        }
+        void DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
+            self->DestroyLocals(g, bb);
+            for (auto rit = inits.rbegin(); rit != inits.rend(); ++rit)
+                (*rit)->DestroyLocals(g, bb);
+        }
+    };
+
+    return Wide::Memory::MakeUnique<LambdaConstruction>(std::move(self), std::move(initializers));
 }
 
-bool TupleType::IsA(Type* self, Type* other, Analyzer& a, Lexer::Access access) {
+bool TupleType::IsA(Type* self, Type* other, Lexer::Access access) {
     auto udt = dynamic_cast<TupleInitializable*>(other);
-    if (!udt) return Type::IsA(self, other, a, access);
-    auto udt_members = udt->GetTypesForTuple(a);
+    if (!udt) return Type::IsA(self, other, access);
+    auto udt_members = udt->GetTypesForTuple();
     if (!udt_members) return false;
     if (GetContents().size() != udt_members->size()) return false;
     bool is = true;
     for (std::size_t i = 0; i < GetContents().size(); ++i) {
         std::vector<Type*> types;
-        types.push_back(a.GetLvalueType(udt_members->at(i)));
-        types.push_back(IsLvalueType(self) ? a.GetLvalueType(GetContents()[i]) : a.GetRvalueType(GetContents()[i]));
-        is = is && udt_members->at(i)->GetConstructorOverloadSet(a, Lexer::Access::Public)->Resolve(types, a, this);
+        types.push_back(analyzer.GetLvalueType(udt_members->at(i)));
+        types.push_back(IsLvalueType(self) ? analyzer.GetLvalueType(GetContents()[i]) : analyzer.GetRvalueType(GetContents()[i]));
+        is = is && udt_members->at(i)->GetConstructorOverloadSet(Lexer::Access::Public)->Resolve(types, this);
     }
     return is;
 }
-std::string TupleType::explain(Analyzer& a) {
+std::string TupleType::explain() {
     std::string name = "{ ";
     for (auto& ty : GetContents()) {
         if (&ty != &GetContents().back()) {
-            name += ty->explain(a) + ", ";
+            name += ty->explain() + ", ";
         } else
-            name += ty->explain(a);
+            name += ty->explain();
     }
     name += " }";
     return name;

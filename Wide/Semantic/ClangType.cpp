@@ -106,7 +106,7 @@ std::unique_ptr<Expression> ClangType::AccessMember(std::unique_ptr<Expression> 
     auto access = GetAccessSpecifier(c.from, this);
 
     if (!val->GetType()->IsReference())
-        val = BuildRvalueConstruction({ std::move(val) }, c);
+        val = BuildRvalueConstruction(Expressions(std::move(val)), c);
 
     clang::LookupResult lr(
         from->GetSema(), 
@@ -124,16 +124,13 @@ std::unique_ptr<Expression> ClangType::AccessMember(std::unique_ptr<Expression> 
             return Type::AccessMember(std::move(val), name, c);
 
         if (auto field = llvm::dyn_cast<clang::FieldDecl>(lr.getFoundDecl())) {
-            auto ty = IsLvalueType(val->GetType()) ? analyzer.GetLvalueType(analyzer.GetClangType(*from, field->getType())) : analyzer.GetRvalueType(analyzer.GetClangType(*from, field->getType()));
-            return CreatePrimUnOp(std::move(val), ty, [this, field](llvm::Value* val, Codegen::Generator& g, llvm::IRBuilder<>& b) {
-                return b.CreateStructGEP(val, from->GetFieldNumber(field, g));
-            });
+            return PrimitiveAccessMember(std::move(val), field->getFieldIndex() + type->getAsCXXRecordDecl()->bases_end() - type->getAsCXXRecordDecl()->bases_begin());
         }        
         if (auto fun = llvm::dyn_cast<clang::CXXMethodDecl>(lr.getFoundDecl())) {
             return GetOverloadSet(fun, from, std::move(val), { this, c.where }, analyzer);
         }
         if (auto ty = llvm::dyn_cast<clang::TypeDecl>(lr.getFoundDecl()))
-            return analyzer.GetConstructorType(analyzer.GetClangType(*from, from->GetASTContext().getTypeDeclType(ty)))->BuildValueConstruction({}, c);
+            return analyzer.GetConstructorType(analyzer.GetClangType(*from, from->GetASTContext().getTypeDeclType(ty)))->BuildValueConstruction(Expressions(), c);
         if (auto vardecl = llvm::dyn_cast<clang::VarDecl>(lr.getFoundDecl())) {    
             auto mangle = from->MangleName(vardecl);
             return CreatePrimUnOp(std::move(val), analyzer.GetLvalueType(analyzer.GetClangType(*from, vardecl->getType())), [mangle](llvm::Value* self, Codegen::Generator& g, llvm::IRBuilder<>& bb) {
@@ -141,7 +138,7 @@ std::unique_ptr<Expression> ClangType::AccessMember(std::unique_ptr<Expression> 
             });
         }
         if (auto tempdecl = llvm::dyn_cast<clang::ClassTemplateDecl>(lr.getFoundDecl()))
-            return analyzer.GetClangTemplateClass(*from, tempdecl)->BuildValueConstruction({}, c);
+            return analyzer.GetClangTemplateClass(*from, tempdecl)->BuildValueConstruction(Expressions(), c);
         throw ClangUnknownDecl(name, this, c.where);
     }    
     auto set = GetOverloadSet(lr, from, val->GetType(), access, analyzer);
@@ -161,7 +158,7 @@ std::unique_ptr<Expression> ClangType::BuildBooleanConversion(std::unique_ptr<Ex
     /*if (self.t->Decay() == self.t)
         self = BuildRvalueConstruction({ self }, c);*/
     if (!ex->GetType()->IsReference())
-        ex = ex->GetType()->Decay()->BuildRvalueConstruction({ std::move(ex) }, c);
+        ex = ex->GetType()->Decay()->BuildRvalueConstruction(Expressions(std::move(ex)), c);
 
     clang::OpaqueValueExpr ope(clang::SourceLocation(), type.getNonLValueExprType(from->GetASTContext()), Semantic::GetKindOfType(ex->GetType()));
     auto p = from->GetSema().PerformContextuallyConvertToBool(&ope);
@@ -325,12 +322,37 @@ Wide::Util::optional<std::vector<Type*>> ClangType::GetTypesForTuple() {
 }
 
 std::unique_ptr<Expression> ClangType::PrimitiveAccessMember(std::unique_ptr<Expression> self, unsigned num) {
-    return CreatePrimUnOp(std::move(self), [this, num](llvm::Value* self, Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+    auto type_convert = [this](Type* source_ty, Type* root_ty) -> Type* {
+        // If it's not a reference, just return the root type.
+        if (!source_ty->IsReference())
+            return root_ty;
+
+        // If the source is an lvalue, the result is an lvalue.
+        if (IsLvalueType(source_ty))
+            return analyzer.GetLvalueType(root_ty->Decay());
+
+        // It's not a value or an lvalue so must be rvalue.
+        return analyzer.GetRvalueType(root_ty);
+    };
+
+    clang::QualType resty;
+    std::size_t numbases = type->getAsCXXRecordDecl()->bases_end() - type->getAsCXXRecordDecl()->bases_begin();
+    if (num >= numbases) {
+        resty = std::next(type->getAsCXXRecordDecl()->field_begin(), num - numbases)->getType();
+    } else {
+        resty = std::next(type->getAsCXXRecordDecl()->bases_begin(), num)->getType();
+    }
+    auto result_type = type_convert(self->GetType(), analyzer.GetClangType(*from, resty));
+    return CreatePrimUnOp(std::move(self), result_type, [this, num, result_type, resty](llvm::Value* self, Codegen::Generator& g, llvm::IRBuilder<>& bb) {
         std::size_t numbases = type->getAsCXXRecordDecl()->bases_end() - type->getAsCXXRecordDecl()->bases_begin();
+        if (num < numbases && resty->getAsCXXRecordDecl()->isEmpty())
+            return bb.CreatePointerCast(self, result_type->GetLLVMType(g));
         auto fieldnum = num >= numbases
             ? from->GetFieldNumber(*std::next(type->getAsCXXRecordDecl()->field_begin(), num - numbases), g)
             : from->GetBaseNumber(type->getAsCXXRecordDecl(), (type->getAsCXXRecordDecl()->bases_begin() + num)->getType()->getAsCXXRecordDecl(), g);
-        return bb.CreateStructGEP(self, fieldnum);
+        if (self->getType()->isPointerTy())
+            return bb.CreateStructGEP(self, fieldnum);
+        return bb.CreateExtractValue(self, fieldnum);
     });
 }
 
@@ -382,13 +404,9 @@ std::unique_ptr<Expression> ClangType::AccessBase(std::unique_ptr<Expression> se
             // Gotta account for EBO
             // We have the same pointer/value category as the argument.
             if (baseit->getType()->getAsCXXRecordDecl()->isEmpty()) {
-                return CreatePrimUnOp(std::move(self), result, [other](llvm::Value* v, Codegen::Generator& g, llvm::IRBuilder<>& b) {
-                    return b.CreatePointerCast(v, other->GetLLVMType(g));
-                });
+                return PrimitiveAccessMember(std::move(self), baseit - recdecl->bases_begin());
             }
-            return CreatePrimUnOp(std::move(self), result, [this, baseit](llvm::Value* v, Codegen::Generator& g, llvm::IRBuilder<>& b) {
-                return b.CreateStructGEP(v, from->GetBaseNumber(type->getAsCXXRecordDecl(), baseit->getType()->getAsCXXRecordDecl(), g));
-            });
+            return PrimitiveAccessMember(std::move(self), baseit - recdecl->bases_begin());
         }
         if (base->IsDerivedFrom(other) == InheritanceRelationship::UnambiguouslyDerived)
             return base->AccessBase(AccessBase(std::move(self), basety), other);
@@ -432,6 +450,7 @@ std::unique_ptr<Expression> GetVTablePointer(std::unique_ptr<Expression> self, c
 }
 
 std::unique_ptr<Expression> ClangType::GetVirtualPointer(std::unique_ptr<Expression> self) {
+    assert(self->GetType()->IsReference());
     return ::GetVTablePointer(std::move(self), type->getAsCXXRecordDecl(), analyzer, from, GetVirtualPointerType());
 }
 

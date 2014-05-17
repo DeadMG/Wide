@@ -69,7 +69,7 @@ std::unique_ptr<Expression> ClangIncludeEntity::AccessMember(std::unique_ptr<Exp
                 assert(gnamespace && "Overload resolution picked bad candidate.");
                 assert(str && "Overload resolution picked bad candidate.");
                 auto tu = gnamespace->GetTU();
-                return InterpretExpression(tu->ParseMacro(str->GetValue(), c.where), *tu, c.from);
+                return InterpretExpression(tu->ParseMacro(str->GetValue(), c.where), *tu, c, c.from->analyzer);
             }
         };
         MacroHandler = Wide::Memory::MakeUnique<ClangMacroHandler>();

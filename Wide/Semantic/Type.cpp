@@ -187,11 +187,11 @@ std::unique_ptr<Expression> Type::BuildInplaceConstruction(std::unique_ptr<Expre
 }
 
 std::unique_ptr<Expression> Type::BuildValueConstruction(std::vector<std::unique_ptr<Expression>> args, Context c) {
-    return Wide::Memory::MakeUnique<ImplicitLoadExpr>(BuildInplaceConstruction(Wide::Memory::MakeUnique<ImplicitTemporaryExpr>(this), std::move(args), c));
+    return Wide::Memory::MakeUnique<ImplicitLoadExpr>(BuildInplaceConstruction(Wide::Memory::MakeUnique<ImplicitTemporaryExpr>(this, c), std::move(args), c));
 }
 
 std::unique_ptr<Expression> Type::BuildRvalueConstruction(std::vector<std::unique_ptr<Expression>> exprs, Context c) {
-    return Wide::Memory::MakeUnique<RvalueCast>(BuildInplaceConstruction(Wide::Memory::MakeUnique<ImplicitTemporaryExpr>(this), std::move(exprs), c));
+    return Wide::Memory::MakeUnique<RvalueCast>(BuildInplaceConstruction(Wide::Memory::MakeUnique<ImplicitTemporaryExpr>(this, c), std::move(exprs), c));
 }
 
 std::unique_ptr<Expression> Type::BuildLvalueConstruction(std::vector<std::unique_ptr<Expression>> args, Context c) {

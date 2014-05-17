@@ -1,5 +1,7 @@
 #pragma once
 
+#include <Wide/Codegen/LLVMOptions.h>
+
 #pragma warning(push, 0)
 #include <llvm/IR/Module.h>
 #include <llvm/IR/IRBuilder.h>
@@ -12,9 +14,11 @@ namespace Wide {
     }
     namespace Codegen {
         class Generator {
+            llvm::LLVMContext context;
         public:
+            Generator(std::string triple);
             std::unique_ptr<llvm::Module> module;
-            Semantic::Analyzer* a;
+            void operator()(const Options::LLVM& opts);
         };
     }
 }

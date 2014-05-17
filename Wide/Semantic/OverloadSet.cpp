@@ -131,7 +131,7 @@ struct cppcallable : public Callable {
                 auto paramdecl = fun->getParamDecl(argnum);
                 if (!paramdecl->hasDefaultArg())
                     assert(false);
-                args.push_back(InterpretExpression(paramdecl->getDefaultArg(), *from, source));
+                args.push_back(InterpretExpression(paramdecl->getDefaultArg(), *from, { source, c.where }, source->analyzer));
             }
         }
         // Clang may ask us to call overloads where we think the arguments are not a match

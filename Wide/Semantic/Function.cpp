@@ -59,7 +59,7 @@ struct Function::LocalVariable : public Expression {
                 if (auto tupty = dynamic_cast<TupleType*>(newty)) {
                     auto tuple_access = tupty->PrimitiveAccessMember(Wide::Memory::MakeUnique<ExpressionReference>(init_expr), *tuple_num);
                     newty = tuple_access->GetType()->Decay();
-                    variable = Wide::Memory::MakeUnique<ImplicitTemporaryExpr>(newty);
+                    variable = Wide::Memory::MakeUnique<ImplicitTemporaryExpr>(newty, Context{ self, where });
                     construction = newty->BuildInplaceConstruction(Wide::Memory::MakeUnique<ExpressionReference>(variable.get()), Expressions(std::move(tuple_access)), { self, where });
                     if (newty != var_type) {
                         OnChange();
@@ -70,7 +70,7 @@ struct Function::LocalVariable : public Expression {
             }
             if (newty != var_type) {
                 if (newty) {
-                    variable = Wide::Memory::MakeUnique<ImplicitTemporaryExpr>(newty);
+                    variable = Wide::Memory::MakeUnique<ImplicitTemporaryExpr>(newty, Context{ self, where });
                     construction = newty->BuildInplaceConstruction(Wide::Memory::MakeUnique<ExpressionReference>(variable.get()), Expressions(Wide::Memory::MakeUnique<ExpressionReference>(init_expr)), { self, where });
                 }
                 var_type = newty;
@@ -246,7 +246,7 @@ struct Function::ReturnStatement : public Statement {
     void GenerateCode(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
         // Consider the simple cases first.
         // If our return type is void
-        if (self->ReturnType == g.a->GetVoidType()) {
+        if (self->ReturnType == self->analyzer.GetVoidType()) {
             // If we have a void-returning expression, evaluate it, destroy it, then return.
             if (ret_expr) {
                 ret_expr->GetValue(g, bb);
@@ -391,14 +391,17 @@ struct Function::VariableStatement : public Statement {
         init_expr->DestroyLocals(g, bb);
     }
     void GenerateCode(Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+        init_expr->GetValue(g, bb);
         for (auto local : locals)
             local->GetValue(g, bb);
-        init_expr->GetValue(g, bb); // Just in case
     }
 };
 std::unique_ptr<Expression> Function::Scope::LookupLocal(std::string name) {
-    if (named_variables.find(name) != named_variables.end())
-        return Wide::Memory::MakeUnique<ExpressionReference>(named_variables.find(name)->second.first.get());
+    if (named_variables.find(name) != named_variables.end()) {
+        auto&& ref = named_variables.at(name);
+        auto&& first = ref.first;
+        return Wide::Memory::MakeUnique<ExpressionReference>(first.get());
+    }
     if (parent)
         return parent->LookupLocal(name);
     return nullptr;
@@ -481,7 +484,7 @@ std::unique_ptr<Statement> Function::AnalyzeStatement(const AST::Statement* s) {
             auto var_stmt = Wide::Memory::MakeUnique<LocalVariable>(init_expr.get(), i, this, name.where);
             locals.push_back(var_stmt.get());
             if (current_scope->named_variables.find(name.name) != current_scope->named_variables.end())
-                throw VariableShadowing(name.name, current_scope->named_variables[name.name].second, name.where);
+                throw VariableShadowing(name.name, current_scope->named_variables.at(name.name).second, name.where);
             current_scope->named_variables.insert(std::make_pair(name.name, std::make_pair(std::move(var_stmt), name.where)));
         }
         return Wide::Memory::MakeUnique<VariableStatement>(std::move(locals), std::move(init_expr));
@@ -686,7 +689,7 @@ void Function::ComputeBody() {
                 };
                 auto num = x.num;
                 // For member variables, don't add them to the list, the destructor will handle them.
-                auto member = CreatePrimUnOp(LookupLocal("this"), [num](llvm::Value* val, Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+                auto member = CreatePrimUnOp(LookupLocal("this"), analyzer.GetLvalueType(x.t), [num](llvm::Value* val, Codegen::Generator& g, llvm::IRBuilder<>& bb) -> llvm::Value* {
                     return bb.CreateStructGEP(val, num);
                 });
                 if (auto init = has_initializer(x.name)) {

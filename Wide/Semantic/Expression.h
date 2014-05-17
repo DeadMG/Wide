@@ -1,0 +1,157 @@
+
+#include <Wide/Lexer/Token.h>
+#include <Wide/Util/Ranges/Optional.h>
+#include <Wide/Semantic/SemanticError.h>
+#include <Wide/Semantic/Hashers.h>
+#include <vector>
+#include <stdexcept>
+#include <unordered_map>
+#include <functional>
+#include <string>
+#include <cassert>
+#include <memory>
+
+#pragma warning(push, 0)
+#include <llvm/IR/IRBuilder.h>
+#include <llvm/ADT/APInt.h>
+#pragma warning(pop)
+
+namespace Wide {
+    namespace Codegen {
+        class Generator;
+    }
+    namespace Semantic {
+        struct Context;
+        struct Node {
+            std::unordered_set<Node*> listeners;
+            std::unordered_set<Node*> listening_to;
+            void AddChangedListener(Node* n) { listeners.insert(n); }
+            void RemoveChangedListener(Node* n) { listeners.erase(n); }
+        protected:
+            virtual void OnNodeChanged(Node* n) {}
+            void ListenToNode(Node* n) {
+                n->AddChangedListener(this);
+                listening_to.insert(n);
+            }
+            void StopListeningToNode(Node* n) {
+                n->RemoveChangedListener(this);
+                listening_to.erase(n);
+            }
+            void OnChange() {
+                for (auto node : listeners)
+                    node->OnNodeChanged(this);
+            }
+        public:
+            virtual ~Node() {
+                for (auto node : listening_to)
+                    node->RemoveChangedListener(this);
+            }
+        };
+        struct Statement : public Node {
+            virtual void GenerateCode(Codegen::Generator& g, llvm::IRBuilder<>& bb) = 0;
+            virtual void DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) = 0;
+        };
+        struct Expression : public Statement {
+            virtual Type* GetType() = 0; // If the type is unknown then nullptr
+            llvm::Value* GetValue(Codegen::Generator& g, llvm::IRBuilder<>& bb);
+            virtual Expression* GetImplementation() { return this; }
+        private:
+            llvm::Value* val = nullptr;
+            void GenerateCode(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
+                GetValue(g, bb);
+            }
+            virtual llvm::Value* ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) = 0;
+        };
+        struct ImplicitLoadExpr : public Expression {
+            ImplicitLoadExpr(std::unique_ptr<Expression> expr);
+            std::unique_ptr<Expression> src;
+            Type* GetType() override final;
+            llvm::Value* ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final;
+            void DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final;
+        };
+
+        struct ImplicitStoreExpr : public Expression {
+            ImplicitStoreExpr(std::unique_ptr<Expression> memory, std::unique_ptr<Expression> value);
+            std::unique_ptr<Expression> mem, val;
+            Type* GetType() override final;
+            llvm::Value* ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final;
+            void DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final;
+        };
+
+        struct ImplicitTemporaryExpr : public Expression {
+            ImplicitTemporaryExpr(Type* what, Context c);
+            std::unique_ptr<Expression> destructor;
+            Type* of;
+            llvm::Value* alloc;
+            Type* GetType() override final;
+            llvm::Value* ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final;
+            void DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final;
+        };
+
+        struct LvalueCast : public Expression {
+            LvalueCast(std::unique_ptr<Expression> expr);
+            std::unique_ptr<Expression> expr;
+            Type* GetType() override final;
+            llvm::Value* ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final;
+            void DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final;
+        };
+
+        struct RvalueCast : public Expression {
+            RvalueCast(std::unique_ptr<Expression> expr);
+            std::unique_ptr<Expression> expr;
+            Type* GetType() override final;
+            llvm::Value* ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final;
+            void DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final;
+        };
+
+        struct ExpressionReference : public Expression {
+            ExpressionReference(Expression* e);
+            Expression* expr;
+            Type* GetType() override final;
+            llvm::Value* ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final;
+            void DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final;
+            Expression* GetImplementation() override final;
+        };
+
+        struct ImplicitAddressOf : public Expression {
+            ImplicitAddressOf(std::unique_ptr<Expression>);
+            std::unique_ptr<Expression> expr;
+            Type* GetType() override final;
+            llvm::Value* ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final;
+            void DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final;
+        };
+
+        struct String : Expression {
+            String(std::string s, Analyzer& an);
+            std::string str;
+            Analyzer& a;
+            Type* GetType() override final;
+            llvm::Value* ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final;
+            void DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final;
+        };
+
+        struct Integer : Expression {
+            Integer(llvm::APInt val, Analyzer& an);
+            llvm::APInt value;
+            Analyzer& a;
+            Type* GetType() override final;
+            llvm::Value* ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final;
+            void DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final;
+        };
+
+        struct Boolean : Expression {
+            Boolean(bool b, Analyzer& a);
+            bool b;
+            Analyzer& a;
+            Type* GetType() override final;
+            llvm::Value* ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final;
+            void DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final;
+        };
+
+        std::unique_ptr<Expression> CreatePrimUnOp(std::unique_ptr<Expression> self, Type* ret, std::function<llvm::Value*(llvm::Value*, Codegen::Generator&, llvm::IRBuilder<>&)>);
+        std::unique_ptr<Expression> CreatePrimOp(std::unique_ptr<Expression> lhs, std::unique_ptr<Expression> rhs, std::function<llvm::Value*(llvm::Value*, llvm::Value*, Codegen::Generator&, llvm::IRBuilder<>&)>);
+        std::unique_ptr<Expression> CreatePrimAssOp(std::unique_ptr<Expression> lhs, std::unique_ptr<Expression> rhs, std::function<llvm::Value*(llvm::Value*, llvm::Value*, Codegen::Generator&, llvm::IRBuilder<>&)>);
+        std::unique_ptr<Expression> CreatePrimOp(std::unique_ptr<Expression> lhs, std::unique_ptr<Expression> rhs, Type* ret, std::function<llvm::Value*(llvm::Value*, llvm::Value*, Codegen::Generator&, llvm::IRBuilder<>&)>);
+        std::unique_ptr<Expression> BuildValue(std::unique_ptr<Expression>);
+    }
+}

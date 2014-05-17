@@ -79,7 +79,7 @@ namespace Wide {
             bool HasMember(std::string name);            
             Wide::Util::optional<clang::QualType> GetClangType(ClangTU& TU) override final;
             std::unique_ptr<Expression> AccessMember(std::unique_ptr<Expression> t, std::string name, Context) override final;
-            std::unique_ptr<Expression> UserDefinedType::BuildDestructorCall(std::unique_ptr<Expression> self, Context c) override final;
+            std::unique_ptr<Expression> BuildDestructorCall(std::unique_ptr<Expression> self, Context c) override final;
             OverloadSet* CreateConstructorOverloadSet(Lexer::Access access) override final;
             OverloadSet* CreateOperatorOverloadSet(Type* self, Lexer::TokenType member, Lexer::Access access) override final;
 

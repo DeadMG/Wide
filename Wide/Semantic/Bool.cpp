@@ -31,7 +31,7 @@ std::size_t Bool::alignment() {
     return analyzer.GetDataLayout().getABIIntegerTypeAlignment(8);
 }
 
-std::unique_ptr<Expression> BuildBooleanConversion(std::unique_ptr<Expression> arg, Context c) {
+std::unique_ptr<Expression> Bool::BuildBooleanConversion(std::unique_ptr<Expression> arg, Context c) {
     return BuildValue(std::move(arg));
 }
 

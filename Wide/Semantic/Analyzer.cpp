@@ -904,11 +904,13 @@ std::unique_ptr<Expression> Semantic::AnalyzeExpression(Type* lookup, const AST:
                 if (n == call.get()) { OnChange(); return; }
                 auto ty = GetType();
                 if (object) {
-                    bool any = false;
-                    for (auto&& arg : args)
-                        if (!arg->GetType()) any = true;
-                    if (!any) {
-                        call = object->GetType()->BuildCall(Wide::Memory::MakeUnique<ExpressionReference>(object.get()), args, Context{ from, where });
+                    std::vector<std::unique_ptr<Expression>> refargs;
+                    for (auto&& arg : args) {
+                        if (arg->GetType())
+                            refargs.push_back(Wide::Memory::MakeUnique<ExpressionReference>(arg.get()));
+                    }
+                    if (refargs.size() == args.size()) {
+                        call = object->GetType()->BuildCall(Wide::Memory::MakeUnique<ExpressionReference>(object.get()), std::move(refargs), Context{ from, where });
                         ListenToNode(call.get());
                     } else
                         call = nullptr;

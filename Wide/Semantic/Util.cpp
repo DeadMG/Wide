@@ -74,22 +74,22 @@ const std::unordered_map<Lexer::TokenType, std::pair<clang::OverloadedOperatorKi
     return BinaryTokenMapping;
 }
 
-std::unique_ptr<Expression> Semantic::InterpretExpression(clang::Expr* p, ClangTU& from, Type* src) {
+std::unique_ptr<Expression> Semantic::InterpretExpression(clang::Expr* expr, ClangTU& tu, Context c, Analyzer& a) {
     // Fun...
     llvm::APSInt out;
     if (expr->EvaluateAsInt(out, tu.GetASTContext())) {
         if (out.getBitWidth() == 1)
-            return ConcreteExpression(c->GetBooleanType(), c->gen->CreateIntegralExpression(out.getLimitedValue(1), false, c->GetBooleanType()->GetLLVMType(*c)));
-        auto ty = c->GetIntegralType(out.getBitWidth(), out.isSigned());
-        return ConcreteExpression(ty, c->gen->CreateIntegralExpression(out.getLimitedValue(), out.isSigned(), ty->GetLLVMType(*c)));
+            return Wide::Memory::MakeUnique<Boolean>(out.getLimitedValue(1), a);
+        auto ty = a.GetIntegralType(out.getBitWidth(), out.isSigned());
+        return Wide::Memory::MakeUnique<Integer>(out, a);
     }
     if (auto binop = llvm::dyn_cast<clang::BinaryOperator>(expr)) {
-        auto lhs = InterpretExpression(binop->getLHS(), tu, c);
-        auto rhs = InterpretExpression(binop->getRHS(), tu, c);
+        auto lhs = InterpretExpression(binop->getLHS(), tu, c, a);
+        auto rhs = InterpretExpression(binop->getRHS(), tu, c, a);
         auto code = binop->getOpcode();
         for (auto pair : GetTokenMappings()) {
             if (pair.second.second == code) {
-                return lhs.BuildBinaryExpression(rhs, pair.first, c);
+                return lhs->GetType()->BuildBinaryExpression(std::move(lhs), std::move(rhs), pair.first, c);
             }
         }
         std::string str;
@@ -98,34 +98,33 @@ std::unique_ptr<Expression> Semantic::InterpretExpression(clang::Expr* p, ClangT
         throw BadMacroExpression(c.where, str);
     }
     if (auto call = llvm::dyn_cast<clang::CallExpr>(expr)) {
-        auto func = InterpretExpression(call->getCallee(), tu, c);
-        std::vector<ConcreteExpression> args;
+        auto func = InterpretExpression(call->getCallee(), tu, c, a);
+        std::vector<std::unique_ptr<Expression>> args;
         for (auto it = call->arg_begin(); it != call->arg_end(); ++it) {
             if (llvm::dyn_cast<clang::CXXDefaultArgExpr>(*it))
                 break;
-            args.push_back(InterpretExpression(expr, tu, c));
+            args.push_back(InterpretExpression(expr, tu, c, a));
         }
-        return func.BuildCall(args, c);
+        return func->GetType()->BuildCall(std::move(func), std::move(args), c);
     }
     if (auto null = llvm::dyn_cast<clang::CXXNullPtrLiteralExpr>(expr)) {
-        return c->GetNullType()->BuildValueConstruction({}, c);
+        return a.GetNullType()->BuildValueConstruction(Expressions(), c);
     }
     if (auto con = llvm::dyn_cast<clang::CXXConstructExpr>(expr)) {
-        auto ty = c->GetClangType(tu, tu.GetASTContext().getRecordType(con->getConstructor()->getParent()));
-        std::vector<ConcreteExpression> args;
+        auto ty = a.GetClangType(tu, tu.GetASTContext().getRecordType(con->getConstructor()->getParent()));
+        std::vector<std::unique_ptr<Expression>> args;
         for (auto it = con->arg_begin(); it != con->arg_end(); ++it) {
             if (llvm::dyn_cast<clang::CXXDefaultArgExpr>(*it))
                 break;
-            args.push_back(InterpretExpression(*it, tu, c));
+            args.push_back(InterpretExpression(*it, tu, c, a));
         }
-        return ty->BuildRvalueConstruction(args, c);
+        return ty->BuildRvalueConstruction(std::move(args), c);
     }
     if (auto paren = llvm::dyn_cast<clang::ParenExpr>(expr)) {
-        return InterpretExpression(paren->getSubExpr(), tu, c);
+        return InterpretExpression(paren->getSubExpr(), tu, c, a);
     }
     if (auto str = llvm::dyn_cast<clang::StringLiteral>(expr)) {
-        auto string = str->getString();
-        return ConcreteExpression(c->GetTypeForString(string), c->gen->CreateStringExpression(string));
+        return Wide::Memory::MakeUnique<String>(str->getString(), a);
     }
     if (auto declref = llvm::dyn_cast<clang::DeclRefExpr>(expr)) {
         auto decl = declref->getDecl();
@@ -133,7 +132,7 @@ std::unique_ptr<Expression> Semantic::InterpretExpression(clang::Expr* p, ClangT
         if (auto func = llvm::dyn_cast<clang::FunctionDecl>(decl)) {
             std::unordered_set<clang::NamedDecl*> decls;
             decls.insert(func);
-            return c->GetOverloadSet(decls, &tu, nullptr)->BuildValueConstruction({}, c);
+            return a.GetOverloadSet(decls, &tu, nullptr)->BuildValueConstruction(Expressions(), c);
         }
         std::string str;
         llvm::raw_string_ostream ostr(str);
@@ -141,15 +140,15 @@ std::unique_ptr<Expression> Semantic::InterpretExpression(clang::Expr* p, ClangT
         throw BadMacroExpression(c.where, str);
     }
     if (auto temp = llvm::dyn_cast<clang::MaterializeTemporaryExpr>(expr)) {
-        return InterpretExpression(temp->GetTemporaryExpr(), tu, c);
+        return InterpretExpression(temp->GetTemporaryExpr(), tu, c, a);
     }
     if (auto cast = llvm::dyn_cast<clang::ImplicitCastExpr>(expr)) {
         // C++ treats string lits as pointer to character so we need to special-case here.
-        auto castty = c->GetClangType(tu, cast->getType());
-        auto castexpr = InterpretExpression(cast->getSubExpr(), tu, c);
-        if (castty == c->GetPointerType(c->GetIntegralType(8, true)) && dynamic_cast<StringType*>(castexpr.t->Decay()))
+        auto castty = a.GetClangType(tu, cast->getType());
+        auto castexpr = InterpretExpression(cast->getSubExpr(), tu, c, a);
+        if (castty == a.GetPointerType(a.GetIntegralType(8, true)) && dynamic_cast<StringType*>(castexpr->GetType()->Decay()))
             return castexpr;
-        return castty->BuildRvalueConstruction({ castexpr }, c);
+        return castty->BuildRvalueConstruction(Expressions(std::move(castexpr)), c);
     }
     std::string str;
     llvm::raw_string_ostream ostr(str);

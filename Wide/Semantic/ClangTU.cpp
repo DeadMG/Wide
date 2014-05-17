@@ -5,7 +5,6 @@
 #include <Wide/Semantic/Analyzer.h>
 #include <Wide/Semantic/ClangType.h>
 #include <Wide/Codegen/Generator.h>
-#include <Wide/Util/Codegen/InitializeLLVM.h>
 #include <functional>
 #include <string>
 #include <fstream>
@@ -132,7 +131,6 @@ public:
         , p(preproc, sema, false)
     {
         preproc.enableIncrementalProcessing(true);
-        Codegen::InitializeLLVM();
         std::string err;
         clang::InitializePreprocessor(preproc, *Options->PreprocessorOptions, *Options->HeaderSearchOptions, Options->FrontendOptions);
         preproc.getBuiltinInfo().InitializeBuiltins(preproc.getIdentifierTable(), Options->LanguageOptions);

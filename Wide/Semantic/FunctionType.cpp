@@ -46,14 +46,15 @@ Wide::Util::optional<clang::QualType> FunctionType::GetClangType(ClangTU& from) 
 
 std::unique_ptr<Expression> FunctionType::BuildCall(std::unique_ptr<Expression> val, std::vector<std::unique_ptr<Expression>> args, Context c) {
     struct Call : Expression {
-        Call(Analyzer& an, std::unique_ptr<Expression> self, std::vector<std::unique_ptr<Expression>> args)
-        : a(an), args(std::move(args)), val(std::move(self))
+        Call(Analyzer& an, std::unique_ptr<Expression> self, std::vector<std::unique_ptr<Expression>> args, Context c)
+        : a(an), args(std::move(args)), val(std::move(self)), c(c)
         {}
 
         Analyzer& a;
         std::vector<std::unique_ptr<Expression>> args;
         std::unique_ptr<Expression> val;
         std::unique_ptr<Expression> Ret;
+        Context c;
         
         Type* GetType() override final {
             auto fty = dynamic_cast<FunctionType*>(val->GetType());
@@ -70,7 +71,7 @@ std::unique_ptr<Expression> FunctionType::BuildCall(std::unique_ptr<Expression> 
             llvm::Value* llvmfunc = val->GetValue(g, bb);
             std::vector<llvm::Value*> llvmargs;
             if (GetType()->IsComplexType(g)) {
-                Ret = Wide::Memory::MakeUnique<ImplicitTemporaryExpr>(GetType());
+                Ret = Wide::Memory::MakeUnique<ImplicitTemporaryExpr>(GetType(), c);
                 llvmargs.push_back(Ret->GetValue(g, bb));
             }
             for (auto&& arg : args)
@@ -81,7 +82,7 @@ std::unique_ptr<Expression> FunctionType::BuildCall(std::unique_ptr<Expression> 
             return call;
         }
     };
-    return Wide::Memory::MakeUnique<Call>(analyzer, std::move(val), std::move(args));
+    return Wide::Memory::MakeUnique<Call>(analyzer, std::move(val), std::move(args), c);
 }
 std::string FunctionType::explain() {
     auto begin = ReturnType->explain() + "(*)(";

@@ -518,56 +518,74 @@ std::vector<BaseType::VirtualFunction> UserDefinedType::ComputeVTableLayout() {
     return funcs;
 }
 
-/*Codegen::Expression* UserDefinedType::FunctionPointerFor(std::string name, std::vector<Type*> args, Type* ret, unsigned offset, Analyzer& a)  {
+std::unique_ptr<Expression> UserDefinedType::FunctionPointerFor(std::string name, std::vector<Type*> args, Type* ret, unsigned offset) {
     if (type->Functions.find(name) == type->Functions.end())
         return nullptr;
     // args includes this, which will have a different type here.
     // Pretend that it really has our type.
     if (IsLvalueType(args[0]))
-        args[0] = a.GetLvalueType(this);
+        args[0] = analyzer.GetLvalueType(this);
     else
-        args[0] = a.GetRvalueType(this);
+        args[0] = analyzer.GetRvalueType(this);
     for (auto func : type->Functions.at(name)->functions) {
         std::vector<Type*> f_args;
         if (func->args.size() == 0 || func->args.front().name != "this")
-            f_args.push_back(a.GetLvalueType(this));
+            f_args.push_back(analyzer.GetLvalueType(this));
         for (auto arg : func->args) {
-            auto ty = a.AnalyzeExpression(GetContext(a), arg.type, [](ConcreteExpression) {}).t->Decay();
+            auto ty = AnalyzeExpression(GetContext(), arg.type, analyzer)->GetType()->Decay();
             auto con_type = dynamic_cast<ConstructorType*>(ty);
             if (!con_type)
-                throw Wide::Semantic::NotAType(ty, arg.location, a);
+                throw Wide::Semantic::NotAType(ty, arg.location);
             f_args.push_back(con_type->GetConstructedType());
         }
-        auto widefunc = a.GetWideFunction(func, this, f_args, name);
-        widefunc->ComputeBody(a);
+        auto widefunc = analyzer.GetWideFunction(func, this, f_args, name);
+        widefunc->ComputeBody();
         if (args != f_args)
             continue;
-        if (widefunc->GetSignature(a)->GetReturnType() != ret)
+        if (widefunc->GetSignature()->GetReturnType() != ret)
             throw std::runtime_error("fuck");
-        auto func = a.gen->CreateFunctionValue(widefunc->GetName());
-        if (offset == 0)
-            return func;
-        std::stringstream strstr;
-        strstr << name << "__" << this << offset;
 
-        auto thunk = a.gen->CreateFunction(a.GetFunctionType(ret, args)->GetLLVMType(a), strstr.str(), nullptr, true);
-        auto self = a.gen->CreateParameterExpression(ret->IsComplexType(a));
-        auto offset_this = a.gen->CreatePointerIndex(a.gen->CreatePointerCast(self, a.GetPointerType(a.GetIntegralType(8, true))->GetLLVMType(a)), -(int)offset);
-        auto cast_this = a.gen->CreatePointerCast(offset_this, f_args[0]->GetLLVMType(a));
-        std::vector<Codegen::Expression*> thunkargs;
-        for (int i = 0; i < args.size() + ret->IsComplexType(a); ++i) {
-            if (i == (int)ret->IsComplexType(a)) {
-                thunkargs.push_back(cast_this);
-            } else {
-                thunkargs.push_back(a.gen->CreateParameterExpression(i));
+        struct VTableThunk : Expression {
+            VTableThunk(Function* f, unsigned off)
+                : widefunc(f), offset(off) {}
+            Function* widefunc;
+            unsigned offset;
+            Type* GetType() override final {
+                return widefunc->GetSignature();
             }
-        }
-        auto call = a.gen->CreateFunctionCall(func, thunkargs);
-        thunk->AddStatement(a.gen->CreateReturn(call));
-        return thunk;
+            llvm::Value* ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>&) override final {
+                widefunc->EmitCode(g);
+                if (offset == 0)
+                    return g.module->getFunction(widefunc->GetName());
+                auto this_index = widefunc->GetSignature()->GetReturnType()->IsComplexType(g);
+                std::stringstream strstr;
+                strstr << "__" << this << offset;
+                auto thunk = llvm::Function::Create(llvm::dyn_cast<llvm::FunctionType>(widefunc->GetSignature()->GetLLVMType(g)->getElementType()), llvm::GlobalValue::LinkageTypes::InternalLinkage, strstr.str(), g.module.get());
+                llvm::BasicBlock* bb = llvm::BasicBlock::Create(g.module->getContext(), "entry", thunk);
+                llvm::IRBuilder<> irbuilder(bb);
+                auto self = std::next(thunk->arg_begin(), widefunc->GetSignature()->GetReturnType()->IsComplexType(g));
+                auto offset_self = irbuilder.CreateConstGEP1_32(irbuilder.CreatePointerCast(self, llvm::IntegerType::getInt8PtrTy(g.module->getContext())), offset);
+                auto cast_self = irbuilder.CreatePointerCast(offset_self, std::next(g.module->getFunction(widefunc->GetName())->arg_begin(), this_index)->getType());
+                std::vector<llvm::Value*> args;
+                for (int i = 0; i < thunk->arg_size(); ++i) {
+                    if (i == widefunc->GetSignature()->GetReturnType()->IsComplexType(g))
+                        args.push_back(cast_self);
+                    else
+                        args.push_back(std::next(thunk->arg_begin(), i));
+                }
+                auto call = irbuilder.CreateCall(g.module->getFunction(widefunc->GetName()), args);
+                if (call->getType() == llvm::Type::getVoidTy(g.module->getContext()))
+                    irbuilder.CreateRetVoid();
+                else
+                    irbuilder.CreateRet(call);
+                return thunk;
+            }
+            void DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& b) override final {}
+        };
+        return Wide::Memory::MakeUnique<VTableThunk>(widefunc, offset);
     }
     return nullptr;
-}*/
+}
 
 std::unique_ptr<Expression> UserDefinedType::GetVirtualPointer(std::unique_ptr<Expression> self) {
     assert(self->GetType()->IsReference());

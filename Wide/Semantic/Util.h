@@ -24,6 +24,6 @@ namespace Wide {
         clang::ExprValueKind GetKindOfType(Type* t);
         class ClangTU;
         const std::unordered_map<Lexer::TokenType, std::pair<clang::OverloadedOperatorKind, clang::BinaryOperatorKind>>& GetTokenMappings();
-        std::unique_ptr<Expression> InterpretExpression(clang::Expr* p, ClangTU& from, Type* src);
+        std::unique_ptr<Expression> InterpretExpression(clang::Expr* p, ClangTU& from, Context c, Analyzer& a);
     }
 }

@@ -26,10 +26,7 @@
 #include <llvm/Support/raw_os_ostream.h>
 #pragma warning(pop)
 
-void Wide::Driver::Compile(const Wide::Options::Clang& copts, std::function<void(Semantic::Analyzer&, const AST::Module*)> func, Codegen::Generator& gen, std::initializer_list<std::string> files) {
-    return Compile(copts, std::move(func), gen, std::vector<std::string>(files.begin(), files.end()));
-}
-void Wide::Driver::Compile(const Wide::Options::Clang& copts, std::function<void(Wide::Semantic::Analyzer&, const AST::Module*)> func, Wide::Codegen::Generator& gen, const std::vector<std::string>& files) {
+void Wide::Driver::Compile(const Wide::Options::Clang& copts, std::function<void(Wide::Semantic::Analyzer&, const AST::Module*)> func, const std::vector<std::string>& files) {
     Wide::Concurrency::Vector<std::string> excepts;
     Wide::Concurrency::Vector<std::string> warnings;
     auto parsererrorhandler = [&](std::vector<Wide::Lexer::Range> where, Wide::Parser::Error what) {
@@ -90,9 +87,8 @@ void Wide::Driver::Compile(const Wide::Options::Clang& copts, std::function<void
         combiner.Add(x->GetGlobalModule());
 
     if (excepts.empty()) {
-        Wide::Semantic::Analyzer a(copts, gen, combiner.GetGlobalModule());
+        Wide::Semantic::Analyzer a(copts, combiner.GetGlobalModule());
         func(a, combiner.GetGlobalModule());
-        gen();
     } else {
         std::string err = "Compilation failed with errors:\n";
         for(auto&& msg : excepts) {

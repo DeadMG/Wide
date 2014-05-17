@@ -119,7 +119,7 @@ namespace Wide {
             std::function<void(Lexer::Range where, Type* t)> QuickInfo;
             std::function<void(Lexer::Range where)> ParameterHighlight;
 
-            const llvm::DataLayout& GetDataLayout();
+            const llvm::DataLayout& GetDataLayout() { return layout; }
             void AddClangType(clang::QualType t, Type* match);
             
             Type* GetVoidType();

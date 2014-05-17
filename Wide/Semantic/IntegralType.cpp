@@ -212,7 +212,7 @@ OverloadSet* IntegralType::CreateOperatorOverloadSet(Type* self, Lexer::TokenTyp
     switch (what) {
     case Lexer::TokenType::Increment:
         Increment = MakeResolvable([this](std::vector<std::unique_ptr<Expression>> args, Context c) {
-            return CreatePrimUnOp(std::move(args[0]), [this](llvm::Value* self, Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+            return CreatePrimUnOp(std::move(args[0]), analyzer.GetLvalueType(this), [this](llvm::Value* self, Codegen::Generator& g, llvm::IRBuilder<>& bb) {
                 bb.CreateStore(bb.CreateAdd(bb.CreateLoad(self), llvm::ConstantInt::get(GetLLVMType(g), 1, is_signed)), self);
                 return self;
             });

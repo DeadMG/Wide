@@ -1,10 +1,9 @@
 #include <Wide/Util/Driver/Compile.h>
-#include <Wide/Util/Driver/NullCodeGenerator.h>
 #include <Wide/Util/Test/Test.h>
 #include <Wide/Semantic/Analyzer.h>
 #include <Wide/Semantic/OverloadSet.h>
 #include <Wide/Semantic/ClangOptions.h>
-#include <Wide/Codegen/LLVMGenerator.h>
+#include <Wide/Codegen/LLVMOptions.h>
 #include <Wide/Util/DebugUtilities.h>
 #include <Wide/Util/Driver/IncludePaths.h>
 #include <Wide/SemanticTest/test.h>
@@ -109,47 +108,46 @@ void Jit(Wide::Options::Clang& copts, std::string file) {
     std::string name;
     static const auto loc = Wide::Lexer::Range(std::make_shared<std::string>("Test harness internal"));
     Wide::Options::LLVM llvmopts;
-    Wide::LLVMCodegen::Generator g(llvmopts, copts.TargetOptions.Triple, [&](std::unique_ptr<llvm::Module> main) {
-        llvm::EngineBuilder b(main.get());
-        auto mod = main.get();
-        b.setAllocateGVsWithCode(false);
-        b.setEngineKind(llvm::EngineKind::JIT);
-        std::string errstring;
-        b.setErrorStr(&errstring);
-        auto ee = b.create();
-        AddStdlibLink(ee, mod);
-        ee->runStaticConstructorsDestructors(false);
-        // Fuck you, shitty LLVM ownership semantics.
-        if (ee)
-            main.release();
-        auto f = ee->FindFunctionNamed(name.c_str());
-        auto result = ee->runFunction(f, std::vector<llvm::GenericValue>());
-        ee->runStaticConstructorsDestructors(true);
-        auto intval = result.IntVal.getLimitedValue();
-        if (!intval)
-            throw std::runtime_error("Test returned false.");
-    });
+    Wide::Codegen::Generator g(copts.TargetOptions.Triple);
     Wide::Driver::Compile(copts, [&](Wide::Semantic::Analyzer& a, const Wide::AST::Module* root) {
-        Wide::Semantic::Context c(a, loc, [](Wide::Semantic::ConcreteExpression e) {}, a.GetGlobalModule());
         Wide::Semantic::AnalyzeExportedFunctions(a);
-        auto m = a.GetGlobalModule()->AccessMember(a.GetGlobalModule()->BuildValueConstruction({}, c), "Main", c);
+        auto m = a.GetGlobalModule()->AccessMember(a.GetGlobalModule()->BuildValueConstruction(Wide::Semantic::Expressions(), { a.GetGlobalModule(), root->where.front() }), "Main", { a.GetGlobalModule(), root->where.front() });
         if (!m)
             throw std::runtime_error("No Main() found for test!");
-        auto func = dynamic_cast<Wide::Semantic::OverloadSet*>(m->t);
+        auto func = dynamic_cast<Wide::Semantic::OverloadSet*>(m->GetType()->Decay());
         if (!func)
             throw std::runtime_error("Main was not an overload set.");
-        auto f = dynamic_cast<Wide::Semantic::Function*>(func->Resolve({}, a, a.GetGlobalModule()));
+        auto f = dynamic_cast<Wide::Semantic::Function*>(func->Resolve({}, a.GetGlobalModule()));
         if (!f)
             throw std::runtime_error("Could not resolve Main to a function.");
         name = f->GetName();
-        f->BuildCall(f->BuildValueConstruction({}, c), {}, c);
-    }, g, { file });
+        f->ComputeBody();
+        a.GenerateCode(g);
+        g(llvmopts);
+    }, { file });
+    llvm::EngineBuilder b(g.module.get());
+    auto mod = g.module.get();
+    b.setAllocateGVsWithCode(false);
+    b.setEngineKind(llvm::EngineKind::JIT);
+    std::string errstring;
+    b.setErrorStr(&errstring);
+    auto ee = b.create();
+    AddStdlibLink(ee, mod);
+    ee->runStaticConstructorsDestructors(false);
+    // Fuck you, shitty LLVM ownership semantics.
+    if (ee)
+        g.module.release();
+    auto f = ee->FindFunctionNamed(name.c_str());
+    auto result = ee->runFunction(f, std::vector<llvm::GenericValue>());
+    ee->runStaticConstructorsDestructors(true);
+    auto intval = result.IntVal.getLimitedValue();
+    if (!intval)
+        throw std::runtime_error("Test returned false.");
 }
 void Compile(const Wide::Options::Clang& copts, std::string file) {
-    Wide::Driver::NullGenerator mockgen(copts.TargetOptions.Triple);
     Wide::Driver::Compile(copts, [&](Wide::Semantic::Analyzer& a, const Wide::AST::Module* root) {
-        if (Wide::Test::Test(a, nullptr, root, [&](Wide::Semantic::Error& r) {}, mockgen))
+        if (Wide::Test::Test(a, nullptr, root, [&](Wide::Semantic::Error& r) {}))
             throw std::runtime_error("Test failed.");
-    }, mockgen, { file });
+    }, { file });
 }
 
