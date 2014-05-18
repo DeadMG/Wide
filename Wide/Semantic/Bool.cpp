@@ -63,7 +63,6 @@ OverloadSet* Bool::CreateOperatorOverloadSet(Type* t, Lexer::TokenType name, Lex
             }, { analyzer.GetLvalueType(this), this });
             return analyzer.GetOverloadSet(XorAssignOperator.get());
         }
-        return PrimitiveType::CreateOperatorOverloadSet(t, name, access);
     }
     switch(name) {
     case Lexer::TokenType::LT:
@@ -80,8 +79,15 @@ OverloadSet* Bool::CreateOperatorOverloadSet(Type* t, Lexer::TokenType name, Lex
             });
         }, { this, this });
         return analyzer.GetOverloadSet(EQOperator.get());
+    case Lexer::TokenType::Negate:
+        NegOperator = MakeResolvable([](std::vector<std::unique_ptr<Expression>> args, Context c)->std::unique_ptr<Expression> {
+            return CreatePrimUnOp(std::move(args[0]), c.from->analyzer.GetBooleanType(), [](llvm::Value* v, Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+                return bb.CreateNot(v);
+            });
+        }, { this });
+        return analyzer.GetOverloadSet(NegOperator.get());
     }
-    return analyzer.GetOverloadSet();
+    return PrimitiveType::CreateOperatorOverloadSet(t, name, access);
 }
 
 std::string Bool::explain() {

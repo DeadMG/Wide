@@ -68,6 +68,7 @@ struct rvalueconvertible : OverloadResolvable, Callable {
         if (types.size() != 2) return Util::none;
         if (types[0] != a.GetLvalueType(self)) return Util::none;
         if (IsLvalueType(types[1])) return Util::none;
+        //if (types[1]->Decay() == self->Decay()) return Util::none;
         // If it is or pointer-is then yay, else nay.
         auto ptrt = a.GetPointerType(types[1]->Decay());
         auto ptrself = a.GetPointerType(self->Decay());
@@ -94,6 +95,7 @@ struct PointerComparableResolvable : OverloadResolvable, Callable {
         if (types[0] != a.GetLvalueType(self)) return Util::none;
         auto ptrt = a.GetPointerType(types[1]->Decay());
         auto ptrself = a.GetPointerType(self->Decay());
+        if (ptrt == ptrself) return Util::none;
         if (!ptrt->IsA(ptrt, ptrself, GetAccessSpecifier(source, ptrt))) return Util::none;
         return types;
     }

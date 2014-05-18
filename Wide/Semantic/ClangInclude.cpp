@@ -46,11 +46,11 @@ std::unique_ptr<Expression> ClangIncludeEntity::AccessMember(std::unique_ptr<Exp
                 file.flush();
                 file.close();
                 auto clangtu = args[0]->GetType()->analyzer.LoadCPPHeader(std::move(path), c.where);
-                return args[0]->GetType()->analyzer.GetClangNamespace(*clangtu, clangtu->GetDeclContext())->BuildValueConstruction({}, c);
+                return args[0]->GetType()->analyzer.GetClangNamespace(*clangtu, clangtu->GetDeclContext())->BuildValueConstruction(Expressions(), c);
             }            
         };
         LiteralHandler = Wide::Memory::MakeUnique<LiteralIncluder>();
-        return (LiteralOverloadSet = analyzer.GetOverloadSet(LiteralHandler.get()))->BuildValueConstruction({}, { this, c.where });
+        return (LiteralOverloadSet = analyzer.GetOverloadSet(LiteralHandler.get()))->BuildValueConstruction(Expressions(), { this, c.where });
     }
     if (name == "macro") {
         if (MacroOverloadSet) return MacroOverloadSet->BuildValueConstruction({}, { this, c.where });
@@ -73,7 +73,7 @@ std::unique_ptr<Expression> ClangIncludeEntity::AccessMember(std::unique_ptr<Exp
             }
         };
         MacroHandler = Wide::Memory::MakeUnique<ClangMacroHandler>();
-        return (MacroOverloadSet = analyzer.GetOverloadSet(MacroHandler.get()))->BuildValueConstruction({}, { this, c.where });
+        return (MacroOverloadSet = analyzer.GetOverloadSet(MacroHandler.get()))->BuildValueConstruction(Expressions(), { this, c.where });
     }
     if (name == "header") {
         if (HeaderOverloadSet) return HeaderOverloadSet->BuildValueConstruction({}, { this, c.where });
@@ -93,11 +93,11 @@ std::unique_ptr<Expression> ClangIncludeEntity::AccessMember(std::unique_ptr<Exp
                 if (name.size() > 1 && name.back() == '>')
                     name = std::string(name.begin(), name.end() - 1);
                 auto clangtu = c.from->analyzer.LoadCPPHeader(std::move(name), c.where);
-                return c.from->analyzer.GetClangNamespace(*clangtu, clangtu->GetDeclContext())->BuildValueConstruction({}, c);
+                return c.from->analyzer.GetClangNamespace(*clangtu, clangtu->GetDeclContext())->BuildValueConstruction(Expressions(), c);
             }
         };
         HeaderIncluder = Wide::Memory::MakeUnique<ClangHeaderHandler>();
-        return (HeaderOverloadSet = analyzer.GetOverloadSet(HeaderIncluder.get()))->BuildValueConstruction({}, { this, c.where });
+        return (HeaderOverloadSet = analyzer.GetOverloadSet(HeaderIncluder.get()))->BuildValueConstruction(Expressions(), { this, c.where });
     }
     return nullptr;
 }
@@ -114,7 +114,7 @@ std::unique_ptr<Expression> ClangIncludeEntity::BuildCall(std::unique_ptr<Expres
     if (name.size() > 1 && name.back() == '>')
         name = std::string(name.begin(), name.end() - 1);
     auto clangtu = analyzer.AggregateCPPHeader(std::move(name), c.where);
-    return analyzer.GetClangNamespace(*clangtu, clangtu->GetDeclContext())->BuildValueConstruction({}, { this, c.where });
+    return analyzer.GetClangNamespace(*clangtu, clangtu->GetDeclContext())->BuildValueConstruction(Expressions(), { this, c.where });
 }
 
 std::string ClangIncludeEntity::explain() {

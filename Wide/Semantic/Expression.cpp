@@ -22,7 +22,9 @@ void ImplicitLoadExpr::DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& b
 }
 
 ImplicitStoreExpr::ImplicitStoreExpr(std::unique_ptr<Expression> memory, std::unique_ptr<Expression> value)
-: mem(std::move(memory)), val(std::move(value)) {}
+: mem(std::move(memory)), val(std::move(value)) {
+    assert(mem->GetType()->IsReference(val->GetType()));
+}
 Type* ImplicitStoreExpr::GetType() {
     assert(mem->GetType()->IsReference(val->GetType()));
     return mem->GetType();
@@ -44,7 +46,7 @@ ImplicitTemporaryExpr::ImplicitTemporaryExpr(Type* what, Context c)
     destructor = of->BuildDestructorCall(Wide::Memory::MakeUnique<ExpressionReference>(this), c);
 }
 Type* ImplicitTemporaryExpr::GetType() {
-    return of->analyzer.GetRvalueType(of);
+    return of->analyzer.GetLvalueType(of);
 }
 llvm::Value* ImplicitTemporaryExpr::ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) {
     auto local = bb.CreateAlloca(of->GetLLVMType(g));
@@ -69,14 +71,23 @@ void LvalueCast::DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) {
     return expr->DestroyLocals(g, bb);
 }
 
-RvalueCast::RvalueCast(std::unique_ptr<Expression> expr)
-: expr(std::move(expr)) {}
+RvalueCast::RvalueCast(std::unique_ptr<Expression> ex)
+: expr(std::move(ex)) {
+    assert(!IsRvalueType(expr->GetType()));
+}
 Type* RvalueCast::GetType() {
-    assert(IsLvalueType(expr->GetType()));
+    assert(!IsRvalueType(expr->GetType()));
     return expr->GetType()->analyzer.GetRvalueType(expr->GetType()->Decay());
 }
 llvm::Value* RvalueCast::ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) {
-    return expr->GetValue(g, bb);
+    if (IsLvalueType(expr->GetType()))
+        return expr->GetValue(g, bb);
+    if (expr->GetType()->IsComplexType(g))
+        return expr->GetValue(g, bb);
+    auto tempalloc = bb.CreateAlloca(expr->GetType()->GetLLVMType(g));
+    tempalloc->setAlignment(expr->GetType()->alignment());
+    bb.CreateStore(expr->GetValue(g, bb), tempalloc);
+    return tempalloc;
 }
 void RvalueCast::DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) {
     expr->DestroyLocals(g, bb);
@@ -154,10 +165,10 @@ std::unique_ptr<Expression> Semantic::CreatePrimUnOp(std::unique_ptr<Expression>
         Type* GetType() override final {
             return ret;
         }
-        llvm::Value* ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+        llvm::Value* ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
             return action(src->GetValue(g, bb), g, bb);
         }
-        void DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+        void DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
             src->DestroyLocals(g, bb);
         }
     };
@@ -177,11 +188,11 @@ std::unique_ptr<Expression> Semantic::CreatePrimOp(std::unique_ptr<Expression> l
         Type* ret;
         std::function<llvm::Value*(llvm::Value*, llvm::Value*, Codegen::Generator&, llvm::IRBuilder<>&)> action;
         Type* GetType() override final { return ret; }
-        void DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+        void DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
             rhs->DestroyLocals(g, bb);
             lhs->DestroyLocals(g, bb);
         }
-        llvm::Value* ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+        llvm::Value* ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
             // Strict order of evaluation.
             auto left = lhs->GetValue(g, bb);
             auto right = rhs->GetValue(g, bb);
@@ -194,4 +205,9 @@ std::unique_ptr<Expression> Semantic::BuildValue(std::unique_ptr<Expression> e) 
     if (e->GetType()->IsReference())
         return Wide::Memory::MakeUnique<ImplicitLoadExpr>(std::move(e));
     return std::move(e);
+}
+std::unique_ptr<Expression> Semantic::BuildChain(std::unique_ptr<Expression> lhs, std::unique_ptr<Expression> rhs) {
+    return CreatePrimOp(std::move(lhs), std::move(rhs), rhs->GetType(), [](llvm::Value* lhs, llvm::Value* rhs, Codegen::Generator& g, llvm::IRBuilder<>& b) {
+        return rhs;
+    });
 }

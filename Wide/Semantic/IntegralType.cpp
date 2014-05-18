@@ -61,8 +61,7 @@ OverloadSet* IntegralType::CreateConstructorOverloadSet(Lexer::Access access) {
         }
         Callable* GetCallableForResolution(std::vector<Type*> types, Analyzer& a) override final { return this; }
         std::unique_ptr<Expression> CallFunction(std::vector<std::unique_ptr<Expression>> args, Context c) override final {
-            if (args[1]->GetType()->IsReference())
-                args[1] = Wide::Memory::MakeUnique<ImplicitLoadExpr>(std::move(args[1]));
+            args[1] = BuildValue(std::move(args[1]));
             if (args[1]->GetType() == integral)
                 return Wide::Memory::MakeUnique<ImplicitStoreExpr>(std::move(args[0]), std::move(args[1]));
             auto inttype = dynamic_cast<IntegralType*>(args[1]->GetType());

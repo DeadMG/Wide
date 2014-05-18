@@ -144,10 +144,10 @@ std::unique_ptr<Expression> AggregateType::PrimitiveAccessMember(std::unique_ptr
             // It's not a value or an lvalue so must be rvalue.
             return self->analyzer.GetRvalueType(root_ty);
         }
-        llvm::Value* ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+        llvm::Value* ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
             auto src = source->GetValue(g, bb);
             auto obj = src->getType()->isPointerTy() ? bb.CreateStructGEP(src, self->GetLayout().FieldIndices[num]) : bb.CreateExtractValue(src, { self->GetLayout().FieldIndices[num] });
-            if (source->GetType()->IsReference() && GetType()->IsReference())
+            if (source->GetType()->IsReference() && self->GetContents()[num]->IsReference())
                 return bb.CreateLoad(obj);
             return obj;
         }

@@ -30,7 +30,7 @@ struct EmplaceType : public MetaType {
 
 std::unique_ptr<Expression> ConstructorType::BuildCall(std::unique_ptr<Expression> val, std::vector<std::unique_ptr<Expression>> args, Context c) {
     assert(val->GetType()->Decay() == this);
-    return t->BuildRvalueConstruction(std::move(args), c);
+    return t->BuildValueConstruction(std::move(args), c);
 }
 std::unique_ptr<Expression> ConstructorType::AccessMember(std::unique_ptr<Expression> self, std::string name, Context c) {
     assert(self->GetType()->Decay() == this);

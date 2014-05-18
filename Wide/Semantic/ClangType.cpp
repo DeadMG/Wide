@@ -342,15 +342,18 @@ std::unique_ptr<Expression> ClangType::PrimitiveAccessMember(std::unique_ptr<Exp
     } else {
         resty = std::next(type->getAsCXXRecordDecl()->bases_begin(), num)->getType();
     }
+    auto source_type = self->GetType();
     auto result_type = type_convert(self->GetType(), analyzer.GetClangType(*from, resty));
-    return CreatePrimUnOp(std::move(self), result_type, [this, num, result_type, resty](llvm::Value* self, Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+    return CreatePrimUnOp(std::move(self), result_type, [this, num, result_type, resty, source_type](llvm::Value* self, Codegen::Generator& g, llvm::IRBuilder<>& bb) -> llvm::Value* {
         std::size_t numbases = type->getAsCXXRecordDecl()->bases_end() - type->getAsCXXRecordDecl()->bases_begin();
         if (num < numbases && resty->getAsCXXRecordDecl()->isEmpty())
             return bb.CreatePointerCast(self, result_type->GetLLVMType(g));
         auto fieldnum = num >= numbases
             ? from->GetFieldNumber(*std::next(type->getAsCXXRecordDecl()->field_begin(), num - numbases), g)
             : from->GetBaseNumber(type->getAsCXXRecordDecl(), (type->getAsCXXRecordDecl()->bases_begin() + num)->getType()->getAsCXXRecordDecl(), g);
-        if (self->getType()->isPointerTy())
+        if (source_type->IsReference())
+            if (result_type->IsReference())
+                return bb.CreateLoad(bb.CreateStructGEP(self, fieldnum));
             return bb.CreateStructGEP(self, fieldnum);
         return bb.CreateExtractValue(self, fieldnum);
     });
@@ -388,6 +391,7 @@ InheritanceRelationship ClangType::IsDerivedFrom(Type* other) {
 }
 std::unique_ptr<Expression> ClangType::AccessBase(std::unique_ptr<Expression> self, Type* other) {
     auto recdecl = type->getAsCXXRecordDecl();
+    other = other->Decay();
     assert(IsDerivedFrom(other) == InheritanceRelationship::UnambiguouslyDerived);
     for (auto baseit = recdecl->bases_begin(); baseit != recdecl->bases_end(); ++baseit) {
         auto basety = analyzer.GetClangType(*from, baseit->getType());

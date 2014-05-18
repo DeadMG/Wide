@@ -197,6 +197,12 @@ namespace Wide {
             Expression* callee;
             std::vector<Expression*> args;
         };
+        struct True : public Expression {
+            True(Lexer::Range where) : Expression(where) {}
+        };
+        struct False : public Expression {
+            False(Lexer::Range where) : Expression(where) {}
+        };
         struct While : public Statement {
             While(Statement* b, Expression* c, Lexer::Range loc)
                 : Statement(loc), body(b), condition(c), var_condition(nullptr) {}

@@ -279,6 +279,10 @@ namespace Wide {
                     ParseTypeBody(ty);
                     return ty;
                 }
+                if (t.GetType() == Lexer::TokenType::True)
+                    return sema.CreateTrue(t.GetLocation());
+                if (t.GetType() == Lexer::TokenType::False)
+                    return sema.CreateFalse(t.GetLocation());
 
                 throw BadToken(t, Error::ExpressionNoBeginning);
             }

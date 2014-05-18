@@ -46,8 +46,8 @@ struct Function::LocalVariable : public Expression {
 
     void OnNodeChanged(Node* n) override final {
         if (init_expr->GetType()) {
-            // If we're a value we just steal.
-            if (init_expr->GetType() == init_expr->GetType()->Decay()) {
+            // If we're a value we handle it at codegen time.
+            if (!init_expr->GetType()->IsReference()) {
                 if (init_expr->GetType() != var_type) {
                     var_type = init_expr->GetType();
                     OnChange();
@@ -94,15 +94,24 @@ struct Function::LocalVariable : public Expression {
     Lexer::Range where;
 
     void DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) {
-        if (!init_expr->GetType()->IsComplexType(g) || !(init_expr->GetType() == var_type))
+        if (variable)
             variable->DestroyLocals(g, bb);
-        // If any temporaries were created during construction, destroy them.
-        construction->DestroyLocals(g, bb);
+        if (construction)
+            construction->DestroyLocals(g, bb);
     }
     llvm::Value* ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) {
-        // If they return a complex value, just steal it.
-        if (init_expr->GetType()->IsComplexType(g) && init_expr->GetType() == var_type) return init_expr->GetValue(g, bb);
-        return construction->GetValue(g, bb);
+        if (init_expr->GetType() == var_type) {
+            // If they return a complex value by value, just steal it.
+            if (init_expr->GetType()->IsComplexType(g)) return init_expr->GetValue(g, bb);
+            // If they return a simple by value, then we can just alloca it fine, no destruction needed.
+            auto alloc = bb.CreateAlloca(var_type->GetLLVMType(g));
+            alloc->setAlignment(var_type->alignment());
+            bb.CreateStore(init_expr->GetValue(g, bb), alloc);
+            return alloc;
+        }
+       
+        construction->GetValue(g, bb);
+        return variable->GetValue(g, bb);
     }
     Type* GetType() {
         if (var_type)
@@ -111,7 +120,7 @@ struct Function::LocalVariable : public Expression {
     }
 };
 struct Function::Scope {
-    Scope(Scope* s) : parent(s) {
+    Scope(Scope* s) : parent(s), current_while(nullptr) {
         if (parent)
             parent->children.push_back(std::unique_ptr<Scope>(this));
     }
@@ -231,7 +240,10 @@ struct Function::ReturnStatement : public Statement {
                     return self->llvmfunc->arg_begin();
                 }
             };
-            build = self->ReturnType->BuildInplaceConstruction(Wide::Memory::MakeUnique<ReturnEmplaceValue>(self), Expressions(Wide::Memory::MakeUnique<ExpressionReference>(ret_expr.get())), { self, where });
+            if (self->ReturnType)
+                build = self->ReturnType->BuildInplaceConstruction(Wide::Memory::MakeUnique<ReturnEmplaceValue>(self), Expressions(Wide::Memory::MakeUnique<ExpressionReference>(ret_expr.get())), { self, where });
+            else
+                build = nullptr;
         } else
             build = nullptr;
     }
@@ -323,7 +335,10 @@ struct Function::WhileStatement : public Statement {
         // Both of these branches need to destroy the cond's locals.
         // In the case of the loop, so that when check_bb is re-entered, it's clear.
         // In the case of the continue, so that the check's locals are cleaned up properly.
-        bb.CreateCondBr(boolconvert->GetValue(g, bb), loop_bb, continue_bb);
+        auto condition = boolconvert->GetValue(g, bb);
+        if (condition->getType() == llvm::Type::getInt8Ty(g.module->getContext()))
+            condition = bb.CreateTrunc(condition, llvm::Type::getInt1Ty(g.module->getContext()));
+        bb.CreateCondBr(condition, loop_bb, continue_bb);
         bb.SetInsertPoint(loop_bb);
         body->GenerateCode(g, bb);
         body->DestroyLocals(g, bb);
@@ -361,7 +376,10 @@ struct Function::IfStatement : public Statement{
         auto true_bb = llvm::BasicBlock::Create(bb.getContext(), "true_bb", bb.GetInsertBlock()->getParent());
         auto continue_bb = llvm::BasicBlock::Create(bb.getContext(), "continue_bb", bb.GetInsertBlock()->getParent());
         auto else_bb = false_br ? llvm::BasicBlock::Create(bb.getContext(), "false_bb", bb.GetInsertBlock()->getParent()) : continue_bb;
-        bb.CreateCondBr(boolconvert->GetValue(g, bb), true_bb, else_bb);
+        auto condition = boolconvert->GetValue(g, bb);
+        if (condition->getType() == llvm::Type::getInt8Ty(g.module->getContext()))
+            condition = bb.CreateTrunc(condition, llvm::Type::getInt1Ty(g.module->getContext()));
+        bb.CreateCondBr(condition, true_bb, else_bb);
         bb.SetInsertPoint(true_bb);
         true_br->GenerateCode(g, bb);
         true_br->DestroyLocals(g, bb);
@@ -472,20 +490,21 @@ std::unique_ptr<Statement> Function::AnalyzeStatement(const AST::Statement* s) {
         std::vector<LocalVariable*> locals;
         auto init_expr = AnalyzeExpression(this, var->initializer, analyzer);
         if (var->name.size() == 1) {
-            auto var_stmt = Wide::Memory::MakeUnique<LocalVariable>(init_expr.get(), this, var->name.front().where);
             auto&& name = var->name.front();
-            locals.push_back(var_stmt.get());
             if (current_scope->named_variables.find(var->name.front().name) != current_scope->named_variables.end())
                 throw VariableShadowing(name.name, current_scope->named_variables.at(name.name).second, name.where);
-            current_scope->named_variables.insert(std::make_pair(name.name, std::make_pair(std::move(var_stmt), name.where)));
-        }
-        unsigned i = 0;
-        for (auto&& name : var->name) {
-            auto var_stmt = Wide::Memory::MakeUnique<LocalVariable>(init_expr.get(), i, this, name.where);
+            auto var_stmt = Wide::Memory::MakeUnique<LocalVariable>(init_expr.get(), this, var->name.front().where);
             locals.push_back(var_stmt.get());
-            if (current_scope->named_variables.find(name.name) != current_scope->named_variables.end())
-                throw VariableShadowing(name.name, current_scope->named_variables.at(name.name).second, name.where);
             current_scope->named_variables.insert(std::make_pair(name.name, std::make_pair(std::move(var_stmt), name.where)));
+        } else {
+            unsigned i = 0;
+            for (auto&& name : var->name) {
+                if (current_scope->named_variables.find(name.name) != current_scope->named_variables.end())
+                    throw VariableShadowing(name.name, current_scope->named_variables.at(name.name).second, name.where);
+                auto var_stmt = Wide::Memory::MakeUnique<LocalVariable>(init_expr.get(), i, this, name.where);
+                locals.push_back(var_stmt.get());
+                current_scope->named_variables.insert(std::make_pair(name.name, std::make_pair(std::move(var_stmt), name.where)));
+            }
         }
         return Wide::Memory::MakeUnique<VariableStatement>(std::move(locals), std::move(init_expr));
     }
@@ -619,10 +638,12 @@ Function::Function(std::vector<Type*> args, const AST::FunctionBase* astfun, Ana
     unsigned num = 0;
     if (mem && (dynamic_cast<MemberFunctionContext*>(mem->Decay()))) {
         Args.push_back(args[0] == args[0]->Decay() ? a.GetLvalueType(args[0]) : args[0]);
+        args.erase(args.begin());
         auto param = Wide::Memory::MakeUnique<Parameter>(this, num++, Lexer::Range(nullptr));
         root_scope->named_variables.insert(std::make_pair("this", std::make_pair(Wide::Memory::MakeUnique<ExpressionReference>(param.get()), Lexer::Range(nullptr))));
         root_scope->active.push_back(std::move(param));
     }
+    Args.insert(Args.end(), args.begin(), args.end());
     for(auto&& arg : astfun->args) {
         if (arg.name == "this")
             continue;
@@ -733,7 +754,10 @@ void Function::ComputeReturnType() {
 
         std::unordered_set<Type*> ret_types;
         for (auto ret : returns) {
-            if (!ret->ret_expr) ret_types.insert(analyzer.GetVoidType());
+            if (!ret->ret_expr) {
+                ret_types.insert(analyzer.GetVoidType()); 
+                continue;
+            }
             if (!ret->ret_expr->GetType()) continue;
             ret_types.insert(ret->ret_expr->GetType()->Decay());
         }

@@ -195,9 +195,15 @@ struct cppcallable : public Callable {
 };
 
 Callable* OverloadSet::Resolve(std::vector<Type*> f_args, Type* source) {
+    // Terrible hack but need to get this to work right now
+    auto adjusted_args = f_args;
+    for (auto& arg : adjusted_args)
+        if (!arg->IsReference())
+            arg = analyzer.GetRvalueType(arg);
+
     std::vector<std::pair<OverloadResolvable*, std::vector<Type*>>> call;
     for(auto funcobj : callables) {
-        auto matched_types = funcobj->MatchParameter(f_args, analyzer, source);
+        auto matched_types = funcobj->MatchParameter(adjusted_args, analyzer, source);
         if (matched_types) call.push_back(std::make_pair(funcobj, std::move(*matched_types)));
     }
     // returns true if lhs is more specialized than rhs
@@ -296,6 +302,7 @@ Callable* OverloadSet::Resolve(std::vector<Type*> f_args, Type* source) {
         auto p = new cppcallable();
         p->fun = fun;
         p->from = from;
+        p->source = source;
         // The function may be expecting a base type.
         if (auto meth = llvm::dyn_cast<clang::CXXMethodDecl>(p->fun)) {
             if (IsLvalueType(f_args[0]))
@@ -322,7 +329,7 @@ std::size_t OverloadSet::alignment() {
     return analyzer.GetDataLayout().getPointerABIAlignment();
 }
 OverloadSet::OverloadSet(OverloadSet* s, OverloadSet* other, Analyzer& a, Type* context)
-: Type(a) {
+: Type(a), nonstatic(nullptr) {
     for(auto x : s->callables)
         callables.insert(x);
     for(auto x : other->callables)
@@ -346,7 +353,7 @@ OverloadSet::OverloadSet(OverloadSet* s, OverloadSet* other, Analyzer& a, Type* 
     }
 }
 OverloadSet::OverloadSet(std::unordered_set<clang::NamedDecl*> clangdecls, ClangTU* tu, Type* context, Analyzer& a)
-: clangfuncs(std::move(clangdecls)), from(tu), Type(a)
+: clangfuncs(std::move(clangdecls)), from(tu), Type(a), nonstatic(nullptr)
 {
     if(context)
         if(dynamic_cast<ClangType*>(context->Decay()))
@@ -382,6 +389,8 @@ OverloadSet* OverloadSet::CreateConstructorOverloadSet(Lexer::Access access) {
             });
         }, { analyzer.GetLvalueType(this), nonstatic });
         constructors.insert(ReferenceConstructor.get());
+
+        return analyzer.GetOverloadSet(constructors);
     }
 
     DefaultConstructor = MakeResolvable([](std::vector<std::unique_ptr<Expression>> args, Context cm) {

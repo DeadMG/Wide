@@ -44,7 +44,9 @@ namespace Wide {
         public:
             virtual ~Node() {
                 for (auto node : listening_to)
-                    node->RemoveChangedListener(this);
+                    node->listeners.erase(this);
+                for (auto node : listeners)
+                    node->listening_to.erase(this);
             }
         };
         struct Statement : public Node {
@@ -153,5 +155,6 @@ namespace Wide {
         std::unique_ptr<Expression> CreatePrimAssOp(std::unique_ptr<Expression> lhs, std::unique_ptr<Expression> rhs, std::function<llvm::Value*(llvm::Value*, llvm::Value*, Codegen::Generator&, llvm::IRBuilder<>&)>);
         std::unique_ptr<Expression> CreatePrimOp(std::unique_ptr<Expression> lhs, std::unique_ptr<Expression> rhs, Type* ret, std::function<llvm::Value*(llvm::Value*, llvm::Value*, Codegen::Generator&, llvm::IRBuilder<>&)>);
         std::unique_ptr<Expression> BuildValue(std::unique_ptr<Expression>);
+        std::unique_ptr<Expression> BuildChain(std::unique_ptr<Expression>, std::unique_ptr<Expression>);
     }
 }

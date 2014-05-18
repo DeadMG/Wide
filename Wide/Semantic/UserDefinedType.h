@@ -65,7 +65,8 @@ namespace Wide {
                     , t(other.t)
                     , num(other.num)
                     , InClassInitializer(std::move(other.InClassInitializer))
-                    , location(std::move(other.location)) {}
+                    , location(std::move(other.location))
+                    , vptr(other.vptr) {}
                 std::string name;
                 Type* t;
                 unsigned num;
@@ -89,6 +90,7 @@ namespace Wide {
             bool IsMoveAssignable(Lexer::Access access) override final;
             bool IsComplexType(Codegen::Generator& g) override final;
 
+            std::unique_ptr<Expression> BuildValueConstruction(std::vector<std::unique_ptr<Expression>> args, Context c) override final;
             Wide::Util::optional<std::vector<Type*>> GetTypesForTuple() override final;
             std::unique_ptr<Expression> PrimitiveAccessMember(std::unique_ptr<Expression> self, unsigned num) override final;
             InheritanceRelationship IsDerivedFrom(Type* other) override final;

@@ -24,7 +24,15 @@ using namespace Semantic;
 
 llvm::Value* Expression::GetValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) {
     if (!val) val = ComputeValue(g, bb);
-    assert(val->getType() == GetType()->GetLLVMType(g));
+    auto selfty = GetType()->GetLLVMType(g);
+    if (GetType()->IsComplexType(g)) {
+        auto ptrty = llvm::dyn_cast<llvm::PointerType>(val->getType());
+        assert(ptrty);
+        assert(ptrty->getElementType() == selfty);
+    } else {
+        // Extra variable because VS debugger typically won't load Type or Expression functions.
+        assert(val->getType() == selfty);
+    }
     return val;
 }
 
@@ -186,23 +194,34 @@ std::unique_ptr<Expression> Type::BuildInplaceConstruction(std::unique_ptr<Expre
     return callable->Call(std::move(exprs), c);
 }
 
-std::unique_ptr<Expression> Type::BuildValueConstruction(std::vector<std::unique_ptr<Expression>> args, Context c) {
-    return Wide::Memory::MakeUnique<ImplicitLoadExpr>(BuildInplaceConstruction(Wide::Memory::MakeUnique<ImplicitTemporaryExpr>(this, c), std::move(args), c));
+std::unique_ptr<Expression> Type::BuildValueConstruction(std::vector<std::unique_ptr<Expression>> exprs, Context c) {
+    auto temp = Wide::Memory::MakeUnique<ImplicitTemporaryExpr>(this, c);
+    auto construction = BuildInplaceConstruction(Wide::Memory::MakeUnique<ExpressionReference>(temp.get()), std::move(exprs), c);
+    return BuildChain(std::move(construction), Wide::Memory::MakeUnique<ImplicitLoadExpr>(std::move(temp)));
 }
 
 std::unique_ptr<Expression> Type::BuildRvalueConstruction(std::vector<std::unique_ptr<Expression>> exprs, Context c) {
-    return Wide::Memory::MakeUnique<RvalueCast>(BuildInplaceConstruction(Wide::Memory::MakeUnique<ImplicitTemporaryExpr>(this, c), std::move(exprs), c));
+    auto temp = Wide::Memory::MakeUnique<ImplicitTemporaryExpr>(this, c);
+    auto construction = BuildInplaceConstruction(Wide::Memory::MakeUnique<ExpressionReference>(temp.get()) , std::move(exprs), c);
+    return BuildChain(std::move(construction), std::move(temp));
 }
 
-std::unique_ptr<Expression> Type::BuildLvalueConstruction(std::vector<std::unique_ptr<Expression>> args, Context c) {
-    return Wide::Memory::MakeUnique<LvalueCast>(BuildRvalueConstruction(std::move(args), c));
+std::unique_ptr<Expression> Type::BuildLvalueConstruction(std::vector<std::unique_ptr<Expression>> exprs, Context c) {
+    auto temp = Wide::Memory::MakeUnique<ImplicitTemporaryExpr>(this, c);
+    auto construction = BuildInplaceConstruction(Wide::Memory::MakeUnique<ExpressionReference>(temp.get()), std::move(exprs), c);
+    return BuildChain(std::move(construction), Wide::Memory::MakeUnique<LvalueCast>(std::move(temp)));
 }
 
 std::unique_ptr<Expression> Type::BuildUnaryExpression(std::unique_ptr<Expression> self, Lexer::TokenType type, Context c) {
+    if (IsReference())
+        return Decay()->BuildUnaryExpression(std::move(self), type, c);
     auto opset = AccessMember(self->GetType(), type, GetAccessSpecifier(c.from, this));
     auto callable = opset->Resolve({ self->GetType() }, c.from);
-    if (!callable)
+    if (!callable) {
+        if (auto bool_val = BuildBooleanConversion(std::move(self), c))
+            return analyzer.GetBooleanType()->BuildUnaryExpression(std::move(bool_val), Lexer::TokenType::Negate, c);
         opset->IssueResolutionError({ self->GetType() });
+    }
     return callable->Call(Expressions(std::move(self)), c);
 }
 
@@ -274,14 +293,10 @@ std::unique_ptr<Expression> Type::BuildBinaryExpression(std::unique_ptr<Expressi
 OverloadSet* PrimitiveType::CreateConstructorOverloadSet(Lexer::Access access) {
     if (access != Lexer::Access::Public) return GetConstructorOverloadSet(Lexer::Access::Public);
     auto construct_from_ref = [](std::vector<std::unique_ptr<Expression>> args, Context c) {
-        return Wide::Memory::MakeUnique<ImplicitStoreExpr>(std::move(args[0]), std::move(args[1]));
+        return Wide::Memory::MakeUnique<ImplicitStoreExpr>(std::move(args[0]), BuildValue(std::move(args[1])));
     };
-    std::vector<Type*> types;
-    types.push_back(analyzer.GetRvalueType(this));
-    types.push_back(analyzer.GetLvalueType(this));
-    CopyConstructor = MakeResolvable(construct_from_ref, types);
-    types[1] = analyzer.GetRvalueType(this);
-    MoveConstructor = MakeResolvable(construct_from_ref, types);
+    CopyConstructor = MakeResolvable(construct_from_ref, { analyzer.GetLvalueType(this), analyzer.GetLvalueType(this) });
+    MoveConstructor = MakeResolvable(construct_from_ref, { analyzer.GetLvalueType(this), analyzer.GetRvalueType(this) });
     std::unordered_set<OverloadResolvable*> callables;
     callables.insert(CopyConstructor.get());
     callables.insert(MoveConstructor.get());
@@ -295,12 +310,9 @@ OverloadSet* PrimitiveType::CreateOperatorOverloadSet(Type* t, Lexer::TokenType 
     if (t != analyzer.GetLvalueType(this))
         return analyzer.GetOverloadSet();
 
-    std::vector<Type*> types;
-    types.push_back(analyzer.GetLvalueType(this));
-    types.push_back(this);
     AssignmentOperator = MakeResolvable([](std::vector<std::unique_ptr<Expression>> args, Context c) {
         return Wide::Memory::MakeUnique<ImplicitStoreExpr>(std::move(args[0]), std::move(args[1]));
-    }, types);
+    }, { analyzer.GetLvalueType(this), this });
     return analyzer.GetOverloadSet(AssignmentOperator.get());
 }
 
@@ -323,15 +335,17 @@ Type* MetaType::GetConstantContext() {
 
 OverloadSet* MetaType::CreateConstructorOverloadSet(Lexer::Access access) {
     if (access != Lexer::Access::Public) return GetConstructorOverloadSet(Lexer::Access::Public);
-    std::vector<Type*> types;
-    types.push_back(analyzer.GetRvalueType(this));
     DefaultConstructor = MakeResolvable([](std::vector<std::unique_ptr<Expression>> args, Context c) {
         return std::move(args[0]);
-    }, types);
+    }, { analyzer.GetLvalueType(this) });
     return analyzer.GetOverloadSet(PrimitiveType::CreateConstructorOverloadSet(access), analyzer.GetOverloadSet(DefaultConstructor.get()));
 }
 
 std::unique_ptr<Expression> Callable::Call(std::vector<std::unique_ptr<Expression>> args, Context c) {
+    for (auto&& arg : args) {
+        if (!arg->GetType()->IsReference())
+            arg = Wide::Memory::MakeUnique<RvalueCast>(std::move(arg));
+    }
     return CallFunction(AdjustArguments(std::move(args), c), c);
 }
 

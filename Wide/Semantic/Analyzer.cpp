@@ -349,7 +349,8 @@ ClangTU* Analyzer::AggregateCPPHeader(std::string file, Lexer::Range where) {
 }
 
 void Analyzer::GenerateCode(Codegen::Generator& g) {
-    AggregateTU->GenerateCodeAndLinkModule(g);
+    if (AggregateTU)
+        AggregateTU->GenerateCodeAndLinkModule(g);
     for (auto&& tu : headers)
         tu.second.GenerateCodeAndLinkModule(g);
     for (auto&& set : WideFunctions)
@@ -393,7 +394,7 @@ void Analyzer::AddClangType(clang::QualType t, Type* match) {
 
 ClangNamespace* Analyzer::GetClangNamespace(ClangTU& tu, clang::DeclContext* con) {
     assert(con);
-    if (ClangNamespaces.find(con) != ClangNamespaces.end())
+    if (ClangNamespaces.find(con) == ClangNamespaces.end())
         ClangNamespaces[con] = Wide::Memory::MakeUnique<ClangNamespace>(con, &tu, *this);
     return ClangNamespaces[con].get();
 }
@@ -495,7 +496,7 @@ IntegralType* Analyzer::GetIntegralType(unsigned bits, bool sign) {
     return integers[bits][sign].get();
 }
 PointerType* Analyzer::GetPointerType(Type* to) {
-    if (Pointers.find(to) != Pointers.end())
+    if (Pointers.find(to) == Pointers.end())
         Pointers[to] = Wide::Memory::MakeUnique<PointerType>(to, *this);
     return Pointers[to].get();
 }
@@ -839,9 +840,8 @@ bool Semantic::IsMultiTyped(const AST::FunctionBase* f) {
 }
 
 std::unique_ptr<Expression> Semantic::AnalyzeExpression(Type* lookup, const AST::Expression* e, Analyzer& a) {
-    if (auto str = dynamic_cast<const AST::String*>(e)) {
+    if (auto str = dynamic_cast<const AST::String*>(e))
         return Wide::Memory::MakeUnique<String>(str->val, a);
-    }
 
     if (auto memaccess = dynamic_cast<const AST::MemberAccess*>(e)) {
         struct MemberAccess : Expression {
@@ -892,6 +892,7 @@ std::unique_ptr<Expression> Semantic::AnalyzeExpression(Type* lookup, const AST:
                 ListenToNode(object.get());
                 for (auto&& arg : args)
                     ListenToNode(arg.get());
+                OnNodeChanged(object.get());
             }
             Lexer::Range where;
             Type* from;
@@ -949,11 +950,11 @@ std::unique_ptr<Expression> Semantic::AnalyzeExpression(Type* lookup, const AST:
                 if (!context) return nullptr;
                 context = context->Decay();
                 if (auto fun = dynamic_cast<Function*>(context)) {
-                    auto lookup = fun->LookupLocal(ident->val);
+                    auto lookup = fun->LookupLocal(val);
                     if (lookup) return lookup;
                     if (auto member = dynamic_cast<MemberFunctionContext*>(context->GetContext())) {
                         auto self = fun->LookupLocal("this");
-                        auto result = self->GetType()->AccessMember(std::move(self), ident->val, { self->GetType(), ident->location });
+                        auto result = self->GetType()->AccessMember(std::move(self), val, { self->GetType(), location });
                         if (result)
                             return std::move(result);
                         return LookupIdentifier(context->GetContext()->GetContext());
@@ -962,25 +963,31 @@ std::unique_ptr<Expression> Semantic::AnalyzeExpression(Type* lookup, const AST:
                 }
                 if (auto mod = dynamic_cast<Module*>(context)) {
                     // Module lookups shouldn't present any unknown types. They should only present constant contexts.
-                    auto local_mod_instance = mod->BuildValueConstruction(Expressions(), Context{ context, ident->location });
-                    auto result = local_mod_instance->GetType()->AccessMember(std::move(local_mod_instance), ident->val, { lookup, ident->location });
+                    auto local_mod_instance = mod->BuildValueConstruction(Expressions(), Context{ context, location });
+                    auto result = local_mod_instance->GetType()->AccessMember(std::move(local_mod_instance), val, { lookup, location });
                     if (!result) return LookupIdentifier(mod->GetContext());
                     if (!dynamic_cast<OverloadSet*>(result->GetType()))
                         return result;
                     auto lookup2 = LookupIdentifier(mod->GetContext());
                     if (!dynamic_cast<OverloadSet*>(lookup2->GetType()))
                         return result;
-                    return a.GetOverloadSet(dynamic_cast<OverloadSet*>(result->GetType()), dynamic_cast<OverloadSet*>(lookup2->GetType()))->BuildValueConstruction(Expressions(), Context{ context, ident->location });
+                    return a.GetOverloadSet(dynamic_cast<OverloadSet*>(result->GetType()), dynamic_cast<OverloadSet*>(lookup2->GetType()))->BuildValueConstruction(Expressions(), Context{ context, location });
                 }
                 if (auto udt = dynamic_cast<UserDefinedType*>(context)) {
                     return LookupIdentifier(context->GetContext());
                 }
+                if (auto result = context->AccessMember(context->BuildValueConstruction(Expressions(), { lookup, location }), val, { lookup, location }))
+                    return result;
                 return LookupIdentifier(context->GetContext());
             }
             IdentifierLookup(const AST::Identifier* id, Analyzer& an, Type* lookup)
-                : a(an), ident(id), lookup(lookup) {}
+                : a(an), location(id->location), val(id->val), lookup(lookup) 
+            {
+                OnNodeChanged(lookup);
+            }
             Analyzer& a;
-            const AST::Identifier* ident;
+            std::string val;
+            Lexer::Range location;
             Type* lookup;
             std::unique_ptr<Expression> result;
             void OnNodeChanged(Node* n) {
@@ -1004,4 +1011,46 @@ std::unique_ptr<Expression> Semantic::AnalyzeExpression(Type* lookup, const AST:
         };
         return Wide::Memory::MakeUnique<IdentifierLookup>(ident, a, lookup);
     }
+
+    if (auto tru = dynamic_cast<const AST::True*>(e))
+        return Wide::Memory::MakeUnique<Boolean>(true, a);
+   
+    if (auto fals = dynamic_cast<const AST::False*>(e))
+        return Wide::Memory::MakeUnique<Boolean>(false, a);
+
+    if (auto thi = dynamic_cast<const AST::This*>(e)) {
+        AST::Identifier i("this", thi->location);
+        return AnalyzeExpression(lookup, &i, a);
+    }
+
+    if (auto ty = dynamic_cast<const AST::Type*>(e)) {
+        auto udt = a.GetUDT(ty, lookup->GetConstantContext() ? lookup->GetConstantContext() : lookup->GetContext(), "anonymous");
+        return a.GetConstructorType(udt)->BuildValueConstruction(Expressions(), { lookup, ty->where.front() });
+    }
+
+    if (auto addr = dynamic_cast<const AST::AddressOf*>(e))
+        return Wide::Memory::MakeUnique<ImplicitAddressOf>(AnalyzeExpression(lookup, addr->ex, a));
+
+    if (auto integer = dynamic_cast<const AST::Integer*>(e))    
+        return Wide::Memory::MakeUnique<Integer>(llvm::APInt(64, std::stoll(integer->integral_value), true), a);
+
+    if (auto bin = dynamic_cast<const AST::BinaryExpression*>(e)) {
+        auto lhs = AnalyzeExpression(lookup, bin->lhs, a);
+        auto rhs = AnalyzeExpression(lookup, bin->rhs, a);
+        auto ty = lhs->GetType();
+        return ty->BuildBinaryExpression(std::move(lhs), std::move(rhs), bin->type, { lookup, bin->location });
+    }
+
+    if (auto deref = dynamic_cast<const AST::Dereference*>(e)) {
+        auto expr = AnalyzeExpression(lookup, deref->ex, a);
+        auto ty = expr->GetType();
+        return ty->BuildUnaryExpression(std::move(expr), Wide::Lexer::TokenType::Dereference, { lookup, deref->location });
+    }
+
+    if (auto neg = dynamic_cast<const AST::Negate*>(e)) {
+        auto expr = AnalyzeExpression(lookup, neg->ex, a);
+        auto ty = expr->GetType();
+        return ty->BuildUnaryExpression(std::move(expr), Lexer::TokenType::Negate, { lookup, neg->location });
+    }
+    assert(false);
 }

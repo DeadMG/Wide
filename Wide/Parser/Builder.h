@@ -57,6 +57,8 @@ namespace Wide {
             While* CreateWhile(Expression* cond, Statement* body, Lexer::Range loc);
             While* CreateWhile(Variable* cond, Statement* body, Lexer::Range loc);
             This* CreateThis(Lexer::Range loc);
+            True* CreateTrue(Lexer::Range loc);
+            False* CreateFalse(Lexer::Range loc);
             Lambda* CreateLambda(std::vector<FunctionArgument> args, std::vector<Statement*> body, Lexer::Range loc, bool defaultref, std::vector<Variable*> caps);
             Negate* CreateNegate(Expression* e, Lexer::Range loc);
             Dereference* CreateDereference(Expression* e, Lexer::Range loc);

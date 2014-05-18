@@ -124,7 +124,8 @@ std::vector<UserDefinedType::member> UserDefinedType::GetMembers() {
         m.t = GetContents()[i + type->bases.size()];
         m.name = type->variables[i].first->name.front().name;
         m.num = GetFieldIndex(i) + type->bases.size();
-        m.InClassInitializer = [this, i](std::unique_ptr<Expression>) { return AnalyzeExpression(context, NSDMIs[i], analyzer); };
+        if (NSDMIs[i])
+            m.InClassInitializer = [this, i](std::unique_ptr<Expression>) { return AnalyzeExpression(context, NSDMIs[i], analyzer); };
         m.vptr = false;
         out.push_back(std::move(m));
     }
@@ -416,7 +417,7 @@ std::unique_ptr<Expression> UserDefinedType::BuildDestructorCall(std::unique_ptr
     auto selfref = Wide::Memory::MakeUnique<ExpressionReference>(self.get());
     auto aggcall = AggregateType::BuildDestructorCall(std::move(self), c);
     if (type->Functions.find("~") != type->Functions.end()) {
-        auto desset = analyzer.GetOverloadSet(type->Functions.at("~"), self->GetType(), "~");
+        auto desset = analyzer.GetOverloadSet(type->Functions.at("~"), selfref->GetType(), "~");
         auto call = desset->BuildCall(desset->BuildValueConstruction(Expressions(std::move(selfref) ), { this, type->Functions.at("~")->where.front() }), Expressions(), { this, type->Functions.at("~")->where.front() });
         return CreatePrimOp(std::move(call), std::move(aggcall), [](llvm::Value* lhs, llvm::Value*, Codegen::Generator&, llvm::IRBuilder<>&) {
             return lhs;
@@ -557,7 +558,7 @@ std::unique_ptr<Expression> UserDefinedType::FunctionPointerFor(std::string name
                 widefunc->EmitCode(g);
                 if (offset == 0)
                     return g.module->getFunction(widefunc->GetName());
-                auto this_index = widefunc->GetSignature()->GetReturnType()->IsComplexType(g);
+                auto this_index = (std::size_t)widefunc->GetSignature()->GetReturnType()->IsComplexType(g);
                 std::stringstream strstr;
                 strstr << "__" << this << offset;
                 auto thunk = llvm::Function::Create(llvm::dyn_cast<llvm::FunctionType>(widefunc->GetSignature()->GetLLVMType(g)->getElementType()), llvm::GlobalValue::LinkageTypes::InternalLinkage, strstr.str(), g.module.get());
@@ -567,8 +568,8 @@ std::unique_ptr<Expression> UserDefinedType::FunctionPointerFor(std::string name
                 auto offset_self = irbuilder.CreateConstGEP1_32(irbuilder.CreatePointerCast(self, llvm::IntegerType::getInt8PtrTy(g.module->getContext())), offset);
                 auto cast_self = irbuilder.CreatePointerCast(offset_self, std::next(g.module->getFunction(widefunc->GetName())->arg_begin(), this_index)->getType());
                 std::vector<llvm::Value*> args;
-                for (int i = 0; i < thunk->arg_size(); ++i) {
-                    if (i == widefunc->GetSignature()->GetReturnType()->IsComplexType(g))
+                for (std::size_t i = 0; i < thunk->arg_size(); ++i) {
+                    if (i == this_index)
                         args.push_back(cast_self);
                     else
                         args.push_back(std::next(thunk->arg_begin(), i));
@@ -612,4 +613,30 @@ unsigned UserDefinedType::GetVirtualFunctionIndex(const AST::Function* func) {
     if (VTableIndices.find(func) == VTableIndices.end())
         throw std::runtime_error("fuck");
     return VTableIndices.at(func);
+}
+std::unique_ptr<Expression> UserDefinedType::BuildValueConstruction(std::vector<std::unique_ptr<Expression>> args, Context c) {
+    struct UserDefinedValue : Expression {
+        UserDefinedValue(UserDefinedType* self, std::vector<std::unique_ptr<Expression>> args, Context c)
+        : self(self) {
+            temporary = Wide::Memory::MakeUnique<ImplicitTemporaryExpr>(self, c);
+            InplaceConstruction = self->BuildInplaceConstruction(Wide::Memory::MakeUnique<ExpressionReference>(temporary.get()), std::move(args), c);
+        }
+        std::unique_ptr<ImplicitTemporaryExpr> temporary;
+        std::unique_ptr<Expression> InplaceConstruction;
+        UserDefinedType* self;
+        Type* GetType() override final {
+            return self;
+        }
+        llvm::Value* ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+            InplaceConstruction->GetValue(g, bb);
+            if (self->IsComplexType(g))
+                return temporary->GetValue(g, bb);
+            return bb.CreateLoad(temporary->GetValue(g, bb));
+        }
+        void DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+            temporary->DestroyLocals(g, bb);
+            InplaceConstruction->DestroyLocals(g, bb);
+        }
+    };
+    return Wide::Memory::MakeUnique<UserDefinedValue>(this, std::move(args), c);
 }

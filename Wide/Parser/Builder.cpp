@@ -203,8 +203,15 @@ MetaCall* Builder::CreateMetaFunctionCall(Expression* e, std::vector<Expression*
 While* Builder::CreateWhile(Expression* cond, Statement* body, Lexer::Range loc) 
 { return arena.Allocate<While>(body, cond, loc); }
 
-This* Builder::CreateThis(Lexer::Range loc) 
+This* Builder::CreateThis(Lexer::Range loc)
 { return arena.Allocate<This>(loc); }
+
+True* Builder::CreateTrue(Lexer::Range loc) {
+    return arena.Allocate<True>(loc);
+}
+False* Builder::CreateFalse(Lexer::Range loc) {
+    return arena.Allocate<False>(loc);
+}
 
 Lambda* Builder::CreateLambda(std::vector<FunctionArgument> args, std::vector<Statement*> body, Lexer::Range loc, bool defaultref, std::vector<Variable*> caps) 
 { return arena.Allocate<Lambda>(std::move(body), std::move(args), loc, defaultref, std::move(caps)); }
