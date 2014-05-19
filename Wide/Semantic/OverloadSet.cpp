@@ -140,6 +140,11 @@ struct cppcallable : public Callable {
         // so do the conversion ourselves if lvalues were not involved.
         std::vector<std::unique_ptr<Expression>> out;
         for (std::size_t i = 0; i < types.size(); ++i) {
+            if (types[i].first == args[i]->GetType()) {
+                out.push_back(std::move(args[i]));
+                continue;
+            }
+
             // Handle base type mismatches first because else they are mishandled by the next check.
             if (auto derived = dynamic_cast<BaseType*>(args[i]->GetType()->Decay())) {
                 if (auto base = dynamic_cast<BaseType*>(types[i].first->Decay())) {
