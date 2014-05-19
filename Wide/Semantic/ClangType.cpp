@@ -12,6 +12,7 @@
 #include <Wide/Semantic/SemanticError.h>
 #include <Wide/Semantic/ConstructorType.h>
 #include <Wide/Semantic/PointerType.h>
+#include <Wide/Semantic/Expression.h>
 #include <Wide/Lexer/Token.h>
 #include <iostream>
 #include <array>

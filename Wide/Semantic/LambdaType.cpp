@@ -3,6 +3,7 @@
 #include <Wide/Semantic/OverloadSet.h>
 #include <Wide/Semantic/Reference.h>
 #include <Wide/Codegen/Generator.h>
+#include <Wide/Semantic/Expression.h>
 #include <sstream>
 #include <Wide/Parser/AST.h>
 

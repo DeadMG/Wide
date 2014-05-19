@@ -5,6 +5,7 @@
 #include <Wide/Semantic/PointerType.h>
 #include <Wide/Semantic/Reference.h>
 #include <sstream>
+#include <Wide/Semantic/Expression.h>
 
 using namespace Wide;
 using namespace Semantic;

@@ -28,6 +28,7 @@
 #include <Wide/Semantic/TupleType.h>
 #include <Wide/Semantic/LambdaType.h>
 #include <Wide/Util/DebugUtilities.h>
+#include <Wide/Semantic/Expression.h>
 #include <sstream>
 #include <iostream>
 #include <unordered_set>
@@ -490,7 +491,7 @@ UserDefinedType* Analyzer::GetUDT(const AST::Type* t, Type* context, std::string
 }
 IntegralType* Analyzer::GetIntegralType(unsigned bits, bool sign) {
     if (integers.find(bits) == integers.end()
-     || integers[bits].find(sign) != integers[bits].end()) {
+     || integers[bits].find(sign) == integers[bits].end()) {
         integers[bits][sign] = Wide::Memory::MakeUnique<IntegralType>(bits, sign, *this);
     }
     return integers[bits][sign].get();
@@ -1051,6 +1052,17 @@ std::unique_ptr<Expression> Semantic::AnalyzeExpression(Type* lookup, const AST:
         auto expr = AnalyzeExpression(lookup, neg->ex, a);
         auto ty = expr->GetType();
         return ty->BuildUnaryExpression(std::move(expr), Lexer::TokenType::Negate, { lookup, neg->location });
+    }
+
+    if (auto inc = dynamic_cast<const AST::Increment*>(e)) {
+        auto expr = AnalyzeExpression(lookup, inc->ex, a);
+        auto ty = expr->GetType();
+        if (inc->postfix) {
+            auto copy = ty->Decay()->BuildValueConstruction(Expressions(Wide::Memory::MakeUnique<ExpressionReference>(expr.get())), { lookup, inc->location });
+            auto result = ty->Decay()->BuildUnaryExpression(std::move(expr), Lexer::TokenType::Increment, { lookup, inc->location });
+            return BuildChain(std::move(copy), BuildChain(std::move(result), Wide::Memory::MakeUnique<ExpressionReference>(copy.get())));
+        }
+        return ty->Decay()->BuildUnaryExpression(std::move(expr), Lexer::TokenType::Increment, { lookup, inc->location });
     }
     assert(false);
 }

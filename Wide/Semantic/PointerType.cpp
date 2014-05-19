@@ -3,6 +3,7 @@
 #include <Wide/Codegen/Generator.h>
 #include <Wide/Semantic/Analyzer.h>
 #include <Wide/Semantic/NullType.h>
+#include <Wide/Semantic/Expression.h>
 #include <Wide/Semantic/Reference.h>
 
 #pragma warning(push, 0)

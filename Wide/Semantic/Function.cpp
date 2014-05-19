@@ -14,6 +14,7 @@
 #include <Wide/Semantic/StringType.h>
 #include <Wide/Semantic/LambdaType.h>
 #include <Wide/Semantic/SemanticError.h>
+#include <Wide/Semantic/Expression.h>
 #include <unordered_set>
 #include <sstream>
 #include <iostream>

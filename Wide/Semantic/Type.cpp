@@ -11,6 +11,7 @@
 #include <Wide/Semantic/TupleType.h>
 #include <Wide/Semantic/OverloadSet.h>
 #include <Wide/Util/DebugUtilities.h>
+#include <Wide/Semantic/Expression.h>
 #include <sstream>
 
 using namespace Wide;
@@ -21,20 +22,6 @@ using namespace Semantic;
 #include <llvm/IR/Module.h>
 #include <clang/AST/AST.h>
 #pragma warning(pop)
-
-llvm::Value* Expression::GetValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) {
-    if (!val) val = ComputeValue(g, bb);
-    auto selfty = GetType()->GetLLVMType(g);
-    if (GetType()->IsComplexType(g)) {
-        auto ptrty = llvm::dyn_cast<llvm::PointerType>(val->getType());
-        assert(ptrty);
-        assert(ptrty->getElementType() == selfty);
-    } else {
-        // Extra variable because VS debugger typically won't load Type or Expression functions.
-        assert(val->getType() == selfty);
-    }
-    return val;
-}
 
 OverloadSet* Type::CreateADLOverloadSet(Lexer::TokenType what, Type* lhs, Type* rhs, Lexer::Access access) {
     if (IsReference())
@@ -149,7 +136,7 @@ std::unique_ptr<Expression> Type::BuildCall(std::unique_ptr<Expression> val, std
 std::unique_ptr<Expression> Type::BuildBooleanConversion(std::unique_ptr<Expression> ex, Context c) {
     if (IsReference())
         return Decay()->BuildBooleanConversion(std::move(ex), c);
-    throw std::runtime_error("fuck");
+    return nullptr;
 }
 
 std::unique_ptr<Expression> Type::BuildDestructorCall(std::unique_ptr<Expression> self, Context c) {
@@ -203,13 +190,13 @@ std::unique_ptr<Expression> Type::BuildValueConstruction(std::vector<std::unique
 std::unique_ptr<Expression> Type::BuildRvalueConstruction(std::vector<std::unique_ptr<Expression>> exprs, Context c) {
     auto temp = Wide::Memory::MakeUnique<ImplicitTemporaryExpr>(this, c);
     auto construction = BuildInplaceConstruction(Wide::Memory::MakeUnique<ExpressionReference>(temp.get()) , std::move(exprs), c);
-    return BuildChain(std::move(construction), std::move(temp));
+    return BuildChain(std::move(construction), Wide::Memory::MakeUnique<RvalueCast>(std::move(temp)));
 }
 
 std::unique_ptr<Expression> Type::BuildLvalueConstruction(std::vector<std::unique_ptr<Expression>> exprs, Context c) {
     auto temp = Wide::Memory::MakeUnique<ImplicitTemporaryExpr>(this, c);
     auto construction = BuildInplaceConstruction(Wide::Memory::MakeUnique<ExpressionReference>(temp.get()), std::move(exprs), c);
-    return BuildChain(std::move(construction), Wide::Memory::MakeUnique<LvalueCast>(std::move(temp)));
+    return BuildChain(std::move(construction), std::move(temp));
 }
 
 std::unique_ptr<Expression> Type::BuildUnaryExpression(std::unique_ptr<Expression> self, Lexer::TokenType type, Context c) {
@@ -218,8 +205,10 @@ std::unique_ptr<Expression> Type::BuildUnaryExpression(std::unique_ptr<Expressio
     auto opset = AccessMember(self->GetType(), type, GetAccessSpecifier(c.from, this));
     auto callable = opset->Resolve({ self->GetType() }, c.from);
     if (!callable) {
-        if (auto bool_val = BuildBooleanConversion(std::move(self), c))
-            return analyzer.GetBooleanType()->BuildUnaryExpression(std::move(bool_val), Lexer::TokenType::Negate, c);
+        if (type == Lexer::TokenType::Negate) {
+            if (BuildBooleanConversion(Wide::Memory::MakeUnique<ExpressionReference>(self.get()), c))
+                return analyzer.GetBooleanType()->BuildUnaryExpression(BuildBooleanConversion(std::move(self), c), Lexer::TokenType::Negate, c);
+        }
         opset->IssueResolutionError({ self->GetType() });
     }
     return callable->Call(Expressions(std::move(self)), c);

@@ -1,5 +1,6 @@
 
 #include <Wide/Lexer/Token.h>
+#include <Wide/Semantic/Type.h>
 #include <Wide/Util/Ranges/Optional.h>
 #include <Wide/Semantic/SemanticError.h>
 #include <Wide/Semantic/Hashers.h>
@@ -22,48 +23,6 @@ namespace Wide {
     }
     namespace Semantic {
         struct Context;
-        struct Node {
-            std::unordered_set<Node*> listeners;
-            std::unordered_set<Node*> listening_to;
-            void AddChangedListener(Node* n) { listeners.insert(n); }
-            void RemoveChangedListener(Node* n) { listeners.erase(n); }
-        protected:
-            virtual void OnNodeChanged(Node* n) {}
-            void ListenToNode(Node* n) {
-                n->AddChangedListener(this);
-                listening_to.insert(n);
-            }
-            void StopListeningToNode(Node* n) {
-                n->RemoveChangedListener(this);
-                listening_to.erase(n);
-            }
-            void OnChange() {
-                for (auto node : listeners)
-                    node->OnNodeChanged(this);
-            }
-        public:
-            virtual ~Node() {
-                for (auto node : listening_to)
-                    node->listeners.erase(this);
-                for (auto node : listeners)
-                    node->listening_to.erase(this);
-            }
-        };
-        struct Statement : public Node {
-            virtual void GenerateCode(Codegen::Generator& g, llvm::IRBuilder<>& bb) = 0;
-            virtual void DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) = 0;
-        };
-        struct Expression : public Statement {
-            virtual Type* GetType() = 0; // If the type is unknown then nullptr
-            llvm::Value* GetValue(Codegen::Generator& g, llvm::IRBuilder<>& bb);
-            virtual Expression* GetImplementation() { return this; }
-        private:
-            llvm::Value* val = nullptr;
-            void GenerateCode(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
-                GetValue(g, bb);
-            }
-            virtual llvm::Value* ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) = 0;
-        };
         struct ImplicitLoadExpr : public Expression {
             ImplicitLoadExpr(std::unique_ptr<Expression> expr);
             std::unique_ptr<Expression> src;
@@ -82,9 +41,9 @@ namespace Wide {
 
         struct ImplicitTemporaryExpr : public Expression {
             ImplicitTemporaryExpr(Type* what, Context c);
-            std::unique_ptr<Expression> destructor;
             Type* of;
             llvm::Value* alloc;
+            Context c;
             Type* GetType() override final;
             llvm::Value* ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final;
             void DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final;

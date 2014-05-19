@@ -22,8 +22,7 @@ namespace Wide {
             std::unique_ptr<OverloadResolvable> EQ;
             std::unique_ptr<OverloadResolvable> Increment;
         public:
-            IntegralType(unsigned bit, bool sign, Analyzer& a)
-                : bits(bit), is_signed(sign), PrimitiveType(a) {}
+            IntegralType(unsigned bit, bool sign, Analyzer& a);
             
             Wide::Util::optional<clang::QualType> GetClangType(ClangTU& TU) override final;
             llvm::Type* GetLLVMType(Codegen::Generator& g) override final;

@@ -7,6 +7,7 @@
 #include <Wide/Semantic/OverloadSet.h>
 #include <Wide/Codegen/Generator.h>
 #include <Wide/Semantic/StringType.h>
+#include <Wide/Semantic/Expression.h>
 #include <Wide/Semantic/PointerType.h>
 #include <unordered_map>
 

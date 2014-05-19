@@ -5,6 +5,7 @@
 #include <Wide/Semantic/IntegralType.h>
 #include <Wide/Semantic/ClangNamespace.h>
 #include <Wide/Codegen/Generator.h>
+#include <Wide/Semantic/Expression.h>
 #include <Wide/Semantic/SemanticError.h>
 
 #pragma warning(push, 0)

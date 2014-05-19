@@ -3,6 +3,7 @@
 #include <Wide/Lexer/Token.h>
 #include <Wide/Semantic/ClangTU.h>
 #include <Wide/Semantic/Reference.h>
+#include <Wide/Semantic/Expression.h>
 #include <Wide/Codegen/Generator.h>
 
 #pragma warning(push, 0)
@@ -15,6 +16,10 @@
 using namespace Wide;
 using namespace Semantic;
 
+IntegralType::IntegralType(unsigned bit, bool sign, Analyzer& a)
+: bits(bit), is_signed(sign), PrimitiveType(a) {
+    assert(bits == 8 || bits == 16 || bits == 32 || bits == 64);
+}
 Wide::Util::optional<clang::QualType> IntegralType::GetClangType(ClangTU& TU) {
     switch(bits) {
     case 8:
@@ -108,6 +113,11 @@ OverloadSet* IntegralType::CreateADLOverloadSet(Lexer::TokenType name, Type* lhs
             return CreatePrimAssOp(std::move(args[0]), std::move(args[1]), func);
         }, { analyzer.GetLvalueType(this), this });
     };
+    auto CreateOp = [this](std::function<llvm::Value*(llvm::Value*, llvm::Value*, Codegen::Generator&, llvm::IRBuilder<>& bb)> func) {
+        return MakeResolvable([this, func](std::vector<std::unique_ptr<Expression>> args, Context c) {
+            return CreatePrimOp(std::move(args[0]), std::move(args[1]), func);
+        }, { this, this });
+    };
     switch (name) {
     case Lexer::TokenType::RightShiftAssign:
         RightShiftAssign = CreateAssOp([this](llvm::Value* lhs, llvm::Value* rhs, Codegen::Generator& g, llvm::IRBuilder<>& bb) {
@@ -165,25 +175,29 @@ OverloadSet* IntegralType::CreateADLOverloadSet(Lexer::TokenType name, Type* lhs
             return bb.CreateUDiv(lhs, rhs);
         });
         return analyzer.GetOverloadSet(DivAssign.get());
-    }
-    auto CreateOp = [this](std::function<llvm::Value*(llvm::Value*, llvm::Value*, Codegen::Generator&, llvm::IRBuilder<>& bb)> func) {
-        return MakeResolvable([this, func](std::vector<std::unique_ptr<Expression>> args, Context c) {
-            return CreatePrimOp(std::move(args[0]), std::move(args[1]), func);
-        }, { this, this });
-    };
-    switch(name) {
     case Lexer::TokenType::LT:
-        LT = CreateOp([this](llvm::Value* lhs, llvm::Value* rhs, Codegen::Generator& g, llvm::IRBuilder<>& bb) {
-            if (is_signed)
-                return bb.CreateICmpSLT(lhs, rhs);
-            return bb.CreateICmpULT(lhs, rhs);
-        });
+        LT = MakeResolvable([this](std::vector<std::unique_ptr<Expression>> args, Context c) {
+            return CreatePrimOp(std::move(args[0]), std::move(args[1]), c.from->analyzer.GetBooleanType(), [this](llvm::Value* lhs, llvm::Value* rhs, Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+                llvm::Value* result = is_signed ? bb.CreateICmpSLT(lhs, rhs) : bb.CreateICmpULT(lhs, rhs);
+                return bb.CreateZExt(result, llvm::Type::getInt8Ty(g.module->getContext()));
+            });
+        }, { this, this });
         return analyzer.GetOverloadSet(LT.get());
     case Lexer::TokenType::EqCmp:
-        EQ = CreateOp([](llvm::Value* lhs, llvm::Value* rhs, Codegen::Generator& g, llvm::IRBuilder<>& bb) {
-            return bb.CreateICmpEQ(lhs, rhs);
-        });
+        EQ = MakeResolvable([](std::vector<std::unique_ptr<Expression>> args, Context c) {
+            return CreatePrimOp(std::move(args[0]), std::move(args[1]), c.from->analyzer.GetBooleanType(), [](llvm::Value* lhs, llvm::Value* rhs, Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+                return bb.CreateZExt(bb.CreateICmpEQ(lhs, rhs), llvm::Type::getInt8Ty(g.module->getContext()));
+            });
+        }, { this, this });
         return analyzer.GetOverloadSet(EQ.get());
+    case Lexer::TokenType::Increment:
+        Increment = MakeResolvable([this](std::vector<std::unique_ptr<Expression>> args, Context c) {
+            return CreatePrimUnOp(std::move(args[0]), analyzer.GetLvalueType(this), [](llvm::Value* val, Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+                bb.CreateStore(bb.CreateAdd(bb.CreateLoad(val), llvm::ConstantInt::get(val->getType(), llvm::APInt(64, 1, false))), val);
+                return val;
+            });
+        }, { analyzer.GetLvalueType(this) });
+        return analyzer.GetOverloadSet(Increment.get());
     }
     return PrimitiveType::CreateADLOverloadSet(name, lhs, rhs, access);
 }

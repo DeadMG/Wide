@@ -4,7 +4,6 @@
 #include <Wide/Util/Ranges/Optional.h>
 #include <Wide/Semantic/SemanticError.h>
 #include <Wide/Semantic/Hashers.h>
-#include <Wide/Semantic/Expression.h>
 #include <vector>
 #include <stdexcept>
 #include <unordered_map>
@@ -56,6 +55,48 @@ namespace Wide {
         class Error;
         struct Type;
 
+        struct Node {
+            std::unordered_set<Node*> listeners;
+            std::unordered_set<Node*> listening_to;
+            void AddChangedListener(Node* n) { listeners.insert(n); }
+            void RemoveChangedListener(Node* n) { listeners.erase(n); }
+        protected:
+            virtual void OnNodeChanged(Node* n) {}
+            void ListenToNode(Node* n) {
+                n->AddChangedListener(this);
+                listening_to.insert(n);
+            }
+            void StopListeningToNode(Node* n) {
+                n->RemoveChangedListener(this);
+                listening_to.erase(n);
+            }
+            void OnChange() {
+                for (auto node : listeners)
+                    node->OnNodeChanged(this);
+            }
+        public:
+            virtual ~Node() {
+                for (auto node : listening_to)
+                    node->listeners.erase(this);
+                for (auto node : listeners)
+                    node->listening_to.erase(this);
+            }
+        };
+        struct Statement : public Node {
+            virtual void GenerateCode(Codegen::Generator& g, llvm::IRBuilder<>& bb) = 0;
+            virtual void DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) = 0;
+        };
+        struct Expression : public Statement {
+            virtual Type* GetType() = 0; // If the type is unknown then nullptr
+            llvm::Value* GetValue(Codegen::Generator& g, llvm::IRBuilder<>& bb);
+            virtual Expression* GetImplementation() { return this; }
+        private:
+            llvm::Value* val = nullptr;
+            void GenerateCode(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
+                GetValue(g, bb);
+            }
+            virtual llvm::Value* ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) = 0;
+        };
 
         struct Context {
             Context(Type* f, Lexer::Range r) : from(f), where(r) {}
@@ -101,7 +142,10 @@ namespace Wide {
             virtual std::unique_ptr<Expression> BuildValueConstruction(std::vector<std::unique_ptr<Expression>> args, Context c);
 
             virtual std::unique_ptr<Expression> BuildBooleanConversion(std::unique_ptr<Expression>, Context);
-            virtual std::unique_ptr<Expression> BuildDestructorCall(std::unique_ptr<Expression> self, Context c);
+            virtual std::unique_ptr<Expression> BuildDestructorCall(std::unique_ptr<Expression> self, Context c);;
+
+            virtual std::unique_ptr<Expression> BuildRvalueConstruction(std::vector<std::unique_ptr<Expression>> exprs, Context c);
+            virtual std::unique_ptr<Expression> BuildLvalueConstruction(std::vector<std::unique_ptr<Expression>> exprs, Context c);
 
             virtual ~Type() {}
 
@@ -110,8 +154,6 @@ namespace Wide {
             OverloadSet* AccessMember(Type* t, Lexer::TokenType type, Lexer::Access access);
 
             std::unique_ptr<Expression> BuildInplaceConstruction(std::unique_ptr<Expression> self, std::vector<std::unique_ptr<Expression>> exprs, Context c);
-            std::unique_ptr<Expression> BuildRvalueConstruction(std::vector<std::unique_ptr<Expression>> exprs, Context c);
-            std::unique_ptr<Expression> BuildLvalueConstruction(std::vector<std::unique_ptr<Expression>> exprs, Context c);
             std::unique_ptr<Expression> BuildUnaryExpression(std::unique_ptr<Expression> self, Lexer::TokenType type, Context c);
             std::unique_ptr<Expression> BuildBinaryExpression(std::unique_ptr<Expression> lhs, std::unique_ptr<Expression> rhs, Lexer::TokenType type, Context c);
         };

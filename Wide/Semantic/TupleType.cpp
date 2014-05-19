@@ -2,6 +2,7 @@
 #include <Wide/Semantic/Analyzer.h>
 #include <Wide/Semantic/OverloadSet.h>
 #include <Wide/Semantic/Reference.h>
+#include <Wide/Semantic/Expression.h>
 #include <Wide/Codegen/Generator.h>
 
 using namespace Wide;

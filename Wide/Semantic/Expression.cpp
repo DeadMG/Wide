@@ -2,6 +2,7 @@
 #include <Wide/Semantic/Reference.h>
 #include <Wide/Semantic/PointerType.h>
 #include <Wide/Semantic/IntegralType.h>
+#include <Wide/Semantic/Expression.h>
 #include <Wide/Util/Memory/MakeUnique.h>
 #include <Wide/Semantic/Analyzer.h>
 
@@ -41,9 +42,8 @@ void ImplicitStoreExpr::DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& 
 }
 
 ImplicitTemporaryExpr::ImplicitTemporaryExpr(Type* what, Context c)
-: of(what) 
+: of(what), c(c)
 {
-    destructor = of->BuildDestructorCall(Wide::Memory::MakeUnique<ExpressionReference>(this), c);
 }
 Type* ImplicitTemporaryExpr::GetType() {
     return of->analyzer.GetLvalueType(of);
@@ -55,7 +55,7 @@ llvm::Value* ImplicitTemporaryExpr::ComputeValue(Codegen::Generator& g, llvm::IR
     return alloc;
 }
 void ImplicitTemporaryExpr::DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) {
-    destructor->GetValue(g, bb);
+    of->BuildDestructorCall(Wide::Memory::MakeUnique<ExpressionReference>(this), c)->GetValue(g, bb);
 }
 
 LvalueCast::LvalueCast(std::unique_ptr<Expression> expr)
@@ -135,8 +135,8 @@ Type* Integer::GetType() {
     auto width = value.getBitWidth();
     if (width < 8)
         width = 8;
-    width = std::pow(std::ceil(std::log2(width)), 2);
-    return a.GetIntegralType(width, value.isNegative());
+    width = std::pow(2, std::ceil(std::log2(width)));
+    return a.GetIntegralType(width, true);
 }
 llvm::Value* Integer::ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) {
     return llvm::ConstantInt::get(GetType()->GetLLVMType(g), value);
@@ -210,4 +210,18 @@ std::unique_ptr<Expression> Semantic::BuildChain(std::unique_ptr<Expression> lhs
     return CreatePrimOp(std::move(lhs), std::move(rhs), rhs->GetType(), [](llvm::Value* lhs, llvm::Value* rhs, Codegen::Generator& g, llvm::IRBuilder<>& b) {
         return rhs;
     });
+}
+llvm::Value* Expression::GetValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+    if (!val) val = ComputeValue(g, bb);
+    auto selfty = GetType()->GetLLVMType(g);
+    if (GetType()->IsComplexType(g)) {
+        auto ptrty = llvm::dyn_cast<llvm::PointerType>(val->getType());
+        assert(ptrty);
+        assert(ptrty->getElementType() == selfty);
+    }
+    else {
+        // Extra variable because VS debugger typically won't load Type or Expression functions.
+        assert(val->getType() == selfty);
+    }
+    return val;
 }

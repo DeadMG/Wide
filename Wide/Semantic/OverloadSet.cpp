@@ -14,6 +14,7 @@
 #include <Wide/Semantic/Reference.h>
 #include <Wide/Semantic/IntegralType.h>
 #include <Wide/Util/DebugUtilities.h>
+#include <Wide/Semantic/Expression.h>
 #include <array>
 #include <sstream>
 
