@@ -77,8 +77,8 @@ Analyzer::Analyzer(const Options::Clang& opts, const AST::Module* GlobalModule)
         Callable* GetCallableForResolution(std::vector<Type*>, Analyzer& a) override final { return this; }
         std::unique_ptr<Expression> CallFunction(std::vector<std::unique_ptr<Expression>> args, Context c) override final {
             struct PointerCast : Expression {
-                PointerCast(Type* t, std::unique_ptr<Expression> arg, std::unique_ptr<Expression> type)
-                : to(t), arg(std::move(arg)), type(std::move(type)) {}
+                PointerCast(Type* t, std::unique_ptr<Expression> type, std::unique_ptr<Expression> arg)
+                : to(t), arg(BuildValue(std::move(arg))), type(std::move(type)) {}
                 Type* to;
                 std::unique_ptr<Expression> arg;
                 std::unique_ptr<Expression> type;
@@ -86,7 +86,7 @@ Analyzer::Analyzer(const Options::Clang& opts, const AST::Module* GlobalModule)
                 Type* GetType() override final { return to; }
                 llvm::Value* ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
                     type->GetValue(g, bb);
-                    auto val = arg->GetType()->IsReference() ? bb.CreateLoad(arg->GetValue(g, bb)) : arg->GetValue(g, bb);
+                    auto val = arg->GetValue(g, bb);
                     return bb.CreatePointerCast(val, to->GetLLVMType(g));
                 }
                 void DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {

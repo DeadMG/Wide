@@ -565,7 +565,7 @@ std::unique_ptr<Statement> Function::AnalyzeStatement(const AST::Statement* s) {
         Statement* false_br = nullptr;
         if (if_stmt->false_statement) {
             LocalScope falsescope(this);
-            falsescope->active.push_back(AnalyzeStatement(if_stmt->true_statement));
+            falsescope->active.push_back(AnalyzeStatement(if_stmt->false_statement));
             false_br = falsescope->active.back().get();
         }
         return Wide::Memory::MakeUnique<IfStatement>(condexpr, true_br, false_br, if_stmt->location, this);
