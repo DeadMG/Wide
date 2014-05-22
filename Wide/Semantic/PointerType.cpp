@@ -77,7 +77,7 @@ OverloadSet* PointerType::CreateConstructorOverloadSet(Lexer::Access access) {
 
 std::unique_ptr<Expression> PointerType::BuildBooleanConversion(std::unique_ptr<Expression> c, Context) {
     return CreatePrimUnOp(BuildValue(std::move(c)), analyzer.GetBooleanType(), [](llvm::Value* v, Codegen::Generator& g, llvm::IRBuilder<>& b) {
-        return b.CreateIsNotNull(v);
+        return b.CreateZExt(b.CreateIsNotNull(v), llvm::Type::getInt8Ty(g.module->getContext()));
     });
 }
 

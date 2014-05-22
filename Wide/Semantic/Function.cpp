@@ -782,8 +782,8 @@ void Function::EmitCode(Codegen::Generator& g) {
 
     if (!is_terminated(irbuilder.GetInsertBlock())) {
         if (ReturnType == analyzer.GetVoidType()) {
-            irbuilder.CreateRetVoid();
             current_scope->DestroyAllLocals()(g, irbuilder);
+            irbuilder.CreateRetVoid();
         }
         else
             irbuilder.CreateUnreachable();
