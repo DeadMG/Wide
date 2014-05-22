@@ -281,9 +281,10 @@ OverloadSet* AggregateType::CreateNondefaultConstructorOverloadSet() {
                 auto rhs = PrimitiveAccessMember(Wide::Memory::MakeUnique<ExpressionReference>(args[1].get()), i);
                 auto set = type->GetConstructorOverloadSet(GetAccessSpecifier(this, type));
                 std::vector<Type*> types;
-                types.push_back(analyzer.GetRvalueType(type));
+                types.push_back(analyzer.GetLvalueType(type));
                 types.push_back(modify(type));
                 auto callable = set->Resolve(types, this);
+                assert(callable);// Should not be generated if this fails!
                 exprs.push_back(callable->Call(Expressions( std::move(lhs), std::move(rhs) ), c));                
             }
             struct AggregateConstructor : Expression {
@@ -361,8 +362,9 @@ OverloadSet* AggregateType::CreateConstructorOverloadSet(Lexer::Access access) {
                 auto lhs = PrimitiveAccessMember(Wide::Memory::MakeUnique<ExpressionReference>(args[0].get()), i);
                 auto set = type->GetConstructorOverloadSet(GetAccessSpecifier(this, type));
                 std::vector<Type*> types;
-                types.push_back(analyzer.GetRvalueType(type));
+                types.push_back(analyzer.GetLvalueType(type));
                 auto callable = set->Resolve(types, this);
+                assert(callable);// Should not be generated if this fails!
                 exprs.push_back(callable->Call(Expressions( std::move(lhs) ), c));
             }
             struct AggregateConstructor : Expression {

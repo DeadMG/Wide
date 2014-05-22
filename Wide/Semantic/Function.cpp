@@ -63,6 +63,7 @@ struct Function::LocalVariable : public Expression {
                     variable = Wide::Memory::MakeUnique<ImplicitTemporaryExpr>(newty, Context{ self, where });
                     construction = newty->BuildInplaceConstruction(Wide::Memory::MakeUnique<ExpressionReference>(variable.get()), Expressions(std::move(tuple_access)), { self, where });
                     if (newty != var_type) {
+                        var_type = newty;
                         OnChange();
                     }
                     return;
