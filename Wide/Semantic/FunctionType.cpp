@@ -30,7 +30,7 @@ llvm::PointerType* FunctionType::GetLLVMType(Codegen::Generator& g) {
             args.push_back(x->GetLLVMType(g));
         }
     }
-    return llvm::FunctionType::get(ret, args, false)->getPointerTo();
+    return llvm::FunctionType::get(ret, args, variadic)->getPointerTo();
 }
 
 Wide::Util::optional<clang::QualType> FunctionType::GetClangType(ClangTU& from) {
@@ -42,7 +42,9 @@ Wide::Util::optional<clang::QualType> FunctionType::GetClangType(ClangTU& from) 
     }
     auto retty = ReturnType->GetClangType(from);
     if (!retty) return Wide::Util::none;
-    return from.GetASTContext().getFunctionType(*retty, types, clang::FunctionProtoType::ExtProtoInfo());
+    clang::FunctionProtoType::ExtProtoInfo protoinfo;
+    protoinfo.Variadic = variadic;
+    return from.GetASTContext().getFunctionType(*retty, types, protoinfo);
 }
 
 std::unique_ptr<Expression> FunctionType::BuildCall(std::unique_ptr<Expression> val, std::vector<std::unique_ptr<Expression>> args, Context c) {

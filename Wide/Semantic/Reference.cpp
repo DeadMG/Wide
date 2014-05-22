@@ -69,6 +69,7 @@ struct rvalueconvertible : OverloadResolvable, Callable {
         if (types.size() != 2) return Util::none;
         if (types[0] != a.GetLvalueType(self)) return Util::none;
         if (IsLvalueType(types[1])) return Util::none;
+        if (types[1] == self) return types;
         //if (types[1]->Decay() == self->Decay()) return Util::none;
         // If it is or pointer-is then yay, else nay.
         auto ptrt = a.GetPointerType(types[1]->Decay());
@@ -77,6 +78,10 @@ struct rvalueconvertible : OverloadResolvable, Callable {
         return types;
     }
     std::unique_ptr<Expression> CallFunction(std::vector<std::unique_ptr<Expression>> args, Context c) override final {
+        if (args[1]->GetType() == self)
+            return Wide::Memory::MakeUnique<ImplicitStoreExpr>(std::move(args[0]), std::move(args[1]));
+        if (args[1]->GetType()->Decay() == self->Decay())
+            return Wide::Memory::MakeUnique<ImplicitStoreExpr>(std::move(args[0]) ,Wide::Memory::MakeUnique<RvalueCast>(std::move(args[1])));
         // If pointer-is then use that, else go with value-is.
         auto ptrt = self->analyzer.GetPointerType(args[1]->GetType()->Decay());
         auto ptrself = self->analyzer.GetPointerType(self->Decay());
@@ -94,14 +99,16 @@ struct PointerComparableResolvable : OverloadResolvable, Callable {
     Util::optional<std::vector<Type*>> MatchParameter(std::vector<Type*> types, Analyzer& a, Type* source) override final {
         if (types.size() != 2) return Util::none;
         if (types[0] != a.GetLvalueType(self)) return Util::none;
+        if (types[1] == self) return types;
         auto ptrt = a.GetPointerType(types[1]->Decay());
         auto ptrself = a.GetPointerType(self->Decay());
-        if (ptrt == ptrself) return Util::none;
         if (!ptrt->IsA(ptrt, ptrself, GetAccessSpecifier(source, ptrt))) return Util::none;
         return types;
     }
     std::vector<std::unique_ptr<Expression>> AdjustArguments(std::vector<std::unique_ptr<Expression>> args, Context c) override final { return args; }
     std::unique_ptr<Expression> CallFunction(std::vector<std::unique_ptr<Expression>> args, Context c) override final {
+        if (args[1]->GetType() == self)
+            return Wide::Memory::MakeUnique<ImplicitStoreExpr>(std::move(args[0]), std::move(args[1]));
         auto basety = dynamic_cast<BaseType*>(args[1]->GetType()->Decay());        
         return Wide::Memory::MakeUnique<ImplicitStoreExpr>(std::move(args[0]), basety->AccessBase(std::move(args[1]), self));
     }
@@ -109,28 +116,18 @@ struct PointerComparableResolvable : OverloadResolvable, Callable {
 };
 OverloadSet* RvalueType::CreateConstructorOverloadSet(Lexer::Access access) {
     if (access != Lexer::Access::Public) return GetConstructorOverloadSet(Lexer::Access::Public);
-
-    CopyMoveConstructor = MakeResolvable([](std::vector<std::unique_ptr<Expression>> args, Context c) {
-        return Wide::Memory::MakeUnique<ImplicitStoreExpr>(std::move(args[0]), std::move(args[1]));
-    }, { analyzer.GetLvalueType(this), this });
     RvalueConvertible = Wide::Memory::MakeUnique<rvalueconvertible>(this);
-
     std::unordered_set<OverloadResolvable*> set;
     set.insert(RvalueConvertible.get());
-    set.insert(CopyMoveConstructor.get());
     return analyzer.GetOverloadSet(set);
 }
 OverloadSet* LvalueType::CreateConstructorOverloadSet(Lexer::Access access) {
     if (access != Lexer::Access::Public) return GetConstructorOverloadSet(Lexer::Access::Public);
 
     DerivedConstructor = Wide::Memory::MakeUnique<PointerComparableResolvable>(this);
-    CopyMoveConstructor = MakeResolvable([](std::vector<std::unique_ptr<Expression>> args, Context c) {
-        return Wide::Memory::MakeUnique<ImplicitStoreExpr>(std::move(args[0]), std::move(args[1]));
-    }, { analyzer.GetLvalueType(this), this });
 
     std::unordered_set<OverloadResolvable*> set;
     set.insert(DerivedConstructor.get());
-    set.insert(CopyMoveConstructor.get());
     return analyzer.GetOverloadSet(set);
 }
 std::string LvalueType::explain() {

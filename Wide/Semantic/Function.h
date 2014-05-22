@@ -38,7 +38,6 @@ namespace Wide {
             llvm::Function* llvmfunc = nullptr;
             std::unique_ptr<Statement> AnalyzeStatement(const AST::Statement*);
             std::unordered_set<ReturnStatement*> returns;
-            std::vector<std::unique_ptr<Statement>> stmts;
             std::unique_ptr<Scope> root_scope;
             Scope* current_scope;
             Wide::Util::optional<Type*> ExplicitReturnType;

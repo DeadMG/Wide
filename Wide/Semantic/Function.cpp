@@ -697,7 +697,7 @@ void Function::ComputeBody() {
             auto members = member->GetMembers();
             for (auto&& x : members) {
                 if (x.vptr) {
-                    stmts.push_back(x.InClassInitializer(LookupLocal("this")));
+                    root_scope->active.push_back(x.InClassInitializer(LookupLocal("this")));
                     continue;
                 }
                 auto has_initializer = [&](std::string name) -> const AST::Variable* {
@@ -719,17 +719,17 @@ void Function::ComputeBody() {
                     // if the type of this member is a reference.
                     
                     if (init->initializer)
-                        stmts.push_back(x.t->BuildInplaceConstruction(std::move(member), Expressions(AnalyzeExpression(this, init->initializer, analyzer)), { this, init->location }));
+                        root_scope->active.push_back(x.t->BuildInplaceConstruction(std::move(member), Expressions(AnalyzeExpression(this, init->initializer, analyzer)), { this, init->location }));
                     else
-                        stmts.push_back(x.t->BuildInplaceConstruction(std::move(member), Expressions(), { this, init->location }));
+                        root_scope->active.push_back(x.t->BuildInplaceConstruction(std::move(member), Expressions(), { this, init->location }));
                     continue;
                 }
                 // Don't care about if x.t is ref because refs can't be default-constructed anyway.
                 if (x.InClassInitializer) {
-                    stmts.push_back(x.t->BuildInplaceConstruction(std::move(member), Expressions(x.InClassInitializer(LookupLocal("this"))), { this, x.location }));
+                    root_scope->active.push_back(x.t->BuildInplaceConstruction(std::move(member), Expressions(x.InClassInitializer(LookupLocal("this"))), { this, x.location }));
                     continue;
                 }
-                stmts.push_back(x.t->BuildInplaceConstruction(std::move(member), Expressions(), { this, fun->where }));
+                root_scope->active.push_back(x.t->BuildInplaceConstruction(std::move(member), Expressions(), { this, fun->where }));
             }
             for (auto&& x : con->initializers)
                 if (std::find_if(members.begin(), members.end(), [&](decltype(*members.begin())& ref) { return ref.name == x->name.front().name; }) == members.end())
@@ -737,7 +737,7 @@ void Function::ComputeBody() {
         }
         // Now the body.
         for (std::size_t i = 0; i < fun->statements.size(); ++i) {
-            stmts.push_back(AnalyzeStatement(fun->statements[i]));
+            root_scope->active.push_back(AnalyzeStatement(fun->statements[i]));
         }        
 
         // Compute the return type.
@@ -771,11 +771,13 @@ void Function::ComputeReturnType() {
 }
 
 void Function::EmitCode(Codegen::Generator& g) {
+    if (llvmfunc)
+        return;
     llvmfunc = llvm::Function::Create(llvm::dyn_cast<llvm::FunctionType>(GetSignature()->GetLLVMType(g)->getElementType()), llvm::GlobalValue::LinkageTypes::InternalLinkage, name, g.module.get());
 
     llvm::BasicBlock* bb = llvm::BasicBlock::Create(g.module->getContext(), "entry", llvmfunc);
     llvm::IRBuilder<> irbuilder(bb);
-    for (auto&& stmt : stmts)
+    for (auto&& stmt : root_scope->active)
         stmt->GenerateCode(g, irbuilder);
 
     if (!is_terminated(irbuilder.GetInsertBlock())) {
@@ -955,7 +957,7 @@ FunctionType* Function::GetSignature() {
         ComputeBody();
     if (s == State::AnalyzeInProgress)
         assert(false && "Attempted to call GetSignature whilst a function was still being analyzed.");
-    return analyzer.GetFunctionType(ReturnType, Args);
+    return analyzer.GetFunctionType(ReturnType, Args, false);
 }
 
 Type* Function::GetConstantContext() {

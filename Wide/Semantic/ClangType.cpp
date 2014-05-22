@@ -13,6 +13,7 @@
 #include <Wide/Semantic/ConstructorType.h>
 #include <Wide/Semantic/PointerType.h>
 #include <Wide/Semantic/Expression.h>
+#include <Wide/Semantic/IntegralType.h>
 #include <Wide/Lexer/Token.h>
 #include <iostream>
 #include <array>
@@ -460,7 +461,7 @@ std::unique_ptr<Expression> ClangType::GetVirtualPointer(std::unique_ptr<Express
 }
 
 Type* ClangType::GetVirtualPointerType() {
-    return nullptr;
+    return analyzer.GetFunctionType(analyzer.GetIntegralType(8, true), {}, true);
 }
 std::vector<BaseType::VirtualFunction> ClangType::ComputeVTableLayout() {
     return std::vector<VirtualFunction>();

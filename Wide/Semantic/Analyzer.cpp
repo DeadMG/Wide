@@ -400,10 +400,12 @@ ClangNamespace* Analyzer::GetClangNamespace(ClangTU& tu, clang::DeclContext* con
     return ClangNamespaces[con].get();
 }
 
-FunctionType* Analyzer::GetFunctionType(Type* ret, const std::vector<Type*>& t) {
-    if (FunctionTypes[ret].find(t) == FunctionTypes[ret].end())
-        FunctionTypes[ret][t] = Wide::Memory::MakeUnique<FunctionType>(ret, t, *this);
-    return FunctionTypes[ret][t].get();
+FunctionType* Analyzer::GetFunctionType(Type* ret, const std::vector<Type*>& t, bool variadic) {
+    if (FunctionTypes.find(ret) == FunctionTypes.end()
+     || FunctionTypes[ret].find(t) == FunctionTypes[ret].end()
+     || FunctionTypes[ret][t].find(variadic) == FunctionTypes[ret][t].end())
+        FunctionTypes[ret][t][variadic] = Wide::Memory::MakeUnique<FunctionType>(ret, t, *this, variadic);
+    return FunctionTypes[ret][t][variadic].get();
 }
 
 Function* Analyzer::GetWideFunction(const AST::FunctionBase* p, Type* context, const std::vector<Type*>& types, std::string name) {
@@ -970,6 +972,8 @@ std::unique_ptr<Expression> Semantic::AnalyzeExpression(Type* lookup, const AST:
                     if (!dynamic_cast<OverloadSet*>(result->GetType()))
                         return result;
                     auto lookup2 = LookupIdentifier(mod->GetContext());
+                    if (!lookup2)
+                        return result;
                     if (!dynamic_cast<OverloadSet*>(lookup2->GetType()))
                         return result;
                     return a.GetOverloadSet(dynamic_cast<OverloadSet*>(result->GetType()), dynamic_cast<OverloadSet*>(lookup2->GetType()))->BuildValueConstruction(Expressions(), Context{ context, location });
@@ -1063,6 +1067,15 @@ std::unique_ptr<Expression> Semantic::AnalyzeExpression(Type* lookup, const AST:
             return BuildChain(std::move(copy), BuildChain(std::move(result), Wide::Memory::MakeUnique<ExpressionReference>(copy.get())));
         }
         return ty->Decay()->BuildUnaryExpression(std::move(expr), Lexer::TokenType::Increment, { lookup, inc->location });
+    }
+    if (auto tup = dynamic_cast<const AST::Tuple*>(e)) {
+        std::vector<std::unique_ptr<Expression>> exprs;
+        for (auto elem : tup->expressions)
+            exprs.push_back(AnalyzeExpression(lookup, elem, a));
+        std::vector<Type*> types;
+        for (auto&& expr : exprs)
+            types.push_back(expr->GetType()->Decay());
+        return a.GetTupleType(types)->BuildValueConstruction(std::move(exprs), { lookup, tup->location });
     }
     assert(false);
 }

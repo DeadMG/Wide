@@ -596,7 +596,7 @@ std::unique_ptr<Expression> UserDefinedType::GetVirtualPointer(std::unique_ptr<E
 }
 
 Type* UserDefinedType::GetVirtualPointerType() {
-    return analyzer.GetFunctionType(analyzer.GetIntegralType(32, false), {});
+    return analyzer.GetFunctionType(analyzer.GetIntegralType(32, false), {}, false);
 }
 
 std::vector<std::pair<BaseType*, unsigned>> UserDefinedType::GetBases() {
@@ -612,78 +612,4 @@ unsigned UserDefinedType::GetVirtualFunctionIndex(const AST::Function* func) {
     if (VTableIndices.find(func) == VTableIndices.end())
         throw std::runtime_error("fuck");
     return VTableIndices.at(func);
-}
-std::unique_ptr<Expression> UserDefinedType::BuildValueConstruction(std::vector<std::unique_ptr<Expression>> args, Context c) {
-    struct UserDefinedValue : Expression {
-        UserDefinedValue(UserDefinedType* self, std::vector<std::unique_ptr<Expression>> args, Context c)
-        : self(self) {
-            temporary = Wide::Memory::MakeUnique<ImplicitTemporaryExpr>(self, c);
-            InplaceConstruction = self->BuildInplaceConstruction(Wide::Memory::MakeUnique<ExpressionReference>(temporary.get()), std::move(args), c);
-        }
-        std::unique_ptr<ImplicitTemporaryExpr> temporary;
-        std::unique_ptr<Expression> InplaceConstruction;
-        UserDefinedType* self;
-        Type* GetType() override final {
-            return self;
-        }
-        llvm::Value* ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) {
-            InplaceConstruction->GetValue(g, bb);
-            if (self->IsComplexType(g))
-                return temporary->GetValue(g, bb);
-            return bb.CreateLoad(temporary->GetValue(g, bb));
-        }
-        void DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) {
-            temporary->DestroyLocals(g, bb);
-            InplaceConstruction->DestroyLocals(g, bb);
-        }
-    };
-    return Wide::Memory::MakeUnique<UserDefinedValue>(this, std::move(args), c);
-}
-std::unique_ptr<Expression> UserDefinedType::BuildRvalueConstruction(std::vector<std::unique_ptr<Expression>> args, Context c) {
-    struct UserDefinedRvalue : Expression {
-        UserDefinedRvalue(UserDefinedType* self, std::vector<std::unique_ptr<Expression>> args, Context c)
-        : self(self) {
-            temporary = Wide::Memory::MakeUnique<ImplicitTemporaryExpr>(self, c);
-            InplaceConstruction = self->BuildInplaceConstruction(Wide::Memory::MakeUnique<ExpressionReference>(temporary.get()), std::move(args), c);
-        }
-        std::unique_ptr<ImplicitTemporaryExpr> temporary;
-        std::unique_ptr<Expression> InplaceConstruction;
-        UserDefinedType* self;
-        Type* GetType() override final {
-            return self->analyzer.GetRvalueType(self);
-        }
-        llvm::Value* ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) {
-            InplaceConstruction->GetValue(g, bb);
-            return temporary->GetValue(g, bb);
-        }
-        void DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) {
-            temporary->DestroyLocals(g, bb);
-            InplaceConstruction->DestroyLocals(g, bb);
-        }
-    };
-    return Wide::Memory::MakeUnique<UserDefinedRvalue>(this, std::move(args), c);
-}
-std::unique_ptr<Expression> UserDefinedType::BuildLvalueConstruction(std::vector<std::unique_ptr<Expression>> args, Context c) {
-    struct UserDefinedLvalue: Expression{
-        UserDefinedLvalue(UserDefinedType* self, std::vector<std::unique_ptr<Expression>> args, Context c)
-        : self(self) {
-            temporary = Wide::Memory::MakeUnique<ImplicitTemporaryExpr>(self, c);
-            InplaceConstruction = self->BuildInplaceConstruction(Wide::Memory::MakeUnique<ExpressionReference>(temporary.get()), std::move(args), c);
-        }
-        std::unique_ptr<ImplicitTemporaryExpr> temporary;
-        std::unique_ptr<Expression> InplaceConstruction;
-        UserDefinedType* self;
-        Type* GetType() override final {
-            return self->analyzer.GetLvalueType(self);
-        }
-        llvm::Value* ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) {
-            InplaceConstruction->GetValue(g, bb);
-            return temporary->GetValue(g, bb);
-        }
-        void DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) {
-            temporary->DestroyLocals(g, bb);
-            InplaceConstruction->DestroyLocals(g, bb);
-        }
-    };
-    return Wide::Memory::MakeUnique<UserDefinedLvalue>(this, std::move(args), c);
 }

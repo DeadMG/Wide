@@ -116,7 +116,7 @@ struct cppcallable : public Callable {
         for (auto x : types)
             local.push_back(x.first);
         auto&& analyzer = source->analyzer;
-        auto fty = analyzer.GetFunctionType(analyzer.GetClangType(*from, fun->getResultType()), local);
+        auto fty = analyzer.GetFunctionType(analyzer.GetClangType(*from, fun->getResultType()), local, fun->isVariadic());
         return fty->BuildCall(Wide::Memory::MakeUnique<CPPSelf>(fun, from, fty, args.size() > 0 ? args[0].get() : nullptr), std::move(args), { source, c.where });
     }
     std::vector<std::unique_ptr<Expression>> AdjustArguments(std::vector<std::unique_ptr<Expression>> args, Context c) override final {
@@ -202,14 +202,10 @@ struct cppcallable : public Callable {
 
 Callable* OverloadSet::Resolve(std::vector<Type*> f_args, Type* source) {
     // Terrible hack but need to get this to work right now
-    auto adjusted_args = f_args;
-    for (auto& arg : adjusted_args)
-        if (!arg->IsReference())
-            arg = analyzer.GetRvalueType(arg);
 
     std::vector<std::pair<OverloadResolvable*, std::vector<Type*>>> call;
     for(auto funcobj : callables) {
-        auto matched_types = funcobj->MatchParameter(adjusted_args, analyzer, source);
+        auto matched_types = funcobj->MatchParameter(f_args, analyzer, source);
         if (matched_types) call.push_back(std::make_pair(funcobj, std::move(*matched_types)));
     }
     // returns true if lhs is more specialized than rhs

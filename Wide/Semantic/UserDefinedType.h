@@ -89,10 +89,6 @@ namespace Wide {
             bool IsCopyAssignable(Lexer::Access access) override final;
             bool IsMoveAssignable(Lexer::Access access) override final;
             bool IsComplexType(Codegen::Generator& g) override final;
-
-            std::unique_ptr<Expression> BuildValueConstruction(std::vector<std::unique_ptr<Expression>> args, Context c) override final;
-            std::unique_ptr<Expression> BuildRvalueConstruction(std::vector<std::unique_ptr<Expression>> exprs, Context c) override final;
-            std::unique_ptr<Expression> BuildLvalueConstruction(std::vector<std::unique_ptr<Expression>> exprs, Context c) override final;
             
             Wide::Util::optional<std::vector<Type*>> GetTypesForTuple() override final;
             std::unique_ptr<Expression> PrimitiveAccessMember(std::unique_ptr<Expression> self, unsigned num) override final;

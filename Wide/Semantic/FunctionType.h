@@ -12,9 +12,10 @@ namespace Wide {
         class FunctionType : public PrimitiveType {
             Type* ReturnType;
             std::vector<Type*> Args;
+            bool variadic;
         public:
-            FunctionType(Type* ret, std::vector<Type*> args, Analyzer& a)
-                : ReturnType(ret), Args(std::move(args)), PrimitiveType(a) {}
+            FunctionType(Type* ret, std::vector<Type*> args, Analyzer& a, bool variadic)
+                : ReturnType(ret), Args(std::move(args)), PrimitiveType(a), variadic(variadic) {}
         
             llvm::PointerType* GetLLVMType(Codegen::Generator& g) override final;
 

@@ -182,21 +182,80 @@ std::unique_ptr<Expression> Type::BuildInplaceConstruction(std::unique_ptr<Expre
 }
 
 std::unique_ptr<Expression> Type::BuildValueConstruction(std::vector<std::unique_ptr<Expression>> exprs, Context c) {
-    auto temp = Wide::Memory::MakeUnique<ImplicitTemporaryExpr>(this, c);
-    auto construction = BuildInplaceConstruction(Wide::Memory::MakeUnique<ExpressionReference>(temp.get()), std::move(exprs), c);
-    return BuildChain(std::move(construction), Wide::Memory::MakeUnique<ImplicitLoadExpr>(std::move(temp)));
+    struct ValueConstruction : Expression {
+        ValueConstruction(Type* self, std::vector<std::unique_ptr<Expression>> args, Context c)
+        : self(self) {
+            temporary = Wide::Memory::MakeUnique<ImplicitTemporaryExpr>(self, c);
+            InplaceConstruction = self->BuildInplaceConstruction(Wide::Memory::MakeUnique<ExpressionReference>(temporary.get()), std::move(args), c);
+        }
+        std::unique_ptr<ImplicitTemporaryExpr> temporary;
+        std::unique_ptr<Expression> InplaceConstruction;
+        Type* self;
+        Type* GetType() override final {
+            return self;
+        }
+        llvm::Value* ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+            InplaceConstruction->GetValue(g, bb);
+            if (self->IsComplexType(g))
+                return temporary->GetValue(g, bb);
+            return bb.CreateLoad(temporary->GetValue(g, bb));
+        }
+        void DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+            temporary->DestroyLocals(g, bb);
+            InplaceConstruction->DestroyLocals(g, bb);
+        }
+    };
+    return Wide::Memory::MakeUnique<ValueConstruction>(this, std::move(exprs), c);
 }
 
 std::unique_ptr<Expression> Type::BuildRvalueConstruction(std::vector<std::unique_ptr<Expression>> exprs, Context c) {
-    auto temp = Wide::Memory::MakeUnique<ImplicitTemporaryExpr>(this, c);
-    auto construction = BuildInplaceConstruction(Wide::Memory::MakeUnique<ExpressionReference>(temp.get()) , std::move(exprs), c);
-    return BuildChain(std::move(construction), Wide::Memory::MakeUnique<RvalueCast>(std::move(temp)));
+    struct RValueConstruction : Expression {
+        RValueConstruction(Type* self, std::vector<std::unique_ptr<Expression>> args, Context c)
+        : self(self) {
+            temporary = Wide::Memory::MakeUnique<ImplicitTemporaryExpr>(self, c);
+            InplaceConstruction = self->BuildInplaceConstruction(Wide::Memory::MakeUnique<ExpressionReference>(temporary.get()), std::move(args), c);
+        }
+        std::unique_ptr<ImplicitTemporaryExpr> temporary;
+        std::unique_ptr<Expression> InplaceConstruction;
+        Type* self;
+        Type* GetType() override final {
+            return self->analyzer.GetRvalueType(self);
+        }
+        llvm::Value* ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+            InplaceConstruction->GetValue(g, bb);
+            return temporary->GetValue(g, bb);
+        }
+        void DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+            temporary->DestroyLocals(g, bb);
+            InplaceConstruction->DestroyLocals(g, bb);
+        }
+    };
+    return Wide::Memory::MakeUnique<RValueConstruction>(this, std::move(exprs), c);
 }
 
 std::unique_ptr<Expression> Type::BuildLvalueConstruction(std::vector<std::unique_ptr<Expression>> exprs, Context c) {
-    auto temp = Wide::Memory::MakeUnique<ImplicitTemporaryExpr>(this, c);
-    auto construction = BuildInplaceConstruction(Wide::Memory::MakeUnique<ExpressionReference>(temp.get()), std::move(exprs), c);
-    return BuildChain(std::move(construction), std::move(temp));
+    struct LValueConstruction : Expression {
+        LValueConstruction(Type* self, std::vector<std::unique_ptr<Expression>> args, Context c)
+        : self(self) {
+            temporary = Wide::Memory::MakeUnique<ImplicitTemporaryExpr>(self, c);
+            InplaceConstruction = self->BuildInplaceConstruction(Wide::Memory::MakeUnique<ExpressionReference>(temporary.get()), std::move(args), c);
+        }
+        std::unique_ptr<ImplicitTemporaryExpr> temporary;
+        std::unique_ptr<Expression> InplaceConstruction;
+        Type* self;
+        Type* GetType() override final {
+            return self->analyzer.GetLvalueType(self);
+        }
+        llvm::Value* ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+            InplaceConstruction->GetValue(g, bb);
+            return temporary->GetValue(g, bb);
+        }
+        void DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+            temporary->DestroyLocals(g, bb);
+            InplaceConstruction->DestroyLocals(g, bb);
+        }
+    };
+    return Wide::Memory::MakeUnique<LValueConstruction>(this, std::move(exprs), c);
 }
 
 std::unique_ptr<Expression> Type::BuildUnaryExpression(std::unique_ptr<Expression> self, Lexer::TokenType type, Context c) {
@@ -331,10 +390,6 @@ OverloadSet* MetaType::CreateConstructorOverloadSet(Lexer::Access access) {
 }
 
 std::unique_ptr<Expression> Callable::Call(std::vector<std::unique_ptr<Expression>> args, Context c) {
-    for (auto&& arg : args) {
-        if (!arg->GetType()->IsReference())
-            arg = Wide::Memory::MakeUnique<RvalueCast>(std::move(arg));
-    }
     return CallFunction(AdjustArguments(std::move(args), c), c);
 }
 
