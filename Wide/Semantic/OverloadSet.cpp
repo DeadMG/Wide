@@ -110,7 +110,7 @@ struct cppcallable : public Callable {
                     llvmfunc = bb.CreateBitCast(llvmfunc, fty->GetLLVMType(g));
                 return llvmfunc;
             }
-            void DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {}
+            void DestroyExpressionLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {}
         };
         std::vector<Type*> local;
         for (auto x : types)
@@ -178,7 +178,7 @@ struct cppcallable : public Callable {
                 ImplicitStringDecay(std::unique_ptr<Expression> expr)
                 : StringExpr(std::move(expr)) {}
                 std::unique_ptr<Expression> StringExpr;
-                void DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
+                void DestroyExpressionLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
                     StringExpr->DestroyLocals(g, bb);
                 }
                 llvm::Value* ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {

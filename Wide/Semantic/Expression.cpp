@@ -18,7 +18,7 @@ Type* ImplicitLoadExpr::GetType() {
 llvm::Value* ImplicitLoadExpr::ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) {
     return bb.CreateLoad(src->GetValue(g, bb));
 }
-void ImplicitLoadExpr::DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+void ImplicitLoadExpr::DestroyExpressionLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) {
     return src->DestroyLocals(g, bb);
 }
 
@@ -36,7 +36,7 @@ llvm::Value* ImplicitStoreExpr::ComputeValue(Codegen::Generator& g, llvm::IRBuil
     bb.CreateStore(value, memory);
     return memory;
 }
-void ImplicitStoreExpr::DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+void ImplicitStoreExpr::DestroyExpressionLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) {
     val->DestroyLocals(g, bb);
     mem->DestroyLocals(g, bb);
 }
@@ -54,7 +54,7 @@ llvm::Value* ImplicitTemporaryExpr::ComputeValue(Codegen::Generator& g, llvm::IR
     alloc = local;
     return alloc;
 }
-void ImplicitTemporaryExpr::DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+void ImplicitTemporaryExpr::DestroyExpressionLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) {
     of->BuildDestructorCall(Wide::Memory::MakeUnique<ExpressionReference>(this), c)->GetValue(g, bb);
 }
 
@@ -67,7 +67,7 @@ Type* LvalueCast::GetType() {
 llvm::Value* LvalueCast::ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) {
     return expr->GetValue(g, bb);
 }
-void LvalueCast::DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+void LvalueCast::DestroyExpressionLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) {
     return expr->DestroyLocals(g, bb);
 }
 
@@ -89,7 +89,7 @@ llvm::Value* RvalueCast::ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& 
     bb.CreateStore(expr->GetValue(g, bb), tempalloc);
     return tempalloc;
 }
-void RvalueCast::DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+void RvalueCast::DestroyExpressionLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) {
     expr->DestroyLocals(g, bb);
 }
 
@@ -101,7 +101,7 @@ Type* ExpressionReference::GetType() {
 llvm::Value* ExpressionReference::ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) {
     return expr->GetValue(g, bb);
 }
-void ExpressionReference::DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) {}
+void ExpressionReference::DestroyExpressionLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) {}
 Expression* ExpressionReference::GetImplementation() {
     return expr->GetImplementation();
 }
@@ -115,7 +115,7 @@ Type* ImplicitAddressOf::GetType() {
 llvm::Value* ImplicitAddressOf::ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) {
     return expr->GetValue(g, bb);
 }
-void ImplicitAddressOf::DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+void ImplicitAddressOf::DestroyExpressionLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) {
     return expr->DestroyLocals(g, bb);
 }
 
@@ -127,7 +127,7 @@ Type* String::GetType() {
 llvm::Value* String::ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) {
     return bb.CreateGlobalStringPtr(str);
 }
-void String::DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) {}
+void String::DestroyExpressionLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) {}
 
 Integer::Integer(llvm::APInt val, Analyzer& an)
 : a(an), value(std::move(val)) {}
@@ -141,7 +141,7 @@ Type* Integer::GetType() {
 llvm::Value* Integer::ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) {
     return llvm::ConstantInt::get(GetType()->GetLLVMType(g), value);
 }
-void Integer::DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) {}
+void Integer::DestroyExpressionLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) {}
 
 Boolean::Boolean(bool b, Analyzer& a)
 : b(b), a(a) {}
@@ -151,7 +151,7 @@ Type* Boolean::GetType() {
 llvm::Value* Boolean::ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) {
     return bb.getInt8(b);
 }
-void Boolean::DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) {}
+void Boolean::DestroyExpressionLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) {}
 
 std::unique_ptr<Expression> Semantic::CreatePrimUnOp(std::unique_ptr<Expression> self, Type* ret, std::function<llvm::Value*(llvm::Value*, Codegen::Generator&, llvm::IRBuilder<>&)> func) {
     struct PrimUnOp : Expression {
@@ -168,7 +168,7 @@ std::unique_ptr<Expression> Semantic::CreatePrimUnOp(std::unique_ptr<Expression>
         llvm::Value* ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
             return action(src->GetValue(g, bb), g, bb);
         }
-        void DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
+        void DestroyExpressionLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
             src->DestroyLocals(g, bb);
         }
     };
@@ -188,7 +188,7 @@ std::unique_ptr<Expression> Semantic::CreatePrimOp(std::unique_ptr<Expression> l
         Type* ret;
         std::function<llvm::Value*(llvm::Value*, llvm::Value*, Codegen::Generator&, llvm::IRBuilder<>&)> action;
         Type* GetType() override final { return ret; }
-        void DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
+        void DestroyExpressionLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
             rhs->DestroyLocals(g, bb);
             lhs->DestroyLocals(g, bb);
         }

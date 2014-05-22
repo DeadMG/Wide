@@ -371,7 +371,7 @@ OverloadSet* UserDefinedType::CreateConstructorOverloadSet(Lexer::Access access)
                     Type* GetType() override final {
                         return self->analyzer.GetLvalueType(self);
                     }
-                    void DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+                    void DestroyExpressionLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) {
                         for (auto rit = initializers.rbegin(); rit != initializers.rend(); ++rit)
                             (*rit)->DestroyLocals(g, bb);
                         arg->DestroyLocals(g, bb);
@@ -580,7 +580,7 @@ std::unique_ptr<Expression> UserDefinedType::FunctionPointerFor(std::string name
                     irbuilder.CreateRet(call);
                 return thunk;
             }
-            void DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& b) override final {}
+            void DestroyExpressionLocals(Codegen::Generator& g, llvm::IRBuilder<>& b) override final {}
         };
         return Wide::Memory::MakeUnique<VTableThunk>(widefunc, offset);
     }

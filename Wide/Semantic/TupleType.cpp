@@ -43,7 +43,7 @@ std::unique_ptr<Expression> TupleType::ConstructFromLiteral(std::vector<std::uni
                 init->GetValue(g, bb);
             return self->GetValue(g, bb);
         }
-        void DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
+        void DestroyExpressionLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
             self->DestroyLocals(g, bb);
             for (auto rit = inits.rbegin(); rit != inits.rend(); ++rit)
                 (*rit)->DestroyLocals(g, bb);

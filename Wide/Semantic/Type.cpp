@@ -193,23 +193,37 @@ std::unique_ptr<Expression> Type::BuildValueConstruction(std::vector<std::unique
         ValueConstruction(Type* self, std::vector<std::unique_ptr<Expression>> args, Context c)
         : self(self) {
             temporary = Wide::Memory::MakeUnique<ImplicitTemporaryExpr>(self, c);
+            if (args.size() == 1)
+                single_arg = Wide::Memory::MakeUnique<ExpressionReference>(args[0].get());
             InplaceConstruction = self->BuildInplaceConstruction(Wide::Memory::MakeUnique<ExpressionReference>(temporary.get()), std::move(args), c);
         }
         std::unique_ptr<ImplicitTemporaryExpr> temporary;
         std::unique_ptr<Expression> InplaceConstruction;
+        std::unique_ptr<Expression> single_arg;
+        bool usedtemp = false;
         Type* self;
         Type* GetType() override final {
             return self;
         }
         llvm::Value* ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+            if (!self->Decay()->IsComplexType(g) && single_arg && single_arg->GetType()->Decay() == self->Decay()) {
+                if (single_arg->GetType() == self)
+                    return single_arg->GetValue(g, bb);
+                if (single_arg->GetType()->IsReference(self))
+                    return bb.CreateLoad(single_arg->GetValue(g, bb));
+            }
+            usedtemp = true;
             InplaceConstruction->GetValue(g, bb);
             if (self->IsComplexType(g))
                 return temporary->GetValue(g, bb);
             return bb.CreateLoad(temporary->GetValue(g, bb));
         }
-        void DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) {
-            temporary->DestroyLocals(g, bb);
-            InplaceConstruction->DestroyLocals(g, bb);
+        void DestroyExpressionLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+            if (usedtemp) {
+                temporary->DestroyLocals(g, bb);
+                InplaceConstruction->DestroyLocals(g, bb);
+            } else
+                single_arg->GetImplementation()->DestroyLocals(g, bb);
         }
     };
     return Wide::Memory::MakeUnique<ValueConstruction>(this, std::move(exprs), c);
@@ -232,7 +246,7 @@ std::unique_ptr<Expression> Type::BuildRvalueConstruction(std::vector<std::uniqu
             InplaceConstruction->GetValue(g, bb);
             return temporary->GetValue(g, bb);
         }
-        void DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+        void DestroyExpressionLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) {
             temporary->DestroyLocals(g, bb);
             InplaceConstruction->DestroyLocals(g, bb);
         }
@@ -257,7 +271,7 @@ std::unique_ptr<Expression> Type::BuildLvalueConstruction(std::vector<std::uniqu
             InplaceConstruction->GetValue(g, bb);
             return temporary->GetValue(g, bb);
         }
-        void DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+        void DestroyExpressionLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) {
             temporary->DestroyLocals(g, bb);
             InplaceConstruction->DestroyLocals(g, bb);
         }
@@ -505,7 +519,7 @@ OverloadSet* TupleInitializable::CreateConstructorOverloadSet(Lexer::Access acce
                     return self->GetValue(g, bb);
                 }
 
-                void DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+                void DestroyExpressionLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) {
                     // Destroy in inverse order of evaluation.
                     for (auto rit = initializers.rbegin(); rit != initializers.rend(); ++rit) {
                         (*rit)->DestroyLocals(g, bb);
@@ -555,7 +569,7 @@ std::unique_ptr<Expression> BaseType::CreateVTable(std::vector<std::pair<BaseTyp
         Type* GetType() override final {
             return self->GetSelfAsType()->analyzer.GetPointerType(self->GetVirtualPointerType());
         }
-        void DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+        void DestroyExpressionLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) {
             // Fuckin' hope not
         }
         llvm::Value* ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) {
@@ -613,7 +627,7 @@ std::unique_ptr<Expression> BaseType::SetVirtualPointers(std::vector<std::pair<B
         Type* GetType() override final {
             return self->GetType();
         }
-        void DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
+        void DestroyExpressionLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
             // If there's anything here, something's gone very wrong.
         }
         llvm::Value* ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {

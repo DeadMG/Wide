@@ -28,7 +28,7 @@ namespace Wide {
             std::unique_ptr<Expression> src;
             Type* GetType() override final;
             llvm::Value* ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final;
-            void DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final;
+            void DestroyExpressionLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final;
         };
 
         struct ImplicitStoreExpr : public Expression {
@@ -36,7 +36,7 @@ namespace Wide {
             std::unique_ptr<Expression> mem, val;
             Type* GetType() override final;
             llvm::Value* ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final;
-            void DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final;
+            void DestroyExpressionLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final;
         };
 
         struct ImplicitTemporaryExpr : public Expression {
@@ -46,7 +46,7 @@ namespace Wide {
             Context c;
             Type* GetType() override final;
             llvm::Value* ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final;
-            void DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final;
+            void DestroyExpressionLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final;
         };
 
         struct LvalueCast : public Expression {
@@ -54,7 +54,7 @@ namespace Wide {
             std::unique_ptr<Expression> expr;
             Type* GetType() override final;
             llvm::Value* ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final;
-            void DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final;
+            void DestroyExpressionLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final;
         };
 
         struct RvalueCast : public Expression {
@@ -62,7 +62,7 @@ namespace Wide {
             std::unique_ptr<Expression> expr;
             Type* GetType() override final;
             llvm::Value* ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final;
-            void DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final;
+            void DestroyExpressionLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final;
         };
 
         struct ExpressionReference : public Expression {
@@ -70,7 +70,7 @@ namespace Wide {
             Expression* expr;
             Type* GetType() override final;
             llvm::Value* ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final;
-            void DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final;
+            void DestroyExpressionLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final;
             Expression* GetImplementation() override final;
         };
 
@@ -79,7 +79,7 @@ namespace Wide {
             std::unique_ptr<Expression> expr;
             Type* GetType() override final;
             llvm::Value* ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final;
-            void DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final;
+            void DestroyExpressionLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final;
         };
 
         struct String : Expression {
@@ -88,7 +88,7 @@ namespace Wide {
             Analyzer& a;
             Type* GetType() override final;
             llvm::Value* ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final;
-            void DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final;
+            void DestroyExpressionLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final;
         };
 
         struct Integer : Expression {
@@ -97,7 +97,7 @@ namespace Wide {
             Analyzer& a;
             Type* GetType() override final;
             llvm::Value* ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final;
-            void DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final;
+            void DestroyExpressionLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final;
         };
 
         struct Boolean : Expression {
@@ -106,7 +106,7 @@ namespace Wide {
             Analyzer& a;
             Type* GetType() override final;
             llvm::Value* ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final;
-            void DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final;
+            void DestroyExpressionLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final;
         };
 
         std::unique_ptr<Expression> CreatePrimUnOp(std::unique_ptr<Expression> self, Type* ret, std::function<llvm::Value*(llvm::Value*, Codegen::Generator&, llvm::IRBuilder<>&)>);

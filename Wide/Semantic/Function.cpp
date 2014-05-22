@@ -48,13 +48,6 @@ struct Function::LocalVariable : public Expression {
     void OnNodeChanged(Node* n) override final {
         if (init_expr->GetType()) {
             // If we're a value we handle it at codegen time.
-            if (!init_expr->GetType()->IsReference()) {
-                if (init_expr->GetType() != var_type) {
-                    var_type = init_expr->GetType();
-                    OnChange();
-                    return;
-                }
-            }
             auto newty = init_expr->GetType()->Decay();
             if (tuple_num) {
                 if (auto tupty = dynamic_cast<TupleType*>(newty)) {
@@ -69,6 +62,13 @@ struct Function::LocalVariable : public Expression {
                     return;
                 }
                 throw std::runtime_error("fuck");
+            }
+            if (!init_expr->GetType()->IsReference()) {
+                if (init_expr->GetType() != var_type) {
+                    var_type = init_expr->GetType();
+                    OnChange();
+                    return;
+                }
             }
             if (newty != var_type) {
                 if (newty) {
@@ -95,7 +95,7 @@ struct Function::LocalVariable : public Expression {
     Function* self;
     Lexer::Range where;
 
-    void DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+    void DestroyExpressionLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) {
         if (variable)
             variable->DestroyLocals(g, bb);
         if (construction)
@@ -237,7 +237,7 @@ struct Function::ReturnStatement : public Statement {
                 Type* GetType() override final {
                     return self->analyzer.GetLvalueType(self->ReturnType);
                 }
-                void DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {}
+                void DestroyExpressionLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {}
                 llvm::Value* ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
                     return self->llvmfunc->arg_begin();
                 }
@@ -276,6 +276,13 @@ struct Function::ReturnStatement : public Statement {
             if (ret_expr->GetType() == self->ReturnType) {
                 // then great, just return it directly.
                 auto val = ret_expr->GetValue(g, bb);
+                destructors(g, bb);
+                bb.CreateRet(val);
+                return;
+            }
+            // If we have a reference to it, just load it right away.
+            if (ret_expr->GetType()->IsReference(self->ReturnType)) {
+                auto val = bb.CreateLoad(ret_expr->GetValue(g, bb));
                 destructors(g, bb);
                 bb.CreateRet(val);
                 return;
@@ -503,7 +510,7 @@ std::unique_ptr<Statement> Function::AnalyzeStatement(const AST::Statement* s) {
             for (auto&& name : var->name) {
                 if (current_scope->named_variables.find(name.name) != current_scope->named_variables.end())
                     throw VariableShadowing(name.name, current_scope->named_variables.at(name.name).second, name.where);
-                auto var_stmt = Wide::Memory::MakeUnique<LocalVariable>(init_expr.get(), i, this, name.where);
+                auto var_stmt = Wide::Memory::MakeUnique<LocalVariable>(init_expr.get(), i++, this, name.where);
                 locals.push_back(var_stmt.get());
                 current_scope->named_variables.insert(std::make_pair(name.name, std::make_pair(std::move(var_stmt), name.where)));
             }
@@ -605,7 +612,7 @@ struct Function::Parameter : public Expression {
     Type* GetType() override final {
         return cur_ty;
     }
-    void DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
+    void DestroyExpressionLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
         if (self->Args[num]->IsComplexType(g))
             destructor->GetValue(g, bb);
     }
@@ -940,7 +947,7 @@ std::unique_ptr<Expression> Function::BuildCall(std::unique_ptr<Expression> val,
             }
             return self->llvmfunc;
         }
-        void DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {}
+        void DestroyExpressionLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {}
     };
     return GetSignature()->BuildCall(Wide::Memory::MakeUnique<Self>(this, !args.empty() ? args[0].get() : nullptr), std::move(args), c);
 }

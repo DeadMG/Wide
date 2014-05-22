@@ -63,7 +63,7 @@ std::unique_ptr<Expression> FunctionType::BuildCall(std::unique_ptr<Expression> 
             auto fty = dynamic_cast<FunctionType*>(val->GetType());
             return fty->GetReturnType();
         }
-        void DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
+        void DestroyExpressionLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
             if (Ret)
                 Ret->DestroyLocals(g, bb);
             for (auto rit = args.rbegin(); rit != args.rend(); ++rit)

@@ -89,7 +89,7 @@ Analyzer::Analyzer(const Options::Clang& opts, const AST::Module* GlobalModule)
                     auto val = arg->GetValue(g, bb);
                     return bb.CreatePointerCast(val, to->GetLLVMType(g));
                 }
-                void DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
+                void DestroyExpressionLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
                     arg->DestroyLocals(g, bb);
                     type->DestroyLocals(g, bb);
                 }
@@ -875,7 +875,7 @@ std::unique_ptr<Expression> Semantic::AnalyzeExpression(Type* lookup, const AST:
                 return nullptr;
             }
 
-            void DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
+            void DestroyExpressionLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
                 access->DestroyLocals(g, bb);
                 object->DestroyLocals(g, bb);
             }
@@ -930,7 +930,7 @@ std::unique_ptr<Expression> Semantic::AnalyzeExpression(Type* lookup, const AST:
                 return nullptr;
             }
 
-            void DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
+            void DestroyExpressionLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
                 // Let callee destroy args because we don't know exactly when to destroy them.
                 // For example, consider arg := T(); f(T((), arg); which becomes f(T(), U(arg));. Here we would destroy in the wrong order.
                 call->DestroyLocals(g, bb);
@@ -1009,7 +1009,7 @@ std::unique_ptr<Expression> Semantic::AnalyzeExpression(Type* lookup, const AST:
             llvm::Value* ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
                 return result->GetValue(g, bb);
             }
-            void DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
+            void DestroyExpressionLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
                 result->DestroyLocals(g, bb);
             }
         };

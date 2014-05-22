@@ -8,6 +8,7 @@ namespace Wide {
             std::unique_ptr<OverloadResolvable> OrAssignOperator;
             std::unique_ptr<OverloadResolvable> XorAssignOperator;
             std::unique_ptr<OverloadResolvable> AndAssignOperator;
+            std::unique_ptr<OverloadResolvable> AndOperator;
             std::unique_ptr<OverloadResolvable> LTOperator;
             std::unique_ptr<OverloadResolvable> EQOperator;
             std::unique_ptr<OverloadResolvable> NegOperator;

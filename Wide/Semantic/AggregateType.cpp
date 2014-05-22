@@ -127,7 +127,7 @@ std::unique_ptr<Expression> AggregateType::PrimitiveAccessMember(std::unique_ptr
         std::unique_ptr<Expression> source;
         AggregateType* self;
         unsigned num;
-        void DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
+        void DestroyExpressionLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
             source->DestroyLocals(g, bb);
         }
         Type* GetType() override final {
@@ -163,25 +163,26 @@ std::unique_ptr<Expression> AggregateType::BuildDestructorCall(std::unique_ptr<E
         destructors.push_back(member->BuildDestructorCall(PrimitiveAccessMember(Wide::Memory::MakeUnique<ExpressionReference>(self.get()), i++), c));
 
     struct AggregateDestructor : Expression {
-        AggregateDestructor(std::unique_ptr<Expression> s, std::vector<std::unique_ptr<Expression>> des)
-        : self(std::move(s)), destructors(std::move(des)) {}
+        AggregateDestructor(AggregateType* agg, std::unique_ptr<Expression> s, std::vector<std::unique_ptr<Expression>> des)
+        : self(std::move(s)), destructors(std::move(des)), agg(agg) {}
+        AggregateType* agg;
         std::unique_ptr<Expression> self;
         std::vector<std::unique_ptr<Expression>> destructors;
         Type* GetType() override final {
             return self->GetType();
         }
         llvm::Value* ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
+            if (!agg->GetLayout().GetCodegen(agg, g).IsComplex)
+                return self->GetValue(g, bb);
             for (auto&& des : destructors)
                 des->GetValue(g, bb);
             return self->GetValue(g, bb);
         }
-        void DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
-            for (auto rit = destructors.rbegin(); rit != destructors.rend(); ++rit)
-                (*rit)->DestroyLocals(g, bb);
+        void DestroyExpressionLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
             self->DestroyLocals(g, bb);
         }
     };
-    return Wide::Memory::MakeUnique<AggregateDestructor>(std::move(self), std::move(destructors));
+    return Wide::Memory::MakeUnique<AggregateDestructor>(this, std::move(self), std::move(destructors));
 }
 
 OverloadSet* AggregateType::CreateOperatorOverloadSet(Type* t, Lexer::TokenType type, Lexer::Access access) {
@@ -233,7 +234,7 @@ OverloadSet* AggregateType::CreateOperatorOverloadSet(Type* t, Lexer::TokenType 
                         arg->GetValue(g, bb);
                     return self->GetValue(g, bb);
                 }
-                void DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
+                void DestroyExpressionLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
                     if (this_type->IsComplexType(g)) {
                         for (auto rit = exprs.rbegin(); rit != exprs.rend(); ++rit) {
                             (*rit)->DestroyLocals(g, bb);
@@ -305,7 +306,7 @@ OverloadSet* AggregateType::CreateNondefaultConstructorOverloadSet() {
                         arg->GetValue(g, bb);
                     return self->GetValue(g, bb);
                 }
-                void DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
+                void DestroyExpressionLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
                     if (this_type->IsComplexType(g)) {
                         for (auto rit = exprs.rbegin(); rit != exprs.rend(); ++rit) {
                             (*rit)->DestroyLocals(g, bb);
@@ -376,7 +377,7 @@ OverloadSet* AggregateType::CreateConstructorOverloadSet(Lexer::Access access) {
                         arg->GetValue(g, bb);
                     return self->GetValue(g, bb);
                 }
-                void DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
+                void DestroyExpressionLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
                     for (auto rit = exprs.rbegin(); rit != exprs.rend(); ++rit) {
                         (*rit)->DestroyLocals(g, bb);
                     }

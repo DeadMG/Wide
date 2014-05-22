@@ -90,8 +90,13 @@ namespace Wide {
             virtual Type* GetType() = 0; // If the type is unknown then nullptr
             llvm::Value* GetValue(Codegen::Generator& g, llvm::IRBuilder<>& bb);
             virtual Expression* GetImplementation() { return this; }
+            void DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
+                assert(val);
+                DestroyExpressionLocals(g, bb);
+            }
         private:
             llvm::Value* val = nullptr;
+            virtual void DestroyExpressionLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) = 0;
             void GenerateCode(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
                 GetValue(g, bb);
             }
