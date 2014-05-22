@@ -153,7 +153,7 @@ std::unique_ptr<Expression> AggregateType::PrimitiveAccessMember(std::unique_ptr
             return obj;
         }
     };
-
+    assert(self);
     return Wide::Memory::MakeUnique<FieldAccess>(std::move(self), this, num);
 }
 std::unique_ptr<Expression> AggregateType::BuildDestructorCall(std::unique_ptr<Expression> self, Context c) {

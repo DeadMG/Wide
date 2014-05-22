@@ -44,6 +44,7 @@ namespace Wide {
         class ClangTU {
             class Impl;
             std::unordered_set<clang::FunctionDecl*> visited;
+           
             Analyzer& a;
         public:
             std::unique_ptr<Impl> impl;
@@ -57,17 +58,18 @@ namespace Wide {
             llvm::Type* GetLLVMTypeFromClangType(clang::QualType t, Codegen::Generator& g);
             std::string GetFilename();
 
-            std::function<std::string(Codegen::Generator&)> MangleName(clang::NamedDecl* D);
-            bool IsComplexType(clang::CXXRecordDecl* decl, Codegen::Generator& g);
             clang::ASTContext& GetASTContext();
             clang::Sema& GetSema();
             clang::IdentifierInfo* GetIdentifierInfo(std::string ident);
-            unsigned GetFieldNumber(clang::FieldDecl*, Codegen::Generator& g);
-            unsigned GetBaseNumber(const clang::CXXRecordDecl* self, const clang::CXXRecordDecl* base, Codegen::Generator& g);
             clang::SourceLocation GetFileEnd();
             std::string PopLastDiagnostic();
             void AddFile(std::string filename, Lexer::Range where);
             clang::Expr* ParseMacro(std::string macro, Lexer::Range where);
+
+            std::function<std::string(Codegen::Generator&)> MangleName(clang::NamedDecl* D);
+            bool IsComplexType(clang::CXXRecordDecl* decl, Codegen::Generator& g);
+            std::function<unsigned(Codegen::Generator&)> GetFieldNumber(clang::FieldDecl*);
+            std::function<unsigned(Codegen::Generator&)> GetBaseNumber(const clang::CXXRecordDecl* self, const clang::CXXRecordDecl* base);
             unsigned int GetVirtualFunctionOffset(clang::CXXMethodDecl*, Codegen::Generator& g);
         };
     }

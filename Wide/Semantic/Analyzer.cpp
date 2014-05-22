@@ -1074,7 +1074,7 @@ std::unique_ptr<Expression> Semantic::AnalyzeExpression(Type* lookup, const AST:
         std::vector<Type*> types;
         for (auto&& expr : exprs)
             types.push_back(expr->GetType()->Decay());
-        return a.GetTupleType(types)->BuildValueConstruction(std::move(exprs), { lookup, tup->location });
+        return a.GetTupleType(types)->ConstructFromLiteral(std::move(exprs), { lookup, tup->location });
     }
     if (auto paccess = dynamic_cast<const AST::PointerMemberAccess*>(e)) {
         auto obj = AnalyzeExpression(lookup, paccess->ex, a);

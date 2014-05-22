@@ -27,7 +27,7 @@ std::unique_ptr<Expression> TupleType::ConstructFromLiteral(std::vector<std::uni
         auto conset = GetContents()[i]->GetConstructorOverloadSet(GetAccessSpecifier(c.from, GetContents()[i]));
         auto call = conset->Resolve(types, c.from);
         if (!call) conset->IssueResolutionError(types);
-        initializers.push_back(call->Call(Expressions(PrimitiveAccessMember(std::move(self), i), std::move(exprs[i])), c));
+        initializers.push_back(call->Call(Expressions(PrimitiveAccessMember(Wide::Memory::MakeUnique<ExpressionReference>(self.get()), i), std::move(exprs[i])), c));
     }
 
     struct LambdaConstruction : Expression {

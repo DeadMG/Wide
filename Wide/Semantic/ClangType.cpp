@@ -347,18 +347,18 @@ std::unique_ptr<Expression> ClangType::PrimitiveAccessMember(std::unique_ptr<Exp
     auto source_type = self->GetType();
     auto root_type = analyzer.GetClangType(*from, resty);
     auto result_type = type_convert(source_type, root_type);
-    return CreatePrimUnOp(std::move(self), result_type, [this, num, result_type, resty, source_type, root_type](llvm::Value* self, Codegen::Generator& g, llvm::IRBuilder<>& bb) -> llvm::Value* {
+    auto fieldnum = num >= numbases 
+        ? from->GetFieldNumber(*std::next(type->getAsCXXRecordDecl()->field_begin(), num - numbases))
+        : from->GetBaseNumber(type->getAsCXXRecordDecl(), (type->getAsCXXRecordDecl()->bases_begin() + num)->getType()->getAsCXXRecordDecl());
+    return CreatePrimUnOp(std::move(self), result_type, [this, num, result_type, resty, source_type, root_type, fieldnum](llvm::Value* self, Codegen::Generator& g, llvm::IRBuilder<>& bb) -> llvm::Value* {
         std::size_t numbases = type->getAsCXXRecordDecl()->bases_end() - type->getAsCXXRecordDecl()->bases_begin();
         if (num < numbases && resty->getAsCXXRecordDecl()->isEmpty())
             return bb.CreatePointerCast(self, result_type->GetLLVMType(g));
-        auto fieldnum = num >= numbases
-            ? from->GetFieldNumber(*std::next(type->getAsCXXRecordDecl()->field_begin(), num - numbases), g)
-            : from->GetBaseNumber(type->getAsCXXRecordDecl(), (type->getAsCXXRecordDecl()->bases_begin() + num)->getType()->getAsCXXRecordDecl(), g);
         if (source_type->IsReference())
             if (root_type->IsReference())
-                return bb.CreateLoad(bb.CreateStructGEP(self, fieldnum));
-            return bb.CreateStructGEP(self, fieldnum);
-        return bb.CreateExtractValue(self, fieldnum);
+                return bb.CreateLoad(bb.CreateStructGEP(self, fieldnum(g)));
+            return bb.CreateStructGEP(self, fieldnum(g));
+        return bb.CreateExtractValue(self, fieldnum(g));
     });
 }
 
@@ -450,8 +450,9 @@ std::unique_ptr<Expression> GetVTablePointer(std::unique_ptr<Expression> self, c
         return CreatePrimUnOp(std::move(self), a.GetPointerType(vptrty), [](llvm::Value* val, Codegen::Generator& g, llvm::IRBuilder<>& b) {
             return b.CreateStructGEP(val, 0);
         });
-    self = CreatePrimUnOp(std::move(self), a.GetPointerType(a.GetClangType(*from, from->GetASTContext().getTypeDeclType(layout.getPrimaryBase()))), [from, current, &layout](llvm::Value* val, Codegen::Generator& g, llvm::IRBuilder<>& b) {
-        return b.CreateStructGEP(val, from->GetBaseNumber(current, layout.getPrimaryBase(), g));
+    auto basenum = from->GetBaseNumber(current, layout.getPrimaryBase());
+    self = CreatePrimUnOp(std::move(self), a.GetPointerType(a.GetClangType(*from, from->GetASTContext().getTypeDeclType(layout.getPrimaryBase()))), [from, basenum](llvm::Value* val, Codegen::Generator& g, llvm::IRBuilder<>& b) {
+        return b.CreateStructGEP(val, basenum(g));
     });
     return GetVTablePointer(std::move(self), layout.getPrimaryBase(), a, from, vptrty);
 }

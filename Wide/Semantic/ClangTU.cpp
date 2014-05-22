@@ -93,6 +93,8 @@ public:
     std::unique_ptr<clang::TargetInfo> targetinfo;
     clang::CompilerInstance ci;
     clang::HeaderSearch hs;
+    std::unordered_set<clang::FieldDecl*> FieldNumbers;
+    std::unordered_map<const clang::CXXRecordDecl*, const clang::CXXRecordDecl*> BaseNumbers;
 
     clang::LangOptions langopts;
     std::vector<clang::Decl*> stuff;
@@ -242,7 +244,7 @@ void ClangTU::AddFile(std::string filename, Lexer::Range where) {
 }
 
 ClangTU::ClangTU(ClangTU&& other)
-    : impl(std::move(other.impl)), a(other.a) {}
+    : impl(std::move(other.impl)), a(other.a), visited(std::move(other.visited)) {}
 
 void ClangTU::GenerateCodeAndLinkModule(Codegen::Generator& g) {
     impl->sema.ActOnEndOfTranslationUnit();
@@ -270,6 +272,10 @@ void ClangTU::GenerateCodeAndLinkModule(Codegen::Generator& g) {
             impl->GetCodegenModule(g).GetAddrOfGlobal(funcdecl);
         }
     }
+    for (auto field : impl->FieldNumbers)
+        impl->GetCodegenModule(g).getTypes().getCGRecordLayout(field->getParent()).getLLVMFieldNo(field);
+    for (auto pair : impl->BaseNumbers)
+        impl->GetCodegenModule(g).getTypes().getCGRecordLayout(pair.first).getNonVirtualBaseLLVMFieldNo(pair.second);
     for (auto x : impl->stuff)
         impl->GetCodegenModule(g).EmitTopLevelDecl(x);
     impl->GetCodegenModule(g).Release();
@@ -295,7 +301,6 @@ clang::QualType Simplify(clang::QualType inc) {
 
 llvm::Type* ClangTU::GetLLVMTypeFromClangType(clang::QualType t, Codegen::Generator& g) {
     // The Clang functions that should expose this functionality do not in fact work at all, so hack it horribly.
-    auto imp = impl.get();
     // If we were converted from some Wide type, go to them instead of going through LLVM named type.
     if (!dynamic_cast<Semantic::ClangType*>(a.GetClangType(*this, t))) {
         return a.GetClangType(*this, t)->GetLLVMType(g);
@@ -402,12 +407,18 @@ clang::IdentifierInfo* ClangTU::GetIdentifierInfo(std::string name) {
     return impl->preproc.getIdentifierInfo(name);
 }
 
-unsigned ClangTU::GetFieldNumber(clang::FieldDecl* f, Codegen::Generator& g) {
-    return impl->GetCodegenModule(g).getTypes().getCGRecordLayout(f->getParent()).getLLVMFieldNo(f);
+std::function<unsigned(Codegen::Generator&)> ClangTU::GetFieldNumber(clang::FieldDecl* f) {
+    impl->FieldNumbers.insert(f);
+    return [this, f](Codegen::Generator& g) {
+        return impl->GetCodegenModule(g).getTypes().getCGRecordLayout(f->getParent()).getLLVMFieldNo(f);
+    };
 }
 
-unsigned ClangTU::GetBaseNumber(const clang::CXXRecordDecl* self, const clang::CXXRecordDecl* f, Codegen::Generator& g) {
-    return impl->GetCodegenModule(g).getTypes().getCGRecordLayout(self).getNonVirtualBaseLLVMFieldNo(f);
+std::function<unsigned(Codegen::Generator&)> ClangTU::GetBaseNumber(const clang::CXXRecordDecl* self, const clang::CXXRecordDecl* f) {
+    impl->BaseNumbers[self] = f;
+    return [this, self, f](Codegen::Generator& g) {
+        return impl->GetCodegenModule(g).getTypes().getCGRecordLayout(self).getNonVirtualBaseLLVMFieldNo(f);
+    };
 }
 
 clang::SourceLocation ClangTU::GetFileEnd() {
