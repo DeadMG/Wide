@@ -345,8 +345,9 @@ std::unique_ptr<Expression> ClangType::PrimitiveAccessMember(std::unique_ptr<Exp
         resty = std::next(type->getAsCXXRecordDecl()->bases_begin(), num)->getType();
     }
     auto source_type = self->GetType();
-    auto result_type = type_convert(self->GetType(), analyzer.GetClangType(*from, resty));
-    return CreatePrimUnOp(std::move(self), result_type, [this, num, result_type, resty, source_type](llvm::Value* self, Codegen::Generator& g, llvm::IRBuilder<>& bb) -> llvm::Value* {
+    auto root_type = analyzer.GetClangType(*from, resty);
+    auto result_type = type_convert(source_type, root_type);
+    return CreatePrimUnOp(std::move(self), result_type, [this, num, result_type, resty, source_type, root_type](llvm::Value* self, Codegen::Generator& g, llvm::IRBuilder<>& bb) -> llvm::Value* {
         std::size_t numbases = type->getAsCXXRecordDecl()->bases_end() - type->getAsCXXRecordDecl()->bases_begin();
         if (num < numbases && resty->getAsCXXRecordDecl()->isEmpty())
             return bb.CreatePointerCast(self, result_type->GetLLVMType(g));
@@ -354,7 +355,7 @@ std::unique_ptr<Expression> ClangType::PrimitiveAccessMember(std::unique_ptr<Exp
             ? from->GetFieldNumber(*std::next(type->getAsCXXRecordDecl()->field_begin(), num - numbases), g)
             : from->GetBaseNumber(type->getAsCXXRecordDecl(), (type->getAsCXXRecordDecl()->bases_begin() + num)->getType()->getAsCXXRecordDecl(), g);
         if (source_type->IsReference())
-            if (result_type->IsReference())
+            if (root_type->IsReference())
                 return bb.CreateLoad(bb.CreateStructGEP(self, fieldnum));
             return bb.CreateStructGEP(self, fieldnum);
         return bb.CreateExtractValue(self, fieldnum);

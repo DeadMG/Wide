@@ -218,8 +218,7 @@ llvm::Value* Expression::GetValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) 
         auto ptrty = llvm::dyn_cast<llvm::PointerType>(val->getType());
         assert(ptrty);
         assert(ptrty->getElementType() == selfty);
-    }
-    else {
+    } else {
         // Extra variable because VS debugger typically won't load Type or Expression functions.
         assert(val->getType() == selfty);
     }

@@ -130,7 +130,14 @@ std::unique_ptr<Expression> Type::BuildMetaCall(std::unique_ptr<Expression> val,
 std::unique_ptr<Expression> Type::BuildCall(std::unique_ptr<Expression> val, std::vector<std::unique_ptr<Expression>> args, Context c) {
     if (IsReference())
         return Decay()->BuildCall(std::move(val), std::move(args), c);
-    throw std::runtime_error("fuck");
+    auto set = AccessMember(val->GetType(), Lexer::TokenType::OpenBracket, GetAccessSpecifier(c.from, this));
+    args.insert(args.begin(), std::move(val));
+    std::vector<Type*> types;
+    for (auto&& arg : args)
+        types.push_back(arg->GetType());
+    auto call = set->Resolve(types, c.from);
+    if (!call) set->IssueResolutionError(types);
+    return call->Call(std::move(args), c);
 }
 
 std::unique_ptr<Expression> Type::BuildBooleanConversion(std::unique_ptr<Expression> ex, Context c) {
