@@ -209,7 +209,11 @@ Callable* OverloadSet::Resolve(std::vector<Type*> f_args, Type* source) {
     std::vector<std::pair<OverloadResolvable*, std::vector<Type*>>> call;
     for(auto funcobj : callables) {
         auto matched_types = funcobj->MatchParameter(f_args, analyzer, source);
-        if (matched_types) call.push_back(std::make_pair(funcobj, std::move(*matched_types)));
+        if (matched_types) {
+            auto&& vec = *matched_types;
+            assert(vec.size() == f_args.size());
+            call.push_back(std::make_pair(funcobj, std::move(*matched_types)));
+        }
     }
     // returns true if lhs is more specialized than rhs
     auto is_more_specialized = [&](

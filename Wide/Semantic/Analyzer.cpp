@@ -590,8 +590,7 @@ OverloadResolvable* Analyzer::GetCallableForFunction(const AST::FunctionBase* f,
                         result.push_back(a.GetLvalueType(context));
                     } else
                         return Util::none;
-                }
-                if (IsRvalueType(types[0])) {
+                } else {
                     if (types[0]->IsA(types[0], a.GetRvalueType(context), GetAccessSpecifier(source, types[0]))) {
                         result.push_back(a.GetRvalueType(context));
                     } else
