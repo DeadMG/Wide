@@ -94,7 +94,7 @@ public:
     clang::CompilerInstance ci;
     clang::HeaderSearch hs;
     std::unordered_set<clang::FieldDecl*> FieldNumbers;
-    std::unordered_map<const clang::CXXRecordDecl*, const clang::CXXRecordDecl*> BaseNumbers;
+    std::unordered_map<const clang::CXXRecordDecl*, std::unordered_set<const clang::CXXRecordDecl*>> BaseNumbers;
 
     clang::LangOptions langopts;
     std::vector<clang::Decl*> stuff;
@@ -254,6 +254,7 @@ void ClangTU::GenerateCodeAndLinkModule(Codegen::Generator& g) {
     mod.setDataLayout(layout.getStringRepresentation());
     mod.setTargetTriple(impl->Options->TargetOptions.Triple);
     
+    // Cause all the side effects. Fuck you, Clang.
     for (auto&& decl : impl->addrs) {
         if (auto vardecl = llvm::dyn_cast<clang::VarDecl>(decl)) {
             impl->GetCodegenModule(g).GetAddrOfGlobal(vardecl);
@@ -274,8 +275,14 @@ void ClangTU::GenerateCodeAndLinkModule(Codegen::Generator& g) {
     }
     for (auto field : impl->FieldNumbers)
         impl->GetCodegenModule(g).getTypes().getCGRecordLayout(field->getParent()).getLLVMFieldNo(field);
-    for (auto pair : impl->BaseNumbers)
-        impl->GetCodegenModule(g).getTypes().getCGRecordLayout(pair.first).getNonVirtualBaseLLVMFieldNo(pair.second);
+    for (auto&& pair : impl->BaseNumbers) {
+        if (pair.first->isEmpty()) {
+            impl->GetCodegenModule(g).getTypes().getCGRecordLayout(pair.first);
+            continue;
+        }
+        for (auto base : pair.second)
+            impl->GetCodegenModule(g).getTypes().getCGRecordLayout(pair.first).getNonVirtualBaseLLVMFieldNo(base);
+    }
     for (auto x : impl->stuff)
         impl->GetCodegenModule(g).EmitTopLevelDecl(x);
     impl->GetCodegenModule(g).Release();
@@ -415,7 +422,7 @@ std::function<unsigned(Codegen::Generator&)> ClangTU::GetFieldNumber(clang::Fiel
 }
 
 std::function<unsigned(Codegen::Generator&)> ClangTU::GetBaseNumber(const clang::CXXRecordDecl* self, const clang::CXXRecordDecl* f) {
-    impl->BaseNumbers[self] = f;
+    impl->BaseNumbers[self].insert(f);
     return [this, self, f](Codegen::Generator& g) {
         return impl->GetCodegenModule(g).getTypes().getCGRecordLayout(self).getNonVirtualBaseLLVMFieldNo(f);
     };
