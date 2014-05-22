@@ -556,13 +556,13 @@ std::unique_ptr<Statement> Function::AnalyzeStatement(const AST::Statement* s) {
         auto cond = get_expr();
         Expression* condexpr = cond.get();
         condscope->active.push_back(std::move(cond));
-        Statement* true_br;
+        Statement* true_br = nullptr;
         {
             LocalScope truescope(this);
             truescope->active.push_back(AnalyzeStatement(if_stmt->true_statement));
             true_br = truescope->active.back().get();
         }
-        Statement* false_br;
+        Statement* false_br = nullptr;
         if (if_stmt->false_statement) {
             LocalScope falsescope(this);
             falsescope->active.push_back(AnalyzeStatement(if_stmt->true_statement));

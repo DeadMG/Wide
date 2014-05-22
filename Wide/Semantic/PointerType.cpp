@@ -64,8 +64,9 @@ OverloadSet* PointerType::CreateConstructorOverloadSet(Lexer::Access access) {
     };
     auto usual = PrimitiveType::CreateConstructorOverloadSet(Lexer::Access::Public);
     NullConstructor = MakeResolvable([this](std::vector<std::unique_ptr<Expression>> args, Context c) {
-        return CreatePrimOp(std::move(args[0]), std::move(args[1]), [this](llvm::Value* lhs, llvm::Value* rhs, Codegen::Generator& g, llvm::IRBuilder<>& bb) {
-            return bb.CreateStore(lhs, llvm::Constant::getNullValue(GetLLVMType(g)));
+        return CreatePrimOp(std::move(args[0]), std::move(args[1]), analyzer.GetLvalueType(this), [this](llvm::Value* lhs, llvm::Value* rhs, Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+            bb.CreateStore(llvm::Constant::getNullValue(GetLLVMType(g)), lhs);
+            return lhs;
         });
     }, { analyzer.GetLvalueType(this), analyzer.GetNullType() });
     DerivedConstructor = Wide::Memory::MakeUnique<PointerComparableResolvable>(this);

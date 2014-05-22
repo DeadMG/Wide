@@ -1,7 +1,5 @@
 // Check for bug where not having an else would crash the compiler.
 Main() {
-    return function() {
-        if (true) return true;
-        return false;
-    }();
+    if (true) return true;
+    return false;
 }
