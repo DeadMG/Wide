@@ -191,6 +191,10 @@ namespace Wide {
             ErrorExpr(Lexer::Range pos)
                 : Expression(pos) {}
         };
+        struct Decltype : UnaryExpression {
+            Decltype(Expression* expr, Lexer::Range loc)
+                : UnaryExpression(expr, loc) {}
+        };
         struct MetaCall : public Expression {        
             MetaCall(Expression* obj, std::vector<Expression*> arg, Lexer::Range loc)
                 :  Expression(loc), callee(obj), args(std::move(arg)) {}    

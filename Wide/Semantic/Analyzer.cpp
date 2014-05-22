@@ -1082,5 +1082,9 @@ std::unique_ptr<Expression> Semantic::AnalyzeExpression(Type* lookup, const AST:
         auto subobj = obj->GetType()->BuildUnaryExpression(std::move(obj), Lexer::TokenType::Dereference, { lookup, paccess->location });
         return subobj->GetType()->AccessMember(std::move(subobj), paccess->member, { lookup, paccess->location });
     }
+    if (auto declty = dynamic_cast<const AST::Decltype*>(e)) {
+        auto expr = AnalyzeExpression(lookup, declty->ex, a);
+        return a.GetConstructorType(expr->GetType())->BuildValueConstruction(Expressions(), { lookup, declty->location });
+    }
     assert(false);
 }
