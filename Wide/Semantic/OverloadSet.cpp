@@ -145,6 +145,7 @@ struct cppcallable : public Callable {
                 continue;
             }
 
+
             // Handle base type mismatches first because else they are mishandled by the next check.
             if (auto derived = dynamic_cast<BaseType*>(args[i]->GetType()->Decay())) {
                 if (auto base = dynamic_cast<BaseType*>(types[i].first->Decay())) {
@@ -164,10 +165,12 @@ struct cppcallable : public Callable {
             // As per usual, careful of infinite recursion. Took quite a few tries to get this piece apparently functional.
             if (
                 (types[i].second || IsRvalueType(types[i].first)) && 
-                !IsLvalueType(args[i]->GetType()) && 
-                args[i]->GetType()->Decay() != types[i].first->Decay()
+                !IsLvalueType(args[i]->GetType())
             ) {
-                out.push_back(types[i].first->Decay()->BuildRvalueConstruction(Expressions(std::move(args[i])), c));
+                if (types[i].first->Decay() == args[i]->GetType()->Decay())
+                    out.push_back(types[i].first->analyzer.GetRvalueType(types[i].first->Decay())->BuildValueConstruction(Expressions(std::move(args[i])), c));
+                else
+                    out.push_back(types[i].first->Decay()->BuildRvalueConstruction(Expressions(std::move(args[i])), c));
                 continue;
             }
 
