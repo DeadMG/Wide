@@ -865,6 +865,8 @@ std::unique_ptr<Expression> Semantic::AnalyzeExpression(Type* lookup, const AST:
                 auto currty = GetType();
                 if (object->GetType()) {
                     access = object->GetType()->AccessMember(Wide::Memory::MakeUnique<ExpressionReference>(object.get()), ast_node->mem, Context{ lookup, ast_node->location });
+                    if (!access)
+                        throw NoMember(object->GetType(), lookup, ast_node->mem, ast_node->location);
                 } else 
                     access = nullptr;
                 if (currty != GetType())
