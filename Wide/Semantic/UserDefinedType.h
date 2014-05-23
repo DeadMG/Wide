@@ -89,7 +89,8 @@ namespace Wide {
             bool IsCopyAssignable(Lexer::Access access) override final;
             bool IsMoveAssignable(Lexer::Access access) override final;
             bool IsComplexType(Codegen::Generator& g) override final;
-            
+            bool IsA(Type* self, Type* other, Lexer::Access access) override final;
+
             Wide::Util::optional<std::vector<Type*>> GetTypesForTuple() override final;
             std::unique_ptr<Expression> PrimitiveAccessMember(std::unique_ptr<Expression> self, unsigned num) override final;
             InheritanceRelationship IsDerivedFrom(Type* other) override final;

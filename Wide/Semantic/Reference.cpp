@@ -87,6 +87,8 @@ struct rvalueconvertible : OverloadResolvable, Callable {
         auto ptrself = self->analyzer.GetPointerType(self->Decay());
         if (ptrt->IsA(ptrt, ptrself, GetAccessSpecifier(c.from, ptrt))) {
             auto basety = dynamic_cast<BaseType*>(args[1]->GetType()->Decay());
+            if (!args[1]->GetType()->IsReference())
+                args[1] = Wide::Memory::MakeUnique<RvalueCast>(std::move(args[1]));
             return Wide::Memory::MakeUnique<ImplicitStoreExpr>(std::move(args[0]), basety->AccessBase(std::move(args[1]), self));
         }
         return self->Decay()->BuildRvalueConstruction(Expressions( std::move(args[1]) ), c);

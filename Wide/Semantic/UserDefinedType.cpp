@@ -617,3 +617,9 @@ unsigned UserDefinedType::GetVirtualFunctionIndex(const AST::Function* func) {
         throw std::runtime_error("fuck");
     return VTableIndices.at(func);
 }
+bool UserDefinedType::IsA(Type* self, Type* other, Lexer::Access access) {
+    if (Type::IsA(self, other, access)) return true;
+    if (self == this)
+        return analyzer.GetRvalueType(this)->IsA(analyzer.GetRvalueType(self), other, access);
+    return false;
+}

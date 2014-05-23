@@ -84,6 +84,7 @@ llvm::Value* RvalueCast::ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& 
         return expr->GetValue(g, bb);
     if (expr->GetType()->IsComplexType(g))
         return expr->GetValue(g, bb);
+    assert(!IsRvalueType(expr->GetType()));
     auto tempalloc = bb.CreateAlloca(expr->GetType()->GetLLVMType(g));
     tempalloc->setAlignment(expr->GetType()->alignment());
     bb.CreateStore(expr->GetValue(g, bb), tempalloc);
