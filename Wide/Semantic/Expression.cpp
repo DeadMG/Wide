@@ -94,7 +94,14 @@ void RvalueCast::DestroyExpressionLocals(Codegen::Generator& g, llvm::IRBuilder<
 }
 
 ExpressionReference::ExpressionReference(Expression* e)
-: expr(e) {}
+: expr(e) {
+    ListenToNode(expr);
+}
+void ExpressionReference::OnNodeChanged(Node* n, Change what) {
+    //if (what == Change::Destroyed)
+    //    assert(false);
+    OnChange();
+}
 Type* ExpressionReference::GetType() {
     return expr->GetType();
 }

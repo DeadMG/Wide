@@ -851,7 +851,7 @@ std::unique_ptr<Expression> Semantic::AnalyzeExpression(Type* lookup, const AST:
             : lookup(l), a(an), ast_node(mem), object(std::move(obj)) 
             {
                 ListenToNode(object.get());
-                OnNodeChanged(object.get());            
+                OnNodeChanged(object.get(), Change::Contents);
             }
             std::unique_ptr<Expression> object;
             std::unique_ptr<Expression> access;
@@ -859,7 +859,8 @@ std::unique_ptr<Expression> Semantic::AnalyzeExpression(Type* lookup, const AST:
             Analyzer& a;
             Type* lookup;
 
-            void OnNodeChanged(Node* n) override final {
+            void OnNodeChanged(Node* n, Change what) override final {
+                if (what == Change::Destroyed) return;
                 auto currty = GetType();
                 if (object->GetType()) {
                     access = object->GetType()->AccessMember(Wide::Memory::MakeUnique<ExpressionReference>(object.get()), ast_node->mem, Context{ lookup, ast_node->location });
@@ -894,7 +895,7 @@ std::unique_ptr<Expression> Semantic::AnalyzeExpression(Type* lookup, const AST:
                 ListenToNode(object.get());
                 for (auto&& arg : args)
                     ListenToNode(arg.get());
-                OnNodeChanged(object.get());
+                OnNodeChanged(object.get(), Change::Contents);
             }
             Lexer::Range where;
             Type* from;
@@ -903,7 +904,8 @@ std::unique_ptr<Expression> Semantic::AnalyzeExpression(Type* lookup, const AST:
             std::unique_ptr<Expression> object;
             std::unique_ptr<Expression> call;
 
-            void OnNodeChanged(Node* n) override final {
+            void OnNodeChanged(Node* n, Change what) override final {
+                if (what == Change::Destroyed) return;
                 if (n == call.get()) { OnChange(); return; }
                 auto ty = GetType();
                 if (object) {

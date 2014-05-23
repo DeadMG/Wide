@@ -68,6 +68,7 @@ namespace Wide {
         struct ExpressionReference : public Expression {
             ExpressionReference(Expression* e);
             Expression* expr;
+            void OnNodeChanged(Node* n, Change what) override final;
             Type* GetType() override final;
             llvm::Value* ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final;
             void DestroyExpressionLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final;

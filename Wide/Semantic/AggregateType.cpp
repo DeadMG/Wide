@@ -273,7 +273,7 @@ OverloadSet* AggregateType::CreateNondefaultConstructorOverloadSet() {
         types.push_back(modify(this));
         return MakeResolvable([this, modify](std::vector<std::unique_ptr<Expression>> args, Context c) -> std::unique_ptr<Expression>  {
             if (GetContents().size() == 0)
-                return std::move(args[0]);
+                return BuildChain(std::move(args[1]), std::move(args[0]));
             // For every type, call the appropriate constructor.
             std::vector<std::unique_ptr<Expression>> exprs;
             for (std::size_t i = 0; i < GetContents().size(); ++i) {

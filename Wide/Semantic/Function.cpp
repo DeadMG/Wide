@@ -36,16 +36,17 @@ struct Function::LocalVariable : public Expression {
     : init_expr(std::move(ex)), self(self), where(where)
     {
         ListenToNode(init_expr);
-        OnNodeChanged(init_expr);
+        OnNodeChanged(init_expr, Change::Contents);
     }
     LocalVariable(Expression* ex, unsigned u, Function* self, Lexer::Range where)
         : init_expr(std::move(ex)), tuple_num(u), self(self), where(where)
     {
         ListenToNode(init_expr);
-        OnNodeChanged(init_expr);
+        OnNodeChanged(init_expr, Change::Contents);
     }
 
-    void OnNodeChanged(Node* n) override final {
+    void OnNodeChanged(Node* n, Change what) override final {
+        if (what == Change::Destroyed) return;
         if (init_expr->GetType()) {
             // If we're a value we handle it at codegen time.
             auto newty = init_expr->GetType()->Decay();
@@ -317,9 +318,10 @@ struct Function::WhileStatement : public Statement {
     : cond(std::move(ex)), where(where), self(s)
     {
         ListenToNode(cond);
-        OnNodeChanged(cond);
+        OnNodeChanged(cond, Change::Contents);
     }
-    void OnNodeChanged(Node* n) override final {
+    void OnNodeChanged(Node* n, Change what) override final {
+        if (what == Change::Destroyed) return;
         if (cond->GetType())
             boolconvert = cond->GetType()->Decay()->BuildBooleanConversion(Wide::Memory::MakeUnique<ExpressionReference>(cond), { self, where });
     }
@@ -364,9 +366,10 @@ struct Function::IfStatement : public Statement{
     : cond(std::move(cond)), true_br(std::move(true_b)), false_br(std::move(false_b)), where(where), self(s)
     {
         ListenToNode(cond);
-        OnNodeChanged(cond);
+        OnNodeChanged(cond, Change::Contents);
     }
-    void OnNodeChanged(Node* n) override final {
+    void OnNodeChanged(Node* n, Change what) override final {
+        if (what == Change::Destroyed) return;
         if (cond->GetType())
             boolconvert = cond->GetType()->Decay()->BuildBooleanConversion(Wide::Memory::MakeUnique<ExpressionReference>(cond), { self, where });
     }

@@ -211,11 +211,15 @@ std::unique_ptr<Expression> Type::BuildValueConstruction(std::vector<std::unique
             if (self->GetConstantContext() == self && no_args) {
                 return llvm::UndefValue::get(self->GetLLVMType(g));
             }
-            if (!self->Decay()->IsComplexType(g) && single_arg && single_arg->GetType()->Decay() == self->Decay()) {
-                if (single_arg->GetType() == self)
-                    return single_arg->GetValue(g, bb);
-                if (single_arg->GetType()->IsReference(self))
-                    return bb.CreateLoad(single_arg->GetValue(g, bb));
+            if (!self->Decay()->IsComplexType(g)) {
+                if (single_arg) {
+                    if (single_arg->GetType()->Decay() == self->Decay()) {
+                        if (single_arg->GetType() == self)
+                            return single_arg->GetValue(g, bb);
+                        if (single_arg->GetType()->IsReference(self))
+                            return bb.CreateLoad(single_arg->GetValue(g, bb));
+                    }
+                }
             }
             usedtemp = true;
             InplaceConstruction->GetValue(g, bb);

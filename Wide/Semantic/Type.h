@@ -55,13 +55,17 @@ namespace Wide {
         class Error;
         struct Type;
 
+        enum Change {
+            Contents,
+            Destroyed
+        };
         struct Node {
             std::unordered_set<Node*> listeners;
             std::unordered_set<Node*> listening_to;
             void AddChangedListener(Node* n) { listeners.insert(n); }
             void RemoveChangedListener(Node* n) { listeners.erase(n); }
         protected:
-            virtual void OnNodeChanged(Node* n) {}
+            virtual void OnNodeChanged(Node* n, Change what) {}
             void ListenToNode(Node* n) {
                 n->AddChangedListener(this);
                 listening_to.insert(n);
@@ -72,14 +76,16 @@ namespace Wide {
             }
             void OnChange() {
                 for (auto node : listeners)
-                    node->OnNodeChanged(this);
+                    node->OnNodeChanged(this, Change::Contents);
             }
         public:
             virtual ~Node() {
                 for (auto node : listening_to)
                     node->listeners.erase(this);
-                for (auto node : listeners)
+                for (auto node : listeners) {
+                //    node->OnNodeChanged(this, Change::Destroyed);
                     node->listening_to.erase(this);
+                }
             }
         };
         struct Statement : public Node {
