@@ -1,5 +1,6 @@
 #include <Wide/Codegen/Generator.h>
 #include <Wide/Util/Memory/MakeUnique.h>
+#include <mutex>
 
 #pragma warning(push, 0)
 #include <llvm/IR/Function.h>
@@ -22,16 +23,17 @@
 using namespace Wide;
 using namespace Codegen;
 
-static bool fuck_llvm = false;
+namespace {
+    std::once_flag initialize_llvm;
+}
 void Codegen::InitializeLLVM() {
-    if (!fuck_llvm) {
+    std::call_once(initialize_llvm, [] {
         llvm::InitializeAllTargets();
         llvm::InitializeAllTargetMCs();
         llvm::InitializeAllAsmPrinters();
         llvm::InitializeNativeTarget();
         llvm::InitializeAllAsmParsers();
-        fuck_llvm = true;
-    }
+    });
 }
 
 Generator::Generator(std::string triple)
