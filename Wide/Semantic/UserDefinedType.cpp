@@ -185,6 +185,8 @@ std::unique_ptr<Expression> UserDefinedType::AccessMember(std::unique_ptr<Expres
     }
     if (BaseOverloadSet)
         return BaseOverloadSet->BuildValueConstruction(Expressions(std::move(self)), c);
+    if (!BaseType)
+        return nullptr;
     return BaseType->AccessMember(AccessBase(std::move(self), BaseType), name, c);
 }
 
