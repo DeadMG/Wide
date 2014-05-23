@@ -79,7 +79,7 @@ int main(int argc, char** argv) {
     }
     std::cout << "Total succeeded: " << total_succeeded << " failed: " << total_failed;
     //Jit(clangopts, "JITSuccess/OverloadResolution/PrimitiveADL.wide");
-    //Compile(clangopts, "CompileFail/UserDefined/AccessPrivateMemberFunction.wide");
+    //Compile(clangopts, "CompileFail/LvalueQualifiedThis.wide");
     if (input.count("break"))
         Wide::Util::DebugBreak();
     return total_failed != 0;
