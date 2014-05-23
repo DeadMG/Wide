@@ -602,7 +602,7 @@ struct Function::Parameter : public Expression {
         auto get_new_ty = [this]() -> Type* {
             auto root_ty = self->Args[num];
             if (root_ty->IsReference())
-                return root_ty; // Is this wrong in the case of named rvalue reference?
+                return self->analyzer.GetLvalueType(root_ty->Decay()); // Is this wrong in the case of named rvalue reference?
             return self->analyzer.GetLvalueType(root_ty);
         };
         auto new_ty = get_new_ty();
@@ -784,7 +784,9 @@ void Function::ComputeReturnType() {
 void Function::EmitCode(Codegen::Generator& g) {
     if (llvmfunc)
         return;
-    llvmfunc = llvm::Function::Create(llvm::dyn_cast<llvm::FunctionType>(GetSignature()->GetLLVMType(g)->getElementType()), llvm::GlobalValue::LinkageTypes::InternalLinkage, name, g.module.get());
+    auto sig = GetSignature();
+    auto llvmsig = sig->GetLLVMType(g);
+    llvmfunc = llvm::Function::Create(llvm::dyn_cast<llvm::FunctionType>(llvmsig->getElementType()), llvm::GlobalValue::LinkageTypes::InternalLinkage, name, g.module.get());
 
     llvm::BasicBlock* bb = llvm::BasicBlock::Create(g.module->getContext(), "entry", llvmfunc);
     llvm::IRBuilder<> irbuilder(bb);

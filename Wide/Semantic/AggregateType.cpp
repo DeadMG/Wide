@@ -92,7 +92,7 @@ AggregateType::Layout::CodeGen::CodeGen(AggregateType* self, Layout& lay, Codege
 : IsComplex(false) 
 {
     std::stringstream stream;
-    stream << "struct.__" << this;
+    stream << "struct.__" << self;
     auto llvmname = stream.str();
 
     std::vector<llvm::Type*> llvmtypes;

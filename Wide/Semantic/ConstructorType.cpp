@@ -37,9 +37,9 @@ std::unique_ptr<Expression> ConstructorType::AccessMember(std::unique_ptr<Expres
     assert(self->GetType()->Decay() == this);
     //return t->AccessStaticMember(name, c);
     if (name == "decay")
-        return BuildChain(std::move(self), analyzer.GetConstructorType(t->Decay())->BuildValueConstruction({}, { this, c.where }));
+        return BuildChain(std::move(self), analyzer.GetConstructorType(t->Decay())->BuildValueConstruction(Expressions(), { this, c.where }));
     if (name == "pointer")
-        return BuildChain(std::move(self), analyzer.GetConstructorType(analyzer.GetPointerType(t))->BuildValueConstruction({}, { this, c.where }));
+        return BuildChain(std::move(self), analyzer.GetConstructorType(analyzer.GetPointerType(t))->BuildValueConstruction(Expressions(), { this, c.where }));
     if (name == "size")
         return BuildChain(std::move(self), Wide::Memory::MakeUnique<Integer>(llvm::APInt(64, t->size()), analyzer));
     if (name == "alignment")
@@ -48,12 +48,12 @@ std::unique_ptr<Expression> ConstructorType::AccessMember(std::unique_ptr<Expres
         return nullptr;
     if (name == "emplace") {
         if (!emplace) emplace = Wide::Memory::MakeUnique<EmplaceType>(this, analyzer);
-        return BuildChain(std::move(self), emplace->BuildValueConstruction({}, { this, c.where }));
+        return BuildChain(std::move(self), emplace->BuildValueConstruction(Expressions(), { this, c.where }));
     }
     if (name == "lvalue")
-        return BuildChain(std::move(self), analyzer.GetConstructorType(analyzer.GetLvalueType(t))->BuildValueConstruction({}, { this, c.where }));
+        return BuildChain(std::move(self), analyzer.GetConstructorType(analyzer.GetLvalueType(t))->BuildValueConstruction(Expressions(), { this, c.where }));
     if (name == "rvalue")
-        return BuildChain(std::move(self), analyzer.GetConstructorType(analyzer.GetRvalueType(t))->BuildValueConstruction({}, { this, c.where }));
+        return BuildChain(std::move(self), analyzer.GetConstructorType(analyzer.GetRvalueType(t))->BuildValueConstruction(Expressions(), { this, c.where }));
     return nullptr;
 }
 

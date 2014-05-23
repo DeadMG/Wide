@@ -395,6 +395,7 @@ OverloadSet* UserDefinedType::CreateConstructorOverloadSet(Lexer::Access access)
 }
 
 OverloadSet* UserDefinedType::CreateOperatorOverloadSet(Type* self, Lexer::TokenType name, Lexer::Access access) {
+    assert(self->Decay() == this);
     auto user_defined = [&, this] {
         if (type->opcondecls.find(name) != type->opcondecls.end()) {
             std::unordered_set<OverloadResolvable*> resolvable;

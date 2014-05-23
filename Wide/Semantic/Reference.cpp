@@ -101,6 +101,7 @@ struct PointerComparableResolvable : OverloadResolvable, Callable {
     Util::optional<std::vector<Type*>> MatchParameter(std::vector<Type*> types, Analyzer& a, Type* source) override final {
         if (types.size() != 2) return Util::none;
         if (types[0] != a.GetLvalueType(self)) return Util::none;
+        if (IsRvalueType(types[1])) return Util::none;
         if (types[1] == self) return types;
         auto ptrt = a.GetPointerType(types[1]->Decay());
         auto ptrself = a.GetPointerType(self->Decay());
@@ -109,10 +110,11 @@ struct PointerComparableResolvable : OverloadResolvable, Callable {
     }
     std::vector<std::unique_ptr<Expression>> AdjustArguments(std::vector<std::unique_ptr<Expression>> args, Context c) override final { return args; }
     std::unique_ptr<Expression> CallFunction(std::vector<std::unique_ptr<Expression>> args, Context c) override final {
+        auto ty = args[1]->GetType();
         if (args[1]->GetType() == self)
             return Wide::Memory::MakeUnique<ImplicitStoreExpr>(std::move(args[0]), std::move(args[1]));
-        auto basety = dynamic_cast<BaseType*>(args[1]->GetType()->Decay());        
-        return Wide::Memory::MakeUnique<ImplicitStoreExpr>(std::move(args[0]), basety->AccessBase(std::move(args[1]), self));
+        auto udt = dynamic_cast<BaseType*>(ty->Decay());
+        return Wide::Memory::MakeUnique<ImplicitStoreExpr>(std::move(args[0]), udt->AccessBase(std::move(args[1]), self->Decay()));
     }
     Callable* GetCallableForResolution(std::vector<Type*>, Analyzer& a) override final { return this; }
 };
