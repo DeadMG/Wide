@@ -620,12 +620,13 @@ std::unique_ptr<Expression> BaseType::SetVirtualPointers(std::vector<std::pair<B
     std::vector<std::unique_ptr<Expression>> BasePointerInitializers;
     for (auto base : GetBases()) {
         path.push_back(std::make_pair(this, base.second));
-        BasePointerInitializers.push_back(SetVirtualPointers(path, AccessBase(Wide::Memory::MakeUnique<ExpressionReference>(self.get()), base.first->GetSelfAsType())));
+        BasePointerInitializers.push_back(base.first->SetVirtualPointers(path, AccessBase(Wide::Memory::MakeUnique<ExpressionReference>(self.get()), base.first->GetSelfAsType())));
         path.pop_back();
     }
     // If we actually have a vptr, then set it; else just set the bases.
     auto vptr = GetVirtualPointer(Wide::Memory::MakeUnique<ExpressionReference>(self.get()));
     if (vptr) {
+        path.push_back(std::make_pair(this, 0));
         BasePointerInitializers.push_back(Wide::Memory::MakeUnique<ImplicitStoreExpr>(std::move(vptr), GetVTablePointer(path)));
     }
     

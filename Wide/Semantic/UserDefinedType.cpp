@@ -568,7 +568,7 @@ std::unique_ptr<Expression> UserDefinedType::FunctionPointerFor(std::string name
                 llvm::BasicBlock* bb = llvm::BasicBlock::Create(g.module->getContext(), "entry", thunk);
                 llvm::IRBuilder<> irbuilder(bb);
                 auto self = std::next(thunk->arg_begin(), widefunc->GetSignature()->GetReturnType()->IsComplexType(g));
-                auto offset_self = irbuilder.CreateConstGEP1_32(irbuilder.CreatePointerCast(self, llvm::IntegerType::getInt8PtrTy(g.module->getContext())), offset);
+                auto offset_self = irbuilder.CreateConstGEP1_32(irbuilder.CreatePointerCast(self, llvm::IntegerType::getInt8PtrTy(g.module->getContext())), -offset);
                 auto cast_self = irbuilder.CreatePointerCast(offset_self, std::next(g.module->getFunction(widefunc->GetName())->arg_begin(), this_index)->getType());
                 std::vector<llvm::Value*> args;
                 for (std::size_t i = 0; i < thunk->arg_size(); ++i) {
@@ -594,7 +594,7 @@ std::unique_ptr<Expression> UserDefinedType::FunctionPointerFor(std::string name
 std::unique_ptr<Expression> UserDefinedType::GetVirtualPointer(std::unique_ptr<Expression> self) {
     assert(self->GetType()->IsReference());
     assert(IsDynamic());
-    return CreatePrimUnOp(std::move(self), analyzer.GetPointerType(analyzer.GetPointerType(GetVirtualPointerType())), [this](llvm::Value* self, Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+    return CreatePrimUnOp(std::move(self), analyzer.GetLvalueType(analyzer.GetPointerType(GetVirtualPointerType())), [this](llvm::Value* self, Codegen::Generator& g, llvm::IRBuilder<>& bb) {
         return bb.CreateStructGEP(self, GetFieldIndex(type->variables.size() + type->bases.size()));
     });
 }
