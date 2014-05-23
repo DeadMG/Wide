@@ -98,8 +98,8 @@ ExpressionReference::ExpressionReference(Expression* e)
     ListenToNode(expr);
 }
 void ExpressionReference::OnNodeChanged(Node* n, Change what) {
-    //if (what == Change::Destroyed)
-    //    assert(false);
+    if (what == Change::Destroyed)
+        assert(false);
     OnChange();
 }
 Type* ExpressionReference::GetType() {

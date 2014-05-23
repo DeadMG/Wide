@@ -199,7 +199,7 @@ OverloadSet* AggregateType::CreateOperatorOverloadSet(Type* t, Lexer::TokenType 
         types.push_back(modify(this));
         return MakeResolvable([this, modify](std::vector<std::unique_ptr<Expression>> args, Context c) -> std::unique_ptr<Expression> {
             if (GetContents().size() == 0)
-                return std::move(args[0]);
+                return BuildChain(std::move(args[1]), std::move(args[0]));
             
             std::vector<std::unique_ptr<Expression>> exprs;
             // For every type, call the operator
@@ -325,12 +325,12 @@ OverloadSet* AggregateType::CreateNondefaultConstructorOverloadSet() {
     std::unordered_set<OverloadResolvable*> set;
     if (GetLayout().moveconstructible) {
         modify = [this](Type* t) { return analyzer.GetRvalueType(t); };
-        MoveConstructor = createconstructor();
+        if (!MoveConstructor) MoveConstructor = createconstructor();
         set.insert(MoveConstructor.get());
     }
     if (GetLayout().copyconstructible) {
         modify = [this](Type* t) { return analyzer.GetLvalueType(t); };
-        CopyConstructor = createconstructor();
+        if (!CopyConstructor) CopyConstructor = createconstructor();
         set.insert(CopyConstructor.get());
     }
     return analyzer.GetOverloadSet(set);
@@ -352,42 +352,43 @@ OverloadSet* AggregateType::CreateConstructorOverloadSet(Lexer::Access access) {
     if (is_default_constructible()) {
         std::vector<Type*> types;
         types.push_back(analyzer.GetLvalueType(this));
-        DefaultConstructor = MakeResolvable([this](std::vector<std::unique_ptr<Expression>> args, Context c) -> std::unique_ptr<Expression> {
-            if (GetContents().size() == 0)
-                return std::move(args[0]);
-
-            // For every type, call the appropriate constructor.
-            std::vector<std::unique_ptr<Expression>> exprs;
-            for (std::size_t i = 0; i < GetContents().size(); ++i) {
-                auto type = GetContents()[i];
-                auto lhs = PrimitiveAccessMember(Wide::Memory::MakeUnique<ExpressionReference>(args[0].get()), i);
-                auto set = type->GetConstructorOverloadSet(GetAccessSpecifier(this, type));
-                std::vector<Type*> types;
-                types.push_back(analyzer.GetLvalueType(type));
-                auto callable = set->Resolve(types, this);
-                assert(callable);// Should not be generated if this fails!
-                exprs.push_back(callable->Call(Expressions( std::move(lhs) ), c));
-            }
-            struct AggregateConstructor : Expression {
-                std::unique_ptr<Expression> self;
+        if (!DefaultConstructor)
+            DefaultConstructor = MakeResolvable([this](std::vector<std::unique_ptr<Expression>> args, Context c) -> std::unique_ptr<Expression> {
+                if (GetContents().size() == 0)
+                    return std::move(args[0]);
+                
+                // For every type, call the appropriate constructor.
                 std::vector<std::unique_ptr<Expression>> exprs;
-                Type* GetType() override final { return self->GetType(); }
-                llvm::Value* ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
-                    for (auto&& arg : exprs)
-                        arg->GetValue(g, bb);
-                    return self->GetValue(g, bb);
+                for (std::size_t i = 0; i < GetContents().size(); ++i) {
+                    auto type = GetContents()[i];
+                    auto lhs = PrimitiveAccessMember(Wide::Memory::MakeUnique<ExpressionReference>(args[0].get()), i);
+                    auto set = type->GetConstructorOverloadSet(GetAccessSpecifier(this, type));
+                    std::vector<Type*> types;
+                    types.push_back(analyzer.GetLvalueType(type));
+                    auto callable = set->Resolve(types, this);
+                    assert(callable);// Should not be generated if this fails!
+                    exprs.push_back(callable->Call(Expressions( std::move(lhs) ), c));
                 }
-                void DestroyExpressionLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
-                    for (auto rit = exprs.rbegin(); rit != exprs.rend(); ++rit) {
-                        (*rit)->DestroyLocals(g, bb);
+                struct AggregateConstructor : Expression {
+                    std::unique_ptr<Expression> self;
+                    std::vector<std::unique_ptr<Expression>> exprs;
+                    Type* GetType() override final { return self->GetType(); }
+                    llvm::Value* ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
+                        for (auto&& arg : exprs)
+                            arg->GetValue(g, bb);
+                        return self->GetValue(g, bb);
                     }
-                    self->DestroyLocals(g, bb);
-                }
-                AggregateConstructor(std::unique_ptr<Expression> expr, std::vector<std::unique_ptr<Expression>> exprs)
-                    : self(std::move(expr)), exprs(std::move(exprs)) {}
-            };
-            return Wide::Memory::MakeUnique<AggregateConstructor>(std::move(args[0]), std::move(exprs));
-        }, types);
+                    void DestroyExpressionLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
+                        for (auto rit = exprs.rbegin(); rit != exprs.rend(); ++rit) {
+                            (*rit)->DestroyLocals(g, bb);
+                        }
+                        self->DestroyLocals(g, bb);
+                    }
+                    AggregateConstructor(std::unique_ptr<Expression> expr, std::vector<std::unique_ptr<Expression>> exprs)
+                        : self(std::move(expr)), exprs(std::move(exprs)) {}
+                };
+                return Wide::Memory::MakeUnique<AggregateConstructor>(std::move(args[0]), std::move(exprs));
+            }, types);
         set.insert(DefaultConstructor.get());
     }
     return analyzer.GetOverloadSet(analyzer.GetOverloadSet(set), AggregateType::CreateNondefaultConstructorOverloadSet());

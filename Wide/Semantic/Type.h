@@ -83,6 +83,7 @@ namespace Wide {
                 for (auto node : listening_to)
                     node->listeners.erase(this);
                 for (auto node : listeners) {
+                // ENABLE TO DEBUG ACCIDENTALLY DESTROYED EXPRESSIONS
                 //    node->OnNodeChanged(this, Change::Destroyed);
                     node->listening_to.erase(this);
                 }

@@ -34,6 +34,8 @@ namespace Wide {
                     return *codegen;
                 }
             };
+            OverloadSet* Constructors = nullptr;
+            OverloadSet* NonDefaultConstructors = nullptr;
             std::unique_ptr<OverloadResolvable> CopyAssignmentOperator;
             std::unique_ptr<OverloadResolvable> MoveAssignmentOperator;
             std::unique_ptr<OverloadResolvable> CopyConstructor;

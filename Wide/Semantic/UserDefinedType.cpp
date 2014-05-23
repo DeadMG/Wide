@@ -488,6 +488,7 @@ InheritanceRelationship UserDefinedType::IsDerivedFrom(Type* other) {
     return result;
 }
 std::unique_ptr<Expression> UserDefinedType::AccessBase(std::unique_ptr<Expression> self, Type* other) {
+    other = other->Decay();
     assert(IsDerivedFrom(other) == InheritanceRelationship::UnambiguouslyDerived);
     auto otherbase = dynamic_cast<BaseType*>(other);
     // It is unambiguous so just hit on the first base we come across

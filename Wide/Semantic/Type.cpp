@@ -542,7 +542,7 @@ OverloadSet* TupleInitializable::CreateConstructorOverloadSet(Lexer::Access acce
             return Wide::Memory::MakeUnique<TupleInitialization>(self->GetSelfAsType(), std::move(args[0]), std::move(args[1]), std::move(initializers));
         }
     };
-    TupleConstructor = Wide::Memory::MakeUnique<TupleConstructorType>(this);
+    if (!TupleConstructor) TupleConstructor = Wide::Memory::MakeUnique<TupleConstructorType>(this);
     return GetSelfAsType()->analyzer.GetOverloadSet(TupleConstructor.get());
 }
 
