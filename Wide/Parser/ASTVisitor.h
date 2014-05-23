@@ -36,6 +36,9 @@ namespace Wide {
                 if (auto addr = dynamic_cast<const AddressOf*>(e)) { return crtp_cast().VisitAddressOf(addr); }
                 if (auto ty = dynamic_cast<const Type*>(e)) { return crtp_cast().VisitType(ty); }
                 if (auto tup = dynamic_cast<const Tuple*>(e)) { return crtp_cast().VisitTuple(tup); }
+                if (auto decl = dynamic_cast<const Decltype*>(e)) { return crtp_cast().VisitExpression(decl->ex); }
+                if (auto fls = dynamic_cast<const False*>(e)) { return; }
+                if (auto tru = dynamic_cast<const True*>(e)) { return; }
                 assert(false && "Internal Compiler Error: Encountered unknown expression node in AST::Visitor.");
             }            
 

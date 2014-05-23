@@ -78,7 +78,7 @@ int main(int argc, char** argv) {
         total_failed += result.fails;
     }
     std::cout << "Total succeeded: " << total_succeeded << " failed: " << total_failed;
-    //Jit(clangopts, "JITSuccess/OverloadResolution/PrimitiveADL.wide");
+    //Jit(clangopts, "JITSuccess/UserDefined/AccessSpecifierMemberOverloadSet.wide");
     //Compile(clangopts, "CompileFail/LvalueQualifiedThis.wide");
     if (input.count("break"))
         Wide::Util::DebugBreak();
