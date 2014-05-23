@@ -179,6 +179,7 @@ std::unique_ptr<Expression> UserDefinedType::AccessMember(std::unique_ptr<Expres
                     continue;
                 }
                 BaseType = base->GetSelfAsType();
+                continue;
             }
             throw AmbiguousLookup(name, base->GetSelfAsType(), BaseType, c.where);
         }
