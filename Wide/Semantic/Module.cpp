@@ -40,12 +40,12 @@ std::unique_ptr<Expression> Module::AccessMember(std::unique_ptr<Expression> val
             return nullptr;
 
         if (auto moddecl = dynamic_cast<const AST::Module*>(decl)) {
-            return analyzer.GetWideModule(moddecl, this)->BuildValueConstruction({}, c);
+            return BuildChain(std::move(val), analyzer.GetWideModule(moddecl, this)->BuildValueConstruction({}, c));
         }
         if (auto usedecl = dynamic_cast<const AST::Using*>(decl)) {
             auto expr = AnalyzeExpression(this, usedecl->expr, analyzer);
             if (auto constant = expr->GetType()->Decay()->GetConstantContext())
-                return constant->BuildValueConstruction({}, c);
+                return BuildChain(std::move(val), constant->BuildValueConstruction({}, c));
             throw BadUsingTarget(expr->GetType()->Decay(), c.where);
         }
         if (auto overdecl = dynamic_cast<const AST::FunctionOverloadSet*>(decl)) {
@@ -56,7 +56,7 @@ std::unique_ptr<Expression> Module::AccessMember(std::unique_ptr<Expression> val
                 resolvable.insert(analyzer.GetCallableForFunction(func, this, name));
             }
             if (resolvable.empty()) return nullptr;
-            return analyzer.GetOverloadSet(resolvable)->BuildValueConstruction({}, c);
+            return BuildChain(std::move(val), analyzer.GetOverloadSet(resolvable)->BuildValueConstruction({}, c));
         }
         if (auto temptydecl = dynamic_cast<const AST::TemplateTypeOverloadSet*>(decl)) {
             std::unordered_set<OverloadResolvable*> resolvable;
@@ -66,15 +66,15 @@ std::unique_ptr<Expression> Module::AccessMember(std::unique_ptr<Expression> val
                 resolvable.insert(analyzer.GetCallableForTemplateType(func, this));
             }
             if (resolvable.empty()) return nullptr;
-            return analyzer.GetOverloadSet(resolvable)->BuildValueConstruction({}, c);
+            return BuildChain(std::move(val), analyzer.GetOverloadSet(resolvable)->BuildValueConstruction({}, c));
         }
         if (auto tydecl = dynamic_cast<const AST::Type*>(decl)) {
-            return analyzer.GetConstructorType(analyzer.GetUDT(tydecl, this, name))->BuildValueConstruction({}, c);
+            return BuildChain(std::move(val), analyzer.GetConstructorType(analyzer.GetUDT(tydecl, this, name))->BuildValueConstruction({}, c));
         }
         assert(false && "Looked up a member of a module but did not recognize the AST node used.");
     }
     if (SpecialMembers.find(name) != SpecialMembers.end())
-        return Wide::Memory::MakeUnique<ExpressionReference>(SpecialMembers.at(name).get());
+        return BuildChain(std::move(val), Wide::Memory::MakeUnique<ExpressionReference>(SpecialMembers.at(name).get()));
     return nullptr;
 }
 std::string Module::explain() {

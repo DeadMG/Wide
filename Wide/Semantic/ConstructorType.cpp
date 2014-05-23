@@ -31,29 +31,29 @@ struct EmplaceType : public MetaType {
 
 std::unique_ptr<Expression> ConstructorType::BuildCall(std::unique_ptr<Expression> val, std::vector<std::unique_ptr<Expression>> args, Context c) {
     assert(val->GetType()->Decay() == this);
-    return t->BuildValueConstruction(std::move(args), c);
+    return BuildChain(std::move(val), t->BuildValueConstruction(std::move(args), c));
 }
 std::unique_ptr<Expression> ConstructorType::AccessMember(std::unique_ptr<Expression> self, std::string name, Context c) {
     assert(self->GetType()->Decay() == this);
     //return t->AccessStaticMember(name, c);
     if (name == "decay")
-        return analyzer.GetConstructorType(t->Decay())->BuildValueConstruction({}, { this, c.where });
+        return BuildChain(std::move(self), analyzer.GetConstructorType(t->Decay())->BuildValueConstruction({}, { this, c.where }));
     if (name == "pointer")
-        return analyzer.GetConstructorType(analyzer.GetPointerType(t))->BuildValueConstruction({}, { this, c.where });
+        return BuildChain(std::move(self), analyzer.GetConstructorType(analyzer.GetPointerType(t))->BuildValueConstruction({}, { this, c.where }));
     if (name == "size")
-        return Wide::Memory::MakeUnique<Integer>(llvm::APInt(64, t->size()), analyzer);
+        return BuildChain(std::move(self), Wide::Memory::MakeUnique<Integer>(llvm::APInt(64, t->size()), analyzer));
     if (name == "alignment")
-        return Wide::Memory::MakeUnique<Integer>(llvm::APInt(64, t->alignment()), analyzer);
+        return BuildChain(std::move(self), Wide::Memory::MakeUnique<Integer>(llvm::APInt(64, t->alignment()), analyzer));
     if (t == analyzer.GetVoidType())
         return nullptr;
     if (name == "emplace") {
         if (!emplace) emplace = Wide::Memory::MakeUnique<EmplaceType>(this, analyzer);
-        return emplace->BuildValueConstruction({}, { this, c.where });
+        return BuildChain(std::move(self), emplace->BuildValueConstruction({}, { this, c.where }));
     }
     if (name == "lvalue")
-        return analyzer.GetConstructorType(analyzer.GetLvalueType(t))->BuildValueConstruction({}, { this, c.where });
+        return BuildChain(std::move(self), analyzer.GetConstructorType(analyzer.GetLvalueType(t))->BuildValueConstruction({}, { this, c.where }));
     if (name == "rvalue")
-        return analyzer.GetConstructorType(analyzer.GetRvalueType(t))->BuildValueConstruction({}, { this, c.where });
+        return BuildChain(std::move(self), analyzer.GetConstructorType(analyzer.GetRvalueType(t))->BuildValueConstruction({}, { this, c.where }));
     return nullptr;
 }
 

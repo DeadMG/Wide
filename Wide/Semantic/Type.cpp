@@ -192,6 +192,7 @@ std::unique_ptr<Expression> Type::BuildValueConstruction(std::vector<std::unique
     struct ValueConstruction : Expression {
         ValueConstruction(Type* self, std::vector<std::unique_ptr<Expression>> args, Context c)
         : self(self) {
+            no_args = args.size() == 0;
             temporary = Wide::Memory::MakeUnique<ImplicitTemporaryExpr>(self, c);
             if (args.size() == 1)
                 single_arg = Wide::Memory::MakeUnique<ExpressionReference>(args[0].get());
@@ -200,12 +201,16 @@ std::unique_ptr<Expression> Type::BuildValueConstruction(std::vector<std::unique
         std::unique_ptr<ImplicitTemporaryExpr> temporary;
         std::unique_ptr<Expression> InplaceConstruction;
         std::unique_ptr<Expression> single_arg;
+        bool no_args = false;
         bool usedtemp = false;
         Type* self;
         Type* GetType() override final {
             return self;
         }
         llvm::Value* ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+            if (self->GetConstantContext() == self && no_args) {
+                return llvm::UndefValue::get(self->GetLLVMType(g));
+            }
             if (!self->Decay()->IsComplexType(g) && single_arg && single_arg->GetType()->Decay() == self->Decay()) {
                 if (single_arg->GetType() == self)
                     return single_arg->GetValue(g, bb);
@@ -223,6 +228,7 @@ std::unique_ptr<Expression> Type::BuildValueConstruction(std::vector<std::unique
                 temporary->DestroyLocals(g, bb);
                 InplaceConstruction->DestroyLocals(g, bb);
             } else
+            if (!(self->GetConstantContext() == self && no_args))
                 single_arg->GetImplementation()->DestroyLocals(g, bb);
         }
     };

@@ -6,6 +6,7 @@
 #include <Wide/Semantic/ConstructorType.h>
 #include <Wide/Semantic/ClangTemplateClass.h>
 #include <Wide/Semantic/SemanticError.h>
+#include <Wide/Semantic/Expression.h>
 #include <Wide/Semantic/Reference.h>
 #include <Wide/Codegen/Generator.h>
 #include <Wide/Util/Memory/MakeUnique.h>
@@ -38,25 +39,25 @@ std::unique_ptr<Expression> ClangNamespace::AccessMember(std::unique_ptr<Express
         if (auto fundecl = llvm::dyn_cast<clang::FunctionDecl>(result)) {
             std::unordered_set<clang::NamedDecl*> decls;
             decls.insert(fundecl);
-            return analyzer.GetOverloadSet(std::move(decls), from, GetContext())->BuildValueConstruction({}, { this, c.where });
+            return BuildChain(std::move(t), analyzer.GetOverloadSet(std::move(decls), from, GetContext())->BuildValueConstruction({}, { this, c.where }));
         }
         /*if (auto vardecl = llvm::dyn_cast<clang::VarDecl>(result)) {
             return ConcreteExpression(c->GetLvalueType(c->GetClangType(*from, vardecl->getType())), c->gen->CreateGlobalVariable(from->MangleName(vardecl)));
         }*/
         if (auto namedecl = llvm::dyn_cast<clang::NamespaceDecl>(result)) {
-            return analyzer.GetClangNamespace(*from, namedecl)->BuildValueConstruction({}, { this, c.where });
+            return BuildChain(std::move(t), analyzer.GetClangNamespace(*from, namedecl)->BuildValueConstruction({}, { this, c.where }));
         }
         if (auto typedefdecl = llvm::dyn_cast<clang::TypeDecl>(result)) {
-            return analyzer.GetConstructorType(analyzer.GetClangType(*from, from->GetASTContext().getTypeDeclType(typedefdecl)))->BuildValueConstruction({}, { this, c.where });
+            return BuildChain(std::move(t), analyzer.GetConstructorType(analyzer.GetClangType(*from, from->GetASTContext().getTypeDeclType(typedefdecl)))->BuildValueConstruction({}, { this, c.where }));
         }
         if (auto tempdecl = llvm::dyn_cast<clang::ClassTemplateDecl>(result)) {
-            return analyzer.GetClangTemplateClass(*from, tempdecl)->BuildValueConstruction({}, { this, c.where });
+            return BuildChain(std::move(t), analyzer.GetClangTemplateClass(*from, tempdecl)->BuildValueConstruction({}, { this, c.where }));
         }
         throw ClangUnknownDecl(name, t->GetType()->Decay(), c.where); 
     }
     std::unordered_set<clang::NamedDecl*> decls;
     decls.insert(lr.begin(), lr.end());
-    return analyzer.GetOverloadSet(std::move(decls), from, GetContext())->BuildValueConstruction({}, { this, c.where });
+    return BuildChain(std::move(t), analyzer.GetOverloadSet(std::move(decls), from, GetContext())->BuildValueConstruction({}, { this, c.where }));
 }
 
 Type* ClangNamespace::GetContext() {

@@ -207,6 +207,8 @@ std::unique_ptr<Expression> Semantic::BuildValue(std::unique_ptr<Expression> e) 
     return std::move(e);
 }
 std::unique_ptr<Expression> Semantic::BuildChain(std::unique_ptr<Expression> lhs, std::unique_ptr<Expression> rhs) {
+    assert(lhs);
+    assert(rhs);
     return CreatePrimOp(std::move(lhs), std::move(rhs), rhs->GetType(), [](llvm::Value* lhs, llvm::Value* rhs, Codegen::Generator& g, llvm::IRBuilder<>& b) {
         return rhs;
     });

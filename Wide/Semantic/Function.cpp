@@ -921,8 +921,8 @@ std::unique_ptr<Expression> Function::BuildCall(std::unique_ptr<Expression> val,
     if (s == State::NotYetAnalyzed)
         ComputeBody();
     struct Self : public Expression {
-        Self(Function* self, Expression* expr)
-        : self(self) 
+        Self(Function* self, Expression* expr, std::unique_ptr<Expression> val)
+        : self(self), val(std::move(val))
         {
             if (auto func = dynamic_cast<const AST::Function*>(self->fun)) {
                 if (func->dynamic) {
@@ -934,6 +934,7 @@ std::unique_ptr<Expression> Function::BuildCall(std::unique_ptr<Expression> val,
         }
         unsigned index;
         std::unique_ptr<Expression> obj;
+        std::unique_ptr<Expression> val;
         Function* self;
         Type* GetType() override final {
             return self->GetSignature();
@@ -941,6 +942,7 @@ std::unique_ptr<Expression> Function::BuildCall(std::unique_ptr<Expression> val,
         llvm::Value* ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
             if (!self->llvmfunc)
                 self->EmitCode(g);
+            val->GetValue(g, bb);
             if (obj) {
                 auto vptr = bb.CreateLoad(obj->GetValue(g, bb));
                 return bb.CreatePointerCast(bb.CreateLoad(bb.CreateConstGEP1_32(vptr, index)), self->GetSignature()->GetLLVMType(g));
@@ -949,7 +951,7 @@ std::unique_ptr<Expression> Function::BuildCall(std::unique_ptr<Expression> val,
         }
         void DestroyExpressionLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {}
     };
-    return GetSignature()->BuildCall(Wide::Memory::MakeUnique<Self>(this, !args.empty() ? args[0].get() : nullptr), std::move(args), c);
+    return GetSignature()->BuildCall(Wide::Memory::MakeUnique<Self>(this, !args.empty() ? args[0].get() : nullptr, std::move(val)), std::move(args), c);
 }
 
 std::unique_ptr<Expression> Function::LookupLocal(std::string name) {

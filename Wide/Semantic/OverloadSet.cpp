@@ -64,6 +64,8 @@ std::unique_ptr<Expression> OverloadSet::BuildCall(std::unique_ptr<Expression> v
             return bb.CreateExtractValue(self, { 0 });
         }));
 
+    if (val)
+        return BuildChain(std::move(val), call->Call(std::move(args), c));
     return call->Call(std::move(args), c);
 }
 

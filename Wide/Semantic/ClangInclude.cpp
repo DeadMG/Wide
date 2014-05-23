@@ -5,6 +5,7 @@
 #include <Wide/Semantic/FunctionType.h>
 #include <Wide/Semantic/IntegralType.h>
 #include <Wide/Semantic/SemanticError.h>
+#include <Wide/Semantic/Expression.h>
 #include <Wide/Semantic/OverloadSet.h>
 #include <Wide/Semantic/StringType.h>
 #include <Wide/Semantic/Util.h>
@@ -26,7 +27,7 @@ using namespace Semantic;
 
 std::unique_ptr<Expression> ClangIncludeEntity::AccessMember(std::unique_ptr<Expression> t, std::string name, Context c) {
     if (name == "literal") {
-        if (LiteralOverloadSet) return LiteralOverloadSet->BuildValueConstruction({}, { this, c.where });
+        if (LiteralOverloadSet) return BuildChain(std::move(t), LiteralOverloadSet->BuildValueConstruction({}, { this, c.where }));
         struct LiteralIncluder : OverloadResolvable, Callable {
             Util::optional<std::vector<Type*>> MatchParameter(std::vector<Type*> types, Analyzer& a, Type* source) override final {
                 if (types.size() != 1) return Util::none;
@@ -50,10 +51,11 @@ std::unique_ptr<Expression> ClangIncludeEntity::AccessMember(std::unique_ptr<Exp
             }            
         };
         LiteralHandler = Wide::Memory::MakeUnique<LiteralIncluder>();
-        return (LiteralOverloadSet = analyzer.GetOverloadSet(LiteralHandler.get()))->BuildValueConstruction(Expressions(), { this, c.where });
+        LiteralOverloadSet = analyzer.GetOverloadSet(LiteralHandler.get());
+        return BuildChain(std::move(t), LiteralOverloadSet->BuildValueConstruction(Expressions(), { this, c.where }));
     }
     if (name == "macro") {
-        if (MacroOverloadSet) return MacroOverloadSet->BuildValueConstruction({}, { this, c.where });
+        if (MacroOverloadSet) return BuildChain(std::move(t), MacroOverloadSet->BuildValueConstruction({}, { this, c.where }));
         struct ClangMacroHandler : public OverloadResolvable, Callable {
             Util::optional<std::vector<Type*>> MatchParameter(std::vector<Type*> types, Analyzer& a, Type* source) override final {
                 if (types.size() != 2) return Util::none;
@@ -73,7 +75,8 @@ std::unique_ptr<Expression> ClangIncludeEntity::AccessMember(std::unique_ptr<Exp
             }
         };
         MacroHandler = Wide::Memory::MakeUnique<ClangMacroHandler>();
-        return (MacroOverloadSet = analyzer.GetOverloadSet(MacroHandler.get()))->BuildValueConstruction(Expressions(), { this, c.where });
+        MacroOverloadSet = analyzer.GetOverloadSet(MacroHandler.get());
+        return BuildChain(std::move(t), MacroOverloadSet->BuildValueConstruction(Expressions(), { this, c.where }));
     }
     if (name == "header") {
         if (HeaderOverloadSet) return HeaderOverloadSet->BuildValueConstruction({}, { this, c.where });
@@ -97,7 +100,8 @@ std::unique_ptr<Expression> ClangIncludeEntity::AccessMember(std::unique_ptr<Exp
             }
         };
         HeaderIncluder = Wide::Memory::MakeUnique<ClangHeaderHandler>();
-        return (HeaderOverloadSet = analyzer.GetOverloadSet(HeaderIncluder.get()))->BuildValueConstruction(Expressions(), { this, c.where });
+        HeaderOverloadSet = analyzer.GetOverloadSet(HeaderIncluder.get());
+        return BuildChain(std::move(t), HeaderOverloadSet->BuildValueConstruction(Expressions(), { this, c.where }));
     }
     return nullptr;
 }
@@ -114,7 +118,7 @@ std::unique_ptr<Expression> ClangIncludeEntity::BuildCall(std::unique_ptr<Expres
     if (name.size() > 1 && name.back() == '>')
         name = std::string(name.begin(), name.end() - 1);
     auto clangtu = analyzer.AggregateCPPHeader(std::move(name), c.where);
-    return analyzer.GetClangNamespace(*clangtu, clangtu->GetDeclContext())->BuildValueConstruction(Expressions(), { this, c.where });
+    return BuildChain(std::move(val), analyzer.GetClangNamespace(*clangtu, clangtu->GetDeclContext())->BuildValueConstruction(Expressions(), { this, c.where }));
 }
 
 std::string ClangIncludeEntity::explain() {
