@@ -36,7 +36,7 @@ std::unique_ptr<Expression> TupleType::ConstructFromLiteral(std::vector<std::uni
         std::vector<std::unique_ptr<Expression>> inits;
         std::unique_ptr<Expression> self;
         Type* GetType() override final {
-            return self->GetType();
+            return self->GetType()->analyzer.GetRvalueType(self->GetType()->Decay());
         }
         llvm::Value* ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
             for (auto&& init : inits)
