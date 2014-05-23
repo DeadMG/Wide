@@ -46,6 +46,7 @@ using namespace Semantic;
 
 namespace {
     llvm::DataLayout GetDataLayout(std::string triple) {
+        Codegen::InitializeLLVM();
         std::unique_ptr<llvm::TargetMachine> targetmachine;
         std::string err;
         const llvm::Target& target = *llvm::TargetRegistry::lookupTarget(triple, err);

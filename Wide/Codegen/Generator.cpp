@@ -23,7 +23,7 @@ using namespace Wide;
 using namespace Codegen;
 
 static bool fuck_llvm = false;
-void InitializeLLVM() {
+void Codegen::InitializeLLVM() {
     if (!fuck_llvm) {
         llvm::InitializeAllTargets();
         llvm::InitializeAllTargetMCs();

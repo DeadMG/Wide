@@ -13,6 +13,7 @@ namespace Wide {
         class Analyzer;
     }
     namespace Codegen {
+        void InitializeLLVM();
         class Generator {
             llvm::LLVMContext context;
         public:
