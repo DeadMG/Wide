@@ -447,7 +447,7 @@ std::vector<std::pair<BaseType*, unsigned>> ClangType::GetBases() {
 std::unique_ptr<Expression> GetVTablePointer(std::unique_ptr<Expression> self, const clang::CXXRecordDecl* current, Analyzer& a, ClangTU* from, Type* vptrty) {
     auto&& layout = from->GetASTContext().getASTRecordLayout(current);
     if (layout.hasOwnVFPtr())
-        return CreatePrimUnOp(std::move(self), a.GetPointerType(vptrty), [](llvm::Value* val, Codegen::Generator& g, llvm::IRBuilder<>& b) {
+        return CreatePrimUnOp(std::move(self), a.GetLvalueType(a.GetPointerType(vptrty)), [](llvm::Value* val, Codegen::Generator& g, llvm::IRBuilder<>& b) {
             return b.CreateStructGEP(val, 0);
         });
     auto basenum = from->GetBaseNumber(current, layout.getPrimaryBase());
@@ -463,7 +463,7 @@ std::unique_ptr<Expression> ClangType::GetVirtualPointer(std::unique_ptr<Express
 }
 
 Type* ClangType::GetVirtualPointerType() {
-    return analyzer.GetFunctionType(analyzer.GetIntegralType(8, true), {}, true);
+    return analyzer.GetFunctionType(analyzer.GetIntegralType(32, true), {}, true);
 }
 std::vector<BaseType::VirtualFunction> ClangType::ComputeVTableLayout() {
     return std::vector<VirtualFunction>();
