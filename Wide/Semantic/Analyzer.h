@@ -116,6 +116,8 @@ namespace Wide {
             llvm::DataLayout layout;
 
         public:
+            auto GetFunctions() -> const decltype(WideFunctions)& { return WideFunctions; }
+
             std::function<void(Lexer::Range where, Type* t)> QuickInfo;
             std::function<void(Lexer::Range where)> ParameterHighlight;
 

@@ -919,7 +919,7 @@ void Function::EmitCode(Codegen::Generator& g) {
             auto fty = llvmfunc->getFunctionType();
             if (exportname == "main")
                 fty = llvm::FunctionType::get(llvm::IntegerType::getInt32Ty(g.module->getContext()), false);
-            tramp = llvm::Function::Create(llvmfunc->getFunctionType(), llvm::GlobalValue::ExternalLinkage, exportname, g.module.get());
+            tramp = llvm::Function::Create(fty, llvm::GlobalValue::ExternalLinkage, exportname, g.module.get());
             llvm::BasicBlock* bb = llvm::BasicBlock::Create(g.module->getContext(), "entry", tramp);
             llvm::IRBuilder<> irbuilder(&tramp->getEntryBlock());
             for (auto it = tramp->arg_begin(); it != tramp->arg_end(); ++it)
@@ -934,9 +934,10 @@ void Function::EmitCode(Codegen::Generator& g) {
             if (exportname == "main") {
                 irbuilder.CreateCall(llvmfunc, args);
                 irbuilder.CreateRet(irbuilder.getInt32(0));
+            } else {
+                irbuilder.CreateCall(llvmfunc, args);
+                irbuilder.CreateRetVoid();
             }
-            irbuilder.CreateCall(llvmfunc, args);
-            irbuilder.CreateRetVoid();
         } else {
             auto call = (llvm::Value*)irbuilder.CreateCall(llvmfunc, args);
             if (ourret == int8ty && trampret == int1ty)

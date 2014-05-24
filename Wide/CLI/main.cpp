@@ -3,7 +3,6 @@
 #include <Wide/Semantic/ClangOptions.h>
 #include <Wide/Codegen/LLVMOptions.h>
 #include <Wide/Util/Driver/Compile.h>
-#include <Wide/Codegen/LLVMGenerator.h>
 #include <Wide/Semantic/Module.h>
 #include <Wide/Semantic/Analyzer.h>
 #include <Wide/Semantic/OverloadSet.h>
@@ -14,6 +13,8 @@
 #include <memory>
 #include <fstream>
 #include <iostream>
+#include <unordered_set>
+#include <Wide/Util/Driver/Warnings.h>
 
 #pragma warning(push, 0)
 #include <llvm/PassManager.h>
@@ -27,7 +28,8 @@
 #include <llvm/Support/raw_os_ostream.h>
 #pragma warning(pop)
 
-void SearchDirectory(std::string path, std::vector<std::string>& vec, std::string system) {
+std::unordered_set<std::string> SearchDirectory(std::string path, std::string system) {
+    std::unordered_set<std::string> ret;
     auto end = llvm::sys::fs::directory_iterator();
     llvm::error_code fuck_error_codes;
     bool out = true;
@@ -45,21 +47,22 @@ void SearchDirectory(std::string path, std::vector<std::string>& vec, std::strin
         llvm::SmallVector<char, 1> fuck_out_parameters;
         llvm::sys::path::append(fuck_out_parameters, path, system);
         std::string systempath(fuck_out_parameters.begin(), fuck_out_parameters.end());
-        SearchDirectory(systempath, vec, system);
-        return;
+        return SearchDirectory(systempath, system);
     }
     for (auto file : entries) {
         bool isfile = false;
         llvm::sys::fs::is_regular_file(file, isfile);
         if (isfile) {
             if (llvm::sys::path::extension(file) == ".wide")
-                vec.push_back(file);
+                ret.insert(file);
         }
         llvm::sys::fs::is_directory(file, isfile);
         if (isfile) {
-            SearchDirectory(file, vec, system);
+            auto more = SearchDirectory(file, system);
+            ret.insert(more.begin(), more.end());
         }
     }
+    return ret;
 }
 
 int main(int argc, char** argv)
@@ -130,9 +133,10 @@ int main(int argc, char** argv)
 #endif
     //LLVMOpts.Passes.push_back(Wide::Options::CreateDeadCodeElimination());
 
-    std::vector<std::string> files;
+    std::unordered_set<std::string> files;
     if (input.count("input")) {
-        files = input["input"].as<std::vector<std::string>>();
+        auto list = input["input"].as<std::vector<std::string>>();
+        files.insert(list.begin(), list.end());
     } else {
         std::cout << "Didn't request any files to be compiled.\n";
         return 1;
@@ -157,36 +161,40 @@ int main(int argc, char** argv)
         trip.isOSWindows() ? "Windows" :
         trip.isOSLinux() ? "Linux" :
         "Mac";
-    SearchDirectory(stdlib, files, name);
+    auto stdfiles = SearchDirectory(stdlib, name);
+    auto final_files = files;
+    final_files.insert(stdfiles.begin(), stdfiles.end());
 
     try {
-        Wide::LLVMCodegen::Generator Generator(LLVMOpts, ClangOpts.TargetOptions.Triple, [&](std::unique_ptr<llvm::Module> main) {
-            llvm::PassManager pm;
-            std::unique_ptr<llvm::TargetMachine> targetmachine;
-            llvm::TargetOptions targetopts;
-            std::string err;
-            const llvm::Target& target = *llvm::TargetRegistry::lookupTarget(ClangOpts.TargetOptions.Triple, err);
-            targetmachine = std::unique_ptr<llvm::TargetMachine>(target.createTargetMachine(ClangOpts.TargetOptions.Triple, llvm::Triple(ClangOpts.TargetOptions.Triple).getArchName(), "", targetopts));
-            std::ofstream file(ClangOpts.FrontendOptions.OutputFile, std::ios::trunc | std::ios::binary);
-            llvm::raw_os_ostream out(file);
-            llvm::formatted_raw_ostream format_out(out);
-            targetmachine->addPassesToEmitFile(pm, format_out, llvm::TargetMachine::CodeGenFileType::CGFT_ObjectFile);
-            pm.run(*main);
-        });
-        Wide::Driver::Compile(ClangOpts, [](Wide::Semantic::Analyzer& a, const Wide::AST::Module* root) {
+        Wide::Codegen::Generator g(ClangOpts.TargetOptions.Triple);
+        Wide::Driver::Compile(ClangOpts, [&](Wide::Semantic::Analyzer& a, const Wide::AST::Module* root) {
             Wide::Semantic::AnalyzeExportedFunctions(a);
             static const Wide::Lexer::Range location = std::make_shared<std::string>("Analyzer entry point");
-            Wide::Semantic::Context c(a, location, [](Wide::Semantic::ConcreteExpression e) {}, a.GetGlobalModule());
-            auto global = a.GetGlobalModule()->BuildValueConstruction({}, c);
-            auto main = global.AccessMember("Main", c);
+            Wide::Semantic::Context c(a.GetGlobalModule(), location);
+            auto global = a.GetGlobalModule()->BuildValueConstruction(Wide::Semantic::Expressions(), c);
+            auto main = global->GetType()->AccessMember(std::move(global), "Main", c);
             if (!main)
                 return;
-            auto overset = dynamic_cast<Wide::Semantic::OverloadSet*>(main->t->Decay());
-            auto f = overset->Resolve({}, a, a.GetGlobalModule());
+            auto overset = dynamic_cast<Wide::Semantic::OverloadSet*>(main->GetType()->Decay());
+            auto f = overset->Resolve({}, c.from);
             auto func = dynamic_cast<Wide::Semantic::Function*>(f);
-            func->SetExportName("main");
-            func->ComputeBody(a);
-        }, Generator, files);
+            func->AddExportName("main");
+            func->ComputeBody();
+            a.GenerateCode(g);
+            g(LLVMOpts); 
+            Wide::Driver::PrintUnusedFunctions(files, a);
+        }, std::vector<std::string>(final_files.begin(), final_files.end()));
+        llvm::PassManager pm;
+        std::unique_ptr<llvm::TargetMachine> targetmachine;
+        llvm::TargetOptions targetopts;
+        std::string err;
+        const llvm::Target& target = *llvm::TargetRegistry::lookupTarget(ClangOpts.TargetOptions.Triple, err);
+        targetmachine = std::unique_ptr<llvm::TargetMachine>(target.createTargetMachine(ClangOpts.TargetOptions.Triple, llvm::Triple(ClangOpts.TargetOptions.Triple).getArchName(), "", targetopts));
+        std::ofstream file(ClangOpts.FrontendOptions.OutputFile, std::ios::trunc | std::ios::binary);
+        llvm::raw_os_ostream out(file);
+        llvm::formatted_raw_ostream format_out(out);
+        targetmachine->addPassesToEmitFile(pm, format_out, llvm::TargetMachine::CodeGenFileType::CGFT_ObjectFile);
+        pm.run(*g.module);
     } catch (Wide::Semantic::Error& e) {
         std::cout << "Error at " << to_string(e.location()) << "\n";
         std::cout << e.what() << "\n";
