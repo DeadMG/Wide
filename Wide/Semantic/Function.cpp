@@ -907,6 +907,10 @@ void Function::EmitCode(Codegen::Generator& g) {
                     if (ourret != llvm::IntegerType::getInt8Ty(g.module->getContext()) || trampret != llvm::IntegerType::getInt1Ty(g.module->getContext()))
                         throw std::runtime_error("Internal Compiler Error: An LLVM function failed verification.");
                 }
+            } else {
+                // This ever happens?
+                for (auto it = tramp->arg_begin(); it != tramp->arg_end(); ++it)
+                    args.push_back(&*it);
             }
         } else {
             trampret = ourret;
