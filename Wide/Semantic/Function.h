@@ -47,7 +47,8 @@ namespace Wide {
             Type* context;
             std::string source_name;
             std::string name;
-            Wide::Util::optional<std::string> trampoline;
+            std::vector<std::function<std::string(Codegen::Generator&)>> trampoline;
+            std::unordered_set<Type*> ClangContexts;
             enum class State {
                 NotYetAnalyzed,
                 AnalyzeInProgress,
@@ -75,10 +76,12 @@ namespace Wide {
             FunctionType* GetSignature();
             std::unique_ptr<Expression> LookupLocal(std::string name);
             Type* GetConstantContext() override final;
-            void SetExportName(std::string name) { trampoline = name; }
+            void AddExportName(std::string name) {trampoline.push_back([name](Codegen::Generator&) { return name; }); }
             std::string explain() override final;
             std::string GetSourceName() { return source_name; }
             ~Function();
+
+            const std::unordered_set<Type*>& GetClangContexts() { return ClangContexts; }
         };
     }
 }

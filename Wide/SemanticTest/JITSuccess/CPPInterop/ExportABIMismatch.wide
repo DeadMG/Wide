@@ -1,7 +1,7 @@
 using header := cpp("JITSuccess/CPPInterop/ExportABIMismatch.h");
 f(bool b, header.test arg) 
 prolog {
-    ExportName = cpp.mangle(header.f);
+    ExportAs = header.f;
 }
 {
     return b;

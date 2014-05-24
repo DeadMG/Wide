@@ -461,3 +461,11 @@ std::string OverloadSet::explain() {
 void OverloadSet::IssueResolutionError(std::vector<Type*> types) {
     throw std::runtime_error("Overload resolution failure.");
 }
+std::pair<ClangTU*, clang::FunctionDecl*> OverloadSet::GetSingleFunction() {
+    if (clangfuncs.size() == 1) {
+        if (auto funcdecl = llvm::dyn_cast<clang::FunctionDecl>(*clangfuncs.begin())) {
+            return { from, funcdecl };
+        }
+    }
+    return { nullptr, nullptr };
+}

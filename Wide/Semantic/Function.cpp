@@ -26,6 +26,7 @@
 #include <llvm/Support/raw_os_ostream.h>
 #include <clang/AST/Type.h>
 #include <clang/AST/ASTContext.h>
+#include <clang/AST/DeclCXX.h>
 #pragma warning(pop)
 
 using namespace Wide;
@@ -682,7 +683,7 @@ Function::Function(std::vector<Type*> args, const AST::FunctionBase* astfun, Ana
                 auto str = dynamic_cast<StringType*>(expr->GetType()->Decay());
                 if (!str)
                     throw PrologExportNotAString(ass->rhs->location);
-                trampoline = str->GetValue();
+                trampoline.push_back([str](Codegen::Generator& g) { return str->GetValue(); });
             }
             if (ident->val == "ReturnType") {
                 auto ty = dynamic_cast<ConstructorType*>(expr->GetType()->Decay());
@@ -690,6 +691,18 @@ Function::Function(std::vector<Type*> args, const AST::FunctionBase* astfun, Ana
                     throw NotAType(expr->GetType()->Decay(), ass->rhs->location);
                 ExplicitReturnType = ty->GetConstructedType();
                 ReturnType = *ExplicitReturnType;
+            }
+            if (ident->val == "ExportAs") {
+                auto overset = dynamic_cast<OverloadSet*>(expr->GetType()->Decay());
+                if (!overset)
+                    throw NotAType(expr->GetType()->Decay(), ass->rhs->location);
+                auto tuanddecl = overset->GetSingleFunction();
+                if (!tuanddecl.second) throw NotAType(expr->GetType()->Decay(), ass->rhs->location);
+                auto tu = tuanddecl.first;
+                auto decl = tuanddecl.second;
+                trampoline.push_back(tu->MangleName(decl));
+                if (auto meth = llvm::dyn_cast<clang::CXXMethodDecl>(decl))
+                    ClangContexts.insert(analyzer.GetClangType(*tu, tu->GetASTContext().getRecordType(meth->getParent())));
             }
         }
     }
@@ -805,40 +818,12 @@ void Function::EmitCode(Codegen::Generator& g) {
     if (llvm::verifyFunction(*llvmfunc, llvm::VerifierFailureAction::PrintMessageAction))
         throw std::runtime_error("Internal Compiler Error: An LLVM function failed verification.");
 
-    if (trampoline) {
+    for (auto exportnam : trampoline) {
+        auto exportname = exportnam(g);
         // oh yay.
         // Gotta handle ABI mismatch.
 
-        // Preserving the below code in the extremely likely case we will encounter a need for it again.
         // Check Clang's uses of this function - if it bitcasts them all we're good.
-        /*for (auto use_it = f->use_begin(); use_it != f->use_end(); ++use_it) {
-            auto use = *use_it;
-            if (auto cast = llvm::dyn_cast<llvm::CastInst>(use)) {
-                if (cast->getDestTy() != ty->getPointerTo())
-                    throw std::runtime_error("Found a function of the same name in the module but it had the wrong LLVM type.");
-            }
-            if (auto constant = llvm::dyn_cast<llvm::ConstantExpr>(use)) {
-                if (constant->getType() != ty->getPointerTo()) {
-                    throw std::runtime_error("Found a function of the same name in the module but it had the wrong LLVM type.");
-                }
-            }
-            else
-                throw std::runtime_error("Found a function of the same name in the module but it had the wrong LLVM type.");
-        }
-        // All Clang's uses are valid.
-        f->setName("__fucking__clang__type_hacks");
-        auto badf = f;
-        auto linkage = tramp ? llvm::GlobalValue::LinkageTypes::ExternalLinkage : llvm::GlobalValue::LinkageTypes::InternalLinkage;
-        auto t = llvm::dyn_cast<llvm::FunctionType>(llvm::dyn_cast<llvm::PointerType>(Type(mod))->getElementType());
-        f = llvm::Function::Create(t, linkage, name, mod);
-        // Update all Clang's uses
-        for (auto use_it = badf->use_begin(); use_it != badf->use_end(); ++use_it) {
-            auto use = *use_it;
-            if (auto cast = llvm::dyn_cast<llvm::CastInst>(use))
-                cast->replaceAllUsesWith(f);
-            if (auto constant = llvm::dyn_cast<llvm::ConstantExpr>(use))
-                constant->replaceAllUsesWith(f);
-        }*/
 
         auto ourret = llvmfunc->getFunctionType()->getReturnType();
         auto int8ty = llvm::IntegerType::getInt8Ty(g.module->getContext());
@@ -846,7 +831,47 @@ void Function::EmitCode(Codegen::Generator& g) {
         llvm::Type* trampret;
         llvm::Function* tramp = nullptr;
         std::vector<llvm::Value*> args;
-        if (tramp = g.module->getFunction(*trampoline)) {
+        if (tramp = g.module->getFunction(exportname)) {
+            // Someone- almost guaranteed Clang- already generated a function with this name.
+            // First handle bitcast WTFery
+            // Sometimes Clang generates functions with totally the wrong type, then bitcasts them on every use.
+            // So just change the function decl to match the bitcast type.
+            llvm::Type* CastType = nullptr;
+            for (auto use_it = tramp->use_begin(); use_it != tramp->use_end(); ++use_it) {
+                auto use = *use_it;
+                if (auto cast = llvm::dyn_cast<llvm::CastInst>(use)) {
+                    if (CastType) {
+                        if (CastType != cast->getDestTy()) {
+                            throw std::runtime_error("Found a function of the same name in the module but it had the wrong LLVM type.");
+                        }
+                    } else
+                        CastType = cast->getDestTy();
+                }
+                if (auto constant = llvm::dyn_cast<llvm::ConstantExpr>(use)) {
+                    if (CastType) {
+                        if (CastType != constant->getType()) {
+                            throw std::runtime_error("Found a function of the same name in the module but it had the wrong LLVM type.");
+                        }
+                    } else
+                        CastType = constant->getType();
+                }
+            }
+            // All Clang's uses are valid.
+            if (CastType) {
+                tramp->setName("__fucking__clang__type_hacks");
+                auto badf = tramp;
+                auto t = llvm::dyn_cast<llvm::FunctionType>(llvm::dyn_cast<llvm::PointerType>(CastType)->getElementType());
+                tramp = llvm::Function::Create(t, llvm::GlobalValue::LinkageTypes::ExternalLinkage, name, g.module.get());
+                // Update all Clang's uses
+                for (auto use_it = badf->use_begin(); use_it != badf->use_end(); ++use_it) {
+                    auto use = *use_it;
+                    if (auto cast = llvm::dyn_cast<llvm::CastInst>(use))
+                        cast->replaceAllUsesWith(tramp);
+                    if (auto constant = llvm::dyn_cast<llvm::ConstantExpr>(use))
+                        constant->replaceAllUsesWith(tramp);
+                }
+            }
+
             trampret = tramp->getFunctionType()->getReturnType();
             if (tramp->getFunctionType() != llvmfunc->getFunctionType()) {
                 // Clang's idea of the LLVM representation of this function disagrees with our own.
@@ -876,14 +901,6 @@ void Function::EmitCode(Codegen::Generator& g) {
                         continue;
                     }
 
-                    // This code appears to just insert a null pointer for pointer/reference to eliminate type.. not sure if that's wise?!
-                    /*if (auto ptr = llvm::dyn_cast<llvm::PointerType>(ty->getParamType(i))) {
-                        auto el = ptr->getElementType();
-                        if (g.IsEliminateType(el)) {
-                            ParameterValues[i] = llvm::Constant::getNullValue(ty->getParamType(i));
-                            continue;
-                        }
-                    }*/
                     throw std::runtime_error("Internal Compiler Error: An LLVM function failed verification.");
                 }
                 if (ourret != trampret) {
@@ -894,9 +911,9 @@ void Function::EmitCode(Codegen::Generator& g) {
         } else {
             trampret = ourret;
             auto fty = llvmfunc->getFunctionType();
-            if (*trampoline == "main")
+            if (exportname == "main")
                 fty = llvm::FunctionType::get(llvm::IntegerType::getInt32Ty(g.module->getContext()), false);
-            tramp = llvm::Function::Create(llvmfunc->getFunctionType(), llvm::GlobalValue::ExternalLinkage, *trampoline, g.module.get());
+            tramp = llvm::Function::Create(llvmfunc->getFunctionType(), llvm::GlobalValue::ExternalLinkage, exportname, g.module.get());
             for (auto it = tramp->arg_begin(); it != tramp->arg_end(); ++it)
                 args.push_back(&*it);
         }
@@ -907,7 +924,7 @@ void Function::EmitCode(Codegen::Generator& g) {
         // May be ABI mismatch between ourselves and llvmfunc.
         // Consider that we may have to truncate the result, and we may have to add ret 0 for main.
         if (ReturnType == analyzer.GetVoidType()) {
-            if (*trampoline == "main") {
+            if (exportname == "main") {
                 irbuilder.CreateCall(llvmfunc, args);
                 irbuilder.CreateRet(irbuilder.getInt32(0));
             }

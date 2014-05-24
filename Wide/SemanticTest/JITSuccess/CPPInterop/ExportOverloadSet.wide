@@ -1,6 +1,6 @@
 using header := cpp("JITSuccess/CPPInterop/ExportOverloadSet.h");
 f() prolog {
-    ExportName = cpp.mangle(header.f.resolve());
+    ExportName = header.f.resolve();
 } {
     return true;
 }

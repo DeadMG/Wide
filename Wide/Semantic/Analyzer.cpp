@@ -681,6 +681,14 @@ Lexer::Access Semantic::GetAccessSpecifier(Type* from, Type* to) {
                 return Lexer::Access::Protected;
         }
     }
+    if (auto func = dynamic_cast<Function*>(from)) {
+        if (auto clangty = dynamic_cast<ClangType*>(to)) {
+            Lexer::Access max = GetAccessSpecifier(func->GetContext(), target);
+            for (auto clangcontext : func->GetClangContexts())
+                max = std::max(max, GetAccessSpecifier(clangcontext, target));
+            return max;
+        }
+    }
     if (auto context = source->GetContext())
         return GetAccessSpecifier(context, target);
 
@@ -697,6 +705,8 @@ void ProcessFunction(const AST::Function* f, Analyzer& a, Module* m, std::string
         if (!ident)
             continue;
         if (ident->val == "ExportName")
+            exported = true;
+        if (ident->val == "ExportAs")
             exported = true;
     }
     if (!exported) return;

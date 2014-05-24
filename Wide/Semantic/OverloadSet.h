@@ -13,6 +13,7 @@
 
 namespace clang {
     class NamedDecl;
+    class FunctionDecl;
 }
 namespace Wide {
     namespace Semantic {
@@ -54,6 +55,7 @@ namespace Wide {
             Type* GetConstantContext() override final;
 
             void IssueResolutionError(std::vector<Type*> types);
+            std::pair<ClangTU*, clang::FunctionDecl*> GetSingleFunction();
         };
     }
 }

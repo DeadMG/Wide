@@ -1,6 +1,6 @@
 using header := cpp("JITSuccess/CPPInterop/ExportMemberFunction.h");
 f(header.test.pointer self) prolog {
-    ExportName = cpp.mangle(header.test().f);
+    ExportAs = header.test().f;
 } {
     if (self)
         self->var = true;
