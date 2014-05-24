@@ -1,4 +1,4 @@
-using header := cpp("JITSuccess/CPPInterop/ABI/Virtuals/DerivedSingleInheritance.h");
+using header := cpp("JITSuccess/CPPInterop/DerivedSingleInheritance.h");
 f(header.x.rvalue arg) prolog {
     ExportAs = header.f.resolve(header.x.rvalue);
 } {
