@@ -35,7 +35,8 @@ namespace Wide {
             std::unique_ptr<Expression> AccessMember(std::unique_ptr<Expression> t, std::string name, Context c) override final;        
             std::unique_ptr<Expression> BuildBooleanConversion(std::unique_ptr<Expression> ex, Context c) override final; 
             std::unique_ptr<Expression> BuildDestructorCall(std::unique_ptr<Expression> self, Context c) override final;
-
+            
+            bool IsEliminateType() override final;
             bool IsComplexType(Codegen::Generator&) override final;
             std::size_t size() override final;
             std::size_t alignment() override final;

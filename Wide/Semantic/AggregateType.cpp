@@ -393,3 +393,6 @@ OverloadSet* AggregateType::CreateConstructorOverloadSet(Lexer::Access access) {
     }
     return analyzer.GetOverloadSet(analyzer.GetOverloadSet(set), AggregateType::CreateNondefaultConstructorOverloadSet());
 }
+bool AggregateType::IsEliminateType() {
+    return GetContents().size() == 0;
+}

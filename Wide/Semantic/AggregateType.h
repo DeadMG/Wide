@@ -70,6 +70,7 @@ namespace Wide {
             bool IsCopyAssignable(Lexer::Access access) override;
             bool IsMoveAssignable(Lexer::Access access) override;
             bool IsComplexType(Codegen::Generator& g) override;
+            bool IsEliminateType() override final;
         };
     }
 }

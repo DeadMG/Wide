@@ -109,6 +109,10 @@ Type* Type::GetConstantContext() {
     return nullptr;
 }
 
+bool Type::IsEliminateType() {
+    return false;
+}
+
 std::unique_ptr<Expression> Type::AccessStaticMember(std::string name) {
     if (IsReference())
         return Decay()->AccessStaticMember(name);

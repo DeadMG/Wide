@@ -873,13 +873,15 @@ void Function::EmitCode(Codegen::Generator& g) {
             }
 
             trampret = tramp->getFunctionType()->getReturnType();
+            llvm::BasicBlock* bb = llvm::BasicBlock::Create(g.module->getContext(), "entry", tramp);
+            llvm::IRBuilder<> irbuilder(&tramp->getEntryBlock());
             if (tramp->getFunctionType() != llvmfunc->getFunctionType()) {
                 // Clang's idea of the LLVM representation of this function disagrees with our own.
                 // First, check the arguments.
                 auto fty = tramp->getFunctionType();
                 auto ty = llvmfunc->getFunctionType();
                 auto arg_begin = tramp->getArgumentList().begin();
-                for (std::size_t i = 0; i < fty->getNumParams(); ++i) {
+                for (std::size_t i = 0; i < ty->getNumParams(); ++i) {
                     // If this particular type is a match, then go for it.
                     if (ty->getParamType(i) == arg_begin->getType()) {
                         args.push_back(arg_begin);
@@ -896,7 +898,7 @@ void Function::EmitCode(Codegen::Generator& g) {
 
                     // Clang elides 0-sized arguments by value.
                     // Check our actual semantic argument for this, not the LLVM type, as Clang codegens them to have a size of 1.
-                    if (Args[i]->size() == 0) {
+                    if (Args[i]->IsEliminateType()) {
                         args.push_back(llvm::Constant::getNullValue(ty->getParamType(i)));
                         continue;
                     }
@@ -918,12 +920,13 @@ void Function::EmitCode(Codegen::Generator& g) {
             if (exportname == "main")
                 fty = llvm::FunctionType::get(llvm::IntegerType::getInt32Ty(g.module->getContext()), false);
             tramp = llvm::Function::Create(llvmfunc->getFunctionType(), llvm::GlobalValue::ExternalLinkage, exportname, g.module.get());
+            llvm::BasicBlock* bb = llvm::BasicBlock::Create(g.module->getContext(), "entry", tramp);
+            llvm::IRBuilder<> irbuilder(&tramp->getEntryBlock());
             for (auto it = tramp->arg_begin(); it != tramp->arg_end(); ++it)
                 args.push_back(&*it);
         }
 
-        llvm::BasicBlock* bb = llvm::BasicBlock::Create(g.module->getContext(), "entry", tramp);
-        llvm::IRBuilder<> irbuilder(bb);
+        llvm::IRBuilder<> irbuilder(&tramp->getEntryBlock());
 
         // May be ABI mismatch between ourselves and llvmfunc.
         // Consider that we may have to truncate the result, and we may have to add ret 0 for main.
@@ -940,6 +943,8 @@ void Function::EmitCode(Codegen::Generator& g) {
                 call = irbuilder.CreateTrunc(call, int1ty);
             irbuilder.CreateRet(call);
         }
+        if (llvm::verifyFunction(*tramp, llvm::VerifierFailureAction::PrintMessageAction))
+            throw std::runtime_error("Internal Compiler Error: An LLVM function failed verification.");
     }
 }
 

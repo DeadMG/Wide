@@ -146,6 +146,7 @@ namespace Wide {
             virtual bool IsCopyAssignable(Lexer::Access access);
             virtual bool IsA(Type* self, Type* other, Lexer::Access access);
             virtual Type* GetConstantContext();
+            virtual bool IsEliminateType();
 
             virtual std::unique_ptr<Expression> AccessStaticMember(std::string name);
             virtual std::unique_ptr<Expression> AccessMember(std::unique_ptr<Expression> t, std::string name, Context c);

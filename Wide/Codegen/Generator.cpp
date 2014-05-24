@@ -51,6 +51,10 @@ Generator::Generator(std::string triple)
 }
 
 void Generator::operator()(const Options::LLVM& opts) {
+    std::string err;
+    if (llvm::verifyModule(*module.get(), llvm::VerifierFailureAction::PrintMessageAction, &err))
+        throw std::runtime_error("Internal Compiler Error: An LLVM module failed verification.");
+
     llvm::PassManager pm;
 
     pm.add(new llvm::DataLayout(module->getDataLayout()));

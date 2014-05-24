@@ -471,3 +471,6 @@ std::vector<BaseType::VirtualFunction> ClangType::ComputeVTableLayout() {
 std::unique_ptr<Expression> ClangType::FunctionPointerFor(std::string name, std::vector<Type*> args, Type* ret, unsigned offset) {
     return nullptr;
 }
+bool ClangType::IsEliminateType() {
+    return type->getAsCXXRecordDecl()->isEmpty();
+}
