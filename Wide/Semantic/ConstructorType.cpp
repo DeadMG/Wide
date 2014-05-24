@@ -60,6 +60,7 @@ std::unique_ptr<Expression> ConstructorType::AccessMember(std::unique_ptr<Expres
 ConstructorType::ConstructorType(Type* con, Analyzer& a)
 : MetaType(a) {
     t = con;
+    assert(t);
     emplace = nullptr;
 }
 std::string ConstructorType::explain() {

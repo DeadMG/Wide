@@ -798,23 +798,22 @@ OverloadResolvable* Analyzer::GetCallableForTemplateType(const AST::TemplateType
 }
 
 TemplateType* Analyzer::GetTemplateType(const Wide::AST::TemplateType* ty, Type* context, std::vector<Type*> arguments, std::string name) {
-    if (WideTemplateInstantiations.find(ty) != WideTemplateInstantiations.end()) {
-        if (WideTemplateInstantiations[ty].find(arguments) != WideTemplateInstantiations[ty].end()) {
+    if (WideTemplateInstantiations.find(ty) == WideTemplateInstantiations.end()
+     || WideTemplateInstantiations[ty].find(arguments) == WideTemplateInstantiations[ty].end()) {
 
-            name += "(";
-            std::unordered_map<std::string, Type*> args;
-            for (unsigned num = 0; num < ty->arguments.size(); ++num) {
-                args[ty->arguments[num].name] = arguments[num];
-                name += arguments[num]->explain();
-                if (num != arguments.size() - 1)
-                    name += ", ";
-            }
-            name += ")";
+        name += "(";
+        std::unordered_map<std::string, Type*> args;
 
-            WideTemplateInstantiations[ty][arguments] = Wide::Memory::MakeUnique<TemplateType>(ty->t, *this, context, args, name);
+        for (unsigned num = 0; num < ty->arguments.size(); ++num) {
+            args[ty->arguments[num].name] = arguments[num];
+            name += arguments[num]->explain();
+            if (num != arguments.size() - 1)
+                name += ", ";
         }
+        name += ")";
+        
+        WideTemplateInstantiations[ty][arguments] = Wide::Memory::MakeUnique<TemplateType>(ty->t, *this, context, args, name);
     }
-
     return WideTemplateInstantiations[ty][arguments].get();
 }
 

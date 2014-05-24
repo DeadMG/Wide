@@ -148,7 +148,7 @@ std::unique_ptr<Expression> AggregateType::PrimitiveAccessMember(std::unique_ptr
         llvm::Value* ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
             auto src = source->GetValue(g, bb);
             auto obj = src->getType()->isPointerTy() ? bb.CreateStructGEP(src, self->GetLayout().FieldIndices[num]) : bb.CreateExtractValue(src, { self->GetLayout().FieldIndices[num] });
-            if (source->GetType()->IsReference() && self->GetContents()[num]->IsReference())
+            if ((source->GetType()->IsReference() && self->GetContents()[num]->IsReference()) || (source->GetType()->IsComplexType(g) && !self->GetContents()[num]->IsComplexType(g)))
                 return bb.CreateLoad(obj);
             return obj;
         }
