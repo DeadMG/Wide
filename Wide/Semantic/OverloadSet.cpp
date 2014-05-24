@@ -425,7 +425,7 @@ std::unique_ptr<Expression> OverloadSet::AccessMember(std::unique_ptr<Expression
     if (name != "resolve")
         return Type::AccessMember(std::move(t), name, c);
     if (ResolveType)
-        return ResolveType->BuildValueConstruction({}, { this, c.where });
+        return ResolveType->BuildValueConstruction(Expressions(), Context( this, c.where ));
     struct ResolveCallable : public MetaType 
     {
         ResolveCallable(OverloadSet* f, Analyzer& a)
@@ -443,14 +443,14 @@ std::unique_ptr<Expression> OverloadSet::AccessMember(std::unique_ptr<Expression
             auto clangfunc = dynamic_cast<cppcallable*>(call);
             std::unordered_set<clang::NamedDecl*> decls;
             decls.insert(clangfunc->fun);
-            return analyzer.GetOverloadSet(decls, clangfunc->from, nullptr)->BuildValueConstruction(Expressions(), { from, c.where });
+            return analyzer.GetOverloadSet(decls, clangfunc->from, nullptr)->BuildValueConstruction(Expressions(), c);
         }
         std::string explain() override final {
             return from->explain() + ".resolve";
         }
     };
-    ResolveType = Wide::Memory::MakeUnique<ResolveCallable>(this, analyzer);
-    return ResolveType->BuildValueConstruction(Expressions(), { this, c.where });
+    if (!ResolveType) ResolveType = Wide::Memory::MakeUnique<ResolveCallable>(this, analyzer);
+    return ResolveType->BuildValueConstruction(Expressions(), Context( this, c.where ));
 }
 std::string OverloadSet::explain() {
     std::stringstream strstr;
