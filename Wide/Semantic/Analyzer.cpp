@@ -158,39 +158,6 @@ Analyzer::Analyzer(const Options::Clang& opts, const AST::Module* GlobalModule)
 }
 
     /*
-        void VisitBinaryExpression(const AST::BinaryExpression* bin) {
-            std::vector<ConcreteExpression> destructors;
-            auto lhs = self->AnalyzeExpression(t, bin->lhs, handler);
-            auto rhs = self->AnalyzeExpression(t, bin->rhs, [&](ConcreteExpression e) { destructors.push_back(e); });
-            out = lhs.BuildBinaryExpression(rhs, bin->type, std::move(destructors), Context(*self, bin->location, handler, t));
-        }
-        void VisitMetaCall(const AST::MetaCall* mcall) {
-            auto fun = self->AnalyzeExpression(t, mcall->callee, handler);
-            std::vector<ConcreteExpression> args;
-            for(auto&& arg : mcall->args)
-                args.push_back(self->AnalyzeExpression(t, arg, handler));
-            
-            out = fun.BuildMetaCall(std::move(args), Context(*self, mcall->location, handler, t));
-        }
-        void VisitInteger(const AST::Integer* integer) {
-            out = ConcreteExpression( self->GetIntegralType(64, true), self->gen->CreateIntegralExpression(std::stoll(integer->integral_value), true, self->GetIntegralType(64, true)->GetLLVMType(*self)));
-        }
-        void VisitThis(const AST::This* loc) {
-            AST::Identifier i("this", loc->location);
-            VisitIdentifier(&i);
-        }
-        void VisitNegate(const AST::Negate* ne) {
-            out = self->AnalyzeExpression(t, ne->ex, handler).BuildNegate(Context(*self, ne->location, handler, t));
-        }
-        void VisitTuple(const AST::Tuple* tup) {
-            std::vector<ConcreteExpression> exprs;
-            for (auto expr : tup->expressions)
-                exprs.push_back(self->AnalyzeExpression(t, expr, handler));
-            std::vector<Type*> types;
-            for (auto expr : exprs)
-                types.push_back(expr.t->Decay());
-            out = self->GetTupleType(types)->ConstructFromLiteral(exprs, Context(*self, tup->location, handler, t));
-        }
         // Ugly to perform an AST-level transformation in the analyzer
         // But hey- the AST exists to represent the exact source.
         void VisitLambda(const AST::Lambda* lam) {
@@ -300,38 +267,7 @@ Analyzer::Analyzer(const Options::Clang& opts, const AST::Module* GlobalModule)
             auto type = self->arena.Allocate<LambdaType>(types, lam, *self);
             out = type->BuildLambdaFromCaptures(expressions, c);
         }
-        void VisitDereference(const AST::Dereference* deref) {
-            out = self->AnalyzeExpression(t, deref->ex, handler).BuildDereference(Context(*self, deref->location, handler, t));
-        }
-        void VisitIncrement(const AST::Increment* inc) {
-            auto lhs = self->AnalyzeExpression(t, inc->ex, handler);
-            out = lhs.BuildIncrement(inc->postfix, Context(*self, inc->location, handler, t));
-        }
-        void VisitType(const AST::Type* ty) {
-            auto udt = self->GetUDT(ty, t->GetConstantContext(*self) ? t->GetConstantContext(*self) : t, "anonymous");
-            out = self->GetConstructorType(udt)->BuildValueConstruction({}, Context(*self, ty->location, handler, t));
-        }
-        void VisitPointerAccess(const AST::PointerMemberAccess* ptr) {
-            auto obj = self->AnalyzeExpression(t, ptr->ex, handler);
-            auto c = Context(*self, ptr->location, handler, t);
-            auto mem = obj.PointerAccessMember(ptr->member, c);
-            if (!mem) throw NoMember(obj.BuildDereference(c).t, t, ptr->member, ptr->location, *self);
-            self->QuickInfo(ptr->memloc, mem->t);
-            out = *mem;
-        }
-        void VisitAddressOf(const AST::AddressOf* add) {
-            out = self->AnalyzeExpression(t, add->ex, handler).AddressOf(Context(*self, add->location, handler, t));
-        }
-    };
-
-    AnalyzerVisitor v;
-    v.self = this;
-    v.t = t;
-    v.handler = handler;
-    v.VisitExpression(e);
-    if (!v.out)
-        assert(false && "ASTVisitor did not return an expression.");
-    return *v.out;*/
+    };*/
 
 ClangTU* Analyzer::LoadCPPHeader(std::string file, Lexer::Range where) {
     if (headers.find(file) != headers.end())

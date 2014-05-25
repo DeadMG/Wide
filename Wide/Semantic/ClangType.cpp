@@ -436,11 +436,19 @@ std::string ClangType::explain() {
     }
     return basename;
 }
-std::vector<std::pair<BaseType*, unsigned>> ClangType::GetBases() {
+std::vector<std::pair<BaseType*, unsigned>> ClangType::GetBasesAndOffsets() {
     auto&& layout = from->GetASTContext().getASTRecordLayout(type->getAsCXXRecordDecl());
     std::vector<std::pair<BaseType*, unsigned>> out;
     for (auto basespec = type->getAsCXXRecordDecl()->bases_begin(); basespec != type->getAsCXXRecordDecl()->bases_end(); basespec++) {
         out.push_back(std::make_pair(dynamic_cast<BaseType*>(analyzer.GetClangType(*from, basespec->getType())), layout.getBaseClassOffset(basespec->getType()->getAsCXXRecordDecl()).getQuantity()));
+    }
+    return out;
+}
+std::vector<BaseType*> ClangType::GetBases() {
+    auto&& layout = from->GetASTContext().getASTRecordLayout(type->getAsCXXRecordDecl());
+    std::vector<BaseType*> out;
+    for (auto basespec = type->getAsCXXRecordDecl()->bases_begin(); basespec != type->getAsCXXRecordDecl()->bases_end(); basespec++) {
+        out.push_back(dynamic_cast<BaseType*>(analyzer.GetClangType(*from, basespec->getType())));
     }
     return out;
 }

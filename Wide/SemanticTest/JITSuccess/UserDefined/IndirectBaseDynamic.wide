@@ -1,0 +1,16 @@
+type Base {
+    dynamic f() { return false; }
+}
+type Indirect : Base {}
+type Derived : Indirect {
+    f() { return false; }
+}
+type SuperDerived : Derived {
+    f() { return true; }
+}
+func(Derived.rvalue arg) {
+    return arg.f();
+}
+Main() {
+    return func(SuperDerived());
+}

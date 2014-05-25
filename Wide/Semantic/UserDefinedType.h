@@ -53,7 +53,8 @@ namespace Wide {
             std::unique_ptr<Expression> FunctionPointerFor(std::string name, std::vector<Type*> args, Type* ret, unsigned offset) override final;
             std::vector<VirtualFunction> ComputeVTableLayout() override final;
             Type* GetVirtualPointerType() override final;
-            std::vector<std::pair<BaseType*, unsigned>> GetBases() override final;
+            std::vector<std::pair<BaseType*, unsigned>> GetBasesAndOffsets() override final;
+            std::vector<BaseType*> GetBases() override final;
             bool IsDynamic();
         public:
             struct member {
@@ -96,7 +97,7 @@ namespace Wide {
             InheritanceRelationship IsDerivedFrom(Type* other) override final;
             std::unique_ptr<Expression> AccessBase(std::unique_ptr<Expression> self, Type* other) override final;
             std::string explain() override final;
-            unsigned GetVirtualFunctionIndex(const AST::Function* func);
+            Wide::Util::optional<unsigned> GetVirtualFunctionIndex(const AST::Function* func);
             std::unique_ptr<Expression> GetVirtualPointer(std::unique_ptr<Expression> self) override final;
         };
     }

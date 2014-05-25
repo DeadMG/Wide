@@ -957,11 +957,12 @@ std::unique_ptr<Expression> Function::BuildCall(std::unique_ptr<Expression> val,
         : self(self), val(std::move(val))
         {
             if (auto func = dynamic_cast<const AST::Function*>(self->fun)) {
-                if (func->dynamic) {
-                    auto udt = dynamic_cast<UserDefinedType*>(expr->GetType()->Decay());
-                    obj = udt->GetVirtualPointer(Wide::Memory::MakeUnique<ExpressionReference>(expr));
-                    index = udt->GetVirtualFunctionIndex(func);
-                }
+                auto udt = dynamic_cast<UserDefinedType*>(expr->GetType()->Decay());
+                if (!udt) return;
+                auto vindex = udt->GetVirtualFunctionIndex(func);
+                if (!vindex) return;
+                index = *vindex;
+                obj = udt->GetVirtualPointer(Wide::Memory::MakeUnique<ExpressionReference>(expr));
             }
         }
         unsigned index;

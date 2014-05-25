@@ -37,6 +37,12 @@ using namespace Semantic;
 bool UserDefinedType::IsDynamic() {
     return GetVtableLayout().size() != 0;
 }
+void AddAllBases(std::unordered_set<BaseType*>& all_bases, BaseType* root) {
+    for (auto base : root->GetBases()) {
+        all_bases.insert(base);
+        AddAllBases(all_bases, base);
+    }
+}
 UserDefinedType::UserDefinedType(const AST::Type* t, Analyzer& a, Type* higher, std::string name)
 : AggregateType(a)
 , context(higher)
@@ -64,6 +70,9 @@ UserDefinedType::UserDefinedType(const AST::Type* t, Analyzer& a, Type* higher, 
             NSDMIs.push_back(var.first->initializer);
         }
     }
+    std::unordered_set<BaseType*> all_bases;
+    AddAllBases(all_bases, this);
+
     unsigned index = 0;
     for (auto overset : type->Functions) {
         if (overset.first == "type") continue; // Do not check constructors.
@@ -84,7 +93,7 @@ UserDefinedType::UserDefinedType(const AST::Type* t, Analyzer& a, Type* higher, 
             }
             auto is_dynamic = [&, this] {
                 if (func->dynamic) return true;
-                for (auto base : bases) {
+                for (auto base : all_bases) {
                     for (auto func : base->GetVtableLayout()) {
                         if (func.name != overset.first) continue;
                         // The this arguments will be different.
@@ -105,8 +114,10 @@ UserDefinedType::UserDefinedType(const AST::Type* t, Analyzer& a, Type* higher, 
             VTableIndices[func] = index++;
         }
     }
-    if (!funcs.empty())
+    if (!funcs.empty()) {
+        HasNSDMI = true;
         contents.push_back(a.GetPointerType(GetVirtualPointerType()));
+    }
 }
 
 std::vector<UserDefinedType::member> UserDefinedType::GetMembers() {
@@ -333,8 +344,15 @@ OverloadSet* UserDefinedType::CreateConstructorOverloadSet(Lexer::Access access)
         bool shouldgenerate = true;
         for (auto&& mem : GetMembers()) {
             // If we are not default constructible *and* we don't have an NSDMI to construct us, then we cannot generate a default constructor.
-            if (mem.InClassInitializer)
+            if (mem.vptr) {
                 continue;
+            }
+            if (mem.InClassInitializer) {
+                auto totally_not_this = Wide::Memory::MakeUnique<ImplicitTemporaryExpr>(this, Context( this, mem.location ));
+                auto init = mem.InClassInitializer(std::move(totally_not_this));
+                assert(mem.t->GetConstructorOverloadSet(GetAccessSpecifier(this, mem.t))->Resolve({ init->GetType() }, this));
+                continue;
+            }
             if (!mem.t->GetConstructorOverloadSet(GetAccessSpecifier(this, mem.t))->Resolve({ analyzer.GetLvalueType(mem.t) }, this))
                 shouldgenerate = false;
         }
@@ -361,6 +379,10 @@ OverloadSet* UserDefinedType::CreateConstructorOverloadSet(Lexer::Access access)
                         : self(s), arg(std::move(obj)) 
                     {
                         for (auto&& mem : self->GetMembers()) {
+                            if (mem.vptr) {
+                                initializers.push_back(mem.InClassInitializer(Wide::Memory::MakeUnique<ExpressionReference>(arg.get())));
+                                continue;
+                            }
                             auto num = mem.num;
                             auto member = CreatePrimUnOp(Wide::Memory::MakeUnique<ExpressionReference>(arg.get()), self->analyzer.GetLvalueType(mem.t), [num](llvm::Value* val, Codegen::Generator& g, llvm::IRBuilder<>& bb) {
                                 return bb.CreateStructGEP(val, num);
@@ -594,7 +616,7 @@ std::unique_ptr<Expression> UserDefinedType::FunctionPointerFor(std::string name
 
 std::unique_ptr<Expression> UserDefinedType::GetVirtualPointer(std::unique_ptr<Expression> self) {
     assert(self->GetType()->IsReference());
-    assert(IsDynamic());
+    if (!IsDynamic()) return nullptr;
     return CreatePrimUnOp(std::move(self), analyzer.GetLvalueType(analyzer.GetPointerType(GetVirtualPointerType())), [this](llvm::Value* self, Codegen::Generator& g, llvm::IRBuilder<>& bb) {
         return bb.CreateStructGEP(self, GetFieldIndex(type->variables.size() + type->bases.size()));
     });
@@ -604,18 +626,21 @@ Type* UserDefinedType::GetVirtualPointerType() {
     return analyzer.GetFunctionType(analyzer.GetIntegralType(32, false), {}, false);
 }
 
-std::vector<std::pair<BaseType*, unsigned>> UserDefinedType::GetBases() {
+std::vector<std::pair<BaseType*, unsigned>> UserDefinedType::GetBasesAndOffsets() {
     std::vector<std::pair<BaseType*, unsigned>> out;
     for (unsigned i = 0; i < type->bases.size(); ++i) {
         out.push_back(std::make_pair(bases[i], GetOffset(i)));
     }
     return out;
 }
-unsigned UserDefinedType::GetVirtualFunctionIndex(const AST::Function* func) {
+std::vector<BaseType*> UserDefinedType::GetBases() {
+    return bases;
+}
+Wide::Util::optional<unsigned> UserDefinedType::GetVirtualFunctionIndex(const AST::Function* func) {
     if (VTableIndices.size() == 0)
         ComputeVTableLayout();
     if (VTableIndices.find(func) == VTableIndices.end())
-        throw std::runtime_error("fuck");
+        return Wide::Util::none;
     return VTableIndices.at(func);
 }
 bool UserDefinedType::IsA(Type* self, Type* other, Lexer::Access access) {

@@ -622,7 +622,7 @@ std::unique_ptr<Expression> BaseType::SetVirtualPointers(std::unique_ptr<Express
 std::unique_ptr<Expression> BaseType::SetVirtualPointers(std::vector<std::pair<BaseType*, unsigned>> path, std::unique_ptr<Expression> self) {
     // Set the base vptrs first, because some Clang types share vtables with their base.
     std::vector<std::unique_ptr<Expression>> BasePointerInitializers;
-    for (auto base : GetBases()) {
+    for (auto base : GetBasesAndOffsets()) {
         path.push_back(std::make_pair(this, base.second));
         BasePointerInitializers.push_back(base.first->SetVirtualPointers(path, AccessBase(Wide::Memory::MakeUnique<ExpressionReference>(self.get()), base.first->GetSelfAsType())));
         path.pop_back();

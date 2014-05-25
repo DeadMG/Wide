@@ -249,8 +249,8 @@ namespace Wide {
         private:
             virtual std::vector<VirtualFunction> ComputeVTableLayout() = 0;
             virtual Type* GetVirtualPointerType() = 0;
+            virtual std::vector<std::pair<BaseType*, unsigned>> GetBasesAndOffsets() = 0;
             virtual std::unique_ptr<Expression> FunctionPointerFor(std::string name, std::vector<Type*> args, Type* ret, unsigned offset) = 0;
-            virtual std::vector<std::pair<BaseType*, unsigned>> GetBases() = 0;
 
             std::unordered_map<std::vector<std::pair<BaseType*, unsigned>>, std::unique_ptr<Expression>, VectorTypeHasher> ComputedVTables;
             Wide::Util::optional<std::vector<VirtualFunction>> VtableLayout;
@@ -265,6 +265,7 @@ namespace Wide {
                 return *VtableLayout;
             }
             std::unique_ptr<Expression> SetVirtualPointers(std::unique_ptr<Expression>);
+            virtual std::vector<BaseType*> GetBases() = 0;
 
             virtual std::unique_ptr<Expression> GetVirtualPointer(std::unique_ptr<Expression> self) = 0;
             virtual Type* GetSelfAsType() = 0;
