@@ -1,4 +1,4 @@
-f(bool.lvalue arg) {
+f(arg := bool.lvalue) {
     arg = true;
     return int.pointer;
 }

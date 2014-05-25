@@ -1,5 +1,5 @@
 type t2 {
-    operator()(t2.rvalue this) {
+    operator()(this := t2.rvalue) {
     }
 }
 Main() {

@@ -1,8 +1,8 @@
 type t {
     type() {}
-    type(t.rvalue r) {}
+    type(r := t.rvalue) {}
 private:
-    type(t.lvalue r) {}
+    type(r := t.lvalue) {}
 }
 Main() {
     var := { t(), false };

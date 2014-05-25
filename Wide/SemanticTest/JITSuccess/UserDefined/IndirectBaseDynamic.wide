@@ -8,7 +8,7 @@ type Derived : Indirect {
 type SuperDerived : Derived {
     f() { return true; }
 }
-func(Derived.rvalue arg) {
+func(arg := Derived.rvalue) {
     return arg.f();
 }
 Main() {

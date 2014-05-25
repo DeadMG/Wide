@@ -750,50 +750,32 @@ namespace Wide {
                     return ret;
                 lex(t);
                 // At least one argument.
+                // The form is this or this := expr, then t, or t := expr
+                bool first = true;
                 while(true) {
-                    auto t = lex();
+                    auto ident = first
+                        ? Check(Error::FunctionArgumentNoIdentifierOrThis, [](const TokenType& tok) { return tok.GetType() == Lexer::TokenType::Identifier || tok.GetType() == Lexer::TokenType::This; })
+                        : Check(Error::FunctionArgumentOnlyFirstThis, Lexer::TokenType::Identifier);
+                    first = false;
                     auto t2 = lex();
-                    if(t.GetType() == Lexer::TokenType::Identifier && (t2.GetType() == Lexer::TokenType::Comma || t2.GetType() == Lexer::TokenType::CloseBracket)) {
-                        // Type-deduced argument.
-                        sema.AddArgumentToFunctionGroup(ret, t.GetValue(), t.GetLocation());
-                        if(t2.GetType() == Lexer::TokenType::CloseBracket) {
-                            break;
-                        }
-                    } else {
-                        // Expression-specified argument.
-                        lex(t2);
-                        lex(t);
-                        try {
-                            auto ty = ParseExpression();
-                            auto ident = Check(Error::FunctionArgumentNoIdentifierOrThis, [](decltype(lex())& tok) {
-                                if(tok.GetType() == Lexer::TokenType::Identifier || tok.GetType() == Lexer::TokenType::This)
-                                    return true;
-                                return false;
-                            });
-                            sema.AddArgumentToFunctionGroup(ret, ident.GetValue(), ident.GetLocation(), ty);
-                            auto brace = Check(Error::FunctionArgumentNoBracketOrComma, [&](decltype(lex())& tok) {
-                                if(tok.GetType() == Lexer::TokenType::CloseBracket || tok.GetType() == Lexer::TokenType::Comma)
-                                    return true;
-                                return false;
-                            });
-                            if(brace.GetType() == Lexer::TokenType::CloseBracket) {
-                                break;
-                            }
-                        } catch(ParserError& e) {
-                            if(!lex) throw;
-                            auto tok = lex();
-                            switch(tok.GetType()) {
-                            case Lexer::TokenType::Comma:
-                                sema.Error(e.recover_where(), e.error());
-                                continue;
-                            case Lexer::TokenType::CloseBracket:
-                                sema.Error(e.recover_where(), e.error());
-                                return ret;
-                            }
-                            lex(tok);
-                            throw;
-                        }
+                    if (t2.GetType() == Lexer::TokenType::CloseBracket) {
+                        sema.AddArgumentToFunctionGroup(ret, ident.GetValue(), ident.GetLocation());
+                        break;
                     }
+                    if (t2.GetType() == Lexer::TokenType::VarCreate) {
+                        sema.AddArgumentToFunctionGroup(ret, ident.GetValue(), ident.GetLocation(), ParseExpression());
+                        auto next = lex();
+                        if (next.GetType() == Lexer::TokenType::Comma)
+                            continue;
+                        if (next.GetType() == Lexer::TokenType::CloseBracket)
+                            break;
+                        BadToken(next, Error::FunctionArgumentNoBracketOrComma);
+                    }
+                    if (t2.GetType() == Lexer::TokenType::Comma) {
+                        sema.AddArgumentToFunctionGroup(ret, ident.GetValue(), ident.GetLocation());
+                        continue;
+                    }
+                    BadToken(t2, Error::FunctionArgumentNoBracketOrComma);
                 }
                 return ret;
             }

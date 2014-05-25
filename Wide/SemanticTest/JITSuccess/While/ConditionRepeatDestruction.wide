@@ -6,7 +6,7 @@ type testty {
     f() {
         return true;
     }
-    type(int64.pointer arg)
+    type(arg := int64.pointer)
         : result(arg) {}
 }
 Main() {

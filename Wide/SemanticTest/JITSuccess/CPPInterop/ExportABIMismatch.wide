@@ -1,5 +1,5 @@
 using header := cpp("JITSuccess/CPPInterop/ExportABIMismatch.h");
-f(bool b, header.test arg) 
+f(b := bool, arg := header.test) 
 prolog {
     ExportAs = header.f;
 }

@@ -2,8 +2,8 @@ type t {
     val := bool;
     operator++() { val = true; }
     type() : val(false) {}
-    type(this.lvalue other) : val(other.val) {}
-    type(this.rvalue other) : val(other.val) {}
+    type(other := this.lvalue) : val(other.val) {}
+    type(other := this.rvalue) : val(other.val) {}
 }
 Main() {
     val := t();

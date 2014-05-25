@@ -2,7 +2,7 @@ type t {
     x := int64;
     y := int64;
 }
-f(t arg) {
+f(arg := t) {
     return arg.x == 1 & arg.y == 2;
 }
 Main() {

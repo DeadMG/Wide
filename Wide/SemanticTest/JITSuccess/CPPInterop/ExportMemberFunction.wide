@@ -1,5 +1,5 @@
 using header := cpp("JITSuccess/CPPInterop/ExportMemberFunction.h");
-f(header.test.pointer self) prolog {
+f(self := header.test.pointer) prolog {
     ExportAs = header.test().f;
 } {
     if (self)

@@ -6,7 +6,7 @@ type outer {
     first := inner;
     second := inner;
 }
-f(outer var) {
+f(var := outer) {
     return var.first.x == 1 & 
            var.first.y == 2 & 
            var.second.x == 3 & 

@@ -4,7 +4,7 @@ type base {
     type() : b(true) {}
 }
 type base2 {
-    f(int64 i) { return false; }
+    f(i := int64) { return false; }
 }
 type derived : base : base2 {}
 Main() {

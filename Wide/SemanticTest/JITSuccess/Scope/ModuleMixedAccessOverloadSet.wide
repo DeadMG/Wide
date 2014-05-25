@@ -1,8 +1,8 @@
 module f {
 private:
-    test(int32 i) { return false; }
+    test(i := int32) { return false; }
 public:
-    test(int64 i) { return true; }
+    test(i := int64) { return true; }
 }
 Main() {
     return f.test(int32(0));

@@ -2,7 +2,7 @@ type base {
     val := bool;
 }
 type derived : base {}
-f(base.rvalue arg) {
+f(arg := base.rvalue) {
     return arg.val;
 }
 Main() {

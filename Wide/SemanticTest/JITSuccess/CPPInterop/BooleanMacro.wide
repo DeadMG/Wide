@@ -1,5 +1,5 @@
 // Checks that macros that test for booleans function correctly.
-f(bool b) {
+f(b := bool) {
     return b;
 }
 Main() {

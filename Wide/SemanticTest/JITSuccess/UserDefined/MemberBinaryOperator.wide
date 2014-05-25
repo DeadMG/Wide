@@ -1,5 +1,5 @@
 type t {
-    operator+(t other) { return true; }
+    operator+(other := t) { return true; }
 }
 Main() {
     return t() + t();

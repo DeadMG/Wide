@@ -1,6 +1,6 @@
 type base {
     val := bool;
-    type(bool b) : val(b) {}
+    type(b := bool) : val(b) {}
 }
 type derived : base {
 }

@@ -1,10 +1,10 @@
 type t {
     value := bool.pointer;
-    type(bool.lvalue val) : value(&val) {}
-    type(this.lvalue copy) : value(copy.value) {
+    type(val := bool.lvalue) : value(&val) {}
+    type(copy := this.lvalue) : value(copy.value) {
         *value = true;
     }
-    type(this.rvalue move) : value(move.value) {}
+    type(move := this.rvalue) : value(move.value) {}
 }
 Main() {
     result := false;

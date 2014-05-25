@@ -1,9 +1,9 @@
 type t {
-    f(bool.pointer p) {
+    f(p := bool.pointer) {
         return true;
     }
 private:
-    f(decltype(null) t) {
+    f(t := decltype(null)) {
         return false;
     }
 }

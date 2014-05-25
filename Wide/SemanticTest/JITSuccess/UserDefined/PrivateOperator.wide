@@ -1,7 +1,7 @@
 type t {
-    operator+(int64.pointer val) { return true; }
+    operator+(val := int64.pointer) { return true; }
 private:
-    operator+(decltype(null) val) { return false; }
+    operator+(val := decltype(null)) { return false; }
 }
 Main() {
     return t() + null;

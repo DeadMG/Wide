@@ -4,7 +4,7 @@ type testty {
     ~type() {
          *result = false;
     }
-    type(bool.pointer arg)
+    type(arg := bool.pointer)
         : result(arg) {}
 }
 Main() {

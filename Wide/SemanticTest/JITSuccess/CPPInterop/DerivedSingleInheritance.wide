@@ -1,5 +1,5 @@
 using header := cpp("JITSuccess/CPPInterop/DerivedSingleInheritance.h");
-f(header.x.rvalue arg) prolog {
+f(arg := header.x.rvalue) prolog {
     ExportAs = header.f.resolve(header.x.rvalue);
 } {
     return arg.f();

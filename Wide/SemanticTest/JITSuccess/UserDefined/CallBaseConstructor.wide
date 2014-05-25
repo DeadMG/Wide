@@ -1,9 +1,9 @@
 type base {
     val := bool;
-    type(bool b) : val(b) {}
+    type(b := bool) : val(b) {}
 }
 type derived : base {
-    type(bool b) : base(b) {}
+    type(b := bool) : base(b) {}
     f() { return val; }
 }
 Main() {

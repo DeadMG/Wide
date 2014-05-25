@@ -1,8 +1,8 @@
 type t {
     val := bool;
     type() : val(false) {}
-    type(this.rvalue other) : val(other.val) {}
-    operator=(this.lvalue other) { val = true; }
+    type(other := this.rvalue) : val(other.val) {}
+    operator=(other := this.lvalue) { val = true; }
 }
 Main() {
     x, y := { t(), t() };

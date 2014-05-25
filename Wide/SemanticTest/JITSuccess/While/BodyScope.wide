@@ -6,7 +6,7 @@ type testty {
     f() {
         return true;
     }
-    type(bool.pointer arg)
+    type(arg := bool.pointer)
         : result(arg) {}
 }
 Main() {

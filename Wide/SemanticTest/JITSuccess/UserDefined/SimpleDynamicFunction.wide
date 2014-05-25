@@ -6,7 +6,7 @@ type x : t {
     type() {}
     f() { return true; }
 }
-f(t.rvalue arg) {
+f(arg := t.rvalue) {
     return arg.f();
 }
 Main() {

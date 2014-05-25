@@ -1,7 +1,7 @@
 type t {
     val := bool;
     type() : val(false) {}
-    operator=(int64 i) { val = true; }
+    operator=(i := int64) { val = true; }
 }
 Main() {
     source := t();

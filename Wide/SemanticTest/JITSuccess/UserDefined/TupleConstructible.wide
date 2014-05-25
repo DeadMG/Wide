@@ -1,16 +1,16 @@
 type inner {
     x := int64;
     y := int64;
-    type(int64 blah)
+    type(blah := int64)
         : x(blah) : y(blah) {}
-    valid(int64 arg) {
+    valid(arg := int64) {
         return x == arg & y == arg;
     }
 }
 type outer {
     first := inner;
     second := inner;
-    valid(int64 f, int64 s) {
+    valid(f := int64, s := int64) {
         return first.valid(f) & second.valid(s);
     }
 }

@@ -1,0 +1,11 @@
+using header := cpp("JITSuccess/CPPInterop/ExportPrivateAccess.h");
+func(arg := header.test.lvalue)
+prolog {
+    ExportAs = header.test(true).f;
+}
+{
+    return arg.val;
+}
+Main() {
+    return header.test(true).f();
+}

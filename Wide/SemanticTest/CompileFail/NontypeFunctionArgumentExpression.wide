@@ -1,6 +1,6 @@
 module Test {}
-f(Test t) {}
-f(int64 i) {}
+f(t := Test) {}
+f(i := int64) {}
 Main() {
     f(1);
 }

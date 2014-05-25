@@ -856,12 +856,13 @@ void Function::EmitCode(Codegen::Generator& g) {
                         CastType = constant->getType();
                 }
             }
-            // All Clang's uses are valid.
-            if (CastType) {
+            // There are no uses that are invalid.
+            if (CastType || std::distance(tramp->use_begin(), tramp->use_end()) == 0) {
+                if (!CastType) CastType = llvmfunc->getType();
                 tramp->setName("__fucking__clang__type_hacks");
                 auto badf = tramp;
                 auto t = llvm::dyn_cast<llvm::FunctionType>(llvm::dyn_cast<llvm::PointerType>(CastType)->getElementType());
-                tramp = llvm::Function::Create(t, llvm::GlobalValue::LinkageTypes::ExternalLinkage, name, g.module.get());
+                tramp = llvm::Function::Create(t, llvm::GlobalValue::LinkageTypes::ExternalLinkage, exportname, g.module.get());
                 // Update all Clang's uses
                 for (auto use_it = badf->use_begin(); use_it != badf->use_end(); ++use_it) {
                     auto use = *use_it;

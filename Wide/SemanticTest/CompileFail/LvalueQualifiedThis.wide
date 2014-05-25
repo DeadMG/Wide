@@ -1,5 +1,5 @@
 type t1 {
-    operator()(t1.lvalue this) {
+    operator()(this := t1.lvalue) {
         return false;
     }
 }

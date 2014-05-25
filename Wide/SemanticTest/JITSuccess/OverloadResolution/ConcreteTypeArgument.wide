@@ -1,4 +1,4 @@
-f(int16 i) {
+f(i := int16) {
     return decltype(i).decay.size == 2;
 }
 Main() {

@@ -8,11 +8,11 @@ type b2 {
 }
 type der : b1 : b2 {
     b := bool;
-    type(bool x) : b(x) {}
+    type(x := bool) : b(x) {}
     f() { return b; }
     g() { return b; }
 }
-f(b1.lvalue arg1, b2.lvalue arg2) {
+f(arg1 := b1.lvalue, arg2 := b2.lvalue) {
     return arg1.f() & arg2.g();
 }
 Main() {

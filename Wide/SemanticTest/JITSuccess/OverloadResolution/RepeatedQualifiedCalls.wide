@@ -1,6 +1,6 @@
 type t1 {
-    operator()(t1.lvalue this) { return true; }
-    operator()(t1.rvalue this) { return true; }
+    operator()(this := t1.lvalue) { return true; }
+    operator()(this := t1.rvalue) { return true; }
 }
 Main() {
     x := t1();
