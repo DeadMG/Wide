@@ -69,14 +69,14 @@ OverloadSet* Bool::CreateOperatorOverloadSet(Type* t, Lexer::TokenType name, Lex
     case Lexer::TokenType::LT:
         LTOperator = MakeResolvable([](std::vector<std::unique_ptr<Expression>> args, Context c) -> std::unique_ptr<Expression> {
             return CreatePrimOp(std::move(args[0]), std::move(args[1]), c.from->analyzer.GetBooleanType(), [](llvm::Value* lhs, llvm::Value* rhs, Codegen::Generator& g, llvm::IRBuilder<>& bb) {
-                return bb.CreateICmpSLT(lhs, rhs);
+                return bb.CreateZExt(bb.CreateICmpSLT(lhs, rhs), llvm::Type::getInt8Ty(g.module->getContext()));
             });
         }, { this, this });
         return analyzer.GetOverloadSet(LTOperator.get());
     case Lexer::TokenType::EqCmp:
         EQOperator = MakeResolvable([](std::vector<std::unique_ptr<Expression>> args, Context c) -> std::unique_ptr<Expression> {
             return CreatePrimOp(std::move(args[0]), std::move(args[1]), c.from->analyzer.GetBooleanType(), [](llvm::Value* lhs, llvm::Value* rhs, Codegen::Generator& g, llvm::IRBuilder<>& bb) {
-                return bb.CreateICmpEQ(lhs, rhs);
+                return bb.CreateZExt(bb.CreateICmpEQ(lhs, rhs), llvm::Type::getInt8Ty(g.module->getContext()));
             });
         }, { this, this });
         return analyzer.GetOverloadSet(EQOperator.get());

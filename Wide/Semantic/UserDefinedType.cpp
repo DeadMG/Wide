@@ -350,7 +350,7 @@ OverloadSet* UserDefinedType::CreateConstructorOverloadSet(Lexer::Access access)
             if (mem.InClassInitializer) {
                 auto totally_not_this = Wide::Memory::MakeUnique<ImplicitTemporaryExpr>(this, Context( this, mem.location ));
                 auto init = mem.InClassInitializer(std::move(totally_not_this));
-                assert(mem.t->GetConstructorOverloadSet(GetAccessSpecifier(this, mem.t))->Resolve({ init->GetType() }, this));
+                assert(mem.t->GetConstructorOverloadSet(GetAccessSpecifier(this, mem.t))->Resolve({ analyzer.GetLvalueType(mem.t), init->GetType() }, this));
                 continue;
             }
             if (!mem.t->GetConstructorOverloadSet(GetAccessSpecifier(this, mem.t))->Resolve({ analyzer.GetLvalueType(mem.t) }, this))

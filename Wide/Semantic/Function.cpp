@@ -956,6 +956,7 @@ std::unique_ptr<Expression> Function::BuildCall(std::unique_ptr<Expression> val,
         Self(Function* self, Expression* expr, std::unique_ptr<Expression> val)
         : self(self), val(std::move(val))
         {
+            if (!expr) return;
             if (auto func = dynamic_cast<const AST::Function*>(self->fun)) {
                 auto udt = dynamic_cast<UserDefinedType*>(expr->GetType()->Decay());
                 if (!udt) return;
