@@ -13,6 +13,7 @@ namespace Wide {
                     CodeGen(AggregateType* self, Layout& lay, Codegen::Generator& g);
                     bool IsComplex;
                     llvm::Type* llvmtype;
+                    llvm::Type* GetLLVMType(AggregateType* agg, Codegen::Generator& g);
                 };
                 Layout(const std::vector<Type*>& types, Analyzer& a);
 

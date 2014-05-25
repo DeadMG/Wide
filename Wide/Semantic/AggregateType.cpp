@@ -91,27 +91,37 @@ bool AggregateType::IsCopyConstructible(Lexer::Access access) {
 AggregateType::Layout::CodeGen::CodeGen(AggregateType* self, Layout& lay, Codegen::Generator& g)
 : IsComplex(false) 
 {
-    std::stringstream stream;
-    stream << "struct.__" << self;
-    auto llvmname = stream.str();
+    llvmtype = nullptr;
 
-    std::vector<llvm::Type*> llvmtypes;
     if (self->GetContents().empty()) {
-        llvmtypes.push_back(self->analyzer.GetIntegralType(8, true)->GetLLVMType(g));
         IsComplex = false;
     } else {
-        for (auto ty : lay.llvmtypes)
-            llvmtypes.push_back(ty(g));
         for (auto ty : self->GetContents())
             IsComplex = IsComplex || ty->IsComplexType(g);
     }
 
+}
+llvm::Type* AggregateType::Layout::CodeGen::GetLLVMType(AggregateType* self, Codegen::Generator& g) {
+    std::stringstream stream;
+    stream << "struct.__" << self;
+    auto llvmname = stream.str();
+    if (llvmtype) return llvmtype;
     if (llvmtype = g.module->getTypeByName(llvmname))
-        return;
-    llvmtype = llvm::StructType::create(llvmtypes, llvmname);
+        return llvmtype;
+    auto ty = llvm::StructType::create(g.module->getContext(), llvmname);
+    llvmtype = ty;
+    std::vector<llvm::Type*> llvmtypes;
+    if (self->GetContents().empty()) {
+        llvmtypes.push_back(self->analyzer.GetIntegralType(8, true)->GetLLVMType(g));
+    } else {
+        for (auto ty : self->GetLayout().llvmtypes)
+            llvmtypes.push_back(ty(g));
+    }
+    ty->setBody(llvmtypes, false);
+    return ty;
 }
 llvm::Type* AggregateType::GetLLVMType(Codegen::Generator& g) {
-    return GetLayout().GetCodegen(this, g).llvmtype;
+    return GetLayout().GetCodegen(this, g).GetLLVMType(this, g);
 }
 Type* AggregateType::GetConstantContext() {
     for (auto ty : GetContents())

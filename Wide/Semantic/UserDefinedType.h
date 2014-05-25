@@ -22,34 +22,41 @@ namespace Wide {
         class Module;
         class UserDefinedType : public AggregateType, public TupleInitializable, public BaseType, public MemberFunctionContext {
 
-            const std::vector<Type*>& GetContents() { return contents; }
+            const std::vector<Type*>& GetContents() { return GetMemberData().contents; }
 
             const AST::Type* type;
             std::string source_name;
+            Type* context;
 
             Wide::Util::optional<bool> UDCCache;
             bool UserDefinedComplex();
 
             Wide::Util::optional<bool> BCCache;
             bool BinaryComplex(Codegen::Generator& g);
+            
+            struct MemberData {
+                MemberData(UserDefinedType* self);
+                MemberData(MemberData&& other);
+                // Actually a list of member variables
+                std::unordered_map<std::string, unsigned> members;
+                std::vector<const AST::Expression*> NSDMIs;
+                bool HasNSDMI = false;
+                std::vector<VirtualFunction> funcs;
+                std::unordered_map<const AST::Function*, unsigned> VTableIndices;
+                std::vector<Type*> contents;
+                std::vector<BaseType*> bases;
+            };
+            Wide::Util::optional<MemberData> Members;
+            MemberData& GetMemberData() {
+                if (!Members) Members = MemberData(this);
+                return *Members;
+            }
 
-            std::vector<Type*> contents;
-            std::vector<BaseType*> bases;
-
-            // Actually a list of member variables
-            std::unordered_map<std::string, unsigned> members;
-            std::unordered_map<ClangTU*, clang::QualType> clangtypes;
-            std::vector<const AST::Expression*> NSDMIs;
-            Type* context;
-            bool HasNSDMI = false;
             std::unique_ptr<OverloadResolvable> DefaultConstructor;
-            // User Defined Complex
-            std::unordered_map<const AST::Function*, unsigned> VTableIndices;
-            // Binary Complex
-            Type* GetSelfAsType() override final { return this; }
 
+            Type* GetSelfAsType() override final { return this; }
+            std::unordered_map<ClangTU*, clang::QualType> clangtypes;
             // Virtual function support functions.
-            std::vector<VirtualFunction> funcs;
             std::unique_ptr<Expression> FunctionPointerFor(std::string name, std::vector<Type*> args, Type* ret, unsigned offset) override final;
             std::vector<VirtualFunction> ComputeVTableLayout() override final;
             Type* GetVirtualPointerType() override final;

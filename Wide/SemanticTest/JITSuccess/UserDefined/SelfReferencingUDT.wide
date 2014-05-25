@@ -1,0 +1,9 @@
+type node {
+    next := node.pointer;
+    val := bool;
+}
+Main() {
+    var1 := node({null, true});
+    var2 := node({&var1, false});
+    return var2.next->val;
+}
