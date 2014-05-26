@@ -175,5 +175,6 @@ namespace Wide {
         bool IsMultiTyped(const AST::FunctionArgument& f); 
         bool IsMultiTyped(const AST::FunctionBase* f);
         std::unique_ptr<Expression> AnalyzeExpression(Type* lookup, const AST::Expression* e, Analyzer& a);
+        Type* InferTypeFromExpression(Expression* e, bool local);
     }
 }

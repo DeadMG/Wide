@@ -50,7 +50,7 @@ struct Function::LocalVariable : public Expression {
         if (what == Change::Destroyed) return;
         if (init_expr->GetType()) {
             // If we're a value we handle it at codegen time.
-            auto newty = init_expr->GetType()->Decay();
+            auto newty = InferTypeFromExpression(init_expr->GetImplementation(), true);
             if (tuple_num) {
                 if (auto tupty = dynamic_cast<TupleType*>(newty)) {
                     auto tuple_access = tupty->PrimitiveAccessMember(Wide::Memory::MakeUnique<ExpressionReference>(init_expr), *tuple_num);
@@ -65,12 +65,17 @@ struct Function::LocalVariable : public Expression {
                 }
                 throw std::runtime_error("fuck");
             }
-            if (!init_expr->GetType()->IsReference()) {
+            if (!init_expr->GetType()->IsReference() && init_expr->GetType() == newty) {
                 if (init_expr->GetType() != var_type) {
-                    var_type = init_expr->GetType();
+                    var_type = newty;
                     OnChange();
                     return;
                 }
+            }
+            if (newty->IsReference()) {
+                var_type = newty;
+                OnChange();
+                return;
             }
             if (newty != var_type) {
                 if (newty) {
@@ -97,16 +102,16 @@ struct Function::LocalVariable : public Expression {
     Function* self;
     Lexer::Range where;
 
-    void DestroyExpressionLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+    void DestroyExpressionLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
         if (variable)
             variable->DestroyLocals(g, bb);
         if (construction)
             construction->DestroyLocals(g, bb);
     }
-    llvm::Value* ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+    llvm::Value* ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
         if (init_expr->GetType() == var_type) {
             // If they return a complex value by value, just steal it.
-            if (init_expr->GetType()->IsComplexType(g)) return init_expr->GetValue(g, bb);
+            if (init_expr->GetType()->IsComplexType(g) || var_type->IsReference()) return init_expr->GetValue(g, bb);
             // If they return a simple by value, then we can just alloca it fine, no destruction needed.
             auto alloc = bb.CreateAlloca(var_type->GetLLVMType(g));
             alloc->setAlignment(var_type->alignment());
@@ -117,9 +122,12 @@ struct Function::LocalVariable : public Expression {
         construction->GetValue(g, bb);
         return variable->GetValue(g, bb);
     }
-    Type* GetType() {
-        if (var_type)
+    Type* GetType() override final {
+        if (var_type) {
+            if (var_type->IsReference())
+                return self->analyzer.GetLvalueType(var_type->Decay());
             return self->analyzer.GetLvalueType(var_type);
+        }
         return nullptr;
     }
 };

@@ -889,6 +889,7 @@ std::unique_ptr<Expression> Semantic::AnalyzeExpression(Type* lookup, const AST:
             llvm::Value* ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
                 return call->GetValue(g, bb);
             }
+            Expression* GetImplementation() { return call.get(); }
         };
         std::vector<std::unique_ptr<Expression>> args;
         for (auto arg : call->args)
@@ -1036,4 +1037,13 @@ std::unique_ptr<Expression> Semantic::AnalyzeExpression(Type* lookup, const AST:
         return a.GetConstructorType(expr->GetType())->BuildValueConstruction(Expressions(), { lookup, declty->location });
     }
     assert(false);
+}
+Type* Semantic::InferTypeFromExpression(Expression* e, bool local) {
+    if (!local)
+        if (auto con = dynamic_cast<ConstructorType*>(e->GetType()->Decay()))
+            return con->GetConstructedType();
+    if (auto explicitcon = dynamic_cast<ExplicitConstruction*>(e)) {
+        return explicitcon->GetType();
+    }
+    return e->GetType()->Decay();
 }
