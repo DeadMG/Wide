@@ -11,7 +11,7 @@ namespace Wide {
         struct Type;
         struct BaseType;
         struct VectorTypeHasher {
-            template<typename X, typename Y> std::size_t operator()(const std::vector<std::pair<X, Y>>& t) {
+            template<typename X, typename Y> std::size_t operator()(const std::vector<std::pair<X, Y>>& t) const {
                 std::size_t hash = 0;
                 for (auto ty : t)
                     hash += std::hash<X>()(ty.first) ^ std::hash<Y>()(ty.second);
