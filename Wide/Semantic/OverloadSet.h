@@ -54,7 +54,7 @@ namespace Wide {
             std::string explain() override final;
             Type* GetConstantContext() override final;
 
-            void IssueResolutionError(std::vector<Type*> types);
+            void IssueResolutionError(std::vector<Type*> types, Context c);
             std::pair<ClangTU*, clang::FunctionDecl*> GetSingleFunction();
         };
     }

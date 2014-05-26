@@ -26,7 +26,7 @@ std::unique_ptr<Expression> TupleType::ConstructFromLiteral(std::vector<std::uni
         types.push_back(exprs[i]->GetType());
         auto conset = GetContents()[i]->GetConstructorOverloadSet(GetAccessSpecifier(c.from, GetContents()[i]));
         auto call = conset->Resolve(types, c.from);
-        if (!call) conset->IssueResolutionError(types);
+        if (!call) conset->IssueResolutionError(types, c);
         initializers.push_back(call->Call(Expressions(PrimitiveAccessMember(Wide::Memory::MakeUnique<ExpressionReference>(self.get()), i), std::move(exprs[i])), c));
     }
 

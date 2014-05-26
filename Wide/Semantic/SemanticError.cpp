@@ -103,3 +103,6 @@ BadMacroExpression::BadMacroExpression(Lexer::Range where, std::string expressio
 
 BadUsingTarget::BadUsingTarget(Type* con, Lexer::Range where)
 : Error(where, "The using target " + con->explain() + " was not a constant expression.") {}
+
+OverloadResolutionFailure::OverloadResolutionFailure(Lexer::Range where)
+: Error(where, "Overload resolution failed.") {}

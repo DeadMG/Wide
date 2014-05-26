@@ -584,10 +584,10 @@ std::unique_ptr<Expression> UserDefinedType::FunctionPointerFor(std::string name
                 throw Wide::Semantic::NotAType(ty, arg.location);
             f_args.push_back(con_type->GetConstructedType());
         }
-        auto widefunc = analyzer.GetWideFunction(func, this, f_args, name);
-        widefunc->ComputeBody();
         if (args != f_args)
             continue;
+        auto widefunc = analyzer.GetWideFunction(func, this, f_args, name);
+        widefunc->ComputeBody();
         if (widefunc->GetSignature()->GetReturnType() != ret)
             throw std::runtime_error("fuck");
 

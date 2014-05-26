@@ -140,7 +140,7 @@ std::unique_ptr<Expression> Type::BuildCall(std::unique_ptr<Expression> val, std
     for (auto&& arg : args)
         types.push_back(arg->GetType());
     auto call = set->Resolve(types, c.from);
-    if (!call) set->IssueResolutionError(types);
+    if (!call) set->IssueResolutionError(types, c);
     return call->Call(std::move(args), c);
 }
 
@@ -188,7 +188,7 @@ std::unique_ptr<Expression> Type::BuildInplaceConstruction(std::unique_ptr<Expre
     auto conset = GetConstructorOverloadSet(GetAccessSpecifier(c.from, this));
     auto callable = conset->Resolve(types, c.from);
     if (!callable)
-        conset->IssueResolutionError(types);
+        conset->IssueResolutionError(types, c);
     return callable->Call(std::move(exprs), c);
 }
 
@@ -303,7 +303,7 @@ std::unique_ptr<Expression> Type::BuildUnaryExpression(std::unique_ptr<Expressio
             if (BuildBooleanConversion(Wide::Memory::MakeUnique<ExpressionReference>(self.get()), c))
                 return analyzer.GetBooleanType()->BuildUnaryExpression(BuildBooleanConversion(std::move(self), c), Lexer::TokenType::Negate, c);
         }
-        opset->IssueResolutionError({ self->GetType() });
+        opset->IssueResolutionError({ self->GetType() }, c);
     }
     return callable->Call(Expressions(std::move(self)), c);
 }
@@ -369,7 +369,7 @@ std::unique_ptr<Expression> Type::BuildBinaryExpression(std::unique_ptr<Expressi
         return subexpr->GetType()->BuildUnaryExpression(std::move(subexpr), Lexer::TokenType::Negate, c);
     }
 
-    finalset->IssueResolutionError(arguments);
+    finalset->IssueResolutionError(arguments, c);
     return nullptr;
 }
 

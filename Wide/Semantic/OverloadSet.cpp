@@ -57,7 +57,7 @@ std::unique_ptr<Expression> OverloadSet::BuildCall(std::unique_ptr<Expression> v
     for(auto&& x : args)
         targs.push_back(x->GetType());
     auto call = Resolve(targs, c.from);
-    if (!call) IssueResolutionError(targs);
+    if (!call) IssueResolutionError(targs, c);
 
     if (nonstatic)
         args.insert(args.begin(), CreatePrimUnOp(BuildValue(std::move(val)), nonstatic, [](llvm::Value* self, Codegen::Generator& g, llvm::IRBuilder<>& bb) {
@@ -439,7 +439,7 @@ std::unique_ptr<Expression> OverloadSet::AccessMember(std::unique_ptr<Expression
                 types.push_back(con->GetConstructedType());
             }
             auto call = from->Resolve(types, c.from);
-            if (!call) from->IssueResolutionError(types);
+            if (!call) from->IssueResolutionError(types, c);
             auto clangfunc = dynamic_cast<cppcallable*>(call);
             std::unordered_set<clang::NamedDecl*> decls;
             decls.insert(clangfunc->fun);
@@ -458,8 +458,8 @@ std::string OverloadSet::explain() {
     return "OverloadSet " + strstr.str();
 }
 
-void OverloadSet::IssueResolutionError(std::vector<Type*> types) {
-    throw std::runtime_error("Overload resolution failure.");
+void OverloadSet::IssueResolutionError(std::vector<Type*> types, Context c) {
+    throw OverloadResolutionFailure(c.where);
 }
 std::pair<ClangTU*, clang::FunctionDecl*> OverloadSet::GetSingleFunction() {
     if (clangfuncs.size() == 1) {

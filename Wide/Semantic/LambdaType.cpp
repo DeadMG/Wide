@@ -33,7 +33,7 @@ std::unique_ptr<Expression> LambdaType::BuildCall(std::unique_ptr<Expression> va
         types.push_back(arg->GetType());
     auto overset = analyzer.GetOverloadSet(analyzer.GetCallableForFunction(lam, args[0]->GetType(), GetNameForOperator(Lexer::TokenType::OpenBracket)));
     auto call = overset->Resolve(types, c.from);
-    if (!call) overset->IssueResolutionError(types);
+    if (!call) overset->IssueResolutionError(types, c);
     return call->Call(std::move(args), c);
 }
 std::unique_ptr<Expression> LambdaType::BuildLambdaFromCaptures(std::vector<std::unique_ptr<Expression>> exprs, Context c) {
@@ -49,7 +49,7 @@ std::unique_ptr<Expression> LambdaType::BuildLambdaFromCaptures(std::vector<std:
         types.push_back(exprs[i]->GetType());
         auto conset = GetContents()[i]->GetConstructorOverloadSet(GetAccessSpecifier(c.from, GetContents()[i]));
         auto call = conset->Resolve(types, c.from);
-        if (!call) conset->IssueResolutionError(types);
+        if (!call) conset->IssueResolutionError(types, c);
         initializers.push_back(call->Call(Expressions(PrimitiveAccessMember(std::move(self), i), std::move(exprs[i])), c));
     }
     

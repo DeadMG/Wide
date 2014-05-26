@@ -267,5 +267,10 @@ namespace Wide {
         public:
             PrologExportNotAString(Lexer::Range where);
         };
+
+        class OverloadResolutionFailure : public Error {
+        public:
+            OverloadResolutionFailure(Lexer::Range where);
+        };
     }
 }
