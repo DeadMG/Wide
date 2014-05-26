@@ -52,6 +52,7 @@ UserDefinedType::MemberData::MemberData(UserDefinedType* self) {
         auto udt = dynamic_cast<BaseType*>(con->GetConstructedType());
         if (!udt) throw InvalidBase(con->GetConstructedType(), expr->location);
         bases.push_back(udt);
+        if (udt == self) throw InvalidBase(con->GetConstructedType(), expr->location);
         contents.push_back(con->GetConstructedType());
     }
     for (auto&& var : self->type->variables) {
@@ -65,6 +66,10 @@ UserDefinedType::MemberData::MemberData(UserDefinedType* self) {
             contents.push_back(expr->GetType()->Decay());
             HasNSDMI = true;
             NSDMIs.push_back(var.first->initializer);
+        }
+        if (auto agg = dynamic_cast<AggregateType*>(contents.back())) {
+            if (agg == self || agg->HasMemberOfType(self))
+                throw RecursiveMember(self, var.first->initializer->location);
         }
     }
     std::unordered_set<BaseType*> all_bases;

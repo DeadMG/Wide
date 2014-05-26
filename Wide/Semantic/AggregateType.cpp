@@ -406,3 +406,13 @@ OverloadSet* AggregateType::CreateConstructorOverloadSet(Lexer::Access access) {
 bool AggregateType::IsEliminateType() {
     return GetContents().size() == 0;
 }
+bool AggregateType::HasMemberOfType(Type* t) {
+    for (auto ty : GetContents()) {
+        if (ty == t)
+            return true;
+        if (auto agg = dynamic_cast<AggregateType*>(ty)) 
+            if (agg->HasMemberOfType(t))
+                return true;
+    }
+    return false;
+}

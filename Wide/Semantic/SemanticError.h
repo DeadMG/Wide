@@ -147,6 +147,13 @@ namespace Wide {
             Type* GetBaseType() { return base; }
         };
 
+        class RecursiveMember : public Error {
+            Type* base;
+        public:
+            RecursiveMember(Type* t, Lexer::Range where);
+            Type* GetMemberType() { return base; }
+        };
+
         class AmbiguousLookup : public Error {
             std::string name;
             Type* base1;

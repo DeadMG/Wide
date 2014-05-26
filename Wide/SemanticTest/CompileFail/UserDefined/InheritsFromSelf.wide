@@ -1,0 +1,5 @@
+type t : t {}
+Main() {
+    t();
+    return false;
+}

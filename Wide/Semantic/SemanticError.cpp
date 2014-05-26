@@ -50,6 +50,9 @@ ClangFileParseError::ClangFileParseError(std::string f, std::string e, Lexer::Ra
 InvalidBase::InvalidBase(Type* t, Lexer::Range where)
 : Error(where, "The type " + t->explain() + " is not a valid base class."), base(t) {}
 
+RecursiveMember::RecursiveMember(Type* t, Lexer::Range where)
+: Error(where, "The type " + t->explain() + " directly or indirectly contained a member of itself."), base(t) {}
+
 AmbiguousLookup::AmbiguousLookup(std::string name, Type* b1, Type* b2, Lexer::Range where)
 : Error(where, "The member " + name + " was found in both " + b1->explain() + " and " + b2->explain()), name(name), base1(b1), base2(b2) {}
 

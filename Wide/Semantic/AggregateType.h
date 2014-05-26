@@ -72,6 +72,7 @@ namespace Wide {
             bool IsMoveAssignable(Lexer::Access access) override;
             bool IsComplexType(Codegen::Generator& g) override;
             bool IsEliminateType() override final;
+            bool HasMemberOfType(Type* t);
         };
     }
 }
