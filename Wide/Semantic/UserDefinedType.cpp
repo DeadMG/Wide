@@ -131,6 +131,16 @@ UserDefinedType::MemberData::MemberData(MemberData&& other)
 , contents(std::move(other.contents))
 , bases(std::move(other.bases)) {}
 
+UserDefinedType::MemberData& UserDefinedType::MemberData::operator=(MemberData&& other) {
+    members = std::move(other.members);
+    NSDMIs = std::move(other.NSDMIs);
+    HasNSDMI = other.HasNSDMI;
+    funcs = std::move(other.funcs);
+    VTableIndices = std::move(other.VTableIndices);
+    contents = std::move(other.contents);
+    bases = std::move(other.bases);
+}
+
 UserDefinedType::UserDefinedType(const AST::Type* t, Analyzer& a, Type* higher, std::string name)
 : AggregateType(a)
 , context(higher)

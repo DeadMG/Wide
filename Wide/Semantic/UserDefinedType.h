@@ -37,6 +37,7 @@ namespace Wide {
             struct MemberData {
                 MemberData(UserDefinedType* self);
                 MemberData(MemberData&& other);
+                MemberData& operator=(MemberData&& other);
                 // Actually a list of member variables
                 std::unordered_map<std::string, unsigned> members;
                 std::vector<const AST::Expression*> NSDMIs;
