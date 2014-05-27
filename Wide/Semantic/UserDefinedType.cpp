@@ -139,6 +139,7 @@ UserDefinedType::MemberData& UserDefinedType::MemberData::operator=(MemberData&&
     VTableIndices = std::move(other.VTableIndices);
     contents = std::move(other.contents);
     bases = std::move(other.bases);
+    return *this;
 }
 
 UserDefinedType::UserDefinedType(const AST::Type* t, Analyzer& a, Type* higher, std::string name)

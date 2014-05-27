@@ -46,7 +46,7 @@ std::unique_ptr<Expression> Module::AccessMember(std::unique_ptr<Expression> val
             auto expr = AnalyzeExpression(this, usedecl->expr, analyzer);
             if (auto constant = expr->GetType()->Decay()->GetConstantContext())
                 return BuildChain(std::move(val), constant->BuildValueConstruction({}, c));
-            throw BadUsingTarget(expr->GetType()->Decay(), c.where);
+            throw BadUsingTarget(expr->GetType()->Decay(), usedecl->expr->location);
         }
         if (auto overdecl = dynamic_cast<const AST::FunctionOverloadSet*>(decl)) {
             std::unordered_set<OverloadResolvable*> resolvable;

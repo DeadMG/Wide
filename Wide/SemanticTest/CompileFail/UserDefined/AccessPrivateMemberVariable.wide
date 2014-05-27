@@ -1,3 +1,4 @@
+ExpectedFailure() { return { "NoMember", 146, 153 }; }
 type t {
     type() : val(false) {}
 private:

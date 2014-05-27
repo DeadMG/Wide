@@ -1,6 +1,8 @@
+ExpectedFailure() { return { "NotAType", 77, 81 }; }
 module Test {}
 f(t := Test) {}
 f(i := int64) {}
 Main() {
     f(1);
+    return false;
 }

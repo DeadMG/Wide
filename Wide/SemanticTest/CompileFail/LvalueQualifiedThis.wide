@@ -1,3 +1,4 @@
+ExpectedFailure() { return { "OverloadResolutionFailure", 175, 180 }; }
 type t1 {
     operator()(this := t1.lvalue) {
         return false;

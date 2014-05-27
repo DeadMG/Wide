@@ -6,9 +6,13 @@
 #include <string>
 #include <functional>
 
+#pragma warning(push, 0)
+#include <llvm/Support/Host.h>
+#pragma warning(pop)
+
 int main(int argc, char** argv) {
     Wide::Options::Clang clangopts;
-    clangopts.TargetOptions.Triple = "i686-pc-mingw32";
+    clangopts.TargetOptions.Triple = llvm::sys::getProcessTriple() + "-elf";
     // Enabling RTTI requires a Standard Library to be linked.
     // Else, there is an undefined reference to an ABI support class.
     //clangopts.LanguageOptions.RTTI = false;
@@ -27,20 +31,14 @@ int main(int argc, char** argv) {
     }
     std::unordered_map<std::string, std::function<int()>> modes([&]() -> std::unordered_map<std::string, std::function<int()>> {
         std::unordered_map<std::string, std::function<int()>> ret;
-        ret["CompileSuccess"] = [&] {
-            try {
-                Compile(clangopts, input["input"].as<std::string>());
-                return 0;
-            } catch (...) {
-                return 1;
-            }
-        };
+
         ret["CompileFail"] = [&] {
             try {
                 Compile(clangopts, input["input"].as<std::string>());
-                return 1;
-            } catch (...) {
                 return 0;
+            } catch (std::runtime_error& e) {
+                std::cout << e.what() << "\n";
+                return 1;
             }
         };
         ret["JITSuccess"] = [&] {
@@ -49,14 +47,6 @@ int main(int argc, char** argv) {
                 return 0;
             } catch (...) {
                 return 1;
-            }
-        };
-        ret["JITFail"] = [&] {
-            try {
-                Jit(clangopts, input["input"].as<std::string>());
-                return 1;
-            } catch (...) {
-                return 0;
             }
         };
         return ret;
@@ -79,7 +69,7 @@ int main(int argc, char** argv) {
     }
     std::cout << "Total succeeded: " << total_succeeded << " failed: " << total_failed;
     //Jit(clangopts, "JITSuccess/LocalVariableReference.wide");
-    //Compile(clangopts, "CompileFail/UserDefined/MemberOfSelf.wide");
+    //Compile(clangopts, "CompileFail/SubmoduleNoQualifiedLookup.wide");
     if (input.count("break"))
         Wide::Util::DebugBreak();
     return total_failed != 0;

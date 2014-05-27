@@ -65,6 +65,10 @@ namespace Wide {
                             result.push_back('\t');
                             ++begin;
                             continue;
+                        case '"':
+                            result.push_back('\"');
+                            ++begin;
+                            continue;
                         }
                     }
                     result.push_back(*begin);
@@ -211,6 +215,18 @@ namespace Wide {
                     while(next = get()) {
                         if (*next == '"')
                             break;
+                        if (*next == '\\') {
+                            auto very_next = get();
+                            if (!very_next)
+                                return OnError(current_position, Arguments::Failure::UnterminatedStringLiteral, this);
+                            if (*very_next == '"') {
+                                variable_length_value.push_back('"');
+                                continue;
+                            }
+                            variable_length_value.push_back(*next);
+                            variable_length_value.push_back(*very_next);
+                            continue;
+                        }
                         variable_length_value.push_back(*next);
                     }
                     if (!next)

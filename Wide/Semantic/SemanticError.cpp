@@ -62,9 +62,6 @@ NoBooleanConversion::NoBooleanConversion(Type* obj, Lexer::Range where)
 AddressOfNonLvalue::AddressOfNonLvalue(Type* obj, Lexer::Range where)
 : Error(where, "Attempted to take the address of " + obj->explain() + " which is a non-lvalue."), obj(obj) {}
 
-DecltypeArgumentMismatch::DecltypeArgumentMismatch(unsigned count, Lexer::Range where)
-: Error(where, "Passed " + std::to_string(count) + " arguments to decltype instead of 1."), num(count) {}
-
 NoMetaCall::NoMetaCall(Type* what, Lexer::Range where)
 : Error(where, "The type " + what->explain() + " has no meta call operator."), which(what) {}
 

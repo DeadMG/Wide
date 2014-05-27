@@ -575,7 +575,7 @@ OverloadResolvable* Analyzer::GetCallableForFunction(const AST::FunctionBase* f,
                     auto p_type = AnalyzeExpression(&lc, func->args[num].type, a)->GetType()->Decay();
                     auto con_type = dynamic_cast<ConstructorType*>(p_type);
                     if (!con_type)
-                        throw Wide::Semantic::NotAType(p_type, func->args[num].location);
+                        throw Wide::Semantic::NotAType(p_type, func->args[num].type->location);
                     a.QuickInfo(func->args[num].location, con_type->GetConstructedType());
                     a.ParameterHighlight(func->args[num].location);
                     if (!IsMultiTyped(func->args[num]))

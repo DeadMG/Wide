@@ -1,8 +1,10 @@
+ExpectedFailure() { return { "OverloadResolutionFailure", 191, 193 }; }
 type t2 {
     operator()(this := t2.rvalue) {
+        return false;
     }
 }
 Main() {
     x := t2();
-    x();
+    return x();
 }

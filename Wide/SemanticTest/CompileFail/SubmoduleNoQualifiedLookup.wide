@@ -1,7 +1,7 @@
-module SubmoduleNoQualifiedLookup {
-    module Submodule {
-    }
-    Main() {
-        Submodule.Submodule.Submodule.Submodule;
-    }
+ExpectedFailure() { return { "NoMember", 92, 111 }; }
+module Submodule {
+}
+Main() {
+    Submodule.Submodule.Submodule.Submodule;
+    return false;
 }
