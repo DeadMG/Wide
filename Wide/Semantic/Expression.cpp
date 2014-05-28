@@ -186,7 +186,8 @@ std::unique_ptr<Expression> Semantic::CreatePrimOp(std::unique_ptr<Expression> l
     return CreatePrimOp(std::move(lhs), std::move(rhs), lhs->GetType(), func);
 }
 std::unique_ptr<Expression> Semantic::CreatePrimAssOp(std::unique_ptr<Expression> lhs, std::unique_ptr<Expression> rhs, std::function<llvm::Value*(llvm::Value*, llvm::Value*, Codegen::Generator&, llvm::IRBuilder<>&)> func) {
-    return Wide::Memory::MakeUnique<ImplicitStoreExpr>(Wide::Memory::MakeUnique<ExpressionReference>(lhs.get()), CreatePrimOp(Wide::Memory::MakeUnique<ImplicitLoadExpr>(std::move(lhs)), std::move(rhs), func));
+    auto ref = Wide::Memory::MakeUnique<ExpressionReference>(lhs.get());
+    return Wide::Memory::MakeUnique<ImplicitStoreExpr>(std::move(ref), CreatePrimOp(Wide::Memory::MakeUnique<ImplicitLoadExpr>(std::move(lhs)), std::move(rhs), func));
 }
 std::unique_ptr<Expression> Semantic::CreatePrimOp(std::unique_ptr<Expression> lhs, std::unique_ptr<Expression> rhs, Type* ret, std::function<llvm::Value*(llvm::Value*, llvm::Value*, Codegen::Generator&, llvm::IRBuilder<>&)> func) {
     struct PrimBinOp : Expression {

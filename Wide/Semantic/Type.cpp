@@ -196,6 +196,7 @@ std::unique_ptr<Expression> Type::BuildValueConstruction(std::vector<std::unique
     struct ValueConstruction : Expression {
         ValueConstruction(Type* self, std::vector<std::unique_ptr<Expression>> args, Context c)
         : self(self) {
+            ListenToNode(self);
             no_args = args.size() == 0;
             temporary = Wide::Memory::MakeUnique<ImplicitTemporaryExpr>(self, c);
             if (args.size() == 1)
@@ -208,6 +209,10 @@ std::unique_ptr<Expression> Type::BuildValueConstruction(std::vector<std::unique
         bool no_args = false;
         bool usedtemp = false;
         Type* self;
+        void OnNodeChanged(Node* n, Change what) {
+            if (what == Change::Destroyed)
+                assert(false);
+        }
         Type* GetType() override final {
             return self;
         }
@@ -366,7 +371,8 @@ std::unique_ptr<Expression> Type::BuildBinaryExpression(std::unique_ptr<Expressi
     }
     case Lexer::TokenType::NotEqCmp:
         auto subexpr = BuildBinaryExpression(std::move(lhs), std::move(rhs), Lexer::TokenType::EqCmp, c);
-        return subexpr->GetType()->BuildUnaryExpression(std::move(subexpr), Lexer::TokenType::Negate, c);
+        auto ty = subexpr->GetType();
+        return ty->BuildUnaryExpression(std::move(subexpr), Lexer::TokenType::Negate, c);
     }
 
     finalset->IssueResolutionError(arguments, c);

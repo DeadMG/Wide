@@ -1,6 +1,0 @@
-Main() {
-    x := true;
-    lam := () => x;
-    x = false;
-    return lam();
-}

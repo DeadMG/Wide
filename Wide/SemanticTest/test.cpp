@@ -8,7 +8,7 @@
 #include <Wide/SemanticTest/test.h>
 #include <Wide/Semantic/Expression.h>
 #include <Wide/Semantic/Analyzer.h>
-#include <wide/Semantic/Module.h>
+#include <Wide/Semantic/Module.h>
 #include <Wide/Semantic/Function.h>
 #include <Wide/Semantic/FunctionType.h>
 #include <Wide/Semantic/TupleType.h>
@@ -170,8 +170,8 @@ void Jit(Wide::Options::Clang& copts, std::string file) {
     // Fuck you, shitty LLVM ownership semantics.
     if (ee)
         g.module.release();
-    auto f = ee->FindFunctionNamed(name.c_str());
     ee->finalizeObject();
+    auto f = ee->FindFunctionNamed(name.c_str());
     auto result = ee->runFunction(f, std::vector<llvm::GenericValue>());
     ee->runStaticConstructorsDestructors(true);
     auto intval = result.IntVal.getLimitedValue();

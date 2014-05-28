@@ -485,7 +485,7 @@ Module* Analyzer::GetGlobalModule() {
 OverloadSet* Analyzer::GetOverloadSet(std::unordered_set<clang::NamedDecl*> decls, ClangTU* from, Type* context) {
     if (clang_overload_sets.find(decls) == clang_overload_sets.end()
      || clang_overload_sets[decls].find(context) == clang_overload_sets[decls].end()) {
-        clang_overload_sets[decls][context] = Wide::Memory::MakeUnique<OverloadSet>(std::move(decls), from, context, *this);
+        clang_overload_sets[decls][context] = Wide::Memory::MakeUnique<OverloadSet>(decls, from, context, *this);
     }
     return clang_overload_sets[decls][context].get();
 }
@@ -1029,7 +1029,8 @@ std::unique_ptr<Expression> Semantic::AnalyzeExpression(Type* lookup, const AST:
     }
     if (auto paccess = dynamic_cast<const AST::PointerMemberAccess*>(e)) {
         auto obj = AnalyzeExpression(lookup, paccess->ex, a);
-        auto subobj = obj->GetType()->BuildUnaryExpression(std::move(obj), Lexer::TokenType::Dereference, { lookup, paccess->location });
+        auto objty = obj->GetType();
+        auto subobj = objty->BuildUnaryExpression(std::move(obj), Lexer::TokenType::Dereference, { lookup, paccess->location });
         return subobj->GetType()->AccessMember(std::move(subobj), paccess->member, { lookup, paccess->location });
     }
     if (auto declty = dynamic_cast<const AST::Decltype*>(e)) {

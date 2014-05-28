@@ -119,7 +119,8 @@ struct cppcallable : public Callable {
             local.push_back(x.first);
         auto&& analyzer = source->analyzer;
         auto fty = analyzer.GetFunctionType(analyzer.GetClangType(*from, fun->getResultType()), local, fun->isVariadic());
-        return fty->BuildCall(Wide::Memory::MakeUnique<CPPSelf>(fun, from, fty, args.size() > 0 ? args[0].get() : nullptr), std::move(args), { source, c.where });
+        auto self = args.size() > 0 ? args[0].get() : nullptr;
+        return fty->BuildCall(Wide::Memory::MakeUnique<CPPSelf>(fun, from, fty, self), std::move(args), { source, c.where });
     }
     std::vector<std::unique_ptr<Expression>> AdjustArguments(std::vector<std::unique_ptr<Expression>> args, Context c) override final {
         // Clang may ask us to call an overload that doesn't have the right number of arguments

@@ -1,4 +1,5 @@
 #include <Wide/Semantic/ClangOptions.h>
+#include <Wide/Codegen/Generator.h>
 #include <Wide/Util/DebugUtilities.h>
 #include <boost/program_options.hpp>
 #include <Wide/SemanticTest/test.h>
@@ -8,11 +9,22 @@
 
 #pragma warning(push, 0)
 #include <llvm/Support/Host.h>
+#include <llvm/ADT/Triple.h>
 #pragma warning(pop)
 
 int main(int argc, char** argv) {
+    Wide::Codegen::InitializeLLVM();
     Wide::Options::Clang clangopts;
-    clangopts.TargetOptions.Triple = llvm::sys::getProcessTriple() + "-elf";
+    clangopts.TargetOptions.Triple = llvm::sys::getProcessTriple();
+#ifdef _MSC_VER
+    // MCJIT can't handle non-ELF on Windows for some reason.
+    clangopts.TargetOptions.Triple += "-elf";
+#else
+    // getProcessTriple returns x86_64 but TargetMachine expects x86-64.
+    // Fixing it only makes the problem WORSE.
+    //if (llvm::Triple(clangopts.TargetOptions.Triple).getArch() == llvm::Triple::ArchType::x86_64)
+    //    clangopts.TargetOptions.Triple[3] = '-';
+#endif
     // Enabling RTTI requires a Standard Library to be linked.
     // Else, there is an undefined reference to an ABI support class.
     //clangopts.LanguageOptions.RTTI = false;
@@ -68,7 +80,7 @@ int main(int argc, char** argv) {
         total_failed += result.fails;
     }
     std::cout << "Total succeeded: " << total_succeeded << " failed: " << total_failed;
-    //Jit(clangopts, "JITSuccess/LocalVariableReference.wide");
+    //Jit(clangopts, "JITSuccess/CPPInterop/DerivedMultipleInheritance.wide");
     //Compile(clangopts, "CompileFail/SubmoduleNoQualifiedLookup.wide");
     if (input.count("break"))
         Wide::Util::DebugBreak();

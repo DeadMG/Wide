@@ -994,7 +994,8 @@ std::unique_ptr<Expression> Function::BuildCall(std::unique_ptr<Expression> val,
         }
         void DestroyExpressionLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {}
     };
-    return GetSignature()->BuildCall(Wide::Memory::MakeUnique<Self>(this, !args.empty() ? args[0].get() : nullptr, std::move(val)), std::move(args), c);
+    auto self = !args.empty() ? args[0].get() : nullptr;
+    return GetSignature()->BuildCall(Wide::Memory::MakeUnique<Self>(this, self, std::move(val)), std::move(args), c);
 }
 
 std::unique_ptr<Expression> Function::LookupLocal(std::string name) {
