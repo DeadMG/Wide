@@ -1,5 +1,6 @@
 #include <Wide/Util/Driver/IncludePaths.h>
 #include <Wide/Semantic/ClangOptions.h>
+#include <llvm/Support/Path.h>
 /*
 /usr/include/c++/4.7
 /usr/include/c++/4.7/x86_64-linux-gnu
@@ -64,8 +65,9 @@ void Wide::Driver::AddLinuxIncludePaths(Options::Clang& ClangOpts) {
         return AddLinuxIncludePaths(ClangOpts, *entries.begin());
     std::set<std::tuple<int, int, int>> versions;
     for (auto entry : entries) {
-        // Expecting entry in the form X.Y.Z
-        if (entry.size() != 5)
+        // Expecting entry in the form /usr/include/c++/X.Y.Z
+        entry = llvm::sys::path::filename(entry);
+        if (entry.size() != 5 && entry.size() != 3)
             continue;
         auto value_from_character = [](char c) -> int {
             switch (c) {

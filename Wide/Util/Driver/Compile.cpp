@@ -69,6 +69,8 @@ void Wide::Driver::Compile(const Wide::Options::Clang& copts, std::function<void
         }
     });
     if (!errs.empty()) {
+        if (errs.size() == 1)
+            std::rethrow_exception(errs[0]);
         for (auto&& x : errs) {
             try {
                 std::rethrow_exception(x);
@@ -78,7 +80,7 @@ void Wide::Driver::Compile(const Wide::Options::Clang& copts, std::function<void
                 std::cout << "Internal Compiler Error\n";
             }
         }
-        return;
+        throw std::runtime_error("Multiple errors occurred.");
     }
     for(auto&& x : warnings)
         std::cout << x << "\n";
