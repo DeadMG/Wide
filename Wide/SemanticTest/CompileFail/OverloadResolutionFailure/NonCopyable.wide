@@ -1,0 +1,7 @@
+ExpectedFailure() { return { "OverloadResolutionFailure", 194, 198 }; }
+using movable := cpp("CompileFail/OverloadResolutionFailure/NonCopyable.h").test;
+Main() {
+    var := movable(); 
+    copy := var;
+    return false;
+}

@@ -81,7 +81,7 @@ int main(int argc, char** argv) {
     }
     std::cout << "Total succeeded: " << total_succeeded << " failed: " << total_failed;
     //Jit(clangopts, "JITSuccess/CPPInterop/DerivedMultipleInheritance.wide");
-    //Compile(clangopts, "CompileFail/SubmoduleNoQualifiedLookup.wide");
+    //Compile(clangopts, "CompileFail/AddressOfNonLvalue/Literal.wide");
     if (input.count("break"))
         Wide::Util::DebugBreak();
     return total_failed != 0;

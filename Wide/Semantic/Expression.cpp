@@ -114,10 +114,10 @@ Expression* ExpressionReference::GetImplementation() {
     return expr->GetImplementation();
 }
 
-ImplicitAddressOf::ImplicitAddressOf(std::unique_ptr<Expression> expr)
-: expr(std::move(expr)) {}
+ImplicitAddressOf::ImplicitAddressOf(std::unique_ptr<Expression> expr, Context c)
+: expr(std::move(expr)), c(c) { GetType(); }
 Type* ImplicitAddressOf::GetType() {
-    assert(IsLvalueType(expr->GetType()));
+    if (!IsLvalueType(expr->GetType())) throw AddressOfNonLvalue(expr->GetType(), c.where);
     return expr->GetType()->analyzer.GetPointerType(expr->GetType()->Decay());
 }
 llvm::Value* ImplicitAddressOf::ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) {

@@ -1,0 +1,6 @@
+ExpectedFailure() { return { "AddressOfNonLvalue", 189, 195 }; }
+f(arg := bool.lvalue) prolog { ReturnType = bool.rvalue; } { return move(arg); }
+Main() {
+    var := false;
+    return *&f(var);
+}

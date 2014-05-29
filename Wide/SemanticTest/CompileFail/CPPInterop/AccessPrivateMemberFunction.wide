@@ -1,4 +1,0 @@
-ExpectedFailure() { return { "NoMember", 76, 144 }; }
-Main() {
-    return cpp("CompileFail/CPPInterop/AccessPrivateMemberFunction.h").test().f();
-}

@@ -76,7 +76,8 @@ namespace Wide {
         };
 
         struct ImplicitAddressOf : public Expression {
-            ImplicitAddressOf(std::unique_ptr<Expression>);
+            ImplicitAddressOf(std::unique_ptr<Expression>, Context c);
+            Context c;
             std::unique_ptr<Expression> expr;
             Type* GetType() override final;
             llvm::Value* ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final;

@@ -984,7 +984,7 @@ std::unique_ptr<Expression> Semantic::AnalyzeExpression(Type* lookup, const AST:
     }
 
     if (auto addr = dynamic_cast<const AST::AddressOf*>(e))
-        return Wide::Memory::MakeUnique<ImplicitAddressOf>(AnalyzeExpression(lookup, addr->ex, a));
+        return Wide::Memory::MakeUnique<ImplicitAddressOf>(AnalyzeExpression(lookup, addr->ex, a), Context(lookup, addr->location));
 
     if (auto integer = dynamic_cast<const AST::Integer*>(e))    
         return Wide::Memory::MakeUnique<Integer>(llvm::APInt(64, std::stoll(integer->integral_value), true), a);
