@@ -1,13 +1,13 @@
 // ClangExperiments.cpp : Defines the entry point for the console application.
 
 #include <Wide/Semantic/ClangOptions.h>
-#include <Wide/Codegen/LLVMOptions.h>
 #include <Wide/Util/Driver/Compile.h>
 #include <Wide/Semantic/Module.h>
 #include <Wide/Semantic/Analyzer.h>
 #include <Wide/Semantic/OverloadSet.h>
 #include <Wide/Semantic/SemanticError.h>
 #include <Wide/Semantic/Function.h>
+#include <Wide/Util/Codegen/CreateModule.h>
 #include <Wide/Util/Driver/IncludePaths.h>
 #include <boost/program_options.hpp>
 #include <memory>
@@ -20,6 +20,7 @@
 #include <llvm/PassManager.h>
 #include <llvm/Target/TargetOptions.h>
 #include <llvm/Target/TargetMachine.h>
+#include <llvm/Analysis/Verifier.h>
 #include <llvm/Support/TargetRegistry.h>
 #include <llvm/Support/Host.h>
 #include <llvm/Support/FormattedStream.h>
@@ -105,7 +106,6 @@ int main(int argc, char** argv)
     }
 
     Wide::Options::Clang ClangOpts;
-    Wide::Options::LLVM LLVMOpts;
 
 #ifdef _MSC_VER
     ClangOpts.TargetOptions.Triple = input.count("triple") ? input["triple"].as<std::string>() : "i686-pc-mingw32";
@@ -166,7 +166,8 @@ int main(int argc, char** argv)
     final_files.insert(stdfiles.begin(), stdfiles.end());
 
     try {
-        Wide::Codegen::Generator g(ClangOpts.TargetOptions.Triple);
+        llvm::LLVMContext con;
+        auto mod = Wide::Util::CreateModuleForTriple(ClangOpts.TargetOptions.Triple, con);
         Wide::Driver::Compile(ClangOpts, [&](Wide::Semantic::Analyzer& a, const Wide::AST::Module* root) {
             Wide::Semantic::AnalyzeExportedFunctions(a);
             static const Wide::Lexer::Range location = std::make_shared<std::string>("Analyzer entry point");
@@ -180,8 +181,9 @@ int main(int argc, char** argv)
             auto func = dynamic_cast<Wide::Semantic::Function*>(f);
             func->AddExportName("main");
             func->ComputeBody();
-            a.GenerateCode(g);
-            g(LLVMOpts); 
+            a.GenerateCode(mod.get());
+            if (llvm::verifyModule(*mod, llvm::VerifierFailureAction::PrintMessageAction))
+                throw std::runtime_error("Internal compiler error: An LLVM module failed verification.");
             Wide::Driver::PrintUnusedFunctions(files, a);
         }, std::vector<std::string>(final_files.begin(), final_files.end()));
         llvm::PassManager pm;
@@ -194,7 +196,7 @@ int main(int argc, char** argv)
         llvm::raw_os_ostream out(file);
         llvm::formatted_raw_ostream format_out(out);
         targetmachine->addPassesToEmitFile(pm, format_out, llvm::TargetMachine::CodeGenFileType::CGFT_ObjectFile);
-        pm.run(*g.module);
+        pm.run(*mod);
     } catch (Wide::Semantic::Error& e) {
         std::cout << "Error at " << to_string(e.location()) << "\n";
         std::cout << e.what() << "\n";
