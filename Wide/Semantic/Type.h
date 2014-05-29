@@ -200,6 +200,7 @@ namespace Wide {
 
         class PrimitiveType : public Type {
             std::unique_ptr<OverloadResolvable> CopyConstructor;
+            std::unique_ptr<OverloadResolvable> ValueConstructor;
             std::unique_ptr<OverloadResolvable> MoveConstructor;
             std::unique_ptr<OverloadResolvable> AssignmentOperator;
         protected:

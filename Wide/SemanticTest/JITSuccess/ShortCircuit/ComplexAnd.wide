@@ -1,0 +1,17 @@
+type t {
+    val := bool.pointer;
+    result := bool;
+    type(arg := bool.lvalue, arg2 := bool)
+       : val(&arg) : result(arg2) {}
+    f() { return true; }
+    ~type() { *val = result;}
+}
+Main() {
+    ret := true;
+    ret2 := false;
+    {
+        false & t(ret, false).f();
+        true & t(ret2, true).f();
+    }
+    return ret & ret2;
+}

@@ -49,7 +49,7 @@ Type* ImplicitTemporaryExpr::GetType() {
     return of->analyzer.GetLvalueType(of);
 }
 llvm::Value* ImplicitTemporaryExpr::ComputeValue(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
-    auto local = bb.CreateAlloca(of->GetLLVMType(module));
+    auto local = allocas.CreateAlloca(of->GetLLVMType(module));
     local->setAlignment(of->alignment());
     alloc = local;
     return alloc;
@@ -85,7 +85,7 @@ llvm::Value* RvalueCast::ComputeValue(llvm::Module* module, llvm::IRBuilder<>& b
     if (expr->GetType()->IsComplexType(module))
         return expr->GetValue(module, bb, allocas);
     assert(!IsRvalueType(expr->GetType()));
-    auto tempalloc = bb.CreateAlloca(expr->GetType()->GetLLVMType(module));
+    auto tempalloc = allocas.CreateAlloca(expr->GetType()->GetLLVMType(module));
     tempalloc->setAlignment(expr->GetType()->alignment());
     bb.CreateStore(expr->GetValue(module, bb, allocas), tempalloc);
     return tempalloc;

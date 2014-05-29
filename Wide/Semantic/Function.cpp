@@ -112,7 +112,7 @@ struct Function::LocalVariable : public Expression {
             // If they return a complex value by value, just steal it.
             if (init_expr->GetType()->IsComplexType(module) || var_type->IsReference()) return init_expr->GetValue(module, bb, allocas);
             // If they return a simple by value, then we can just alloca it fine, no destruction needed.
-            auto alloc = bb.CreateAlloca(var_type->GetLLVMType(module));
+            auto alloc = allocas.CreateAlloca(var_type->GetLLVMType(module));
             alloc->setAlignment(var_type->alignment());
             bb.CreateStore(init_expr->GetValue(module, bb, allocas), alloc);
             return alloc;
@@ -637,7 +637,7 @@ struct Function::Parameter : public Expression {
         if (self->Args[num]->IsComplexType(module) || self->Args[num]->IsReference())
             return llvm_argument;
 
-        auto alloc = bb.CreateAlloca(self->Args[num]->GetLLVMType(module));
+        auto alloc = allocas.CreateAlloca(self->Args[num]->GetLLVMType(module));
         alloc->setAlignment(self->Args[num]->alignment());
         bb.CreateStore(llvm_argument, alloc);
         return alloc;

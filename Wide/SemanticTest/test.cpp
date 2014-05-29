@@ -159,6 +159,10 @@ void Jit(Wide::Options::Clang& copts, std::string file) {
     }, { file });
     llvm::EngineBuilder b(module.get());
     auto mod = module.get();
+    // MCJIT simplifies the code even if you don't ask it to so dump before it's invoked
+    std::string mod_ir;
+    llvm::raw_string_ostream stream(mod_ir);
+    module->print(stream, nullptr);
     b.setAllocateGVsWithCode(false);
     b.setUseMCJIT(true);
     b.setEngineKind(llvm::EngineKind::JIT);

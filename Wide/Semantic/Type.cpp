@@ -191,59 +191,72 @@ std::unique_ptr<Expression> Type::BuildInplaceConstruction(std::unique_ptr<Expre
     return callable->Call(std::move(exprs), c);
 }
 
-std::unique_ptr<Expression> Type::BuildValueConstruction(std::vector<std::unique_ptr<Expression>> exprs, Context c) {
-    struct ValueConstruction : Expression {
-        ValueConstruction(Type* self, std::vector<std::unique_ptr<Expression>> args, Context c)
-        : self(self) {
-            ListenToNode(self);
-            no_args = args.size() == 0;
-            temporary = Wide::Memory::MakeUnique<ImplicitTemporaryExpr>(self, c);
-            if (args.size() == 1)
-                single_arg = Wide::Memory::MakeUnique<ExpressionReference>(args[0].get());
-            InplaceConstruction = self->BuildInplaceConstruction(Wide::Memory::MakeUnique<ExpressionReference>(temporary.get()), std::move(args), c);
+struct ValueConstruction : Expression {
+    ValueConstruction(Type* self, std::vector<std::unique_ptr<Expression>> args, Context c)
+    : self(self) {
+        ListenToNode(self);
+        no_args = args.size() == 0;
+        temporary = Wide::Memory::MakeUnique<ImplicitTemporaryExpr>(self, c);
+        if (args.size() == 1)
+            single_arg = Wide::Memory::MakeUnique<ExpressionReference>(args[0].get());
+        InplaceConstruction = self->BuildInplaceConstruction(Wide::Memory::MakeUnique<ExpressionReference>(temporary.get()), std::move(args), c);
+    }
+    std::unique_ptr<ImplicitTemporaryExpr> temporary;
+    std::unique_ptr<Expression> InplaceConstruction;
+    std::unique_ptr<Expression> single_arg;
+    bool no_args = false;
+    enum class State {
+        Undef,
+        SingleArgument,
+        Temporary
+    } state;
+    Type* self;
+    void OnNodeChanged(Node* n, Change what) {
+        if (what == Change::Destroyed)
+            assert(false);
+    }
+    Type* GetType() override final {
+        return self;
+    }
+    llvm::Value* ComputeValue(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
+        state = State::Undef;
+        if (self->GetConstantContext() == self && no_args) {
+            return llvm::UndefValue::get(self->GetLLVMType(module));
         }
-        std::unique_ptr<ImplicitTemporaryExpr> temporary;
-        std::unique_ptr<Expression> InplaceConstruction;
-        std::unique_ptr<Expression> single_arg;
-        bool no_args = false;
-        bool usedtemp = false;
-        Type* self;
-        void OnNodeChanged(Node* n, Change what) {
-            if (what == Change::Destroyed)
-                assert(false);
-        }
-        Type* GetType() override final {
-            return self;
-        }
-        llvm::Value* ComputeValue(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
-            if (self->GetConstantContext() == self && no_args) {
-                return llvm::UndefValue::get(self->GetLLVMType(module));
-            }
-            if (!self->Decay()->IsComplexType(module)) {
-                if (single_arg) {
-                    if (single_arg->GetType()->Decay() == self->Decay()) {
-                        if (single_arg->GetType() == self)
-                            return single_arg->GetValue(module, bb, allocas);
-                        if (single_arg->GetType()->IsReference(self))
-                            return bb.CreateLoad(single_arg->GetValue(module, bb, allocas));
+        if (auto func = dynamic_cast<Function*>(self))
+            return llvm::UndefValue::get(self->GetLLVMType(module));
+        if (!self->Decay()->IsComplexType(module)) {
+            if (single_arg) {
+                auto otherty = single_arg->GetType();
+                if (single_arg->GetType()->Decay() == self->Decay()) {
+                    if (single_arg->GetType() == self) {
+                        state = State::SingleArgument;
+                        return single_arg->GetValue(module, bb, allocas);
+                    }
+                    if (single_arg->GetType()->IsReference(self)) {
+                        state = State::SingleArgument;
+                        return bb.CreateLoad(single_arg->GetValue(module, bb, allocas));
                     }
                 }
+                state = State::Temporary;
             }
-            usedtemp = true;
-            InplaceConstruction->GetValue(module, bb, allocas);
-            if (self->IsComplexType(module))
-                return temporary->GetValue(module, bb, allocas);
-            return bb.CreateLoad(temporary->GetValue(module, bb, allocas));
         }
-        void DestroyExpressionLocals(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
-            if (usedtemp) {
-                temporary->DestroyLocals(module, bb, allocas);
-                InplaceConstruction->DestroyLocals(module, bb, allocas);
-            } else
-            if (!(self->GetConstantContext() == self && no_args))
-                single_arg->GetImplementation()->DestroyLocals(module, bb, allocas);
+        state = State::Temporary;
+        InplaceConstruction->GetValue(module, bb, allocas);
+        if (self->IsComplexType(module))
+            return temporary->GetValue(module, bb, allocas);
+        return bb.CreateLoad(temporary->GetValue(module, bb, allocas));
+    }
+    void DestroyExpressionLocals(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
+        if (state == State::Temporary) {
+            temporary->DestroyLocals(module, bb, allocas);
+            InplaceConstruction->DestroyLocals(module, bb, allocas);
         }
-    };
+        if (state == State::SingleArgument)
+            single_arg->GetImplementation()->DestroyLocals(module, bb, allocas);
+    }
+};
+std::unique_ptr<Expression> Type::BuildValueConstruction(std::vector<std::unique_ptr<Expression>> exprs, Context c) {
     return Wide::Memory::MakeUnique<ValueConstruction>(this, std::move(exprs), c);
 }
 
