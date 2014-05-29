@@ -39,7 +39,7 @@ namespace Wide {
 
             std::unique_ptr<Expression> AccessMember(std::unique_ptr<Expression> t, std::string name, Context c) override final;
             OverloadSet* CreateConstructorOverloadSet(Lexer::Access access) override final;
-            llvm::Type* GetLLVMType(Codegen::Generator& g) override final;
+            llvm::Type* GetLLVMType(llvm::Module* module) override final;
             std::unique_ptr<Expression> BuildCall(std::unique_ptr<Expression> val, std::vector<std::unique_ptr<Expression>> args, Context c) override final;
             //std::unique_ptr<NotExpression> BuildCall(std::unique_ptr<NotExpression> val, std::vector<std::unique_ptr<NotExpression>> args, Context c);
             Callable* Resolve(std::vector<Type*> types, Type* source);

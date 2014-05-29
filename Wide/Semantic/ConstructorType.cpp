@@ -1,7 +1,6 @@
 #include <Wide/Semantic/ConstructorType.h>
 #include <Wide/Semantic/Analyzer.h>
 #include <Wide/Semantic/IntegralType.h>
-#include <Wide/Codegen/Generator.h>
 #include <Wide/Semantic/PointerType.h>
 #include <Wide/Semantic/Reference.h>
 #include <sstream>

@@ -2,7 +2,6 @@
 #include <Wide/Semantic/Analyzer.h>
 #include <Wide/Semantic/OverloadSet.h>
 #include <Wide/Semantic/ClangOptions.h>
-#include <Wide/Codegen/LLVMOptions.h>
 #include <Wide/Util/DebugUtilities.h>
 #include <Wide/Util/Driver/IncludePaths.h>
 #include <Wide/SemanticTest/test.h>
@@ -13,6 +12,7 @@
 #include <Wide/Semantic/FunctionType.h>
 #include <Wide/Semantic/TupleType.h>
 #include <Wide/Semantic/StringType.h>
+#include <Wide/Util/Codegen/CreateModule.h>
 #include <Wide/Parser/AST.h>
 
 #pragma warning(push, 0)
@@ -90,9 +90,8 @@ results TestDirectory(std::string path, std::string mode, std::string program, b
     return r;
 }
 
-template<typename F> auto GenerateCode(Wide::Codegen::Generator& g, F f) -> decltype(f(nullptr)) {
-    llvm::EngineBuilder b(g.module.get());
-    auto mod = g.module.get();
+template<typename F> auto GenerateCode(llvm::Module* mod, F f) -> decltype(f(nullptr)) {
+    llvm::EngineBuilder b(mod);
     b.setAllocateGVsWithCode(false);
     b.setEngineKind(llvm::EngineKind::JIT);
     b.setUseMCJIT(true);
@@ -109,7 +108,7 @@ template<typename F> auto GenerateCode(Wide::Codegen::Generator& g, F f) -> decl
             ee->removeModule(mod);
         }
     };
-    help h{ ee, g.module.get() };
+    help h{ ee, mod };
     return f(ee);
 }
 
@@ -139,8 +138,8 @@ void Jit(Wide::Options::Clang& copts, std::string file) {
     };
     std::string name;
     static const auto loc = Wide::Lexer::Range(std::make_shared<std::string>("Test harness internal"));
-    Wide::Options::LLVM llvmopts;
-    Wide::Codegen::Generator g(copts.TargetOptions.Triple);
+    llvm::LLVMContext con;
+    auto module = Wide::Util::CreateModuleForTriple(copts.TargetOptions.Triple, con);
     Wide::Driver::Compile(copts, [&](Wide::Semantic::Analyzer& a, const Wide::AST::Module* root) {
         Wide::Semantic::AnalyzeExportedFunctions(a);
         auto m = a.GetGlobalModule()->AccessMember(a.GetGlobalModule()->BuildValueConstruction(Wide::Semantic::Expressions(), { a.GetGlobalModule(), root->where.front() }), "Main", { a.GetGlobalModule(), root->where.front() });
@@ -154,11 +153,12 @@ void Jit(Wide::Options::Clang& copts, std::string file) {
             throw std::runtime_error("Could not resolve Main to a function.");
         name = f->GetName();
         f->ComputeBody();
-        a.GenerateCode(g);
-        g(llvmopts);        
+        a.GenerateCode(module.get());
+        if (llvm::verifyModule(*module, llvm::VerifierFailureAction::PrintMessageAction))
+            throw std::runtime_error("An LLVM module failed verification.");
     }, { file });
-    llvm::EngineBuilder b(g.module.get());
-    auto mod = g.module.get();
+    llvm::EngineBuilder b(module.get());
+    auto mod = module.get();
     b.setAllocateGVsWithCode(false);
     b.setUseMCJIT(true);
     b.setEngineKind(llvm::EngineKind::JIT);
@@ -169,7 +169,7 @@ void Jit(Wide::Options::Clang& copts, std::string file) {
     ee->runStaticConstructorsDestructors(false);
     // Fuck you, shitty LLVM ownership semantics.
     if (ee)
-        g.module.release();
+        module.release();
     ee->finalizeObject();
     auto f = ee->FindFunctionNamed(name.c_str());
     auto result = ee->runFunction(f, std::vector<llvm::GenericValue>());
@@ -216,8 +216,8 @@ const std::unordered_map<std::string, std::function<bool(Wide::Semantic::Error& 
 void Compile(const Wide::Options::Clang& copts, std::string file) {
     std::string name;
     static const auto loc = Wide::Lexer::Range(std::make_shared<std::string>("Test harness internal"));
-    Wide::Options::LLVM llvmopts;
-    Wide::Codegen::Generator g(copts.TargetOptions.Triple);
+    llvm::LLVMContext con;
+    auto module = Wide::Util::CreateModuleForTriple(copts.TargetOptions.Triple, con);
     Wide::Driver::Compile(copts, [&](Wide::Semantic::Analyzer& a, const Wide::AST::Module* root) {
         auto global = a.GetGlobalModule()->BuildValueConstruction(Wide::Semantic::Expressions(), { a.GetGlobalModule(), root->where.front() });
         auto failure = global->GetType()->AccessMember(Wide::Memory::MakeUnique<Wide::Semantic::ExpressionReference>(global.get()), "ExpectedFailure", { a.GetGlobalModule(), root->where.front() });
@@ -237,23 +237,23 @@ void Compile(const Wide::Options::Clang& copts, std::string file) {
         if (!str)
             throw std::runtime_error("Result of ExpectedFailure's first member was not a string.");
 
-        a.GenerateCode(g);
+        a.GenerateCode(module.get());
 
         // JIT cannot handle aggregate returns so check it.
         int64_t begin, end;
-        auto&& con = g.module->getContext();
         std::vector<llvm::Type*> types = { llvm::Type::getInt64PtrTy(con), llvm::Type::getInt64PtrTy(con) };
-        auto tramp = llvm::Function::Create(llvm::FunctionType::get(llvm::Type::getVoidTy(con), types, false), llvm::GlobalValue::LinkageTypes::ExternalLinkage, "tramp", g.module.get());
+        auto tramp = llvm::Function::Create(llvm::FunctionType::get(llvm::Type::getVoidTy(con), types, false), llvm::GlobalValue::LinkageTypes::ExternalLinkage, "tramp", module.get());
         auto bb = llvm::BasicBlock::Create(con, "entry", tramp);
         auto builder = llvm::IRBuilder<>(bb);
-        auto call = builder.CreateCall(g.module->getFunction(failfunc->GetName()));
+        auto call = builder.CreateCall(module->getFunction(failfunc->GetName()));
         builder.CreateStore(builder.CreateExtractValue(call, { tupty->GetFieldIndex(1) }), tramp->arg_begin());
         builder.CreateStore(builder.CreateExtractValue(call, { tupty->GetFieldIndex(2) }), ++tramp->arg_begin());
         builder.CreateRetVoid();
         if (llvm::verifyFunction(*tramp, llvm::VerifierFailureAction::PrintMessageAction))
             throw std::runtime_error("Internal Compiler Error: An LLVM function failed verification.");
-        g(llvmopts);
-        GenerateCode(g, [&](llvm::ExecutionEngine* ee) {
+        if (llvm::verifyModule(*module, llvm::VerifierFailureAction::PrintMessageAction))
+            throw std::runtime_error("An LLVM module failed verification.");
+        GenerateCode(module.get(), [&](llvm::ExecutionEngine* ee) {
             ee->finalizeObject();
             auto fptr = (void(*)(int64_t*, int64_t*))ee->getPointerToFunction(tramp);
             fptr(&begin, &end);

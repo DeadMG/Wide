@@ -47,7 +47,7 @@ namespace Wide {
             Type* context;
             std::string source_name;
             std::string name;
-            std::vector<std::function<std::string(Codegen::Generator&)>> trampoline;
+            std::vector<std::function<std::string(llvm::Module*)>> trampoline;
             std::unordered_set<Type*> ClangContexts;
             enum class State {
                 NotYetAnalyzed,
@@ -64,7 +64,7 @@ namespace Wide {
             }
         public:
             void ComputeBody();
-            void EmitCode(Codegen::Generator& g);
+            void EmitCode(llvm::Module* module);
             Function(std::vector<Type*> args, const AST::FunctionBase* astfun, Analyzer& a, Type* container, std::string name);        
 
             Wide::Util::optional<clang::QualType> GetClangType(ClangTU& where) override final;
@@ -76,7 +76,7 @@ namespace Wide {
             FunctionType* GetSignature();
             std::unique_ptr<Expression> LookupLocal(std::string name);
             Type* GetConstantContext() override final;
-            void AddExportName(std::string name) {trampoline.push_back([name](Codegen::Generator&) { return name; }); }
+            void AddExportName(std::string name) {trampoline.push_back([name](llvm::Module*) { return name; }); }
             std::string explain() override final;
             std::string GetSourceName() { return source_name; }
             ~Function();

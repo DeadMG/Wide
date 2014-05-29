@@ -9,7 +9,6 @@
 #include <Wide/Semantic/OverloadSet.h>
 #include <Wide/Semantic/StringType.h>
 #include <Wide/Semantic/Util.h>
-#include <Wide/Codegen/Generator.h>
 #include <fstream>
 
 #pragma warning(push, 0)

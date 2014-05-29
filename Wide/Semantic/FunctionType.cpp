@@ -1,6 +1,5 @@
 #include <Wide/Semantic/FunctionType.h>
 #include <Wide/Semantic/Analyzer.h>
-#include <Wide/Codegen/Generator.h>
 #include <Wide/Semantic/ClangTU.h>
 #include <Wide/Semantic/Expression.h>
 #include <Wide/Semantic/Reference.h>
@@ -14,20 +13,20 @@
 using namespace Wide;
 using namespace Semantic;
 
-llvm::PointerType* FunctionType::GetLLVMType(Codegen::Generator& g) {
+llvm::PointerType* FunctionType::GetLLVMType(llvm::Module* module) {
     llvm::Type* ret;
     std::vector<llvm::Type*> args;
-    if (ReturnType->IsComplexType(g)) {
-        ret = analyzer.GetVoidType()->GetLLVMType(g);
-        args.push_back(analyzer.GetRvalueType(ReturnType)->GetLLVMType(g));
+    if (ReturnType->IsComplexType(module)) {
+        ret = analyzer.GetVoidType()->GetLLVMType(module);
+        args.push_back(analyzer.GetRvalueType(ReturnType)->GetLLVMType(module));
     } else {
-        ret = ReturnType->GetLLVMType(g);
+        ret = ReturnType->GetLLVMType(module);
     }
     for(auto&& x : Args) {
-        if (x->IsComplexType(g)) {
-            args.push_back(analyzer.GetRvalueType(x)->GetLLVMType(g));
+        if (x->IsComplexType(module)) {
+            args.push_back(analyzer.GetRvalueType(x)->GetLLVMType(module));
         } else {
-            args.push_back(x->GetLLVMType(g));
+            args.push_back(x->GetLLVMType(module));
         }
     }
     return llvm::FunctionType::get(ret, args, variadic)->getPointerTo();
@@ -63,25 +62,25 @@ std::unique_ptr<Expression> FunctionType::BuildCall(std::unique_ptr<Expression> 
             auto fty = dynamic_cast<FunctionType*>(val->GetType());
             return fty->GetReturnType();
         }
-        void DestroyExpressionLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
+        void DestroyExpressionLocals(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final {
             if (Ret)
-                Ret->DestroyLocals(g, bb);
+                Ret->DestroyLocals(module, bb, allocas);
             for (auto rit = args.rbegin(); rit != args.rend(); ++rit)
-                (*rit)->DestroyLocals(g, bb);
-            val->DestroyLocals(g, bb);
+                (*rit)->DestroyLocals(module, bb, allocas);
+            val->DestroyLocals(module, bb, allocas);
         }
-        llvm::Value* ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
-            llvm::Value* llvmfunc = val->GetValue(g, bb);
+        llvm::Value* ComputeValue(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final {
+            llvm::Value* llvmfunc = val->GetValue(module, bb, allocas);
             std::vector<llvm::Value*> llvmargs;
-            if (GetType()->IsComplexType(g)) {
+            if (GetType()->IsComplexType(module)) {
                 Ret = Wide::Memory::MakeUnique<ImplicitTemporaryExpr>(GetType(), c);
-                llvmargs.push_back(Ret->GetValue(g, bb));
+                llvmargs.push_back(Ret->GetValue(module, bb, allocas));
             }
             for (auto&& arg : args)
-                llvmargs.push_back(arg->GetValue(g, bb));
+                llvmargs.push_back(arg->GetValue(module, bb, allocas));
             auto call = bb.CreateCall(llvmfunc, llvmargs);
             if (Ret)
-                return Ret->GetValue(g, bb);
+                return Ret->GetValue(module, bb, allocas);
             return call;
         }
     };

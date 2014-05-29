@@ -5,7 +5,6 @@
 #include <Wide/Semantic/Expression.h>
 #include <Wide/Semantic/OverloadSet.h>
 #include <sstream>
-#include <Wide/Codegen/Generator.h>
 
 #pragma warning(push, 0)
 #include <llvm/IR/LLVMContext.h>
@@ -36,8 +35,8 @@ AggregateType::Layout::Layout(const std::vector<Type*>& types, Wide::Semantic::A
         if (allocsize % alignment != 0) {
             auto adjustment = alignment - (allocsize % alignment);
             allocsize += adjustment;
-            llvmtypes.push_back([adjustment](Codegen::Generator& g) {
-                return llvm::ArrayType::get(llvm::IntegerType::getInt8Ty(g.module->getContext()), adjustment);
+            llvmtypes.push_back([adjustment](llvm::Module* module) {
+                return llvm::ArrayType::get(llvm::IntegerType::getInt8Ty(module->getContext()), adjustment);
             });
         }
         align = std::max(alignment, align);
@@ -53,7 +52,7 @@ AggregateType::Layout::Layout(const std::vector<Type*>& types, Wide::Semantic::A
         Offsets.push_back(allocsize);
         allocsize += ty->size();
         FieldIndices.push_back(llvmtypes.size());
-        llvmtypes.push_back([ty](Codegen::Generator& g) { return ty->GetLLVMType(g); });
+        llvmtypes.push_back([ty](llvm::Module* module) { return ty->GetLLVMType(module); });
 
         copyconstructible = copyconstructible && ty->IsCopyConstructible(Lexer::Access::Public);
         moveconstructible = moveconstructible && ty->IsMoveConstructible(Lexer::Access::Public);
@@ -71,8 +70,8 @@ std::size_t AggregateType::size() {
 std::size_t AggregateType::alignment() {
     return GetLayout().align;
 }
-bool AggregateType::IsComplexType(Codegen::Generator& g) {
-    return GetLayout().GetCodegen(this, g).IsComplex;
+bool AggregateType::IsComplexType(llvm::Module* module) {
+    return GetLayout().GetCodegen(this, module).IsComplex;
 }
 
 bool AggregateType::IsMoveAssignable(Lexer::Access access) {
@@ -88,7 +87,7 @@ bool AggregateType::IsCopyConstructible(Lexer::Access access) {
     return GetLayout().copyconstructible;
 }
 
-AggregateType::Layout::CodeGen::CodeGen(AggregateType* self, Layout& lay, Codegen::Generator& g)
+AggregateType::Layout::CodeGen::CodeGen(AggregateType* self, Layout& lay, llvm::Module* module)
 : IsComplex(false) 
 {
     llvmtype = nullptr;
@@ -97,31 +96,31 @@ AggregateType::Layout::CodeGen::CodeGen(AggregateType* self, Layout& lay, Codege
         IsComplex = false;
     } else {
         for (auto ty : self->GetContents())
-            IsComplex = IsComplex || ty->IsComplexType(g);
+            IsComplex = IsComplex || ty->IsComplexType(module);
     }
 
 }
-llvm::Type* AggregateType::Layout::CodeGen::GetLLVMType(AggregateType* self, Codegen::Generator& g) {
+llvm::Type* AggregateType::Layout::CodeGen::GetLLVMType(AggregateType* self, llvm::Module* module) {
     std::stringstream stream;
     stream << "struct.__" << self;
     auto llvmname = stream.str();
     if (llvmtype) return llvmtype;
-    if (llvmtype = g.module->getTypeByName(llvmname))
+    if (llvmtype = module->getTypeByName(llvmname))
         return llvmtype;
-    auto ty = llvm::StructType::create(g.module->getContext(), llvmname);
+    auto ty = llvm::StructType::create(module->getContext(), llvmname);
     llvmtype = ty;
     std::vector<llvm::Type*> llvmtypes;
     if (self->GetContents().empty()) {
-        llvmtypes.push_back(self->analyzer.GetIntegralType(8, true)->GetLLVMType(g));
+        llvmtypes.push_back(self->analyzer.GetIntegralType(8, true)->GetLLVMType(module));
     } else {
         for (auto ty : self->GetLayout().llvmtypes)
-            llvmtypes.push_back(ty(g));
+            llvmtypes.push_back(ty(module));
     }
     ty->setBody(llvmtypes, false);
     return ty;
 }
-llvm::Type* AggregateType::GetLLVMType(Codegen::Generator& g) {
-    return GetLayout().GetCodegen(this, g).GetLLVMType(this, g);
+llvm::Type* AggregateType::GetLLVMType(llvm::Module* module) {
+    return GetLayout().GetCodegen(this, module).GetLLVMType(this, module);
 }
 Type* AggregateType::GetConstantContext() {
     for (auto ty : GetContents())
@@ -137,8 +136,8 @@ std::unique_ptr<Expression> AggregateType::PrimitiveAccessMember(std::unique_ptr
         std::unique_ptr<Expression> source;
         AggregateType* self;
         unsigned num;
-        void DestroyExpressionLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
-            source->DestroyLocals(g, bb);
+        void DestroyExpressionLocals(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final {
+            source->DestroyLocals(module, bb, allocas);
         }
         Type* GetType() override final {
             auto source_ty = source->GetType();
@@ -155,10 +154,10 @@ std::unique_ptr<Expression> AggregateType::PrimitiveAccessMember(std::unique_ptr
             // It's not a value or an lvalue so must be rvalue.
             return self->analyzer.GetRvalueType(root_ty);
         }
-        llvm::Value* ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
-            auto src = source->GetValue(g, bb);
+        llvm::Value* ComputeValue(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final {
+            auto src = source->GetValue(module, bb, allocas);
             auto obj = src->getType()->isPointerTy() ? bb.CreateStructGEP(src, self->GetLayout().FieldIndices[num]) : bb.CreateExtractValue(src, { self->GetLayout().FieldIndices[num] });
-            if ((source->GetType()->IsReference() && self->GetContents()[num]->IsReference()) || (source->GetType()->IsComplexType(g) && !self->GetContents()[num]->IsComplexType(g)))
+            if ((source->GetType()->IsReference() && self->GetContents()[num]->IsReference()) || (source->GetType()->IsComplexType(module) && !self->GetContents()[num]->IsComplexType(module)))
                 return bb.CreateLoad(obj);
             return obj;
         }
@@ -181,15 +180,15 @@ std::unique_ptr<Expression> AggregateType::BuildDestructorCall(std::unique_ptr<E
         Type* GetType() override final {
             return self->GetType();
         }
-        llvm::Value* ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
-            if (!agg->GetLayout().GetCodegen(agg, g).IsComplex)
-                return self->GetValue(g, bb);
+        llvm::Value* ComputeValue(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final {
+            if (!agg->GetLayout().GetCodegen(agg, module).IsComplex)
+                return self->GetValue(module, bb, allocas);
             for (auto&& des : destructors)
-                des->GetValue(g, bb);
-            return self->GetValue(g, bb);
+                des->GetValue(module, bb, allocas);
+            return self->GetValue(module, bb, allocas);
         }
-        void DestroyExpressionLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
-            self->DestroyLocals(g, bb);
+        void DestroyExpressionLocals(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final {
+            self->DestroyLocals(module, bb, allocas);
         }
     };
     return Wide::Memory::MakeUnique<AggregateDestructor>(this, std::move(self), std::move(destructors));
@@ -232,26 +231,26 @@ OverloadSet* AggregateType::CreateOperatorOverloadSet(Type* t, Lexer::TokenType 
                 std::unique_ptr<Expression> arg;
                 std::vector<std::unique_ptr<Expression>> exprs;
                 Type* GetType() override final { return self->GetType(); }
-                llvm::Value* ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
-                    if (!this_type->IsComplexType(g)) {
+                llvm::Value* ComputeValue(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final {
+                    if (!this_type->IsComplexType(module)) {
                         // Screw calling all the operators, just store.
                         // This makes debugging the IR output a lot easier.
-                        auto val = arg->GetType()->IsReference() ? bb.CreateLoad(arg->GetValue(g, bb)) : arg->GetValue(g, bb);
-                        bb.CreateStore(val, self->GetValue(g, bb));
-                        return self->GetValue(g, bb);
+                        auto val = arg->GetType()->IsReference() ? bb.CreateLoad(arg->GetValue(module, bb, allocas)) : arg->GetValue(module, bb, allocas);
+                        bb.CreateStore(val, self->GetValue(module, bb, allocas));
+                        return self->GetValue(module, bb, allocas);
                     }
                     for (auto&& arg : exprs)
-                        arg->GetValue(g, bb);
-                    return self->GetValue(g, bb);
+                        arg->GetValue(module, bb, allocas);
+                    return self->GetValue(module, bb, allocas);
                 }
-                void DestroyExpressionLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
-                    if (this_type->IsComplexType(g)) {
+                void DestroyExpressionLocals(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final {
+                    if (this_type->IsComplexType(module)) {
                         for (auto rit = exprs.rbegin(); rit != exprs.rend(); ++rit) {
-                            (*rit)->DestroyLocals(g, bb);
+                            (*rit)->DestroyLocals(module, bb, allocas);
                         }
                     }
-                    arg->DestroyLocals(g, bb);
-                    self->DestroyLocals(g, bb);
+                    arg->DestroyLocals(module, bb, allocas);
+                    self->DestroyLocals(module, bb, allocas);
                 }
                 AggregateOperator(AggregateType* s, std::unique_ptr<Expression> expr, std::unique_ptr<Expression> arg, std::vector<std::unique_ptr<Expression>> exprs)
                     : self(std::move(expr)), arg(std::move(arg)), exprs(std::move(exprs)), this_type(s) {}
@@ -304,26 +303,26 @@ OverloadSet* AggregateType::CreateNondefaultConstructorOverloadSet() {
                 std::unique_ptr<Expression> arg;
                 std::vector<std::unique_ptr<Expression>> exprs;
                 Type* GetType() override final { return self->GetType(); }
-                llvm::Value* ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
-                    if (!this_type->IsComplexType(g)) {
+                llvm::Value* ComputeValue(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final {
+                    if (!this_type->IsComplexType(module)) {
                         // Screw calling all the operators, just store.
                         // This makes debugging the IR output a lot easier.
-                        auto val = arg->GetType()->IsReference() ? bb.CreateLoad(arg->GetValue(g, bb)) : arg->GetValue(g, bb);
-                        bb.CreateStore(val, self->GetValue(g, bb));
-                        return self->GetValue(g, bb);
+                        auto val = arg->GetType()->IsReference() ? bb.CreateLoad(arg->GetValue(module, bb, allocas)) : arg->GetValue(module, bb, allocas);
+                        bb.CreateStore(val, self->GetValue(module, bb, allocas));
+                        return self->GetValue(module, bb, allocas);
                     }
                     for (auto&& arg : exprs)
-                        arg->GetValue(g, bb);
-                    return self->GetValue(g, bb);
+                        arg->GetValue(module, bb, allocas);
+                    return self->GetValue(module, bb, allocas);
                 }
-                void DestroyExpressionLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
-                    if (this_type->IsComplexType(g)) {
+                void DestroyExpressionLocals(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final {
+                    if (this_type->IsComplexType(module)) {
                         for (auto rit = exprs.rbegin(); rit != exprs.rend(); ++rit) {
-                            (*rit)->DestroyLocals(g, bb);
+                            (*rit)->DestroyLocals(module, bb, allocas);
                         }
                     }
-                    arg->DestroyLocals(g, bb);
-                    self->DestroyLocals(g, bb);
+                    arg->DestroyLocals(module, bb, allocas);
+                    self->DestroyLocals(module, bb, allocas);
                 }
                 AggregateConstructor(AggregateType* s, std::unique_ptr<Expression> expr, std::unique_ptr<Expression> arg, std::vector<std::unique_ptr<Expression>> exprs)
                     : this_type(s), self(std::move(expr)), arg(std::move(arg)), exprs(std::move(exprs)) {}
@@ -383,16 +382,16 @@ OverloadSet* AggregateType::CreateConstructorOverloadSet(Lexer::Access access) {
                     std::unique_ptr<Expression> self;
                     std::vector<std::unique_ptr<Expression>> exprs;
                     Type* GetType() override final { return self->GetType(); }
-                    llvm::Value* ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
+                    llvm::Value* ComputeValue(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final {
                         for (auto&& arg : exprs)
-                            arg->GetValue(g, bb);
-                        return self->GetValue(g, bb);
+                            arg->GetValue(module, bb, allocas);
+                        return self->GetValue(module, bb, allocas);
                     }
-                    void DestroyExpressionLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
+                    void DestroyExpressionLocals(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final {
                         for (auto rit = exprs.rbegin(); rit != exprs.rend(); ++rit) {
-                            (*rit)->DestroyLocals(g, bb);
+                            (*rit)->DestroyLocals(module, bb, allocas);
                         }
-                        self->DestroyLocals(g, bb);
+                        self->DestroyLocals(module, bb, allocas);
                     }
                     AggregateConstructor(std::unique_ptr<Expression> expr, std::vector<std::unique_ptr<Expression>> exprs)
                         : self(std::move(expr)), exprs(std::move(exprs)) {}

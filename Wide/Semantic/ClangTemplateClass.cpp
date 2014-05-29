@@ -4,7 +4,6 @@
 #include <Wide/Semantic/ClangTU.h>
 #include <Wide/Semantic/IntegralType.h>
 #include <Wide/Semantic/ClangNamespace.h>
-#include <Wide/Codegen/Generator.h>
 #include <Wide/Semantic/Expression.h>
 #include <Wide/Semantic/SemanticError.h>
 

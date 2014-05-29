@@ -5,7 +5,6 @@
 #include <Wide/Semantic/OverloadSet.h>
 #include <Wide/Semantic/ClangNamespace.h>
 #include <Wide/Semantic/ClangTU.h>
-#include <Wide/Codegen/Generator.h>
 #include <Wide/Semantic/Reference.h>
 #include <Wide/Semantic/ClangTemplateClass.h>
 #include <Wide/Semantic/Util.h>
@@ -135,8 +134,8 @@ std::unique_ptr<Expression> ClangType::AccessMember(std::unique_ptr<Expression> 
             return analyzer.GetConstructorType(analyzer.GetClangType(*from, from->GetASTContext().getTypeDeclType(ty)))->BuildValueConstruction(Expressions(), c);
         if (auto vardecl = llvm::dyn_cast<clang::VarDecl>(lr.getFoundDecl())) {    
             auto mangle = from->MangleName(vardecl);
-            return CreatePrimUnOp(std::move(val), analyzer.GetLvalueType(analyzer.GetClangType(*from, vardecl->getType())), [mangle](llvm::Value* self, Codegen::Generator& g, llvm::IRBuilder<>& bb) {
-                return g.module->getGlobalVariable(mangle(g));
+            return CreatePrimUnOp(std::move(val), analyzer.GetLvalueType(analyzer.GetClangType(*from, vardecl->getType())), [mangle](llvm::Value* self, llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>&) {
+                return module->getGlobalVariable(mangle(module));
             });
         }
         if (auto tempdecl = llvm::dyn_cast<clang::ClassTemplateDecl>(lr.getFoundDecl()))
@@ -147,13 +146,13 @@ std::unique_ptr<Expression> ClangType::AccessMember(std::unique_ptr<Expression> 
     return set ? set->BuildValueConstruction(Expressions(std::move(val)), c) : Type::AccessMember(std::move(val), name, c);
 }
 
-llvm::Type* ClangType::GetLLVMType(Codegen::Generator& g) {
-    return from->GetLLVMTypeFromClangType(type, g);
+llvm::Type* ClangType::GetLLVMType(llvm::Module* module) {
+    return from->GetLLVMTypeFromClangType(type, module);
 }
            
-bool ClangType::IsComplexType(Codegen::Generator& g) {
+bool ClangType::IsComplexType(llvm::Module* module) {
     auto decl = type.getCanonicalType()->getAsCXXRecordDecl();
-    return decl && from->IsComplexType(decl, g);
+    return decl && from->IsComplexType(decl, module);
 }
 
 std::unique_ptr<Expression> ClangType::BuildBooleanConversion(std::unique_ptr<Expression> ex, Context c) {
@@ -350,15 +349,15 @@ std::unique_ptr<Expression> ClangType::PrimitiveAccessMember(std::unique_ptr<Exp
     auto fieldnum = num >= numbases 
         ? from->GetFieldNumber(*std::next(type->getAsCXXRecordDecl()->field_begin(), num - numbases))
         : from->GetBaseNumber(type->getAsCXXRecordDecl(), (type->getAsCXXRecordDecl()->bases_begin() + num)->getType()->getAsCXXRecordDecl());
-    return CreatePrimUnOp(std::move(self), result_type, [this, num, result_type, resty, source_type, root_type, fieldnum](llvm::Value* self, Codegen::Generator& g, llvm::IRBuilder<>& bb) -> llvm::Value* {
+    return CreatePrimUnOp(std::move(self), result_type, [this, num, result_type, resty, source_type, root_type, fieldnum](llvm::Value* self, llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) -> llvm::Value* {
         std::size_t numbases = type->getAsCXXRecordDecl()->bases_end() - type->getAsCXXRecordDecl()->bases_begin();
         if (num < numbases && resty->getAsCXXRecordDecl()->isEmpty())
-            return bb.CreatePointerCast(self, result_type->GetLLVMType(g));
+            return bb.CreatePointerCast(self, result_type->GetLLVMType(module));
         if (source_type->IsReference())
             if (root_type->IsReference())
-                return bb.CreateLoad(bb.CreateStructGEP(self, fieldnum(g)));
-            return bb.CreateStructGEP(self, fieldnum(g));
-        return bb.CreateExtractValue(self, fieldnum(g));
+                return bb.CreateLoad(bb.CreateStructGEP(self, fieldnum(module)));
+            return bb.CreateStructGEP(self, fieldnum(module));
+        return bb.CreateExtractValue(self, fieldnum(module));
     });
 }
 
@@ -455,12 +454,12 @@ std::vector<BaseType*> ClangType::GetBases() {
 std::unique_ptr<Expression> GetVTablePointer(std::unique_ptr<Expression> self, const clang::CXXRecordDecl* current, Analyzer& a, ClangTU* from, Type* vptrty) {
     auto&& layout = from->GetASTContext().getASTRecordLayout(current);
     if (layout.hasOwnVFPtr())
-        return CreatePrimUnOp(std::move(self), a.GetLvalueType(a.GetPointerType(vptrty)), [](llvm::Value* val, Codegen::Generator& g, llvm::IRBuilder<>& b) {
+        return CreatePrimUnOp(std::move(self), a.GetLvalueType(a.GetPointerType(vptrty)), [](llvm::Value* val, llvm::Module* module, llvm::IRBuilder<>& b, llvm::IRBuilder<>& allocas) {
             return b.CreateStructGEP(val, 0);
         });
     auto basenum = from->GetBaseNumber(current, layout.getPrimaryBase());
-    self = CreatePrimUnOp(std::move(self), a.GetPointerType(a.GetClangType(*from, from->GetASTContext().getTypeDeclType(layout.getPrimaryBase()))), [from, basenum](llvm::Value* val, Codegen::Generator& g, llvm::IRBuilder<>& b) {
-        return b.CreateStructGEP(val, basenum(g));
+    self = CreatePrimUnOp(std::move(self), a.GetPointerType(a.GetClangType(*from, from->GetASTContext().getTypeDeclType(layout.getPrimaryBase()))), [from, basenum](llvm::Value* val, llvm::Module* module, llvm::IRBuilder<>& b, llvm::IRBuilder<>& allocas) {
+        return b.CreateStructGEP(val, basenum(module));
     });
     return GetVTablePointer(std::move(self), layout.getPrimaryBase(), a, from, vptrty);
 }

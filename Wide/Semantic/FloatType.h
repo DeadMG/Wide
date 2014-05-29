@@ -8,7 +8,7 @@ namespace Wide {
             FloatType(unsigned bit, Analyzer& a) : bits(bit), PrimitiveType(a) {}
 
             Wide::Util::optional<clang::QualType> GetClangType(ClangTU& TU) override final;
-            llvm::Type* GetLLVMType(Codegen::Generator& g) override final;
+            llvm::Type* GetLLVMType(llvm::Module* module) override final;
 
             std::size_t size() override final;
             std::size_t alignment() override final;

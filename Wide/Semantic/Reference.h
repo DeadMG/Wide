@@ -10,7 +10,7 @@ namespace Wide {
             Reference(Type* p, Analyzer& a)
                 : Pointee(p), Type(a) {}
             
-            llvm::Type* GetLLVMType(Codegen::Generator& g) override final;
+            llvm::Type* GetLLVMType(llvm::Module* module) override final;
             
             bool IsReference() override final {
                 return true;

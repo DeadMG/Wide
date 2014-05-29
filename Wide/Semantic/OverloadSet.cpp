@@ -1,6 +1,5 @@
 #include <Wide/Semantic/OverloadSet.h>
 #include <Wide/Semantic/Analyzer.h>
-#include <Wide/Codegen/Generator.h>
 #include <Wide/Semantic/Function.h>
 #include <Wide/Semantic/ClangType.h>
 #include <Wide/Semantic/FunctionType.h>
@@ -33,18 +32,18 @@ template<typename T, typename U> T* debug_cast(U* other) {
     return static_cast<T*>(other);
 }
 
-llvm::Type* OverloadSet::GetLLVMType(Codegen::Generator& g) {
+llvm::Type* OverloadSet::GetLLVMType(llvm::Module* module) {
     // Have to cache result - not fun.
     std::stringstream stream;
     stream << "struct.__" << this;
     auto str = stream.str();
-    if (g.module->getTypeByName(str))
-        return g.module->getTypeByName(str);
+    if (module->getTypeByName(str))
+        return module->getTypeByName(str);
     if (!nonstatic) {
-        auto int8ty = llvm::IntegerType::getInt8Ty(g.module->getContext());
+        auto int8ty = llvm::IntegerType::getInt8Ty(module->getContext());
         return llvm::StructType::create(str, int8ty, nullptr);        
     }
-    auto ty = nonstatic->Decay()->GetLLVMType(g);
+    auto ty = nonstatic->Decay()->GetLLVMType(module);
     return llvm::StructType::create(str, ty->getPointerTo(), nullptr);
 }
 
@@ -60,7 +59,7 @@ std::unique_ptr<Expression> OverloadSet::BuildCall(std::unique_ptr<Expression> v
     if (!call) IssueResolutionError(targs, c);
 
     if (nonstatic)
-        args.insert(args.begin(), CreatePrimUnOp(BuildValue(std::move(val)), nonstatic, [](llvm::Value* self, Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+        args.insert(args.begin(), CreatePrimUnOp(BuildValue(std::move(val)), nonstatic, [](llvm::Value* self, llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
             return bb.CreateExtractValue(self, { 0 });
         }));
 
@@ -99,20 +98,20 @@ struct cppcallable : public Callable {
             Type* fty;
             Expression* self;
             std::unique_ptr<Expression> vtable;
-            std::function<std::string(Codegen::Generator&)> mangle;
+            std::function<std::string(llvm::Module*)> mangle;
 
             Type* GetType() override final {
                 return fty;
             }
-            llvm::Value* ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
+            llvm::Value* ComputeValue(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final {
                 if (vtable)
-                    return bb.CreateBitCast(bb.CreateLoad(bb.CreateConstGEP1_32(bb.CreateLoad(vtable->GetValue(g, bb)), from->GetVirtualFunctionOffset(llvm::dyn_cast<clang::CXXMethodDecl>(func), g))), fty->GetLLVMType(g));
-                auto llvmfunc = (llvm::Value*)g.module->getFunction(mangle(g));
-                if (llvmfunc->getType() != fty->GetLLVMType(g))
-                    llvmfunc = bb.CreateBitCast(llvmfunc, fty->GetLLVMType(g));
+                    return bb.CreateBitCast(bb.CreateLoad(bb.CreateConstGEP1_32(bb.CreateLoad(vtable->GetValue(module, bb, allocas)), from->GetVirtualFunctionOffset(llvm::dyn_cast<clang::CXXMethodDecl>(func), module))), fty->GetLLVMType(module));
+                auto llvmfunc = (llvm::Value*)module->getFunction(mangle(module));
+                if (llvmfunc->getType() != fty->GetLLVMType(module))
+                    llvmfunc = bb.CreateBitCast(llvmfunc, fty->GetLLVMType(module));
                 return llvmfunc;
             }
-            void DestroyExpressionLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {}
+            void DestroyExpressionLocals(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final {}
         };
         std::vector<Type*> local;
         for (auto x : types)
@@ -181,11 +180,11 @@ struct cppcallable : public Callable {
                 ImplicitStringDecay(std::unique_ptr<Expression> expr)
                 : StringExpr(std::move(expr)) {}
                 std::unique_ptr<Expression> StringExpr;
-                void DestroyExpressionLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
-                    StringExpr->DestroyLocals(g, bb);
+                void DestroyExpressionLocals(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final {
+                    StringExpr->DestroyLocals(module, bb, allocas);
                 }
-                llvm::Value* ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
-                    return StringExpr->GetValue(g, bb);
+                llvm::Value* ComputeValue(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final {
+                    return StringExpr->GetValue(module, bb, allocas);
                 }
                 Type* GetType() override final {
                     auto&& analyzer = StringExpr->GetType()->analyzer;
@@ -381,22 +380,22 @@ OverloadSet* OverloadSet::CreateConstructorOverloadSet(Lexer::Access access) {
     std::unordered_set<OverloadResolvable*> constructors;
     if (nonstatic) {
         CopyConstructor = MakeResolvable([](std::vector<std::unique_ptr<Expression>> args, Context c) {
-            return CreatePrimAssOp(std::move(args[0]), std::move(args[1]), [](llvm::Value* lhs, llvm::Value* rhs, Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+            return CreatePrimAssOp(std::move(args[0]), std::move(args[1]), [](llvm::Value* lhs, llvm::Value* rhs, llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
                 return rhs;
             });
         }, { analyzer.GetLvalueType(this), analyzer.GetLvalueType(this) });
         constructors.insert(CopyConstructor.get());
 
         MoveConstructor = MakeResolvable([](std::vector<std::unique_ptr<Expression>> args, Context c) {
-            return CreatePrimAssOp(std::move(args[0]), std::move(args[1]), [](llvm::Value* lhs, llvm::Value* rhs, Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+            return CreatePrimAssOp(std::move(args[0]), std::move(args[1]), [](llvm::Value* lhs, llvm::Value* rhs, llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
                 return rhs;
             });
         }, { analyzer.GetLvalueType(this), analyzer.GetRvalueType(this) });
         constructors.insert(MoveConstructor.get());
 
         ReferenceConstructor = MakeResolvable([this](std::vector<std::unique_ptr<Expression>> args, Context c) {
-            return CreatePrimAssOp(std::move(args[0]), std::move(args[1]), [this](llvm::Value* lhs, llvm::Value* rhs, Codegen::Generator& g, llvm::IRBuilder<>& bb) {
-                auto agg = llvm::ConstantAggregateZero::get(GetLLVMType(g));
+            return CreatePrimAssOp(std::move(args[0]), std::move(args[1]), [this](llvm::Value* lhs, llvm::Value* rhs, llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
+                auto agg = llvm::ConstantAggregateZero::get(GetLLVMType(module));
                 return bb.CreateInsertValue(agg, rhs, { 0 });
             });
         }, { analyzer.GetLvalueType(this), nonstatic });

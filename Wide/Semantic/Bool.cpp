@@ -16,8 +16,8 @@
 using namespace Wide;
 using namespace Semantic;
 
-llvm::Type* Bool::GetLLVMType(Codegen::Generator& g) {
-    return llvm::IntegerType::getInt8Ty(g.module->getContext());
+llvm::Type* Bool::GetLLVMType(llvm::Module* module) {
+    return llvm::IntegerType::getInt8Ty(module->getContext());
 }
 
 Wide::Util::optional<clang::QualType> Bool::GetClangType(ClangTU& where) {
@@ -44,21 +44,21 @@ OverloadSet* Bool::CreateOperatorOverloadSet(Type* t, Lexer::TokenType name, Lex
         switch (name) {
         case Lexer::TokenType::OrAssign:
             OrAssignOperator = MakeResolvable([](std::vector<std::unique_ptr<Expression>> args, Context c) -> std::unique_ptr<Expression> {
-                return CreatePrimAssOp(std::move(args[0]), std::move(args[1]), [](llvm::Value* lhs, llvm::Value* rhs, Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+                return CreatePrimAssOp(std::move(args[0]), std::move(args[1]), [](llvm::Value* lhs, llvm::Value* rhs, llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
                     return bb.CreateOr(lhs, rhs);
                 });
             }, { analyzer.GetLvalueType(this), this });
             return analyzer.GetOverloadSet(OrAssignOperator.get());
         case Lexer::TokenType::AndAssign:
             AndAssignOperator = MakeResolvable([](std::vector<std::unique_ptr<Expression>> args, Context c) -> std::unique_ptr<Expression> {
-                return CreatePrimAssOp(std::move(args[0]), std::move(args[1]), [](llvm::Value* lhs, llvm::Value* rhs, Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+                return CreatePrimAssOp(std::move(args[0]), std::move(args[1]), [](llvm::Value* lhs, llvm::Value* rhs, llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
                     return bb.CreateAnd(lhs, rhs);
                 });
             }, { analyzer.GetLvalueType(this), this });
             return analyzer.GetOverloadSet(AndAssignOperator.get());
         case Lexer::TokenType::XorAssign:
             XorAssignOperator = MakeResolvable([](std::vector<std::unique_ptr<Expression>> args, Context c) -> std::unique_ptr<Expression> {
-                return CreatePrimAssOp(std::move(args[0]), std::move(args[1]), [](llvm::Value* lhs, llvm::Value* rhs, Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+                return CreatePrimAssOp(std::move(args[0]), std::move(args[1]), [](llvm::Value* lhs, llvm::Value* rhs, llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
                     return bb.CreateXor(lhs, rhs);
                 });
             }, { analyzer.GetLvalueType(this), this });
@@ -68,21 +68,21 @@ OverloadSet* Bool::CreateOperatorOverloadSet(Type* t, Lexer::TokenType name, Lex
     switch(name) {
     case Lexer::TokenType::LT:
         LTOperator = MakeResolvable([](std::vector<std::unique_ptr<Expression>> args, Context c) -> std::unique_ptr<Expression> {
-            return CreatePrimOp(std::move(args[0]), std::move(args[1]), c.from->analyzer.GetBooleanType(), [](llvm::Value* lhs, llvm::Value* rhs, Codegen::Generator& g, llvm::IRBuilder<>& bb) {
-                return bb.CreateZExt(bb.CreateICmpSLT(lhs, rhs), llvm::Type::getInt8Ty(g.module->getContext()));
+            return CreatePrimOp(std::move(args[0]), std::move(args[1]), c.from->analyzer.GetBooleanType(), [](llvm::Value* lhs, llvm::Value* rhs, llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
+                return bb.CreateZExt(bb.CreateICmpSLT(lhs, rhs), llvm::Type::getInt8Ty(module->getContext()));
             });
         }, { this, this });
         return analyzer.GetOverloadSet(LTOperator.get());
     case Lexer::TokenType::EqCmp:
         EQOperator = MakeResolvable([](std::vector<std::unique_ptr<Expression>> args, Context c) -> std::unique_ptr<Expression> {
-            return CreatePrimOp(std::move(args[0]), std::move(args[1]), c.from->analyzer.GetBooleanType(), [](llvm::Value* lhs, llvm::Value* rhs, Codegen::Generator& g, llvm::IRBuilder<>& bb) {
-                return bb.CreateZExt(bb.CreateICmpEQ(lhs, rhs), llvm::Type::getInt8Ty(g.module->getContext()));
+            return CreatePrimOp(std::move(args[0]), std::move(args[1]), c.from->analyzer.GetBooleanType(), [](llvm::Value* lhs, llvm::Value* rhs, llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
+                return bb.CreateZExt(bb.CreateICmpEQ(lhs, rhs), llvm::Type::getInt8Ty(module->getContext()));
             });
         }, { this, this });
         return analyzer.GetOverloadSet(EQOperator.get());
     case Lexer::TokenType::Negate:
         NegOperator = MakeResolvable([](std::vector<std::unique_ptr<Expression>> args, Context c)->std::unique_ptr<Expression> {
-            return CreatePrimUnOp(std::move(args[0]), c.from->analyzer.GetBooleanType(), [](llvm::Value* v, Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+            return CreatePrimUnOp(std::move(args[0]), c.from->analyzer.GetBooleanType(), [](llvm::Value* v, llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
                 return bb.CreateNot(v);
             });
         }, { this });

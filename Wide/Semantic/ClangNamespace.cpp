@@ -8,7 +8,6 @@
 #include <Wide/Semantic/SemanticError.h>
 #include <Wide/Semantic/Expression.h>
 #include <Wide/Semantic/Reference.h>
-#include <Wide/Codegen/Generator.h>
 #include <Wide/Util/Memory/MakeUnique.h>
 
 #pragma warning(push, 0)

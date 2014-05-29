@@ -4,7 +4,6 @@
 #include <Wide/Semantic/Util.h>
 #include <Wide/Semantic/ClangOptions.h>
 #include <Wide/Semantic/Hashers.h>
-#include <Wide/Codegen/Generator.h>
 #include <memory>
 #include <string>
 #include <functional>
@@ -49,13 +48,13 @@ namespace Wide {
         public:
             std::unique_ptr<Impl> impl;
             ~ClangTU();
-            void GenerateCodeAndLinkModule(Codegen::Generator& g);
+            void GenerateCodeAndLinkModule(llvm::Module* module);
             clang::DeclContext* GetDeclContext();
 
             ClangTU(ClangTU&&);
 
             ClangTU(std::string file, const Wide::Options::Clang&, Lexer::Range where, Analyzer& an);
-            llvm::Type* GetLLVMTypeFromClangType(clang::QualType t, Codegen::Generator& g);
+            llvm::Type* GetLLVMTypeFromClangType(clang::QualType t, llvm::Module* module);
             std::string GetFilename();
 
             clang::ASTContext& GetASTContext();
@@ -66,11 +65,11 @@ namespace Wide {
             void AddFile(std::string filename, Lexer::Range where);
             clang::Expr* ParseMacro(std::string macro, Lexer::Range where);
 
-            std::function<std::string(Codegen::Generator&)> MangleName(clang::NamedDecl* D);
-            bool IsComplexType(clang::CXXRecordDecl* decl, Codegen::Generator& g);
-            std::function<unsigned(Codegen::Generator&)> GetFieldNumber(clang::FieldDecl*);
-            std::function<unsigned(Codegen::Generator&)> GetBaseNumber(const clang::CXXRecordDecl* self, const clang::CXXRecordDecl* base);
-            unsigned int GetVirtualFunctionOffset(clang::CXXMethodDecl*, Codegen::Generator& g);
+            std::function<std::string(llvm::Module*)> MangleName(clang::NamedDecl* D);
+            bool IsComplexType(clang::CXXRecordDecl* decl, llvm::Module* module);
+            std::function<unsigned(llvm::Module*)> GetFieldNumber(clang::FieldDecl*);
+            std::function<unsigned(llvm::Module*)> GetBaseNumber(const clang::CXXRecordDecl* self, const clang::CXXRecordDecl* base);
+            unsigned int GetVirtualFunctionOffset(clang::CXXMethodDecl*, llvm::Module* module);
         };
     }
 }

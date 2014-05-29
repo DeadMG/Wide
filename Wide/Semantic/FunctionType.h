@@ -17,7 +17,7 @@ namespace Wide {
             FunctionType(Type* ret, std::vector<Type*> args, Analyzer& a, bool variadic)
                 : ReturnType(ret), Args(std::move(args)), PrimitiveType(a), variadic(variadic) {}
         
-            llvm::PointerType* GetLLVMType(Codegen::Generator& g) override final;
+            llvm::PointerType* GetLLVMType(llvm::Module* module) override final;
 
             Wide::Util::optional<clang::QualType> GetClangType(ClangTU& from) override final;
             std::unique_ptr<Expression> BuildCall(std::unique_ptr<Expression> val, std::vector<std::unique_ptr<Expression>> args, Context c) override final;

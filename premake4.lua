@@ -226,7 +226,7 @@ WideProjects = {
             return CheckLLVM(proj) and CheckBoost(proj)
         end, 
         action = function()
-            links { "Codegen", "Util", "Lexer", "Parser", "Semantic" }
+            links { "Util", "Lexer", "Parser", "Semantic" }
             kind ("ConsoleApp")
         end,
         configure = function(plat, conf)
@@ -266,17 +266,6 @@ WideProjects = {
         end
     },
     Lexer = {
-        action = function()
-            links { "Util" }
-        end
-    },
-    Codegen = { 
-        dependencies = function(proj)
-            return CheckLLVM(proj)
-        end, 
-        configure = function(plat, conf)
-            AddClangDependencies(conf)
-        end,
         action = function()
             links { "Util" }
         end
@@ -334,7 +323,7 @@ WideProjects = {
         name = "SemanticTest",
         action = function()
             kind("ConsoleApp")
-            links { "Util", "Lexer", "Parser", "Semantic", "Codegen" }
+            links { "Util", "Lexer", "Parser", "Semantic" }
             files ({ "Wide/SemanticTest/**.wide" })
         end,
         dependencies = function(proj)

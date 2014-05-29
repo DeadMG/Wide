@@ -1,7 +1,6 @@
 #include <Wide/Semantic/NullType.h>
 #include <Wide/Semantic/ClangTU.h>
 #include <Wide/Semantic/Analyzer.h>
-#include <Wide/Codegen/Generator.h>
 #include <Wide/Semantic/PointerType.h>
 
 #pragma warning(push, 0)
@@ -18,8 +17,8 @@ Wide::Util::optional<clang::QualType> NullType::GetClangType(ClangTU& TU) {
     return TU.GetASTContext().NullPtrTy;
 }
 // Odd choice but required for Clang interop.
-llvm::Type* NullType::GetLLVMType(Codegen::Generator& g) {
-    return llvm::IntegerType::getInt8PtrTy(g.module->getContext());
+llvm::Type* NullType::GetLLVMType(llvm::Module* module) {
+    return llvm::IntegerType::getInt8PtrTy(module->getContext());
 }
 std::size_t NullType::size() {
     return analyzer.GetDataLayout().getPointerSize();

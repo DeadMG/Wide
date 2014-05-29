@@ -3,7 +3,6 @@
 #include <Wide/Semantic/OverloadSet.h>
 #include <Wide/Semantic/Reference.h>
 #include <Wide/Semantic/Expression.h>
-#include <Wide/Codegen/Generator.h>
 
 using namespace Wide;
 using namespace Semantic;
@@ -38,15 +37,15 @@ std::unique_ptr<Expression> TupleType::ConstructFromLiteral(std::vector<std::uni
         Type* GetType() override final {
             return self->GetType()->analyzer.GetRvalueType(self->GetType()->Decay());
         }
-        llvm::Value* ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
+        llvm::Value* ComputeValue(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final {
             for (auto&& init : inits)
-                init->GetValue(g, bb);
-            return self->GetValue(g, bb);
+                init->GetValue(module, bb, allocas);
+            return self->GetValue(module, bb, allocas);
         }
-        void DestroyExpressionLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
-            self->DestroyLocals(g, bb);
+        void DestroyExpressionLocals(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final {
+            self->DestroyLocals(module, bb, allocas);
             for (auto rit = inits.rbegin(); rit != inits.rend(); ++rit)
-                (*rit)->DestroyLocals(g, bb);
+                (*rit)->DestroyLocals(module, bb, allocas);
         }
     };
 

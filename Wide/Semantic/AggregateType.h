@@ -10,10 +10,10 @@ namespace Wide {
 
             struct Layout {
                 struct CodeGen {
-                    CodeGen(AggregateType* self, Layout& lay, Codegen::Generator& g);
+                    CodeGen(AggregateType* self, Layout& lay, llvm::Module* module);
                     bool IsComplex;
                     llvm::Type* llvmtype;
-                    llvm::Type* GetLLVMType(AggregateType* agg, Codegen::Generator& g);
+                    llvm::Type* GetLLVMType(AggregateType* agg, llvm::Module* module);
                 };
                 Layout(const std::vector<Type*>& types, Analyzer& a);
 
@@ -22,7 +22,7 @@ namespace Wide {
 
                 std::vector<unsigned> Offsets;
                 std::vector<unsigned> FieldIndices;
-                std::vector<std::function<llvm::Type*(Codegen::Generator& g)>> llvmtypes;
+                std::vector<std::function<llvm::Type*(llvm::Module* module)>> llvmtypes;
 
                 bool copyconstructible;
                 bool copyassignable;
@@ -30,8 +30,8 @@ namespace Wide {
                 bool moveassignable;
                 bool constant;
                 Wide::Util::optional<CodeGen> codegen;
-                CodeGen& GetCodegen(AggregateType* self, Codegen::Generator& g) {
-                    if (!codegen) codegen = CodeGen(self, *this, g);
+                CodeGen& GetCodegen(AggregateType* self, llvm::Module* module) {
+                    if (!codegen) codegen = CodeGen(self, *this, module);
                     return *codegen;
                 }
             };
@@ -59,7 +59,7 @@ namespace Wide {
             std::size_t size() override final;
             std::size_t alignment() override final;
             Type* GetConstantContext() override;
-            llvm::Type* GetLLVMType(Codegen::Generator& g) override final;
+            llvm::Type* GetLLVMType(llvm::Module* module) override final;
             
             OverloadSet* CreateNondefaultConstructorOverloadSet();
             OverloadSet* CreateOperatorOverloadSet(Type* t, Lexer::TokenType type, Lexer::Access access) override;
@@ -70,7 +70,7 @@ namespace Wide {
             bool IsMoveConstructible(Lexer::Access access) override;
             bool IsCopyAssignable(Lexer::Access access) override;
             bool IsMoveAssignable(Lexer::Access access) override;
-            bool IsComplexType(Codegen::Generator& g) override;
+            bool IsComplexType(llvm::Module* module) override;
             bool IsEliminateType() override final;
             bool HasMemberOfType(Type* t);
         };

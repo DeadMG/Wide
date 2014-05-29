@@ -14,6 +14,7 @@
 
 #pragma warning(push, 0)
 #include <llvm/IR/IRBuilder.h>
+#include <llvm/IR/Module.h>
 #include <llvm/ADT/APInt.h>
 #pragma warning(pop)
 
@@ -42,9 +43,6 @@ namespace clang {
     class QualType;
 }
 namespace Wide {
-    namespace Codegen {
-        class Generator;
-    }
     namespace Lexer {
         enum class TokenType : int;
     }
@@ -90,24 +88,24 @@ namespace Wide {
             }
         };
         struct Statement : public Node {
-            virtual void GenerateCode(Codegen::Generator& g, llvm::IRBuilder<>& bb) = 0;
-            virtual void DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) = 0;
+            virtual void GenerateCode(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) = 0;
+            virtual void DestroyLocals(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) = 0;
         };
         struct Expression : public Statement {
             virtual Type* GetType() = 0; // If the type is unknown then nullptr
-            llvm::Value* GetValue(Codegen::Generator& g, llvm::IRBuilder<>& bb);
+            llvm::Value* GetValue(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas);
             virtual Expression* GetImplementation() { return this; }
-            void DestroyLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
+            void DestroyLocals(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final {
                 assert(val);
-                DestroyExpressionLocals(g, bb);
+                DestroyExpressionLocals(module, bb, allocas);
             }
         private:
             llvm::Value* val = nullptr;
-            virtual void DestroyExpressionLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) = 0;
-            void GenerateCode(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
-                GetValue(g, bb);
+            virtual void DestroyExpressionLocals(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) = 0;
+            void GenerateCode(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final {
+                GetValue(module, bb, allocas);
             }
-            virtual llvm::Value* ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) = 0;
+            virtual llvm::Value* ComputeValue(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) = 0;
         };
 
         struct Context {
@@ -129,7 +127,7 @@ namespace Wide {
 
             Analyzer& analyzer;
 
-            virtual llvm::Type* GetLLVMType(Codegen::Generator& g) = 0;
+            virtual llvm::Type* GetLLVMType(llvm::Module* module) = 0;
             virtual std::size_t size() = 0;
             virtual std::size_t alignment() = 0;
             virtual std::string explain() = 0;
@@ -138,7 +136,7 @@ namespace Wide {
             virtual bool IsReference();
             virtual Type* Decay();
             virtual Type* GetContext();
-            virtual bool IsComplexType(Codegen::Generator& g);
+            virtual bool IsComplexType(llvm::Module* module);
             virtual Wide::Util::optional<clang::QualType> GetClangType(ClangTU& TU);
             virtual bool IsMoveConstructible(Lexer::Access access);
             virtual bool IsCopyConstructible(Lexer::Access access);
@@ -217,7 +215,7 @@ namespace Wide {
 
             // NullType is an annoying special case needing to override these members for Reasons
             // nobody else should.
-            llvm::Type* GetLLVMType(Codegen::Generator& g) override;
+            llvm::Type* GetLLVMType(llvm::Module* module) override;
             std::size_t size() override;
             std::size_t alignment() override;
             Type* GetConstantContext() override;

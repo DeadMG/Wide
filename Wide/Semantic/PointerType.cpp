@@ -1,6 +1,5 @@
 #include <Wide/Semantic/PointerType.h>
 #include <Wide/Semantic/ClangTU.h>
-#include <Wide/Codegen/Generator.h>
 #include <Wide/Semantic/Analyzer.h>
 #include <Wide/Semantic/NullType.h>
 #include <Wide/Semantic/Expression.h>
@@ -22,10 +21,10 @@ Wide::Util::optional<clang::QualType> PointerType::GetClangType(ClangTU& tu) {
     return tu.GetASTContext().getPointerType(*pointeety);
 }
 
-llvm::Type* PointerType::GetLLVMType(Codegen::Generator& g) {
-    auto ty = pointee->GetLLVMType(g);
+llvm::Type* PointerType::GetLLVMType(llvm::Module* module) {
+    auto ty = pointee->GetLLVMType(module);
     if (ty->isVoidTy())
-        ty = llvm::IntegerType::getInt8Ty(g.module->getContext());
+        ty = llvm::IntegerType::getInt8Ty(module->getContext());
     return llvm::PointerType::get(ty, 0);
 }
 std::size_t PointerType::size() {
@@ -64,8 +63,8 @@ OverloadSet* PointerType::CreateConstructorOverloadSet(Lexer::Access access) {
     };
     auto usual = PrimitiveType::CreateConstructorOverloadSet(Lexer::Access::Public);
     NullConstructor = MakeResolvable([this](std::vector<std::unique_ptr<Expression>> args, Context c) {
-        return CreatePrimOp(std::move(args[0]), std::move(args[1]), analyzer.GetLvalueType(this), [this](llvm::Value* lhs, llvm::Value* rhs, Codegen::Generator& g, llvm::IRBuilder<>& bb) {
-            bb.CreateStore(llvm::Constant::getNullValue(GetLLVMType(g)), lhs);
+        return CreatePrimOp(std::move(args[0]), std::move(args[1]), analyzer.GetLvalueType(this), [this](llvm::Value* lhs, llvm::Value* rhs, llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
+            bb.CreateStore(llvm::Constant::getNullValue(GetLLVMType(module)), lhs);
             return lhs;
         });
     }, { analyzer.GetLvalueType(this), analyzer.GetNullType() });
@@ -76,8 +75,8 @@ OverloadSet* PointerType::CreateConstructorOverloadSet(Lexer::Access access) {
 }
 
 std::unique_ptr<Expression> PointerType::BuildBooleanConversion(std::unique_ptr<Expression> c, Context) {
-    return CreatePrimUnOp(BuildValue(std::move(c)), analyzer.GetBooleanType(), [](llvm::Value* v, Codegen::Generator& g, llvm::IRBuilder<>& b) {
-        return b.CreateZExt(b.CreateIsNotNull(v), llvm::Type::getInt8Ty(g.module->getContext()));
+    return CreatePrimUnOp(BuildValue(std::move(c)), analyzer.GetBooleanType(), [](llvm::Value* v, llvm::Module* module, llvm::IRBuilder<>& b, llvm::IRBuilder<>& allocas) {
+        return b.CreateZExt(b.CreateIsNotNull(v), llvm::Type::getInt8Ty(module->getContext()));
     });
 }
 
@@ -101,7 +100,7 @@ OverloadSet* PointerType::CreateOperatorOverloadSet(Type* self, Lexer::TokenType
         return AccessMember(self, what, Lexer::Access::Public);
     if (what != Lexer::TokenType::Dereference) return PrimitiveType::CreateOperatorOverloadSet(self, what, access);
     DereferenceOperator = MakeResolvable([this](std::vector<std::unique_ptr<Expression>> args, Context c) {
-        return CreatePrimUnOp(std::move(args[0]), analyzer.GetLvalueType(pointee), [](llvm::Value* val, Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+        return CreatePrimUnOp(std::move(args[0]), analyzer.GetLvalueType(pointee), [](llvm::Value* val, llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
             return val;
         });
     }, { this });

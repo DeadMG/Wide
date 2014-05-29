@@ -31,14 +31,14 @@ namespace Wide {
         public:
             std::unique_ptr<Expression> GetVirtualPointer(std::unique_ptr<Expression>) override final;
             ClangType(ClangTU* src, clang::QualType t, Analyzer& a);
-            llvm::Type* GetLLVMType(Codegen::Generator& a) override final;            
+            llvm::Type* GetLLVMType(llvm::Module* m) override final;            
             Wide::Util::optional<clang::QualType> GetClangType(ClangTU& tu) override final;
             std::unique_ptr<Expression> AccessMember(std::unique_ptr<Expression> t, std::string name, Context c) override final;        
             std::unique_ptr<Expression> BuildBooleanConversion(std::unique_ptr<Expression> ex, Context c) override final; 
             std::unique_ptr<Expression> BuildDestructorCall(std::unique_ptr<Expression> self, Context c) override final;
             
             bool IsEliminateType() override final;
-            bool IsComplexType(Codegen::Generator&) override final;
+            bool IsComplexType(llvm::Module* m) override final;
             std::size_t size() override final;
             std::size_t alignment() override final;
             Type* GetContext() override final;

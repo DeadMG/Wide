@@ -25,13 +25,13 @@ namespace Wide {
             Context c;
             std::unique_ptr<Expression> self;
             std::unique_ptr<Expression> result;
-            void DestroyExpressionLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
-                result->DestroyLocals(g, bb);
-                self->DestroyLocals(g, bb);
+            void DestroyExpressionLocals(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final {
+                result->DestroyLocals(module, bb, allocas);
+                self->DestroyLocals(module, bb, allocas);
             }
-            llvm::Value* ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
-                self->GetValue(g, bb);
-                return result->GetValue(g, bb);
+            llvm::Value* ComputeValue(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final {
+                self->GetValue(module, bb, allocas);
+                return result->GetValue(module, bb, allocas);
             }
             Type* GetType() override final {
                 return result->GetType();

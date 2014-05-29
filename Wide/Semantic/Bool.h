@@ -8,13 +8,14 @@ namespace Wide {
             std::unique_ptr<OverloadResolvable> OrAssignOperator;
             std::unique_ptr<OverloadResolvable> XorAssignOperator;
             std::unique_ptr<OverloadResolvable> AndAssignOperator;
+            std::unique_ptr<OverloadResolvable> OrOperator;
             std::unique_ptr<OverloadResolvable> AndOperator;
             std::unique_ptr<OverloadResolvable> LTOperator;
             std::unique_ptr<OverloadResolvable> EQOperator;
             std::unique_ptr<OverloadResolvable> NegOperator;
         public:
             Bool(Analyzer& a) : PrimitiveType(a) {}
-            llvm::Type* GetLLVMType(Codegen::Generator& g) override final;
+            llvm::Type* GetLLVMType(llvm::Module* module) override final;
             Wide::Util::optional<clang::QualType> GetClangType(ClangTU&) override final;
             
             OverloadSet* CreateOperatorOverloadSet(Type* t, Lexer::TokenType name, Lexer::Access access) override final;

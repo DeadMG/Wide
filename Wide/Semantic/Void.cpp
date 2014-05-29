@@ -10,8 +10,8 @@
 using namespace Wide;
 using namespace Semantic;
 
-llvm::Type* VoidType::GetLLVMType(Codegen::Generator& g) {
-    return llvm::Type::getVoidTy(g.module->getContext());
+llvm::Type* VoidType::GetLLVMType(llvm::Module* module) {
+    return llvm::Type::getVoidTy(module->getContext());
 }
 
 Wide::Util::optional<clang::QualType> VoidType::GetClangType(ClangTU& tu) {

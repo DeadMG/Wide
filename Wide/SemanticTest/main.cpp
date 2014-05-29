@@ -1,5 +1,4 @@
 #include <Wide/Semantic/ClangOptions.h>
-#include <Wide/Codegen/Generator.h>
 #include <Wide/Util/DebugUtilities.h>
 #include <boost/program_options.hpp>
 #include <Wide/SemanticTest/test.h>
@@ -13,7 +12,6 @@
 #pragma warning(pop)
 
 int main(int argc, char** argv) {
-    Wide::Codegen::InitializeLLVM();
     Wide::Options::Clang clangopts;
     clangopts.TargetOptions.Triple = llvm::sys::getProcessTriple();
 #ifdef _MSC_VER

@@ -2,7 +2,6 @@
 #include <Wide/Semantic/FloatType.h>
 #include <Wide/Semantic/ClangTU.h>
 #include <Wide/Semantic/Analyzer.h>
-#include <Wide/Codegen/Generator.h>
 #include <Wide/Lexer/Token.h>
 
 #pragma warning(push, 0)
@@ -29,16 +28,16 @@ Wide::Util::optional<clang::QualType> FloatType::GetClangType(ClangTU& from) {
     assert(false && "Bad number of bits for floating-point type.");
 }
 #pragma warning(disable : 4715)
-llvm::Type* FloatType::GetLLVMType(Codegen::Generator& g) {
+llvm::Type* FloatType::GetLLVMType(llvm::Module* module) {
     switch (bits) {
     case 16:
-        return llvm::Type::getHalfTy(g.module->getContext());
+        return llvm::Type::getHalfTy(module->getContext());
     case 32:
-        return llvm::Type::getFloatTy(g.module->getContext());
+        return llvm::Type::getFloatTy(module->getContext());
     case 64:
-        return llvm::Type::getDoubleTy(g.module->getContext());
+        return llvm::Type::getDoubleTy(module->getContext());
     case 128:
-        return llvm::Type::getFP128Ty(g.module->getContext());
+        return llvm::Type::getFP128Ty(module->getContext());
     }
     assert(false && "Bad number of bits for floating-point type.");
 }

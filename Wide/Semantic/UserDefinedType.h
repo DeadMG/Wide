@@ -32,7 +32,7 @@ namespace Wide {
             bool UserDefinedComplex();
 
             Wide::Util::optional<bool> BCCache;
-            bool BinaryComplex(Codegen::Generator& g);
+            bool BinaryComplex(llvm::Module* module);
             
             struct MemberData {
                 MemberData(UserDefinedType* self);
@@ -97,7 +97,7 @@ namespace Wide {
             bool IsMoveConstructible(Lexer::Access access) override final;
             bool IsCopyAssignable(Lexer::Access access) override final;
             bool IsMoveAssignable(Lexer::Access access) override final;
-            bool IsComplexType(Codegen::Generator& g) override final;
+            bool IsComplexType(llvm::Module* module) override final;
             bool IsA(Type* self, Type* other, Lexer::Access access) override final;
 
             Wide::Util::optional<std::vector<Type*>> GetTypesForTuple() override final;

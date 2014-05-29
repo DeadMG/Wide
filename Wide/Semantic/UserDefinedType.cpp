@@ -1,6 +1,5 @@
 #include <Wide/Semantic/UserDefinedType.h>
 #include <Wide/Semantic/Analyzer.h>
-#include <Wide/Codegen/Generator.h>
 #include <Wide/Semantic/Module.h>
 #include <Wide/Semantic/ClangTU.h>
 #include <Wide/Semantic/OverloadSet.h>
@@ -296,10 +295,10 @@ bool UserDefinedType::HasMember(std::string name) {
     return type->Functions.find(name) != type->Functions.end() || GetMemberData().members.find(name) != GetMemberData().members.end();
 }
 
-bool UserDefinedType::BinaryComplex(Codegen::Generator& g) {
+bool UserDefinedType::BinaryComplex(llvm::Module* module) {
     if (BCCache)
         return *BCCache;
-    bool IsBinaryComplex = AggregateType::IsComplexType(g);
+    bool IsBinaryComplex = AggregateType::IsComplexType(module);
     if (type->Functions.find("type") != type->Functions.end()) {
         std::vector<Type*> copytypes;
         copytypes.push_back(analyzer.GetLvalueType(this));
@@ -414,7 +413,7 @@ OverloadSet* UserDefinedType::CreateConstructorOverloadSet(Lexer::Access access)
                                 continue;
                             }
                             auto num = mem.num;
-                            auto member = CreatePrimUnOp(Wide::Memory::MakeUnique<ExpressionReference>(arg.get()), self->analyzer.GetLvalueType(mem.t), [num](llvm::Value* val, Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+                            auto member = CreatePrimUnOp(Wide::Memory::MakeUnique<ExpressionReference>(arg.get()), self->analyzer.GetLvalueType(mem.t), [num](llvm::Value* val, llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
                                 return bb.CreateStructGEP(val, num);
                             });
                             if (mem.InClassInitializer)
@@ -426,15 +425,15 @@ OverloadSet* UserDefinedType::CreateConstructorOverloadSet(Lexer::Access access)
                     Type* GetType() override final {
                         return self->analyzer.GetLvalueType(self);
                     }
-                    void DestroyExpressionLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+                    void DestroyExpressionLocals(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
                         for (auto rit = initializers.rbegin(); rit != initializers.rend(); ++rit)
-                            (*rit)->DestroyLocals(g, bb);
-                        arg->DestroyLocals(g, bb);
+                            (*rit)->DestroyLocals(module, bb, allocas);
+                        arg->DestroyLocals(module, bb, allocas);
                     }
-                    llvm::Value* ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+                    llvm::Value* ComputeValue(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
                         for (auto&& init : initializers)
-                            init->GetValue(g, bb);
-                        return arg->GetValue(g, bb);
+                            init->GetValue(module, bb, allocas);
+                        return arg->GetValue(module, bb, allocas);
                     }
                 };
                 return Wide::Memory::MakeUnique<NSDMIConstructor>(self, std::move(args[0]), c.where);
@@ -505,8 +504,8 @@ bool UserDefinedType::IsMoveAssignable(Lexer::Access access) {
     return AggregateType::IsMoveAssignable(access);
 }
 
-bool UserDefinedType::IsComplexType(Codegen::Generator& g) {
-    return BinaryComplex(g);
+bool UserDefinedType::IsComplexType(llvm::Module* module) {
+    return BinaryComplex(module);
 }
 
 Wide::Util::optional<std::vector<Type*>> UserDefinedType::GetTypesForTuple() {
@@ -610,19 +609,19 @@ std::unique_ptr<Expression> UserDefinedType::FunctionPointerFor(std::string name
             Type* GetType() override final {
                 return widefunc->GetSignature();
             }
-            llvm::Value* ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>&) override final {
-                widefunc->EmitCode(g);
+            llvm::Value* ComputeValue(llvm::Module* module, llvm::IRBuilder<>&, llvm::IRBuilder<>&) override final {
+                widefunc->EmitCode(module);
                 if (offset == 0)
-                    return g.module->getFunction(widefunc->GetName());
-                auto this_index = (std::size_t)widefunc->GetSignature()->GetReturnType()->IsComplexType(g);
+                    return module->getFunction(widefunc->GetName());
+                auto this_index = (std::size_t)widefunc->GetSignature()->GetReturnType()->IsComplexType(module);
                 std::stringstream strstr;
                 strstr << "__" << this << offset;
-                auto thunk = llvm::Function::Create(llvm::dyn_cast<llvm::FunctionType>(widefunc->GetSignature()->GetLLVMType(g)->getElementType()), llvm::GlobalValue::LinkageTypes::InternalLinkage, strstr.str(), g.module.get());
-                llvm::BasicBlock* bb = llvm::BasicBlock::Create(g.module->getContext(), "entry", thunk);
+                auto thunk = llvm::Function::Create(llvm::dyn_cast<llvm::FunctionType>(widefunc->GetSignature()->GetLLVMType(module)->getElementType()), llvm::GlobalValue::LinkageTypes::InternalLinkage, strstr.str(), module);
+                llvm::BasicBlock* bb = llvm::BasicBlock::Create(module->getContext(), "entry", thunk);
                 llvm::IRBuilder<> irbuilder(bb);
-                auto self = std::next(thunk->arg_begin(), widefunc->GetSignature()->GetReturnType()->IsComplexType(g));
-                auto offset_self = irbuilder.CreateConstGEP1_32(irbuilder.CreatePointerCast(self, llvm::IntegerType::getInt8PtrTy(g.module->getContext())), -offset);
-                auto cast_self = irbuilder.CreatePointerCast(offset_self, std::next(g.module->getFunction(widefunc->GetName())->arg_begin(), this_index)->getType());
+                auto self = std::next(thunk->arg_begin(), widefunc->GetSignature()->GetReturnType()->IsComplexType(module));
+                auto offset_self = irbuilder.CreateConstGEP1_32(irbuilder.CreatePointerCast(self, llvm::IntegerType::getInt8PtrTy(module->getContext())), -offset);
+                auto cast_self = irbuilder.CreatePointerCast(offset_self, std::next(module->getFunction(widefunc->GetName())->arg_begin(), this_index)->getType());
                 std::vector<llvm::Value*> args;
                 for (std::size_t i = 0; i < thunk->arg_size(); ++i) {
                     if (i == this_index)
@@ -630,14 +629,14 @@ std::unique_ptr<Expression> UserDefinedType::FunctionPointerFor(std::string name
                     else
                         args.push_back(std::next(thunk->arg_begin(), i));
                 }
-                auto call = irbuilder.CreateCall(g.module->getFunction(widefunc->GetName()), args);
-                if (call->getType() == llvm::Type::getVoidTy(g.module->getContext()))
+                auto call = irbuilder.CreateCall(module->getFunction(widefunc->GetName()), args);
+                if (call->getType() == llvm::Type::getVoidTy(module->getContext()))
                     irbuilder.CreateRetVoid();
                 else
                     irbuilder.CreateRet(call);
                 return thunk;
             }
-            void DestroyExpressionLocals(Codegen::Generator& g, llvm::IRBuilder<>& b) override final {}
+            void DestroyExpressionLocals(llvm::Module* module, llvm::IRBuilder<>& b, llvm::IRBuilder<>&) override final {}
         };
         return Wide::Memory::MakeUnique<VTableThunk>(widefunc, offset);
     }
@@ -647,7 +646,7 @@ std::unique_ptr<Expression> UserDefinedType::FunctionPointerFor(std::string name
 std::unique_ptr<Expression> UserDefinedType::GetVirtualPointer(std::unique_ptr<Expression> self) {
     assert(self->GetType()->IsReference());
     if (!IsDynamic()) return nullptr;
-    return CreatePrimUnOp(std::move(self), analyzer.GetLvalueType(analyzer.GetPointerType(GetVirtualPointerType())), [this](llvm::Value* self, Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+    return CreatePrimUnOp(std::move(self), analyzer.GetLvalueType(analyzer.GetPointerType(GetVirtualPointerType())), [this](llvm::Value* self, llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
         return bb.CreateStructGEP(self, GetFieldIndex(type->variables.size() + type->bases.size()));
     });
 }

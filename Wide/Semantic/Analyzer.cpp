@@ -3,7 +3,6 @@
 #include <Wide/Semantic/ClangTU.h>
 #include <Wide/Parser/AST.h>
 #include <Wide/Parser/ASTVisitor.h>
-#include <Wide/Codegen/Generator.h>
 #include <Wide/Semantic/ClangType.h>
 #include <Wide/Semantic/StringType.h>
 #include <Wide/Semantic/Module.h>
@@ -27,6 +26,7 @@
 #include <Wide/Semantic/FloatType.h>
 #include <Wide/Semantic/TupleType.h>
 #include <Wide/Semantic/LambdaType.h>
+#include <Wide/Util/Codegen/InitializeLLVM.h>
 #include <Wide/Util/DebugUtilities.h>
 #include <Wide/Semantic/Expression.h>
 #include <sstream>
@@ -46,7 +46,7 @@ using namespace Semantic;
 
 namespace {
     llvm::DataLayout GetDataLayout(std::string triple) {
-        Codegen::InitializeLLVM();
+        Util::InitializeLLVM();
         std::unique_ptr<llvm::TargetMachine> targetmachine;
         std::string err;
         const llvm::Target& target = *llvm::TargetRegistry::lookupTarget(triple, err);
@@ -85,14 +85,14 @@ Analyzer::Analyzer(const Options::Clang& opts, const AST::Module* GlobalModule)
                 std::unique_ptr<Expression> type;
 
                 Type* GetType() override final { return to; }
-                llvm::Value* ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
-                    type->GetValue(g, bb);
-                    auto val = arg->GetValue(g, bb);
-                    return bb.CreatePointerCast(val, to->GetLLVMType(g));
+                llvm::Value* ComputeValue(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final {
+                    type->GetValue(module, bb, allocas);
+                    auto val = arg->GetValue(module, bb, allocas);
+                    return bb.CreatePointerCast(val, to->GetLLVMType(module));
                 }
-                void DestroyExpressionLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
-                    arg->DestroyLocals(g, bb);
-                    type->DestroyLocals(g, bb);
+                void DestroyExpressionLocals(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final {
+                    arg->DestroyLocals(module, bb, allocas);
+                    type->DestroyLocals(module, bb, allocas);
                 }
             };
             auto conty = dynamic_cast<ConstructorType*>(args[0]->GetType()->Decay());
@@ -286,14 +286,14 @@ ClangTU* Analyzer::AggregateCPPHeader(std::string file, Lexer::Range where) {
     return AggregateTU.get();
 }
 
-void Analyzer::GenerateCode(Codegen::Generator& g) {
+void Analyzer::GenerateCode(llvm::Module* module) {
     if (AggregateTU)
-        AggregateTU->GenerateCodeAndLinkModule(g);
+        AggregateTU->GenerateCodeAndLinkModule(module);
     for (auto&& tu : headers)
-        tu.second.GenerateCodeAndLinkModule(g);
+        tu.second.GenerateCodeAndLinkModule(module);
     for (auto&& set : WideFunctions)
         for (auto&& signature : set.second)
-            signature.second->EmitCode(g);
+            signature.second->EmitCode(module);
 }
 
 Type* Analyzer::GetClangType(ClangTU& from, clang::QualType t) {
@@ -824,12 +824,12 @@ std::unique_ptr<Expression> Semantic::AnalyzeExpression(Type* lookup, const AST:
                 return nullptr;
             }
 
-            void DestroyExpressionLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
-                access->DestroyLocals(g, bb);
-                object->DestroyLocals(g, bb);
+            void DestroyExpressionLocals(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final {
+                access->DestroyLocals(module, bb, allocas);
+                object->DestroyLocals(module, bb, allocas);
             }
-            llvm::Value* ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
-                return access->GetValue(g, bb);
+            llvm::Value* ComputeValue(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final {
+                return access->GetValue(module, bb, allocas);
             }
         };
         return Wide::Memory::MakeUnique<MemberAccess>(lookup, a, memaccess, AnalyzeExpression(lookup, memaccess->expr, a));
@@ -880,14 +880,14 @@ std::unique_ptr<Expression> Semantic::AnalyzeExpression(Type* lookup, const AST:
                 return nullptr;
             }
 
-            void DestroyExpressionLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
+            void DestroyExpressionLocals(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final {
                 // Let callee destroy args because we don't know exactly when to destroy them.
                 // For example, consider arg := T(); f(T((), arg); which becomes f(T(), U(arg));. Here we would destroy in the wrong order.
-                call->DestroyLocals(g, bb);
-                object->DestroyLocals(g, bb);
+                call->DestroyLocals(module, bb, allocas);
+                object->DestroyLocals(module, bb, allocas);
             }
-            llvm::Value* ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
-                return call->GetValue(g, bb);
+            llvm::Value* ComputeValue(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final {
+                return call->GetValue(module, bb, allocas);
             }
             Expression* GetImplementation() { return call.get(); }
         };
@@ -957,11 +957,11 @@ std::unique_ptr<Expression> Semantic::AnalyzeExpression(Type* lookup, const AST:
             Type* GetType() {
                 return result ? result->GetType() : nullptr;
             }
-            llvm::Value* ComputeValue(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
-                return result->GetValue(g, bb);
+            llvm::Value* ComputeValue(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final {
+                return result->GetValue(module, bb, allocas);
             }
-            void DestroyExpressionLocals(Codegen::Generator& g, llvm::IRBuilder<>& bb) override final {
-                result->DestroyLocals(g, bb);
+            void DestroyExpressionLocals(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final {
+                result->DestroyLocals(module, bb, allocas);
             }
         };
         return Wide::Memory::MakeUnique<IdentifierLookup>(ident, a, lookup);

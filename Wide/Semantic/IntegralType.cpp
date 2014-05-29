@@ -4,7 +4,6 @@
 #include <Wide/Semantic/ClangTU.h>
 #include <Wide/Semantic/Reference.h>
 #include <Wide/Semantic/Expression.h>
-#include <Wide/Codegen/Generator.h>
 
 #pragma warning(push, 0)
 #include <clang/AST/ASTContext.h>
@@ -45,8 +44,8 @@ Wide::Util::optional<clang::QualType> IntegralType::GetClangType(ClangTU& TU) {
     }
     assert(false && "Integral types only go up to 64bit.");
 }
-llvm::Type* IntegralType::GetLLVMType(Codegen::Generator& g) {
-    return llvm::IntegerType::get(g.module->getContext(), bits);
+llvm::Type* IntegralType::GetLLVMType(llvm::Module* module) {
+    return llvm::IntegerType::get(module->getContext(), bits);
 }
 
 OverloadSet* IntegralType::CreateConstructorOverloadSet(Lexer::Access access) {
@@ -71,20 +70,20 @@ OverloadSet* IntegralType::CreateConstructorOverloadSet(Lexer::Access access) {
                 return Wide::Memory::MakeUnique<ImplicitStoreExpr>(std::move(args[0]), std::move(args[1]));
             auto inttype = dynamic_cast<IntegralType*>(args[1]->GetType());
             if (integral->bits < inttype->bits)
-                return CreatePrimAssOp(std::move(args[0]), std::move(args[1]), [this](llvm::Value* lhs, llvm::Value* rhs, Codegen::Generator& g, llvm::IRBuilder<>& bb) {
-                    return bb.CreateTrunc(rhs, integral->GetLLVMType(g));
+                return CreatePrimAssOp(std::move(args[0]), std::move(args[1]), [this](llvm::Value* lhs, llvm::Value* rhs, llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
+                    return bb.CreateTrunc(rhs, integral->GetLLVMType(module));
                 });
             //    return ConcreteExpression(args[0].t, c->gen->CreateStore(args[0].Expr, c->gen->CreateTruncate(args[1].Expr, integral->GetLLVMType(*c))));
             if (integral->is_signed && inttype->is_signed)
-                return CreatePrimAssOp(std::move(args[0]), std::move(args[1]), [this](llvm::Value* lhs, llvm::Value* rhs, Codegen::Generator& g, llvm::IRBuilder<>& bb) {
-                    return bb.CreateSExt(rhs, integral->GetLLVMType(g));
+                return CreatePrimAssOp(std::move(args[0]), std::move(args[1]), [this](llvm::Value* lhs, llvm::Value* rhs, llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
+                    return bb.CreateSExt(rhs, integral->GetLLVMType(module));
                 });
             if (!integral->is_signed && !inttype->is_signed)
-                return CreatePrimAssOp(std::move(args[0]), std::move(args[1]), [this](llvm::Value* lhs, llvm::Value* rhs, Codegen::Generator& g, llvm::IRBuilder<>& bb) {
-                    return bb.CreateZExt(rhs, integral->GetLLVMType(g));
+                return CreatePrimAssOp(std::move(args[0]), std::move(args[1]), [this](llvm::Value* lhs, llvm::Value* rhs, llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
+                    return bb.CreateZExt(rhs, integral->GetLLVMType(module));
                 });
             if (integral->bits == inttype->bits)
-                return CreatePrimAssOp(std::move(args[0]), std::move(args[1]), [this](llvm::Value* lhs, llvm::Value* rhs, Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+                return CreatePrimAssOp(std::move(args[0]), std::move(args[1]), [this](llvm::Value* lhs, llvm::Value* rhs, llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
                     return rhs;
                 }); 
             assert(false && "Integer constructor called with conditions that OR should have prevented.");
@@ -108,68 +107,68 @@ std::size_t IntegralType::alignment() {
 
 OverloadSet* IntegralType::CreateADLOverloadSet(Lexer::TokenType name, Type* lhs, Type* rhs, Lexer::Access access) {
     if (access != Lexer::Access::Public) return CreateADLOverloadSet(name, lhs, rhs, Lexer::Access::Public);
-    auto CreateAssOp = [this](std::function<llvm::Value*(llvm::Value*, llvm::Value*, Codegen::Generator&, llvm::IRBuilder<>& bb)> func) {
+    auto CreateAssOp = [this](std::function<llvm::Value*(llvm::Value*, llvm::Value*, llvm::Module*, llvm::IRBuilder<>& bb, llvm::IRBuilder<>&)> func) {
         return MakeResolvable([this, func](std::vector<std::unique_ptr<Expression>> args, Context c) {
             return CreatePrimAssOp(std::move(args[0]), std::move(args[1]), func);
         }, { analyzer.GetLvalueType(this), this });
     };
-    auto CreateOp = [this](std::function<llvm::Value*(llvm::Value*, llvm::Value*, Codegen::Generator&, llvm::IRBuilder<>& bb)> func) {
+    auto CreateOp = [this](std::function<llvm::Value*(llvm::Value*, llvm::Value*, llvm::Module*, llvm::IRBuilder<>& bb, llvm::IRBuilder<>&)> func) {
         return MakeResolvable([this, func](std::vector<std::unique_ptr<Expression>> args, Context c) {
             return CreatePrimOp(std::move(args[0]), std::move(args[1]), func);
         }, { this, this });
     };
     switch (name) {
     case Lexer::TokenType::RightShiftAssign:
-        RightShiftAssign = CreateAssOp([this](llvm::Value* lhs, llvm::Value* rhs, Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+        RightShiftAssign = CreateAssOp([this](llvm::Value* lhs, llvm::Value* rhs, llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
             if (is_signed)
                 return bb.CreateAShr(lhs, rhs);
             return bb.CreateLShr(lhs, rhs);
         });
         return analyzer.GetOverloadSet(RightShiftAssign.get());
     case Lexer::TokenType::LeftShiftAssign:
-        LeftShiftAssign = CreateAssOp([](llvm::Value* lhs, llvm::Value* rhs, Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+        LeftShiftAssign = CreateAssOp([](llvm::Value* lhs, llvm::Value* rhs, llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
             return bb.CreateShl(lhs, rhs);
         });
         return analyzer.GetOverloadSet(LeftShiftAssign.get());
     case Lexer::TokenType::MulAssign:
-        MulAssign = CreateAssOp([](llvm::Value* lhs, llvm::Value* rhs, Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+        MulAssign = CreateAssOp([](llvm::Value* lhs, llvm::Value* rhs, llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
             return bb.CreateMul(lhs, rhs);
         });
         return analyzer.GetOverloadSet(MulAssign.get());
     case Lexer::TokenType::PlusAssign:
-        PlusAssign = CreateAssOp([](llvm::Value* lhs, llvm::Value* rhs, Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+        PlusAssign = CreateAssOp([](llvm::Value* lhs, llvm::Value* rhs, llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
             return bb.CreateAdd(lhs, rhs);
         });
         return analyzer.GetOverloadSet(PlusAssign.get());
     case Lexer::TokenType::OrAssign:
-        OrAssign = CreateAssOp([](llvm::Value* lhs, llvm::Value* rhs, Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+        OrAssign = CreateAssOp([](llvm::Value* lhs, llvm::Value* rhs, llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
             return bb.CreateOr(lhs, rhs);
         });
         return analyzer.GetOverloadSet(OrAssign.get());
     case Lexer::TokenType::AndAssign:
-        AndAssign = CreateAssOp([](llvm::Value* lhs, llvm::Value* rhs, Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+        AndAssign = CreateAssOp([](llvm::Value* lhs, llvm::Value* rhs, llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
             return bb.CreateAnd(lhs, rhs);
         });
         return analyzer.GetOverloadSet(AndAssign.get());
     case Lexer::TokenType::XorAssign:
-        XorAssign = CreateAssOp([](llvm::Value* lhs, llvm::Value* rhs, Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+        XorAssign = CreateAssOp([](llvm::Value* lhs, llvm::Value* rhs, llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
             return bb.CreateXor(lhs, rhs);
         });
         return analyzer.GetOverloadSet(XorAssign.get());
     case Lexer::TokenType::MinusAssign:
-        MinusAssign = CreateAssOp([](llvm::Value* lhs, llvm::Value* rhs, Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+        MinusAssign = CreateAssOp([](llvm::Value* lhs, llvm::Value* rhs, llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
             return bb.CreateSub(lhs, rhs);
         });
         return analyzer.GetOverloadSet(MinusAssign.get());
     case Lexer::TokenType::ModAssign:
-        ModAssign = CreateAssOp([this](llvm::Value* lhs, llvm::Value* rhs, Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+        ModAssign = CreateAssOp([this](llvm::Value* lhs, llvm::Value* rhs, llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
             if (is_signed)
                 return bb.CreateSRem(lhs, rhs);
             return bb.CreateURem(lhs, rhs);
         });
         return analyzer.GetOverloadSet(ModAssign.get());
     case Lexer::TokenType::DivAssign:
-        DivAssign = CreateAssOp([this](llvm::Value* lhs, llvm::Value* rhs, Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+        DivAssign = CreateAssOp([this](llvm::Value* lhs, llvm::Value* rhs, llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
             if (is_signed)
                 return bb.CreateSDiv(lhs, rhs);
             return bb.CreateUDiv(lhs, rhs);
@@ -177,22 +176,22 @@ OverloadSet* IntegralType::CreateADLOverloadSet(Lexer::TokenType name, Type* lhs
         return analyzer.GetOverloadSet(DivAssign.get());
     case Lexer::TokenType::LT:
         LT = MakeResolvable([this](std::vector<std::unique_ptr<Expression>> args, Context c) {
-            return CreatePrimOp(std::move(args[0]), std::move(args[1]), c.from->analyzer.GetBooleanType(), [this](llvm::Value* lhs, llvm::Value* rhs, Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+            return CreatePrimOp(std::move(args[0]), std::move(args[1]), c.from->analyzer.GetBooleanType(), [this](llvm::Value* lhs, llvm::Value* rhs, llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
                 llvm::Value* result = is_signed ? bb.CreateICmpSLT(lhs, rhs) : bb.CreateICmpULT(lhs, rhs);
-                return bb.CreateZExt(result, llvm::Type::getInt8Ty(g.module->getContext()));
+                return bb.CreateZExt(result, llvm::Type::getInt8Ty(module->getContext()));
             });
         }, { this, this });
         return analyzer.GetOverloadSet(LT.get());
     case Lexer::TokenType::EqCmp:
         EQ = MakeResolvable([](std::vector<std::unique_ptr<Expression>> args, Context c) {
-            return CreatePrimOp(std::move(args[0]), std::move(args[1]), c.from->analyzer.GetBooleanType(), [](llvm::Value* lhs, llvm::Value* rhs, Codegen::Generator& g, llvm::IRBuilder<>& bb) {
-                return bb.CreateZExt(bb.CreateICmpEQ(lhs, rhs), llvm::Type::getInt8Ty(g.module->getContext()));
+            return CreatePrimOp(std::move(args[0]), std::move(args[1]), c.from->analyzer.GetBooleanType(), [](llvm::Value* lhs, llvm::Value* rhs, llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
+                return bb.CreateZExt(bb.CreateICmpEQ(lhs, rhs), llvm::Type::getInt8Ty(module->getContext()));
             });
         }, { this, this });
         return analyzer.GetOverloadSet(EQ.get());
     case Lexer::TokenType::Increment:
         Increment = MakeResolvable([this](std::vector<std::unique_ptr<Expression>> args, Context c) {
-            return CreatePrimUnOp(std::move(args[0]), analyzer.GetLvalueType(this), [](llvm::Value* val, Codegen::Generator& g, llvm::IRBuilder<>& bb) {
+            return CreatePrimUnOp(std::move(args[0]), analyzer.GetLvalueType(this), [](llvm::Value* val, llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
                 bb.CreateStore(bb.CreateAdd(bb.CreateLoad(val), llvm::ConstantInt::get(val->getType(), llvm::APInt(64, 1, false))), val);
                 return val;
             });
@@ -225,8 +224,8 @@ OverloadSet* IntegralType::CreateOperatorOverloadSet(Type* self, Lexer::TokenTyp
     switch (what) {
     case Lexer::TokenType::Increment:
         Increment = MakeResolvable([this](std::vector<std::unique_ptr<Expression>> args, Context c) {
-            return CreatePrimUnOp(std::move(args[0]), analyzer.GetLvalueType(this), [this](llvm::Value* self, Codegen::Generator& g, llvm::IRBuilder<>& bb) {
-                bb.CreateStore(bb.CreateAdd(bb.CreateLoad(self), llvm::ConstantInt::get(GetLLVMType(g), 1, is_signed)), self);
+            return CreatePrimUnOp(std::move(args[0]), analyzer.GetLvalueType(this), [this](llvm::Value* self, llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
+                bb.CreateStore(bb.CreateAdd(bb.CreateLoad(self), llvm::ConstantInt::get(GetLLVMType(module), 1, is_signed)), self);
                 return self;
             });
         }, { analyzer.GetLvalueType(this) });

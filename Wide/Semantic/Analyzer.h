@@ -165,7 +165,7 @@ namespace Wide {
             
             ~Analyzer();
 
-            void GenerateCode(Codegen::Generator& g);
+            void GenerateCode(llvm::Module* module);
         };
         bool IsRvalueType(Type* t);
         bool IsLvalueType(Type* t);

@@ -1,6 +1,5 @@
 #include <Wide/Semantic/ClangTU.h>
 #include <Wide/Semantic/Analyzer.h>
-#include <Wide/Codegen/Generator.h>
 #include <Wide/Semantic/OverloadSet.h>
 #include <Wide/Semantic/PointerType.h>
 #include <Wide/Semantic/Expression.h>
@@ -16,8 +15,8 @@
 using namespace Wide;
 using namespace Semantic;
 
-llvm::Type* Reference::GetLLVMType(Codegen::Generator& g) {
-    return Decay()->GetLLVMType(g)->getPointerTo();
+llvm::Type* Reference::GetLLVMType(llvm::Module* module) {
+    return Decay()->GetLLVMType(module)->getPointerTo();
 }
 Wide::Util::optional<clang::QualType> LvalueType::GetClangType(ClangTU& tu) {
     auto ty = Decay()->GetClangType(tu);

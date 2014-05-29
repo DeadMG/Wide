@@ -30,16 +30,12 @@ Add static reflection.
 Consider constraints.
 
 Fix default arguments.
-Fix ExportName to create a trampoline instead of actually exporting.
 Add all primitive operators and types.
 Add metafunctions.
 Add ability for C++ to call into Wide public global functions without having to declare it.
 Add ability for C++ to understand Wide member functions, constructors, and destructors.
 Add the ability for Wide to expose Wide generic functions as C++ templates
-Add the ability for Wide functions to refer to constant context.
-Add the ability to resolve one function from a C++ overload set.
 Consider parameterised destructors.
-Add tests.
 
 WideLibrary:
 Add the ability for optional to contain lvalue references.
@@ -53,6 +49,3 @@ Add tests.
 
 Util/Driver:
 Change Compile so that the combiner errors are reported properly.
-
-CLI:
-Fix Standard includes to take respect of the current system.
