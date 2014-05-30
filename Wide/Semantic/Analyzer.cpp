@@ -863,7 +863,8 @@ std::unique_ptr<Expression> Semantic::AnalyzeExpression(Type* lookup, const AST:
                             refargs.push_back(Wide::Memory::MakeUnique<ExpressionReference>(arg.get()));
                     }
                     if (refargs.size() == args.size()) {
-                        call = object->GetType()->BuildCall(Wide::Memory::MakeUnique<ExpressionReference>(object.get()), std::move(refargs), Context{ from, where });
+                        auto objty = object->GetType();
+                        call = objty->BuildCall(Wide::Memory::MakeUnique<ExpressionReference>(object.get()), std::move(refargs), Context{ from, where });
                         ListenToNode(call.get());
                     } else
                         call = nullptr;

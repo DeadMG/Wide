@@ -15,6 +15,7 @@
 #include <Wide/Semantic/IntegralType.h>
 #include <Wide/Lexer/Token.h>
 #include <iostream>
+#include <sstream>
 #include <array>
 
 #pragma warning(push, 0)
@@ -473,9 +474,136 @@ Type* ClangType::GetVirtualPointerType() {
     return analyzer.GetFunctionType(analyzer.GetIntegralType(32, true), {}, true);
 }
 std::vector<BaseType::VirtualFunction> ClangType::ComputeVTableLayout() {
-    return std::vector<VirtualFunction>();
+    // ITANIUM ABI SPECIFIC
+    auto&& layout = from->GetASTContext().getASTRecordLayout(type->getAsCXXRecordDecl());
+    // If we have a primary base, then the vtable is the base vtable followed by the derived vtable.
+    if (!layout.hasOwnVFPtr()) {
+        auto pbase = dynamic_cast<Wide::Semantic::BaseType*>(analyzer.GetClangType(*from, from->GetASTContext().getRecordType(layout.getPrimaryBase())));
+        auto pbaselayout = pbase->GetVtableLayout();        
+        for (auto methit = type->getAsCXXRecordDecl()->method_begin(); methit != type->getAsCXXRecordDecl()->method_end(); ++methit) {         
+            if (methit->isVirtual()) {
+                // No additional slot if it overrides a method from primary base AND the return type does not require offsetting
+                auto add_extra_slot = [&] {
+                    if (methit->size_overridden_methods() == 0)
+                        return true;
+                    for (auto overriddenit = methit->begin_overridden_methods(); overriddenit != methit->end_overridden_methods(); ++overriddenit) {
+                        auto basemeth = *overriddenit;
+                        if (basemeth->getParent() == layout.getPrimaryBase()) {
+                            if (basemeth->getResultType() == methit->getResultType())
+                                return false;
+                            // If they have an adjustment of zero.
+                            auto basemethrecord = basemeth->getResultType()->getAsCXXRecordDecl();
+                            auto dermethrecord = methit->getResultType()->getAsCXXRecordDecl();
+                            if (!basemethrecord || !dermethrecord) continue;
+                            auto&& derlayout = from->GetASTContext().getASTRecordLayout(dermethrecord);
+                            if (!derlayout.hasOwnVFPtr() && derlayout.getPrimaryBase() == basemethrecord)
+                                return false;
+                            continue;
+                        }
+                    }
+                    return true;
+                };
+                if (!add_extra_slot()) continue;
+                BaseType::VirtualFunction vfunc;
+                vfunc.name = methit->getName();
+                vfunc.abstract = methit->isPure();
+                vfunc.ret = analyzer.GetClangType(*from, methit->getResultType());
+                if (methit->getRefQualifier() == clang::RefQualifierKind::RQ_RValue)
+                    vfunc.args.push_back(analyzer.GetRvalueType(this));
+                else
+                    vfunc.args.push_back(analyzer.GetLvalueType(this));
+                for (auto paramit = methit->param_begin(); paramit != methit->param_end(); ++paramit) {
+                    vfunc.args.push_back(analyzer.GetClangType(*from, (*paramit)->getType()));
+                }
+                pbaselayout.push_back(vfunc);
+            }
+        }
+        return pbaselayout;
+    }
+    std::vector<BaseType::VirtualFunction> out;
+    for (auto methit = type->getAsCXXRecordDecl()->method_begin(); methit != type->getAsCXXRecordDecl()->method_end(); ++methit) {
+        if (methit->isVirtual()) {
+            BaseType::VirtualFunction vfunc;
+            vfunc.name = methit->getName();
+            vfunc.abstract = methit->isPure();
+            vfunc.ret = analyzer.GetClangType(*from, methit->getResultType());
+            if (methit->getRefQualifier() == clang::RefQualifierKind::RQ_RValue)
+                vfunc.args.push_back(analyzer.GetRvalueType(this));
+            else
+                vfunc.args.push_back(analyzer.GetLvalueType(this));
+            for (auto paramit = methit->param_begin(); paramit != methit->param_end(); ++paramit) {
+                vfunc.args.push_back(analyzer.GetClangType(*from, (*paramit)->getType()));
+            }
+            out.push_back(vfunc);
+        }
+    }
+    return out;
 }
 std::unique_ptr<Expression> ClangType::FunctionPointerFor(std::string name, std::vector<Type*> args, Type* ret, unsigned offset) {
+    // args includes this, which will have a different type here.
+    // Pretend that it really has our type.
+    // ITANIUM ABI SPECIFIC
+    if (IsLvalueType(args[0]))
+        args[0] = analyzer.GetLvalueType(this);
+    else
+        args[0] = analyzer.GetRvalueType(this);
+    for (auto methit = type->getAsCXXRecordDecl()->method_begin(); methit != type->getAsCXXRecordDecl()->method_end(); ++methit) {
+        auto func = *methit;
+        if (func->getName() != name)
+            continue;
+        std::vector<Type*> f_args;
+        if (methit->getRefQualifier() == clang::RefQualifierKind::RQ_RValue)
+            f_args.push_back(analyzer.GetRvalueType(this));
+        else
+            f_args.push_back(analyzer.GetLvalueType(this));
+        for (auto arg_it = func->param_begin(); arg_it != func->param_end(); ++arg_it)
+            f_args.push_back(analyzer.GetClangType(*from, (*arg_it)->getType()));
+        if (args != f_args)
+            continue;
+        auto fty = analyzer.GetFunctionType(analyzer.GetClangType(*from, func->getResultType()), f_args, func->isVariadic());
+        struct VTableThunk : Expression {
+            VTableThunk(clang::CXXMethodDecl* f, ClangTU& from, unsigned off, FunctionType* sig)
+            : method(f), offset(off), signature(sig) 
+            {
+                mangle = from.MangleName(f);
+            }
+            clang::CXXMethodDecl* method;
+            FunctionType* signature;
+            unsigned offset;
+            std::function<std::string(llvm::Module*)> mangle;
+            Type* GetType() override final {
+                return signature;
+            }
+            llvm::Value* ComputeValue(llvm::Module* module, llvm::IRBuilder<>&, llvm::IRBuilder<>&) override final {
+                if (offset == 0)
+                    return module->getFunction(mangle(module));
+                auto this_index = (std::size_t)signature->GetReturnType()->IsComplexType(module);
+                std::stringstream strstr;
+                strstr << "__" << this << offset;
+                auto thunk = llvm::Function::Create(llvm::dyn_cast<llvm::FunctionType>(signature->GetLLVMType(module)->getElementType()), llvm::GlobalValue::LinkageTypes::InternalLinkage, strstr.str(), module);
+                llvm::BasicBlock* bb = llvm::BasicBlock::Create(module->getContext(), "entry", thunk);
+                llvm::IRBuilder<> irbuilder(bb);
+                auto self = std::next(thunk->arg_begin(), signature->GetReturnType()->IsComplexType(module));
+                auto offset_self = irbuilder.CreateConstGEP1_32(irbuilder.CreatePointerCast(self, llvm::IntegerType::getInt8PtrTy(module->getContext())), -offset);
+                auto cast_self = irbuilder.CreatePointerCast(offset_self, std::next(module->getFunction(mangle(module))->arg_begin(), this_index)->getType());
+                std::vector<llvm::Value*> args;
+                for (std::size_t i = 0; i < thunk->arg_size(); ++i) {
+                    if (i == this_index)
+                        args.push_back(cast_self);
+                    else
+                        args.push_back(std::next(thunk->arg_begin(), i));
+                }
+                auto call = irbuilder.CreateCall(module->getFunction(mangle(module)), args);
+                if (call->getType() == llvm::Type::getVoidTy(module->getContext()))
+                    irbuilder.CreateRetVoid();
+                else
+                    irbuilder.CreateRet(call);
+                return thunk;
+            }
+            void DestroyExpressionLocals(llvm::Module* module, llvm::IRBuilder<>& b, llvm::IRBuilder<>&) override final {}
+        };
+        return Wide::Memory::MakeUnique<VTableThunk>(func, *from, offset, fty);
+    }
     return nullptr;
 }
 bool ClangType::IsEliminateType() {
