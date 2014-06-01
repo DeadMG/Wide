@@ -210,6 +210,7 @@ Function::ReturnStatement::ReturnStatement(Function* f, std::unique_ptr<Expressi
         scope_destructors(module, bb, allocas);
     };
     OnNodeChanged(ret_expr.get(), Change::Contents);
+    ListenToNode(self);
 }
 void Function::ReturnStatement::OnNodeChanged(Node* n, Change c) {
     if (self->ReturnType != self->analyzer.GetVoidType()) {
@@ -728,7 +729,30 @@ void Function::ComputeReturnType() {
         if (ret_types.size() == 1) {
             ReturnType = *ret_types.begin();
             OnChange();
+            return;
         }
+
+        // If there are multiple return types, there should be a single return type where the rest all is-a that one.
+        std::unordered_set<Type*> isa_rets;
+        for (auto ret : ret_types) {
+            auto the_rest = ret_types;
+            the_rest.erase(ret);
+            auto all_isa = [&] {
+                for (auto other : the_rest) {
+                    if (!other->IsA(other, ret, GetAccessSpecifier(this, ret)))
+                        return false;
+                }
+                return true;
+            };
+            if (all_isa())
+                isa_rets.insert(ret);
+        }
+        if (isa_rets.size() == 1) {
+            ReturnType = *ret_types.begin();
+            OnChange();
+            return;
+        }
+        throw std::runtime_error("Fuck");
     }
 }
 
@@ -944,6 +968,7 @@ FunctionType* Function::GetSignature() {
         ComputeBody();
     if (s == State::AnalyzeInProgress)
         assert(false && "Attempted to call GetSignature whilst a function was still being analyzed.");
+    assert(ReturnType);
     return analyzer.GetFunctionType(ReturnType, Args, false);
 }
 
@@ -952,7 +977,14 @@ Type* Function::GetConstantContext() {
 }
 std::string Function::explain() {
     auto args = std::string("(");
+    unsigned i = 0;
     for (auto& ty : Args) {
+        if (Args.size() == fun->args.size() + 1 && i == 0) {
+            args += "this := ";
+            ++i;
+        } else {
+            args += fun->args[i++].name + " := ";
+        }
         if (&ty != &Args.back())
             args += ty->explain() + ", ";
         else
@@ -962,7 +994,7 @@ std::string Function::explain() {
 
     std::string context_name = context->explain() + "." + source_name;
     if (context == analyzer.GetGlobalModule())
-        context_name = source_name;
-    return "(" + context_name + args + " at " + fun->where + ")";
+        context_name = "." + source_name;
+    return context_name + args + " at " + fun->where;
 }
 Function::~Function() {}

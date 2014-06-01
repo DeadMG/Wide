@@ -84,6 +84,7 @@ std::unique_ptr<Expression> FunctionType::BuildCall(std::unique_ptr<Expression> 
             return call;
         }
     };
+    val->GetType();
     return Wide::Memory::MakeUnique<Call>(analyzer, std::move(val), std::move(args), c);
 }
 std::string FunctionType::explain() {

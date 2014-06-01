@@ -404,18 +404,24 @@ OverloadSet* OverloadSet::CreateConstructorOverloadSet(Lexer::Access access) {
         return analyzer.GetOverloadSet(constructors);
     }
 
-    DefaultConstructor = MakeResolvable([](std::vector<std::unique_ptr<Expression>> args, Context cm) {
-        return std::move(args[0]);
+    DefaultConstructor = MakeResolvable([this](std::vector<std::unique_ptr<Expression>> args, Context cm) {
+        return CreatePrimUnOp(std::move(args[0]), analyzer.GetLvalueType(this), [](llvm::Value* val, llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
+            return val;
+        });
     }, { analyzer.GetLvalueType(this) });
     constructors.insert(DefaultConstructor.get());
 
     CopyConstructor = MakeResolvable([](std::vector<std::unique_ptr<Expression>> args, Context c) {
-        return std::move(args[0]);
+        return CreatePrimAssOp(std::move(args[0]), std::move(args[1]), [](llvm::Value* lhs, llvm::Value* rhs, llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
+            return rhs;
+        });
     }, { analyzer.GetLvalueType(this), analyzer.GetLvalueType(this) });
     constructors.insert(CopyConstructor.get());
 
     MoveConstructor = MakeResolvable([](std::vector<std::unique_ptr<Expression>> args, Context c) {
-        return std::move(args[0]);
+        return CreatePrimAssOp(std::move(args[0]), std::move(args[1]), [](llvm::Value* lhs, llvm::Value* rhs, llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
+            return rhs;
+        });
     }, { analyzer.GetLvalueType(this), analyzer.GetRvalueType(this) });
     constructors.insert(MoveConstructor.get());
 

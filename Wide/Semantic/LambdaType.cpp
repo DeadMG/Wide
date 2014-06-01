@@ -15,8 +15,8 @@ std::vector<Type*> GetTypesFrom(std::vector<std::pair<std::string, Type*>>& vec)
         out.push_back(cap.second);
     return out;
 }
-LambdaType::LambdaType(std::vector<std::pair<std::string, Type*>> capturetypes, const AST::Lambda* l, Analyzer& a)
-    : contents(GetTypesFrom(capturetypes)), lam(l), AggregateType(a)
+LambdaType::LambdaType(std::vector<std::pair<std::string, Type*>> capturetypes, const AST::Lambda* l, Type* con, Analyzer& a)
+: contents(GetTypesFrom(capturetypes)), lam(l), AggregateType(a), context(con)
 {
     std::size_t i = 0;
     for (auto pair : capturetypes)
@@ -24,8 +24,6 @@ LambdaType::LambdaType(std::vector<std::pair<std::string, Type*>> capturetypes, 
 }
 
 std::unique_ptr<Expression> LambdaType::BuildCall(std::unique_ptr<Expression> val, std::vector<std::unique_ptr<Expression>> args, Context c) {
-    if (val->GetType() == this)
-        val = BuildLvalueConstruction(Expressions(std::move(val)), c);
     args.insert(args.begin(), std::move(val));
     std::vector<Type*> types;
     for (auto&& arg : args)
@@ -49,7 +47,11 @@ std::unique_ptr<Expression> LambdaType::BuildLambdaFromCaptures(std::vector<std:
         auto conset = GetContents()[i]->GetConstructorOverloadSet(GetAccessSpecifier(c.from, GetContents()[i]));
         auto call = conset->Resolve(types, c.from);
         if (!call) conset->IssueResolutionError(types, c);
-        initializers.push_back(call->Call(Expressions(PrimitiveAccessMember(std::move(self), i), std::move(exprs[i])), c));
+        // Don't PrimAccessMember because it collapses references, and DO NOT WANT
+        auto obj = CreatePrimUnOp(Wide::Memory::MakeUnique<ExpressionReference>(self.get()), types[0], [this, i](llvm::Value* val, llvm::Module* mod, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
+            return bb.CreateStructGEP(val, GetFieldIndex(i));
+        });
+        initializers.push_back(call->Call(Expressions(std::move(obj), std::move(exprs[i])), c));
     }
     
     struct LambdaConstruction : Expression {

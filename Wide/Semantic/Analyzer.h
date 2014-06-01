@@ -47,6 +47,7 @@ namespace Wide {
         struct DeclContext;
         struct Identifier;
         struct TemplateType;
+        struct Lambda;
     };
     namespace Semantic {
         class ClangTU;
@@ -75,6 +76,7 @@ namespace Wide {
         class Bool;
         class StringType;
         class TemplateType;
+        class LambdaType;
         class Analyzer {
             std::unique_ptr<ClangTU> AggregateTU;
             Module* global;
@@ -102,6 +104,7 @@ namespace Wide {
             std::unordered_map<const AST::TemplateType*, std::unique_ptr<OverloadResolvable>> TemplateTypeCallables;
             std::unordered_map<std::vector<Type*>, std::unique_ptr<TupleType>, VectorTypeHasher> tupletypes;
             std::unordered_map<std::string, std::unique_ptr<StringType>> LiteralStringTypes;
+            std::unordered_map<const AST::Lambda*, std::unordered_map<std::vector<std::pair<std::string, Type*>>, std::unique_ptr<LambdaType>, VectorTypeHasher>> LambdaTypes;
 
             const Options::Clang* clangopts;
 
@@ -157,6 +160,7 @@ namespace Wide {
             OverloadResolvable* GetCallableForFunction(const AST::FunctionBase* f, Type* context, std::string name);
             OverloadResolvable* GetCallableForTemplateType(const AST::TemplateType* t, Type* context);
             TemplateType* GetTemplateType(const AST::TemplateType* t, Type* context, std::vector<Type*> arguments, std::string name);
+            LambdaType* GetLambdaType(const AST::Lambda* funcbase, std::vector<std::pair<std::string, Type*>> types, Type* context);
 
             Analyzer(const Options::Clang&, const AST::Module*);     
 

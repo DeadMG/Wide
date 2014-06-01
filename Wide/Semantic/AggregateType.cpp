@@ -287,7 +287,9 @@ OverloadSet* AggregateType::CreateNondefaultConstructorOverloadSet() {
             std::vector<std::unique_ptr<Expression>> exprs;
             for (std::size_t i = 0; i < GetContents().size(); ++i) {
                 auto type = GetContents()[i];
-                auto lhs = PrimitiveAccessMember(Wide::Memory::MakeUnique<ExpressionReference>(args[0].get()), i);
+                auto lhs = CreatePrimUnOp(Wide::Memory::MakeUnique<ExpressionReference>(args[0].get()), analyzer.GetLvalueType(type), [this, i](llvm::Value* val, llvm::Module* mod, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
+                    return bb.CreateStructGEP(val, GetFieldIndex(i));
+                });
                 auto rhs = PrimitiveAccessMember(Wide::Memory::MakeUnique<ExpressionReference>(args[1].get()), i);
                 auto set = type->GetConstructorOverloadSet(GetAccessSpecifier(this, type));
                 std::vector<Type*> types;
@@ -333,12 +335,12 @@ OverloadSet* AggregateType::CreateNondefaultConstructorOverloadSet() {
 
     std::unordered_set<OverloadResolvable*> set;
     if (GetLayout().moveconstructible) {
-        modify = [this](Type* t) { return analyzer.GetRvalueType(t); };
+        modify = [this](Type* t) -> Type* { if (t->IsReference()) return t; return analyzer.GetRvalueType(t); };
         if (!MoveConstructor) MoveConstructor = createconstructor();
         set.insert(MoveConstructor.get());
     }
     if (GetLayout().copyconstructible) {
-        modify = [this](Type* t) { return analyzer.GetLvalueType(t); };
+        modify = [this](Type* t) -> Type* { if (t->IsReference()) return t; return analyzer.GetLvalueType(t); };
         if (!CopyConstructor) CopyConstructor = createconstructor();
         set.insert(CopyConstructor.get());
     }

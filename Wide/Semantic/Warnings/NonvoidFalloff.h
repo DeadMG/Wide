@@ -13,6 +13,6 @@ namespace Wide {
     }
     namespace Semantic {
         class Analyzer;
-        std::vector<std::tuple<Lexer::Range, std::string>> GetUnusedFunctions(Analyzer& a);
+        std::vector<std::tuple<Lexer::Range, std::string>> GetNonvoidFalloffFunctions(Analyzer& a);
     }
 }

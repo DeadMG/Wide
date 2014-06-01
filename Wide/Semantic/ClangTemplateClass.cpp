@@ -71,7 +71,7 @@ std::unique_ptr<Expression> ClangTemplateClass::BuildCall(std::unique_ptr<Expres
         if (from->GetSema().InstantiateClassTemplateSpecialization(loc, spec, tsk))
             throw UninstantiableTemplate(c.where);
 
-    return analyzer.GetConstructorType(analyzer.GetClangType(*from, from->GetASTContext().getRecordType(spec)))->BuildValueConstruction({}, { this, c.where });
+    return BuildChain(std::move(val), analyzer.GetConstructorType(analyzer.GetClangType(*from, from->GetASTContext().getRecordType(spec)))->BuildValueConstruction({}, { this, c.where }));
 }
 std::string ClangTemplateClass::explain() {
     return GetContext()->explain() + "." + tempdecl->getName().str();

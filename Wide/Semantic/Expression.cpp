@@ -44,6 +44,8 @@ void ImplicitStoreExpr::DestroyExpressionLocals(llvm::Module* module, llvm::IRBu
 ImplicitTemporaryExpr::ImplicitTemporaryExpr(Type* what, Context c)
 : of(what), c(c)
 {
+    // Make sure this is prepared before code-generation time.
+    of->BuildDestructorCall(Wide::Memory::MakeUnique<ExpressionReference>(this), c);
 }
 Type* ImplicitTemporaryExpr::GetType() {
     return of->analyzer.GetLvalueType(of);

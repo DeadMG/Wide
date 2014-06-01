@@ -184,7 +184,8 @@ int main(int argc, char** argv)
             a.GenerateCode(mod.get());
             if (llvm::verifyModule(*mod, llvm::VerifierFailureAction::PrintMessageAction))
                 throw std::runtime_error("Internal compiler error: An LLVM module failed verification.");
-            Wide::Driver::PrintUnusedFunctions(files, a);
+            Wide::Driver::PrintUnusedFunctionsWarning(files, a);
+            Wide::Driver::PrintNonvoidFalloffWarning(files, a);
         }, std::vector<std::string>(final_files.begin(), final_files.end()));
         llvm::PassManager pm;
         std::unique_ptr<llvm::TargetMachine> targetmachine;

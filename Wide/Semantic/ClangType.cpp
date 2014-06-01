@@ -181,7 +181,9 @@ std::unique_ptr<Expression> ClangType::BuildBooleanConversion(std::unique_ptr<Ex
         assert(false && "Attempted to contextually convert to bool, but Clang gave back an expression that did not involve a function call.");
     }
 
-    return GetOverloadSet(fun, from, std::move(ex), c, analyzer);
+    auto set = GetOverloadSet(fun, from, std::move(ex), c, analyzer);
+    auto ty = set->GetType();
+    return ty->BuildCall(std::move(set), Expressions(), c);
 }
 
 #pragma warning(disable : 4244)
@@ -598,4 +600,26 @@ std::unique_ptr<Expression> ClangType::FunctionPointerFor(std::string name, std:
 }
 bool ClangType::IsEliminateType() {
     return type->getAsCXXRecordDecl()->isEmpty();
+}
+Type* ClangType::GetConstantContext() {
+    if (type->getAsCXXRecordDecl()->isEmpty())
+        return this;
+    return nullptr;
+}
+bool ClangType::IsA(Type* self, Type* other, Lexer::Access access) {
+    // A ClangType is-a another if they are implicitly convertible.
+    if (Type::IsA(self, other, access)) return true;
+    if (self == this) {
+        if (analyzer.GetRvalueType(this)->IsA(analyzer.GetRvalueType(self), other, access))
+            return true;
+    }
+    auto selfclangty = self->GetClangType(*from);
+    assert(selfclangty);
+    auto clangty = other->GetClangType(*from);
+    if (!clangty) return false;
+    clang::OpaqueValueExpr ope(clang::SourceLocation(), selfclangty->getNonLValueExprType(from->GetASTContext()), Semantic::GetKindOfType(self));
+    auto sequence = from->GetSema().TryImplicitConversion(&ope, *clangty, false, false, false, false, false);
+    if (sequence.getKind() == clang::ImplicitConversionSequence::Kind::UserDefinedConversion)
+        return true;
+    return false;
 }

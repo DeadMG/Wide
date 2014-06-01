@@ -8,6 +8,7 @@ namespace Wide {
         class Analyzer;
     }
     namespace Driver {
-        void PrintUnusedFunctions(const std::unordered_set<std::string>& files, Semantic::Analyzer& a);
+        void PrintUnusedFunctionsWarning(const std::unordered_set<std::string>& files, Semantic::Analyzer& a);
+        void PrintNonvoidFalloffWarning(const std::unordered_set<std::string>& files, Semantic::Analyzer& a);
     }
 }

@@ -40,9 +40,13 @@ std::unique_ptr<Expression> ClangNamespace::AccessMember(std::unique_ptr<Express
             decls.insert(fundecl);
             return BuildChain(std::move(t), analyzer.GetOverloadSet(std::move(decls), from, GetContext())->BuildValueConstruction({}, { this, c.where }));
         }
-        /*if (auto vardecl = llvm::dyn_cast<clang::VarDecl>(result)) {
-            return ConcreteExpression(c->GetLvalueType(c->GetClangType(*from, vardecl->getType())), c->gen->CreateGlobalVariable(from->MangleName(vardecl)));
-        }*/
+        if (auto vardecl = llvm::dyn_cast<clang::VarDecl>(result)) {
+            //return ConcreteExpression(c->GetLvalueType(c->GetClangType(*from, vardecl->getType())), c->gen->CreateGlobalVariable(from->MangleName(vardecl)));
+            auto mangle = from->MangleName(vardecl);
+            return CreatePrimUnOp(std::move(t), analyzer.GetLvalueType(analyzer.GetClangType(*from, vardecl->getType())), [mangle](llvm::Value*, llvm::Module* m, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
+                return m->getGlobalVariable(mangle(m));
+            });
+        }
         if (auto namedecl = llvm::dyn_cast<clang::NamespaceDecl>(result)) {
             return BuildChain(std::move(t), analyzer.GetClangNamespace(*from, namedecl)->BuildValueConstruction({}, { this, c.where }));
         }

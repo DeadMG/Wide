@@ -768,6 +768,12 @@ Type* Analyzer::GetTypeForString(std::string str) {
         LiteralStringTypes[str] = Wide::Memory::MakeUnique<StringType>(str, *this);
     return LiteralStringTypes[str].get();
 }
+LambdaType* Analyzer::GetLambdaType(const AST::Lambda* lam, std::vector<std::pair<std::string, Type*>> types, Type* context) {
+    if (LambdaTypes.find(lam) == LambdaTypes.end()
+     || LambdaTypes[lam].find(types) == LambdaTypes[lam].end())
+        LambdaTypes[lam][types] = Wide::Memory::MakeUnique<LambdaType>(types, lam, context, *this);
+    return LambdaTypes[lam][types].get();
+}
 bool Semantic::IsMultiTyped(const AST::FunctionArgument& f) {
     if (!f.type) return true;
     struct Visitor : public AST::Visitor<Visitor> {
@@ -867,10 +873,10 @@ std::unique_ptr<Expression> Semantic::AnalyzeExpression(Type* lookup, const AST:
                         call = objty->BuildCall(Wide::Memory::MakeUnique<ExpressionReference>(object.get()), std::move(refargs), Context{ from, where });
                         ListenToNode(call.get());
                     } else
-                        call = nullptr;
+                        throw std::runtime_error("fuck");
                 }
                 else
-                    call = nullptr;
+                    throw std::runtime_error("fuck");
                 if (ty != GetType())
                     OnChange();
             }
@@ -906,6 +912,13 @@ std::unique_ptr<Expression> Semantic::AnalyzeExpression(Type* lookup, const AST:
                 if (auto fun = dynamic_cast<Function*>(context)) {
                     auto lookup = fun->LookupLocal(val);
                     if (lookup) return lookup;
+                    if (auto lam = dynamic_cast<LambdaType*>(context->GetContext())) {
+                        auto self = fun->LookupLocal("this");
+                        auto result = lam->LookupCapture(std::move(self), val);
+                        if (result)
+                            return std::move(result);
+                        return LookupIdentifier(context->GetContext()->GetContext());
+                    }
                     if (auto member = dynamic_cast<MemberFunctionContext*>(context->GetContext())) {
                         auto self = fun->LookupLocal("this");
                         auto result = self->GetType()->AccessMember(std::move(self), val, { self->GetType(), location });
@@ -952,6 +965,8 @@ std::unique_ptr<Expression> Semantic::AnalyzeExpression(Type* lookup, const AST:
                 result = LookupIdentifier(lookup);
                 if (result)
                     ListenToNode(result.get());
+                else
+                    throw NoMember(lookup, lookup, val, location);
                 if (ty != GetType())
                     OnChange();
             }
@@ -1037,6 +1052,125 @@ std::unique_ptr<Expression> Semantic::AnalyzeExpression(Type* lookup, const AST:
     if (auto declty = dynamic_cast<const AST::Decltype*>(e)) {
         auto expr = AnalyzeExpression(lookup, declty->ex, a);
         return a.GetConstructorType(expr->GetType())->BuildValueConstruction(Expressions(), { lookup, declty->location });
+    }
+    if (auto lam = dynamic_cast<const AST::Lambda*>(e)) {
+        std::vector<std::unordered_set<std::string>> lambda_locals;
+
+        // Only implicit captures.
+        std::unordered_set<std::string> captures;
+        struct LambdaVisitor : AST::Visitor<LambdaVisitor> {
+            std::vector<std::unordered_set<std::string>>* lambda_locals;
+            std::unordered_set<std::string>* captures;
+            void VisitVariableStatement(const AST::Variable* v) {
+                for (auto&& name : v->name)
+                    lambda_locals->back().insert(name.name);
+            }
+            void VisitLambdaCapture(const AST::Variable* v) {
+                for (auto&& name : v->name)
+                    lambda_locals->back().insert(name.name);
+            }
+            void VisitLambdaArgument(const AST::FunctionArgument* arg) {
+                lambda_locals->back().insert(arg->name);
+            }
+            void VisitLambda(const AST::Lambda* l) {
+                lambda_locals->emplace_back();
+                for (auto&& x : l->args)
+                    VisitLambdaArgument(&x);
+                for (auto&& x : l->Captures)
+                    VisitLambdaCapture(x);
+                lambda_locals->emplace_back();
+                for (auto&& x : l->statements)
+                    VisitStatement(x);
+                lambda_locals->pop_back();
+                lambda_locals->pop_back();
+            }
+            void VisitIdentifier(const AST::Identifier* e) {
+                for (auto&& scope : *lambda_locals)
+                if (scope.find(e->val) != scope.end())
+                    return;
+                captures->insert(e->val);
+            }
+            void VisitCompoundStatement(const AST::CompoundStatement* cs) {
+                lambda_locals->emplace_back();
+                for (auto&& x : cs->stmts)
+                    VisitStatement(x);
+                lambda_locals->pop_back();
+            }
+            void VisitWhileStatement(const AST::While* wh) {
+                lambda_locals->emplace_back();
+                VisitExpression(wh->condition);
+                VisitStatement(wh->body);
+                lambda_locals->pop_back();
+            }
+            void VisitIfStatement(const AST::If* br) {
+                lambda_locals->emplace_back();
+                VisitExpression(br->condition);
+                lambda_locals->emplace_back();
+                VisitStatement(br->true_statement);
+                lambda_locals->pop_back();
+                lambda_locals->pop_back();
+                lambda_locals->emplace_back();
+                VisitStatement(br->false_statement);
+                lambda_locals->pop_back();
+            }
+        };
+        LambdaVisitor l;
+        l.captures = &captures;
+        l.lambda_locals = &lambda_locals;
+        l.VisitLambda(lam);
+
+        Context c(lookup, lam->location);
+        // We obviously don't want to capture module-scope names.
+        // Only capture from the local scope, and from "this".
+        {
+            auto caps = std::move(captures);
+            for (auto&& name : caps) {
+                if (auto fun = dynamic_cast<Function*>(lookup)) {
+                    if (fun->LookupLocal(name))
+                        captures.insert(name);
+                    if (auto udt = dynamic_cast<UserDefinedType*>(fun->GetContext())) {
+                        if (udt->HasMember(name))
+                            captures.insert(name);
+                    }
+                }
+            }
+        }
+
+        // Just as a double-check, eliminate all explicit captures from the list. This should never have any effect
+        // but I'll hunt down any bugs caused by eliminating it later.
+        for (auto&& arg : lam->Captures)
+            for (auto&& name : arg->name)
+                captures.erase(name.name);
+
+        std::vector<std::pair<std::string, std::unique_ptr<Expression>>> cap_expressions;
+        for (auto&& arg : lam->Captures) {
+            cap_expressions.push_back(std::make_pair(arg->name.front().name, AnalyzeExpression(lookup, arg->initializer, a)));
+        }
+        for (auto&& name : captures) {
+            AST::Identifier ident(name, lam->location);
+            cap_expressions.push_back(std::make_pair(name, AnalyzeExpression(lookup, &ident, a)));
+        }
+        std::vector<std::pair<std::string, Type*>> types;
+        std::vector<std::unique_ptr<Expression>> expressions;
+        for (auto&& cap : cap_expressions) {
+            if (!lam->defaultref)
+                types.push_back(std::make_pair(cap.first, cap.second->GetType()->Decay()));
+            else {
+                auto IsImplicitCapture = [&]() {
+                    return captures.find(cap.first) != captures.end();
+                };
+                if (IsImplicitCapture()) {
+                    if (!cap.second->GetType()->IsReference())
+                        assert(false); // how the fuck
+                    types.push_back(std::make_pair(cap.first, cap.second->GetType()));
+                } else {
+                    types.push_back(std::make_pair(cap.first, cap.second->GetType()->Decay()));
+                }
+            }
+            expressions.push_back(std::move(cap.second));
+        }
+        auto type = a.GetLambdaType(lam, types, lookup->GetConstantContext() ? lookup->GetConstantContext() : lookup->GetContext());
+        return type->BuildLambdaFromCaptures(std::move(expressions), c);
     }
     assert(false);
 }
