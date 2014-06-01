@@ -1,0 +1,7 @@
+ExpectedFailure() { return { "InvalidBase", 66, 69 }; }
+type t : int {
+    f() { return false; }
+}
+Main() {
+    return t().f();
+}

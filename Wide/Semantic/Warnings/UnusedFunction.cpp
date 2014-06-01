@@ -10,6 +10,7 @@ using namespace Semantic;
 std::string GetFunctionName(const AST::FunctionBase* func, Analyzer& a, std::string context, Wide::Semantic::Module* root) {
     context += "(";
     for (auto&& arg : func->args) {
+        context += arg.name;
         if (arg.type) {
             struct autotype : public Wide::Semantic::MetaType {
                 autotype(Type* con) : context(con), MetaType(con->analyzer) {}
@@ -33,12 +34,12 @@ std::string GetFunctionName(const AST::FunctionBase* func, Analyzer& a, std::str
                 auto autoty = autotype(root);
                 auto expr = AnalyzeExpression(&autoty, arg.type, a);
                 auto&& conty = dynamic_cast<ConstructorType&>(*expr->GetType()->Decay());
-                context += (conty.GetConstructedType()->explain() + " ");
-            } catch (...) {
-                context += "error-type ";
+                context += " := " + conty.GetConstructedType()->explain();
+            }
+            catch (...) {
+                context += ":= error-type";
             }
         }
-        context += arg.name;
         if (&arg != &func->args.back())
             context += ", ";
     }

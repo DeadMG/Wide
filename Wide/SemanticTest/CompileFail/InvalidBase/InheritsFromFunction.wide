@@ -1,0 +1,10 @@
+ExpectedFailure() { return { "InvalidBase", 96, 106 }; }
+f() {
+    return false;
+}
+type t : decltype(f) {
+    g() { return false; }
+}
+Main() {
+    return f() | t().g();
+}

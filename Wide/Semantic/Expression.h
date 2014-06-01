@@ -1,3 +1,4 @@
+#pragma once 
 
 #include <Wide/Lexer/Token.h>
 #include <Wide/Semantic/Type.h>

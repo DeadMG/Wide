@@ -31,409 +31,357 @@
 using namespace Wide;
 using namespace Semantic;
 
-struct Function::LocalVariable : public Expression {
-    LocalVariable(Expression* ex, Function* self, Lexer::Range where)
-    : init_expr(std::move(ex)), self(self), where(where)
-    {
-        ListenToNode(init_expr);
-        OnNodeChanged(init_expr, Change::Contents);
-    }
-    LocalVariable(Expression* ex, unsigned u, Function* self, Lexer::Range where)
-        : init_expr(std::move(ex)), tuple_num(u), self(self), where(where)
-    {
-        ListenToNode(init_expr);
-        OnNodeChanged(init_expr, Change::Contents);
-    }
-
-    void OnNodeChanged(Node* n, Change what) override final {
-        if (what == Change::Destroyed) return;
-        if (init_expr->GetType()) {
-            // If we're a value we handle it at codegen time.
-            auto newty = InferTypeFromExpression(init_expr->GetImplementation(), true);
-            if (tuple_num) {
-                if (auto tupty = dynamic_cast<TupleType*>(newty)) {
-                    auto tuple_access = tupty->PrimitiveAccessMember(Wide::Memory::MakeUnique<ExpressionReference>(init_expr), *tuple_num);
-                    newty = tuple_access->GetType()->Decay();
-                    variable = Wide::Memory::MakeUnique<ImplicitTemporaryExpr>(newty, Context{ self, where });
-                    construction = newty->BuildInplaceConstruction(Wide::Memory::MakeUnique<ExpressionReference>(variable.get()), Expressions(std::move(tuple_access)), { self, where });
-                    if (newty != var_type) {
-                        var_type = newty;
-                        OnChange();
-                    }
-                    return;
-                }
-                throw std::runtime_error("fuck");
-            }
-            if (!init_expr->GetType()->IsReference() && init_expr->GetType() == newty) {
-                if (init_expr->GetType() != var_type) {
+Function::LocalVariable::LocalVariable(Expression* ex, Function* self, Lexer::Range where)
+: init_expr(std::move(ex)), self(self), where(where)
+{
+    ListenToNode(init_expr);
+    OnNodeChanged(init_expr, Change::Contents);
+}
+Function::LocalVariable::LocalVariable(Expression* ex, unsigned u, Function* self, Lexer::Range where)
+    : init_expr(std::move(ex)), tuple_num(u), self(self), where(where)
+{
+    ListenToNode(init_expr);
+    OnNodeChanged(init_expr, Change::Contents);
+}
+void Function::LocalVariable::OnNodeChanged(Node* n, Change what) {
+    if (what == Change::Destroyed) return;
+    if (init_expr->GetType()) {
+        // If we're a value we handle it at codegen time.
+        auto newty = InferTypeFromExpression(init_expr->GetImplementation(), true);
+        if (tuple_num) {
+            if (auto tupty = dynamic_cast<TupleType*>(newty)) {
+                auto tuple_access = tupty->PrimitiveAccessMember(Wide::Memory::MakeUnique<ExpressionReference>(init_expr), *tuple_num);
+                newty = tuple_access->GetType()->Decay();
+                variable = Wide::Memory::MakeUnique<ImplicitTemporaryExpr>(newty, Context{ self, where });
+                construction = newty->BuildInplaceConstruction(Wide::Memory::MakeUnique<ExpressionReference>(variable.get()), Expressions(std::move(tuple_access)), { self, where });
+                if (newty != var_type) {
                     var_type = newty;
                     OnChange();
-                    return;
                 }
+                return;
             }
-            if (newty->IsReference()) {
+            throw std::runtime_error("fuck");
+        }
+        if (!init_expr->GetType()->IsReference() && init_expr->GetType() == newty) {
+            if (init_expr->GetType() != var_type) {
                 var_type = newty;
                 OnChange();
                 return;
             }
-            if (newty != var_type) {
-                if (newty) {
-                    variable = Wide::Memory::MakeUnique<ImplicitTemporaryExpr>(newty, Context{ self, where });
-                    construction = newty->BuildInplaceConstruction(Wide::Memory::MakeUnique<ExpressionReference>(variable.get()), Expressions(Wide::Memory::MakeUnique<ExpressionReference>(init_expr)), { self, where });
-                }
-                var_type = newty;
-                OnChange();
-            }
+        }
+        if (newty->IsReference()) {
+            var_type = newty;
+            OnChange();
             return;
         }
-        if (var_type) {
-            var_type = nullptr;
+        if (newty != var_type) {
+            if (newty) {
+                variable = Wide::Memory::MakeUnique<ImplicitTemporaryExpr>(newty, Context{ self, where });
+                construction = newty->BuildInplaceConstruction(Wide::Memory::MakeUnique<ExpressionReference>(variable.get()), Expressions(Wide::Memory::MakeUnique<ExpressionReference>(init_expr)), { self, where });
+            }
+            var_type = newty;
             OnChange();
         }
+        return;
     }
+    if (var_type) {
+        var_type = nullptr;
+        OnChange();
+    }
+}
+void Function::LocalVariable::DestroyExpressionLocals(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
+    if (variable)
+        variable->DestroyLocals(module, bb, allocas);
+    if (construction)
+        construction->DestroyLocals(module, bb, allocas);
+}
+llvm::Value* Function::LocalVariable::ComputeValue(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
+    if (init_expr->GetType() == var_type) {
+        // If they return a complex value by value, just steal it.
+        if (init_expr->GetType()->IsComplexType(module) || var_type->IsReference()) return init_expr->GetValue(module, bb, allocas);
+        // If they return a simple by value, then we can just alloca it fine, no destruction needed.
+        auto alloc = allocas.CreateAlloca(var_type->GetLLVMType(module));
+        alloc->setAlignment(var_type->alignment());
+        bb.CreateStore(init_expr->GetValue(module, bb, allocas), alloc);
+        return alloc;
+    }
+   
+    construction->GetValue(module, bb, allocas);
+    return variable->GetValue(module, bb, allocas);
+}
+Type* Function::LocalVariable::GetType() {
+    if (var_type) {
+        if (var_type->IsReference())
+            return self->analyzer.GetLvalueType(var_type->Decay());
+        return self->analyzer.GetLvalueType(var_type);
+    }
+    return nullptr;
+}
 
-    std::unique_ptr<Expression> construction;
-    Wide::Util::optional<unsigned> tuple_num;
-    Type* tup_ty = nullptr;
-    Type* var_type = nullptr;
-    std::unique_ptr<ImplicitTemporaryExpr> variable;
-    Expression* init_expr;
-    Function* self;
-    Lexer::Range where;
+Function::Scope::Scope(Scope* s) : parent(s), current_while(nullptr) {
+    if (parent)
+        parent->children.push_back(std::unique_ptr<Scope>(this));
+}
 
-    void DestroyExpressionLocals(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final {
-        if (variable)
-            variable->DestroyLocals(module, bb, allocas);
-        if (construction)
-            construction->DestroyLocals(module, bb, allocas);
-    }
-    llvm::Value* ComputeValue(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final {
-        if (init_expr->GetType() == var_type) {
-            // If they return a complex value by value, just steal it.
-            if (init_expr->GetType()->IsComplexType(module) || var_type->IsReference()) return init_expr->GetValue(module, bb, allocas);
-            // If they return a simple by value, then we can just alloca it fine, no destruction needed.
-            auto alloc = allocas.CreateAlloca(var_type->GetLLVMType(module));
-            alloc->setAlignment(var_type->alignment());
-            bb.CreateStore(init_expr->GetValue(module, bb, allocas), alloc);
-            return alloc;
-        }
-       
-        construction->GetValue(module, bb, allocas);
-        return variable->GetValue(module, bb, allocas);
-    }
-    Type* GetType() override final {
-        if (var_type) {
-            if (var_type->IsReference())
-                return self->analyzer.GetLvalueType(var_type->Decay());
-            return self->analyzer.GetLvalueType(var_type);
-        }
-        return nullptr;
-    }
-};
-struct Function::Scope {
-    Scope(Scope* s) : parent(s), current_while(nullptr) {
-        if (parent)
-            parent->children.push_back(std::unique_ptr<Scope>(this));
-    }
-    Scope* parent;
-    std::vector<std::unique_ptr<Scope>> children;
-    std::unordered_map<std::string, std::pair<std::unique_ptr<Expression>, Lexer::Range>> named_variables;
-    std::vector<std::unique_ptr<Statement>> active;
-    WhileStatement* current_while;
-    std::unique_ptr<Expression> LookupLocal(std::string name);
-
-    std::function<void(llvm::Module*, llvm::IRBuilder<>&, llvm::IRBuilder<>&)> DestroyLocals() {
-        std::vector<Statement*> current;
-        for (auto&& stmt : active)
-            current.push_back(stmt.get());
-        return [current](llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
-            for (auto stmt : current)
-                stmt->DestroyLocals(module, bb, allocas);
+std::function<void(llvm::Module*, llvm::IRBuilder<>&, llvm::IRBuilder<>&)> Function::Scope::DestroyLocals() {
+    std::vector<Statement*> current;
+    for (auto&& stmt : active)
+        current.push_back(stmt.get());
+    return [current](llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
+        for (auto stmt : current)
+            stmt->DestroyLocals(module, bb, allocas);
+    };
+}
+std::function<void(llvm::Module*, llvm::IRBuilder<>&, llvm::IRBuilder<>&)> Function::Scope::DestroyAllLocals() {
+    auto local = DestroyLocals();
+    if (parent) {
+        auto uppers = parent->DestroyAllLocals();
+        return [local, uppers](llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
+            local(module, bb, allocas);
+            uppers(module, bb, allocas);
         };
     }
-    std::function<void(llvm::Module*, llvm::IRBuilder<>&, llvm::IRBuilder<>&)> DestroyAllLocals() {
+    return local;
+}
+
+std::function<void(llvm::Module*, llvm::IRBuilder<>&, llvm::IRBuilder<>&)> Function::Scope::DestroyWhileBody() {
+    // The while is attached to the CONDITION SCOPE
+    // We only want to destroy the body.
+    if (parent) {
         auto local = DestroyLocals();
-        if (parent) {
-            auto uppers = parent->DestroyAllLocals();
-            return [local, uppers](llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
-                local(module, bb, allocas);
-                uppers(module, bb, allocas);
-            };
-        }
-        return local;
+        if (parent->current_while)
+            return local;
+        auto uppers = parent->DestroyWhileBody();
+        return [local, uppers](llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
+            local(module, bb, allocas);
+            uppers(module, bb, allocas);
+        };            
     }
+    throw std::runtime_error("fuck");
+}
 
-    std::function<void(llvm::Module*, llvm::IRBuilder<>&, llvm::IRBuilder<>&)> DestroyWhileBody() {
-        // The while is attached to the CONDITION SCOPE
-        // We only want to destroy the body.
-        if (parent) {
-            auto local = DestroyLocals();
-            if (parent->current_while)
-                return local;
-            auto uppers = parent->DestroyWhileBody();
-            return [local, uppers](llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
-                local(module, bb, allocas);
-                uppers(module, bb, allocas);
-            };            
-        }
-        throw std::runtime_error("fuck");
-    }
-
-    std::function<void(llvm::Module*, llvm::IRBuilder<>&, llvm::IRBuilder<>&)> DestroyWhileBodyAndCond() {
-        // The while is attached to the CONDITION SCOPE
-        // So keep going until we have it.
-        if (parent) {
-            auto local = DestroyLocals();
-            if (current_while)
-                return local;
-            auto uppers = parent->DestroyWhileBodyAndCond();
-            return [local, uppers](llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
-                local(module, bb, allocas);
-                uppers(module, bb, allocas);
-            };
-        }
-        throw std::runtime_error("fuck");
-    }
-
-    WhileStatement* GetCurrentWhile() {
+std::function<void(llvm::Module*, llvm::IRBuilder<>&, llvm::IRBuilder<>&)> Function::Scope::DestroyWhileBodyAndCond() {
+    // The while is attached to the CONDITION SCOPE
+    // So keep going until we have it.
+    if (parent) {
+        auto local = DestroyLocals();
         if (current_while)
-            return current_while;
-        if (parent)
-            return parent->GetCurrentWhile();
-        return nullptr;
-    }
-};
-
-Function::~Function() {}
-
-struct Function::CompoundStatement : public Statement {
-    CompoundStatement(Scope* s)
-        : s(s) {}
-    void DestroyLocals(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final {
-        // After code generation, I ain't got no locals left to destroy.
-    }
-    Scope* s;
-    void GenerateCode(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final {
-        for (auto&& stmt : s->active)
-            stmt->GenerateCode(module, bb, allocas);
-        for (auto rit = s->active.rbegin(); rit != s->active.rend(); ++rit)
-            rit->get()->DestroyLocals(module, bb, allocas);
-    }
-};
-
-struct Function::ReturnStatement : public Statement {
-    ReturnStatement(Function* f, std::unique_ptr<Expression> expr, Scope* current, Lexer::Range where)
-    : self(f), ret_expr(std::move(expr)), where(where)
-    {
-        self->returns.insert(this);
-        if (ret_expr) {
-            ListenToNode(ret_expr.get());
-        }
-        auto scope_destructors = current->DestroyAllLocals();
-        destructors = [this, scope_destructors](llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
-            if (ret_expr)
-                ret_expr->DestroyLocals(module, bb, allocas);
-            scope_destructors(module, bb, allocas);
+            return local;
+        auto uppers = parent->DestroyWhileBodyAndCond();
+        return [local, uppers](llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
+            local(module, bb, allocas);
+            uppers(module, bb, allocas);
         };
-        OnNodeChanged(ret_expr.get());
     }
-    void OnNodeChanged(Node* n) {
-        if (self->ReturnType != self->analyzer.GetVoidType()) {
-            struct ReturnEmplaceValue : Expression {
-                ReturnEmplaceValue(Function* f)
-                : self(f) {}
-                Function* self;
-                Type* GetType() override final {
-                    return self->analyzer.GetLvalueType(self->ReturnType);
-                }
-                void DestroyExpressionLocals(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final {}
-                llvm::Value* ComputeValue(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final {
-                    return self->llvmfunc->arg_begin();
-                }
-            };
-            if (self->ReturnType)
-                build = self->ReturnType->BuildInplaceConstruction(Wide::Memory::MakeUnique<ReturnEmplaceValue>(self), Expressions(Wide::Memory::MakeUnique<ExpressionReference>(ret_expr.get())), { self, where });
-            else
-                build = nullptr;
-        } else
+    throw std::runtime_error("fuck");
+}
+
+Function::WhileStatement* Function::Scope::GetCurrentWhile() {
+    if (current_while)
+        return current_while;
+    if (parent)
+        return parent->GetCurrentWhile();
+    return nullptr;
+}
+
+Function::CompoundStatement::CompoundStatement(Scope* s)
+    : s(s) {}
+void Function::CompoundStatement::DestroyLocals(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
+    // After code generation, I ain't got no locals left to destroy.
+}
+void Function::CompoundStatement::GenerateCode(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
+    for (auto&& stmt : s->active)
+        stmt->GenerateCode(module, bb, allocas);
+    for (auto rit = s->active.rbegin(); rit != s->active.rend(); ++rit)
+        rit->get()->DestroyLocals(module, bb, allocas);
+}
+
+Function::ReturnStatement::ReturnStatement(Function* f, std::unique_ptr<Expression> expr, Scope* current, Lexer::Range where)
+: self(f), ret_expr(std::move(expr)), where(where)
+{
+    self->returns.insert(this);
+    if (ret_expr) {
+        ListenToNode(ret_expr.get());
+    }
+    auto scope_destructors = current->DestroyAllLocals();
+    destructors = [this, scope_destructors](llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
+        if (ret_expr)
+            ret_expr->DestroyLocals(module, bb, allocas);
+        scope_destructors(module, bb, allocas);
+    };
+    OnNodeChanged(ret_expr.get(), Change::Contents);
+}
+void Function::ReturnStatement::OnNodeChanged(Node* n, Change c) {
+    if (self->ReturnType != self->analyzer.GetVoidType()) {
+        struct ReturnEmplaceValue : Expression {
+            ReturnEmplaceValue(Function* f)
+            : self(f) {}
+            Function* self;
+            Type* GetType() override final {
+                return self->analyzer.GetLvalueType(self->ReturnType);
+            }
+            void DestroyExpressionLocals(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final {}
+            llvm::Value* ComputeValue(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final {
+                return self->llvmfunc->arg_begin();
+            }
+        };
+        if (self->ReturnType)
+            build = self->ReturnType->BuildInplaceConstruction(Wide::Memory::MakeUnique<ReturnEmplaceValue>(self), Expressions(Wide::Memory::MakeUnique<ExpressionReference>(ret_expr.get())), { self, where });
+        else
             build = nullptr;
-    }
-    Lexer::Range where;
-    Function* self;
-    std::function<void(llvm::Module* module, llvm::IRBuilder<>&, llvm::IRBuilder<>&)> destructors;
-    std::unique_ptr<Expression> ret_expr;
-    std::unique_ptr<Expression> build;
-    void DestroyLocals(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final {
-        // When we're codegenned, there's no more need to destroy *any* locals, let alone ours.
-    }
-    void GenerateCode(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final {
-        // Consider the simple cases first.
-        // If our return type is void
-        if (self->ReturnType == self->analyzer.GetVoidType()) {
-            // If we have a void-returning expression, evaluate it, destroy it, then return.
-            if (ret_expr) {
-                ret_expr->GetValue(module, bb, allocas);
-            }
-            destructors(module, bb, allocas);
-            bb.CreateRetVoid();
-            return;
+    } else
+        build = nullptr;
+}
+void Function::ReturnStatement::DestroyLocals(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
+    // When we're codegenned, there's no more need to destroy *any* locals, let alone ours.
+}
+void Function::ReturnStatement::GenerateCode(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
+    // Consider the simple cases first.
+    // If our return type is void
+    if (self->ReturnType == self->analyzer.GetVoidType()) {
+        // If we have a void-returning expression, evaluate it, destroy it, then return.
+        if (ret_expr) {
+            ret_expr->GetValue(module, bb, allocas);
         }
-
-        // If we return a simple type
-        if (!self->ReturnType->IsComplexType(module)) {
-            // and we already have an expression of that type
-            if (ret_expr->GetType() == self->ReturnType) {
-                // then great, just return it directly.
-                auto val = ret_expr->GetValue(module, bb, allocas);
-                destructors(module, bb, allocas);
-                bb.CreateRet(val);
-                return;
-            }
-            // If we have a reference to it, just load it right away.
-            if (ret_expr->GetType()->IsReference(self->ReturnType)) {
-                auto val = bb.CreateLoad(ret_expr->GetValue(module, bb, allocas));
-                destructors(module, bb, allocas);
-                bb.CreateRet(val);
-                return;
-            }
-            // Build will inplace construct this in our first argument, which is INCREDIBLY UNHELPFUL here.
-            // We would fix this up, but, cannot query the complexity of a type prior to code generation.
-            build = self->ReturnType->BuildValueConstruction(Expressions(Wide::Memory::MakeUnique<ExpressionReference>(ret_expr.get())), { self, where });
-            auto val = build->GetValue(module, bb, allocas);
-            build->DestroyLocals(module, bb, allocas);
-            destructors(module, bb, allocas);
-            bb.CreateRet(val);
-            return;
-        }
-
-        // If we return a complex type, the 0th parameter will be memory into which to place the return value.
-        // build should be a function taking the memory and our ret's value and emplacing it.
-        // Then return void.
-        build->GetValue(module, bb, allocas);
-        build->DestroyLocals(module, bb, allocas);
         destructors(module, bb, allocas);
         bb.CreateRetVoid();
         return;
     }
-};
+
+    // If we return a simple type
+    if (!self->ReturnType->IsComplexType(module)) {
+        // and we already have an expression of that type
+        if (ret_expr->GetType() == self->ReturnType) {
+            // then great, just return it directly.
+            auto val = ret_expr->GetValue(module, bb, allocas);
+            destructors(module, bb, allocas);
+            bb.CreateRet(val);
+            return;
+        }
+        // If we have a reference to it, just load it right away.
+        if (ret_expr->GetType()->IsReference(self->ReturnType)) {
+            auto val = bb.CreateLoad(ret_expr->GetValue(module, bb, allocas));
+            destructors(module, bb, allocas);
+            bb.CreateRet(val);
+            return;
+        }
+        // Build will inplace construct this in our first argument, which is INCREDIBLY UNHELPFUL here.
+        // We would fix this up, but, cannot query the complexity of a type prior to code generation.
+        build = self->ReturnType->BuildValueConstruction(Expressions(Wide::Memory::MakeUnique<ExpressionReference>(ret_expr.get())), { self, where });
+        auto val = build->GetValue(module, bb, allocas);
+        build->DestroyLocals(module, bb, allocas);
+        destructors(module, bb, allocas);
+        bb.CreateRet(val);
+        return;
+    }
+
+    // If we return a complex type, the 0th parameter will be memory into which to place the return value.
+    // build should be a function taking the memory and our ret's value and emplacing it.
+    // Then return void.
+    build->GetValue(module, bb, allocas);
+    build->DestroyLocals(module, bb, allocas);
+    destructors(module, bb, allocas);
+    bb.CreateRetVoid();
+    return;
+}
+
 
 bool is_terminated(llvm::BasicBlock* bb) {
     return !bb->empty() && bb->back().isTerminator();
 }
 
-struct Function::WhileStatement : public Statement {
-    WhileStatement(Expression* ex, Lexer::Range where, Function* s)
-    : cond(std::move(ex)), where(where), self(s)
-    {
-        ListenToNode(cond);
-        OnNodeChanged(cond, Change::Contents);
-    }
-    void OnNodeChanged(Node* n, Change what) override final {
-        if (what == Change::Destroyed) return;
-        if (cond->GetType())
-            boolconvert = cond->GetType()->Decay()->BuildBooleanConversion(Wide::Memory::MakeUnique<ExpressionReference>(cond), { self, where });
-    }
+Function::WhileStatement::WhileStatement(Expression* ex, Lexer::Range where, Function* s)
+: cond(std::move(ex)), where(where), self(s)
+{
+    ListenToNode(cond);
+    OnNodeChanged(cond, Change::Contents);
+}
+void Function::WhileStatement::OnNodeChanged(Node* n, Change what) {
+    if (what == Change::Destroyed) return;
+    if (cond->GetType())
+        boolconvert = cond->GetType()->Decay()->BuildBooleanConversion(Wide::Memory::MakeUnique<ExpressionReference>(cond), { self, where });
+}
 
-    Function* self;
-    Lexer::Range where;
-    Expression* cond;
-    Statement* body;
-    std::unique_ptr<Expression> boolconvert;
-    llvm::BasicBlock* continue_bb = nullptr;
-    llvm::BasicBlock* check_bb = nullptr;
-
-    void DestroyLocals(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final {
-        // After code generation, I ain't got no locals left to destroy.
-    }
-    void GenerateCode(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final {
-        check_bb = llvm::BasicBlock::Create(bb.getContext(), "check_bb", bb.GetInsertBlock()->getParent());
-        auto loop_bb = llvm::BasicBlock::Create(bb.getContext(), "loop_bb", bb.GetInsertBlock()->getParent());
-        continue_bb = llvm::BasicBlock::Create(bb.getContext(), "continue_bb", bb.GetInsertBlock()->getParent());
+void Function::WhileStatement::DestroyLocals(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
+    // After code generation, I ain't got no locals left to destroy.
+}
+void Function::WhileStatement::GenerateCode(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
+    check_bb = llvm::BasicBlock::Create(bb.getContext(), "check_bb", bb.GetInsertBlock()->getParent());
+    auto loop_bb = llvm::BasicBlock::Create(bb.getContext(), "loop_bb", bb.GetInsertBlock()->getParent());
+    continue_bb = llvm::BasicBlock::Create(bb.getContext(), "continue_bb", bb.GetInsertBlock()->getParent());
+    bb.CreateBr(check_bb);
+    bb.SetInsertPoint(check_bb);
+    // Both of these branches need to destroy the cond's locals.
+    // In the case of the loop, so that when check_bb is re-entered, it's clear.
+    // In the case of the continue, so that the check's locals are cleaned up properly.
+    auto condition = boolconvert->GetValue(module, bb, allocas);
+    if (condition->getType() == llvm::Type::getInt8Ty(module->getContext()))
+        condition = bb.CreateTrunc(condition, llvm::Type::getInt1Ty(module->getContext()));
+    bb.CreateCondBr(condition, loop_bb, continue_bb);
+    bb.SetInsertPoint(loop_bb);
+    body->GenerateCode(module, bb, allocas);
+    body->DestroyLocals(module, bb, allocas);
+    cond->DestroyLocals(module, bb, allocas);
+    // If, for example, we unconditionally return or break/continue, it can happen that we were already terminated.
+    if (!is_terminated(bb.GetInsertBlock()))
         bb.CreateBr(check_bb);
-        bb.SetInsertPoint(check_bb);
-        // Both of these branches need to destroy the cond's locals.
-        // In the case of the loop, so that when check_bb is re-entered, it's clear.
-        // In the case of the continue, so that the check's locals are cleaned up properly.
-        auto condition = boolconvert->GetValue(module, bb, allocas);
-        if (condition->getType() == llvm::Type::getInt8Ty(module->getContext()))
-            condition = bb.CreateTrunc(condition, llvm::Type::getInt1Ty(module->getContext()));
-        bb.CreateCondBr(condition, loop_bb, continue_bb);
-        bb.SetInsertPoint(loop_bb);
-        body->GenerateCode(module, bb, allocas);
-        body->DestroyLocals(module, bb, allocas);
-        cond->DestroyLocals(module, bb, allocas);
-        // If, for example, we unconditionally return or break/continue, it can happen that we were already terminated.
-        if (!is_terminated(bb.GetInsertBlock()))
-            bb.CreateBr(check_bb);
-        bb.SetInsertPoint(continue_bb);
-        cond->DestroyLocals(module, bb, allocas);
-    }
-};
-struct Function::IfStatement : public Statement{
-    IfStatement(Expression* cond, Statement* true_b, Statement* false_b, Lexer::Range where, Function* s)
-    : cond(std::move(cond)), true_br(std::move(true_b)), false_br(std::move(false_b)), where(where), self(s)
-    {
-        ListenToNode(cond);
-        OnNodeChanged(cond, Change::Contents);
-    }
-    void OnNodeChanged(Node* n, Change what) override final {
-        if (what == Change::Destroyed) return;
-        if (cond->GetType())
-            boolconvert = cond->GetType()->Decay()->BuildBooleanConversion(Wide::Memory::MakeUnique<ExpressionReference>(cond), { self, where });
-    }
+    bb.SetInsertPoint(continue_bb);
+    cond->DestroyLocals(module, bb, allocas);
+}
 
-    Function* self; 
-    Lexer::Range where;
-    Expression* cond;
-    Statement* true_br;
-    Statement* false_br;
-    std::unique_ptr<Expression> boolconvert;
+Function::IfStatement::IfStatement(Expression* cond, Statement* true_b, Statement* false_b, Lexer::Range where, Function* s)
+: cond(std::move(cond)), true_br(std::move(true_b)), false_br(std::move(false_b)), where(where), self(s)
+{
+    ListenToNode(cond);
+    OnNodeChanged(cond, Change::Contents);
+}
+void Function::IfStatement::OnNodeChanged(Node* n, Change what) {
+    if (what == Change::Destroyed) return;
+    if (cond->GetType())
+        boolconvert = cond->GetType()->Decay()->BuildBooleanConversion(Wide::Memory::MakeUnique<ExpressionReference>(cond), { self, where });
+}
+void Function::IfStatement::DestroyLocals(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
+    // After code generation, I ain't got no locals left to destroy.
+}
+void Function::IfStatement::GenerateCode(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
+    auto true_bb = llvm::BasicBlock::Create(bb.getContext(), "true_bb", bb.GetInsertBlock()->getParent());
+    auto continue_bb = llvm::BasicBlock::Create(bb.getContext(), "continue_bb", bb.GetInsertBlock()->getParent());
+    auto else_bb = false_br ? llvm::BasicBlock::Create(bb.getContext(), "false_bb", bb.GetInsertBlock()->getParent()) : continue_bb;
+    auto condition = boolconvert->GetValue(module, bb, allocas);
+    if (condition->getType() == llvm::Type::getInt8Ty(module->getContext()))
+        condition = bb.CreateTrunc(condition, llvm::Type::getInt1Ty(module->getContext()));
+    bb.CreateCondBr(condition, true_bb, else_bb);
+    bb.SetInsertPoint(true_bb);
+    true_br->GenerateCode(module, bb, allocas);
+    true_br->DestroyLocals(module, bb, allocas);
+    if (!is_terminated(bb.GetInsertBlock()))
+        bb.CreateBr(continue_bb);
 
-    void DestroyLocals(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final {
-        // After code generation, I ain't got no locals left to destroy.
-    }
-    void GenerateCode(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final {
-        auto true_bb = llvm::BasicBlock::Create(bb.getContext(), "true_bb", bb.GetInsertBlock()->getParent());
-        auto continue_bb = llvm::BasicBlock::Create(bb.getContext(), "continue_bb", bb.GetInsertBlock()->getParent());
-        auto else_bb = false_br ? llvm::BasicBlock::Create(bb.getContext(), "false_bb", bb.GetInsertBlock()->getParent()) : continue_bb;
-        auto condition = boolconvert->GetValue(module, bb, allocas);
-        if (condition->getType() == llvm::Type::getInt8Ty(module->getContext()))
-            condition = bb.CreateTrunc(condition, llvm::Type::getInt1Ty(module->getContext()));
-        bb.CreateCondBr(condition, true_bb, else_bb);
-        bb.SetInsertPoint(true_bb);
-        true_br->GenerateCode(module, bb, allocas);
-        true_br->DestroyLocals(module, bb, allocas);
+    if (false_br) {
+        bb.SetInsertPoint(else_bb);
+        false_br->GenerateCode(module, bb, allocas);
+        false_br->DestroyLocals(module, bb, allocas);
         if (!is_terminated(bb.GetInsertBlock()))
             bb.CreateBr(continue_bb);
+    }
 
-        if (false_br) {
-            bb.SetInsertPoint(else_bb);
-            false_br->GenerateCode(module, bb, allocas);
-            false_br->DestroyLocals(module, bb, allocas);
-            if (!is_terminated(bb.GetInsertBlock()))
-                bb.CreateBr(continue_bb);
-        }
+    bb.SetInsertPoint(continue_bb);
+    cond->DestroyLocals(module, bb, allocas);
+}
 
-        bb.SetInsertPoint(continue_bb);
-        cond->DestroyLocals(module, bb, allocas);
-    }
-};
-struct Function::VariableStatement : public Statement {
-    VariableStatement(std::vector<LocalVariable*> locs, std::unique_ptr<Expression> expr)
-    : locals(std::move(locs)), init_expr(std::move(expr)){}
-    std::unique_ptr<Expression> init_expr;
-    std::vector<LocalVariable*> locals;
-    void DestroyLocals(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
-        for (auto local : locals)
-            local->DestroyLocals(module, bb, allocas);
-        init_expr->DestroyLocals(module, bb, allocas);
-    }
-    void GenerateCode(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
-        init_expr->GetValue(module, bb, allocas);
-        for (auto local : locals)
-            local->GetValue(module, bb, allocas);
-    }
-};
+Function::VariableStatement::VariableStatement(std::vector<LocalVariable*> locs, std::unique_ptr<Expression> expr)
+: locals(std::move(locs)), init_expr(std::move(expr)){}
+void Function::VariableStatement::DestroyLocals(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
+    for (auto local : locals)
+        local->DestroyLocals(module, bb, allocas);
+    init_expr->DestroyLocals(module, bb, allocas);
+}
+void Function::VariableStatement::GenerateCode(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
+    init_expr->GetValue(module, bb, allocas);
+    for (auto local : locals)
+        local->GetValue(module, bb, allocas);
+}
+
 std::unique_ptr<Expression> Function::Scope::LookupLocal(std::string name) {
     if (named_variables.find(name) != named_variables.end()) {
         auto&& ref = named_variables.at(name);
@@ -458,36 +406,28 @@ struct Function::LocalScope {
         func->current_scope = previous;
     }
 };
-struct Function::BreakStatement : public Statement {
-    BreakStatement(Scope* s) {
-        // The continue_bb already has code to destroy the condition's locals.
-        // So don't destroy them again here.
-        destroy_locals = s->DestroyWhileBody();
-        while_stmt = s->GetCurrentWhile();
-    }
-    WhileStatement* while_stmt;
-    std::function<void(llvm::Module*, llvm::IRBuilder<>&, llvm::IRBuilder<>&)> destroy_locals;
-    void DestroyLocals(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final {}
-    void GenerateCode(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final {
-        destroy_locals(module, bb, allocas);
-        bb.CreateBr(while_stmt->continue_bb);
-    }
-};
-struct Function::ContinueStatement : public Statement {
-    ContinueStatement(Scope* s) {
-        // The check_bb is going to expect that the cond's memory is clear for use.
-        // So clean them up before we can re-create in that space.
-        destroy_locals = s->DestroyWhileBodyAndCond();
-        while_stmt = s->GetCurrentWhile();
-    }
-    WhileStatement* while_stmt;
-    std::function<void(llvm::Module*, llvm::IRBuilder<>&, llvm::IRBuilder<>&)> destroy_locals;
-    void DestroyLocals(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final {}
-    void GenerateCode(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final {
-        destroy_locals(module, bb, allocas);
-        bb.CreateBr(while_stmt->check_bb);
-    }
-};
+Function::BreakStatement::BreakStatement(Scope* s) {
+    // The continue_bb already has code to destroy the condition's locals.
+    // So don't destroy them again here.
+    destroy_locals = s->DestroyWhileBody();
+    while_stmt = s->GetCurrentWhile();
+}
+void Function::BreakStatement::DestroyLocals(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {}
+void Function::BreakStatement::GenerateCode(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
+    destroy_locals(module, bb, allocas);
+    bb.CreateBr(while_stmt->continue_bb);
+}
+Function::ContinueStatement::ContinueStatement(Scope* s) {
+    // The check_bb is going to expect that the cond's memory is clear for use.
+    // So clean them up before we can re-create in that space.
+    destroy_locals = s->DestroyWhileBodyAndCond();
+    while_stmt = s->GetCurrentWhile();
+}
+void Function::ContinueStatement::DestroyLocals(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {}
+void Function::ContinueStatement::GenerateCode(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
+    destroy_locals(module, bb, allocas);
+    bb.CreateBr(while_stmt->check_bb);
+}
 std::unique_ptr<Statement> Function::AnalyzeStatement(const AST::Statement* s) {
     if (auto ret = dynamic_cast<const AST::Return*>(s)) {
         if (ret->RetExpr) {
@@ -593,56 +533,47 @@ std::unique_ptr<Statement> Function::AnalyzeStatement(const AST::Statement* s) {
     assert(false && "Unsupported statement.");
 }
 
-struct Function::Parameter : public Expression {
-    Parameter(Function* s, unsigned n, Lexer::Range where)
-    : self(s), num(n), where(where)
-    {
-        OnNodeChanged(s);
-        ListenToNode(self);
+Function::Parameter::Parameter(Function* s, unsigned n, Lexer::Range where)
+: self(s), num(n), where(where)
+{
+    OnNodeChanged(s, Change::Contents);
+    ListenToNode(self);
+}
+void Function::Parameter::OnNodeChanged(Node* n, Change what) {
+    auto get_new_ty = [this]() -> Type* {
+        auto root_ty = self->Args[num];
+        if (root_ty->IsReference())
+            return self->analyzer.GetLvalueType(root_ty->Decay()); // Is this wrong in the case of named rvalue reference?
+        return self->analyzer.GetLvalueType(root_ty);
+    };
+    auto new_ty = get_new_ty();
+    if (new_ty != cur_ty) {
+        cur_ty = new_ty;
+        destructor = cur_ty->BuildDestructorCall(Wide::Memory::MakeUnique<ExpressionReference>(this), { self, where });
+        OnChange();
     }
-    Lexer::Range where;
-    Function* self;
-    unsigned num;
-    std::unique_ptr<Expression> destructor;
-    Type* cur_ty = nullptr;
+}
+Type* Function::Parameter::GetType() {
+    return cur_ty;
+}
+void Function::Parameter::DestroyExpressionLocals(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
+    if (self->Args[num]->IsComplexType(module))
+        destructor->GetValue(module, bb, allocas);
+}
+llvm::Value* Function::Parameter::ComputeValue(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
+    auto argnum = num;
+    if (self->ReturnType->IsComplexType(module))
+        ++argnum;
+    auto llvm_argument = std::next(self->llvmfunc->arg_begin(), argnum);
 
-    void OnNodeChanged(Node* n) {
-        auto get_new_ty = [this]() -> Type* {
-            auto root_ty = self->Args[num];
-            if (root_ty->IsReference())
-                return self->analyzer.GetLvalueType(root_ty->Decay()); // Is this wrong in the case of named rvalue reference?
-            return self->analyzer.GetLvalueType(root_ty);
-        };
-        auto new_ty = get_new_ty();
-        if (new_ty != cur_ty) {
-            cur_ty = new_ty;
-            destructor = cur_ty->BuildDestructorCall(Wide::Memory::MakeUnique<ExpressionReference>(this), { self, where });
-            OnChange();
-        }
-    }
-    Type* GetType() override final {
-        return cur_ty;
-    }
-    void DestroyExpressionLocals(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final {
-        if (self->Args[num]->IsComplexType(module))
-            destructor->GetValue(module, bb, allocas);
-    }
+    if (self->Args[num]->IsComplexType(module) || self->Args[num]->IsReference())
+        return llvm_argument;
 
-    llvm::Value* ComputeValue(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final {
-        auto argnum = num;
-        if (self->ReturnType->IsComplexType(module))
-            ++argnum;
-        auto llvm_argument = std::next(self->llvmfunc->arg_begin(), argnum);
-
-        if (self->Args[num]->IsComplexType(module) || self->Args[num]->IsReference())
-            return llvm_argument;
-
-        auto alloc = allocas.CreateAlloca(self->Args[num]->GetLLVMType(module));
-        alloc->setAlignment(self->Args[num]->alignment());
-        bb.CreateStore(llvm_argument, alloc);
-        return alloc;
-    }
-};
+    auto alloc = allocas.CreateAlloca(self->Args[num]->GetLLVMType(module));
+    alloc->setAlignment(self->Args[num]->alignment());
+    bb.CreateStore(llvm_argument, alloc);
+    return alloc;
+}
 
 Function::Function(std::vector<Type*> args, const AST::FunctionBase* astfun, Analyzer& a, Type* mem, std::string src_name)
 : MetaType(a)
@@ -1034,3 +965,4 @@ std::string Function::explain() {
         context_name = source_name;
     return "(" + context_name + args + " at " + fun->where + ")";
 }
+Function::~Function() {}

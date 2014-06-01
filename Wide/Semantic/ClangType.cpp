@@ -475,67 +475,57 @@ Type* ClangType::GetVirtualPointerType() {
 }
 std::vector<BaseType::VirtualFunction> ClangType::ComputeVTableLayout() {
     // ITANIUM ABI SPECIFIC
+    auto CreateVFuncFromMethod = [&](clang::CXXMethodDecl* methit) {
+        BaseType::VirtualFunction vfunc;
+        vfunc.name = methit->getName();
+        vfunc.abstract = methit->isPure();
+        vfunc.ret = analyzer.GetClangType(*from, methit->getResultType());
+        if (methit->getRefQualifier() == clang::RefQualifierKind::RQ_RValue)
+            vfunc.args.push_back(analyzer.GetRvalueType(this));
+        else
+            vfunc.args.push_back(analyzer.GetLvalueType(this));
+        for (auto paramit = methit->param_begin(); paramit != methit->param_end(); ++paramit) {
+            vfunc.args.push_back(analyzer.GetClangType(*from, (*paramit)->getType()));
+        }
+        return vfunc;
+    };
     auto&& layout = from->GetASTContext().getASTRecordLayout(type->getAsCXXRecordDecl());
     // If we have a primary base, then the vtable is the base vtable followed by the derived vtable.
     if (!layout.hasOwnVFPtr()) {
         auto pbase = dynamic_cast<Wide::Semantic::BaseType*>(analyzer.GetClangType(*from, from->GetASTContext().getRecordType(layout.getPrimaryBase())));
         auto pbaselayout = pbase->GetVtableLayout();        
-        for (auto methit = type->getAsCXXRecordDecl()->method_begin(); methit != type->getAsCXXRecordDecl()->method_end(); ++methit) {         
-            if (methit->isVirtual()) {
-                // No additional slot if it overrides a method from primary base AND the return type does not require offsetting
-                auto add_extra_slot = [&] {
-                    if (methit->size_overridden_methods() == 0)
-                        return true;
-                    for (auto overriddenit = methit->begin_overridden_methods(); overriddenit != methit->end_overridden_methods(); ++overriddenit) {
-                        auto basemeth = *overriddenit;
-                        if (basemeth->getParent() == layout.getPrimaryBase()) {
-                            if (basemeth->getResultType() == methit->getResultType())
-                                return false;
-                            // If they have an adjustment of zero.
-                            auto basemethrecord = basemeth->getResultType()->getAsCXXRecordDecl();
-                            auto dermethrecord = methit->getResultType()->getAsCXXRecordDecl();
-                            if (!basemethrecord || !dermethrecord) continue;
-                            auto&& derlayout = from->GetASTContext().getASTRecordLayout(dermethrecord);
-                            if (!derlayout.hasOwnVFPtr() && derlayout.getPrimaryBase() == basemethrecord)
-                                return false;
-                            continue;
-                        }
-                    }
+        for (auto methit = type->getAsCXXRecordDecl()->method_begin(); methit != type->getAsCXXRecordDecl()->method_end(); ++methit) {    
+            if (!methit->isVirtual()) continue;
+            // No additional slot if it overrides a method from primary base AND the return type does not require offsetting
+            auto add_extra_slot = [&] {
+                if (methit->size_overridden_methods() == 0)
                     return true;
-                };
-                if (!add_extra_slot()) continue;
-                BaseType::VirtualFunction vfunc;
-                vfunc.name = methit->getName();
-                vfunc.abstract = methit->isPure();
-                vfunc.ret = analyzer.GetClangType(*from, methit->getResultType());
-                if (methit->getRefQualifier() == clang::RefQualifierKind::RQ_RValue)
-                    vfunc.args.push_back(analyzer.GetRvalueType(this));
-                else
-                    vfunc.args.push_back(analyzer.GetLvalueType(this));
-                for (auto paramit = methit->param_begin(); paramit != methit->param_end(); ++paramit) {
-                    vfunc.args.push_back(analyzer.GetClangType(*from, (*paramit)->getType()));
+                for (auto overriddenit = methit->begin_overridden_methods(); overriddenit != methit->end_overridden_methods(); ++overriddenit) {
+                    auto basemeth = *overriddenit;
+                    if (basemeth->getParent() == layout.getPrimaryBase()) {
+                        if (basemeth->getResultType() == methit->getResultType())
+                            return false;
+                        // If they have an adjustment of zero.
+                        auto basemethrecord = basemeth->getResultType()->getAsCXXRecordDecl();
+                        auto dermethrecord = methit->getResultType()->getAsCXXRecordDecl();
+                        if (!basemethrecord || !dermethrecord) continue;
+                        auto&& derlayout = from->GetASTContext().getASTRecordLayout(dermethrecord);
+                        if (!derlayout.hasOwnVFPtr() && derlayout.getPrimaryBase() == basemethrecord)
+                            return false;
+                        continue;
+                    }
                 }
-                pbaselayout.push_back(vfunc);
-            }
+                return true;
+            };
+            if (!add_extra_slot()) continue;
+            pbaselayout.push_back(CreateVFuncFromMethod(*methit));
         }
         return pbaselayout;
     }
     std::vector<BaseType::VirtualFunction> out;
     for (auto methit = type->getAsCXXRecordDecl()->method_begin(); methit != type->getAsCXXRecordDecl()->method_end(); ++methit) {
-        if (methit->isVirtual()) {
-            BaseType::VirtualFunction vfunc;
-            vfunc.name = methit->getName();
-            vfunc.abstract = methit->isPure();
-            vfunc.ret = analyzer.GetClangType(*from, methit->getResultType());
-            if (methit->getRefQualifier() == clang::RefQualifierKind::RQ_RValue)
-                vfunc.args.push_back(analyzer.GetRvalueType(this));
-            else
-                vfunc.args.push_back(analyzer.GetLvalueType(this));
-            for (auto paramit = methit->param_begin(); paramit != methit->param_end(); ++paramit) {
-                vfunc.args.push_back(analyzer.GetClangType(*from, (*paramit)->getType()));
-            }
-            out.push_back(vfunc);
-        }
+        if (methit->isVirtual())
+            out.push_back(CreateVFuncFromMethod(*methit));
     }
     return out;
 }
