@@ -164,6 +164,7 @@ int main(int argc, char** argv)
     auto stdfiles = SearchDirectory(stdlib, name);
     auto final_files = files;
     final_files.insert(stdfiles.begin(), stdfiles.end());
+    ClangOpts.HeaderSearchOptions->AddPath(stdlib, clang::frontend::IncludeDirGroup::System, false, false);
 
     try {
         llvm::LLVMContext con;

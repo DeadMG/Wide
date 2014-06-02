@@ -32,21 +32,6 @@ template<typename T, typename U> T* debug_cast(U* other) {
     return static_cast<T*>(other);
 }
 
-llvm::Type* OverloadSet::GetLLVMType(llvm::Module* module) {
-    // Have to cache result - not fun.
-    std::stringstream stream;
-    stream << "struct.__" << this;
-    auto str = stream.str();
-    if (module->getTypeByName(str))
-        return module->getTypeByName(str);
-    if (!nonstatic) {
-        auto int8ty = llvm::IntegerType::getInt8Ty(module->getContext());
-        return llvm::StructType::create(str, int8ty, nullptr);        
-    }
-    auto ty = nonstatic->Decay()->GetLLVMType(module);
-    return llvm::StructType::create(str, ty->getPointerTo(), nullptr);
-}
-
 std::unique_ptr<Expression> OverloadSet::BuildCall(std::unique_ptr<Expression> val, std::vector<std::unique_ptr<Expression>> args, Context c) {
     std::vector<Type*> targs;
 
@@ -69,7 +54,7 @@ std::unique_ptr<Expression> OverloadSet::BuildCall(std::unique_ptr<Expression> v
 }
 
 OverloadSet::OverloadSet(std::unordered_set<OverloadResolvable*> call, Type* t, Analyzer& a)
-: callables(std::move(call)), from(nullptr), nonstatic(t), Type(a) {}
+: callables(std::move(call)), from(nullptr), nonstatic(t), AggregateType(a) {}
 
 struct cppcallable : public Callable {
     Type* source;
@@ -331,16 +316,8 @@ Callable* OverloadSet::Resolve(std::vector<Type*> f_args, Type* source) {
     return get_wide_or_result();
 }
 
-std::size_t OverloadSet::size() {
-    if (!nonstatic) return 1;
-    return analyzer.GetDataLayout().getPointerSize();
-}
-std::size_t OverloadSet::alignment() {
-    if (!nonstatic) return 1;
-    return analyzer.GetDataLayout().getPointerABIAlignment();
-}
 OverloadSet::OverloadSet(OverloadSet* s, OverloadSet* other, Analyzer& a, Type* context)
-: Type(a), nonstatic(nullptr) {
+: AggregateType(a), nonstatic(nullptr) {
     for(auto x : s->callables)
         callables.insert(x);
     for(auto x : other->callables)
@@ -364,7 +341,7 @@ OverloadSet::OverloadSet(OverloadSet* s, OverloadSet* other, Analyzer& a, Type* 
     }
 }
 OverloadSet::OverloadSet(std::unordered_set<clang::NamedDecl*> clangdecls, ClangTU* tu, Type* context, Analyzer& a)
-: clangfuncs(std::move(clangdecls)), from(tu), Type(a), nonstatic(nullptr)
+: clangfuncs(std::move(clangdecls)), from(tu), AggregateType(a), nonstatic(nullptr)
 {
     if(context)
         if(dynamic_cast<ClangType*>(context->Decay()))
@@ -377,22 +354,8 @@ Type* OverloadSet::GetConstantContext() {
 }
 OverloadSet* OverloadSet::CreateConstructorOverloadSet(Lexer::Access access) {
     if (access != Lexer::Access::Public) return GetConstructorOverloadSet(Lexer::Access::Public);
-    std::unordered_set<OverloadResolvable*> constructors;
     if (nonstatic) {
-        CopyConstructor = MakeResolvable([](std::vector<std::unique_ptr<Expression>> args, Context c) {
-            return CreatePrimAssOp(std::move(args[0]), std::move(args[1]), [](llvm::Value* lhs, llvm::Value* rhs, llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
-                return rhs;
-            });
-        }, { analyzer.GetLvalueType(this), analyzer.GetLvalueType(this) });
-        constructors.insert(CopyConstructor.get());
-
-        MoveConstructor = MakeResolvable([](std::vector<std::unique_ptr<Expression>> args, Context c) {
-            return CreatePrimAssOp(std::move(args[0]), std::move(args[1]), [](llvm::Value* lhs, llvm::Value* rhs, llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
-                return rhs;
-            });
-        }, { analyzer.GetLvalueType(this), analyzer.GetRvalueType(this) });
-        constructors.insert(MoveConstructor.get());
-
+        std::unordered_set<OverloadResolvable*> constructors;
         ReferenceConstructor = MakeResolvable([this](std::vector<std::unique_ptr<Expression>> args, Context c) {
             return CreatePrimAssOp(std::move(args[0]), std::move(args[1]), [this](llvm::Value* lhs, llvm::Value* rhs, llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
                 auto agg = llvm::ConstantAggregateZero::get(GetLLVMType(module));
@@ -401,31 +364,10 @@ OverloadSet* OverloadSet::CreateConstructorOverloadSet(Lexer::Access access) {
         }, { analyzer.GetLvalueType(this), nonstatic });
         constructors.insert(ReferenceConstructor.get());
 
-        return analyzer.GetOverloadSet(constructors);
+        return analyzer.GetOverloadSet(AggregateType::CreateNondefaultConstructorOverloadSet(), analyzer.GetOverloadSet(constructors));
     }
-
-    DefaultConstructor = MakeResolvable([this](std::vector<std::unique_ptr<Expression>> args, Context cm) {
-        return CreatePrimUnOp(std::move(args[0]), analyzer.GetLvalueType(this), [](llvm::Value* val, llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
-            return val;
-        });
-    }, { analyzer.GetLvalueType(this) });
-    constructors.insert(DefaultConstructor.get());
-
-    CopyConstructor = MakeResolvable([](std::vector<std::unique_ptr<Expression>> args, Context c) {
-        return CreatePrimAssOp(std::move(args[0]), std::move(args[1]), [](llvm::Value* lhs, llvm::Value* rhs, llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
-            return rhs;
-        });
-    }, { analyzer.GetLvalueType(this), analyzer.GetLvalueType(this) });
-    constructors.insert(CopyConstructor.get());
-
-    MoveConstructor = MakeResolvable([](std::vector<std::unique_ptr<Expression>> args, Context c) {
-        return CreatePrimAssOp(std::move(args[0]), std::move(args[1]), [](llvm::Value* lhs, llvm::Value* rhs, llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
-            return rhs;
-        });
-    }, { analyzer.GetLvalueType(this), analyzer.GetRvalueType(this) });
-    constructors.insert(MoveConstructor.get());
-
-    return analyzer.GetOverloadSet(constructors);
+        
+    return AggregateType::CreateConstructorOverloadSet(access);
 }
 std::unique_ptr<Expression> OverloadSet::AccessMember(std::unique_ptr<Expression> t, std::string name, Context c) {
     if (name != "resolve")
@@ -474,4 +416,11 @@ std::pair<ClangTU*, clang::FunctionDecl*> OverloadSet::GetSingleFunction() {
         }
     }
     return { nullptr, nullptr };
+}
+
+const std::vector<Type*>& OverloadSet::GetContents() {
+    if (nonstatic && contents.empty()) {
+        contents.push_back(nonstatic);
+    }
+    return contents;
 }

@@ -1,0 +1,4 @@
+using header := cpp("JITSuccess/CPPInterop/EvaluateTemplateClass.h");
+Main() {
+    return header.test(int)().value;
+}

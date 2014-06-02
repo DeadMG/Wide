@@ -1,0 +1,4 @@
+using header := cpp("JITSuccess/CPPInterop/NamespaceScopeGlobal.h");
+Main() {
+    return header.test.result;
+}

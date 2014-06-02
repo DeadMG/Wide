@@ -34,8 +34,6 @@ std::unique_ptr<Expression> LambdaType::BuildCall(std::unique_ptr<Expression> va
     return call->Call(std::move(args), c);
 }
 std::unique_ptr<Expression> LambdaType::BuildLambdaFromCaptures(std::vector<std::unique_ptr<Expression>> exprs, Context c) {
-    if (GetContents().size() == 0)
-        return std::move(exprs[0]);
     auto self = Wide::Memory::MakeUnique<ImplicitTemporaryExpr>(this, c);
     if (contents.size() == 0)
         return std::move(self);
