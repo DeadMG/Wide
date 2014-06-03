@@ -671,3 +671,8 @@ std::vector<ConstructorContext::member> ClangType::GetMembers() {
     }
     return std::move(out);
 }
+OverloadSet* ClangType::GetDestructorOverloadSet() {
+    auto des = type->getAsCXXRecordDecl()->getDestructor();
+    std::unordered_set<clang::NamedDecl*> decls = { des };
+    return analyzer.GetOverloadSet(decls, from, nullptr);
+}

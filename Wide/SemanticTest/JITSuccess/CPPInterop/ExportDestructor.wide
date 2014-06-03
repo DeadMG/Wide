@@ -1,0 +1,11 @@
+using test := cpp("JITSuccess/CPPInterop/ExportDestructor.h").test;
+
+~type(this := test.lvalue) prolog { ExportAs = test.destructor; }
+{
+    *p = true;
+}
+Main() {
+    ret := false;
+    { test(ret); }
+    return ret;
+}

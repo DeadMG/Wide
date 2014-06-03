@@ -60,6 +60,9 @@ std::unique_ptr<Expression> ConstructorType::AccessMember(std::unique_ptr<Expres
         if (name == "constructors") {
             return BuildChain(std::move(self), clangty->GetConstructorOverloadSet(GetAccessSpecifier(c.from, clangty))->BuildValueConstruction(Expressions(), c));
         }
+        if (name == "destructor") {
+            return BuildChain(std::move(self), clangty->GetDestructorOverloadSet()->BuildValueConstruction(Expressions(), c));
+        }
     }
     return nullptr;
 }

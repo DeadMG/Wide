@@ -30,6 +30,8 @@ namespace Wide {
             std::unique_ptr<Expression> FunctionPointerFor(std::string name, std::vector<Type*> args, Type* ret, unsigned offset) override final;
             std::vector<member> GetMembers() override final;
         public:
+            // Used for type.destructor access.
+            OverloadSet* GetDestructorOverloadSet();
             std::unique_ptr<Expression> GetVirtualPointer(std::unique_ptr<Expression>) override final;
             ClangType(ClangTU* src, clang::QualType t, Analyzer& a);
             llvm::Type* GetLLVMType(llvm::Module* m) override final;            

@@ -101,7 +101,7 @@ int main(int argc, char** argv)
     }
 
     if (input.count("version")) {
-        std::cout << 169;
+        std::cout << 170;
         return 0;
     }
 

@@ -1182,6 +1182,13 @@ namespace Wide {
                         ParseOverloadedOperator(op, m, bracket.GetLocation(), a);
                         return a;
                     }
+                    // Exported destructor
+                    if (token.GetType() == Lexer::TokenType::Negate) {
+                        auto next = Check(Error::DestructorNoType, Lexer::TokenType::Type);
+                        auto open = Check(Error::DestructorNoOpenBracket, Lexer::TokenType::OpenBracket);
+                        ParseFunction(token, m, open.GetLocation(), a);
+                        return a;
+                    }
                     throw ParserError(token.GetLocation(), Error::UnrecognizedTokenModuleScope);
                 } catch(ParserError& e) {
                     if(lex) {
