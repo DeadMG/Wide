@@ -1,0 +1,8 @@
+using test := cpp("JITSuccess/CPPInterop/ExportConstructor.h").test;
+type() prolog { ExportAs = test.constructors.resolve(test.lvalue); }
+    : val(true)
+{
+}
+Main() {
+    return test().val;
+}

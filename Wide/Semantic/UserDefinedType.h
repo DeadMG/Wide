@@ -20,7 +20,7 @@ namespace Wide {
         class Function;
         class OverloadSet;
         class Module;
-        class UserDefinedType : public AggregateType, public TupleInitializable, public BaseType, public MemberFunctionContext {
+        class UserDefinedType : public AggregateType, public TupleInitializable, public BaseType, public MemberFunctionContext, public ConstructorContext {
 
             const std::vector<Type*>& GetContents() { return GetMemberData().contents; }
 
@@ -64,26 +64,8 @@ namespace Wide {
             std::vector<std::pair<BaseType*, unsigned>> GetBasesAndOffsets() override final;
             std::vector<BaseType*> GetBases() override final;
             bool IsDynamic();
+            std::vector<member> GetMembers() override final;
         public:
-            struct member {
-                member(Lexer::Range where)
-                : location(where) {}
-                member(const member&) = delete;
-                member(member&& other)
-                    : name(std::move(other.name))
-                    , t(other.t)
-                    , num(other.num)
-                    , InClassInitializer(std::move(other.InClassInitializer))
-                    , location(std::move(other.location))
-                    , vptr(other.vptr) {}
-                std::string name;
-                Type* t;
-                unsigned num;
-                std::function<std::unique_ptr<Expression>(std::unique_ptr<Expression>)> InClassInitializer;
-                Lexer::Range location;
-                bool vptr;
-            };
-            std::vector<member> GetMembers();
             UserDefinedType(const AST::Type* t, Analyzer& a, Type* context, std::string);           
             Type* GetContext() override final { return context; }
             bool HasMember(std::string name);            

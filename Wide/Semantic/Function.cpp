@@ -14,6 +14,7 @@
 #include <Wide/Semantic/LambdaType.h>
 #include <Wide/Semantic/SemanticError.h>
 #include <Wide/Semantic/Expression.h>
+#include <Wide/Semantic/ClangType.h>
 #include <unordered_set>
 #include <sstream>
 #include <iostream>
@@ -588,8 +589,12 @@ Function::Function(std::vector<Type*> args, const AST::FunctionBase* astfun, Ana
     root_scope = Wide::Memory::MakeUnique<Scope>(nullptr);
     current_scope = root_scope.get();
     unsigned num = 0;
+    // We might still be a member function if we're exported as one later.
     if (mem && (dynamic_cast<MemberFunctionContext*>(mem->Decay()))) {
         Args.push_back(args[0] == args[0]->Decay() ? a.GetLvalueType(args[0]) : args[0]);
+        NonstaticMemberContext = args[0];
+        if (auto con = dynamic_cast<Semantic::ConstructorContext*>(args[0]->Decay()))
+            ConstructorContext = con;
         args.erase(args.begin());
         auto param = Wide::Memory::MakeUnique<Parameter>(this, num++, Lexer::Range(nullptr));
         root_scope->named_variables.insert(std::make_pair("this", std::make_pair(Wide::Memory::MakeUnique<ExpressionReference>(param.get()), Lexer::Range(nullptr))));
@@ -640,8 +645,32 @@ Function::Function(std::vector<Type*> args, const AST::FunctionBase* astfun, Ana
                 auto tu = tuanddecl.first;
                 auto decl = tuanddecl.second;
                 trampoline.push_back(tu->MangleName(decl));
-                if (auto meth = llvm::dyn_cast<clang::CXXMethodDecl>(decl))
+                if (auto meth = llvm::dyn_cast<clang::CXXMethodDecl>(decl)) {
                     ClangContexts.insert(analyzer.GetClangType(*tu, tu->GetASTContext().getRecordType(meth->getParent())));
+                    if (!meth->isStatic()) {
+                        // Add "this".
+                        auto param = Wide::Memory::MakeUnique<Parameter>(this, 0, Lexer::Range(nullptr));
+                        root_scope->named_variables.insert(std::make_pair("this", std::make_pair(Wide::Memory::MakeUnique<ExpressionReference>(param.get()), Lexer::Range(nullptr))));
+                        root_scope->active.push_back(std::move(param));
+                        auto clangty = dynamic_cast<ClangType*>(analyzer.GetClangType(*tu, tu->GetASTContext().getRecordType(meth->getParent())));
+                        if (auto con = llvm::dyn_cast<clang::CXXConstructorDecl>(meth)) {
+                            // Error if we have a constructor context and it's not the same one.
+                            // Error if we have a nonstatic member context.
+                            // Error if we have any other clang contexts, since constructors cannot be random static members.
+                            if (NonstaticMemberContext) throw std::runtime_error("fuck");
+                            if (ConstructorContext && *ConstructorContext != clangty) throw std::runtime_error("fuck");
+                            if (ClangContexts.size() >= 2) throw std::runtime_error("fuck");
+                            ConstructorContext = clangty;
+                            continue;
+                        }
+                        // Error if we have a constructor context.
+                        // Error if we have a nonstatic member context and it's not this one.
+                        if (ConstructorContext) throw std::runtime_error("fuck");
+                        if (NonstaticMemberContext && *NonstaticMemberContext != clangty) throw std::runtime_error("fuck");
+                        NonstaticMemberContext = clangty;
+                        continue;
+                    }
+                }
             }
         }
     }
@@ -656,7 +685,8 @@ void Function::ComputeBody() {
         s = State::AnalyzeInProgress;
         // Initializers first, if we are a constructor
         if (auto con = dynamic_cast<const AST::Constructor*>(fun)) {
-            auto member = dynamic_cast<UserDefinedType*>(context->Decay());
+            if (!ConstructorContext) throw std::runtime_error("fuck");
+            auto member = *ConstructorContext;
             auto members = member->GetMembers();
             for (auto&& x : members) {
                 if (x.vptr) {
@@ -696,7 +726,7 @@ void Function::ComputeBody() {
             }
             for (auto&& x : con->initializers)
                 if (std::find_if(members.begin(), members.end(), [&](decltype(*members.begin())& ref) { return ref.name == x->name.front().name; }) == members.end())
-                    throw NoMemberToInitialize(member, x->name.front().name, x->location);
+                    throw NoMemberToInitialize(context->Decay(), x->name.front().name, x->location);
         }
         // Now the body.
         for (std::size_t i = 0; i < fun->statements.size(); ++i) {

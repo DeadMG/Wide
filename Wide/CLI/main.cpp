@@ -100,6 +100,11 @@ int main(int argc, char** argv)
         return 1;
     }
 
+    if (input.count("version")) {
+        std::cout << 168;
+        return 0;
+    }
+
     if(input.count("help")) {
         std::cout << desc;
         return 0;

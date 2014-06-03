@@ -30,6 +30,11 @@ namespace Wide {
             std::string source_name;
             std::string name;
             std::vector<std::function<std::string(llvm::Module*)>> trampoline;
+
+            // You can only be exported as constructors of one, or nonstatic member of one, class.
+            //
+            Wide::Util::optional<Semantic::ConstructorContext*> ConstructorContext;
+            Wide::Util::optional<Type*> NonstaticMemberContext;
             std::unordered_set<Type*> ClangContexts;
             enum class State {
                 NotYetAnalyzed,
@@ -184,6 +189,7 @@ namespace Wide {
             std::unique_ptr<Expression> BuildCall(std::unique_ptr<Expression> val, std::vector<std::unique_ptr<Expression>> args, Context c) override final;
             std::string GetName();
             Type* GetContext() override final { return context; }
+            Type* GetNonstaticMemberContext() { if (NonstaticMemberContext) return *NonstaticMemberContext; return nullptr; }
 
             FunctionType* GetSignature();
             std::unique_ptr<Expression> LookupLocal(std::string name);

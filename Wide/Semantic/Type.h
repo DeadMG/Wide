@@ -197,6 +197,27 @@ namespace Wide {
 
 
         struct MemberFunctionContext { virtual ~MemberFunctionContext() {} };
+        struct ConstructorContext {
+            struct member {
+                member(Lexer::Range where)
+                : location(where) {}
+                member(const member&) = delete;
+                member(member&& other)
+                    : name(std::move(other.name))
+                    , t(other.t)
+                    , num(other.num)
+                    , InClassInitializer(std::move(other.InClassInitializer))
+                    , location(std::move(other.location))
+                    , vptr(other.vptr) {}
+                std::string name;
+                Type* t;
+                unsigned num;
+                std::function<std::unique_ptr<Expression>(std::unique_ptr<Expression>)> InClassInitializer;
+                Lexer::Range location;
+                bool vptr;
+            };
+            virtual std::vector<member> GetMembers() = 0;
+        };
 
         class PrimitiveType : public Type {
             std::unique_ptr<OverloadResolvable> CopyConstructor;

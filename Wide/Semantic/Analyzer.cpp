@@ -919,7 +919,7 @@ std::unique_ptr<Expression> Semantic::AnalyzeExpression(Type* lookup, const AST:
                             return std::move(result);
                         return LookupIdentifier(context->GetContext()->GetContext());
                     }
-                    if (auto member = dynamic_cast<MemberFunctionContext*>(context->GetContext())) {
+                    if (auto member = fun->GetNonstaticMemberContext()) {
                         auto self = fun->LookupLocal("this");
                         auto result = self->GetType()->AccessMember(std::move(self), val, { self->GetType(), location });
                         if (result)

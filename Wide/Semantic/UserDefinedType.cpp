@@ -156,7 +156,6 @@ std::vector<UserDefinedType::member> UserDefinedType::GetMembers() {
         m.t = GetContents()[i];
         m.name = dynamic_cast<AST::Identifier*>(type->bases[i])->val;
         m.num = GetFieldIndex(i);
-        m.InClassInitializer = nullptr;
         m.vptr = false;
         out.push_back(std::move(m));
     }

@@ -1134,6 +1134,13 @@ namespace Wide {
                         return a;
                     }
                     if (token.GetType() == Lexer::TokenType::Type) {
+                        // Could be constructor exported.
+                        auto next = lex();
+                        if (next.GetType() == Lexer::TokenType::OpenBracket) {
+                            ParseFunction(token, m, next.GetLocation(), a);
+                            return a;
+                        }
+                        lex(next);
                         auto ident = Check(Error::ModuleScopeTypeNoIdentifier, Lexer::TokenType::Identifier);
                         auto ty = ParseTypeDeclaration(m, token.GetLocation(), a, ident);
                         sema.AddTypeToModule(m, ident.GetValue(), ty);

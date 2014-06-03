@@ -208,6 +208,7 @@ struct ValueConstruction : Expression {
     enum class State {
         Undef,
         SingleArgument,
+        ValueSingleArgument,
         Temporary
     } state;
     Type* self;
@@ -235,6 +236,16 @@ struct ValueConstruction : Expression {
                     }
                     if (single_arg->GetType()->IsReference(self)) {
                         state = State::SingleArgument;
+                        //if (auto val = dynamic_cast<ValueConstruction*>(single_arg.get())) {
+                        //    if (IsRvalueType(val->GetType())) {
+                        //        if (val->single_arg) {
+                        //            if (val->single_arg->GetType() == self) {
+                        //                state = State::ValueSingleArgument;
+                        //                return val->single_arg->GetValue(module, bb, allocas);
+                        //            }
+                        //        }
+                        //    }
+                        //}
                         return bb.CreateLoad(single_arg->GetValue(module, bb, allocas));
                     }
                 }
@@ -254,6 +265,13 @@ struct ValueConstruction : Expression {
         }
         if (state == State::SingleArgument)
             single_arg->GetImplementation()->DestroyLocals(module, bb, allocas);
+        //if (state == State::ValueSingleArgument) {
+        //    auto val = dynamic_cast<ValueConstruction*>(single_arg.get());
+        //    assert(val);
+        //    assert(val->single_arg);
+        //    assert(val->single_arg->GetType() == self);
+        //    val->single_arg->DestroyLocals(module, bb, allocas);
+        //}
     }
 };
 std::unique_ptr<Expression> Type::BuildValueConstruction(std::vector<std::unique_ptr<Expression>> exprs, Context c) {

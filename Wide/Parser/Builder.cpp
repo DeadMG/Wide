@@ -88,7 +88,9 @@ void Builder::CreateFunction(
     Lexer::Access a,
     bool dynamic
 ) {
-    auto func = arena.Allocate<Function>(std::move(body), std::move(prolog), where, std::move(args), a, false);   
+    auto func = name == "type"
+        ? arena.Allocate<Constructor>(std::move(body), std::move(prolog), where, std::move(args), std::move(caps), a)
+        : arena.Allocate<Function>(std::move(body), std::move(prolog), where, std::move(args), a, false);
     if (m->decls.find(name) != m->decls.end()) {
         if (auto overset = dynamic_cast<AST::FunctionOverloadSet*>(m->decls.at(name))) {
             overset->functions.insert(func);

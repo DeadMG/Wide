@@ -623,3 +623,51 @@ bool ClangType::IsA(Type* self, Type* other, Lexer::Access access) {
         return true;
     return false;
 }
+namespace {
+    Lexer::Position PositionFromSourceLocation(clang::SourceLocation loc, clang::SourceManager& src) {
+        Lexer::Position begin(std::make_shared<std::string>(src.getFilename(loc)));
+        begin.column = src.getSpellingColumnNumber(loc);
+        begin.line = src.getSpellingLineNumber(loc);
+        begin.offset = src.getDecomposedSpellingLoc(loc).second;
+        return begin;
+    }
+    Lexer::Range RangeFromSourceRange(clang::SourceRange range, clang::SourceManager& src) {
+        return Lexer::Range(PositionFromSourceLocation(range.getBegin(), src), PositionFromSourceLocation(range.getEnd(), src));
+    }
+}
+std::vector<ConstructorContext::member> ClangType::GetMembers() {
+    std::vector<ConstructorContext::member> out;
+    unsigned i = 0;
+    for (auto baseit = type->getAsCXXRecordDecl()->bases_begin(); baseit != type->getAsCXXRecordDecl()->bases_end(); ++baseit) {
+        ConstructorContext::member mem(RangeFromSourceRange(baseit->getSourceRange(), from->GetASTContext().getSourceManager()));
+        mem.t = analyzer.GetClangType(*from, baseit->getType());
+        mem.num = i++;
+        mem.vptr = false;
+        mem.name = baseit->getType()->getAsCXXRecordDecl()->getName();
+        out.push_back(std::move(mem));
+    }
+    for (auto fieldit = type->getAsCXXRecordDecl()->field_begin(); fieldit != type->getAsCXXRecordDecl()->field_end(); ++fieldit) {
+        ConstructorContext::member mem(RangeFromSourceRange(fieldit->getSourceRange(), from->GetASTContext().getSourceManager()));
+        mem.t = analyzer.GetClangType(*from, fieldit->getType());
+        mem.num = i++;
+        mem.vptr = false;
+        mem.name = fieldit->getName();
+        if (auto expr = fieldit->getInClassInitializer()) {
+            auto style = fieldit->getInClassInitStyle();
+            mem.InClassInitializer = [this, expr, fieldit](std::unique_ptr<Expression> field) {
+                return InterpretExpression(expr, *from, { this, RangeFromSourceRange(fieldit->getSourceRange(), from->GetASTContext().getSourceManager()) }, analyzer);
+            };
+        }
+        out.push_back(std::move(mem));
+    }
+    if (type->getAsCXXRecordDecl()->isPolymorphic()) {
+        ConstructorContext::member m(Lexer::Range(nullptr));
+        m.num = i++;
+        m.t = analyzer.GetPointerType(GetVirtualPointerType());
+        m.name = "__vfptr";
+        m.InClassInitializer = [this](std::unique_ptr<Expression> self) { return SetVirtualPointers(std::move(self)); };
+        m.vptr = true;
+        out.push_back(std::move(m));
+    }
+    return std::move(out);
+}

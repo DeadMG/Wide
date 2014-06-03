@@ -38,7 +38,6 @@
 #include <llvm/Support/raw_ostream.h>
 #pragma warning(pop)
 
-
 using namespace Wide;
 using namespace Semantic;   
 

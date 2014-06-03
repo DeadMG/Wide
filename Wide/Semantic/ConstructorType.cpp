@@ -3,6 +3,8 @@
 #include <Wide/Semantic/IntegralType.h>
 #include <Wide/Semantic/PointerType.h>
 #include <Wide/Semantic/Reference.h>
+#include <Wide/Semantic/ClangType.h>
+#include <Wide/Semantic/OverloadSet.h>
 #include <sstream>
 #include <Wide/Semantic/Expression.h>
 
@@ -53,6 +55,12 @@ std::unique_ptr<Expression> ConstructorType::AccessMember(std::unique_ptr<Expres
         return BuildChain(std::move(self), analyzer.GetConstructorType(analyzer.GetLvalueType(t))->BuildValueConstruction(Expressions(), { this, c.where }));
     if (name == "rvalue")
         return BuildChain(std::move(self), analyzer.GetConstructorType(analyzer.GetRvalueType(t))->BuildValueConstruction(Expressions(), { this, c.where }));
+    // If we're a Clang type, offer constructor and destructor overload sets.
+    if (auto clangty = dynamic_cast<ClangType*>(t)) {
+        if (name == "constructors") {
+            return BuildChain(std::move(self), clangty->GetConstructorOverloadSet(GetAccessSpecifier(c.from, clangty))->BuildValueConstruction(Expressions(), c));
+        }
+    }
     return nullptr;
 }
 

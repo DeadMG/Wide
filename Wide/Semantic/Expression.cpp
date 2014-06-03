@@ -182,6 +182,7 @@ std::unique_ptr<Expression> Semantic::CreatePrimUnOp(std::unique_ptr<Expression>
             src->DestroyLocals(module, bb, allocas);
         }
     };
+    assert(self);
     return Wide::Memory::MakeUnique<PrimUnOp>(std::move(self), ret, func);
 }
 std::unique_ptr<Expression> Semantic::CreatePrimOp(std::unique_ptr<Expression> lhs, std::unique_ptr<Expression> rhs, std::function<llvm::Value*(llvm::Value*, llvm::Value*, llvm::Module*, llvm::IRBuilder<>&, llvm::IRBuilder<>&)> func) {
