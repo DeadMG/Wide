@@ -113,11 +113,22 @@ template<typename F> auto GenerateCode(llvm::Module* mod, F f) -> decltype(f(nul
 }
 
 void Jit(Wide::Options::Clang& copts, std::string file) {
+#ifdef TEAMCITY 
+    copts.HeaderSearchOptions->AddPath("/usr/include/c++/4.8", clang::frontend::IncludeDirGroup::CXXSystem, false, false);
+    copts.HeaderSearchOptions->AddPath("/usr/include/x86_64-linux-gnu/c++/4.8", clang::frontend::IncludeDirGroup::CXXSystem, false, false);
+    copts.HeaderSearchOptions->AddPath("/usr/include/c++/4.8/backward", clang::frontend::IncludeDirGroup::CXXSystem, false, false);
+    copts.HeaderSearchOptions->AddPath("/usr/lib/gcc/x86_64-linux-gnu/4.8/include", clang::frontend::IncludeDirGroup::CXXSystem, false, false);
+    copts.HeaderSearchOptions->AddPath("/usr/local/include", clang::frontend::IncludeDirGroup::CXXSystem, false, false);
+    copts.HeaderSearchOptions->AddPath("/usr/lib/gcc/x86_64-linux-gnu/4.8/include-fixed", clang::frontend::IncludeDirGroup::CXXSystem, false, false);
+    copts.HeaderSearchOptions->AddPath("/usr/include/x86_64-linux-gnu", clang::frontend::IncludeDirGroup::CXXSystem, false, false);
+    copts.HeaderSearchOptions->AddPath("/usr/include", clang::frontend::IncludeDirGroup::CXXSystem, false, false);
+#else
 #ifdef _MSC_VER
     const std::string MinGWInstallPath = "../Deployment/MinGW/";
     Wide::Driver::AddMinGWIncludePaths(copts, MinGWInstallPath);
 #else
     Wide::Driver::AddLinuxIncludePaths(copts);
+#endif
 #endif
 
     auto AddStdlibLink = [&](llvm::ExecutionEngine* ee, llvm::Module* m) {

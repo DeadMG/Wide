@@ -101,7 +101,11 @@ int main(int argc, char** argv)
     }
 
     if (input.count("version")) {
-        std::cout << 170;
+#ifdef TEAMCITY
+        std::cout << "TeamCity build " << TEAMCITY << "\n";
+#else
+        std::cout << "Local development build.\n";
+#endif
         return 0;
     }
 

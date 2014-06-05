@@ -29,6 +29,11 @@ if not os.is("Windows") then
         value = "filepath",
         description = "The build directory for LLVM",
     }
+    newoption {
+        trigger = "TeamCity",
+        value = "teamcity build number",
+        description = "If this build is being built on TeamCity"
+    }
 end
 
 local oldjoin = path.join
@@ -348,6 +353,9 @@ configurations(SupportedConfigurations)
 platforms(SupportedPlatforms)
 kind("StaticLib")
 if not os.is("Windows") then
+    if _OPTIONS["TeamCity"] then
+        defines { "TEAMCITY=" .. _OPTIONS["TeamCity"] }
+    end
     buildoptions  {"-std=c++11", "-D __STDC_CONSTANT_MACROS", "-D __STDC_LIMIT_MACROS", "-fPIC" }
 else
     defines { "_SCL_SECURE_NO_WARNINGS" }
