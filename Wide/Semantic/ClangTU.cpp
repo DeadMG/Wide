@@ -244,13 +244,9 @@ void ClangTU::AddFile(std::string filename, Lexer::Range where) {
 ClangTU::ClangTU(ClangTU&& other)
     : impl(std::move(other.impl)), a(other.a), visited(std::move(other.visited)) {}
 
-void ClangTU::GenerateCodeAndLinkModule(llvm::Module* module) {
+void ClangTU::GenerateCodeAndLinkModule(llvm::Module* module, llvm::DataLayout& layout) {
     impl->sema.ActOnEndOfTranslationUnit();
-    llvm::Module mod("", module->getContext());
-    llvm::DataLayout layout(impl->targetinfo->getTargetDescription());
-    impl->CreateCodegen(mod, layout);
-    mod.setDataLayout(layout.getStringRepresentation());
-    mod.setTargetTriple(impl->Options->TargetOptions.Triple);
+    impl->CreateCodegen(*module, layout);
     
     // Cause all the side effects. Fuck you, Clang.
     for (auto&& decl : impl->addrs) {
@@ -264,6 +260,8 @@ void ClangTU::GenerateCodeAndLinkModule(llvm::Module* module) {
         }
         if (auto condecl = llvm::dyn_cast<clang::CXXDestructorDecl>(decl)) {
             auto gd = clang::GlobalDecl(condecl, clang::CXXDtorType::Dtor_Complete);
+            impl->GetCodegenModule(module).GetAddrOfGlobal(gd);
+            gd = clang::GlobalDecl(condecl, clang::CXXDtorType::Dtor_Deleting);
             impl->GetCodegenModule(module).GetAddrOfGlobal(gd);
             continue;
         }
@@ -284,24 +282,10 @@ void ClangTU::GenerateCodeAndLinkModule(llvm::Module* module) {
     for (auto x : impl->stuff)
         impl->GetCodegenModule(module).EmitTopLevelDecl(x);
     impl->GetCodegenModule(module).Release();
-
-    std::string modstr;
-    llvm::raw_string_ostream stream(modstr);
-    mod.print(stream, nullptr);
-
-    llvm::Linker link(module);
-    std::string fuck;
-    link.linkInModule(&mod, &fuck);
 }
 
 clang::DeclContext* ClangTU::GetDeclContext() {
     return impl->GetDeclContext();
-}
-
-clang::QualType Simplify(clang::QualType inc) {
-    inc = inc.getCanonicalType();
-    inc.removeLocalConst();
-    return inc;
 }
 
 llvm::Type* ClangTU::GetLLVMTypeFromClangType(clang::QualType t, llvm::Module* module) {
@@ -351,6 +335,28 @@ bool ClangTU::IsComplexType(clang::CXXRecordDecl* decl, llvm::Module* module) {
     if (indirect && arg != clang::CodeGen::CGCXXABI::RecordArgABI::RAA_Indirect)
         assert(false);
     return indirect;
+}
+
+std::function<std::string(llvm::Module*)> ClangTU::MangleName(clang::CXXDestructorDecl* D, clang::CXXDtorType d) {
+    if (auto funcdecl = llvm::dyn_cast<clang::CXXMethodDecl>(D)) {
+        if (funcdecl->getType()->getAs<clang::FunctionProtoType>()->getExtProtoInfo().ExceptionSpecType == clang::ExceptionSpecificationType::EST_Unevaluated) {
+            GetSema().EvaluateImplicitExceptionSpec(clang::SourceLocation(), funcdecl);
+        }
+    }
+    if (D->hasAttrs()) {
+        D->addAttr(new (impl->astcon) clang::UsedAttr(clang::SourceLocation(), impl->astcon));
+    }
+    else {
+        clang::AttrVec v;
+        v.push_back(new (impl->astcon) clang::UsedAttr(clang::SourceLocation(), impl->astcon));
+        D->setAttrs(v);
+    }
+    impl->sema.MarkAnyDeclReferenced(clang::SourceLocation(), D, true);
+    impl->addrs.insert(D);
+    return [this, D, d](llvm::Module* module) {
+        clang::GlobalDecl gd(D, d);
+        return impl->GetCodegenModule(module).getMangledName(gd);
+    };
 }
 
 std::function<std::string(llvm::Module*)> ClangTU::MangleName(clang::NamedDecl* D) {
@@ -461,4 +467,7 @@ clang::Expr* ClangTU::ParseMacro(std::string macro, Lexer::Range where) {
 }
 unsigned int ClangTU::GetVirtualFunctionOffset(clang::CXXMethodDecl* meth, llvm::Module* module) {
     return impl->GetCodegenModule(module).getItaniumVTableContext().getMethodVTableIndex(clang::GlobalDecl(meth));
+}
+llvm::Constant* ClangTU::GetItaniumRTTI(clang::QualType rec, llvm::Module* m) {
+    return impl->GetCodegenModule(m).GetAddrOfRTTIDescriptor(rec);
 }

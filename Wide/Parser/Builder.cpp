@@ -217,6 +217,9 @@ False* Builder::CreateFalse(Lexer::Range loc) {
 Decltype* Builder::CreateDecltype(Expression* arg, Lexer::Range loc) {
     return arena.Allocate<Decltype>(arg, loc);
 }
+Typeid* Builder::CreateTypeid(Expression* arg, Lexer::Range loc) {
+    return arena.Allocate<Typeid>(arg, loc);
+}
 
 Lambda* Builder::CreateLambda(std::vector<FunctionArgument> args, std::vector<Statement*> body, Lexer::Range loc, bool defaultref, std::vector<Variable*> caps) 
 { return arena.Allocate<Lambda>(std::move(body), std::move(args), loc, defaultref, std::move(caps)); }

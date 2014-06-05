@@ -195,6 +195,10 @@ namespace Wide {
             Decltype(Expression* expr, Lexer::Range loc)
                 : UnaryExpression(expr, loc) {}
         };
+        struct Typeid : UnaryExpression {
+            Typeid(Expression* expr, Lexer::Range loc)
+            : UnaryExpression(expr, loc) {}
+        };
         struct MetaCall : public Expression {        
             MetaCall(Expression* obj, std::vector<Expression*> arg, Lexer::Range loc)
                 :  Expression(loc), callee(obj), args(std::move(arg)) {}    

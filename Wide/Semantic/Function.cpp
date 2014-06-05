@@ -689,10 +689,6 @@ void Function::ComputeBody() {
             auto member = *ConstructorContext;
             auto members = member->GetMembers();
             for (auto&& x : members) {
-                if (x.vptr) {
-                    root_scope->active.push_back(x.InClassInitializer(LookupLocal("this")));
-                    continue;
-                }
                 auto has_initializer = [&](std::string name) -> const AST::Variable* {
                     for (auto&& x : con->initializers) {
                         // Can only have 1 name- AST restriction
@@ -724,9 +720,13 @@ void Function::ComputeBody() {
                 }
                 root_scope->active.push_back(x.t->BuildInplaceConstruction(std::move(member), Expressions(), { this, fun->where }));
             }
-            for (auto&& x : con->initializers)
+            for (auto&& x : con->initializers) {
                 if (std::find_if(members.begin(), members.end(), [&](decltype(*members.begin())& ref) { return ref.name == x->name.front().name; }) == members.end())
                     throw NoMemberToInitialize(context->Decay(), x->name.front().name, x->location);
+            }
+            // set the vptrs if necessary
+            auto ty = dynamic_cast<Type*>(member);
+            root_scope->active.push_back(ty->SetVirtualPointers(LookupLocal("this")));
         }
         // Now the body.
         for (std::size_t i = 0; i < fun->statements.size(); ++i) {

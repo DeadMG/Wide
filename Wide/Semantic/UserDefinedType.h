@@ -20,7 +20,7 @@ namespace Wide {
         class Function;
         class OverloadSet;
         class Module;
-        class UserDefinedType : public AggregateType, public TupleInitializable, public BaseType, public MemberFunctionContext, public ConstructorContext {
+        class UserDefinedType : public AggregateType, public TupleInitializable, public MemberFunctionContext, public ConstructorContext {
 
             const std::vector<Type*>& GetContents() { return GetMemberData().contents; }
 
@@ -42,10 +42,10 @@ namespace Wide {
                 std::unordered_map<std::string, unsigned> members;
                 std::vector<const AST::Expression*> NSDMIs;
                 bool HasNSDMI = false;
-                std::vector<VirtualFunction> funcs;
+                VTableLayout funcs;
                 std::unordered_map<const AST::Function*, unsigned> VTableIndices;
                 std::vector<Type*> contents;
-                std::vector<BaseType*> bases;
+                std::vector<Type*> bases;
             };
             Wide::Util::optional<MemberData> Members;
             MemberData& GetMemberData() {
@@ -58,14 +58,16 @@ namespace Wide {
             Type* GetSelfAsType() override final { return this; }
             std::unordered_map<ClangTU*, clang::QualType> clangtypes;
             // Virtual function support functions.
-            std::unique_ptr<Expression> FunctionPointerFor(std::string name, std::vector<Type*> args, Type* ret, unsigned offset) override final;
-            std::vector<VirtualFunction> ComputeVTableLayout() override final;
+            std::unique_ptr<Expression> FunctionPointerFor(VTableLayout::VirtualFunction entry, unsigned offset);
+            std::unique_ptr<Expression> VirtualEntryFor(VTableLayout::VirtualFunctionEntry entry, unsigned offset) override final;
+            VTableLayout ComputeVTableLayout() override final;
             Type* GetVirtualPointerType() override final;
-            std::vector<std::pair<BaseType*, unsigned>> GetBasesAndOffsets() override final;
-            std::vector<BaseType*> GetBases() override final;
+            std::vector<std::pair<Type*, unsigned>> GetBasesAndOffsets() override final;
+            std::vector<Type*> GetBases() override final;
             bool IsDynamic();
             std::vector<member> GetMembers() override final;
         public:
+            llvm::Constant* GetRTTI(llvm::Module* module) override final;
             UserDefinedType(const AST::Type* t, Analyzer& a, Type* context, std::string);           
             Type* GetContext() override final { return context; }
             bool HasMember(std::string name);            

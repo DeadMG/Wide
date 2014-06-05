@@ -9,7 +9,7 @@ namespace Wide {
             VoidType(Analyzer& a) : MetaType(a) {}
             llvm::Type* GetLLVMType(llvm::Module* module) override final;
             Wide::Util::optional<clang::QualType> GetClangType(ClangTU& tu) override final;
-            std::string explain() override final;
+            std::string explain() override final; 
         };
     }
 }

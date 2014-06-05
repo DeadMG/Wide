@@ -11,6 +11,7 @@
 #include <Wide/Semantic/OverloadSet.h>
 #include <Wide/Util/DebugUtilities.h>
 #include <Wide/Semantic/Expression.h>
+#include <Wide/Semantic/IntegralType.h>
 #include <sstream>
 
 using namespace Wide;
@@ -586,38 +587,63 @@ OverloadSet* TupleInitializable::CreateConstructorOverloadSet(Lexer::Access acce
     return GetSelfAsType()->analyzer.GetOverloadSet(TupleConstructor.get());
 }
 
-std::unique_ptr<Expression> BaseType::CreateVTable(std::vector<std::pair<BaseType*, unsigned>> path) {
-    std::vector<std::unique_ptr<Expression>> funcs;
+std::unique_ptr<Expression> Type::CreateVTable(std::vector<std::pair<Type*, unsigned>> path) {
+    std::vector<std::unique_ptr<Expression>> entries;
     unsigned offset_total = 0;
     for (auto base : path)
         offset_total += base.second;
-    for (auto func : GetVtableLayout()) {
+    for (auto func : GetVtableLayout().layout) {
+        if (auto mem = boost::get<VTableLayout::SpecialMember>(&func.function)) {
+            if (*mem == VTableLayout::SpecialMember::OffsetToTop) {
+                auto size = analyzer.GetDataLayout().getPointerSizeInBits();
+                entries.push_back(Wide::Memory::MakeUnique<Integer>(llvm::APInt(size, (uint64_t)offset_total, false), analyzer));
+                continue;
+            }
+            if (*mem == VTableLayout::SpecialMember::RTTIPointer) {
+                struct RTTIExpr : Expression {
+                    RTTIExpr(Type* ty)
+                    : ty(ty) {}
+                    Type* ty;
+                    llvm::Value* ComputeValue(llvm::Module* m, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final {
+                        return bb.CreateBitCast(ty->GetRTTI(m), llvm::Type::getInt8PtrTy(m->getContext()));
+                    }
+                    void DestroyExpressionLocals(llvm::Module* m, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final {}
+                    Type* GetType() override final {
+                        return ty->analyzer.GetPointerType(ty->analyzer.GetIntegralType(8, true));
+                    }
+                };
+                entries.push_back(Wide::Memory::MakeUnique<RTTIExpr>(path.front().first));
+                continue;
+            }
+        }
         bool found = false;
         auto local_copy = offset_total;
         for (auto more_derived : path) {
-            if (auto expr = more_derived.first->FunctionPointerFor(func.name, func.args, func.ret, local_copy)) {
-                funcs.push_back(std::move(expr));
+            auto expr = more_derived.first->VirtualEntryFor(func, local_copy);
+            if (expr) {
+                entries.push_back(std::move(expr));
                 found = true;
                 break;
             }
             local_copy -= more_derived.second;
         }
         if (func.abstract && !found) {
-            // It's possible we didn't find a more derived impl.
+            // It's possible we didn't find a more derived impl because we're abstract
+            // and we're creating our own constructor vtable here.
             // Just use a null pointer instead of the Itanium ABI function for now.
-            funcs.push_back(nullptr);
+            entries.push_back(nullptr);
         }
         // Should have found base class impl!
-        if (!found)
-            throw std::runtime_error("le fuck");
+        assert(found);
     }
     struct VTable : Expression {
-        VTable(BaseType* self, std::vector<std::unique_ptr<Expression>> funcs)
-        : self(self), funcs(std::move(funcs)) {}
-        std::vector<std::unique_ptr<Expression>> funcs;
-        BaseType* self;
+        VTable(Type* self, std::vector<std::unique_ptr<Expression>> funcs, unsigned offset)
+        : self(self), entries(std::move(funcs)), offset(offset) {}
+        unsigned offset;
+        std::vector<std::unique_ptr<Expression>> entries;
+        Type* self;
         Type* GetType() override final {
-            return self->GetSelfAsType()->analyzer.GetPointerType(self->GetVirtualPointerType());
+            return self->analyzer.GetPointerType(self->GetVirtualPointerType());
         }
         void DestroyExpressionLocals(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
             // Fuckin' hope not
@@ -625,42 +651,45 @@ std::unique_ptr<Expression> BaseType::CreateVTable(std::vector<std::pair<BaseTyp
         llvm::Value* ComputeValue(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
             auto vfuncty = self->GetVirtualPointerType()->GetLLVMType(module);
             std::vector<llvm::Constant*> constants;
-            for (auto&& init : funcs) {
+            for (auto&& init : entries) {
                 if (!init)
                     constants.push_back(llvm::Constant::getNullValue(vfuncty));
-                else
-                    constants.push_back(llvm::dyn_cast<llvm::Constant>(bb.CreatePointerCast(init->GetValue(module, bb, allocas), vfuncty)));
+                else {
+                    auto val = init->GetValue(module, bb, allocas);
+                    auto con = llvm::dyn_cast<llvm::Constant>(val);
+                    constants.push_back(con);
+                }
             }
-            auto arrty = llvm::ArrayType::get(vfuncty, constants.size());
-            auto arr = llvm::ConstantArray::get(arrty, constants);
+            auto vtablety = llvm::ConstantStruct::getTypeForElements(constants);
+            auto vtable = llvm::ConstantStruct::get(vtablety, constants);
             std::stringstream strstr;
             strstr << this;
-            auto global = llvm::dyn_cast<llvm::GlobalVariable>(module->getOrInsertGlobal(strstr.str(), arrty));
-            global->setInitializer(arr);
+            auto global = llvm::dyn_cast<llvm::GlobalVariable>(module->getOrInsertGlobal(strstr.str(), vtablety));
+            global->setInitializer(vtable);
             global->setLinkage(llvm::GlobalValue::LinkageTypes::InternalLinkage);
             global->setConstant(true);
-            return bb.CreateConstGEP2_32(global, 0, 0);
+            return bb.CreatePointerCast(bb.CreateStructGEP(global, offset), self->analyzer.GetPointerType(self->GetVirtualPointerType())->GetLLVMType(module));
         }
     };
-    return Wide::Memory::MakeUnique<VTable>(this, std::move(funcs));
+    return Wide::Memory::MakeUnique<VTable>(this, std::move(entries), GetVtableLayout().offset);
 }      
 
-std::unique_ptr<Expression> BaseType::GetVTablePointer(std::vector<std::pair<BaseType*, unsigned>> path) {
+std::unique_ptr<Expression> Type::GetVTablePointer(std::vector<std::pair<Type*, unsigned>> path) {
     if (ComputedVTables.find(path) == ComputedVTables.end())
         ComputedVTables[path] = CreateVTable(path);
     return Wide::Memory::MakeUnique<ExpressionReference>(ComputedVTables.at(path).get());
 }
 
-std::unique_ptr<Expression> BaseType::SetVirtualPointers(std::unique_ptr<Expression> self) {
+std::unique_ptr<Expression> Type::SetVirtualPointers(std::unique_ptr<Expression> self) {
     return SetVirtualPointers({}, std::move(self));
 }
 
-std::unique_ptr<Expression> BaseType::SetVirtualPointers(std::vector<std::pair<BaseType*, unsigned>> path, std::unique_ptr<Expression> self) {
+std::unique_ptr<Expression> Type::SetVirtualPointers(std::vector<std::pair<Type*, unsigned>> path, std::unique_ptr<Expression> self) {
     // Set the base vptrs first, because some Clang types share vtables with their base.
     std::vector<std::unique_ptr<Expression>> BasePointerInitializers;
     for (auto base : GetBasesAndOffsets()) {
         path.push_back(std::make_pair(this, base.second));
-        BasePointerInitializers.push_back(base.first->SetVirtualPointers(path, AccessBase(Wide::Memory::MakeUnique<ExpressionReference>(self.get()), base.first->GetSelfAsType())));
+        BasePointerInitializers.push_back(base.first->SetVirtualPointers(path, AccessBase(Wide::Memory::MakeUnique<ExpressionReference>(self.get()), base.first)));
         path.pop_back();
     }
     // If we actually have a vptr, then set it; else just set the bases.
@@ -689,4 +718,39 @@ std::unique_ptr<Expression> BaseType::SetVirtualPointers(std::vector<std::pair<B
     };
 
     return Wide::Memory::MakeUnique<VTableInitializer>(std::move(self), std::move(BasePointerInitializers));
+}
+
+llvm::Constant* Type::GetRTTI(llvm::Module* module) {
+    // If we have a Clang type, then use it for compat.
+    auto clangty = GetClangType(*analyzer.GetAggregateTU());
+    if (clangty) {
+        return analyzer.GetAggregateTU()->GetItaniumRTTI(*clangty, module);
+    }
+    // Else, nope. Meta types are ... er.
+    // Fundamental types.
+    std::stringstream stream;
+    stream << "struct.__" << this;
+    if (auto existing = module->getGlobalVariable(stream.str())) {
+        return existing;
+    }
+    llvm::Constant *name = GetGlobalString(stream.str(), module);
+    auto vtable_name_of_rtti = "_ZTVN10__cxxabiv123__fundamental_type_infoE";
+    auto vtable = module->getOrInsertGlobal(vtable_name_of_rtti, llvm::Type::getInt8PtrTy(module->getContext()));
+    vtable = llvm::ConstantExpr::getInBoundsGetElementPtr(vtable, llvm::ConstantInt::get(llvm::Type::getInt8Ty(module->getContext()), 2));
+    vtable = llvm::ConstantExpr::getBitCast(vtable, llvm::Type::getInt8PtrTy(module->getContext()));
+    std::vector<llvm::Constant*> inits = { vtable, name };
+    auto ty = llvm::ConstantStruct::getTypeForElements(inits);
+    auto rtti = new llvm::GlobalVariable(*module, ty, true, llvm::GlobalValue::LinkageTypes::LinkOnceODRLinkage, llvm::ConstantStruct::get(ty, inits), stream.str());
+    return rtti;
+}
+llvm::Constant* Semantic::GetGlobalString(std::string string, llvm::Module* m) {
+    auto strcon = llvm::ConstantDataArray::getString(m->getContext(), string);
+    auto global = new llvm::GlobalVariable(*m, strcon->getType(),
+                                           true, llvm::GlobalValue::PrivateLinkage,
+                                            strcon);
+    global->setName("");
+    global->setUnnamedAddr(true);
+    auto zero = llvm::ConstantInt::get(llvm::Type::getInt32Ty(m->getContext()), 0);
+    llvm::Constant *Args[] = { zero, zero };
+    return llvm::ConstantExpr::getInBoundsGetElementPtr(global, Args);
 }

@@ -12,6 +12,7 @@
 
 #pragma warning(push, 0)
 #include <clang/AST/Type.h>
+#include <clang/Basic/ABI.h>
 #pragma warning(pop)
 
 namespace llvm {
@@ -35,6 +36,7 @@ namespace clang {
     class CXXRecordDecl;
     class CXXMethodDecl;
     class FunctionDecl;
+    class CXXDestructorDecl;
 }
 
 namespace Wide {
@@ -48,7 +50,7 @@ namespace Wide {
         public:
             std::unique_ptr<Impl> impl;
             ~ClangTU();
-            void GenerateCodeAndLinkModule(llvm::Module* module);
+            void GenerateCodeAndLinkModule(llvm::Module* module, llvm::DataLayout&);
             clang::DeclContext* GetDeclContext();
 
             ClangTU(ClangTU&&);
@@ -66,9 +68,11 @@ namespace Wide {
             clang::Expr* ParseMacro(std::string macro, Lexer::Range where);
 
             std::function<std::string(llvm::Module*)> MangleName(clang::NamedDecl* D);
+            std::function<std::string(llvm::Module*)> MangleName(clang::CXXDestructorDecl*, clang::CXXDtorType);
             bool IsComplexType(clang::CXXRecordDecl* decl, llvm::Module* module);
             std::function<unsigned(llvm::Module*)> GetFieldNumber(clang::FieldDecl*);
             std::function<unsigned(llvm::Module*)> GetBaseNumber(const clang::CXXRecordDecl* self, const clang::CXXRecordDecl* base);
+            llvm::Constant* GetItaniumRTTI(clang::QualType, llvm::Module* m);
             unsigned int GetVirtualFunctionOffset(clang::CXXMethodDecl*, llvm::Module* module);
         };
     }

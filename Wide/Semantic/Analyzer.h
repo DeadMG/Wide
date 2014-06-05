@@ -117,7 +117,7 @@ namespace Wide {
             std::unique_ptr<OverloadResolvable> Move;
 
             llvm::DataLayout layout;
-
+            std::unordered_map<const AST::Expression*, std::unique_ptr<Expression>> ExpressionCache;
         public:
             auto GetFunctions() -> const decltype(WideFunctions)& { return WideFunctions; }
 
@@ -162,6 +162,8 @@ namespace Wide {
             TemplateType* GetTemplateType(const AST::TemplateType* t, Type* context, std::vector<Type*> arguments, std::string name);
             LambdaType* GetLambdaType(const AST::Lambda* funcbase, std::vector<std::pair<std::string, Type*>> types, Type* context);
 
+            std::unique_ptr<Expression> AnalyzeCachedExpression(Type* lookup, const AST::Expression* e);
+
             Analyzer(const Options::Clang&, const AST::Module*);     
 
             ClangTU* LoadCPPHeader(std::string file, Lexer::Range where);
@@ -170,6 +172,7 @@ namespace Wide {
             ~Analyzer();
 
             void GenerateCode(llvm::Module* module);
+            ClangTU* GetAggregateTU();
         };
         bool IsRvalueType(Type* t);
         bool IsLvalueType(Type* t);

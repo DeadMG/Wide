@@ -289,6 +289,12 @@ namespace Wide {
                     auto close = Check(Error::DecltypeNoCloseBracket, Lexer::TokenType::CloseBracket);
                     return sema.CreateDecltype(expr, t.GetLocation() + close.GetLocation());
                 }
+                if (t.GetType() == Lexer::TokenType::Typeid) {
+                    Check(Error::TypeidNoOpenBracket, Lexer::TokenType::OpenBracket);
+                    auto expr = ParseExpression();
+                    auto close = Check(Error::TypeidNoCloseBracket, Lexer::TokenType::CloseBracket);
+                    return sema.CreateTypeid(expr, t.GetLocation() + close.GetLocation());
+                }
 
                 throw BadToken(t, Error::ExpressionNoBeginning);
             }

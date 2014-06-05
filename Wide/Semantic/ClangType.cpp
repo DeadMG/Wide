@@ -364,9 +364,7 @@ std::unique_ptr<Expression> ClangType::PrimitiveAccessMember(std::unique_ptr<Exp
     });
 }
 
-InheritanceRelationship ClangType::IsDerivedFrom(Type* other) {
-    auto otherbase = dynamic_cast<BaseType*>(other);
-    if (!otherbase) return InheritanceRelationship::NotDerived;
+Type::InheritanceRelationship ClangType::IsDerivedFrom(Type* other) {
     auto otherclangty = other->GetClangType(*from);
     if (!otherclangty) return InheritanceRelationship::NotDerived;
     auto otherdecl = (*otherclangty)->getAsCXXRecordDecl();
@@ -381,7 +379,7 @@ InheritanceRelationship ClangType::IsDerivedFrom(Type* other) {
                 result = InheritanceRelationship::AmbiguouslyDerived;
             continue;
         }
-        auto Base = dynamic_cast<BaseType*>(analyzer.GetClangType(*from, base->getType()));
+        auto Base = analyzer.GetClangType(*from, base->getType());
         auto subresult = Base->IsDerivedFrom(other);
         if (subresult == InheritanceRelationship::AmbiguouslyDerived)
             result = InheritanceRelationship::AmbiguouslyDerived;
@@ -399,8 +397,7 @@ std::unique_ptr<Expression> ClangType::AccessBase(std::unique_ptr<Expression> se
     other = other->Decay();
     assert(IsDerivedFrom(other) == InheritanceRelationship::UnambiguouslyDerived);
     for (auto baseit = recdecl->bases_begin(); baseit != recdecl->bases_end(); ++baseit) {
-        auto basety = analyzer.GetClangType(*from, baseit->getType());
-        auto base = dynamic_cast<BaseType*>(basety);
+        auto base = analyzer.GetClangType(*from, baseit->getType());
         Type* result;
         if (auto ptr = dynamic_cast<PointerType*>(self->GetType()->Decay())) {
             result = analyzer.GetPointerType(other);
@@ -409,7 +406,7 @@ std::unique_ptr<Expression> ClangType::AccessBase(std::unique_ptr<Expression> se
             result = analyzer.GetLvalueType(other);
         else
             result = analyzer.GetRvalueType(other);
-        if (basety == other) {
+        if (base == other) {
             // Gotta account for EBO
             // We have the same pointer/value category as the argument.
             if (baseit->getType()->getAsCXXRecordDecl()->isEmpty()) {
@@ -418,7 +415,7 @@ std::unique_ptr<Expression> ClangType::AccessBase(std::unique_ptr<Expression> se
             return PrimitiveAccessMember(std::move(self), baseit - recdecl->bases_begin());
         }
         if (base->IsDerivedFrom(other) == InheritanceRelationship::UnambiguouslyDerived)
-            return base->AccessBase(AccessBase(std::move(self), basety), other);
+            return base->AccessBase(AccessBase(std::move(self), base), other);
     }
     assert(false);
     return nullptr;
@@ -438,19 +435,19 @@ std::string ClangType::explain() {
     }
     return basename;
 }
-std::vector<std::pair<BaseType*, unsigned>> ClangType::GetBasesAndOffsets() {
+std::vector<std::pair<Type*, unsigned>> ClangType::GetBasesAndOffsets() {
     auto&& layout = from->GetASTContext().getASTRecordLayout(type->getAsCXXRecordDecl());
-    std::vector<std::pair<BaseType*, unsigned>> out;
+    std::vector<std::pair<Type*, unsigned>> out;
     for (auto basespec = type->getAsCXXRecordDecl()->bases_begin(); basespec != type->getAsCXXRecordDecl()->bases_end(); basespec++) {
-        out.push_back(std::make_pair(dynamic_cast<BaseType*>(analyzer.GetClangType(*from, basespec->getType())), layout.getBaseClassOffset(basespec->getType()->getAsCXXRecordDecl()).getQuantity()));
+        out.push_back(std::make_pair(analyzer.GetClangType(*from, basespec->getType()), layout.getBaseClassOffset(basespec->getType()->getAsCXXRecordDecl()).getQuantity()));
     }
     return out;
 }
-std::vector<BaseType*> ClangType::GetBases() {
+std::vector<Type*> ClangType::GetBases() {
     auto&& layout = from->GetASTContext().getASTRecordLayout(type->getAsCXXRecordDecl());
-    std::vector<BaseType*> out;
+    std::vector<Type*> out;
     for (auto basespec = type->getAsCXXRecordDecl()->bases_begin(); basespec != type->getAsCXXRecordDecl()->bases_end(); basespec++) {
-        out.push_back(dynamic_cast<BaseType*>(analyzer.GetClangType(*from, basespec->getType())));
+        out.push_back(analyzer.GetClangType(*from, basespec->getType()));
     }
     return out;
 }
@@ -468,6 +465,7 @@ std::unique_ptr<Expression> GetVTablePointer(std::unique_ptr<Expression> self, c
 }
 
 std::unique_ptr<Expression> ClangType::GetVirtualPointer(std::unique_ptr<Expression> self) {
+    if (!type->getAsCXXRecordDecl()->isPolymorphic()) return nullptr;
     assert(self->GetType()->IsReference());
     return ::GetVTablePointer(std::move(self), type->getAsCXXRecordDecl(), analyzer, from, GetVirtualPointerType());
 }
@@ -475,12 +473,14 @@ std::unique_ptr<Expression> ClangType::GetVirtualPointer(std::unique_ptr<Express
 Type* ClangType::GetVirtualPointerType() {
     return analyzer.GetFunctionType(analyzer.GetIntegralType(32, true), {}, true);
 }
-std::vector<BaseType::VirtualFunction> ClangType::ComputeVTableLayout() {
+
+Type::VTableLayout ClangType::GetPrimaryVTableLayout() {
     // ITANIUM ABI SPECIFIC
+    if (PrimaryVTableLayout) return *PrimaryVTableLayout;
+
     auto CreateVFuncFromMethod = [&](clang::CXXMethodDecl* methit) {
-        BaseType::VirtualFunction vfunc;
+        VTableLayout::VirtualFunction vfunc;
         vfunc.name = methit->getName();
-        vfunc.abstract = methit->isPure();
         vfunc.ret = analyzer.GetClangType(*from, methit->getResultType());
         if (methit->getRefQualifier() == clang::RefQualifierKind::RQ_RValue)
             vfunc.args.push_back(analyzer.GetRvalueType(this));
@@ -494,9 +494,9 @@ std::vector<BaseType::VirtualFunction> ClangType::ComputeVTableLayout() {
     auto&& layout = from->GetASTContext().getASTRecordLayout(type->getAsCXXRecordDecl());
     // If we have a primary base, then the vtable is the base vtable followed by the derived vtable.
     if (!layout.hasOwnVFPtr()) {
-        auto pbase = dynamic_cast<Wide::Semantic::BaseType*>(analyzer.GetClangType(*from, from->GetASTContext().getRecordType(layout.getPrimaryBase())));
-        auto pbaselayout = pbase->GetVtableLayout();        
-        for (auto methit = type->getAsCXXRecordDecl()->method_begin(); methit != type->getAsCXXRecordDecl()->method_end(); ++methit) {    
+        auto pbase = analyzer.GetClangType(*from, from->GetASTContext().getRecordType(layout.getPrimaryBase()));
+        auto pbaselayout = pbase->GetVtableLayout();
+        for (auto methit = type->getAsCXXRecordDecl()->method_begin(); methit != type->getAsCXXRecordDecl()->method_end(); ++methit) {
             if (!methit->isVirtual()) continue;
             // No additional slot if it overrides a method from primary base AND the return type does not require offsetting
             auto add_extra_slot = [&] {
@@ -512,7 +512,7 @@ std::vector<BaseType::VirtualFunction> ClangType::ComputeVTableLayout() {
                         auto dermethrecord = methit->getResultType()->getAsCXXRecordDecl();
                         if (!basemethrecord || !dermethrecord) continue;
                         auto&& derlayout = from->GetASTContext().getASTRecordLayout(dermethrecord);
-                        if (!derlayout.hasOwnVFPtr() && derlayout.getPrimaryBase() == basemethrecord)
+                        if (!derlayout.hasOwnVFPtr() && derlayout.getBaseClassOffset(basemethrecord) == clang::CharUnits::Zero())
                             return false;
                         continue;
                     }
@@ -520,21 +520,113 @@ std::vector<BaseType::VirtualFunction> ClangType::ComputeVTableLayout() {
                 return true;
             };
             if (!add_extra_slot()) continue;
-            pbaselayout.push_back(CreateVFuncFromMethod(*methit));
+            VTableLayout::VirtualFunctionEntry entry;
+            entry.abstract = methit->isPure();
+            entry.function = CreateVFuncFromMethod(*methit);
+            pbaselayout.layout.push_back(entry);
         }
+        PrimaryVTableLayout = pbaselayout;
         return pbaselayout;
     }
-    std::vector<BaseType::VirtualFunction> out;
+    VTableLayout out;
+    out.offset = 2;
+    VTableLayout::VirtualFunctionEntry offset;
+    offset.abstract = false;
+    offset.function = VTableLayout::SpecialMember::OffsetToTop;
+    out.layout.push_back(offset);
+    VTableLayout::VirtualFunctionEntry RTTI;
+    RTTI.abstract = false;
+    RTTI.function = VTableLayout::SpecialMember::RTTIPointer;
+    out.layout.push_back(RTTI);
     for (auto methit = type->getAsCXXRecordDecl()->method_begin(); methit != type->getAsCXXRecordDecl()->method_end(); ++methit) {
-        if (methit->isVirtual())
-            out.push_back(CreateVFuncFromMethod(*methit));
+        if (methit->isVirtual()) {
+            VTableLayout::VirtualFunctionEntry entry;
+            entry.abstract = methit->isPure();
+            if (auto des = llvm::dyn_cast<clang::CXXDestructorDecl>(*methit)) {
+                entry.function = VTableLayout::SpecialMember::Destructor;
+                out.layout.push_back(entry);
+                entry.function = VTableLayout::SpecialMember::ItaniumABIDeletingDestructor;
+            }
+            else
+                entry.function = CreateVFuncFromMethod(*methit);
+            out.layout.push_back(entry);
+        }
     }
+    PrimaryVTableLayout = out;
     return out;
 }
-std::unique_ptr<Expression> ClangType::FunctionPointerFor(std::string name, std::vector<Type*> args, Type* ret, unsigned offset) {
+Type::VTableLayout ClangType::ComputeVTableLayout() {
+    auto playout = GetPrimaryVTableLayout();
+    // Append ITANIUM ABI SPECIFIC secondary tables.
+    for (auto baseit = type->getAsCXXRecordDecl()->bases_begin(); baseit = type->getAsCXXRecordDecl()->bases_end(); ++baseit) {
+        auto&& layout = from->GetASTContext().getASTRecordLayout(type->getAsCXXRecordDecl());
+        // If we have a primary base, then no secondary table.
+        if (!layout.hasOwnVFPtr()) {
+            if (layout.getPrimaryBase() == baseit->getType()->getAsCXXRecordDecl())
+                continue;
+        }
+        auto clangty = dynamic_cast<ClangType*>(analyzer.GetClangType(*from, baseit->getType()));
+        auto secondarytable = clangty->GetVtableLayout();
+        playout.layout.insert(playout.layout.end(), secondarytable.layout.begin(), secondarytable.layout.end());
+    }
+    return playout;
+}
+
+std::unique_ptr<Expression> ClangType::VirtualEntryFor(VTableLayout::VirtualFunctionEntry entry, unsigned offset) {
+    // ITANIUM ABI SPECIFIC
+    struct VTableThunk : Expression {
+        VTableThunk(std::function<std::string(llvm::Module*)> f, unsigned off, FunctionType* sig)
+        : mangle(f), offset(off), signature(sig)
+        {}
+        FunctionType* signature;
+        unsigned offset;
+        std::function<std::string(llvm::Module*)> mangle;
+        Type* GetType() override final {
+            return signature;
+        }
+        llvm::Value* ComputeValue(llvm::Module* module, llvm::IRBuilder<>&, llvm::IRBuilder<>&) override final {
+            if (offset == 0)
+                return module->getFunction(mangle(module));
+            auto this_index = (std::size_t)signature->GetReturnType()->IsComplexType(module);
+            std::stringstream strstr;
+            strstr << "__" << this << offset;
+            auto thunk = llvm::Function::Create(llvm::dyn_cast<llvm::FunctionType>(signature->GetLLVMType(module)->getElementType()), llvm::GlobalValue::LinkageTypes::InternalLinkage, strstr.str(), module);
+            llvm::BasicBlock* bb = llvm::BasicBlock::Create(module->getContext(), "entry", thunk);
+            llvm::IRBuilder<> irbuilder(bb);
+            auto self = std::next(thunk->arg_begin(), signature->GetReturnType()->IsComplexType(module));
+            auto offset_self = irbuilder.CreateConstGEP1_32(irbuilder.CreatePointerCast(self, llvm::IntegerType::getInt8PtrTy(module->getContext())), -offset);
+            auto cast_self = irbuilder.CreatePointerCast(offset_self, std::next(module->getFunction(mangle(module))->arg_begin(), this_index)->getType());
+            std::vector<llvm::Value*> args;
+            for (std::size_t i = 0; i < thunk->arg_size(); ++i) {
+                if (i == this_index)
+                    args.push_back(cast_self);
+                else
+                    args.push_back(std::next(thunk->arg_begin(), i));
+            }
+            auto call = irbuilder.CreateCall(module->getFunction(mangle(module)), args);
+            if (call->getType() == llvm::Type::getVoidTy(module->getContext()))
+                irbuilder.CreateRetVoid();
+            else
+                irbuilder.CreateRet(call);
+            return thunk;
+        }
+        void DestroyExpressionLocals(llvm::Module* module, llvm::IRBuilder<>& b, llvm::IRBuilder<>&) override final {}
+    };
+    if (auto mem = boost::get<VTableLayout::SpecialMember*>(entry.function)) {
+        if (*mem == VTableLayout::SpecialMember::Destructor) {
+            return Wide::Memory::MakeUnique<VTableThunk>(from->MangleName(type->getAsCXXRecordDecl()->getDestructor()), offset, analyzer.GetFunctionType(analyzer.GetVoidType(), { analyzer.GetLvalueType(this) }, false));
+        }
+        if (*mem == VTableLayout::SpecialMember::ItaniumABIDeletingDestructor) {
+            return Wide::Memory::MakeUnique<VTableThunk>(from->MangleName(type->getAsCXXRecordDecl()->getDestructor(), clang::CXXDtorType::Dtor_Deleting), offset, analyzer.GetFunctionType(analyzer.GetVoidType(), { analyzer.GetLvalueType(this) }, false));
+        }
+        return nullptr;
+    }
     // args includes this, which will have a different type here.
     // Pretend that it really has our type.
-    // ITANIUM ABI SPECIFIC
+    auto func = boost::get<VTableLayout::VirtualFunction>(entry.function);
+    auto args = func.args;
+    auto name = func.name;
+    auto ret = func.ret;
     if (IsLvalueType(args[0]))
         args[0] = analyzer.GetLvalueType(this);
     else
@@ -553,48 +645,7 @@ std::unique_ptr<Expression> ClangType::FunctionPointerFor(std::string name, std:
         if (args != f_args)
             continue;
         auto fty = analyzer.GetFunctionType(analyzer.GetClangType(*from, func->getResultType()), f_args, func->isVariadic());
-        struct VTableThunk : Expression {
-            VTableThunk(clang::CXXMethodDecl* f, ClangTU& from, unsigned off, FunctionType* sig)
-            : method(f), offset(off), signature(sig) 
-            {
-                mangle = from.MangleName(f);
-            }
-            clang::CXXMethodDecl* method;
-            FunctionType* signature;
-            unsigned offset;
-            std::function<std::string(llvm::Module*)> mangle;
-            Type* GetType() override final {
-                return signature;
-            }
-            llvm::Value* ComputeValue(llvm::Module* module, llvm::IRBuilder<>&, llvm::IRBuilder<>&) override final {
-                if (offset == 0)
-                    return module->getFunction(mangle(module));
-                auto this_index = (std::size_t)signature->GetReturnType()->IsComplexType(module);
-                std::stringstream strstr;
-                strstr << "__" << this << offset;
-                auto thunk = llvm::Function::Create(llvm::dyn_cast<llvm::FunctionType>(signature->GetLLVMType(module)->getElementType()), llvm::GlobalValue::LinkageTypes::InternalLinkage, strstr.str(), module);
-                llvm::BasicBlock* bb = llvm::BasicBlock::Create(module->getContext(), "entry", thunk);
-                llvm::IRBuilder<> irbuilder(bb);
-                auto self = std::next(thunk->arg_begin(), signature->GetReturnType()->IsComplexType(module));
-                auto offset_self = irbuilder.CreateConstGEP1_32(irbuilder.CreatePointerCast(self, llvm::IntegerType::getInt8PtrTy(module->getContext())), -offset);
-                auto cast_self = irbuilder.CreatePointerCast(offset_self, std::next(module->getFunction(mangle(module))->arg_begin(), this_index)->getType());
-                std::vector<llvm::Value*> args;
-                for (std::size_t i = 0; i < thunk->arg_size(); ++i) {
-                    if (i == this_index)
-                        args.push_back(cast_self);
-                    else
-                        args.push_back(std::next(thunk->arg_begin(), i));
-                }
-                auto call = irbuilder.CreateCall(module->getFunction(mangle(module)), args);
-                if (call->getType() == llvm::Type::getVoidTy(module->getContext()))
-                    irbuilder.CreateRetVoid();
-                else
-                    irbuilder.CreateRet(call);
-                return thunk;
-            }
-            void DestroyExpressionLocals(llvm::Module* module, llvm::IRBuilder<>& b, llvm::IRBuilder<>&) override final {}
-        };
-        return Wide::Memory::MakeUnique<VTableThunk>(func, *from, offset, fty);
+        return Wide::Memory::MakeUnique<VTableThunk>(from->MangleName(func), offset, fty);
     }
     return nullptr;
 }
@@ -642,7 +693,6 @@ std::vector<ConstructorContext::member> ClangType::GetMembers() {
         ConstructorContext::member mem(RangeFromSourceRange(baseit->getSourceRange(), from->GetASTContext().getSourceManager()));
         mem.t = analyzer.GetClangType(*from, baseit->getType());
         mem.num = i++;
-        mem.vptr = false;
         mem.name = baseit->getType()->getAsCXXRecordDecl()->getName();
         out.push_back(std::move(mem));
     }
@@ -650,7 +700,6 @@ std::vector<ConstructorContext::member> ClangType::GetMembers() {
         ConstructorContext::member mem(RangeFromSourceRange(fieldit->getSourceRange(), from->GetASTContext().getSourceManager()));
         mem.t = analyzer.GetClangType(*from, fieldit->getType());
         mem.num = i++;
-        mem.vptr = false;
         mem.name = fieldit->getName();
         if (auto expr = fieldit->getInClassInitializer()) {
             auto style = fieldit->getInClassInitStyle();
@@ -660,19 +709,13 @@ std::vector<ConstructorContext::member> ClangType::GetMembers() {
         }
         out.push_back(std::move(mem));
     }
-    if (type->getAsCXXRecordDecl()->isPolymorphic()) {
-        ConstructorContext::member m(Lexer::Range(nullptr));
-        m.num = i++;
-        m.t = analyzer.GetPointerType(GetVirtualPointerType());
-        m.name = "__vfptr";
-        m.InClassInitializer = [this](std::unique_ptr<Expression> self) { return SetVirtualPointers(std::move(self)); };
-        m.vptr = true;
-        out.push_back(std::move(m));
-    }
     return std::move(out);
 }
 OverloadSet* ClangType::GetDestructorOverloadSet() {
     auto des = type->getAsCXXRecordDecl()->getDestructor();
     std::unordered_set<clang::NamedDecl*> decls = { des };
     return analyzer.GetOverloadSet(decls, from, nullptr);
+}
+llvm::Constant* ClangType::GetRTTI(llvm::Module* module) {
+    return from->GetItaniumRTTI(type, module);
 }

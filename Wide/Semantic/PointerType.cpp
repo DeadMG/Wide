@@ -56,7 +56,7 @@ OverloadSet* PointerType::CreateConstructorOverloadSet(Lexer::Access access) {
         std::vector<std::unique_ptr<Expression>> AdjustArguments(std::vector<std::unique_ptr<Expression>> args, Context c) override final { return args; }
         std::unique_ptr<Expression> CallFunction(std::vector<std::unique_ptr<Expression>> args, Context c) override final {
             auto other = BuildValue(std::move(args[1]));
-            auto udt = dynamic_cast<BaseType*>(dynamic_cast<PointerType*>(other->GetType())->pointee);
+            auto udt = dynamic_cast<PointerType*>(other->GetType())->pointee;
             return Wide::Memory::MakeUnique<ImplicitStoreExpr>(std::move(args[0]), udt->AccessBase(std::move(other), self->pointee));
         }
         Callable* GetCallableForResolution(std::vector<Type*>, Analyzer& a) override final { return this; }
@@ -90,9 +90,7 @@ bool PointerType::IsA(Type* self, Type* other, Lexer::Access access) {
 
     auto otherptr = dynamic_cast<PointerType*>(other->Decay());
     if (!otherptr) return false;
-    auto udt = dynamic_cast<BaseType*>(pointee);
-    if (!udt) return false;
-    return udt->IsDerivedFrom(otherptr->pointee) == InheritanceRelationship::UnambiguouslyDerived;
+    return pointee->IsDerivedFrom(otherptr->pointee) == InheritanceRelationship::UnambiguouslyDerived;
 }
 
 OverloadSet* PointerType::CreateOperatorOverloadSet(Type* self, Lexer::TokenType what, Lexer::Access access) {

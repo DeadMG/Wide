@@ -85,7 +85,7 @@ struct rvalueconvertible : OverloadResolvable, Callable {
         auto ptrt = self->analyzer.GetPointerType(args[1]->GetType()->Decay());
         auto ptrself = self->analyzer.GetPointerType(self->Decay());
         if (ptrt->IsA(ptrt, ptrself, GetAccessSpecifier(c.from, ptrt))) {
-            auto basety = dynamic_cast<BaseType*>(args[1]->GetType()->Decay());
+            auto basety = args[1]->GetType()->Decay();
             if (!args[1]->GetType()->IsReference())
                 args[1] = Wide::Memory::MakeUnique<RvalueCast>(std::move(args[1]));
             return Wide::Memory::MakeUnique<ImplicitStoreExpr>(std::move(args[0]), basety->AccessBase(std::move(args[1]), self));
@@ -112,7 +112,7 @@ struct PointerComparableResolvable : OverloadResolvable, Callable {
         auto ty = args[1]->GetType();
         if (args[1]->GetType() == self)
             return Wide::Memory::MakeUnique<ImplicitStoreExpr>(std::move(args[0]), std::move(args[1]));
-        auto udt = dynamic_cast<BaseType*>(ty->Decay());
+        auto udt = ty->Decay();
         return Wide::Memory::MakeUnique<ImplicitStoreExpr>(std::move(args[0]), udt->AccessBase(std::move(args[1]), self->Decay()));
     }
     Callable* GetCallableForResolution(std::vector<Type*>, Analyzer& a) override final { return this; }

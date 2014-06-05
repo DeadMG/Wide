@@ -51,6 +51,7 @@ namespace Wide {
         public:
             AggregateType(Analyzer& a) : Type(a) {}
 
+            llvm::Constant* GetRTTI(llvm::Module* module) override;
             unsigned GetFieldIndex(unsigned num) { return GetLayout().FieldIndices[num]; }
             unsigned GetOffset(unsigned num) { return GetLayout().Offsets[num]; }
 

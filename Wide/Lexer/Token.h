@@ -78,7 +78,9 @@ namespace Wide {
             Dynamic,
             Decltype,
             True,
-            False
+            False,
+            Typeid,
+            DynamicCast
         };
         enum Access {
             Public,

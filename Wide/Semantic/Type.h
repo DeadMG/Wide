@@ -11,6 +11,7 @@
 #include <string>
 #include <cassert>
 #include <memory>
+#include <boost/variant.hpp>
 
 #pragma warning(push, 0)
 #include <llvm/IR/IRBuilder.h>
@@ -87,6 +88,13 @@ namespace Wide {
                 }
             }
         };
+
+        struct CodegenContext {
+            llvm::Module* module;
+            llvm::IRBuilder<>* insert_builder;
+            llvm::IRBuilder<>* alloca_builder;
+        };
+
         struct Statement : public Node {
             virtual void GenerateCode(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) = 0;
             virtual void DestroyLocals(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) = 0;
@@ -120,17 +128,18 @@ namespace Wide {
             std::unordered_map<Type*, std::unordered_map<Type*, std::unordered_map<Lexer::Access, std::unordered_map<Lexer::TokenType, OverloadSet*>>>> ADLResults;
 
             virtual OverloadSet* CreateOperatorOverloadSet(Type* self, Lexer::TokenType what, Lexer::Access access);
-            virtual OverloadSet* CreateConstructorOverloadSet(Lexer::Access access) = 0;
             virtual OverloadSet* CreateADLOverloadSet(Lexer::TokenType name, Type* lhs, Type* rhs, Lexer::Access access);
+            virtual OverloadSet* CreateConstructorOverloadSet(Lexer::Access access) = 0;
         public:
             Type(Analyzer& a) : analyzer(a) {}
 
             Analyzer& analyzer;
 
-            virtual llvm::Type* GetLLVMType(llvm::Module* module) = 0;
             virtual std::size_t size() = 0;
             virtual std::size_t alignment() = 0;
             virtual std::string explain() = 0;
+            virtual llvm::Type* GetLLVMType(llvm::Module* module) = 0;
+            virtual llvm::Constant* GetRTTI(llvm::Module* module);
 
             virtual bool IsReference(Type* to);
             virtual bool IsReference();
@@ -167,6 +176,56 @@ namespace Wide {
             std::unique_ptr<Expression> BuildInplaceConstruction(std::unique_ptr<Expression> self, std::vector<std::unique_ptr<Expression>> exprs, Context c);
             std::unique_ptr<Expression> BuildUnaryExpression(std::unique_ptr<Expression> self, Lexer::TokenType type, Context c);
             std::unique_ptr<Expression> BuildBinaryExpression(std::unique_ptr<Expression> lhs, std::unique_ptr<Expression> rhs, Lexer::TokenType type, Context c);
+
+            enum class InheritanceRelationship {
+                NotDerived,
+                AmbiguouslyDerived,
+                UnambiguouslyDerived
+            };
+            struct VTableLayout {
+                VTableLayout() : offset(0) {}
+                enum class SpecialMember {
+                    Destructor,
+                    ItaniumABIDeletingDestructor,
+                    OffsetToTop,
+                    RTTIPointer
+                };
+                struct VirtualFunction {
+                    std::string name;
+                    std::vector<Type*> args;
+                    Type* ret;
+                };
+                struct VirtualFunctionEntry {
+                    bool abstract;
+                    boost::variant<SpecialMember, VirtualFunction> function;
+                };
+                unsigned offset;
+                std::vector<VirtualFunctionEntry> layout;
+            };
+        private:
+            virtual VTableLayout ComputeVTableLayout() { return VTableLayout(); }
+            virtual Type* GetVirtualPointerType() { assert(false); throw std::runtime_error("ICE"); }
+            virtual std::vector<std::pair<Type*, unsigned>> GetBasesAndOffsets() { return {}; }
+            virtual std::unique_ptr<Expression> VirtualEntryFor(VTableLayout::VirtualFunctionEntry entry, unsigned offset) { assert(false); throw std::runtime_error("ICE"); }
+            
+            std::unordered_map<std::vector<std::pair<Type*, unsigned>>, std::unique_ptr<Expression>, VectorTypeHasher> ComputedVTables;
+            Wide::Util::optional<VTableLayout> VtableLayout;
+            
+            std::unique_ptr<Expression> CreateVTable(std::vector<std::pair<Type*, unsigned>> path);
+            std::unique_ptr<Expression> GetVTablePointer(std::vector<std::pair<Type*, unsigned>> path);
+            std::unique_ptr<Expression> SetVirtualPointers(std::vector<std::pair<Type*, unsigned>> path, std::unique_ptr<Expression> self);
+        public:
+            VTableLayout GetVtableLayout() {
+                if (!VtableLayout)
+                    VtableLayout = ComputeVTableLayout();
+                return *VtableLayout;
+            }
+            std::unique_ptr<Expression> SetVirtualPointers(std::unique_ptr<Expression>);
+            virtual std::vector<Type*> GetBases() { return{}; }
+
+            virtual std::unique_ptr<Expression> GetVirtualPointer(std::unique_ptr<Expression> self) { assert(false); throw std::runtime_error("ICE"); }
+            virtual InheritanceRelationship IsDerivedFrom(Type* other) { return InheritanceRelationship::NotDerived; }
+            virtual std::unique_ptr<Expression> AccessBase(std::unique_ptr<Expression> self, Type* other) { assert(false); throw std::runtime_error("ICE"); }
         };
 
 
@@ -207,14 +266,12 @@ namespace Wide {
                     , t(other.t)
                     , num(other.num)
                     , InClassInitializer(std::move(other.InClassInitializer))
-                    , location(std::move(other.location))
-                    , vptr(other.vptr) {}
+                    , location(std::move(other.location)) {}
                 std::string name;
                 Type* t;
                 unsigned num;
                 std::function<std::unique_ptr<Expression>(std::unique_ptr<Expression>)> InClassInitializer;
                 Lexer::Range location;
-                bool vptr;
             };
             virtual std::vector<member> GetMembers() = 0;
         };
@@ -244,7 +301,6 @@ namespace Wide {
             OverloadSet* CreateConstructorOverloadSet(Lexer::Access access) override final;
         };
 
-
         // Fuck you, C++ fail. This is basically just { args } but it doesn't fail super hard for move-only types
         template<typename... Args> std::vector<std::unique_ptr<Expression>> Expressions(Args&&... args) {
             using swallow = int[];
@@ -253,44 +309,6 @@ namespace Wide {
             return std::move(ret);
         }
 
-        enum InheritanceRelationship {
-            NotDerived,
-            AmbiguouslyDerived,
-            UnambiguouslyDerived
-        };
-        struct BaseType {
-        public:
-            struct VirtualFunction {
-                std::string name;
-                std::vector<Type*> args;
-                Type* ret;
-                bool abstract;
-            };
-        private:
-            virtual std::vector<VirtualFunction> ComputeVTableLayout() = 0;
-            virtual Type* GetVirtualPointerType() = 0;
-            virtual std::vector<std::pair<BaseType*, unsigned>> GetBasesAndOffsets() = 0;
-            virtual std::unique_ptr<Expression> FunctionPointerFor(std::string name, std::vector<Type*> args, Type* ret, unsigned offset) = 0;
-
-            std::unordered_map<std::vector<std::pair<BaseType*, unsigned>>, std::unique_ptr<Expression>, VectorTypeHasher> ComputedVTables;
-            Wide::Util::optional<std::vector<VirtualFunction>> VtableLayout;
-
-            std::unique_ptr<Expression> CreateVTable(std::vector<std::pair<BaseType*, unsigned>> path);
-            std::unique_ptr<Expression> GetVTablePointer(std::vector<std::pair<BaseType*, unsigned>> path);
-            std::unique_ptr<Expression> SetVirtualPointers(std::vector<std::pair<BaseType*, unsigned>> path, std::unique_ptr<Expression> self);
-        public:
-            std::vector<VirtualFunction> GetVtableLayout() {
-                if (!VtableLayout)
-                    VtableLayout = ComputeVTableLayout();
-                return *VtableLayout;
-            }
-            std::unique_ptr<Expression> SetVirtualPointers(std::unique_ptr<Expression>);
-            virtual std::vector<BaseType*> GetBases() = 0;
-
-            virtual std::unique_ptr<Expression> GetVirtualPointer(std::unique_ptr<Expression> self) = 0;
-            virtual Type* GetSelfAsType() = 0;
-            virtual InheritanceRelationship IsDerivedFrom(Type* other) = 0;
-            virtual std::unique_ptr<Expression> AccessBase(std::unique_ptr<Expression> self, Type* other) = 0;
-        };
+        llvm::Constant* GetGlobalString(std::string string, llvm::Module* m);
     }
 }

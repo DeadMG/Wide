@@ -32,6 +32,7 @@
 #include <sstream>
 #include <iostream>
 #include <unordered_set>
+#include <fstream>
 
 #pragma warning(push, 0)
 #include <clang/AST/Type.h>
@@ -155,119 +156,18 @@ Analyzer::Analyzer(const Options::Clang& opts, const AST::Module* GlobalModule)
     global->AddSpecialMember("null", GetNullType()->BuildValueConstruction(Expressions(), context));
     global->AddSpecialMember("reinterpret_cast", GetOverloadSet(PointerCast.get())->BuildValueConstruction(Expressions(), context));
     global->AddSpecialMember("move", GetOverloadSet(Move.get())->BuildValueConstruction(Expressions(), context));
+
+    auto str = "";
+    llvm::SmallVector<char, 30> fuck_out_parameters;
+    auto error = llvm::sys::fs::createTemporaryFile("", "", fuck_out_parameters);
+    std::string path(fuck_out_parameters.begin(), fuck_out_parameters.end());
+    std::ofstream file(path, std::ios::out);
+    file << str;
+    file.flush();
+    file.close();
+    AggregateCPPHeader(path, context.where);
 }
 
-    /*
-        // Ugly to perform an AST-level transformation in the analyzer
-        // But hey- the AST exists to represent the exact source.
-        void VisitLambda(const AST::Lambda* lam) {
-            // Need to not-capture things that would be available anyway.
-            
-            std::vector<std::unordered_set<std::string>> lambda_locals;
-            // Only implicit captures.
-            std::unordered_set<std::string> captures;
-            struct LambdaVisitor : AST::Visitor<LambdaVisitor> {
-                std::vector<std::unordered_set<std::string>>* lambda_locals;
-                std::unordered_set<std::string>* captures;
-                void VisitVariableStatement(const AST::Variable* v) {
-                    for(auto&& name : v->name)
-                        lambda_locals->back().insert(name.name);
-                }
-                void VisitLambdaCapture(const AST::Variable* v) {
-                    for (auto&& name : v->name)
-                        lambda_locals->back().insert(name.name);
-                }
-                void VisitLambdaArgument(const AST::FunctionArgument* arg) {
-                    lambda_locals->back().insert(arg->name);
-                }
-                void VisitLambda(const AST::Lambda* l) {
-                    lambda_locals->emplace_back();
-                    for(auto&& x : l->args)
-                        VisitLambdaArgument(&x);
-                    for(auto&& x : l->Captures)
-                        VisitLambdaCapture(x);
-                    lambda_locals->emplace_back();
-                    for(auto&& x : l->statements)
-                        VisitStatement(x);
-                    lambda_locals->pop_back();
-                    lambda_locals->pop_back();
-                }
-                void VisitIdentifier(const AST::Identifier* e) {
-                    for(auto&& scope : *lambda_locals)
-                        if (scope.find(e->val) != scope.end())
-                            return;
-                    captures->insert(e->val);
-                }
-                void VisitCompoundStatement(const AST::CompoundStatement* cs) {
-                    lambda_locals->emplace_back();
-                    for(auto&& x : cs->stmts)
-                        VisitStatement(x);
-                    lambda_locals->pop_back();
-                }
-                void VisitWhileStatement(const AST::While* wh) {
-                    lambda_locals->emplace_back();
-                    VisitExpression(wh->condition);
-                    VisitStatement(wh->body);
-                    lambda_locals->pop_back();
-                }
-                void VisitIfStatement(const AST::If* br) {
-                    lambda_locals->emplace_back();
-                    VisitExpression(br->condition);
-                    lambda_locals->emplace_back();
-                    VisitStatement(br->true_statement);
-                    lambda_locals->pop_back();
-                    lambda_locals->pop_back();
-                    lambda_locals->emplace_back();
-                    VisitStatement(br->false_statement);
-                    lambda_locals->pop_back();
-                }
-            };
-            LambdaVisitor l;
-            l.captures = &captures;
-            l.lambda_locals = &lambda_locals;
-            l.VisitLambda(lam);
-
-            Context c(*self, lam->location, handler, t);
-            // We obviously don't want to capture module-scope names.
-            // Only capture from the local scope, and from "this".
-            {
-                auto caps = std::move(captures);
-                for (auto&& name : caps) {
-                    if (auto fun = dynamic_cast<Function*>(t)) {
-                        if (fun->LookupLocal(name, c))
-                            captures.insert(name);
-                        if (auto udt = dynamic_cast<UserDefinedType*>(fun->GetContext(*self))) {
-                            if (udt->HasMember(name))
-                                captures.insert(name);
-                        }
-                    }
-                }
-            }
-            
-            // Just as a double-check, eliminate all explicit captures from the list. This should never have any effect
-            // but I'll hunt down any bugs caused by eliminating it later.
-            for(auto&& arg : lam->Captures)
-                for(auto&& name : arg->name)
-                    captures.erase(name.name);
-
-            std::vector<std::pair<std::string, ConcreteExpression>> cap_expressions;
-            for(auto&& arg : lam->Captures) {
-                cap_expressions.push_back(std::make_pair(arg->name.front().name, self->AnalyzeExpression(t, arg->initializer, handler)));
-            }
-            for(auto&& name : captures) {                
-                AST::Identifier ident(name, lam->location);
-                cap_expressions.push_back(std::make_pair(name, self->AnalyzeExpression(t, &ident, handler)));
-            }
-            std::vector<std::pair<std::string, Type*>> types;
-            std::vector<ConcreteExpression> expressions;
-            for (auto cap : cap_expressions) {
-                types.push_back(std::make_pair(cap.first, cap.second.t->Decay()));
-                expressions.push_back(cap.second);
-            }
-            auto type = self->arena.Allocate<LambdaType>(types, lam, *self);
-            out = type->BuildLambdaFromCaptures(expressions, c);
-        }
-    };*/
 
 ClangTU* Analyzer::LoadCPPHeader(std::string file, Lexer::Range where) {
     if (headers.find(file) != headers.end())
@@ -288,9 +188,9 @@ ClangTU* Analyzer::AggregateCPPHeader(std::string file, Lexer::Range where) {
 
 void Analyzer::GenerateCode(llvm::Module* module) {
     if (AggregateTU)
-        AggregateTU->GenerateCodeAndLinkModule(module);
+        AggregateTU->GenerateCodeAndLinkModule(module, layout);
     for (auto&& tu : headers)
-        tu.second.GenerateCodeAndLinkModule(module);
+        tu.second.GenerateCodeAndLinkModule(module, layout);
     for (auto&& set : WideFunctions)
         for (auto&& signature : set.second)
             signature.second->EmitCode(module);
@@ -611,12 +511,8 @@ Lexer::Access Semantic::GetAccessSpecifier(Type* from, Type* to) {
     auto source = from->Decay();
     auto target = to->Decay();
     if (source == target) return Lexer::Access::Private;
-    if (auto base = dynamic_cast<BaseType*>(target)) {
-        if (auto derived = dynamic_cast<BaseType*>(source)) {
-            if (derived->IsDerivedFrom(target) == InheritanceRelationship::UnambiguouslyDerived)
-                return Lexer::Access::Protected;
-        }
-    }
+    if (source->IsDerivedFrom(target) == Type::InheritanceRelationship::UnambiguouslyDerived)
+        return Lexer::Access::Protected;
     if (auto func = dynamic_cast<Function*>(from)) {
         if (auto clangty = dynamic_cast<ClangType*>(to)) {
             Lexer::Access max = GetAccessSpecifier(func->GetContext(), target);
@@ -1053,6 +949,70 @@ std::unique_ptr<Expression> Semantic::AnalyzeExpression(Type* lookup, const AST:
         auto expr = AnalyzeExpression(lookup, declty->ex, a);
         return a.GetConstructorType(expr->GetType())->BuildValueConstruction(Expressions(), { lookup, declty->location });
     }
+    if (auto rtti = dynamic_cast<const AST::Typeid*>(e)) {
+        auto expr = AnalyzeExpression(lookup, rtti->ex, a);
+        auto tu = expr->GetType()->analyzer.AggregateCPPHeader("typeinfo", rtti->location);
+        auto global_namespace = expr->GetType()->analyzer.GetClangNamespace(*tu, tu->GetDeclContext());
+        auto std_namespace = global_namespace->AccessMember(global_namespace->BuildValueConstruction(Expressions(), { lookup, rtti->location }), "std", { lookup, rtti->location });
+        assert(std_namespace && "<typeinfo> didn't have std namespace?");
+        auto std_namespace_ty = std_namespace->GetType();
+        auto clangty = std_namespace_ty->AccessMember(std::move(std_namespace), "type_info", { lookup, rtti->location });
+        assert(clangty && "<typeinfo> didn't have std::type_info?");
+        auto conty = dynamic_cast<ConstructorType*>(clangty->GetType()->Decay());
+        assert(conty && "<typeinfo>'s std::type_info wasn't a type?");
+        auto result = conty->analyzer.GetLvalueType(conty->GetConstructedType());
+        // typeid(T)
+        if (auto ty = dynamic_cast<ConstructorType*>(expr->GetType()->Decay())) {
+            struct RTTI : public Expression {
+                RTTI(Type* ty, Type* result) : ty(ty), result(result) {}
+                Type* ty;
+                Type* result;
+                Type* GetType() override final { return result; }
+                llvm::Value* ComputeValue(llvm::Module* m, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final {
+                    return bb.CreateBitCast(ty->GetRTTI(m), result->GetLLVMType(m));
+                }
+                void DestroyExpressionLocals(llvm::Module* m, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final {}
+            };
+            return Wide::Memory::MakeUnique<RTTI>(ty->GetConstructedType(), result);
+        }
+        // typeid(expr)
+        struct RTTI : public Expression {
+            RTTI(std::unique_ptr<Expression> arg, Type* result) : expr(std::move(arg)), result(result) 
+            {
+                // If we have a polymorphic type, find the RTTI entry, if applicable.
+                ty = expr->GetType()->Decay();
+                vtable = ty->GetVtableLayout();
+                if (!vtable.layout.empty()) {
+                    expr = ty->GetVirtualPointer(std::move(expr));
+                    for (unsigned int i = 0; i < vtable.layout.size(); ++i) {
+                        if (auto spec = boost::get<Type::VTableLayout::SpecialMember>(&vtable.layout[i].function)) {
+                            if (*spec == Type::VTableLayout::SpecialMember::RTTIPointer) {
+                                rtti_offset = i - vtable.offset;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+            std::unique_ptr<Expression> expr;
+            Type::VTableLayout vtable;
+            Wide::Util::optional<unsigned> rtti_offset;
+            Type* result;
+            Type* ty;
+            Type* GetType() override final { return result; }
+            llvm::Value* ComputeValue(llvm::Module* m, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final {
+                // Do we have a vtable offset? If so, use the RTTI entry there. The expr will already be a pointer to the vtable pointer.
+                if (rtti_offset) {
+                    auto vtable_pointer = bb.CreateLoad(expr->GetValue(m, bb, allocas));
+                    auto rtti_pointer = bb.CreateLoad(bb.CreateConstGEP1_32(vtable_pointer, *rtti_offset));
+                    return bb.CreateBitCast(rtti_pointer, result->GetLLVMType(m));
+                }
+                return bb.CreateBitCast(ty->GetRTTI(m), result->GetLLVMType(m));
+            }
+            void DestroyExpressionLocals(llvm::Module* m, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final {}
+        };
+        return Wide::Memory::MakeUnique<RTTI>(std::move(expr), result);
+    }
     if (auto lam = dynamic_cast<const AST::Lambda*>(e)) {
         std::vector<std::unordered_set<std::string>> lambda_locals;
 
@@ -1182,4 +1142,12 @@ Type* Semantic::InferTypeFromExpression(Expression* e, bool local) {
         return explicitcon->GetType();
     }
     return e->GetType()->Decay();
+}
+std::unique_ptr<Expression> Analyzer::AnalyzeCachedExpression(Type* lookup, const AST::Expression* e) {
+    if (ExpressionCache.find(e) == ExpressionCache.end())
+        ExpressionCache[e] = AnalyzeExpression(lookup, e, *this);
+    return Wide::Memory::MakeUnique<ExpressionReference>(ExpressionCache[e].get());
+}
+ClangTU* Analyzer::GetAggregateTU() {
+    return AggregateTU.get();
 }

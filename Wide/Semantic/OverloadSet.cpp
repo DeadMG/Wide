@@ -132,15 +132,12 @@ struct cppcallable : public Callable {
                 continue;
             }
 
-
             // Handle base type mismatches first because else they are mishandled by the next check.
-            if (auto derived = dynamic_cast<BaseType*>(args[i]->GetType()->Decay())) {
-                if (auto base = dynamic_cast<BaseType*>(types[i].first->Decay())) {
-                    if (derived->IsDerivedFrom(types[i].first->Decay()) == InheritanceRelationship::UnambiguouslyDerived) {
-                        out.push_back(types[i].first->BuildValueConstruction(Expressions(std::move(args[i])), c));
-                        continue;
-                    }
-                }
+            auto derived = args[i]->GetType()->Decay(); 
+            auto base = types[i].first->Decay();
+            if (derived->IsDerivedFrom(types[i].first->Decay()) == Type::InheritanceRelationship::UnambiguouslyDerived) {
+                out.push_back(types[i].first->BuildValueConstruction(Expressions(std::move(args[i])), c));
+                continue;
             }
             
             // If the function takes a const lvalue (as kindly provided by the second member),

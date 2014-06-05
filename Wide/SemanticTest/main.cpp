@@ -78,7 +78,7 @@ int main(int argc, char** argv) {
         total_failed += result.fails;
     }
     std::cout << "Total succeeded: " << total_succeeded << " failed: " << total_failed;
-    //Jit(clangopts, "JITSuccess/CPPInterop/ExportDestructor.wide");
+    //Jit(clangopts, "JITSuccess/UserDefined/PolymorphicRTTI.wide");
     //Compile(clangopts, "CompileFail/InvalidBase/InheritsFromPrimitive.wide");
     if (input.count("break"))
         Wide::Util::DebugBreak();

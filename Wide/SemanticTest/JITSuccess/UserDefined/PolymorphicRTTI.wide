@@ -1,0 +1,8 @@
+type base { dynamic f() {} }
+type derived : base { type() {} }
+f(arg := base.lvalue) prolog { ReturnType = base.lvalue; }
+{ return arg; }
+Main() {
+    var := derived();
+    return typeid(f(var)) == typeid(derived);
+}

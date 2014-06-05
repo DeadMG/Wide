@@ -15,7 +15,8 @@ namespace clang {
 namespace Wide {
     namespace Semantic {     
         class ClangTU;
-        class ClangType : public Type, public TupleInitializable, public BaseType, public MemberFunctionContext, public ConstructorContext {
+        class ClangType : public Type, public TupleInitializable, public MemberFunctionContext, public ConstructorContext {
+            Wide::Util::optional<VTableLayout> PrimaryVTableLayout;
             ClangTU* from;
             clang::QualType type; 
             void ProcessImplicitSpecialMember(std::function<bool()> needs, std::function<clang::CXXMethodDecl*()> declare, std::function<void(clang::CXXMethodDecl*)> define, std::function<clang::CXXMethodDecl*()> lookup);
@@ -23,14 +24,16 @@ namespace Wide {
             bool ProcessedDestructors = false;
             bool ProcessedAssignmentOperators = false;
             Type* GetSelfAsType() override final { return this; }
-            std::vector<std::pair<BaseType*, unsigned>> GetBasesAndOffsets() override final;
-            std::vector<BaseType*> GetBases() override final;
+            std::vector<std::pair<Type*, unsigned>> GetBasesAndOffsets() override final;
+            std::vector<Type*> GetBases() override final;
             Type* GetVirtualPointerType() override final;
-            std::vector<VirtualFunction> ComputeVTableLayout() override final;
-            std::unique_ptr<Expression> FunctionPointerFor(std::string name, std::vector<Type*> args, Type* ret, unsigned offset) override final;
+            VTableLayout GetPrimaryVTableLayout();
+            VTableLayout ComputeVTableLayout() override final;
+            std::unique_ptr<Expression> VirtualEntryFor(VTableLayout::VirtualFunctionEntry, unsigned offset) override final;
             std::vector<member> GetMembers() override final;
         public:
             // Used for type.destructor access.
+            llvm::Constant* GetRTTI(llvm::Module* module) override final;
             OverloadSet* GetDestructorOverloadSet();
             std::unique_ptr<Expression> GetVirtualPointer(std::unique_ptr<Expression>) override final;
             ClangType(ClangTU* src, clang::QualType t, Analyzer& a);

@@ -1,0 +1,4 @@
+type t {}
+Main() {
+    return typeid(t) == typeid(t());
+}

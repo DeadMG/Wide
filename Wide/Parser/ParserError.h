@@ -74,7 +74,9 @@ namespace Wide {
             TypeExpectedBracketAfterIdentifier,
             DecltypeNoOpenBracket,
             DecltypeNoCloseBracket,
-            FunctionArgumentOnlyFirstThis
+            FunctionArgumentOnlyFirstThis,
+            TypeidNoOpenBracket,
+            TypeidNoCloseBracket,
         };         
 
         enum class Warning : int {
@@ -167,7 +169,9 @@ namespace Wide {
                 std::make_pair(Error::TypeExpectedBracketAfterIdentifier, "Expected ( after dynamic identifier to introduce dynamic member function."),
                 std::make_pair(Error::DecltypeNoOpenBracket, "Expected ( after decltype to introduce a decltype expression."),
                 std::make_pair(Error::DecltypeNoCloseBracket, "Expected ( after decltype to introduce a decltype expression."),
-                std::make_pair(Error::FunctionArgumentOnlyFirstThis, "Only the first argument in a function definition can be this")
+                std::make_pair(Error::FunctionArgumentOnlyFirstThis, "Only the first argument in a function definition can be this"),
+                std::make_pair(Error::TypeidNoOpenBracket, "Expected ( after decltype to introduce a decltype expression."),
+                std::make_pair(Error::TypeidNoCloseBracket, "Expected ( after decltype to introduce a decltype expression."),
             };
             return std::unordered_map<Error, std::string>(std::begin(strings), std::end(strings));
         }());
