@@ -28,7 +28,7 @@ std::string Wide::Semantic::GetFunctionName(const AST::FunctionBase* func, Analy
                 }
             };
             try {
-                auto autoty = autotype(root);
+                autotype autoty(root);
                 auto expr = AnalyzeExpression(&autoty, arg.type, a);
                 auto&& conty = dynamic_cast<ConstructorType&>(*expr->GetType()->Decay());
                 context += " := " + conty.GetConstructedType()->explain();
