@@ -11,6 +11,7 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include <typeindex>
 
 #pragma warning(push, 0)
 #include <clang/AST/Type.h>
@@ -162,7 +163,14 @@ namespace Wide {
             TemplateType* GetTemplateType(const AST::TemplateType* t, Type* context, std::vector<Type*> arguments, std::string name);
             LambdaType* GetLambdaType(const AST::Lambda* funcbase, std::vector<std::pair<std::string, Type*>> types, Type* context);
 
+            std::unordered_map<std::type_index, std::function<std::unique_ptr<Expression>(Analyzer& a, Type* lookup, const AST::Expression* e)>> expression_handlers;
+            template<typename T, typename F> void AddExpressionHandler(F f) {
+                expression_handlers[typeid(const T)] = [f](Analyzer& a, Type* lookup, const AST::Expression* e) {
+                    return f(a, lookup, static_cast<const T*>(e));
+                };
+            }
             std::unique_ptr<Expression> AnalyzeCachedExpression(Type* lookup, const AST::Expression* e);
+            std::unique_ptr<Expression> AnalyzeExpression(Type* lookup, const AST::Expression* e);
 
             Analyzer(const Options::Clang&, const AST::Module*);     
 
@@ -181,7 +189,6 @@ namespace Wide {
         std::string GetNameForOperator(Lexer::TokenType t);
         bool IsMultiTyped(const AST::FunctionArgument& f); 
         bool IsMultiTyped(const AST::FunctionBase* f);
-        std::unique_ptr<Expression> AnalyzeExpression(Type* lookup, const AST::Expression* e, Analyzer& a);
         Type* InferTypeFromExpression(Expression* e, bool local);
     }
 }

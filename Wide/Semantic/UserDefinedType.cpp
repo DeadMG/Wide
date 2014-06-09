@@ -45,7 +45,7 @@ void AddAllBases(std::unordered_set<Type*>& all_bases, Type* root) {
 }
 UserDefinedType::BaseData::BaseData(UserDefinedType* self) {
     for (auto expr : self->type->bases) {
-        auto base = AnalyzeExpression(self->context, expr, self->analyzer);
+        auto base = self->analyzer.AnalyzeExpression(self->context, expr);
         auto con = dynamic_cast<ConstructorType*>(base->GetType()->Decay());
         if (!con) throw NotAType(base->GetType(), expr->location);
         // Should be UDT or ClangType right now.
@@ -161,7 +161,7 @@ UserDefinedType::VTableData::VTableData(UserDefinedType* self) {
 UserDefinedType::MemberData::MemberData(UserDefinedType* self) {
     for (auto&& var : self->type->variables) {
         member_indices[var.first->name.front().name] = members.size();
-        auto expr = AnalyzeExpression(self->context, var.first->initializer, self->analyzer);
+        auto expr = self->analyzer.AnalyzeExpression(self->context, var.first->initializer);
         if (auto con = dynamic_cast<ConstructorType*>(expr->GetType()->Decay())) {
             members.push_back(con->GetConstructedType());
             NSDMIs.push_back(nullptr);
@@ -213,7 +213,7 @@ std::vector<UserDefinedType::member> UserDefinedType::GetConstructionMembers() {
         m.name = type->variables[i].first->name.front().name;
         m.num = { GetOffset(i + type->bases.size()) };
         if (GetMemberData().NSDMIs[i])
-            m.InClassInitializer = [this, i](std::unique_ptr<Expression>) { return AnalyzeExpression(context, GetMemberData().NSDMIs[i], analyzer); };
+            m.InClassInitializer = [this, i](std::unique_ptr<Expression>) { return analyzer.AnalyzeExpression(context, GetMemberData().NSDMIs[i]); };
         out.push_back(std::move(m));
     }
     return out;
@@ -591,7 +591,7 @@ std::unique_ptr<Expression> UserDefinedType::FunctionPointerFor(VTableLayout::Vi
         if (func->args.size() == 0 || func->args.front().name != "this")
             f_args.push_back(analyzer.GetLvalueType(this));
         for (auto arg : func->args) {
-            auto ty = AnalyzeExpression(GetContext(), arg.type, analyzer)->GetType()->Decay();
+            auto ty = analyzer.AnalyzeCachedExpression(GetContext(), arg.type)->GetType()->Decay();
             auto con_type = dynamic_cast<ConstructorType*>(ty);
             if (!con_type)
                 throw Wide::Semantic::NotAType(ty, arg.location);

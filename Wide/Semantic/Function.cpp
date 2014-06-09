@@ -433,7 +433,7 @@ void Function::ContinueStatement::GenerateCode(llvm::Module* module, llvm::IRBui
 std::unique_ptr<Statement> Function::AnalyzeStatement(const AST::Statement* s) {
     if (auto ret = dynamic_cast<const AST::Return*>(s)) {
         if (ret->RetExpr) {
-            return Wide::Memory::MakeUnique<ReturnStatement>(this, AnalyzeExpression(this, ret->RetExpr, analyzer), current_scope, ret->location);
+            return Wide::Memory::MakeUnique<ReturnStatement>(this, analyzer.AnalyzeExpression(this, ret->RetExpr), current_scope, ret->location);
         }
         return Wide::Memory::MakeUnique<ReturnStatement>(this, nullptr, current_scope, ret->location);
     }
@@ -446,11 +446,11 @@ std::unique_ptr<Statement> Function::AnalyzeStatement(const AST::Statement* s) {
     }
 
     if (auto expr = dynamic_cast<const AST::Expression*>(s))
-        return AnalyzeExpression(this, expr, analyzer);
+        return analyzer.AnalyzeExpression(this, expr);
 
     if (auto var = dynamic_cast<const AST::Variable*>(s)) {
         std::vector<LocalVariable*> locals;
-        auto init_expr = AnalyzeExpression(this, var->initializer, analyzer);
+        auto init_expr = analyzer.AnalyzeExpression(this, var->initializer);
         if (var->name.size() == 1) {
             auto&& name = var->name.front();
             if (current_scope->named_variables.find(var->name.front().name) != current_scope->named_variables.end())
@@ -480,7 +480,7 @@ std::unique_ptr<Statement> Function::AnalyzeStatement(const AST::Statement* s) {
                 condscope->active.push_back(AnalyzeStatement(whil->var_condition));
                 return Wide::Memory::MakeUnique<ExpressionReference>(condscope->named_variables.begin()->second.first.get());
             }
-            return AnalyzeExpression(this, whil->condition, analyzer);
+            return analyzer.AnalyzeExpression(this, whil->condition);
         };
         auto cond = get_expr();
         auto while_stmt = Wide::Memory::MakeUnique<WhileStatement>(cond.get(), whil->location, this);
@@ -512,7 +512,7 @@ std::unique_ptr<Statement> Function::AnalyzeStatement(const AST::Statement* s) {
                 condscope->active.push_back(AnalyzeStatement(if_stmt->var_condition));
                 return Wide::Memory::MakeUnique<ExpressionReference>(condscope->named_variables.begin()->second.first.get());
             }
-            return AnalyzeExpression(this, if_stmt->condition, analyzer);
+            return analyzer.AnalyzeExpression(this, if_stmt->condition);
         };
         auto cond = get_expr();
         Expression* condexpr = cond.get();
@@ -622,7 +622,7 @@ Function::Function(std::vector<Type*> args, const AST::FunctionBase* astfun, Ana
             auto ident = dynamic_cast<const AST::Identifier*>(ass->lhs);
             if (!ident)
                 throw PrologAssignmentNotIdentifier(ass->lhs->location);
-            auto expr = AnalyzeExpression(this, ass->rhs, analyzer);
+            auto expr = analyzer.AnalyzeExpression(this, ass->rhs);
             if (ident->val == "ExportName") {
                 auto str = dynamic_cast<StringType*>(expr->GetType()->Decay());
                 if (!str)
@@ -711,7 +711,7 @@ void Function::ComputeBody() {
                     // if the type of this member is a reference.
                     
                     if (init->initializer)
-                        root_scope->active.push_back(x.t->BuildInplaceConstruction(std::move(member), Expressions(AnalyzeExpression(this, init->initializer, analyzer)), { this, init->location }));
+                        root_scope->active.push_back(x.t->BuildInplaceConstruction(std::move(member), Expressions(analyzer.AnalyzeExpression(this, init->initializer)), { this, init->location }));
                     else
                         root_scope->active.push_back(x.t->BuildInplaceConstruction(std::move(member), Expressions(), { this, init->location }));
                     continue;
