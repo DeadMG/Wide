@@ -220,6 +220,9 @@ Decltype* Builder::CreateDecltype(Expression* arg, Lexer::Range loc) {
 Typeid* Builder::CreateTypeid(Expression* arg, Lexer::Range loc) {
     return arena.Allocate<Typeid>(arg, loc);
 }
+DynamicCast* Builder::CreateDynamicCast(Expression* type, Expression* object, Lexer::Range loc) {
+    return arena.Allocate<DynamicCast>(type, object, loc);
+}
 
 Lambda* Builder::CreateLambda(std::vector<FunctionArgument> args, std::vector<Statement*> body, Lexer::Range loc, bool defaultref, std::vector<Variable*> caps) 
 { return arena.Allocate<Lambda>(std::move(body), std::move(args), loc, defaultref, std::move(caps)); }

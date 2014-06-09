@@ -59,6 +59,7 @@ namespace Wide {
             Destroyed
         };
         struct Node {
+        private:
             std::unordered_set<Node*> listeners;
             std::unordered_set<Node*> listening_to;
             void AddChangedListener(Node* n) { listeners.insert(n); }
@@ -123,60 +124,7 @@ namespace Wide {
         };
         
         struct Type : public Node {
-            std::unordered_map<Lexer::Access, OverloadSet*> ConstructorOverloadSets;
-            std::unordered_map<Type*, std::unordered_map<Lexer::Access, std::unordered_map<Lexer::TokenType, OverloadSet*>>> OperatorOverloadSets;
-            std::unordered_map<Type*, std::unordered_map<Type*, std::unordered_map<Lexer::Access, std::unordered_map<Lexer::TokenType, OverloadSet*>>>> ADLResults;
-
-            virtual OverloadSet* CreateOperatorOverloadSet(Type* self, Lexer::TokenType what, Lexer::Access access);
-            virtual OverloadSet* CreateADLOverloadSet(Lexer::TokenType name, Type* lhs, Type* rhs, Lexer::Access access);
-            virtual OverloadSet* CreateConstructorOverloadSet(Lexer::Access access) = 0;
         public:
-            Type(Analyzer& a) : analyzer(a) {}
-
-            Analyzer& analyzer;
-
-            virtual std::size_t size() = 0;
-            virtual std::size_t alignment() = 0;
-            virtual std::string explain() = 0;
-            virtual llvm::Type* GetLLVMType(llvm::Module* module) = 0;
-            virtual llvm::Constant* GetRTTI(llvm::Module* module);
-
-            virtual bool IsReference(Type* to);
-            virtual bool IsReference();
-            virtual Type* Decay();
-            virtual Type* GetContext();
-            virtual bool IsComplexType(llvm::Module* module);
-            virtual Wide::Util::optional<clang::QualType> GetClangType(ClangTU& TU);
-            virtual bool IsMoveConstructible(Lexer::Access access);
-            virtual bool IsCopyConstructible(Lexer::Access access);
-            virtual bool IsMoveAssignable(Lexer::Access access);
-            virtual bool IsCopyAssignable(Lexer::Access access);
-            virtual bool IsA(Type* self, Type* other, Lexer::Access access);
-            virtual Type* GetConstantContext();
-            virtual bool IsEliminateType();
-
-            virtual std::unique_ptr<Expression> AccessStaticMember(std::string name);
-            virtual std::unique_ptr<Expression> AccessMember(std::unique_ptr<Expression> t, std::string name, Context c);
-            virtual std::unique_ptr<Expression> BuildMetaCall(std::unique_ptr<Expression> val, std::vector<std::unique_ptr<Expression>> args);
-            virtual std::unique_ptr<Expression> BuildCall(std::unique_ptr<Expression> val, std::vector<std::unique_ptr<Expression>> args, Context c);
-            virtual std::unique_ptr<Expression> BuildValueConstruction(std::vector<std::unique_ptr<Expression>> args, Context c);
-
-            virtual std::unique_ptr<Expression> BuildBooleanConversion(std::unique_ptr<Expression>, Context);
-            virtual std::unique_ptr<Expression> BuildDestructorCall(std::unique_ptr<Expression> self, Context c);;
-
-            virtual std::unique_ptr<Expression> BuildRvalueConstruction(std::vector<std::unique_ptr<Expression>> exprs, Context c);
-            virtual std::unique_ptr<Expression> BuildLvalueConstruction(std::vector<std::unique_ptr<Expression>> exprs, Context c);
-
-            virtual ~Type() {}
-
-            OverloadSet* GetConstructorOverloadSet(Lexer::Access access);
-            OverloadSet* PerformADL(Lexer::TokenType what, Type* lhs, Type* rhs, Lexer::Access access);
-            OverloadSet* AccessMember(Type* t, Lexer::TokenType type, Lexer::Access access);
-
-            std::unique_ptr<Expression> BuildInplaceConstruction(std::unique_ptr<Expression> self, std::vector<std::unique_ptr<Expression>> exprs, Context c);
-            std::unique_ptr<Expression> BuildUnaryExpression(std::unique_ptr<Expression> self, Lexer::TokenType type, Context c);
-            std::unique_ptr<Expression> BuildBinaryExpression(std::unique_ptr<Expression> lhs, std::unique_ptr<Expression> rhs, Lexer::TokenType type, Context c);
-
             enum class InheritanceRelationship {
                 NotDerived,
                 AmbiguouslyDerived,
@@ -202,32 +150,82 @@ namespace Wide {
                 unsigned offset;
                 std::vector<VirtualFunctionEntry> layout;
             };
+
         private:
-            virtual VTableLayout ComputeVTableLayout() { return VTableLayout(); }
-            virtual Type* GetVirtualPointerType() { assert(false); throw std::runtime_error("ICE"); }
-            virtual std::vector<std::pair<Type*, unsigned>> GetBasesAndOffsets() { return {}; }
-            virtual std::unique_ptr<Expression> VirtualEntryFor(VTableLayout::VirtualFunctionEntry entry, unsigned offset) { assert(false); throw std::runtime_error("ICE"); }
-            
+            std::unordered_map<Lexer::Access, OverloadSet*> ConstructorOverloadSets;
+            std::unordered_map<Type*, std::unordered_map<Lexer::Access, std::unordered_map<Lexer::TokenType, OverloadSet*>>> OperatorOverloadSets;
+            std::unordered_map<Type*, std::unordered_map<Type*, std::unordered_map<Lexer::Access, std::unordered_map<Lexer::TokenType, OverloadSet*>>>> ADLResults;
             std::unordered_map<std::vector<std::pair<Type*, unsigned>>, std::unique_ptr<Expression>, VectorTypeHasher> ComputedVTables;
             Wide::Util::optional<VTableLayout> VtableLayout;
-            
+            Wide::Util::optional<VTableLayout> PrimaryVtableLayout;
+
+            VTableLayout ComputeVTableLayout();
             std::unique_ptr<Expression> CreateVTable(std::vector<std::pair<Type*, unsigned>> path);
             std::unique_ptr<Expression> GetVTablePointer(std::vector<std::pair<Type*, unsigned>> path);
             std::unique_ptr<Expression> SetVirtualPointers(std::vector<std::pair<Type*, unsigned>> path, std::unique_ptr<Expression> self);
+        protected:
+            virtual OverloadSet* CreateOperatorOverloadSet(Type* self, Lexer::TokenType what, Lexer::Access access);
+            virtual OverloadSet* CreateADLOverloadSet(Lexer::TokenType name, Type* lhs, Type* rhs, Lexer::Access access);
+            virtual OverloadSet* CreateConstructorOverloadSet(Lexer::Access access) = 0;
         public:
-            VTableLayout GetVtableLayout() {
-                if (!VtableLayout)
-                    VtableLayout = ComputeVTableLayout();
-                return *VtableLayout;
-            }
+            virtual std::unique_ptr<Expression> VirtualEntryFor(VTableLayout::VirtualFunctionEntry entry, unsigned offset) { assert(false); throw std::runtime_error("ICE"); }
+            Type(Analyzer& a) : analyzer(a) {}
+
+            Analyzer& analyzer;
+
+            virtual std::size_t size() = 0;
+            virtual std::size_t alignment() = 0;
+            virtual std::string explain() = 0;
+            virtual llvm::Type* GetLLVMType(llvm::Module* module) = 0;
+            virtual llvm::Constant* GetRTTI(llvm::Module* module);
+
+            virtual bool IsReference(Type* to);
+            virtual bool IsReference();
+            virtual Type* Decay();
+            virtual Type* GetContext();
+            virtual bool IsComplexType(llvm::Module* module);
+            virtual Wide::Util::optional<clang::QualType> GetClangType(ClangTU& TU);
+            virtual bool IsMoveConstructible(Lexer::Access access);
+            virtual bool IsCopyConstructible(Lexer::Access access);
+            virtual bool IsMoveAssignable(Lexer::Access access);
+            virtual bool IsCopyAssignable(Lexer::Access access);
+            virtual bool IsA(Type* self, Type* other, Lexer::Access access);
+            virtual Type* GetConstantContext();
+            virtual bool IsEmpty();
+            virtual Type* GetVirtualPointerType();
+            virtual std::vector<Type*> GetBases();
+            virtual Type* GetPrimaryBase();
+            virtual std::unordered_map<unsigned, std::unordered_set<Type*>> GetEmptyLayout();
+            virtual VTableLayout ComputePrimaryVTableLayout();
+            virtual std::vector<std::pair<Type*, unsigned>> GetBasesAndOffsets();
+
+            virtual std::unique_ptr<Expression> GetVirtualPointer(std::unique_ptr<Expression> self);
+            virtual std::unique_ptr<Expression> AccessStaticMember(std::string name);
+            virtual std::unique_ptr<Expression> AccessMember(std::unique_ptr<Expression> t, std::string name, Context c);
+            virtual std::unique_ptr<Expression> BuildMetaCall(std::unique_ptr<Expression> val, std::vector<std::unique_ptr<Expression>> args);
+            virtual std::unique_ptr<Expression> BuildCall(std::unique_ptr<Expression> val, std::vector<std::unique_ptr<Expression>> args, Context c);
+            virtual std::unique_ptr<Expression> BuildValueConstruction(std::vector<std::unique_ptr<Expression>> args, Context c);
+            virtual std::unique_ptr<Expression> BuildBooleanConversion(std::unique_ptr<Expression>, Context);
+            virtual std::unique_ptr<Expression> BuildDestructorCall(std::unique_ptr<Expression> self, Context c);;
+            virtual std::unique_ptr<Expression> BuildRvalueConstruction(std::vector<std::unique_ptr<Expression>> exprs, Context c);
+            virtual std::unique_ptr<Expression> BuildLvalueConstruction(std::vector<std::unique_ptr<Expression>> exprs, Context c);
+
+            virtual ~Type() {}
+
+            std::unique_ptr<Expression> AccessBase(std::unique_ptr<Expression> self, Type* other);
+            InheritanceRelationship IsDerivedFrom(Type* other);
+            VTableLayout GetVtableLayout();
+            VTableLayout GetPrimaryVTable();
+            OverloadSet* GetConstructorOverloadSet(Lexer::Access access);
+            OverloadSet* PerformADL(Lexer::TokenType what, Type* lhs, Type* rhs, Lexer::Access access);
+            OverloadSet* AccessMember(Type* t, Lexer::TokenType type, Lexer::Access access);
+            bool InheritsFromAtOffsetZero(Type* other);
+
+            std::unique_ptr<Expression> BuildInplaceConstruction(std::unique_ptr<Expression> self, std::vector<std::unique_ptr<Expression>> exprs, Context c);
+            std::unique_ptr<Expression> BuildUnaryExpression(std::unique_ptr<Expression> self, Lexer::TokenType type, Context c);
+            std::unique_ptr<Expression> BuildBinaryExpression(std::unique_ptr<Expression> lhs, std::unique_ptr<Expression> rhs, Lexer::TokenType type, Context c);
             std::unique_ptr<Expression> SetVirtualPointers(std::unique_ptr<Expression>);
-            virtual std::vector<Type*> GetBases() { return{}; }
-
-            virtual std::unique_ptr<Expression> GetVirtualPointer(std::unique_ptr<Expression> self) { assert(false); throw std::runtime_error("ICE"); }
-            virtual InheritanceRelationship IsDerivedFrom(Type* other) { return InheritanceRelationship::NotDerived; }
-            virtual std::unique_ptr<Expression> AccessBase(std::unique_ptr<Expression> self, Type* other) { assert(false); throw std::runtime_error("ICE"); }
         };
-
 
         struct Callable {
         public:
@@ -253,7 +251,11 @@ namespace Wide {
             virtual Wide::Util::optional<std::vector<Type*>> GetTypesForTuple() = 0;
             virtual std::unique_ptr<Expression> PrimitiveAccessMember(std::unique_ptr<Expression> self, unsigned num) = 0;
         };
+        
 
+        struct LLVMFieldIndex { unsigned index; };
+        struct EmptyBaseOffset { unsigned offset; };
+        typedef boost::variant<LLVMFieldIndex, EmptyBaseOffset> MemberLocation;
 
         struct MemberFunctionContext { virtual ~MemberFunctionContext() {} };
         struct ConstructorContext {
@@ -269,11 +271,13 @@ namespace Wide {
                     , location(std::move(other.location)) {}
                 std::string name;
                 Type* t;
-                unsigned num;
+                // Not necessarily actually an empty base but ClangType will only give us offsets pre-codegen.
+                // and it could be an empty base so use offsets
+                EmptyBaseOffset num;
                 std::function<std::unique_ptr<Expression>(std::unique_ptr<Expression>)> InClassInitializer;
                 Lexer::Range location;
             };
-            virtual std::vector<member> GetMembers() = 0;
+            virtual std::vector<member> GetConstructionMembers() = 0;
         };
 
         class PrimitiveType : public Type {

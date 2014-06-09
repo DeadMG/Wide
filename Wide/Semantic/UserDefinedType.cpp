@@ -31,15 +31,11 @@
 using namespace Wide;
 using namespace Semantic;
 
-// I only store MY OWN dynamic functions in my vtable.
-// My base's dynamic functions can go in my base's vtable.
+// Reference http://refspecs.linuxbase.org/cxxabi-1.83.html
 namespace {
     static const std::string DestructorName = "~";
 }
 
-bool UserDefinedType::IsDynamic() {
-    return GetVtableLayout().layout.size() != 0;
-}
 void AddAllBases(std::unordered_set<Type*>& all_bases, Type* root) {
     all_bases.insert(root);
     for (auto base : root->GetBases()) {
@@ -47,7 +43,7 @@ void AddAllBases(std::unordered_set<Type*>& all_bases, Type* root) {
         AddAllBases(all_bases, base);
     }
 }
-UserDefinedType::MemberData::MemberData(UserDefinedType* self) {
+UserDefinedType::BaseData::BaseData(UserDefinedType* self) {
     for (auto expr : self->type->bases) {
         auto base = AnalyzeExpression(self->context, expr, self->analyzer);
         auto con = dynamic_cast<ConstructorType*>(base->GetType()->Decay());
@@ -58,29 +54,21 @@ UserDefinedType::MemberData::MemberData(UserDefinedType* self) {
         if (!udt) udt = dynamic_cast<ClangType*>(con->GetConstructedType());
         if (!udt) throw InvalidBase(con->GetConstructedType(), expr->location);
         bases.push_back(udt);
-        contents.push_back(con->GetConstructedType());
+        // 2.4.1 (b)
+        if (!PrimaryBase && !udt->GetVtableLayout().layout.empty())
+            PrimaryBase = udt;
     }
-    for (auto&& var : self->type->variables) {
-        members[var.first->name.front().name] = contents.size();
-        auto expr = AnalyzeExpression(self->context, var.first->initializer, self->analyzer);
-        if (auto con = dynamic_cast<ConstructorType*>(expr->GetType()->Decay())) {
-            contents.push_back(con->GetConstructedType());
-            NSDMIs.push_back(nullptr);
-        }
-        else {
-            contents.push_back(expr->GetType()->Decay());
-            HasNSDMI = true;
-            NSDMIs.push_back(var.first->initializer);
-        }
-        if (auto agg = dynamic_cast<AggregateType*>(contents.back())) {
-            if (agg == self || agg->HasMemberOfType(self))
-                throw RecursiveMember(self, var.first->initializer->location);
-        }
-    }
+}
+
+UserDefinedType::VTableData::VTableData(UserDefinedType* self) {
+    // If we have a primary base, our primary vtable starts with theirs.
+    if (self->GetPrimaryBase()) funcs = self->GetPrimaryBase()->GetPrimaryVTable();
     std::unordered_set<Type*> all_bases;
-    for (auto&& base : bases)
+    for (auto&& base : self->GetBases())
         AddAllBases(all_bases, base);
 
+    std::unordered_map<const AST::Function*, unsigned> primary_dynamic_functions;
+    std::unordered_map<const AST::Function*, VTableLayout::VirtualFunctionEntry> dynamic_functions;
     unsigned index = 0;
     for (auto overset : self->type->Functions) {
         if (overset.first == "type") continue; // Do not check constructors.
@@ -88,71 +76,65 @@ UserDefinedType::MemberData::MemberData(UserDefinedType* self) {
             // The function has to be not explicitly marked dynamic *and* not dynamic by any base class.
             if (IsMultiTyped(func)) continue;
 
-            VTableLayout::VirtualFunctionEntry entry;
             if (overset.first == DestructorName) {
-                entry.function = VTableLayout::SpecialMember::Destructor;
-                auto is_dynamic = [&, this] {
-                    if (func->dynamic) return true;
-                    for (auto base : all_bases) {
-                        for (auto func : base->GetVtableLayout().layout) {
-                            if (auto mem = boost::get<VTableLayout::SpecialMember*>(func.function)) {
-                                if (*mem == VTableLayout::SpecialMember::Destructor)
-                                    return true;
+                for (auto base : all_bases) {
+                    for (unsigned i = 0; i < base->GetPrimaryVTable().layout.size(); ++i) {
+                        if (auto mem = boost::get<VTableLayout::SpecialMember*>(base->GetPrimaryVTable().layout[i].function)) {
+                            if (*mem == VTableLayout::SpecialMember::Destructor) {
+                                if (base == self->GetPrimaryBase())
+                                    primary_dynamic_functions[func] = i;
+                                else
+                                    dynamic_functions[func] = { false, VTableLayout::SpecialMember::Destructor };
                             }
                         }
                     }
-                    return false;
-                };
-                entry.abstract = false;
-                if (!is_dynamic()) continue;
-            } else {
-                VTableLayout::VirtualFunction f;
-                f.name = overset.first;
+                }
+                if (func->dynamic)
+                    dynamic_functions[func] = { false, VTableLayout::SpecialMember::Destructor };
+            }
+            else {
+                std::vector<Type*> arguments;
                 if (func->args.size() == 0 || func->args.front().name != "this")
-                    f.args.push_back(self->analyzer.GetLvalueType(self));
+                    arguments.push_back(self->analyzer.GetLvalueType(self));
                 for (auto arg : func->args) {
-                    auto ty = AnalyzeExpression(self->context, arg.type, self->analyzer)->GetType()->Decay();
+                    auto ty = self->analyzer.AnalyzeCachedExpression(self->context, arg.type)->GetType()->Decay();
                     auto con_type = dynamic_cast<ConstructorType*>(ty);
                     if (!con_type)
                         throw Wide::Semantic::NotAType(ty, arg.location);
-                    f.args.push_back(con_type->GetConstructedType());
+                    arguments.push_back(con_type->GetConstructedType());
                 }
-                entry.function = f;
-                entry.abstract = false;
 
-                auto is_dynamic = [&, this] {
-                    // Search the vtables of all bases for an entry for this function.
-                    if (func->dynamic) return true;
-                    for (auto base : all_bases) {
-                        for (auto func : base->GetVtableLayout().layout) {
-                            if (auto vfunc = boost::get<VTableLayout::VirtualFunction>(&func.function)) {
-                                if (vfunc->name != overset.first) continue;
-                                // The this arguments will be different.
-                                if (f.args.size() != vfunc->args.size()) continue;
-                                for (auto i = 1; i < f.args.size(); ++i) {
-                                    if (vfunc->args[i] != f.args[i])
-                                        continue;
-                                }
-                                return true;
+                for (auto base : all_bases) {
+                    auto base_layout = base->GetPrimaryVTable();
+                    for (unsigned i = 0; i < base_layout.layout.size(); ++i) {
+                        if (auto vfunc = boost::get<VTableLayout::VirtualFunction>(&base_layout.layout[i].function)) {
+                            if (vfunc->name != overset.first) continue;
+                            // The this arguments will be different, but they should have the same category of lvalue/rvalue.
+                            if (arguments.size() != vfunc->args.size()) continue;
+                            for (auto argi = 1; argi < arguments.size(); ++argi) {
+                                if (vfunc->args[argi] != arguments[argi])
+                                    continue;
+                            }
+                            // Score- it's inherited.
+                            if (base == self->GetPrimaryBase())
+                                primary_dynamic_functions[func] = i;
+                            else {
+                                auto vfunc = VTableLayout::VirtualFunction{ overset.first, arguments, self->analyzer.GetWideFunction(func, self, arguments, overset.first)->GetSignature()->GetReturnType() };
+                                dynamic_functions[func] = { false, vfunc };
                             }
                         }
                     }
-                    return false;
-                };
-                if (!is_dynamic()) continue;
+                }
+                if (func->dynamic){
+                    auto vfunc = VTableLayout::VirtualFunction{ overset.first, arguments, self->analyzer.GetWideFunction(func, self, arguments, overset.first)->GetSignature()->GetReturnType() };
+                    dynamic_functions[func] = { false, vfunc };
+                }
             }
-
-            funcs.layout.push_back(std::move(entry));
-            VTableIndices[func] = index++;
         }
     }
-    auto IsAnyBaseDynamic = [&] {
-        for (auto base : all_bases) 
-            if (base->GetVtableLayout().layout.size() > 0)
-                return true;
-        return false;
-    };
-    if (funcs.layout.size() > 0) {
+
+    // If we don't have a primary base but we do have dynamic functions, first add offset and RTTI
+    if (!self->GetPrimaryBase() && !dynamic_functions.empty()) {
         funcs.offset = 2;
         VTableLayout::VirtualFunctionEntry offset;
         VTableLayout::VirtualFunctionEntry rtti;
@@ -162,29 +144,49 @@ UserDefinedType::MemberData::MemberData(UserDefinedType* self) {
         rtti.function = VTableLayout::SpecialMember::RTTIPointer;
         funcs.layout.insert(funcs.layout.begin(), rtti);
         funcs.layout.insert(funcs.layout.begin(), offset);
-        HasNSDMI = true;
-        contents.push_back(self->analyzer.GetPointerType(self->GetVirtualPointerType()));
     }
-    if (IsAnyBaseDynamic())
-        HasNSDMI = true;
+
+    // For every dynamic function that is not inherited from the primary base, add a slot.
+    // Else, set the slot to the primary base's slot.
+    for (auto func : dynamic_functions) {
+        if (primary_dynamic_functions.find(func.first) == primary_dynamic_functions.end()) {
+            VTableIndices[func.first] = funcs.layout.size() - funcs.offset;
+            funcs.layout.push_back(func.second);
+            continue;
+        }
+        VTableIndices[func.first] = primary_dynamic_functions[func.first] - funcs.offset;
+    }
+
+}
+UserDefinedType::MemberData::MemberData(UserDefinedType* self) {
+    for (auto&& var : self->type->variables) {
+        member_indices[var.first->name.front().name] = members.size();
+        auto expr = AnalyzeExpression(self->context, var.first->initializer, self->analyzer);
+        if (auto con = dynamic_cast<ConstructorType*>(expr->GetType()->Decay())) {
+            members.push_back(con->GetConstructedType());
+            NSDMIs.push_back(nullptr);
+        } else {
+            members.push_back(expr->GetType()->Decay());
+            HasNSDMI = true;
+            NSDMIs.push_back(var.first->initializer);
+        }
+        if (auto agg = dynamic_cast<AggregateType*>(members.back())) {
+            if (agg == self || agg->HasMemberOfType(self))
+                throw RecursiveMember(self, var.first->initializer->location);
+        }
+    }
 }
 UserDefinedType::MemberData::MemberData(MemberData&& other)
 : members(std::move(other.members))
 , NSDMIs(std::move(other.NSDMIs))
 , HasNSDMI(other.HasNSDMI)
-, funcs(std::move(other.funcs))
-, VTableIndices(std::move(other.VTableIndices))
-, contents(std::move(other.contents))
-, bases(std::move(other.bases)) {}
+, member_indices(std::move(other.member_indices)) {}
 
 UserDefinedType::MemberData& UserDefinedType::MemberData::operator=(MemberData&& other) {
     members = std::move(other.members);
     NSDMIs = std::move(other.NSDMIs);
     HasNSDMI = other.HasNSDMI;
-    funcs = std::move(other.funcs);
-    VTableIndices = std::move(other.VTableIndices);
-    contents = std::move(other.contents);
-    bases = std::move(other.bases);
+    member_indices = std::move(other.member_indices);
     return *this;
 }
 
@@ -196,20 +198,20 @@ UserDefinedType::UserDefinedType(const AST::Type* t, Analyzer& a, Type* higher, 
 {
 }
 
-std::vector<UserDefinedType::member> UserDefinedType::GetMembers() {
+std::vector<UserDefinedType::member> UserDefinedType::GetConstructionMembers() {
     std::vector<UserDefinedType::member> out;
     for (unsigned i = 0; i < type->bases.size(); ++i) {
         member m(type->bases[i]->location);
-        m.t = GetContents()[i];
+        m.t = GetBases()[i];
         m.name = dynamic_cast<AST::Identifier*>(type->bases[i])->val;
-        m.num = GetFieldIndex(i);
+        m.num = { GetOffset(i) };
         out.push_back(std::move(m));
     }
     for (unsigned i = 0; i < type->variables.size(); ++i) {
         member m(type->variables[i].first->location);
-        m.t = GetContents()[i + type->bases.size()];
+        m.t = GetMembers()[i];
         m.name = type->variables[i].first->name.front().name;
-        m.num = GetFieldIndex(i) + type->bases.size();
+        m.num = { GetOffset(i + type->bases.size()) };
         if (GetMemberData().NSDMIs[i])
             m.InClassInitializer = [this, i](std::unique_ptr<Expression>) { return AnalyzeExpression(context, GetMemberData().NSDMIs[i], analyzer); };
         out.push_back(std::move(m));
@@ -221,10 +223,10 @@ std::unique_ptr<Expression> UserDefinedType::AccessMember(std::unique_ptr<Expres
     //if (!self->GetType()->IsReference())
     //    self = BuildRvalueConstruction(Expressions(std::move(self)), { this, c.where });
     auto spec = GetAccessSpecifier(c.from, this);
-    if (GetMemberData().members.find(name) != GetMemberData().members.end()) {
-        auto member = type->variables[GetMemberData().members[name] - type->bases.size()];
+    if (GetMemberData().member_indices.find(name) != GetMemberData().member_indices.end()) {
+        auto member = type->variables[GetMemberData().member_indices[name]];
         if (spec >= member.second)
-            return PrimitiveAccessMember(std::move(self), GetMemberData().members[name]);
+            return PrimitiveAccessMember(std::move(self), GetMemberData().member_indices[name] + type->bases.size());
     }
     if (type->Functions.find(name) != type->Functions.end()) {
         std::unordered_set<OverloadResolvable*> resolvables;
@@ -238,7 +240,7 @@ std::unique_ptr<Expression> UserDefinedType::AccessMember(std::unique_ptr<Expres
     // Any of our bases have this member?
     Type* BaseType = nullptr;
     OverloadSet* BaseOverloadSet = nullptr;
-    for (auto base : GetMemberData().bases) {
+    for (auto base : GetBaseData().bases) {
         auto baseobj = AccessBase(Wide::Memory::MakeUnique<ExpressionReference>(self.get()), base);
         if (auto member = base->AccessMember(std::move(baseobj), name, c)) {
             // If there's nothing there, we win.
@@ -269,7 +271,6 @@ std::unique_ptr<Expression> UserDefinedType::AccessMember(std::unique_ptr<Expres
 Wide::Util::optional<clang::QualType> UserDefinedType::GetClangType(ClangTU& TU) {
     if (clangtypes.find(&TU) != clangtypes.end())
         return clangtypes[&TU];
-    if (IsDynamic()) return Wide::Util::none;
     
     std::stringstream stream;
     // The name of the LLVM type is generated by AggregateType based on "this".
@@ -283,7 +284,7 @@ Wide::Util::optional<clang::QualType> UserDefinedType::GetClangType(ClangTU& TU)
     if (type->bases.size() != 0) return Util::none;
 
     for (std::size_t i = 0; i < type->variables.size(); ++i) {
-        auto memberty = GetContents()[i]->GetClangType(TU);
+        auto memberty = GetMembers()[i]->GetClangType(TU);
         if (!memberty) return Wide::Util::none;
         auto var = clang::FieldDecl::Create(
             TU.GetASTContext(),
@@ -327,7 +328,7 @@ Wide::Util::optional<clang::QualType> UserDefinedType::GetClangType(ClangTU& TU)
 }
 
 bool UserDefinedType::HasMember(std::string name) {
-    return type->Functions.find(name) != type->Functions.end() || GetMemberData().members.find(name) != GetMemberData().members.end();
+    return type->Functions.find(name) != type->Functions.end() || GetMemberData().member_indices.find(name) != GetMemberData().member_indices.end();
 }
 
 bool UserDefinedType::BinaryComplex(llvm::Module* module) {
@@ -407,7 +408,7 @@ OverloadSet* UserDefinedType::CreateConstructorOverloadSet(Lexer::Access access)
 
     if (GetMemberData().HasNSDMI) {
         bool shouldgenerate = true;
-        for (auto&& mem : GetMembers()) {
+        for (auto&& mem : GetConstructionMembers()) {
             // If we are not default constructible *and* we don't have an NSDMI to construct us, then we cannot generate a default constructor.
             if (mem.InClassInitializer) {
                 auto totally_not_this = Wide::Memory::MakeUnique<ImplicitTemporaryExpr>(this, Context( this, mem.location ));
@@ -440,10 +441,13 @@ OverloadSet* UserDefinedType::CreateConstructorOverloadSet(Lexer::Access access)
                     NSDMIConstructor(UserDefinedType* s, std::unique_ptr<Expression> obj, Lexer::Range where)
                         : self(s), arg(std::move(obj)) 
                     {
-                        for (auto&& mem : self->GetMembers()) {
+                        for (auto&& mem : self->GetConstructionMembers()) {
                             auto num = mem.num;
-                            auto member = CreatePrimUnOp(Wide::Memory::MakeUnique<ExpressionReference>(arg.get()), self->analyzer.GetLvalueType(mem.t), [num](llvm::Value* val, llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
-                                return bb.CreateStructGEP(val, num);
+                            auto result = self->analyzer.GetLvalueType(mem.t);
+                            auto member = CreatePrimUnOp(Wide::Memory::MakeUnique<ExpressionReference>(arg.get()), self->analyzer.GetLvalueType(mem.t), [num, result](llvm::Value* val, llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
+                                auto self = bb.CreatePointerCast(val, llvm::Type::getInt8PtrTy(module->getContext()));
+                                self = bb.CreateConstGEP1_32(self, num.offset);
+                                return bb.CreatePointerCast(self, result->GetLLVMType(module));                            
                             });
                             if (mem.InClassInitializer)
                                 initializers.push_back(mem.t->BuildInplaceConstruction(std::move(member), Expressions(mem.InClassInitializer(Wide::Memory::MakeUnique<ExpressionReference>(arg.get()))), Context(self, where)));
@@ -542,49 +546,10 @@ bool UserDefinedType::IsComplexType(llvm::Module* module) {
 Wide::Util::optional<std::vector<Type*>> UserDefinedType::GetTypesForTuple() {
     if (UserDefinedComplex())
         return Wide::Util::none;
-    return GetContents();
-}
-
-Type::InheritanceRelationship UserDefinedType::IsDerivedFrom(Type* other) {
-    auto base = dynamic_cast<Type*>(other);
-    if (!base) return InheritanceRelationship::NotDerived;
-    InheritanceRelationship result = InheritanceRelationship::NotDerived;
-    for (std::size_t i = 0; i < type->bases.size(); ++i) {
-        auto ourbase = dynamic_cast<Type*>(GetContents()[i]);
-        assert(ourbase);
-        if (ourbase == base) {
-            if (result == InheritanceRelationship::NotDerived)
-                result = InheritanceRelationship::UnambiguouslyDerived;
-            else if (result == InheritanceRelationship::UnambiguouslyDerived)
-                result = InheritanceRelationship::AmbiguouslyDerived;
-            continue;
-        }
-        auto subresult = ourbase->IsDerivedFrom(other);
-        if (subresult == InheritanceRelationship::AmbiguouslyDerived)
-            result = InheritanceRelationship::AmbiguouslyDerived;
-        if (subresult == InheritanceRelationship::UnambiguouslyDerived) {
-            if (result == InheritanceRelationship::NotDerived)
-                result = subresult;
-            if (result == InheritanceRelationship::UnambiguouslyDerived)
-                result = InheritanceRelationship::AmbiguouslyDerived;
-        }
-    }
-    return result;
-}
-std::unique_ptr<Expression> UserDefinedType::AccessBase(std::unique_ptr<Expression> self, Type* other) {
-    other = other->Decay();
-    assert(IsDerivedFrom(other) == InheritanceRelationship::UnambiguouslyDerived);
-    // It is unambiguous so just hit on the first base we come across
-    for (std::size_t i = 0; i < type->bases.size(); ++i) {
-        auto base = GetMemberData().bases[i];
-        if (base == other)
-            return PrimitiveAccessMember(std::move(self), i);
-        if (base->IsDerivedFrom(other) == InheritanceRelationship::UnambiguouslyDerived)
-            return base->AccessBase(PrimitiveAccessMember(std::move(self), i), other);
-    }
-    assert(false);
-    return nullptr;
-    // shush warning
+    auto bases = GetBases();
+    auto members = GetMembers();
+    bases.insert(bases.end(), members.begin(), members.end());
+    return bases;
 }
 
 // Implements TupleInitializable::PrimitiveAccessMember.
@@ -597,20 +562,24 @@ std::string UserDefinedType::explain() {
         return source_name;
     return GetContext()->explain() + "." + source_name;
 } 
-Type::VTableLayout UserDefinedType::ComputeVTableLayout() {
-    for (auto vfunc : GetMemberData().VTableIndices) {
-        auto&& funcentry = boost::get<VTableLayout::VirtualFunction&>(GetMemberData().funcs.layout[vfunc.second + GetMemberData().funcs.offset].function);
-        funcentry.ret = analyzer.GetWideFunction(vfunc.first, this, funcentry.args, funcentry.name)->GetSignature()->GetReturnType();
-    }
-    return GetMemberData().funcs;
+Type::VTableLayout UserDefinedType::ComputePrimaryVTableLayout() {
+    return GetVtableData().funcs;
 }
 
 std::unique_ptr<Expression> UserDefinedType::FunctionPointerFor(VTableLayout::VirtualFunction entry, unsigned offset) {
     auto name = entry.name;
     auto args = entry.args;
     auto ret = entry.ret;
-    if (type->Functions.find(name) == type->Functions.end())
+    if (type->Functions.find(name) == type->Functions.end()) {
+        // Could have been inherited from our primary base, if we have one.
+        if (GetPrimaryBase()) {
+            VTableLayout::VirtualFunctionEntry basentry;
+            basentry.abstract = false;
+            basentry.function = entry;
+            return GetPrimaryBase()->VirtualEntryFor(basentry, offset);
+        }
         return nullptr;
+    }
     // args includes this, which will have a different type here.
     // Pretend that it really has our type.
     if (IsLvalueType(args[0]))
@@ -696,34 +665,26 @@ std::unique_ptr<Expression> UserDefinedType::VirtualEntryFor(VTableLayout::Virtu
     return FunctionPointerFor(boost::get<VTableLayout::VirtualFunction>(entry.function), offset);
 }
 
-std::unique_ptr<Expression> UserDefinedType::GetVirtualPointer(std::unique_ptr<Expression> self) {
-    assert(self->GetType()->IsReference());
-    if (!IsDynamic()) return nullptr;
-    return CreatePrimUnOp(std::move(self), analyzer.GetLvalueType(analyzer.GetPointerType(GetVirtualPointerType())), [this](llvm::Value* self, llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
-        return bb.CreateStructGEP(self, GetFieldIndex(type->variables.size() + type->bases.size()));
-    });
-}
-
 Type* UserDefinedType::GetVirtualPointerType() {
+    if (GetBaseData().PrimaryBase)
+        return GetBaseData().PrimaryBase->GetVirtualPointerType();
     return analyzer.GetFunctionType(analyzer.GetIntegralType(32, false), {}, false);
 }
 
 std::vector<std::pair<Type*, unsigned>> UserDefinedType::GetBasesAndOffsets() {
     std::vector<std::pair<Type*, unsigned>> out;
     for (unsigned i = 0; i < type->bases.size(); ++i) {
-        out.push_back(std::make_pair(GetMemberData().bases[i], GetOffset(i)));
+        out.push_back(std::make_pair(GetBaseData().bases[i], GetOffset(i)));
     }
     return out;
 }
 std::vector<Type*> UserDefinedType::GetBases() {
-    return GetMemberData().bases;
+    return GetBaseData().bases;
 }
 Wide::Util::optional<unsigned> UserDefinedType::GetVirtualFunctionIndex(const AST::Function* func) {
-    if (GetMemberData().VTableIndices.size() == 0)
-        ComputeVTableLayout();
-    if (GetMemberData().VTableIndices.find(func) == GetMemberData().VTableIndices.end())
+    if (GetVtableData().VTableIndices.find(func) == GetVtableData().VTableIndices.end())
         return Wide::Util::none;
-    return GetMemberData().VTableIndices.at(func);
+    return GetVtableData().VTableIndices.at(func);
 }
 bool UserDefinedType::IsA(Type* self, Type* other, Lexer::Access access) {
     if (Type::IsA(self, other, access)) return true;
@@ -776,4 +737,24 @@ llvm::Constant* UserDefinedType::GetRTTI(llvm::Module* module) {
     auto ty = llvm::ConstantStruct::getTypeForElements(inits);
     auto rtti = new llvm::GlobalVariable(*module, ty, true, llvm::GlobalValue::LinkageTypes::LinkOnceODRLinkage, llvm::ConstantStruct::get(ty, inits), stream.str());
     return rtti;
+}
+bool UserDefinedType::HasVirtualFunctions() {
+    return !GetVtableData().funcs.layout.empty();
+}
+UserDefinedType::BaseData::BaseData(BaseData&& other)
+: bases(std::move(other.bases)), PrimaryBase(other.PrimaryBase) {}
+
+UserDefinedType::BaseData& UserDefinedType::BaseData::operator=(BaseData&& other) {
+    bases = std::move(other.bases);
+    PrimaryBase = other.PrimaryBase;
+    return *this;
+}
+UserDefinedType::VTableData::VTableData(VTableData&& other)
+: funcs(std::move(other.funcs))
+, VTableIndices(std::move(other.VTableIndices)) {}
+
+UserDefinedType::VTableData& UserDefinedType::VTableData::operator=(VTableData&& other) {
+    funcs = std::move(other.funcs);
+    VTableIndices = std::move(other.VTableIndices);
+    return *this;
 }

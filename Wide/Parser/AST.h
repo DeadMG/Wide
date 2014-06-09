@@ -199,6 +199,12 @@ namespace Wide {
             Typeid(Expression* expr, Lexer::Range loc)
             : UnaryExpression(expr, loc) {}
         };
+        struct DynamicCast : Expression {
+            Expression* type;
+            Expression* object;
+            DynamicCast(Expression* type, Expression* object, Lexer::Range where)
+                : Expression(where), type(type), object(object) {}
+        };
         struct MetaCall : public Expression {        
             MetaCall(Expression* obj, std::vector<Expression*> arg, Lexer::Range loc)
                 :  Expression(loc), callee(obj), args(std::move(arg)) {}    

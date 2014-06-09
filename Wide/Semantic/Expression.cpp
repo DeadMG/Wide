@@ -24,7 +24,9 @@ void ImplicitLoadExpr::DestroyExpressionLocals(llvm::Module* module, llvm::IRBui
 
 ImplicitStoreExpr::ImplicitStoreExpr(std::unique_ptr<Expression> memory, std::unique_ptr<Expression> value)
 : mem(std::move(memory)), val(std::move(value)) {
-    assert(mem->GetType()->IsReference(val->GetType()));
+    auto memty = mem->GetType();
+    auto valty = val->GetType();
+    assert(memty->IsReference(valty));
 }
 Type* ImplicitStoreExpr::GetType() {
     assert(mem->GetType()->IsReference(val->GetType()));

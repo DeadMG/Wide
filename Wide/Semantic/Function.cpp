@@ -687,7 +687,7 @@ void Function::ComputeBody() {
         if (auto con = dynamic_cast<const AST::Constructor*>(fun)) {
             if (!ConstructorContext) throw std::runtime_error("fuck");
             auto member = *ConstructorContext;
-            auto members = member->GetMembers();
+            auto members = member->GetConstructionMembers();
             for (auto&& x : members) {
                 auto has_initializer = [&](std::string name) -> const AST::Variable* {
                     for (auto&& x : con->initializers) {
@@ -699,9 +699,12 @@ void Function::ComputeBody() {
                     return nullptr;
                 };
                 auto num = x.num;
-                // For member variables, don't add them to the list, the destructor will handle them.
-                auto member = CreatePrimUnOp(LookupLocal("this"), analyzer.GetLvalueType(x.t), [num](llvm::Value* val, llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) -> llvm::Value* {
-                    return bb.CreateStructGEP(val, num);
+                auto result = analyzer.GetLvalueType(x.t);
+                // Gotta get the correct this pointer.
+                auto member = CreatePrimUnOp(LookupLocal("this"), result, [num, result](llvm::Value* val, llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) -> llvm::Value* {
+                    auto self = bb.CreatePointerCast(val, llvm::Type::getInt8PtrTy(module->getContext()));
+                    self = bb.CreateConstGEP1_32(self, num.offset);
+                    return bb.CreatePointerCast(self, result->GetLLVMType(module));
                 });
                 if (auto init = has_initializer(x.name)) {
                     // AccessMember will automatically give us back a T*, but we need the T** here
@@ -894,7 +897,7 @@ void Function::EmitCode(llvm::Module* module) {
 
                     // Clang elides 0-sized arguments by value.
                     // Check our actual semantic argument for this, not the LLVM type, as Clang codegens them to have a size of 1.
-                    if (Args[i]->IsEliminateType()) {
+                    if (Args[i]->IsEmpty()) {
                         args.push_back(llvm::Constant::getNullValue(ty->getParamType(i)));
                         continue;
                     }

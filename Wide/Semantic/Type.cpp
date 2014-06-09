@@ -109,8 +109,53 @@ Type* Type::GetConstantContext() {
     return nullptr;
 }
 
-bool Type::IsEliminateType() {
+bool Type::IsEmpty() {
     return false;
+}
+
+Type* Type::GetVirtualPointerType() {
+    assert(false && "Called GetVirtualPointerType on a type with no virtual functions.");
+    throw "ICE";
+}
+
+std::vector<Type*> Type::GetBases() { 
+    std::vector<Type*> bases;
+    for (auto base : GetBasesAndOffsets())
+        bases.push_back(base.first);
+    return bases;
+}
+
+Type* Type::GetPrimaryBase() {
+    return nullptr;
+}
+
+std::unordered_map<unsigned, std::unordered_set<Type*>> Type::GetEmptyLayout() {
+    std::unordered_map<unsigned, std::unordered_set<Type*>> out;
+    // Create this mapping by merging our bases'
+    // AggregateType has to get this during layout and overrides this function.
+    for (auto pair : GetBasesAndOffsets()) {
+        auto base_mapping = pair.first->GetEmptyLayout();
+        for (auto offset : base_mapping) {
+            for (auto empty : offset.second) {
+                assert(out[offset.first + pair.second].find(empty) == out[offset.first + pair.second].end());
+                out[offset.first + pair.second].insert(empty);
+            }
+        }
+    }
+    return out;
+}
+
+Type::VTableLayout Type::ComputePrimaryVTableLayout() { 
+    return VTableLayout(); 
+}
+
+std::vector<std::pair<Type*, unsigned>> Type::GetBasesAndOffsets() { 
+    return {}; 
+}
+
+std::unique_ptr<Expression> Type::GetVirtualPointer(std::unique_ptr<Expression> self) { 
+    assert(false); 
+    throw std::runtime_error("ICE"); 
 }
 
 std::unique_ptr<Expression> Type::AccessStaticMember(std::string name) {
@@ -327,6 +372,116 @@ std::unique_ptr<Expression> Type::BuildLvalueConstruction(std::vector<std::uniqu
         }
     };
     return Wide::Memory::MakeUnique<LValueConstruction>(this, std::move(exprs), c);
+}
+
+Type::InheritanceRelationship Type::IsDerivedFrom(Type* base) {
+    InheritanceRelationship result = InheritanceRelationship::NotDerived;
+    for (auto ourbase : GetBases()) {
+        if (ourbase == base) {
+            if (result == InheritanceRelationship::NotDerived)
+                result = InheritanceRelationship::UnambiguouslyDerived;
+            else if (result == InheritanceRelationship::UnambiguouslyDerived)
+                result = InheritanceRelationship::AmbiguouslyDerived;
+            continue;
+        }
+        auto subresult = ourbase->IsDerivedFrom(base);
+        if (subresult == InheritanceRelationship::AmbiguouslyDerived)
+            result = InheritanceRelationship::AmbiguouslyDerived;
+        if (subresult == InheritanceRelationship::UnambiguouslyDerived) {
+            if (result == InheritanceRelationship::NotDerived)
+                result = subresult;
+            if (result == InheritanceRelationship::UnambiguouslyDerived)
+                result = InheritanceRelationship::AmbiguouslyDerived;
+        }
+    }
+    return result;
+}
+
+Type::VTableLayout Type::GetVtableLayout() {
+    if (!VtableLayout)
+        VtableLayout = ComputeVTableLayout();
+    return *VtableLayout;
+}
+
+Type::VTableLayout Type::GetPrimaryVTable() {
+    if (!PrimaryVtableLayout)
+        PrimaryVtableLayout = ComputePrimaryVTableLayout();
+    return *PrimaryVtableLayout;
+}
+
+std::unique_ptr<Expression> Type::AccessBase(std::unique_ptr<Expression> self, Type* other) {
+    assert(IsDerivedFrom(other) == InheritanceRelationship::UnambiguouslyDerived);
+    assert(self->GetType()->IsReference(this) || self->GetType() == this || dynamic_cast<PointerType*>(self->GetType())->GetPointee() == this);
+    assert(!other->IsReference());
+    Type* result = self->GetType()->IsReference()
+        ? IsLvalueType(self->GetType()) ? analyzer.GetLvalueType(other) : analyzer.GetRvalueType(other)
+        : dynamic_cast<PointerType*>(self->GetType())
+        ? analyzer.GetPointerType(other)
+        : other;
+    for (auto base : GetBasesAndOffsets()) {
+        if (base.first == other) {
+            struct DerivedToBaseConversion : public Expression {
+                DerivedToBaseConversion(std::unique_ptr<Expression> self, Type* result, unsigned offset)
+                : self(std::move(self)), result(result), offset(offset) {}
+                std::unique_ptr<Expression> self;
+                unsigned offset;
+                Type* result;
+                void DestroyExpressionLocals(llvm::Module* m, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final {
+                    self->DestroyLocals(m, bb, allocas);
+                }
+                Type* GetType() override final { return result; }
+                llvm::Value* ComputeValue(llvm::Module* m, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
+                    auto value = self->GetValue(m, bb, allocas);
+                    if (!result->IsReference() && !dynamic_cast<PointerType*>(result)) {
+                        // It's a value, and we're a value, so just create struct gep.
+                        if (result->IsEmpty())
+                            return llvm::Constant::getNullValue(result->GetLLVMType(m));
+                        // If it's not empty it must have a field index.
+                        auto layout = result->analyzer.GetDataLayout().getStructLayout(llvm::dyn_cast<llvm::StructType>(result->GetLLVMType(m)));
+                        return bb.CreateExtractValue(value, { layout->getElementContainingOffset(offset) });
+                    }
+                    if (offset == 0)
+                        return bb.CreatePointerCast(value, result->GetLLVMType(m));
+                    if (result->IsReference()) {
+                        // Just do the offset because null references are illegal.
+                        value = bb.CreatePointerCast(value, llvm::Type::getInt8PtrTy(m->getContext()));
+                        value = bb.CreateConstGEP1_32(value, offset);
+                        return bb.CreatePointerCast(value, result->GetLLVMType(m));
+                    }
+                    // It could be null. Branch here
+                    auto source_block = bb.GetInsertBlock();
+                    llvm::BasicBlock* not_null_bb = llvm::BasicBlock::Create(m->getContext(), "not_null_bb", bb.GetInsertBlock()->getParent());
+                    llvm::BasicBlock* continue_bb = llvm::BasicBlock::Create(m->getContext(), "continue_bb", bb.GetInsertBlock()->getParent());
+                    bb.CreateCondBr(bb.CreateIsNull(value), continue_bb, not_null_bb);
+                    bb.SetInsertPoint(not_null_bb);
+                    value = bb.CreatePointerCast(value, llvm::Type::getInt8PtrTy(m->getContext()));
+                    value = bb.CreateConstGEP1_32(value, offset);
+                    auto offset_ptr = bb.CreatePointerCast(value, result->GetLLVMType(m));
+                    bb.CreateBr(continue_bb);
+                    bb.SetInsertPoint(continue_bb);
+                    auto phi = bb.CreatePHI(result->GetLLVMType(m), 2);
+                    phi->addIncoming(llvm::Constant::getNullValue(result->GetLLVMType(m)), source_block);
+                    phi->addIncoming(offset_ptr, not_null_bb);
+                    return phi;
+                }
+            };
+            return Wide::Memory::MakeUnique<DerivedToBaseConversion>(std::move(self), result, base.second);
+        }
+    }
+    assert(false && "Attempted to derived-to-base convert, but the derived did not derive from the base.");
+}
+
+bool Type::InheritsFromAtOffsetZero(Type* other) {
+    auto bases = GetBasesAndOffsets();
+    if (bases.empty()) return false;
+    for (auto base : bases) {
+        if (base.second == 0) {
+            if (base.first == other)
+                return true;
+            return base.first->InheritsFromAtOffsetZero(other);
+        }
+    }
+    return false;
 }
 
 std::unique_ptr<Expression> Type::BuildUnaryExpression(std::unique_ptr<Expression> self, Lexer::TokenType type, Context c) {
@@ -596,7 +751,7 @@ std::unique_ptr<Expression> Type::CreateVTable(std::vector<std::pair<Type*, unsi
         if (auto mem = boost::get<VTableLayout::SpecialMember>(&func.function)) {
             if (*mem == VTableLayout::SpecialMember::OffsetToTop) {
                 auto size = analyzer.GetDataLayout().getPointerSizeInBits();
-                entries.push_back(Wide::Memory::MakeUnique<Integer>(llvm::APInt(size, (uint64_t)offset_total, false), analyzer));
+                entries.push_back(Wide::Memory::MakeUnique<Integer>(llvm::APInt(size, (uint64_t)-offset_total, true), analyzer));
                 continue;
             }
             if (*mem == VTableLayout::SpecialMember::RTTIPointer) {
@@ -753,4 +908,15 @@ llvm::Constant* Semantic::GetGlobalString(std::string string, llvm::Module* m) {
     auto zero = llvm::ConstantInt::get(llvm::Type::getInt32Ty(m->getContext()), 0);
     llvm::Constant *Args[] = { zero, zero };
     return llvm::ConstantExpr::getInBoundsGetElementPtr(global, Args);
+}
+Type::VTableLayout Type::ComputeVTableLayout() {
+    auto playout = GetPrimaryVTable();
+    // Append ITANIUM ABI SPECIFIC secondary tables.
+    for (auto base : GetBases()) {
+        if (base == GetPrimaryBase())
+            continue;
+        auto secondarytable = base->GetVtableLayout();
+        playout.layout.insert(playout.layout.end(), secondarytable.layout.begin(), secondarytable.layout.end());
+    }
+    return playout;
 }

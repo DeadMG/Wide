@@ -364,62 +364,6 @@ std::unique_ptr<Expression> ClangType::PrimitiveAccessMember(std::unique_ptr<Exp
     });
 }
 
-Type::InheritanceRelationship ClangType::IsDerivedFrom(Type* other) {
-    auto otherclangty = other->GetClangType(*from);
-    if (!otherclangty) return InheritanceRelationship::NotDerived;
-    auto otherdecl = (*otherclangty)->getAsCXXRecordDecl();
-    auto recdecl = type->getAsCXXRecordDecl();
-    InheritanceRelationship result = InheritanceRelationship::NotDerived;
-    for (auto base = recdecl->bases_begin(); base != recdecl->bases_end(); ++base) {
-        auto basedecl = base->getType()->getAsCXXRecordDecl();
-        if (basedecl == otherdecl) {
-            if (result == InheritanceRelationship::NotDerived)
-                result = InheritanceRelationship::UnambiguouslyDerived;
-            else
-                result = InheritanceRelationship::AmbiguouslyDerived;
-            continue;
-        }
-        auto Base = analyzer.GetClangType(*from, base->getType());
-        auto subresult = Base->IsDerivedFrom(other);
-        if (subresult == InheritanceRelationship::AmbiguouslyDerived)
-            result = InheritanceRelationship::AmbiguouslyDerived;
-        if (subresult == InheritanceRelationship::UnambiguouslyDerived) {
-            if (result == InheritanceRelationship::NotDerived)
-                result = subresult;
-            if (result == InheritanceRelationship::UnambiguouslyDerived)
-                result = InheritanceRelationship::AmbiguouslyDerived;
-        }
-    }
-    return result;
-}
-std::unique_ptr<Expression> ClangType::AccessBase(std::unique_ptr<Expression> self, Type* other) {
-    auto recdecl = type->getAsCXXRecordDecl();
-    other = other->Decay();
-    assert(IsDerivedFrom(other) == InheritanceRelationship::UnambiguouslyDerived);
-    for (auto baseit = recdecl->bases_begin(); baseit != recdecl->bases_end(); ++baseit) {
-        auto base = analyzer.GetClangType(*from, baseit->getType());
-        Type* result;
-        if (auto ptr = dynamic_cast<PointerType*>(self->GetType()->Decay())) {
-            result = analyzer.GetPointerType(other);
-        }
-        if (IsLvalueType(self->GetType()))
-            result = analyzer.GetLvalueType(other);
-        else
-            result = analyzer.GetRvalueType(other);
-        if (base == other) {
-            // Gotta account for EBO
-            // We have the same pointer/value category as the argument.
-            if (baseit->getType()->getAsCXXRecordDecl()->isEmpty()) {
-                return PrimitiveAccessMember(std::move(self), baseit - recdecl->bases_begin());
-            }
-            return PrimitiveAccessMember(std::move(self), baseit - recdecl->bases_begin());
-        }
-        if (base->IsDerivedFrom(other) == InheritanceRelationship::UnambiguouslyDerived)
-            return base->AccessBase(AccessBase(std::move(self), base), other);
-    }
-    assert(false);
-    return nullptr;
-}
 std::string ClangType::explain() {
     auto basename = GetContext()->explain() + "." + type->getAsCXXRecordDecl()->getName().str();
     if (auto tempspec = llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(type->getAsCXXRecordDecl())) {
@@ -440,14 +384,6 @@ std::vector<std::pair<Type*, unsigned>> ClangType::GetBasesAndOffsets() {
     std::vector<std::pair<Type*, unsigned>> out;
     for (auto basespec = type->getAsCXXRecordDecl()->bases_begin(); basespec != type->getAsCXXRecordDecl()->bases_end(); basespec++) {
         out.push_back(std::make_pair(analyzer.GetClangType(*from, basespec->getType()), layout.getBaseClassOffset(basespec->getType()->getAsCXXRecordDecl()).getQuantity()));
-    }
-    return out;
-}
-std::vector<Type*> ClangType::GetBases() {
-    auto&& layout = from->GetASTContext().getASTRecordLayout(type->getAsCXXRecordDecl());
-    std::vector<Type*> out;
-    for (auto basespec = type->getAsCXXRecordDecl()->bases_begin(); basespec != type->getAsCXXRecordDecl()->bases_end(); basespec++) {
-        out.push_back(analyzer.GetClangType(*from, basespec->getType()));
     }
     return out;
 }
@@ -474,10 +410,8 @@ Type* ClangType::GetVirtualPointerType() {
     return analyzer.GetFunctionType(analyzer.GetIntegralType(32, true), {}, true);
 }
 
-Type::VTableLayout ClangType::GetPrimaryVTableLayout() {
+Type::VTableLayout ClangType::ComputePrimaryVTableLayout() {
     // ITANIUM ABI SPECIFIC
-    if (PrimaryVTableLayout) return *PrimaryVTableLayout;
-
     auto CreateVFuncFromMethod = [&](clang::CXXMethodDecl* methit) {
         VTableLayout::VirtualFunction vfunc;
         vfunc.name = methit->getName();
@@ -508,12 +442,9 @@ Type::VTableLayout ClangType::GetPrimaryVTableLayout() {
                         if (basemeth->getResultType() == methit->getResultType())
                             return false;
                         // If they have an adjustment of zero.
-                        auto basemethrecord = basemeth->getResultType()->getAsCXXRecordDecl();
-                        auto dermethrecord = methit->getResultType()->getAsCXXRecordDecl();
-                        if (!basemethrecord || !dermethrecord) continue;
-                        auto&& derlayout = from->GetASTContext().getASTRecordLayout(dermethrecord);
-                        if (!derlayout.hasOwnVFPtr() && derlayout.getBaseClassOffset(basemethrecord) == clang::CharUnits::Zero())
-                            return false;
+                        auto basety = analyzer.GetClangType(*from, basemeth->getResultType());
+                        auto derty = analyzer.GetClangType(*from, methit->getResultType());
+                        if (derty->InheritsFromAtOffsetZero(basety)) return false;
                         continue;
                     }
                 }
@@ -525,7 +456,6 @@ Type::VTableLayout ClangType::GetPrimaryVTableLayout() {
             entry.function = CreateVFuncFromMethod(*methit);
             pbaselayout.layout.push_back(entry);
         }
-        PrimaryVTableLayout = pbaselayout;
         return pbaselayout;
     }
     VTableLayout out;
@@ -552,24 +482,7 @@ Type::VTableLayout ClangType::GetPrimaryVTableLayout() {
             out.layout.push_back(entry);
         }
     }
-    PrimaryVTableLayout = out;
     return out;
-}
-Type::VTableLayout ClangType::ComputeVTableLayout() {
-    auto playout = GetPrimaryVTableLayout();
-    // Append ITANIUM ABI SPECIFIC secondary tables.
-    for (auto baseit = type->getAsCXXRecordDecl()->bases_begin(); baseit = type->getAsCXXRecordDecl()->bases_end(); ++baseit) {
-        auto&& layout = from->GetASTContext().getASTRecordLayout(type->getAsCXXRecordDecl());
-        // If we have a primary base, then no secondary table.
-        if (!layout.hasOwnVFPtr()) {
-            if (layout.getPrimaryBase() == baseit->getType()->getAsCXXRecordDecl())
-                continue;
-        }
-        auto clangty = dynamic_cast<ClangType*>(analyzer.GetClangType(*from, baseit->getType()));
-        auto secondarytable = clangty->GetVtableLayout();
-        playout.layout.insert(playout.layout.end(), secondarytable.layout.begin(), secondarytable.layout.end());
-    }
-    return playout;
 }
 
 std::unique_ptr<Expression> ClangType::VirtualEntryFor(VTableLayout::VirtualFunctionEntry entry, unsigned offset) {
@@ -649,7 +562,7 @@ std::unique_ptr<Expression> ClangType::VirtualEntryFor(VTableLayout::VirtualFunc
     }
     return nullptr;
 }
-bool ClangType::IsEliminateType() {
+bool ClangType::IsEmpty() {
     return type->getAsCXXRecordDecl()->isEmpty();
 }
 Type* ClangType::GetConstantContext() {
@@ -686,20 +599,21 @@ namespace {
         return Lexer::Range(PositionFromSourceLocation(range.getBegin(), src), PositionFromSourceLocation(range.getEnd(), src));
     }
 }
-std::vector<ConstructorContext::member> ClangType::GetMembers() {
+std::vector<ConstructorContext::member> ClangType::GetConstructionMembers() {
     std::vector<ConstructorContext::member> out;
-    unsigned i = 0;
+    auto&& layout = from->GetASTContext().getASTRecordLayout(type->getAsCXXRecordDecl());
     for (auto baseit = type->getAsCXXRecordDecl()->bases_begin(); baseit != type->getAsCXXRecordDecl()->bases_end(); ++baseit) {
         ConstructorContext::member mem(RangeFromSourceRange(baseit->getSourceRange(), from->GetASTContext().getSourceManager()));
         mem.t = analyzer.GetClangType(*from, baseit->getType());
-        mem.num = i++;
+        mem.num = EmptyBaseOffset{ layout.getBaseClassOffset(baseit->getType()->getAsCXXRecordDecl()).getQuantity() };
         mem.name = baseit->getType()->getAsCXXRecordDecl()->getName();
         out.push_back(std::move(mem));
     }
+    unsigned i = 0;
     for (auto fieldit = type->getAsCXXRecordDecl()->field_begin(); fieldit != type->getAsCXXRecordDecl()->field_end(); ++fieldit) {
         ConstructorContext::member mem(RangeFromSourceRange(fieldit->getSourceRange(), from->GetASTContext().getSourceManager()));
         mem.t = analyzer.GetClangType(*from, fieldit->getType());
-        mem.num = i++;
+        mem.num = { layout.getFieldOffset(i++) };
         mem.name = fieldit->getName();
         if (auto expr = fieldit->getInClassInitializer()) {
             auto style = fieldit->getInClassInitStyle();

@@ -22,6 +22,7 @@ namespace Wide {
             OverloadSet* CreateConstructorOverloadSet(Lexer::Access access) override final;
             bool IsA(Type* self, Type* other, Lexer::Access access) override final;
             std::string explain() override final;
+            Type* GetPointee() { return pointee; }
         };
     }
 }

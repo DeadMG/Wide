@@ -6,9 +6,10 @@ namespace Wide {
     namespace Semantic {
         class TupleType : public AggregateType {
             std::vector<Type*> contents;
+            bool HasVirtualFunctions() override final { return false; }
         public:
             TupleType(std::vector<Type*> types, Analyzer& a);
-            const std::vector<Type*>& GetContents() { return contents; }
+            const std::vector<Type*>& GetMembers() override final { return contents; }
 
             std::unique_ptr<Expression> ConstructFromLiteral(std::vector<std::unique_ptr<Expression>> exprs, Context c);
             bool IsA(Type* self, Type* other, Lexer::Access access) override final;

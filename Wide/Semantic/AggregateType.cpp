@@ -4,6 +4,7 @@
 #include <Wide/Semantic/Reference.h>
 #include <Wide/Semantic/Expression.h>
 #include <Wide/Semantic/OverloadSet.h>
+#include <Wide/Semantic/PointerType.h>
 #include <sstream>
 
 #pragma warning(push, 0)
@@ -16,7 +17,7 @@
 using namespace Wide;
 using namespace Semantic;
 
-AggregateType::Layout::Layout(const std::vector<Type*>& types, Wide::Semantic::Analyzer& a)
+AggregateType::Layout::Layout(AggregateType* agg, Wide::Semantic::Analyzer& a)
 : allocsize(0)
 , align(1)
 , copyassignable(true)
@@ -25,44 +26,132 @@ AggregateType::Layout::Layout(const std::vector<Type*>& types, Wide::Semantic::A
 , moveconstructible(true)
 , constant(true)
 {
-    // Treat empties differently to match Clang's expectations
-    if (types.empty()) {
-        allocsize = 1;
-        return;
+    // http://refspecs.linuxbase.org/cxxabi-1.83.html#class-types
+    // 2.4.1
+    // Initialize variables, including primary base.
+    auto& sizec = allocsize;
+    auto& alignc = align;
+    auto dsizec = 0;
+    
+    for (unsigned i = 0; i < agg->GetBases().size(); ++i) {
+        auto base = agg->GetBases()[i];
+        if (!base->GetVtableLayout().layout.empty()) {
+            PrimaryBase = base;
+            PrimaryBaseNum = i;
+            break;
+        }
+    }
+    
+    //  If C has no primary base class, allocate the virtual table pointer for C at offset zero
+    //  and set sizeof(C), align(C), and dsize(C) to the appropriate values for a pointer
+    if (agg->HasVirtualFunctions() && !PrimaryBase) {
+        sizec = agg->analyzer.GetDataLayout().getPointerSize();
+        alignc = agg->analyzer.GetDataLayout().getPointerPrefAlignment();
+        dsizec = sizec;
+        hasvptr = true;
     }
 
-    auto adjust_alignment = [this](std::size_t alignment) {
-        if (allocsize % alignment != 0) {
-            auto adjustment = alignment - (allocsize % alignment);
-            allocsize += adjustment;
-            llvmtypes.push_back([adjustment](llvm::Module* module) {
-                return llvm::ArrayType::get(llvm::IntegerType::getInt8Ty(module->getContext()), adjustment);
-            });
-        }
-        align = std::max(alignment, align);
-        assert(allocsize % alignment == 0);
+    auto UpdatePropertiesForMember = [this, agg](Type* D) {
+        constant &= D->GetConstantContext() == D;
+        moveconstructible &= D->IsMoveConstructible(GetAccessSpecifier(agg, D));
+        copyconstructible &= D->IsCopyConstructible(GetAccessSpecifier(agg, D));
+        moveassignable &= D->IsMoveAssignable(GetAccessSpecifier(agg, D));
+        copyassignable &= D->IsCopyAssignable(GetAccessSpecifier(agg, D));
     };
 
-    for (auto ty : types) {
-        // Check that we are suitably aligned for the next member and if not, align it with some padding.
-        auto talign = ty->alignment();
-        adjust_alignment(talign);
+    Offsets.resize(agg->GetBases().size() + agg->GetMembers().size());
 
-        // Add the type itself to the list- zero-based index.
-        Offsets.push_back(allocsize);
-        allocsize += ty->size();
-        FieldIndices.push_back(llvmtypes.size());
-        llvmtypes.push_back([ty](llvm::Module* module) { return ty->GetLLVMType(module); });
+    // If we have a vptr then all fields offset by 1.
+    unsigned fieldnum = hasvptr ? 1 : 0;
 
-        copyconstructible = copyconstructible && ty->IsCopyConstructible(Lexer::Access::Public);
-        moveconstructible = moveconstructible && ty->IsMoveConstructible(Lexer::Access::Public);
-        copyassignable = copyassignable && ty->IsCopyAssignable(Lexer::Access::Public);
-        moveassignable = moveassignable && ty->IsMoveAssignable(Lexer::Access::Public);
-        constant = constant && ty->GetConstantContext();
+    // 2.4.2
+    // Clause 1 does not apply because we don't support virtual bases.
+    // Clause 2 (second argument not required w/o virtual base support
+    auto layout_nonemptybase = [&](Type* D, bool base, std::size_t offset, std::size_t num) {
+        UpdatePropertiesForMember(D);
+
+        // Start at offset dsize(C), incremented if necessary for alignment to align(D).
+        bool AddedPadding = false;
+        if (offset % D->alignment() != 0) {
+            offset += D->alignment() - (offset % D->alignment());
+            AddedPadding = true;
+        }
+
+        auto AttemptLayout = [&, this] {
+            auto DEmpties = D->GetEmptyLayout();
+            for (auto newempty : DEmpties) {
+                // If there are any empties which clash, move on.
+                for (auto empty : newempty.second) {
+                    if (EmptyTypes[newempty.first + offset].find(empty) != EmptyTypes[newempty.first + offset].end())
+                        return false;
+                }
+            }
+            return true;
+        };
+
+        while (!AttemptLayout()) {
+            offset += D->alignment();
+            AddedPadding = true;
+        }
+        // Update the empty map for our new layout.
+        auto DEmpties = D->GetEmptyLayout();
+        for (auto newempty : DEmpties) {
+            for (auto empty : newempty.second) 
+                EmptyTypes[newempty.first + offset].insert(empty);
+        }
+        // If we inserted any padding, increase the field number to account for the padding array
+        if (AddedPadding)
+            fieldnum++;
+        Offsets[num] = { D, offset, fieldnum++ };
+        // update sizeof(C) to max (sizeof(C), offset(D)+sizeof(D))
+        sizec = std::max(sizec, offset + D->size());
+        // update dsize(C) to offset(D)+sizeof(D),
+        dsizec = offset + D->size();
+        // align(C) to max(align(C), align(D)).
+        alignc = std::max(alignc, D->alignment());
+    };
+
+    // Clause 3
+    auto layout_emptybase = [&](Type* D, std::size_t num) {
+        UpdatePropertiesForMember(D);
+        // Its allocation is similar to case (2) above, except that additional candidate offsets are considered before starting at dsize(C). First, attempt to place D at offset zero.
+        unsigned offset = 0;
+        if (EmptyTypes[offset].find(D) != EmptyTypes[offset].end()) {
+            // If unsuccessful (due to a component type conflict), proceed with attempts at dsize(C) as for non-empty bases. 
+            offset = dsizec;
+            while (EmptyTypes[offset].find(D) != EmptyTypes[offset].end()) {
+                // As for that case, if there is a type conflict at dsize(C) (with alignment updated as necessary), increment the candidate offset by nvalign(D)
+                ++offset;
+            }
+        }
+        // Success
+        Offsets[num] = { D, offset };
+        // Insert the empty type
+        EmptyTypes[offset].insert(D);
+        // Once offset(D) has been chosen, update sizeof(C) to max (sizeof(C), offset(D)+sizeof(D))
+        sizec = std::max(sizec, offset + D->size());
+    };
+
+    // For each data component D (first the primary base of C, if any, then the non-primary, non-virtual direct base classes in declaration order, then the non-static data members
+    if (PrimaryBase) layout_nonemptybase(PrimaryBase, true, dsizec, PrimaryBaseNum);
+
+    for (unsigned i = 0; i < agg->GetBases().size(); ++i) {
+        auto base = agg->GetBases()[i];
+        if (base == PrimaryBase)
+            continue;
+        if (base->IsEmpty())
+            layout_emptybase(base, i);
+        else
+            layout_nonemptybase(base, true, dsizec, i);
+    }
+    for (unsigned i = 0; i < agg->GetMembers().size(); ++i) {
+        auto member = agg->GetMembers()[i];
+        layout_nonemptybase(member, false, dsizec, i + agg->GetBases().size());
     }
 
-    // Fix the alignment of the whole structure
-    adjust_alignment(align);    
+    // Round sizeof(C) up to a non-zero multiple of align(C). If C is a POD, but not a POD for the purpose of layout, set nvsize(C) = sizeof(C). 
+    if (sizec % alignc != 0)
+        sizec += alignc - (sizec % alignc);
 }
 std::size_t AggregateType::size() {
     return GetLayout().allocsize;
@@ -86,18 +175,46 @@ bool AggregateType::IsCopyAssignable(Lexer::Access access) {
 bool AggregateType::IsCopyConstructible(Lexer::Access access) {
     return GetLayout().copyconstructible;
 }
+std::unique_ptr<Expression> AggregateType::GetVirtualPointer(std::unique_ptr<Expression> self) {
+    if (!GetLayout().hasvptr && !GetLayout().PrimaryBase) {
+        return nullptr;
+    }
+    if (GetLayout().hasvptr) {
+        auto vptrty = analyzer.GetPointerType(GetVirtualPointerType());
+        assert(self->GetType()->IsReference(this) || dynamic_cast<PointerType*>(self->GetType())->GetPointee() == this);
+        struct VPtrAccess : Expression {
+            VPtrAccess(Type* t, std::unique_ptr<Expression> self)
+            : ty(t), self(std::move(self)) {}
+            Type* ty;
+            std::unique_ptr<Expression> self;
+            llvm::Value* ComputeValue(llvm::Module* m, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final { return bb.CreateStructGEP(self->GetValue(m, bb, allocas), 0); }
+            void DestroyExpressionLocals(llvm::Module* m, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final { self->DestroyLocals(m, bb, allocas); }
+            Type* GetType() override final { return ty; }
+        };
+        return Wide::Memory::MakeUnique<VPtrAccess>(analyzer.GetLvalueType(vptrty), std::move(self));
+    }
+    return GetLayout().PrimaryBase->GetVirtualPointer(AccessBase(std::move(self), GetLayout().PrimaryBase));
+}
+
+bool AggregateType::IsEmpty() {
+    // A class with no non - static data members other than zero - width bitfields, no virtual functions, no virtual base classes, and no non - empty non - virtual proper base classes.
+    if (!GetMembers().empty()) return false;
+    if (GetLayout().hasvptr) return false;
+    for (auto base : GetBases())
+        if (!base->IsEmpty())
+            return false;
+    return true;
+}
 
 AggregateType::Layout::CodeGen::CodeGen(AggregateType* self, Layout& lay, llvm::Module* module)
 : IsComplex(false) 
 {
     llvmtype = nullptr;
 
-    if (self->GetContents().empty()) {
-        IsComplex = false;
-    } else {
-        for (auto ty : self->GetContents())
-            IsComplex = IsComplex || ty->IsComplexType(module);
-    }
+    for (auto ty : self->GetBases())
+        IsComplex = IsComplex || ty->IsComplexType(module);
+    for (auto ty : self->GetMembers())
+        IsComplex = IsComplex || ty->IsComplexType(module);
 
 }
 llvm::Type* AggregateType::Layout::CodeGen::GetLLVMType(AggregateType* self, llvm::Module* module) {
@@ -110,12 +227,31 @@ llvm::Type* AggregateType::Layout::CodeGen::GetLLVMType(AggregateType* self, llv
     auto ty = llvm::StructType::create(module->getContext(), llvmname);
     llvmtype = ty;
     std::vector<llvm::Type*> llvmtypes;
-    if (self->GetContents().empty()) {
+
+    if (self->IsEmpty()) {
         llvmtypes.push_back(self->analyzer.GetIntegralType(8, true)->GetLLVMType(module));
-    } else {
-        for (auto ty : self->GetLayout().llvmtypes)
-            llvmtypes.push_back(ty(module));
+        ty->setBody(llvmtypes, false);
+        return ty;
     }
+
+    unsigned curroffset = 0;
+    if (self->GetLayout().hasvptr) {
+        llvmtypes.push_back(self->analyzer.GetPointerType(self->GetVirtualPointerType())->GetLLVMType(module));
+        curroffset = self->analyzer.GetDataLayout().getPointerSize();
+    }
+
+    for (auto llvmmember : self->GetLayout().Offsets) {
+        if (llvmmember.FieldIndex) {
+            if (curroffset != llvmmember.ByteOffset) {
+                llvmtypes.push_back(llvm::ArrayType::get(llvm::Type::getInt8Ty(module->getContext()), llvmmember.ByteOffset - curroffset));
+            }
+            assert(*llvmmember.FieldIndex == llvmtypes.size());
+            llvmtypes.push_back(llvmmember.ty->GetLLVMType(module));
+            curroffset = llvmmember.ByteOffset + llvmmember.ty->size();
+        }
+    }
+    if (self->size() != curroffset)
+        llvmtypes.push_back(llvm::ArrayType::get(llvm::Type::getInt8Ty(module->getContext()), self->size() - curroffset));
     ty->setBody(llvmtypes, false);
     return ty;
 }
@@ -123,8 +259,13 @@ llvm::Type* AggregateType::GetLLVMType(llvm::Module* module) {
     return GetLayout().GetCodegen(this, module).GetLLVMType(this, module);
 }
 Type* AggregateType::GetConstantContext() {
-    for (auto ty : GetContents())
-    if (!ty->GetConstantContext())
+    for (auto ty : GetBases())
+        if (!ty->GetConstantContext())
+            return nullptr;
+    for (auto ty : GetMembers())
+        if (!ty->GetConstantContext())
+            return nullptr;
+    if (GetLayout().hasvptr)
         return nullptr;
     return this;
 }
@@ -141,7 +282,9 @@ std::unique_ptr<Expression> AggregateType::PrimitiveAccessMember(std::unique_ptr
         }
         Type* GetType() override final {
             auto source_ty = source->GetType();
-            auto root_ty = self->GetContents()[num];
+            auto root_ty = num < self->GetBases().size()
+                ? self->GetBases()[num]
+                : self->GetMembers()[num - self->GetBases().size()];
 
             // If it's not a reference, just return the root type.
             if (!source_ty->IsReference())
@@ -156,8 +299,21 @@ std::unique_ptr<Expression> AggregateType::PrimitiveAccessMember(std::unique_ptr
         }
         llvm::Value* ComputeValue(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final {
             auto src = source->GetValue(module, bb, allocas);
-            auto obj = src->getType()->isPointerTy() ? bb.CreateStructGEP(src, self->GetLayout().FieldIndices[num]) : bb.CreateExtractValue(src, { self->GetLayout().FieldIndices[num] });
-            if ((source->GetType()->IsReference() && self->GetContents()[num]->IsReference()) || (source->GetType()->IsComplexType(module) && !self->GetContents()[num]->IsComplexType(module)))
+            // Is there even a field index? This may not be true for EBCO
+            auto&& offsets = self->GetLayout().Offsets;
+            if (!offsets[num].FieldIndex) {
+                if (src->getType()->isPointerTy()) {
+                    // Move it by that offset to get a unique pointer
+                    auto self_as_int8ptr = bb.CreatePointerCast(src, llvm::Type::getInt8PtrTy(module->getContext()));
+                    auto offset_self = bb.CreateConstGEP1_32(self_as_int8ptr, offsets[num].ByteOffset);
+                    return bb.CreatePointerCast(offset_self, GetType()->GetLLVMType(module));
+                }
+                // Downcasting to an EBCO'd value -> just produce a value.
+                return llvm::Constant::getNullValue(self->GetLayout().Offsets[num].ty->GetLLVMType(module));
+            }
+            auto fieldindex = *offsets[num].FieldIndex;
+            auto obj = src->getType()->isPointerTy() ? bb.CreateStructGEP(src, fieldindex) : bb.CreateExtractValue(src, { fieldindex });
+            if ((source->GetType()->IsReference() && offsets[num].ty->IsReference()) || (source->GetType()->IsComplexType(module) && !offsets[num].ty->IsComplexType(module)))
                 return bb.CreateLoad(obj);
             return obj;
         }
@@ -167,9 +323,10 @@ std::unique_ptr<Expression> AggregateType::PrimitiveAccessMember(std::unique_ptr
 }
 std::unique_ptr<Expression> AggregateType::BuildDestructorCall(std::unique_ptr<Expression> self, Context c) {
     std::vector<std::unique_ptr<Expression>> destructors;
-    unsigned i = 0;
-    for (auto member : GetContents())
-        destructors.push_back(member->BuildDestructorCall(PrimitiveAccessMember(Wide::Memory::MakeUnique<ExpressionReference>(self.get()), i++), c));
+    for (int i = GetLayout().Offsets.size() - 1; i >= 0; --i) {
+        auto member = GetLayout().Offsets[i].ty;
+        destructors.push_back(member->BuildDestructorCall(PrimitiveAccessMember(Wide::Memory::MakeUnique<ExpressionReference>(self.get()), i), c));
+    }
 
     struct AggregateDestructor : Expression {
         AggregateDestructor(AggregateType* agg, std::unique_ptr<Expression> s, std::vector<std::unique_ptr<Expression>> des)
@@ -207,13 +364,13 @@ OverloadSet* AggregateType::CreateOperatorOverloadSet(Type* t, Lexer::TokenType 
         types.push_back(analyzer.GetLvalueType(this));
         types.push_back(modify(this));
         return MakeResolvable([this, modify](std::vector<std::unique_ptr<Expression>> args, Context c) -> std::unique_ptr<Expression> {
-            if (GetContents().size() == 0)
+            if (GetLayout().Offsets.size() == 0)
                 return BuildChain(std::move(args[1]), std::move(args[0]));
             
             std::vector<std::unique_ptr<Expression>> exprs;
             // For every type, call the operator
-            for (std::size_t i = 0; i < GetContents().size(); ++i) {
-                auto type = GetContents()[i];
+            for (std::size_t i = 0; i < GetLayout().Offsets.size(); ++i) {
+                auto type = GetLayout().Offsets[i].ty;
                 auto lhs = PrimitiveAccessMember(Wide::Memory::MakeUnique<ExpressionReference>(args[0].get()), i);
                 std::vector<Type*> types;
                 types.push_back(analyzer.GetLvalueType(type));
@@ -232,7 +389,7 @@ OverloadSet* AggregateType::CreateOperatorOverloadSet(Type* t, Lexer::TokenType 
                 std::vector<std::unique_ptr<Expression>> exprs;
                 Type* GetType() override final { return self->GetType(); }
                 llvm::Value* ComputeValue(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final {
-                    if (!this_type->IsComplexType(module)) {
+                    if (!this_type->IsComplexType(module) && !this_type->GetLayout().hasvptr) {
                         // Screw calling all the operators, just store.
                         // This makes debugging the IR output a lot easier.
                         auto val = arg->GetType()->IsReference() ? bb.CreateLoad(arg->GetValue(module, bb, allocas)) : arg->GetValue(module, bb, allocas);
@@ -281,15 +438,18 @@ OverloadSet* AggregateType::CreateNondefaultConstructorOverloadSet() {
         types.push_back(analyzer.GetLvalueType(this));
         types.push_back(modify(this));
         return MakeResolvable([this, modify](std::vector<std::unique_ptr<Expression>> args, Context c) -> std::unique_ptr<Expression>  {
-            if (GetContents().size() == 0)
+            if (GetLayout().Offsets.size() == 0)
                 return BuildChain(std::move(args[1]), std::move(args[0]));
             // For every type, call the appropriate constructor.
             std::vector<std::unique_ptr<Expression>> exprs;
-            for (std::size_t i = 0; i < GetContents().size(); ++i) {
-                auto type = GetContents()[i];
-                auto lhs = CreatePrimUnOp(Wide::Memory::MakeUnique<ExpressionReference>(args[0].get()), analyzer.GetLvalueType(type), [this, i](llvm::Value* val, llvm::Module* mod, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
-                    return bb.CreateStructGEP(val, GetFieldIndex(i));
-                });
+            for (std::size_t i = 0; i < GetLayout().Offsets.size(); ++i) {
+                auto type = GetLayout().Offsets[i].ty;
+                // If it's a reference we need to not collapse it- otherwise use PrimAccessMember to take care of ECBO and such matters.
+                auto lhs = type->IsReference()
+                    ? CreatePrimUnOp(Wide::Memory::MakeUnique<ExpressionReference>(args[0].get()), analyzer.GetLvalueType(type), [this, i](llvm::Value* val, llvm::Module* mod, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
+                          return bb.CreateStructGEP(val, *GetLayout().Offsets[i].FieldIndex);
+                      })
+                    : PrimitiveAccessMember(Wide::Memory::MakeUnique<ExpressionReference>(args[0].get()), i);
                 auto rhs = PrimitiveAccessMember(Wide::Memory::MakeUnique<ExpressionReference>(args[1].get()), i);
                 auto set = type->GetConstructorOverloadSet(GetAccessSpecifier(this, type));
                 std::vector<Type*> types;
@@ -299,6 +459,7 @@ OverloadSet* AggregateType::CreateNondefaultConstructorOverloadSet() {
                 assert(callable);// Should not be generated if this fails!
                 exprs.push_back(callable->Call(Expressions( std::move(lhs), std::move(rhs) ), c));                
             }
+            exprs.push_back(SetVirtualPointers(Wide::Memory::MakeUnique<ExpressionReference>(args[0].get())));
             struct AggregateConstructor : Expression {
                 AggregateType* this_type;
                 std::unique_ptr<Expression> self;
@@ -352,10 +513,10 @@ OverloadSet* AggregateType::CreateConstructorOverloadSet(Lexer::Access access) {
     std::unordered_set<OverloadResolvable*> set;
     // Then default.
     auto is_default_constructible = [this] {
-        for (auto ty : GetContents()) {
+        for (auto mem : GetLayout().Offsets) {
             std::vector<Type*> types;
-            types.push_back(analyzer.GetLvalueType(ty));
-            if (!ty->GetConstructorOverloadSet(GetAccessSpecifier(this, ty))->Resolve(types, this))
+            types.push_back(analyzer.GetLvalueType(mem.ty));
+            if (!mem.ty->GetConstructorOverloadSet(GetAccessSpecifier(this, mem.ty))->Resolve(types, this))
                 return false;
         }
         return true;
@@ -365,13 +526,14 @@ OverloadSet* AggregateType::CreateConstructorOverloadSet(Lexer::Access access) {
         types.push_back(analyzer.GetLvalueType(this));
         if (!DefaultConstructor)
             DefaultConstructor = MakeResolvable([this](std::vector<std::unique_ptr<Expression>> args, Context c) -> std::unique_ptr<Expression> {
-                if (GetContents().size() == 0)
+                if (GetLayout().Offsets.size() == 0)
                     return std::move(args[0]);
                 
                 // For every type, call the appropriate constructor.
+                // No references possible so just use PrimAccessMember
                 std::vector<std::unique_ptr<Expression>> exprs;
-                for (std::size_t i = 0; i < GetContents().size(); ++i) {
-                    auto type = GetContents()[i];
+                for (std::size_t i = 0; i < GetLayout().Offsets.size(); ++i) {
+                    auto type = GetLayout().Offsets[i].ty;
                     auto lhs = PrimitiveAccessMember(Wide::Memory::MakeUnique<ExpressionReference>(args[0].get()), i);
                     auto set = type->GetConstructorOverloadSet(GetAccessSpecifier(this, type));
                     std::vector<Type*> types;
@@ -380,6 +542,7 @@ OverloadSet* AggregateType::CreateConstructorOverloadSet(Lexer::Access access) {
                     assert(callable);// Should not be generated if this fails!
                     exprs.push_back(callable->Call(Expressions( std::move(lhs) ), c));
                 }
+                exprs.push_back(SetVirtualPointers(Wide::Memory::MakeUnique<ExpressionReference>(args[0].get())));
                 struct AggregateConstructor : Expression {
                     std::unique_ptr<Expression> self;
                     std::vector<std::unique_ptr<Expression>> exprs;
@@ -404,14 +567,11 @@ OverloadSet* AggregateType::CreateConstructorOverloadSet(Lexer::Access access) {
     }
     return analyzer.GetOverloadSet(analyzer.GetOverloadSet(set), AggregateType::CreateNondefaultConstructorOverloadSet());
 }
-bool AggregateType::IsEliminateType() {
-    return GetContents().size() == 0;
-}
 bool AggregateType::HasMemberOfType(Type* t) {
-    for (auto ty : GetContents()) {
-        if (ty == t)
+    for (auto ty : GetLayout().Offsets) {
+        if (ty.ty == t)
             return true;
-        if (auto agg = dynamic_cast<AggregateType*>(ty)) 
+        if (auto agg = dynamic_cast<AggregateType*>(ty.ty)) 
             if (agg->HasMemberOfType(t))
                 return true;
     }
@@ -439,4 +599,10 @@ llvm::Constant* AggregateType::GetRTTI(llvm::Module* module) {
     auto ty = llvm::ConstantStruct::getTypeForElements(inits);
     auto rtti = new llvm::GlobalVariable(*module, ty, true, llvm::GlobalValue::LinkageTypes::LinkOnceODRLinkage, llvm::ConstantStruct::get(ty, inits), stream.str());
     return rtti;
+}
+
+MemberLocation AggregateType::GetLocation(unsigned i) {
+    if (GetLayout().Offsets[i].FieldIndex)
+        return LLVMFieldIndex{ *GetLayout().Offsets[i].FieldIndex };
+    return EmptyBaseOffset{ GetLayout().Offsets[i].ByteOffset };
 }

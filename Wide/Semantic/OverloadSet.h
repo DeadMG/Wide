@@ -29,7 +29,8 @@ namespace Wide {
             ClangTU* from;
 
             std::vector<Type*> contents;
-            const std::vector<Type*>& GetContents() override final;
+            const std::vector<Type*>& GetMembers() override final;
+            bool HasVirtualFunctions() override final { return false; }
 
             Type* nonstatic;
         public:

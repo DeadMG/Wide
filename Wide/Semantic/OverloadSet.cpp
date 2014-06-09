@@ -415,7 +415,7 @@ std::pair<ClangTU*, clang::FunctionDecl*> OverloadSet::GetSingleFunction() {
     return { nullptr, nullptr };
 }
 
-const std::vector<Type*>& OverloadSet::GetContents() {
+const std::vector<Type*>& OverloadSet::GetMembers() {
     if (nonstatic && contents.empty()) {
         contents.push_back(nonstatic);
     }

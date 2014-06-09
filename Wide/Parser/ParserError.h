@@ -77,6 +77,9 @@ namespace Wide {
             FunctionArgumentOnlyFirstThis,
             TypeidNoOpenBracket,
             TypeidNoCloseBracket,
+            DynamicCastNoOpenBracket,
+            DynamicCastNoComma,
+            DynamicCastNoCloseBracket,
         };         
 
         enum class Warning : int {
@@ -168,10 +171,13 @@ namespace Wide {
                 std::make_pair(Error::TypeScopeExpectedIdentifierAfterDynamic, "Expected identifier after dynamic to introduce a dynamic member function."),
                 std::make_pair(Error::TypeExpectedBracketAfterIdentifier, "Expected ( after dynamic identifier to introduce dynamic member function."),
                 std::make_pair(Error::DecltypeNoOpenBracket, "Expected ( after decltype to introduce a decltype expression."),
-                std::make_pair(Error::DecltypeNoCloseBracket, "Expected ( after decltype to introduce a decltype expression."),
+                std::make_pair(Error::DecltypeNoCloseBracket, "Expected ) after decltype(expr to close a decltype expression."),
                 std::make_pair(Error::FunctionArgumentOnlyFirstThis, "Only the first argument in a function definition can be this"),
-                std::make_pair(Error::TypeidNoOpenBracket, "Expected ( after decltype to introduce a decltype expression."),
-                std::make_pair(Error::TypeidNoCloseBracket, "Expected ( after decltype to introduce a decltype expression."),
+                std::make_pair(Error::TypeidNoOpenBracket, "Expected ( after typeid to introduce a typeid expression."),
+                std::make_pair(Error::TypeidNoCloseBracket, "Expected ) after typeid(expr to close a typeid expression."),
+                std::make_pair(Error::DynamicCastNoOpenBracket, "Expected ( after dynamic_cast to introduce a dynamic_cast expression."),
+                std::make_pair(Error::DynamicCastNoCloseBracket, "Expected ) after dynamic_cast(expr, expr to close a dynamic_cast expression."),
+                std::make_pair(Error::DynamicCastNoComma, "Expected , after dynamic_cast(expr to continue a dynamic_cast expression."),
             };
             return std::unordered_map<Error, std::string>(std::begin(strings), std::end(strings));
         }());

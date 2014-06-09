@@ -1013,6 +1013,64 @@ std::unique_ptr<Expression> Semantic::AnalyzeExpression(Type* lookup, const AST:
         };
         return Wide::Memory::MakeUnique<RTTI>(std::move(expr), result);
     }
+    if (auto dyn_cast = dynamic_cast<const AST::DynamicCast*>(e)) {
+        auto type = AnalyzeExpression(lookup, dyn_cast->type, a);
+        auto object = AnalyzeExpression(lookup, dyn_cast->object, a);
+
+        if (auto con = dynamic_cast<ConstructorType*>(type->GetType()->Decay())) {
+            // Only support pointers right now
+            if (auto baseptrty = dynamic_cast<PointerType*>(con->GetConstructedType())) {
+                if (auto derptrty = dynamic_cast<PointerType*>(object->GetType()->Decay())) {
+                    // derived-to-base conversion- doesn't require calling the routine
+                    if (derptrty->GetPointee()->IsDerivedFrom(baseptrty->GetPointee()) == Type::InheritanceRelationship::UnambiguouslyDerived) {
+                        return baseptrty->BuildValueConstruction(Expressions(std::move(object)), { lookup, dyn_cast->location });
+                    }
+
+                    // void*
+                    if (baseptrty->GetPointee() == a.GetVoidType()) {
+                        // Load it from the vtable if it actually has one.
+                        auto layout = derptrty->GetPointee()->GetVtableLayout();
+                        if (layout.layout.size() == 0) {
+                            throw std::runtime_error("Dynamic_casted a non-polymorphic type.");
+                        }
+                        for (unsigned int i = 0; i < layout.layout.size(); ++i) {
+                            if (auto spec = boost::get<Type::VTableLayout::SpecialMember>(&layout.layout[i].function)) {
+                                if (*spec == Type::VTableLayout::SpecialMember::OffsetToTop) {
+                                    auto offset = i - layout.offset;
+                                    auto vtable = derptrty->GetPointee()->GetVirtualPointer(Wide::Memory::MakeUnique<ExpressionReference>(object.get()));
+                                    struct DynamicCastToVoidPointer : Expression {
+                                        DynamicCastToVoidPointer(unsigned off, std::unique_ptr<Expression> obj, std::unique_ptr<Expression> vtable)
+                                        : vtable_offset(off), vtable(std::move(vtable)), object(std::move(obj)) {}
+                                        unsigned vtable_offset;
+                                        std::unique_ptr<Expression> vtable;
+                                        std::unique_ptr<Expression> object;
+                                        llvm::Value* ComputeValue(llvm::Module* m, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final {
+                                            auto vtable_ptr = bb.CreateLoad(vtable->GetValue(m, bb, allocas));
+                                            auto ptr_to_offset = bb.CreateConstGEP1_32(vtable_ptr, vtable_offset);
+                                            auto offset = bb.CreateLoad(ptr_to_offset);
+
+                                            auto obj_ptr = object->GetValue(m, bb, allocas);
+                                            return bb.CreateGEP(bb.CreateBitCast(obj_ptr, llvm::Type::getInt8PtrTy(m->getContext())), offset);
+                                        }
+                                        Type* GetType() override final {
+                                            auto&& a = object->GetType()->analyzer;
+                                            return a.GetPointerType(a.GetVoidType());
+                                        }
+                                        void DestroyExpressionLocals(llvm::Module* m, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final {
+                                            vtable->DestroyLocals(m, bb, allocas);
+                                            object->DestroyLocals(m, bb, allocas);
+                                        }
+                                    };
+                                    return Wide::Memory::MakeUnique<DynamicCastToVoidPointer>(offset, std::move(object), std::move(vtable));
+                                }
+                            }
+                        }
+                        throw std::runtime_error("Attempted to cast to void*, but the object's vtable did not carry an offset to top member.");
+                    }
+                }
+            }
+        }
+    }
     if (auto lam = dynamic_cast<const AST::Lambda*>(e)) {
         std::vector<std::unordered_set<std::string>> lambda_locals;
 

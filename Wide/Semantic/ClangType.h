@@ -16,21 +16,21 @@ namespace Wide {
     namespace Semantic {     
         class ClangTU;
         class ClangType : public Type, public TupleInitializable, public MemberFunctionContext, public ConstructorContext {
-            Wide::Util::optional<VTableLayout> PrimaryVTableLayout;
             ClangTU* from;
             clang::QualType type; 
             void ProcessImplicitSpecialMember(std::function<bool()> needs, std::function<clang::CXXMethodDecl*()> declare, std::function<void(clang::CXXMethodDecl*)> define, std::function<clang::CXXMethodDecl*()> lookup);
+            
             bool ProcessedConstructors = false;
             bool ProcessedDestructors = false;
             bool ProcessedAssignmentOperators = false;
+            Wide::Util::optional<std::vector<Type*>> Bases;
+
             Type* GetSelfAsType() override final { return this; }
             std::vector<std::pair<Type*, unsigned>> GetBasesAndOffsets() override final;
-            std::vector<Type*> GetBases() override final;
             Type* GetVirtualPointerType() override final;
-            VTableLayout GetPrimaryVTableLayout();
-            VTableLayout ComputeVTableLayout() override final;
+            VTableLayout ComputePrimaryVTableLayout() override final;
             std::unique_ptr<Expression> VirtualEntryFor(VTableLayout::VirtualFunctionEntry, unsigned offset) override final;
-            std::vector<member> GetMembers() override final;
+            std::vector<member> GetConstructionMembers() override final;
         public:
             // Used for type.destructor access.
             llvm::Constant* GetRTTI(llvm::Module* module) override final;
@@ -45,7 +45,7 @@ namespace Wide {
             Type* GetConstantContext() override final; 
 
             bool IsA(Type* self, Type* other, Lexer::Access access) override final;
-            bool IsEliminateType() override final;
+            bool IsEmpty() override final;
             bool IsComplexType(llvm::Module* m) override final;
             std::size_t size() override final;
             std::size_t alignment() override final;
@@ -55,8 +55,6 @@ namespace Wide {
             OverloadSet* CreateConstructorOverloadSet(Lexer::Access) override final;
             Wide::Util::optional<std::vector<Type*>> GetTypesForTuple() override final;
             std::unique_ptr<Expression> PrimitiveAccessMember(std::unique_ptr<Expression> self, unsigned num) override final;
-            InheritanceRelationship IsDerivedFrom(Type* other) override final;
-            std::unique_ptr<Expression> AccessBase(std::unique_ptr<Expression> self, Type* other) override final;
             std::string explain() override final;
         };
     }

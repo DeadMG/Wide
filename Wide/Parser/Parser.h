@@ -295,6 +295,14 @@ namespace Wide {
                     auto close = Check(Error::TypeidNoCloseBracket, Lexer::TokenType::CloseBracket);
                     return sema.CreateTypeid(expr, t.GetLocation() + close.GetLocation());
                 }
+                if (t.GetType() == Lexer::TokenType::DynamicCast) {
+                    Check(Error::DynamicCastNoOpenBracket, Lexer::TokenType::OpenBracket);
+                    auto expr1 = ParseExpression();
+                    Check(Error::DynamicCastNoComma, Lexer::TokenType::Comma);
+                    auto expr2 = ParseExpression();
+                    auto close = Check(Error::DynamicCastNoCloseBracket, Lexer::TokenType::CloseBracket);
+                    return sema.CreateDynamicCast(expr1, expr2, t.GetLocation() + close.GetLocation());
+                }
 
                 throw BadToken(t, Error::ExpressionNoBeginning);
             }

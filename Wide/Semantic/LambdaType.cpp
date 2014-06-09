@@ -40,14 +40,14 @@ std::unique_ptr<Expression> LambdaType::BuildLambdaFromCaptures(std::vector<std:
     std::vector<std::unique_ptr<Expression>> initializers;
     for (std::size_t i = 0; i < exprs.size(); ++i) {
         std::vector<Type*> types;
-        types.push_back(analyzer.GetLvalueType(GetContents()[i]));
+        types.push_back(analyzer.GetLvalueType(GetMembers()[i]));
         types.push_back(exprs[i]->GetType());
-        auto conset = GetContents()[i]->GetConstructorOverloadSet(GetAccessSpecifier(c.from, GetContents()[i]));
+        auto conset = GetMembers()[i]->GetConstructorOverloadSet(GetAccessSpecifier(c.from, GetMembers()[i]));
         auto call = conset->Resolve(types, c.from);
         if (!call) conset->IssueResolutionError(types, c);
         // Don't PrimAccessMember because it collapses references, and DO NOT WANT
         auto obj = CreatePrimUnOp(Wide::Memory::MakeUnique<ExpressionReference>(self.get()), types[0], [this, i](llvm::Value* val, llvm::Module* mod, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
-            return bb.CreateStructGEP(val, GetFieldIndex(i));
+            return bb.CreateStructGEP(val, boost::get<LLVMFieldIndex>(GetLocation(i)).index);
         });
         initializers.push_back(call->Call(Expressions(std::move(obj), std::move(exprs[i])), c));
     }

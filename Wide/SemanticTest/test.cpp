@@ -248,7 +248,7 @@ void Compile(const Wide::Options::Clang& copts, std::string file) {
         auto tupty = dynamic_cast<Wide::Semantic::TupleType*>(failfunc->GetSignature()->GetReturnType());
         if (!tupty)
             throw std::runtime_error("ExpectedFailure's result was not a tuple!");
-        auto str = dynamic_cast<Wide::Semantic::StringType*>(tupty->GetContents()[0]);
+        auto str = dynamic_cast<Wide::Semantic::StringType*>(tupty->GetMembers()[0]);
         if (!str)
             throw std::runtime_error("Result of ExpectedFailure's first member was not a string.");
 
@@ -261,8 +261,8 @@ void Compile(const Wide::Options::Clang& copts, std::string file) {
         auto bb = llvm::BasicBlock::Create(con, "entry", tramp);
         auto builder = llvm::IRBuilder<>(bb);
         auto call = builder.CreateCall(module->getFunction(failfunc->GetName()));
-        builder.CreateStore(builder.CreateExtractValue(call, { tupty->GetFieldIndex(1) }), tramp->arg_begin());
-        builder.CreateStore(builder.CreateExtractValue(call, { tupty->GetFieldIndex(2) }), ++tramp->arg_begin());
+        builder.CreateStore(builder.CreateExtractValue(call, { boost::get<Wide::Semantic::LLVMFieldIndex>(tupty->GetLocation(1)).index }), tramp->arg_begin());
+        builder.CreateStore(builder.CreateExtractValue(call, { boost::get<Wide::Semantic::LLVMFieldIndex>(tupty->GetLocation(2)).index }), ++tramp->arg_begin());
         builder.CreateRetVoid();
         if (llvm::verifyFunction(*tramp, llvm::VerifierFailureAction::PrintMessageAction))
             throw std::runtime_error("Internal Compiler Error: An LLVM function failed verification.");
