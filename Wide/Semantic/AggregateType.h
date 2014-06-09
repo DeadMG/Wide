@@ -1,7 +1,6 @@
 #pragma once
 
 #include <Wide/Semantic/Type.h>
-#include <boost/optional.hpp>
 
 namespace Wide {
     namespace Semantic {
@@ -39,7 +38,7 @@ namespace Wide {
                 Type* PrimaryBase = nullptr;
                 unsigned PrimaryBaseNum;
 
-                boost::optional<CodeGen> codegen;
+                Wide::Util::optional<CodeGen> codegen;
                 CodeGen& GetCodegen(AggregateType* self, llvm::Module* module) {
                     if (!codegen) codegen = CodeGen(self, *this, module);
                     return *codegen;
@@ -53,7 +52,7 @@ namespace Wide {
             std::unique_ptr<OverloadResolvable> MoveConstructor;
             std::unique_ptr<OverloadResolvable> DefaultConstructor;
 
-            boost::optional<Layout> layout;
+            Wide::Util::optional<Layout> layout;
             Layout& GetLayout() {
                 if (!layout) layout = Layout(this, analyzer);
                 return *layout;

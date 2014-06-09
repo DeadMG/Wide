@@ -586,6 +586,7 @@ std::unique_ptr<Expression> UserDefinedType::FunctionPointerFor(VTableLayout::Vi
         args[0] = analyzer.GetLvalueType(this);
     else
         args[0] = analyzer.GetRvalueType(this);
+    
     for (auto func : type->Functions.at(name)->functions) {
         std::vector<Type*> f_args;
         if (func->args.size() == 0 || func->args.front().name != "this")

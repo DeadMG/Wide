@@ -2,7 +2,6 @@
 
 #include <Wide/Semantic/AggregateType.h>
 #include <unordered_map>
-#include <boost/optional.hpp>
 #include <functional>
 #include <string>
 #include <vector>
@@ -29,10 +28,10 @@ namespace Wide {
             std::string source_name;
             Type* context;
 
-            boost::optional<bool> UDCCache;
+            Wide::Util::optional<bool> UDCCache;
             bool UserDefinedComplex();
 
-            boost::optional<bool> BCCache;
+            Wide::Util::optional<bool> BCCache;
             bool BinaryComplex(llvm::Module* module);
             
             struct BaseData {
@@ -42,7 +41,7 @@ namespace Wide {
                 std::vector<Type*> bases;
                 Type* PrimaryBase = nullptr;
             };
-            boost::optional<BaseData> Bases;
+            Wide::Util::optional<BaseData> Bases;
             BaseData& GetBaseData() {
                 if (!Bases) Bases = BaseData(this);
                 return *Bases;
@@ -56,7 +55,7 @@ namespace Wide {
                 // Relative to the first vptr, not the front of the vtable.
                 std::unordered_map<const AST::Function*, unsigned> VTableIndices;
             };
-            boost::optional<VTableData> Vtable;
+            Wide::Util::optional<VTableData> Vtable;
             VTableData& GetVtableData() {
                 if (!Vtable) Vtable = VTableData(this);
                 return *Vtable;
@@ -72,7 +71,7 @@ namespace Wide {
                 bool HasNSDMI = false;
                 std::vector<Type*> members;
             };
-            boost::optional<MemberData> Members;
+            Wide::Util::optional<MemberData> Members;
             MemberData& GetMemberData() {
                 if (!Members) Members = MemberData(this);
                 return *Members;
