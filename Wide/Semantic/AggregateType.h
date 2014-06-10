@@ -6,7 +6,7 @@ namespace Wide {
     namespace Semantic {
         class AggregateType : public Type {
             virtual const std::vector<Type*>& GetMembers() = 0;
-            virtual bool HasVirtualFunctions() = 0;
+            virtual bool HasDeclaredDynamicFunctions() = 0;
 
             struct Layout {
                 struct CodeGen {

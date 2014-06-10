@@ -78,7 +78,7 @@ namespace Wide {
             }
 
             std::unique_ptr<OverloadResolvable> DefaultConstructor;
-            bool HasVirtualFunctions() override final;
+            bool HasDeclaredDynamicFunctions() override final;
 
             Type* GetSelfAsType() override final { return this; }
             std::unordered_map<ClangTU*, clang::QualType> clangtypes;

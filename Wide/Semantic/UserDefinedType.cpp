@@ -156,7 +156,6 @@ UserDefinedType::VTableData::VTableData(UserDefinedType* self) {
         }
         VTableIndices[func.first] = primary_dynamic_functions[func.first] - funcs.offset;
     }
-
 }
 UserDefinedType::MemberData::MemberData(UserDefinedType* self) {
     for (auto&& var : self->type->variables) {
@@ -234,8 +233,9 @@ std::unique_ptr<Expression> UserDefinedType::AccessMember(std::unique_ptr<Expres
             if (spec >= f->access)
                 resolvables.insert(analyzer.GetCallableForFunction(f, self->GetType(), name));
         }
+        auto selfty = self->GetType();
         if (!resolvables.empty())
-            return analyzer.GetOverloadSet(resolvables, analyzer.GetRvalueType(self->GetType()))->BuildValueConstruction(Expressions(std::move(self)), c);
+            return analyzer.GetOverloadSet(resolvables, analyzer.GetRvalueType(selfty))->BuildValueConstruction(Expressions(std::move(self)), c);
     }
     // Any of our bases have this member?
     Type* BaseType = nullptr;
@@ -739,8 +739,12 @@ llvm::Constant* UserDefinedType::GetRTTI(llvm::Module* module) {
     auto rtti = new llvm::GlobalVariable(*module, ty, true, llvm::GlobalValue::LinkageTypes::LinkOnceODRLinkage, llvm::ConstantStruct::get(ty, inits), stream.str());
     return rtti;
 }
-bool UserDefinedType::HasVirtualFunctions() {
-    return !GetVtableData().funcs.layout.empty();
+bool UserDefinedType::HasDeclaredDynamicFunctions() {
+    for (auto overset : type->Functions)
+        for (auto func : overset.second->functions)
+            if (func->dynamic)
+                return true;
+    return false;
 }
 UserDefinedType::BaseData::BaseData(BaseData&& other)
 : bases(std::move(other.bases)), PrimaryBase(other.PrimaryBase) {}

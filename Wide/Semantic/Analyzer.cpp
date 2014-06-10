@@ -891,12 +891,13 @@ OverloadSet* Analyzer::GetOverloadSet(OverloadResolvable* c) {
 }
 OverloadSet* Analyzer::GetOverloadSet(std::unordered_set<OverloadResolvable*> set, Type* nonstatic) {
     if (callable_overload_sets.find(set) != callable_overload_sets.end())
-        return callable_overload_sets[set].get();
+        if (callable_overload_sets[set].find(nonstatic) != callable_overload_sets[set].end())
+            return callable_overload_sets[set][nonstatic].get();
     if (nonstatic && (dynamic_cast<UserDefinedType*>(nonstatic->Decay()) || dynamic_cast<ClangType*>(nonstatic->Decay())))
-        callable_overload_sets[set] = Wide::Memory::MakeUnique<OverloadSet>(set, nonstatic, *this);
+        callable_overload_sets[set][nonstatic] = Wide::Memory::MakeUnique<OverloadSet>(set, nonstatic, *this);
     else
-        callable_overload_sets[set] = Wide::Memory::MakeUnique<OverloadSet>(set, nullptr, *this);
-    return callable_overload_sets[set].get();
+        callable_overload_sets[set][nonstatic] = Wide::Memory::MakeUnique<OverloadSet>(set, nullptr, *this);
+    return callable_overload_sets[set][nonstatic].get();
 }
 
 UserDefinedType* Analyzer::GetUDT(const AST::Type* t, Type* context, std::string name) {

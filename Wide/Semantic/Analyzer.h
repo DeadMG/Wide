@@ -82,7 +82,7 @@ namespace Wide {
             std::unique_ptr<ClangTU> AggregateTU;
             Module* global;
 
-            std::unordered_map<std::unordered_set<OverloadResolvable*>, std::unique_ptr<OverloadSet>, SetTypeHasher> callable_overload_sets;
+            std::unordered_map<std::unordered_set<OverloadResolvable*>, std::unordered_map<Type*, std::unique_ptr<OverloadSet>>, SetTypeHasher> callable_overload_sets;
             std::unordered_map<std::string, ClangTU> headers;
             std::unordered_map<clang::QualType, Type*, ClangTypeHasher> GeneratedClangTypes;
             std::unordered_map<clang::QualType, std::unique_ptr<ClangType>, ClangTypeHasher> ClangTypes;

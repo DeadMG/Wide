@@ -6,7 +6,7 @@ namespace Wide {
     namespace Semantic {
         class TupleType : public AggregateType {
             std::vector<Type*> contents;
-            bool HasVirtualFunctions() override final { return false; }
+            bool HasDeclaredDynamicFunctions() override final { return false; }
         public:
             TupleType(std::vector<Type*> types, Analyzer& a);
             const std::vector<Type*>& GetMembers() override final { return contents; }

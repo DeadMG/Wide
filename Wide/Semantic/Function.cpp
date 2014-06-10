@@ -957,15 +957,12 @@ std::unique_ptr<Expression> Function::BuildCall(std::unique_ptr<Expression> val,
         {
             if (!expr) return;
             if (auto func = dynamic_cast<const AST::Function*>(self->fun)) {
-                auto udt = dynamic_cast<UserDefinedType*>(expr->GetType()->Decay());
+                udt = dynamic_cast<UserDefinedType*>(expr->GetType()->Decay());
                 if (!udt) return;
-                auto vindex = udt->GetVirtualFunctionIndex(func);
-                if (!vindex) return;
-                index = *vindex;
                 obj = udt->GetVirtualPointer(Wide::Memory::MakeUnique<ExpressionReference>(expr));
             }
         }
-        unsigned index;
+        UserDefinedType* udt;
         std::unique_ptr<Expression> obj;
         std::unique_ptr<Expression> val;
         Function* self;
@@ -977,8 +974,12 @@ std::unique_ptr<Expression> Function::BuildCall(std::unique_ptr<Expression> val,
                 self->EmitCode(module);
             val->GetValue(module, bb, allocas);
             if (obj) {
+                auto func = dynamic_cast<const AST::Function*>(self->fun);
+                assert(func);
+                auto vindex = udt->GetVirtualFunctionIndex(func);
+                if (!vindex) return self->llvmfunc;
                 auto vptr = bb.CreateLoad(obj->GetValue(module, bb, allocas));
-                return bb.CreatePointerCast(bb.CreateLoad(bb.CreateConstGEP1_32(vptr, index)), self->GetSignature()->GetLLVMType(module));
+                return bb.CreatePointerCast(bb.CreateLoad(bb.CreateConstGEP1_32(vptr, *vindex)), self->GetSignature()->GetLLVMType(module));
             }
             return self->llvmfunc;
         }

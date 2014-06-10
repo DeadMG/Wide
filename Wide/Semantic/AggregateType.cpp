@@ -44,7 +44,7 @@ AggregateType::Layout::Layout(AggregateType* agg, Wide::Semantic::Analyzer& a)
     
     //  If C has no primary base class, allocate the virtual table pointer for C at offset zero
     //  and set sizeof(C), align(C), and dsize(C) to the appropriate values for a pointer
-    if (agg->HasVirtualFunctions() && !PrimaryBase) {
+    if (agg->HasDeclaredDynamicFunctions() && !PrimaryBase) {
         sizec = agg->analyzer.GetDataLayout().getPointerSize();
         alignc = agg->analyzer.GetDataLayout().getPointerPrefAlignment();
         dsizec = sizec;
@@ -176,24 +176,20 @@ bool AggregateType::IsCopyConstructible(Lexer::Access access) {
     return GetLayout().copyconstructible;
 }
 std::unique_ptr<Expression> AggregateType::GetVirtualPointer(std::unique_ptr<Expression> self) {
-    if (!GetLayout().hasvptr && !GetLayout().PrimaryBase) {
-        return nullptr;
-    }
-    if (GetLayout().hasvptr) {
-        auto vptrty = analyzer.GetPointerType(GetVirtualPointerType());
-        assert(self->GetType()->IsReference(this) || dynamic_cast<PointerType*>(self->GetType())->GetPointee() == this);
-        struct VPtrAccess : Expression {
-            VPtrAccess(Type* t, std::unique_ptr<Expression> self)
-            : ty(t), self(std::move(self)) {}
-            Type* ty;
-            std::unique_ptr<Expression> self;
-            llvm::Value* ComputeValue(llvm::Module* m, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final { return bb.CreateStructGEP(self->GetValue(m, bb, allocas), 0); }
-            void DestroyExpressionLocals(llvm::Module* m, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final { self->DestroyLocals(m, bb, allocas); }
-            Type* GetType() override final { return ty; }
-        };
-        return Wide::Memory::MakeUnique<VPtrAccess>(analyzer.GetLvalueType(vptrty), std::move(self));
-    }
-    return GetLayout().PrimaryBase->GetVirtualPointer(AccessBase(std::move(self), GetLayout().PrimaryBase));
+    if (GetPrimaryBase()) return GetPrimaryBase()->GetVirtualPointer(AccessBase(std::move(self), GetPrimaryBase()));
+    if (!HasDeclaredDynamicFunctions()) return nullptr;
+    auto vptrty = analyzer.GetPointerType(GetVirtualPointerType());
+    assert(self->GetType()->IsReference(this) || dynamic_cast<PointerType*>(self->GetType())->GetPointee() == this);
+    struct VPtrAccess : Expression {
+        VPtrAccess(Type* t, std::unique_ptr<Expression> self)
+        : ty(t), self(std::move(self)) {}
+        Type* ty;
+        std::unique_ptr<Expression> self;
+        llvm::Value* ComputeValue(llvm::Module* m, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final { return bb.CreateStructGEP(self->GetValue(m, bb, allocas), 0); }
+        void DestroyExpressionLocals(llvm::Module* m, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final { self->DestroyLocals(m, bb, allocas); }
+        Type* GetType() override final { return ty; }
+    };
+    return Wide::Memory::MakeUnique<VPtrAccess>(analyzer.GetLvalueType(vptrty), std::move(self));
 }
 
 bool AggregateType::IsEmpty() {

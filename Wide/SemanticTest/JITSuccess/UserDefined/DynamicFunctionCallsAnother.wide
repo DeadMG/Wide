@@ -1,0 +1,15 @@
+type primbase {
+    dynamic virt() {}
+}
+type base {
+    dynamic f() { return false; }
+    dynamic g() { return false; }
+}
+type derived : primbase : base {
+    virt() {}
+    f() { return g(); }
+    g() { return true; }
+}
+Main() {
+    return derived().g();
+}
