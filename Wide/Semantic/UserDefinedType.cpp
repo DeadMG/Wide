@@ -111,7 +111,7 @@ UserDefinedType::VTableData::VTableData(UserDefinedType* self) {
                             if (vfunc->name != overset.first) continue;
                             // The this arguments will be different, but they should have the same category of lvalue/rvalue.
                             if (arguments.size() != vfunc->args.size()) continue;
-                            for (auto argi = 1; argi < arguments.size(); ++argi) {
+                            for (std::size_t argi = 1; argi < arguments.size(); ++argi) {
                                 if (vfunc->args[argi] != arguments[argi])
                                     continue;
                             }
@@ -444,10 +444,10 @@ OverloadSet* UserDefinedType::CreateConstructorOverloadSet(Lexer::Access access)
                         for (auto&& mem : self->GetConstructionMembers()) {
                             auto num = mem.num;
                             auto result = self->analyzer.GetLvalueType(mem.t);
-                            auto member = CreatePrimUnOp(Wide::Memory::MakeUnique<ExpressionReference>(arg.get()), self->analyzer.GetLvalueType(mem.t), [num, result](llvm::Value* val, llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
-                                auto self = bb.CreatePointerCast(val, llvm::Type::getInt8PtrTy(module->getContext()));
-                                self = bb.CreateConstGEP1_32(self, num.offset);
-                                return bb.CreatePointerCast(self, result->GetLLVMType(module));                            
+                            auto member = CreatePrimUnOp(Wide::Memory::MakeUnique<ExpressionReference>(arg.get()), self->analyzer.GetLvalueType(mem.t), [num, result](llvm::Value* val, CodegenContext& con) {
+                                auto self = con->CreatePointerCast(val, con.GetInt8PtrTy());
+                                self = con->CreateConstGEP1_32(self, num.offset);
+                                return con->CreatePointerCast(self, result->GetLLVMType(con));                            
                             });
                             if (mem.InClassInitializer)
                                 initializers.push_back(mem.t->BuildInplaceConstruction(std::move(member), Expressions(mem.InClassInitializer(Wide::Memory::MakeUnique<ExpressionReference>(arg.get()))), Context(self, where)));
@@ -460,15 +460,10 @@ OverloadSet* UserDefinedType::CreateConstructorOverloadSet(Lexer::Access access)
                     Type* GetType() override final {
                         return self->analyzer.GetLvalueType(self);
                     }
-                    void DestroyExpressionLocals(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
-                        for (auto rit = initializers.rbegin(); rit != initializers.rend(); ++rit)
-                            (*rit)->DestroyLocals(module, bb, allocas);
-                        arg->DestroyLocals(module, bb, allocas);
-                    }
-                    llvm::Value* ComputeValue(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
+                    llvm::Value* ComputeValue(CodegenContext& con) {
                         for (auto&& init : initializers)
-                            init->GetValue(module, bb, allocas);
-                        return arg->GetValue(module, bb, allocas);
+                            init->GetValue(con);
+                        return arg->GetValue(con);
                     }
                 };
                 return Wide::Memory::MakeUnique<NSDMIConstructor>(self, std::move(args[0]), c.where);
@@ -613,19 +608,19 @@ std::unique_ptr<Expression> UserDefinedType::FunctionPointerFor(VTableLayout::Vi
             Type* GetType() override final {
                 return widefunc->GetSignature();
             }
-            llvm::Value* ComputeValue(llvm::Module* module, llvm::IRBuilder<>&, llvm::IRBuilder<>&) override final {
-                widefunc->EmitCode(module);
+            llvm::Value* ComputeValue(CodegenContext& con) override final {
+                widefunc->EmitCode(con);
                 if (offset == 0)
-                    return module->getFunction(widefunc->GetName());
-                auto this_index = (std::size_t)widefunc->GetSignature()->GetReturnType()->IsComplexType(module);
+                    return con.module->getFunction(widefunc->GetName());
+                auto this_index = (std::size_t)widefunc->GetSignature()->GetReturnType()->IsComplexType(con);
                 std::stringstream strstr;
                 strstr << "__" << this << offset;
-                auto thunk = llvm::Function::Create(llvm::dyn_cast<llvm::FunctionType>(widefunc->GetSignature()->GetLLVMType(module)->getElementType()), llvm::GlobalValue::LinkageTypes::InternalLinkage, strstr.str(), module);
-                llvm::BasicBlock* bb = llvm::BasicBlock::Create(module->getContext(), "entry", thunk);
+                auto thunk = llvm::Function::Create(llvm::dyn_cast<llvm::FunctionType>(widefunc->GetSignature()->GetLLVMType(con)->getElementType()), llvm::GlobalValue::LinkageTypes::InternalLinkage, strstr.str(), con.module);
+                llvm::BasicBlock* bb = llvm::BasicBlock::Create(con.module->getContext(), "entry", thunk);
                 llvm::IRBuilder<> irbuilder(bb);
-                auto self = std::next(thunk->arg_begin(), widefunc->GetSignature()->GetReturnType()->IsComplexType(module));
-                auto offset_self = irbuilder.CreateConstGEP1_32(irbuilder.CreatePointerCast(self, llvm::IntegerType::getInt8PtrTy(module->getContext())), -offset);
-                auto cast_self = irbuilder.CreatePointerCast(offset_self, std::next(module->getFunction(widefunc->GetName())->arg_begin(), this_index)->getType());
+                auto self = std::next(thunk->arg_begin(), widefunc->GetSignature()->GetReturnType()->IsComplexType(con.module));
+                auto offset_self = irbuilder.CreateConstGEP1_32(irbuilder.CreatePointerCast(self, llvm::IntegerType::getInt8PtrTy(con.module->getContext())), -offset);
+                auto cast_self = irbuilder.CreatePointerCast(offset_self, std::next(con.module->getFunction(widefunc->GetName())->arg_begin(), this_index)->getType());
                 std::vector<llvm::Value*> args;
                 for (std::size_t i = 0; i < thunk->arg_size(); ++i) {
                     if (i == this_index)
@@ -633,14 +628,13 @@ std::unique_ptr<Expression> UserDefinedType::FunctionPointerFor(VTableLayout::Vi
                     else
                         args.push_back(std::next(thunk->arg_begin(), i));
                 }
-                auto call = irbuilder.CreateCall(module->getFunction(widefunc->GetName()), args);
-                if (call->getType() == llvm::Type::getVoidTy(module->getContext()))
+                auto call = irbuilder.CreateCall(con.module->getFunction(widefunc->GetName()), args);
+                if (call->getType() == llvm::Type::getVoidTy(con.module->getContext()))
                     irbuilder.CreateRetVoid();
                 else
                     irbuilder.CreateRet(call);
                 return thunk;
             }
-            void DestroyExpressionLocals(llvm::Module* module, llvm::IRBuilder<>& b, llvm::IRBuilder<>&) override final {}
         };
         return Wide::Memory::MakeUnique<VTableThunk>(widefunc, offset);
     }

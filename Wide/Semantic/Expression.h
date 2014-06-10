@@ -28,16 +28,14 @@ namespace Wide {
             ImplicitLoadExpr(std::unique_ptr<Expression> expr);
             std::unique_ptr<Expression> src;
             Type* GetType() override final;
-            llvm::Value* ComputeValue(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final;
-            void DestroyExpressionLocals(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final;
+            llvm::Value* ComputeValue(CodegenContext& con) override final;
         };
 
         struct ImplicitStoreExpr : public Expression {
             ImplicitStoreExpr(std::unique_ptr<Expression> memory, std::unique_ptr<Expression> value);
             std::unique_ptr<Expression> mem, val;
             Type* GetType() override final;
-            llvm::Value* ComputeValue(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final;
-            void DestroyExpressionLocals(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final;
+            llvm::Value* ComputeValue(CodegenContext& con) override final;
         };
 
         struct ImplicitTemporaryExpr : public Expression {
@@ -46,24 +44,22 @@ namespace Wide {
             llvm::Value* alloc;
             Context c;
             Type* GetType() override final;
-            llvm::Value* ComputeValue(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final;
-            void DestroyExpressionLocals(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final;
+            llvm::Value* ComputeValue(CodegenContext& con) override final;
+            void DestroyExpressionLocals(CodegenContext& con) override final;
         };
 
         struct LvalueCast : public Expression {
             LvalueCast(std::unique_ptr<Expression> expr);
             std::unique_ptr<Expression> expr;
             Type* GetType() override final;
-            llvm::Value* ComputeValue(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final;
-            void DestroyExpressionLocals(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final;
+            llvm::Value* ComputeValue(CodegenContext& con) override final;
         };
 
         struct RvalueCast : public Expression {
             RvalueCast(std::unique_ptr<Expression> expr);
             std::unique_ptr<Expression> expr;
             Type* GetType() override final;
-            llvm::Value* ComputeValue(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final;
-            void DestroyExpressionLocals(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final;
+            llvm::Value* ComputeValue(CodegenContext& con) override final;
         };
 
         struct ExpressionReference : public Expression {
@@ -71,8 +67,7 @@ namespace Wide {
             Expression* expr;
             void OnNodeChanged(Node* n, Change what) override final;
             Type* GetType() override final;
-            llvm::Value* ComputeValue(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final;
-            void DestroyExpressionLocals(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final;
+            llvm::Value* ComputeValue(CodegenContext& con) override final;
             Expression* GetImplementation() override final;
         };
 
@@ -81,8 +76,7 @@ namespace Wide {
             Context c;
             std::unique_ptr<Expression> expr;
             Type* GetType() override final;
-            llvm::Value* ComputeValue(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final;
-            void DestroyExpressionLocals(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final;
+            llvm::Value* ComputeValue(CodegenContext& con) override final;
         };
 
         struct String : Expression {
@@ -90,8 +84,7 @@ namespace Wide {
             std::string str;
             Analyzer& a;
             Type* GetType() override final;
-            llvm::Value* ComputeValue(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final;
-            void DestroyExpressionLocals(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final;
+            llvm::Value* ComputeValue(CodegenContext& con) override final;
         };
 
         struct Integer : Expression {
@@ -99,8 +92,7 @@ namespace Wide {
             llvm::APInt value;
             Analyzer& a;
             Type* GetType() override final;
-            llvm::Value* ComputeValue(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final;
-            void DestroyExpressionLocals(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final;
+            llvm::Value* ComputeValue(CodegenContext& con) override final;
         };
 
         struct Boolean : Expression {
@@ -108,14 +100,13 @@ namespace Wide {
             bool b;
             Analyzer& a;
             Type* GetType() override final;
-            llvm::Value* ComputeValue(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final;
-            void DestroyExpressionLocals(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final;
+            llvm::Value* ComputeValue(CodegenContext& con) override final;
         };
 
-        std::unique_ptr<Expression> CreatePrimUnOp(std::unique_ptr<Expression> self, Type* ret, std::function<llvm::Value*(llvm::Value*, llvm::Module*, llvm::IRBuilder<>&, llvm::IRBuilder<>&)>);
-        std::unique_ptr<Expression> CreatePrimOp(std::unique_ptr<Expression> lhs, std::unique_ptr<Expression> rhs, std::function<llvm::Value*(llvm::Value*, llvm::Value*, llvm::Module*, llvm::IRBuilder<>&, llvm::IRBuilder<>&)>);
-        std::unique_ptr<Expression> CreatePrimAssOp(std::unique_ptr<Expression> lhs, std::unique_ptr<Expression> rhs, std::function<llvm::Value*(llvm::Value*, llvm::Value*, llvm::Module*, llvm::IRBuilder<>&, llvm::IRBuilder<>&)>);
-        std::unique_ptr<Expression> CreatePrimOp(std::unique_ptr<Expression> lhs, std::unique_ptr<Expression> rhs, Type* ret, std::function<llvm::Value*(llvm::Value*, llvm::Value*, llvm::Module*, llvm::IRBuilder<>&, llvm::IRBuilder<>&)>);
+        std::unique_ptr<Expression> CreatePrimUnOp(std::unique_ptr<Expression> self, Type* ret, std::function<llvm::Value*(llvm::Value*, CodegenContext&)>);
+        std::unique_ptr<Expression> CreatePrimOp(std::unique_ptr<Expression> lhs, std::unique_ptr<Expression> rhs, std::function<llvm::Value*(llvm::Value*, llvm::Value*, CodegenContext&)>);
+        std::unique_ptr<Expression> CreatePrimAssOp(std::unique_ptr<Expression> lhs, std::unique_ptr<Expression> rhs, std::function<llvm::Value*(llvm::Value*, llvm::Value*, CodegenContext&)>);
+        std::unique_ptr<Expression> CreatePrimOp(std::unique_ptr<Expression> lhs, std::unique_ptr<Expression> rhs, Type* ret, std::function<llvm::Value*(llvm::Value*, llvm::Value*, CodegenContext&)>);
         std::unique_ptr<Expression> BuildValue(std::unique_ptr<Expression>);
         std::unique_ptr<Expression> BuildChain(std::unique_ptr<Expression>, std::unique_ptr<Expression>);
     }

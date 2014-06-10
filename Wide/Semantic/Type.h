@@ -90,31 +90,47 @@ namespace Wide {
             }
         };
 
+        struct Expression;
         struct CodegenContext {
+            operator llvm::LLVMContext&() { return module->getContext(); }
+            llvm::IRBuilder<>* operator->() { return insert_builder; }
+            operator llvm::Module*() { return module; }
+            std::vector<Expression*> GetAddedDestructors(CodegenContext& other) {
+                return std::vector<Expression*>(other.Destructors.begin() + Destructors.size(), other.Destructors.end());
+            }
+            template<typename F> void GenerateCodeAndDestroyLocals(F&& action) {
+                CodegenContext nested(*this);
+                action(nested);
+                DestroyDifference(nested);
+            }
+            void DestroyDifference(CodegenContext& other);
+            void DestroyAll();
+            llvm::PointerType* GetInt8PtrTy();
+
             llvm::Module* module;
             llvm::IRBuilder<>* insert_builder;
             llvm::IRBuilder<>* alloca_builder;
+            std::vector<Expression*> Destructors;
         };
 
         struct Statement : public Node {
-            virtual void GenerateCode(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) = 0;
-            virtual void DestroyLocals(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) = 0;
+            virtual void GenerateCode(CodegenContext& con) = 0;
         };
         struct Expression : public Statement {
             virtual Type* GetType() = 0; // If the type is unknown then nullptr
-            llvm::Value* GetValue(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas);
+            llvm::Value* GetValue(CodegenContext& con);
             virtual Expression* GetImplementation() { return this; }
-            void DestroyLocals(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final {
+            void DestroyLocals(CodegenContext& con) {
                 assert(val);
-                DestroyExpressionLocals(module, bb, allocas);
+                DestroyExpressionLocals(con);
             }
         private:
             llvm::Value* val = nullptr;
-            virtual void DestroyExpressionLocals(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) = 0;
-            void GenerateCode(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final {
-                GetValue(module, bb, allocas);
+            virtual void DestroyExpressionLocals(CodegenContext& con) {}
+            void GenerateCode(CodegenContext& con) override final {
+                GetValue(con);
             }
-            virtual llvm::Value* ComputeValue(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) = 0;
+            virtual llvm::Value* ComputeValue(CodegenContext& con) = 0;
         };
 
         struct Context {

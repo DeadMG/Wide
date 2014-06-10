@@ -37,15 +37,12 @@ std::unique_ptr<Expression> TupleType::ConstructFromLiteral(std::vector<std::uni
         Type* GetType() override final {
             return self->GetType()->analyzer.GetRvalueType(self->GetType()->Decay());
         }
-        llvm::Value* ComputeValue(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final {
+        llvm::Value* ComputeValue(CodegenContext& con) override final {
             for (auto&& init : inits)
-                init->GetValue(module, bb, allocas);
-            return self->GetValue(module, bb, allocas);
-        }
-        void DestroyExpressionLocals(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final {
-            self->DestroyLocals(module, bb, allocas);
-            for (auto rit = inits.rbegin(); rit != inits.rend(); ++rit)
-                (*rit)->DestroyLocals(module, bb, allocas);
+                init->GetValue(con);
+            if (self->GetType()->IsComplexType(con))
+                con.Destructors.push_back(self.get());
+            return self->GetValue(con);
         }
     };
 

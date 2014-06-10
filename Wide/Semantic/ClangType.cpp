@@ -135,8 +135,8 @@ std::unique_ptr<Expression> ClangType::AccessMember(std::unique_ptr<Expression> 
             return analyzer.GetConstructorType(analyzer.GetClangType(*from, from->GetASTContext().getTypeDeclType(ty)))->BuildValueConstruction(Expressions(), c);
         if (auto vardecl = llvm::dyn_cast<clang::VarDecl>(lr.getFoundDecl())) {    
             auto mangle = from->MangleName(vardecl);
-            return CreatePrimUnOp(std::move(val), analyzer.GetLvalueType(analyzer.GetClangType(*from, vardecl->getType())), [mangle](llvm::Value* self, llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>&) {
-                return module->getGlobalVariable(mangle(module));
+            return CreatePrimUnOp(std::move(val), analyzer.GetLvalueType(analyzer.GetClangType(*from, vardecl->getType())), [mangle](llvm::Value* self, CodegenContext& con) {
+                return con.module->getGlobalVariable(mangle(con));
             });
         }
         if (auto tempdecl = llvm::dyn_cast<clang::ClassTemplateDecl>(lr.getFoundDecl()))
@@ -352,15 +352,15 @@ std::unique_ptr<Expression> ClangType::PrimitiveAccessMember(std::unique_ptr<Exp
     auto fieldnum = num >= numbases 
         ? from->GetFieldNumber(*std::next(type->getAsCXXRecordDecl()->field_begin(), num - numbases))
         : from->GetBaseNumber(type->getAsCXXRecordDecl(), (type->getAsCXXRecordDecl()->bases_begin() + num)->getType()->getAsCXXRecordDecl());
-    return CreatePrimUnOp(std::move(self), result_type, [this, num, result_type, resty, source_type, root_type, fieldnum](llvm::Value* self, llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) -> llvm::Value* {
+    return CreatePrimUnOp(std::move(self), result_type, [this, num, result_type, resty, source_type, root_type, fieldnum](llvm::Value* self, CodegenContext& con) -> llvm::Value* {
         std::size_t numbases = type->getAsCXXRecordDecl()->bases_end() - type->getAsCXXRecordDecl()->bases_begin();
         if (num < numbases && resty->getAsCXXRecordDecl()->isEmpty())
-            return bb.CreatePointerCast(self, result_type->GetLLVMType(module));
+            return con->CreatePointerCast(self, result_type->GetLLVMType(con));
         if (source_type->IsReference())
             if (root_type->IsReference())
-                return bb.CreateLoad(bb.CreateStructGEP(self, fieldnum(module)));
-            return bb.CreateStructGEP(self, fieldnum(module));
-        return bb.CreateExtractValue(self, fieldnum(module));
+                return con->CreateLoad(con->CreateStructGEP(self, fieldnum(con)));
+            return con->CreateStructGEP(self, fieldnum(con));
+        return con->CreateExtractValue(self, fieldnum(con));
     });
 }
 
@@ -390,12 +390,12 @@ std::vector<std::pair<Type*, unsigned>> ClangType::GetBasesAndOffsets() {
 std::unique_ptr<Expression> GetVTablePointer(std::unique_ptr<Expression> self, const clang::CXXRecordDecl* current, Analyzer& a, ClangTU* from, Type* vptrty) {
     auto&& layout = from->GetASTContext().getASTRecordLayout(current);
     if (layout.hasOwnVFPtr())
-        return CreatePrimUnOp(std::move(self), a.GetLvalueType(a.GetPointerType(vptrty)), [](llvm::Value* val, llvm::Module* module, llvm::IRBuilder<>& b, llvm::IRBuilder<>& allocas) {
-            return b.CreateStructGEP(val, 0);
+        return CreatePrimUnOp(std::move(self), a.GetLvalueType(a.GetPointerType(vptrty)), [](llvm::Value* val, CodegenContext& con) {
+            return con->CreateStructGEP(val, 0);
         });
     auto basenum = from->GetBaseNumber(current, layout.getPrimaryBase());
-    self = CreatePrimUnOp(std::move(self), a.GetPointerType(a.GetClangType(*from, from->GetASTContext().getTypeDeclType(layout.getPrimaryBase()))), [from, basenum](llvm::Value* val, llvm::Module* module, llvm::IRBuilder<>& b, llvm::IRBuilder<>& allocas) {
-        return b.CreateStructGEP(val, basenum(module));
+    self = CreatePrimUnOp(std::move(self), a.GetPointerType(a.GetClangType(*from, from->GetASTContext().getTypeDeclType(layout.getPrimaryBase()))), [from, basenum](llvm::Value* val, CodegenContext& con) {
+        return con->CreateStructGEP(val, basenum(con));
     });
     return GetVTablePointer(std::move(self), layout.getPrimaryBase(), a, from, vptrty);
 }
@@ -497,18 +497,18 @@ std::unique_ptr<Expression> ClangType::VirtualEntryFor(VTableLayout::VirtualFunc
         Type* GetType() override final {
             return signature;
         }
-        llvm::Value* ComputeValue(llvm::Module* module, llvm::IRBuilder<>&, llvm::IRBuilder<>&) override final {
+        llvm::Value* ComputeValue(CodegenContext& con) override final {
             if (offset == 0)
-                return module->getFunction(mangle(module));
-            auto this_index = (std::size_t)signature->GetReturnType()->IsComplexType(module);
+                return con.module->getFunction(mangle(con));
+            auto this_index = (std::size_t)signature->GetReturnType()->IsComplexType(con);
             std::stringstream strstr;
             strstr << "__" << this << offset;
-            auto thunk = llvm::Function::Create(llvm::dyn_cast<llvm::FunctionType>(signature->GetLLVMType(module)->getElementType()), llvm::GlobalValue::LinkageTypes::InternalLinkage, strstr.str(), module);
-            llvm::BasicBlock* bb = llvm::BasicBlock::Create(module->getContext(), "entry", thunk);
+            auto thunk = llvm::Function::Create(llvm::dyn_cast<llvm::FunctionType>(signature->GetLLVMType(con)->getElementType()), llvm::GlobalValue::LinkageTypes::InternalLinkage, strstr.str(), con);
+            llvm::BasicBlock* bb = llvm::BasicBlock::Create(con, "entry", thunk);
             llvm::IRBuilder<> irbuilder(bb);
-            auto self = std::next(thunk->arg_begin(), signature->GetReturnType()->IsComplexType(module));
-            auto offset_self = irbuilder.CreateConstGEP1_32(irbuilder.CreatePointerCast(self, llvm::IntegerType::getInt8PtrTy(module->getContext())), -offset);
-            auto cast_self = irbuilder.CreatePointerCast(offset_self, std::next(module->getFunction(mangle(module))->arg_begin(), this_index)->getType());
+            auto self = std::next(thunk->arg_begin(), signature->GetReturnType()->IsComplexType(con));
+            auto offset_self = irbuilder.CreateConstGEP1_32(irbuilder.CreatePointerCast(self, llvm::IntegerType::getInt8PtrTy(con->getContext())), -offset);
+            auto cast_self = irbuilder.CreatePointerCast(offset_self, std::next(con.module->getFunction(mangle(con))->arg_begin(), this_index)->getType());
             std::vector<llvm::Value*> args;
             for (std::size_t i = 0; i < thunk->arg_size(); ++i) {
                 if (i == this_index)
@@ -516,14 +516,13 @@ std::unique_ptr<Expression> ClangType::VirtualEntryFor(VTableLayout::VirtualFunc
                 else
                     args.push_back(std::next(thunk->arg_begin(), i));
             }
-            auto call = irbuilder.CreateCall(module->getFunction(mangle(module)), args);
-            if (call->getType() == llvm::Type::getVoidTy(module->getContext()))
+            auto call = irbuilder.CreateCall(con.module->getFunction(mangle(con)), args);
+            if (call->getType() == llvm::Type::getVoidTy(con))
                 irbuilder.CreateRetVoid();
             else
                 irbuilder.CreateRet(call);
             return thunk;
         }
-        void DestroyExpressionLocals(llvm::Module* module, llvm::IRBuilder<>& b, llvm::IRBuilder<>&) override final {}
     };
     if (auto mem = boost::get<VTableLayout::SpecialMember*>(entry.function)) {
         if (*mem == VTableLayout::SpecialMember::Destructor) {

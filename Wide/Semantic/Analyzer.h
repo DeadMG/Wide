@@ -34,9 +34,6 @@ namespace clang {
 }
 
 namespace Wide {
-    namespace Codegen {
-        class Generator;
-    }
     namespace AST {
         struct Module;
         struct FunctionBase;

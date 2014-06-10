@@ -65,29 +65,25 @@ namespace Wide {
                 void OnNodeChanged(Node* n, Change what) override final;
                 LocalVariable(Expression* ex, unsigned u, Function* self, Lexer::Range where);
                 LocalVariable(Expression* ex, Function* self, Lexer::Range where);
-                void DestroyExpressionLocals(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final;
-                llvm::Value* ComputeValue(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final;
+                llvm::Value* ComputeValue(CodegenContext& con) override final;
                 Type* GetType() override final;
             };
 
             struct ReturnStatement : public Statement {
                 Lexer::Range where;
                 Function* self;
-                std::function<void(llvm::Module* module, llvm::IRBuilder<>&, llvm::IRBuilder<>&)> destructors;
                 std::unique_ptr<Expression> ret_expr;
                 std::unique_ptr<Expression> build;
 
                 ReturnStatement(Function* f, std::unique_ptr<Expression> expr, Scope* current, Lexer::Range where);
                 void OnNodeChanged(Node* n, Change what) override final;
-                void DestroyLocals(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final;
-                void GenerateCode(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final;
+                void GenerateCode(CodegenContext& con) override final;
             };
 
             struct CompoundStatement : public Statement {
                 CompoundStatement(Scope* s);
                 Scope* s;
-                void DestroyLocals(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas);
-                void GenerateCode(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas);
+                void GenerateCode(CodegenContext& con);
             };
 
             struct WhileStatement : Statement {
@@ -98,11 +94,12 @@ namespace Wide {
                 std::unique_ptr<Expression> boolconvert;
                 llvm::BasicBlock* continue_bb = nullptr;
                 llvm::BasicBlock* check_bb = nullptr;
+                CodegenContext* source_con = nullptr;
+                CodegenContext* condition_con = nullptr;
 
                 WhileStatement(Expression* ex, Lexer::Range where, Function* s);
                 void OnNodeChanged(Node* n, Change what) override final;
-                void DestroyLocals(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final;
-                void GenerateCode(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final;                
+                void GenerateCode(CodegenContext& con) override final;
             };
 
             struct VariableStatement : public Statement {
@@ -110,8 +107,7 @@ namespace Wide {
                 std::unique_ptr<Expression> init_expr;
                 std::vector<LocalVariable*> locals;
 
-                void DestroyLocals(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final;
-                void GenerateCode(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final;
+                void GenerateCode(CodegenContext& con) override final;
             };
 
             struct Scope {
@@ -122,10 +118,6 @@ namespace Wide {
                 std::vector<std::unique_ptr<Statement>> active;
                 WhileStatement* current_while;
                 std::unique_ptr<Expression> LookupLocal(std::string name);
-                std::function<void(llvm::Module*, llvm::IRBuilder<>&, llvm::IRBuilder<>&)> DestroyLocals();
-                std::function<void(llvm::Module*, llvm::IRBuilder<>&, llvm::IRBuilder<>&)> DestroyAllLocals();
-                std::function<void(llvm::Module*, llvm::IRBuilder<>&, llvm::IRBuilder<>&)> DestroyWhileBody();
-                std::function<void(llvm::Module*, llvm::IRBuilder<>&, llvm::IRBuilder<>&)> DestroyWhileBodyAndCond();
                 WhileStatement* GetCurrentWhile();
             };
             struct LocalScope;
@@ -139,8 +131,7 @@ namespace Wide {
 
                 IfStatement(Expression* cond, Statement* true_b, Statement* false_b, Lexer::Range where, Function* s);
                 void OnNodeChanged(Node* n, Change what) override final;
-                void DestroyLocals(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final;
-                void GenerateCode(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final;
+                void GenerateCode(CodegenContext& con) override final;
 
             };
             struct BreakStatement : public Statement {
@@ -148,16 +139,14 @@ namespace Wide {
                 std::function<void(llvm::Module*, llvm::IRBuilder<>&, llvm::IRBuilder<>&)> destroy_locals;
 
                 BreakStatement(Scope* s);
-                void DestroyLocals(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final;
-                void GenerateCode(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final;
+                void GenerateCode(CodegenContext& con) override final;
             };
             struct ContinueStatement : public Statement  {
                 ContinueStatement(Scope* s);
                 WhileStatement* while_stmt;
                 std::function<void(llvm::Module*, llvm::IRBuilder<>&, llvm::IRBuilder<>&)> destroy_locals;
 
-                void DestroyLocals(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas);
-                void GenerateCode(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas);
+                void GenerateCode(CodegenContext& con);
             };
             struct Parameter : Expression {
                 Lexer::Range where;
@@ -169,8 +158,8 @@ namespace Wide {
                 Parameter(Function* s, unsigned n, Lexer::Range where);
                 void OnNodeChanged(Node* n, Change what) override final;
                 Type* GetType() override final;
-                void DestroyExpressionLocals(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final;
-                llvm::Value* ComputeValue(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final;
+                void DestroyExpressionLocals(CodegenContext& con) override final;
+                llvm::Value* ComputeValue(CodegenContext& con) override final;
             };
         private:
             std::unordered_set<ReturnStatement*> returns;

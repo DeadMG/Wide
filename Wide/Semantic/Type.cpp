@@ -251,12 +251,6 @@ struct ValueConstruction : Expression {
     std::unique_ptr<Expression> InplaceConstruction;
     std::unique_ptr<Expression> single_arg;
     bool no_args = false;
-    enum class State {
-        Undef,
-        SingleArgument,
-        ValueSingleArgument,
-        Temporary
-    } state;
     Type* self;
     void OnNodeChanged(Node* n, Change what) {
         if (what == Change::Destroyed)
@@ -265,23 +259,20 @@ struct ValueConstruction : Expression {
     Type* GetType() override final {
         return self;
     }
-    llvm::Value* ComputeValue(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
-        state = State::Undef;
+    llvm::Value* ComputeValue(CodegenContext& con) override final {
         if (self->GetConstantContext() == self && no_args) {
-            return llvm::UndefValue::get(self->GetLLVMType(module));
+            return llvm::UndefValue::get(self->GetLLVMType(con));
         }
         if (auto func = dynamic_cast<Function*>(self))
-            return llvm::UndefValue::get(self->GetLLVMType(module));
-        if (!self->Decay()->IsComplexType(module)) {
+            return llvm::UndefValue::get(self->GetLLVMType(con));
+        if (!self->Decay()->IsComplexType(con)) {
             if (single_arg) {
                 auto otherty = single_arg->GetType();
                 if (single_arg->GetType()->Decay() == self->Decay()) {
                     if (single_arg->GetType() == self) {
-                        state = State::SingleArgument;
-                        return single_arg->GetValue(module, bb, allocas);
+                        return single_arg->GetValue(con);
                     }
                     if (single_arg->GetType()->IsReference(self)) {
-                        state = State::SingleArgument;
                         //if (auto val = dynamic_cast<ValueConstruction*>(single_arg.get())) {
                         //    if (IsRvalueType(val->GetType())) {
                         //        if (val->single_arg) {
@@ -292,32 +283,17 @@ struct ValueConstruction : Expression {
                         //        }
                         //    }
                         //}
-                        return bb.CreateLoad(single_arg->GetValue(module, bb, allocas));
+                        return con->CreateLoad(single_arg->GetValue(con));
                     }
                 }
-                state = State::Temporary;
             }
         }
-        state = State::Temporary;
-        InplaceConstruction->GetValue(module, bb, allocas);
-        if (self->IsComplexType(module))
-            return temporary->GetValue(module, bb, allocas);
-        return bb.CreateLoad(temporary->GetValue(module, bb, allocas));
-    }
-    void DestroyExpressionLocals(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
-        if (state == State::Temporary) {
-            temporary->DestroyLocals(module, bb, allocas);
-            InplaceConstruction->DestroyLocals(module, bb, allocas);
+        InplaceConstruction->GetValue(con);
+        if (self->IsComplexType(con)) {
+            con.Destructors.push_back(temporary.get());
+            return temporary->GetValue(con);
         }
-        if (state == State::SingleArgument)
-            single_arg->GetImplementation()->DestroyLocals(module, bb, allocas);
-        //if (state == State::ValueSingleArgument) {
-        //    auto val = dynamic_cast<ValueConstruction*>(single_arg.get());
-        //    assert(val);
-        //    assert(val->single_arg);
-        //    assert(val->single_arg->GetType() == self);
-        //    val->single_arg->DestroyLocals(module, bb, allocas);
-        //}
+        return con->CreateLoad(temporary->GetValue(con));
     }
 };
 std::unique_ptr<Expression> Type::BuildValueConstruction(std::vector<std::unique_ptr<Expression>> exprs, Context c) {
@@ -337,13 +313,11 @@ std::unique_ptr<Expression> Type::BuildRvalueConstruction(std::vector<std::uniqu
         Type* GetType() override final {
             return self->analyzer.GetRvalueType(self);
         }
-        llvm::Value* ComputeValue(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
-            InplaceConstruction->GetValue(module, bb, allocas);
-            return temporary->GetValue(module, bb, allocas);
-        }
-        void DestroyExpressionLocals(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
-            temporary->DestroyLocals(module, bb, allocas);
-            InplaceConstruction->DestroyLocals(module, bb, allocas);
+        llvm::Value* ComputeValue(CodegenContext& con) override final {
+            InplaceConstruction->GetValue(con);
+            if (self->IsComplexType(con))
+                con.Destructors.push_back(temporary.get());
+            return temporary->GetValue(con);
         }
     };
     return Wide::Memory::MakeUnique<RValueConstruction>(this, std::move(exprs), c);
@@ -362,13 +336,11 @@ std::unique_ptr<Expression> Type::BuildLvalueConstruction(std::vector<std::uniqu
         Type* GetType() override final {
             return self->analyzer.GetLvalueType(self);
         }
-        llvm::Value* ComputeValue(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
-            InplaceConstruction->GetValue(module, bb, allocas);
-            return temporary->GetValue(module, bb, allocas);
-        }
-        void DestroyExpressionLocals(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
-            temporary->DestroyLocals(module, bb, allocas);
-            InplaceConstruction->DestroyLocals(module, bb, allocas);
+        llvm::Value* ComputeValue(CodegenContext& con) override final {
+            InplaceConstruction->GetValue(con);
+            if (self->IsComplexType(con))
+                con.Destructors.push_back(temporary.get());
+            return temporary->GetValue(con);
         }
     };
     return Wide::Memory::MakeUnique<LValueConstruction>(this, std::move(exprs), c);
@@ -425,11 +397,8 @@ std::unique_ptr<Expression> Type::AccessBase(std::unique_ptr<Expression> self, T
         Type* derived;
         Type* targetbase;
         Type* result;
-        void DestroyExpressionLocals(llvm::Module* m, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final {
-            self->DestroyLocals(m, bb, allocas);
-        }
         Type* GetType() override final { return result; }
-        llvm::Value* ComputeValue(llvm::Module* m, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
+        llvm::Value* ComputeValue(CodegenContext& con) override final {
             // Must succeed because we know we're unambiguously derived.
             unsigned offset;
             for (auto base : derived->GetBasesAndOffsets()) {
@@ -437,36 +406,36 @@ std::unique_ptr<Expression> Type::AccessBase(std::unique_ptr<Expression> self, T
                     offset = base.second;
                 }
             }
-            auto value = self->GetValue(m, bb, allocas);
+            auto value = self->GetValue(con);
             if (!result->IsReference() && !dynamic_cast<PointerType*>(result)) {
                 // It's a value, and we're a value, so just create struct gep.
                 if (result->IsEmpty())
-                    return llvm::Constant::getNullValue(result->GetLLVMType(m));
+                    return llvm::Constant::getNullValue(result->GetLLVMType(con));
                 // If it's not empty it must have a field index.
-                auto layout = result->analyzer.GetDataLayout().getStructLayout(llvm::dyn_cast<llvm::StructType>(result->GetLLVMType(m)));
-                return bb.CreateExtractValue(value, { layout->getElementContainingOffset(offset) });
+                auto layout = result->analyzer.GetDataLayout().getStructLayout(llvm::dyn_cast<llvm::StructType>(result->GetLLVMType(con)));
+                return con->CreateExtractValue(value, { layout->getElementContainingOffset(offset) });
             }
             if (offset == 0)
-                return bb.CreatePointerCast(value, result->GetLLVMType(m));
+                return con->CreatePointerCast(value, result->GetLLVMType(con));
             if (result->IsReference()) {
                 // Just do the offset because null references are illegal.
-                value = bb.CreatePointerCast(value, llvm::Type::getInt8PtrTy(m->getContext()));
-                value = bb.CreateConstGEP1_32(value, offset);
-                return bb.CreatePointerCast(value, result->GetLLVMType(m));
+                value = con->CreatePointerCast(value, con.GetInt8PtrTy());
+                value = con->CreateConstGEP1_32(value, offset);
+                return con->CreatePointerCast(value, result->GetLLVMType(con));
             }
             // It could be null. Branch here
-            auto source_block = bb.GetInsertBlock();
-            llvm::BasicBlock* not_null_bb = llvm::BasicBlock::Create(m->getContext(), "not_null_bb", bb.GetInsertBlock()->getParent());
-            llvm::BasicBlock* continue_bb = llvm::BasicBlock::Create(m->getContext(), "continue_bb", bb.GetInsertBlock()->getParent());
-            bb.CreateCondBr(bb.CreateIsNull(value), continue_bb, not_null_bb);
-            bb.SetInsertPoint(not_null_bb);
-            value = bb.CreatePointerCast(value, llvm::Type::getInt8PtrTy(m->getContext()));
-            value = bb.CreateConstGEP1_32(value, offset);
-            auto offset_ptr = bb.CreatePointerCast(value, result->GetLLVMType(m));
-            bb.CreateBr(continue_bb);
-            bb.SetInsertPoint(continue_bb);
-            auto phi = bb.CreatePHI(result->GetLLVMType(m), 2);
-            phi->addIncoming(llvm::Constant::getNullValue(result->GetLLVMType(m)), source_block);
+            auto source_block = con->GetInsertBlock();
+            llvm::BasicBlock* not_null_bb = llvm::BasicBlock::Create(con, "not_null_bb", con->GetInsertBlock()->getParent());
+            llvm::BasicBlock* continue_bb = llvm::BasicBlock::Create(con, "continue_bb", con->GetInsertBlock()->getParent());
+            con->CreateCondBr(con->CreateIsNull(value), continue_bb, not_null_bb);
+            con->SetInsertPoint(not_null_bb);
+            value = con->CreatePointerCast(value, con.GetInt8PtrTy());
+            value = con->CreateConstGEP1_32(value, offset);
+            auto offset_ptr = con->CreatePointerCast(value, result->GetLLVMType(con));
+            con->CreateBr(continue_bb);
+            con->SetInsertPoint(continue_bb);
+            auto phi = con->CreatePHI(result->GetLLVMType(con), 2);
+            phi->addIncoming(llvm::Constant::getNullValue(result->GetLLVMType(con)), source_block);
             phi->addIncoming(offset_ptr, not_null_bb);
             return phi;
         }
@@ -721,20 +690,11 @@ OverloadSet* TupleInitializable::CreateConstructorOverloadSet(Lexer::Access acce
                     return this_type->analyzer.GetLvalueType(this_type);
                 }
 
-                llvm::Value* ComputeValue(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
+                llvm::Value* ComputeValue(CodegenContext& con) override final {
                     // Evaluate left-to-right
                     for (auto&& init : initializers)
-                        init->GetValue(module, bb, allocas);
-                    return self->GetValue(module, bb, allocas);
-                }
-
-                void DestroyExpressionLocals(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
-                    // Destroy in inverse order of evaluation.
-                    for (auto rit = initializers.rbegin(); rit != initializers.rend(); ++rit) {
-                        (*rit)->DestroyLocals(module, bb, allocas);
-                    }
-                    tuple->DestroyLocals(module, bb, allocas);
-                    self->DestroyLocals(module, bb, allocas);
+                        init->GetValue(con);
+                    return self->GetValue(con);
                 }
             };
 
@@ -762,10 +722,9 @@ std::unique_ptr<Expression> Type::CreateVTable(std::vector<std::pair<Type*, unsi
                     RTTIExpr(Type* ty)
                     : ty(ty) {}
                     Type* ty;
-                    llvm::Value* ComputeValue(llvm::Module* m, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final {
-                        return bb.CreateBitCast(ty->GetRTTI(m), llvm::Type::getInt8PtrTy(m->getContext()));
+                    llvm::Value* ComputeValue(CodegenContext& con) override final {
+                        return con->CreateBitCast(ty->GetRTTI(con), con.GetInt8PtrTy());
                     }
-                    void DestroyExpressionLocals(llvm::Module* m, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final {}
                     Type* GetType() override final {
                         return ty->analyzer.GetPointerType(ty->analyzer.GetIntegralType(8, true));
                     }
@@ -803,17 +762,14 @@ std::unique_ptr<Expression> Type::CreateVTable(std::vector<std::pair<Type*, unsi
         Type* GetType() override final {
             return self->analyzer.GetPointerType(self->GetVirtualPointerType());
         }
-        void DestroyExpressionLocals(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
-            // Fuckin' hope not
-        }
-        llvm::Value* ComputeValue(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
-            auto vfuncty = self->GetVirtualPointerType()->GetLLVMType(module);
+        llvm::Value* ComputeValue(CodegenContext& con) override final {
+            auto vfuncty = self->GetVirtualPointerType()->GetLLVMType(con);
             std::vector<llvm::Constant*> constants;
             for (auto&& init : entries) {
                 if (!init)
                     constants.push_back(llvm::Constant::getNullValue(vfuncty));
                 else {
-                    auto val = init->GetValue(module, bb, allocas);
+                    auto val = init->GetValue(con);
                     auto con = llvm::dyn_cast<llvm::Constant>(val);
                     constants.push_back(con);
                 }
@@ -822,11 +778,11 @@ std::unique_ptr<Expression> Type::CreateVTable(std::vector<std::pair<Type*, unsi
             auto vtable = llvm::ConstantStruct::get(vtablety, constants);
             std::stringstream strstr;
             strstr << this;
-            auto global = llvm::dyn_cast<llvm::GlobalVariable>(module->getOrInsertGlobal(strstr.str(), vtablety));
+            auto global = llvm::dyn_cast<llvm::GlobalVariable>(con.module->getOrInsertGlobal(strstr.str(), vtablety));
             global->setInitializer(vtable);
             global->setLinkage(llvm::GlobalValue::LinkageTypes::InternalLinkage);
             global->setConstant(true);
-            return bb.CreatePointerCast(bb.CreateStructGEP(global, offset), self->analyzer.GetPointerType(self->GetVirtualPointerType())->GetLLVMType(module));
+            return con->CreatePointerCast(con->CreateStructGEP(global, offset), self->analyzer.GetPointerType(self->GetVirtualPointerType())->GetLLVMType(con));
         }
     };
     return Wide::Memory::MakeUnique<VTable>(this, std::move(entries), GetVtableLayout().offset);
@@ -865,13 +821,10 @@ std::unique_ptr<Expression> Type::SetVirtualPointers(std::vector<std::pair<Type*
         Type* GetType() override final {
             return self->GetType();
         }
-        void DestroyExpressionLocals(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final {
-            // If there's anything here, something's gone very wrong.
-        }
-        llvm::Value* ComputeValue(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final {
+        llvm::Value* ComputeValue(CodegenContext& con) override final {
             for (auto&& init : inits)
-                init->GetValue(module, bb, allocas);
-            return self->GetValue(module, bb, allocas);
+                init->GetValue(con);
+            return self->GetValue(con);
         }
     };
 

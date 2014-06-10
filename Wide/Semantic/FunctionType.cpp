@@ -62,25 +62,20 @@ std::unique_ptr<Expression> FunctionType::BuildCall(std::unique_ptr<Expression> 
             auto fty = dynamic_cast<FunctionType*>(val->GetType());
             return fty->GetReturnType();
         }
-        void DestroyExpressionLocals(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final {
-            if (Ret)
-                Ret->DestroyLocals(module, bb, allocas);
-            for (auto rit = args.rbegin(); rit != args.rend(); ++rit)
-                (*rit)->DestroyLocals(module, bb, allocas);
-            val->DestroyLocals(module, bb, allocas);
-        }
-        llvm::Value* ComputeValue(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final {
-            llvm::Value* llvmfunc = val->GetValue(module, bb, allocas);
+        llvm::Value* ComputeValue(CodegenContext& con) override final {
+            llvm::Value* llvmfunc = val->GetValue(con);
             std::vector<llvm::Value*> llvmargs;
-            if (GetType()->IsComplexType(module)) {
+            if (GetType()->IsComplexType(con)) {
                 Ret = Wide::Memory::MakeUnique<ImplicitTemporaryExpr>(GetType(), c);
-                llvmargs.push_back(Ret->GetValue(module, bb, allocas));
+                llvmargs.push_back(Ret->GetValue(con));
             }
             for (auto&& arg : args)
-                llvmargs.push_back(arg->GetValue(module, bb, allocas));
-            auto call = bb.CreateCall(llvmfunc, llvmargs);
-            if (Ret)
-                return Ret->GetValue(module, bb, allocas);
+                llvmargs.push_back(arg->GetValue(con));
+            auto call = con->CreateCall(llvmfunc, llvmargs);
+            if (Ret) {
+                con.Destructors.push_back(Ret.get());
+                return Ret->GetValue(con);
+            }
             return call;
         }
     };

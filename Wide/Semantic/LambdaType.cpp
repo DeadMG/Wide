@@ -46,8 +46,8 @@ std::unique_ptr<Expression> LambdaType::BuildLambdaFromCaptures(std::vector<std:
         auto call = conset->Resolve(types, c.from);
         if (!call) conset->IssueResolutionError(types, c);
         // Don't PrimAccessMember because it collapses references, and DO NOT WANT
-        auto obj = CreatePrimUnOp(Wide::Memory::MakeUnique<ExpressionReference>(self.get()), types[0], [this, i](llvm::Value* val, llvm::Module* mod, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
-            return bb.CreateStructGEP(val, boost::get<LLVMFieldIndex>(GetLocation(i)).index);
+        auto obj = CreatePrimUnOp(Wide::Memory::MakeUnique<ExpressionReference>(self.get()), types[0], [this, i](llvm::Value* val, CodegenContext& con) {
+            return con->CreateStructGEP(val, boost::get<LLVMFieldIndex>(GetLocation(i)).index);
         });
         initializers.push_back(call->Call(Expressions(std::move(obj), std::move(exprs[i])), c));
     }
@@ -60,15 +60,12 @@ std::unique_ptr<Expression> LambdaType::BuildLambdaFromCaptures(std::vector<std:
         Type* GetType() override final {
             return self->GetType();
         }
-        llvm::Value* ComputeValue(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final {
+        llvm::Value* ComputeValue(CodegenContext& con) override final {
             for (auto&& init : inits)
-                init->GetValue(module, bb, allocas);
-            return self->GetValue(module, bb, allocas);
-        }
-        void DestroyExpressionLocals(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final {
-            self->DestroyLocals(module, bb, allocas);
-            for (auto rit = inits.rbegin(); rit != inits.rend(); ++rit)
-                (*rit)->DestroyLocals(module, bb, allocas);
+                init->GetValue(con);
+            if (self->GetType()->IsComplexType(con))
+                con.Destructors.push_back(self.get());
+            return self->GetValue(con);
         }
     };
 

@@ -44,8 +44,8 @@ std::unique_ptr<Expression> OverloadSet::BuildCall(std::unique_ptr<Expression> v
     if (!call) IssueResolutionError(targs, c);
 
     if (nonstatic)
-        args.insert(args.begin(), CreatePrimUnOp(BuildValue(std::move(val)), nonstatic, [](llvm::Value* self, llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
-            return bb.CreateExtractValue(self, { 0 });
+        args.insert(args.begin(), CreatePrimUnOp(BuildValue(std::move(val)), nonstatic, [](llvm::Value* self, CodegenContext& con) {
+            return con->CreateExtractValue(self, { 0 });
         }));
 
     if (val)
@@ -88,15 +88,14 @@ struct cppcallable : public Callable {
             Type* GetType() override final {
                 return fty;
             }
-            llvm::Value* ComputeValue(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final {
+            llvm::Value* ComputeValue(CodegenContext& con) override final {
                 if (vtable)
-                    return bb.CreateBitCast(bb.CreateLoad(bb.CreateConstGEP1_32(bb.CreateLoad(vtable->GetValue(module, bb, allocas)), from->GetVirtualFunctionOffset(llvm::dyn_cast<clang::CXXMethodDecl>(func), module))), fty->GetLLVMType(module));
-                auto llvmfunc = (llvm::Value*)module->getFunction(mangle(module));
-                if (llvmfunc->getType() != fty->GetLLVMType(module))
-                    llvmfunc = bb.CreateBitCast(llvmfunc, fty->GetLLVMType(module));
+                    return con->CreateBitCast(con->CreateLoad(con->CreateConstGEP1_32(con->CreateLoad(vtable->GetValue(con)), from->GetVirtualFunctionOffset(llvm::dyn_cast<clang::CXXMethodDecl>(func), con))), fty->GetLLVMType(con));
+                auto llvmfunc = (llvm::Value*)con.module->getFunction(mangle(con));
+                if (llvmfunc->getType() != fty->GetLLVMType(con))
+                    llvmfunc = con->CreateBitCast(llvmfunc, fty->GetLLVMType(con));
                 return llvmfunc;
             }
-            void DestroyExpressionLocals(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final {}
         };
         std::vector<Type*> local;
         for (auto x : types)
@@ -162,11 +161,8 @@ struct cppcallable : public Callable {
                 ImplicitStringDecay(std::unique_ptr<Expression> expr)
                 : StringExpr(std::move(expr)) {}
                 std::unique_ptr<Expression> StringExpr;
-                void DestroyExpressionLocals(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final {
-                    StringExpr->DestroyLocals(module, bb, allocas);
-                }
-                llvm::Value* ComputeValue(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final {
-                    return StringExpr->GetValue(module, bb, allocas);
+                llvm::Value* ComputeValue(CodegenContext& con) override final {
+                    return StringExpr->GetValue(con);
                 }
                 Type* GetType() override final {
                     auto&& analyzer = StringExpr->GetType()->analyzer;
@@ -354,9 +350,9 @@ OverloadSet* OverloadSet::CreateConstructorOverloadSet(Lexer::Access access) {
     if (nonstatic) {
         std::unordered_set<OverloadResolvable*> constructors;
         ReferenceConstructor = MakeResolvable([this](std::vector<std::unique_ptr<Expression>> args, Context c) {
-            return CreatePrimAssOp(std::move(args[0]), std::move(args[1]), [this](llvm::Value* lhs, llvm::Value* rhs, llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
-                auto agg = llvm::ConstantAggregateZero::get(GetLLVMType(module));
-                return bb.CreateInsertValue(agg, rhs, { 0 });
+            return CreatePrimAssOp(std::move(args[0]), std::move(args[1]), [this](llvm::Value* lhs, llvm::Value* rhs, CodegenContext& con) {
+                auto agg = llvm::ConstantAggregateZero::get(GetLLVMType(con));
+                return con->CreateInsertValue(agg, rhs, { 0 });
             });
         }, { analyzer.GetLvalueType(this), nonstatic });
         constructors.insert(ReferenceConstructor.get());

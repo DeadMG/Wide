@@ -15,11 +15,8 @@ Type* ImplicitLoadExpr::GetType() {
     assert(src->GetType()->IsReference());
     return src->GetType()->Decay();
 }
-llvm::Value* ImplicitLoadExpr::ComputeValue(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
-    return bb.CreateLoad(src->GetValue(module, bb, allocas));
-}
-void ImplicitLoadExpr::DestroyExpressionLocals(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
-    return src->DestroyLocals(module, bb, allocas);
+llvm::Value* ImplicitLoadExpr::ComputeValue(CodegenContext& con) {
+    return con->CreateLoad(src->GetValue(con));
 }
 
 ImplicitStoreExpr::ImplicitStoreExpr(std::unique_ptr<Expression> memory, std::unique_ptr<Expression> value)
@@ -32,15 +29,11 @@ Type* ImplicitStoreExpr::GetType() {
     assert(mem->GetType()->IsReference(val->GetType()));
     return mem->GetType();
 }
-llvm::Value* ImplicitStoreExpr::ComputeValue(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
-    auto memory = mem->GetValue(module, bb, allocas);
-    auto value = val->GetValue(module, bb, allocas);
-    bb.CreateStore(value, memory);
+llvm::Value* ImplicitStoreExpr::ComputeValue(CodegenContext& con) {
+    auto memory = mem->GetValue(con);
+    auto value = val->GetValue(con);
+    con->CreateStore(value, memory);
     return memory;
-}
-void ImplicitStoreExpr::DestroyExpressionLocals(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
-    val->DestroyLocals(module, bb, allocas);
-    mem->DestroyLocals(module, bb, allocas);
 }
 
 ImplicitTemporaryExpr::ImplicitTemporaryExpr(Type* what, Context c)
@@ -52,14 +45,14 @@ ImplicitTemporaryExpr::ImplicitTemporaryExpr(Type* what, Context c)
 Type* ImplicitTemporaryExpr::GetType() {
     return of->analyzer.GetLvalueType(of);
 }
-llvm::Value* ImplicitTemporaryExpr::ComputeValue(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
-    auto local = allocas.CreateAlloca(of->GetLLVMType(module));
+llvm::Value* ImplicitTemporaryExpr::ComputeValue(CodegenContext& con) {
+    auto local = con.alloca_builder->CreateAlloca(of->GetLLVMType(con));
     local->setAlignment(of->alignment());
     alloc = local;
     return alloc;
 }
-void ImplicitTemporaryExpr::DestroyExpressionLocals(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
-    of->BuildDestructorCall(Wide::Memory::MakeUnique<ExpressionReference>(this), c)->GetValue(module, bb, allocas);
+void ImplicitTemporaryExpr::DestroyExpressionLocals(CodegenContext& con) {
+    of->BuildDestructorCall(Wide::Memory::MakeUnique<ExpressionReference>(this), c)->GetValue(con);
 }
 
 LvalueCast::LvalueCast(std::unique_ptr<Expression> expr)
@@ -68,11 +61,8 @@ Type* LvalueCast::GetType() {
     assert(IsRvalueType(expr->GetType()));
     return expr->GetType()->analyzer.GetLvalueType(expr->GetType()->Decay());
 }
-llvm::Value* LvalueCast::ComputeValue(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
-    return expr->GetValue(module, bb, allocas);
-}
-void LvalueCast::DestroyExpressionLocals(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
-    return expr->DestroyLocals(module, bb, allocas);
+llvm::Value* LvalueCast::ComputeValue(CodegenContext& con) {
+    return expr->GetValue(con);
 }
 
 RvalueCast::RvalueCast(std::unique_ptr<Expression> ex)
@@ -83,19 +73,16 @@ Type* RvalueCast::GetType() {
     assert(!IsRvalueType(expr->GetType()));
     return expr->GetType()->analyzer.GetRvalueType(expr->GetType()->Decay());
 }
-llvm::Value* RvalueCast::ComputeValue(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
+llvm::Value* RvalueCast::ComputeValue(CodegenContext& con) {
     if (IsLvalueType(expr->GetType()))
-        return expr->GetValue(module, bb, allocas);
-    if (expr->GetType()->IsComplexType(module))
-        return expr->GetValue(module, bb, allocas);
+        return expr->GetValue(con);
+    if (expr->GetType()->IsComplexType(con))
+        return expr->GetValue(con);
     assert(!IsRvalueType(expr->GetType()));
-    auto tempalloc = allocas.CreateAlloca(expr->GetType()->GetLLVMType(module));
+    auto tempalloc = con.alloca_builder->CreateAlloca(expr->GetType()->GetLLVMType(con));
     tempalloc->setAlignment(expr->GetType()->alignment());
-    bb.CreateStore(expr->GetValue(module, bb, allocas), tempalloc);
+    con->CreateStore(expr->GetValue(con), tempalloc);
     return tempalloc;
-}
-void RvalueCast::DestroyExpressionLocals(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
-    expr->DestroyLocals(module, bb, allocas);
 }
 
 ExpressionReference::ExpressionReference(Expression* e)
@@ -110,10 +97,9 @@ void ExpressionReference::OnNodeChanged(Node* n, Change what) {
 Type* ExpressionReference::GetType() {
     return expr->GetType();
 }
-llvm::Value* ExpressionReference::ComputeValue(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
-    return expr->GetValue(module, bb, allocas);
+llvm::Value* ExpressionReference::ComputeValue(CodegenContext& con) {
+    return expr->GetValue(con);
 }
-void ExpressionReference::DestroyExpressionLocals(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {}
 Expression* ExpressionReference::GetImplementation() {
     return expr->GetImplementation();
 }
@@ -124,11 +110,8 @@ Type* ImplicitAddressOf::GetType() {
     if (!IsLvalueType(expr->GetType())) throw AddressOfNonLvalue(expr->GetType(), c.where);
     return expr->GetType()->analyzer.GetPointerType(expr->GetType()->Decay());
 }
-llvm::Value* ImplicitAddressOf::ComputeValue(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
-    return expr->GetValue(module, bb, allocas);
-}
-void ImplicitAddressOf::DestroyExpressionLocals(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
-    return expr->DestroyLocals(module, bb, allocas);
+llvm::Value* ImplicitAddressOf::ComputeValue(CodegenContext& con) {
+    return expr->GetValue(con);
 }
 
 String::String(std::string str, Analyzer& a)
@@ -136,10 +119,9 @@ String::String(std::string str, Analyzer& a)
 Type* String::GetType() {
     return a.GetTypeForString(str);
 }
-llvm::Value* String::ComputeValue(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
-    return bb.CreateGlobalStringPtr(str);
+llvm::Value* String::ComputeValue(CodegenContext& con) {
+    return con->CreateGlobalStringPtr(str);
 }
-void String::DestroyExpressionLocals(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {}
 
 Integer::Integer(llvm::APInt val, Analyzer& an)
 : a(an), value(std::move(val)) {}
@@ -150,67 +132,58 @@ Type* Integer::GetType() {
     width = std::pow(2, std::ceil(std::log2(width)));
     return a.GetIntegralType(width, true);
 }
-llvm::Value* Integer::ComputeValue(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
-    return llvm::ConstantInt::get(GetType()->GetLLVMType(module), value);
+llvm::Value* Integer::ComputeValue(CodegenContext& con) {
+    return llvm::ConstantInt::get(GetType()->GetLLVMType(con), value);
 }
-void Integer::DestroyExpressionLocals(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {}
 
 Boolean::Boolean(bool b, Analyzer& a)
 : b(b), a(a) {}
 Type* Boolean::GetType() {
     return a.GetBooleanType();
 }
-llvm::Value* Boolean::ComputeValue(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
-    return bb.getInt8(b);
+llvm::Value* Boolean::ComputeValue(CodegenContext& con) {
+    return con->getInt8(b);
 }
-void Boolean::DestroyExpressionLocals(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {}
 
-std::unique_ptr<Expression> Semantic::CreatePrimUnOp(std::unique_ptr<Expression> self, Type* ret, std::function<llvm::Value*(llvm::Value*, llvm::Module*, llvm::IRBuilder<>&, llvm::IRBuilder<>&)> func) {
+std::unique_ptr<Expression> Semantic::CreatePrimUnOp(std::unique_ptr<Expression> self, Type* ret, std::function<llvm::Value*(llvm::Value*, CodegenContext& con)> func) {
     struct PrimUnOp : Expression {
-        PrimUnOp(std::unique_ptr<Expression> expr, Type* r, std::function<llvm::Value*(llvm::Value*, llvm::Module* module, llvm::IRBuilder<>&, llvm::IRBuilder<>&)> func)
+        PrimUnOp(std::unique_ptr<Expression> expr, Type* r, std::function<llvm::Value*(llvm::Value*, CodegenContext& con)> func)
         : src(std::move(expr)), ret(std::move(r)), action(std::move(func)) {}
 
         std::unique_ptr<Expression> src;
         Type* ret;
-        std::function<llvm::Value*(llvm::Value*, llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>&)> action;
+        std::function<llvm::Value*(llvm::Value*, CodegenContext& con)> action;
 
         Type* GetType() override final {
             return ret;
         }
-        llvm::Value* ComputeValue(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final {
-            return action(src->GetValue(module, bb, allocas), module, bb, allocas);
-        }
-        void DestroyExpressionLocals(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final {
-            src->DestroyLocals(module, bb, allocas);
+        llvm::Value* ComputeValue(CodegenContext& con) override final {
+            return action(src->GetValue(con), con);
         }
     };
     assert(self);
     return Wide::Memory::MakeUnique<PrimUnOp>(std::move(self), ret, func);
 }
-std::unique_ptr<Expression> Semantic::CreatePrimOp(std::unique_ptr<Expression> lhs, std::unique_ptr<Expression> rhs, std::function<llvm::Value*(llvm::Value*, llvm::Value*, llvm::Module*, llvm::IRBuilder<>&, llvm::IRBuilder<>&)> func) {
+std::unique_ptr<Expression> Semantic::CreatePrimOp(std::unique_ptr<Expression> lhs, std::unique_ptr<Expression> rhs, std::function<llvm::Value*(llvm::Value*, llvm::Value*, CodegenContext& con)> func) {
     return CreatePrimOp(std::move(lhs), std::move(rhs), lhs->GetType(), func);
 }
-std::unique_ptr<Expression> Semantic::CreatePrimAssOp(std::unique_ptr<Expression> lhs, std::unique_ptr<Expression> rhs, std::function<llvm::Value*(llvm::Value*, llvm::Value*, llvm::Module*, llvm::IRBuilder<>&, llvm::IRBuilder<>&)> func) {
+std::unique_ptr<Expression> Semantic::CreatePrimAssOp(std::unique_ptr<Expression> lhs, std::unique_ptr<Expression> rhs, std::function<llvm::Value*(llvm::Value*, llvm::Value*, CodegenContext& con)> func) {
     auto ref = Wide::Memory::MakeUnique<ExpressionReference>(lhs.get());
     return Wide::Memory::MakeUnique<ImplicitStoreExpr>(std::move(ref), CreatePrimOp(Wide::Memory::MakeUnique<ImplicitLoadExpr>(std::move(lhs)), std::move(rhs), func));
 }
-std::unique_ptr<Expression> Semantic::CreatePrimOp(std::unique_ptr<Expression> lhs, std::unique_ptr<Expression> rhs, Type* ret, std::function<llvm::Value*(llvm::Value*, llvm::Value*, llvm::Module*, llvm::IRBuilder<>&, llvm::IRBuilder<>&)> func) {
+std::unique_ptr<Expression> Semantic::CreatePrimOp(std::unique_ptr<Expression> lhs, std::unique_ptr<Expression> rhs, Type* ret, std::function<llvm::Value*(llvm::Value*, llvm::Value*, CodegenContext& con)> func) {
     struct PrimBinOp : Expression {
-        PrimBinOp(std::unique_ptr<Expression> left, std::unique_ptr<Expression> right, Type* t, std::function<llvm::Value*(llvm::Value*, llvm::Value*, llvm::Module*, llvm::IRBuilder<>&, llvm::IRBuilder<>&)> func)
+        PrimBinOp(std::unique_ptr<Expression> left, std::unique_ptr<Expression> right, Type* t, std::function<llvm::Value*(llvm::Value*, llvm::Value*, CodegenContext& con)> func)
         : lhs(std::move(left)), rhs(std::move(right)), ret(t), action(std::move(func)) {}
         std::unique_ptr<Expression> lhs, rhs;
         Type* ret;
-        std::function<llvm::Value*(llvm::Value*, llvm::Value*, llvm::Module*, llvm::IRBuilder<>&, llvm::IRBuilder<>&)> action;
+        std::function<llvm::Value*(llvm::Value*, llvm::Value*, CodegenContext& con)> action;
         Type* GetType() override final { return ret; }
-        void DestroyExpressionLocals(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final {
-            rhs->DestroyLocals(module, bb, allocas);
-            lhs->DestroyLocals(module, bb, allocas);
-        }
-        llvm::Value* ComputeValue(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final {
+        llvm::Value* ComputeValue(CodegenContext& con) override final {
             // Strict order of evaluation.
-            auto left = lhs->GetValue(module, bb, allocas);
-            auto right = rhs->GetValue(module, bb, allocas);
-            return action(left, right, module, bb, allocas);
+            auto left = lhs->GetValue(con);
+            auto right = rhs->GetValue(con);
+            return action(left, right, con);
         }
     };
     return Wide::Memory::MakeUnique<PrimBinOp>(std::move(lhs), std::move(rhs), ret, std::move(func));
@@ -223,14 +196,14 @@ std::unique_ptr<Expression> Semantic::BuildValue(std::unique_ptr<Expression> e) 
 std::unique_ptr<Expression> Semantic::BuildChain(std::unique_ptr<Expression> lhs, std::unique_ptr<Expression> rhs) {
     assert(lhs);
     assert(rhs);
-    return CreatePrimOp(std::move(lhs), std::move(rhs), rhs->GetType(), [](llvm::Value* lhs, llvm::Value* rhs, llvm::Module* module, llvm::IRBuilder<>& b, llvm::IRBuilder<>& allocas) {
+    return CreatePrimOp(std::move(lhs), std::move(rhs), rhs->GetType(), [](llvm::Value* lhs, llvm::Value* rhs, CodegenContext& con) {
         return rhs;
     });
 }
-llvm::Value* Expression::GetValue(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
-    if (!val) val = ComputeValue(module, bb, allocas);
-    auto selfty = GetType()->GetLLVMType(module);
-    if (GetType()->IsComplexType(module)) {
+llvm::Value* Expression::GetValue(CodegenContext& con) {
+    if (!val) val = ComputeValue(con);
+    auto selfty = GetType()->GetLLVMType(con);
+    if (GetType()->IsComplexType(con)) {
         auto ptrty = llvm::dyn_cast<llvm::PointerType>(val->getType());
         assert(ptrty);
         assert(ptrty->getElementType() == selfty);
@@ -239,4 +212,17 @@ llvm::Value* Expression::GetValue(llvm::Module* module, llvm::IRBuilder<>& bb, l
         assert(val->getType() == selfty);
     }
     return val;
+}
+
+void CodegenContext::DestroyDifference(CodegenContext& other) {
+    auto vec = GetAddedDestructors(other);
+    for (auto rit = vec.rbegin(); rit != vec.rend(); ++rit)
+        (*rit)->DestroyLocals(*this);
+}
+void CodegenContext::DestroyAll() {
+    for (auto rit = Destructors.rbegin(); rit != Destructors.rend(); ++rit)
+        (*rit)->DestroyLocals(*this);
+}
+llvm::PointerType* CodegenContext::GetInt8PtrTy() {
+    return llvm::Type::getInt8PtrTy(*this);
 }

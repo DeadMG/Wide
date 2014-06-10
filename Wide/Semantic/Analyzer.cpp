@@ -86,14 +86,10 @@ Analyzer::Analyzer(const Options::Clang& opts, const AST::Module* GlobalModule)
                 std::unique_ptr<Expression> type;
 
                 Type* GetType() override final { return to; }
-                llvm::Value* ComputeValue(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final {
-                    type->GetValue(module, bb, allocas);
-                    auto val = arg->GetValue(module, bb, allocas);
-                    return bb.CreatePointerCast(val, to->GetLLVMType(module));
-                }
-                void DestroyExpressionLocals(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final {
-                    arg->DestroyLocals(module, bb, allocas);
-                    type->DestroyLocals(module, bb, allocas);
+                llvm::Value* ComputeValue(CodegenContext& con) override final {
+                    type->GetValue(con);
+                    auto val = arg->GetValue(con);
+                    return con->CreatePointerCast(val, to->GetLLVMType(con));
                 }
             };
             auto conty = dynamic_cast<ConstructorType*>(args[0]->GetType()->Decay());
@@ -205,12 +201,8 @@ Analyzer::Analyzer(const Options::Clang& opts, const AST::Module* GlobalModule)
                 return nullptr;
             }
 
-            void DestroyExpressionLocals(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final {
-                access->DestroyLocals(module, bb, allocas);
-                object->DestroyLocals(module, bb, allocas);
-            }
-            llvm::Value* ComputeValue(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final {
-                return access->GetValue(module, bb, allocas);
+            llvm::Value* ComputeValue(CodegenContext& con) override final {
+                return access->GetValue(con);
             }
         };
         return Wide::Memory::MakeUnique<MemberAccess>(lookup, a, memaccess, a.AnalyzeExpression(lookup, memaccess->expr));
@@ -263,14 +255,8 @@ Analyzer::Analyzer(const Options::Clang& opts, const AST::Module* GlobalModule)
                 return nullptr;
             }
 
-            void DestroyExpressionLocals(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final {
-                // Let callee destroy args because we don't know exactly when to destroy them.
-                // For example, consider arg := T(); f(T((), arg); which becomes f(T(), U(arg));. Here we would destroy in the wrong order.
-                call->DestroyLocals(module, bb, allocas);
-                object->DestroyLocals(module, bb, allocas);
-            }
-            llvm::Value* ComputeValue(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final {
-                return call->GetValue(module, bb, allocas);
+            llvm::Value* ComputeValue(CodegenContext& con) override final {
+                return call->GetValue(con);
             }
             Expression* GetImplementation() { return call.get(); }
         };
@@ -349,11 +335,8 @@ Analyzer::Analyzer(const Options::Clang& opts, const AST::Module* GlobalModule)
             Type* GetType() {
                 return result ? result->GetType() : nullptr;
             }
-            llvm::Value* ComputeValue(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final {
-                return result->GetValue(module, bb, allocas);
-            }
-            void DestroyExpressionLocals(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final {
-                result->DestroyLocals(module, bb, allocas);
+            llvm::Value* ComputeValue(CodegenContext& con) override final {
+                return result->GetValue(con);
             }
         };
         return Wide::Memory::MakeUnique<IdentifierLookup>(ident, a, lookup);
@@ -456,10 +439,9 @@ Analyzer::Analyzer(const Options::Clang& opts, const AST::Module* GlobalModule)
                 Type* ty;
                 Type* result;
                 Type* GetType() override final { return result; }
-                llvm::Value* ComputeValue(llvm::Module* m, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final {
-                    return bb.CreateBitCast(ty->GetRTTI(m), result->GetLLVMType(m));
+                llvm::Value* ComputeValue(CodegenContext& con) override final {
+                    return con->CreateBitCast(ty->GetRTTI(con), result->GetLLVMType(con));
                 }
-                void DestroyExpressionLocals(llvm::Module* m, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final {}
             };
             return Wide::Memory::MakeUnique<RTTI>(ty->GetConstructedType(), result);
         }
@@ -488,16 +470,15 @@ Analyzer::Analyzer(const Options::Clang& opts, const AST::Module* GlobalModule)
             Type* result;
             Type* ty;
             Type* GetType() override final { return result; }
-            llvm::Value* ComputeValue(llvm::Module* m, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final {
+            llvm::Value* ComputeValue(CodegenContext& con) override final {
                 // Do we have a vtable offset? If so, use the RTTI entry there. The expr will already be a pointer to the vtable pointer.
                 if (rtti_offset) {
-                    auto vtable_pointer = bb.CreateLoad(expr->GetValue(m, bb, allocas));
-                    auto rtti_pointer = bb.CreateLoad(bb.CreateConstGEP1_32(vtable_pointer, *rtti_offset));
-                    return bb.CreateBitCast(rtti_pointer, result->GetLLVMType(m));
+                    auto vtable_pointer = con->CreateLoad(expr->GetValue(con));
+                    auto rtti_pointer = con->CreateLoad(con->CreateConstGEP1_32(vtable_pointer, *rtti_offset));
+                    return con->CreateBitCast(rtti_pointer, result->GetLLVMType(con));
                 }
-                return bb.CreateBitCast(ty->GetRTTI(m), result->GetLLVMType(m));
+                return con->CreateBitCast(ty->GetRTTI(con), result->GetLLVMType(con));
             }
-            void DestroyExpressionLocals(llvm::Module* m, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final {}
         };
         return Wide::Memory::MakeUnique<RTTI>(std::move(expr), result);
     });
@@ -644,32 +625,27 @@ Analyzer::Analyzer(const Options::Clang& opts, const AST::Module* GlobalModule)
                             unsigned vtable_offset;
                             std::unique_ptr<Expression> vtable;
                             std::unique_ptr<Expression> object;
-                            llvm::Value* ComputeValue(llvm::Module* m, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final {
-                                auto int8ptrty = llvm::Type::getInt8PtrTy(m->getContext());
-                                auto obj_ptr = object->GetValue(m, bb, allocas);
-                                llvm::BasicBlock* source_bb = bb.GetInsertBlock();
-                                llvm::BasicBlock* nonnull_bb = llvm::BasicBlock::Create(m->getContext(), "nonnull_bb", source_bb->getParent());
-                                llvm::BasicBlock* continue_bb = llvm::BasicBlock::Create(m->getContext(), "continue_bb", source_bb->getParent());
-                                bb.CreateCondBr(bb.CreateIsNull(obj_ptr), continue_bb, nonnull_bb);
-                                bb.SetInsertPoint(nonnull_bb);
-                                auto vtable_ptr = bb.CreateLoad(vtable->GetValue(m, bb, allocas));
-                                auto ptr_to_offset = bb.CreateConstGEP1_32(vtable_ptr, vtable_offset);
-                                auto offset = bb.CreateLoad(ptr_to_offset);
-                                auto result = bb.CreateGEP(bb.CreateBitCast(obj_ptr, int8ptrty), offset);
-                                bb.CreateBr(continue_bb);
-                                bb.SetInsertPoint(continue_bb);
-                                auto phi = bb.CreatePHI(llvm::Type::getInt8PtrTy(m->getContext()), 2);
-                                phi->addIncoming(llvm::Constant::getNullValue(int8ptrty), source_bb);
+                            llvm::Value* ComputeValue(CodegenContext& con) override final {
+                                auto obj_ptr = object->GetValue(con);
+                                llvm::BasicBlock* source_bb = con->GetInsertBlock();
+                                llvm::BasicBlock* nonnull_bb = llvm::BasicBlock::Create(con, "nonnull_bb", source_bb->getParent());
+                                llvm::BasicBlock* continue_bb = llvm::BasicBlock::Create(con, "continue_bb", source_bb->getParent());
+                                con->CreateCondBr(con->CreateIsNull(obj_ptr), continue_bb, nonnull_bb);
+                                con->SetInsertPoint(nonnull_bb);
+                                auto vtable_ptr = con->CreateLoad(vtable->GetValue(con));
+                                auto ptr_to_offset = con->CreateConstGEP1_32(vtable_ptr, vtable_offset);
+                                auto offset = con->CreateLoad(ptr_to_offset);
+                                auto result = con->CreateGEP(con->CreateBitCast(obj_ptr, con.GetInt8PtrTy()), offset);
+                                con->CreateBr(continue_bb);
+                                con->SetInsertPoint(continue_bb);
+                                auto phi = con->CreatePHI(con.GetInt8PtrTy(), 2);
+                                phi->addIncoming(llvm::Constant::getNullValue(con.GetInt8PtrTy()), source_bb);
                                 phi->addIncoming(result, nonnull_bb);
                                 return phi;
                             }
                             Type* GetType() override final {
                                 auto&& a = object->GetType()->analyzer;
                                 return a.GetPointerType(a.GetVoidType());
-                            }
-                            void DestroyExpressionLocals(llvm::Module* m, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final {
-                                vtable->DestroyLocals(m, bb, allocas);
-                                object->DestroyLocals(m, bb, allocas);
                             }
                         };
                         return Wide::Memory::MakeUnique<DynamicCastToVoidPointer>(offset, std::move(object), std::move(vtable));
@@ -689,32 +665,28 @@ Analyzer::Analyzer(const Options::Clang& opts, const AST::Module* GlobalModule)
                 Type* GetType() override final {
                     return derty->analyzer.GetPointerType(derty);
                 }
-                void DestroyExpressionLocals(llvm::Module* m, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final {
-                    object->DestroyLocals(m, bb, allocas);
-                }
-                llvm::Value* ComputeValue(llvm::Module* m, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final {
-                    auto int8ptrty = llvm::Type::getInt8PtrTy(m->getContext());
-                    auto obj_ptr = object->GetValue(m, bb, allocas);
-                    llvm::BasicBlock* source_bb = bb.GetInsertBlock();
-                    llvm::BasicBlock* nonnull_bb = llvm::BasicBlock::Create(m->getContext(), "nonnull_bb", source_bb->getParent());
-                    llvm::BasicBlock* continue_bb = llvm::BasicBlock::Create(m->getContext(), "continue_bb", source_bb->getParent());
-                    bb.CreateCondBr(bb.CreateIsNull(obj_ptr), continue_bb, nonnull_bb);
-                    bb.SetInsertPoint(nonnull_bb);
-                    auto dynamic_cast_func = m->getFunction("__dynamic_cast");
-                    auto ptrdiffty = llvm::IntegerType::get(m->getContext(), basety->analyzer.GetDataLayout().getPointerSize());
+                llvm::Value* ComputeValue(CodegenContext& con) override final {
+                    auto obj_ptr = object->GetValue(con);
+                    llvm::BasicBlock* source_bb = con->GetInsertBlock();
+                    llvm::BasicBlock* nonnull_bb = llvm::BasicBlock::Create(con, "nonnull_bb", source_bb->getParent());
+                    llvm::BasicBlock* continue_bb = llvm::BasicBlock::Create(con, "continue_bb", source_bb->getParent());
+                    con->CreateCondBr(con->CreateIsNull(obj_ptr), continue_bb, nonnull_bb);
+                    con->SetInsertPoint(nonnull_bb);
+                    auto dynamic_cast_func = con.module->getFunction("__dynamic_cast");
+                    auto ptrdiffty = llvm::IntegerType::get(con, basety->analyzer.GetDataLayout().getPointerSize());
                     if (!dynamic_cast_func) {
-                        llvm::Type* args[] = { int8ptrty, int8ptrty, int8ptrty, ptrdiffty };
-                        auto functy = llvm::FunctionType::get(llvm::Type::getVoidTy(m->getContext()), args, false);
-                        dynamic_cast_func = llvm::Function::Create(functy, llvm::GlobalValue::LinkageTypes::ExternalLinkage, "__dynamic_cast", m);
+                        llvm::Type* args[] = { con.GetInt8PtrTy(), con.GetInt8PtrTy(), con.GetInt8PtrTy(), ptrdiffty };
+                        auto functy = llvm::FunctionType::get(llvm::Type::getVoidTy(con), args, false);
+                        dynamic_cast_func = llvm::Function::Create(functy, llvm::GlobalValue::LinkageTypes::ExternalLinkage, "__dynamic_cast", con);
                     }
-                    llvm::Value* args[] = { obj_ptr, basety->GetRTTI(m), derty->GetRTTI(m), llvm::ConstantInt::get(ptrdiffty, (uint64_t)-1, true) };
-                    auto result = bb.CreateCall(dynamic_cast_func, args, "");
-                    bb.CreateBr(continue_bb);
-                    bb.SetInsertPoint(continue_bb);
-                    auto phi = bb.CreatePHI(llvm::Type::getInt8PtrTy(m->getContext()), 2);
-                    phi->addIncoming(llvm::Constant::getNullValue(derty->GetLLVMType(m)), source_bb);
+                    llvm::Value* args[] = { obj_ptr, basety->GetRTTI(con), derty->GetRTTI(con), llvm::ConstantInt::get(ptrdiffty, (uint64_t)-1, true) };
+                    auto result = con->CreateCall(dynamic_cast_func, args, "");
+                    con->CreateBr(continue_bb);
+                    con->SetInsertPoint(continue_bb);
+                    auto phi = con->CreatePHI(con.GetInt8PtrTy(), 2);
+                    phi->addIncoming(llvm::Constant::getNullValue(derty->GetLLVMType(con)), source_bb);
                     phi->addIncoming(result, nonnull_bb);
-                    return bb.CreatePointerCast(phi, GetType()->GetLLVMType(m));
+                    return con->CreatePointerCast(phi, GetType()->GetLLVMType(con));
                 }
             };
             return Wide::Memory::MakeUnique<PolymorphicDynamicCast>(basety->GetPointee(), derty->GetPointee(), std::move(object));

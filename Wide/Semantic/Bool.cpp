@@ -44,22 +44,22 @@ OverloadSet* Bool::CreateOperatorOverloadSet(Type* t, Lexer::TokenType name, Lex
         switch (name) {
         case Lexer::TokenType::OrAssign:
             OrAssignOperator = MakeResolvable([](std::vector<std::unique_ptr<Expression>> args, Context c) -> std::unique_ptr<Expression> {
-                return CreatePrimAssOp(std::move(args[0]), std::move(args[1]), [](llvm::Value* lhs, llvm::Value* rhs, llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
-                    return bb.CreateOr(lhs, rhs);
+                return CreatePrimAssOp(std::move(args[0]), std::move(args[1]), [](llvm::Value* lhs, llvm::Value* rhs, CodegenContext& con) {
+                    return con->CreateOr(lhs, rhs);
                 });
             }, { analyzer.GetLvalueType(this), this });
             return analyzer.GetOverloadSet(OrAssignOperator.get());
         case Lexer::TokenType::AndAssign:
             AndAssignOperator = MakeResolvable([](std::vector<std::unique_ptr<Expression>> args, Context c) -> std::unique_ptr<Expression> {
-                return CreatePrimAssOp(std::move(args[0]), std::move(args[1]), [](llvm::Value* lhs, llvm::Value* rhs, llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
-                    return bb.CreateAnd(lhs, rhs);
+                return CreatePrimAssOp(std::move(args[0]), std::move(args[1]), [](llvm::Value* lhs, llvm::Value* rhs, CodegenContext& con) {
+                    return con->CreateAnd(lhs, rhs);
                 });
             }, { analyzer.GetLvalueType(this), this });
             return analyzer.GetOverloadSet(AndAssignOperator.get());
         case Lexer::TokenType::XorAssign:
             XorAssignOperator = MakeResolvable([](std::vector<std::unique_ptr<Expression>> args, Context c) -> std::unique_ptr<Expression> {
-                return CreatePrimAssOp(std::move(args[0]), std::move(args[1]), [](llvm::Value* lhs, llvm::Value* rhs, llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
-                    return bb.CreateXor(lhs, rhs);
+                return CreatePrimAssOp(std::move(args[0]), std::move(args[1]), [](llvm::Value* lhs, llvm::Value* rhs, CodegenContext& con) {
+                    return con->CreateXor(lhs, rhs);
                 });
             }, { analyzer.GetLvalueType(this), this });
             return analyzer.GetOverloadSet(XorAssignOperator.get());
@@ -72,33 +72,42 @@ OverloadSet* Bool::CreateOperatorOverloadSet(Type* t, Lexer::TokenType name, Lex
                 ShortCircuitOr(std::unique_ptr<Expression> lhs, std::unique_ptr<Expression> rhs)
                 : lhs(std::move(lhs)), rhs(std::move(rhs)) {}
                 std::unique_ptr<Expression> lhs, rhs;
-                llvm::Value* ComputeValue(llvm::Module* m, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final {
-                    auto val = bb.CreateTrunc(lhs->GetValue(m, bb, allocas), llvm::Type::getInt1Ty(m->getContext()));
-                    auto cur_block = bb.GetInsertBlock();
-                    auto false_br = llvm::BasicBlock::Create(m->getContext(), "false", bb.GetInsertBlock()->getParent());
-                    auto true_br = llvm::BasicBlock::Create(m->getContext(), "true", bb.GetInsertBlock()->getParent());
-                    bb.CreateCondBr(val, true_br, false_br);
-                    bb.SetInsertPoint(false_br);
-                    auto false_val = bb.CreateTrunc(rhs->GetValue(m, bb, allocas), llvm::Type::getInt1Ty(m->getContext()));
-                    bb.CreateBr(true_br);
-                    bb.SetInsertPoint(true_br);
-                    auto phi = bb.CreatePHI(llvm::Type::getInt1Ty(m->getContext()), 2);
+                std::vector<Expression*> rhs_destructors;
+                llvm::Value* ComputeValue(CodegenContext& con) override final {
+                    auto val = con->CreateTrunc(lhs->GetValue(con), llvm::Type::getInt1Ty(con));
+                    auto cur_block = con->GetInsertBlock();
+                    auto false_br = llvm::BasicBlock::Create(con, "false", con->GetInsertBlock()->getParent());
+                    auto true_br = llvm::BasicBlock::Create(con, "true", con->GetInsertBlock()->getParent());
+                    con->CreateCondBr(val, true_br, false_br);
+                    con->SetInsertPoint(false_br);
+                    CodegenContext rhscon(con);
+                    auto false_val = con->CreateTrunc(rhs->GetValue(rhscon), llvm::Type::getInt1Ty(con));
+                    if (rhscon.Destructors.size() != con.Destructors.size()) {
+                        rhs_destructors = con.GetAddedDestructors(rhscon);
+                        // If we might need something destroyed, then we need to be destroyed.
+                        con.Destructors.push_back(this);
+                    }
+                    con->CreateBr(true_br);
+                    con->SetInsertPoint(true_br);
+                    auto phi = con->CreatePHI(llvm::Type::getInt1Ty(con), 2);
                     phi->addIncoming(val, cur_block);
                     phi->addIncoming(false_val, false_br);
-                    return bb.CreateZExt(phi, llvm::Type::getInt8Ty(m->getContext()));
+                    return con->CreateZExt(phi, llvm::Type::getInt8Ty(con));
                 }
                 Type* GetType() override final {
                     return lhs->GetType(); // Both args are bool and we produce bool
                 }
-                void DestroyExpressionLocals(llvm::Module* m, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final {
-                    lhs->DestroyLocals(m, bb, allocas);
-                    auto false_bb = llvm::BasicBlock::Create(m->getContext(), "false_destroy", bb.GetInsertBlock()->getParent());
-                    auto cont_bb = llvm::BasicBlock::Create(m->getContext(), "cont_destroy", bb.GetInsertBlock()->getParent());
-                    bb.CreateCondBr(bb.CreateTrunc(lhs->GetValue(m, bb, allocas), llvm::Type::getInt1Ty(m->getContext())), cont_bb, false_bb);
-                    bb.SetInsertPoint(false_bb);
-                    rhs->DestroyLocals(m, bb, allocas);
-                    bb.CreateBr(cont_bb);
-                    bb.SetInsertPoint(cont_bb);
+                void DestroyExpressionLocals(CodegenContext& con) override final {
+                    assert(!rhs_destructors.empty());
+                    auto false_bb = llvm::BasicBlock::Create(con, "false_destroy", con->GetInsertBlock()->getParent());
+                    auto cont_bb = llvm::BasicBlock::Create(con, "cont_destroy", con->GetInsertBlock()->getParent());
+                    con->CreateCondBr(con->CreateTrunc(lhs->GetValue(con), llvm::Type::getInt1Ty(con)), cont_bb, false_bb);
+                    con->SetInsertPoint(false_bb);
+                    for (auto rit = rhs_destructors.rbegin(); rit != rhs_destructors.rend(); ++rit) {
+                        (*rit)->DestroyLocals(con);
+                    }
+                    con->CreateBr(cont_bb);
+                    con->SetInsertPoint(cont_bb);
                 }
             };
             return Wide::Memory::MakeUnique<ShortCircuitOr>(std::move(args[0]), std::move(args[1]));
@@ -110,33 +119,42 @@ OverloadSet* Bool::CreateOperatorOverloadSet(Type* t, Lexer::TokenType name, Lex
                 ShortCircuitAnd(std::unique_ptr<Expression> lhs, std::unique_ptr<Expression> rhs)
                 : lhs(std::move(lhs)), rhs(std::move(rhs)) {}
                 std::unique_ptr<Expression> lhs, rhs;
-                llvm::Value* ComputeValue(llvm::Module* m, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final {
-                    auto val = bb.CreateTrunc(lhs->GetValue(m, bb, allocas), llvm::Type::getInt1Ty(m->getContext()));
-                    auto cur_block = bb.GetInsertBlock();
-                    auto true_br = llvm::BasicBlock::Create(m->getContext(), "true", bb.GetInsertBlock()->getParent());
-                    auto false_br = llvm::BasicBlock::Create(m->getContext(), "false", bb.GetInsertBlock()->getParent());
-                    bb.CreateCondBr(val, false_br, true_br);
-                    bb.SetInsertPoint(false_br);
-                    auto false_val = bb.CreateTrunc(rhs->GetValue(m, bb, allocas), llvm::Type::getInt1Ty(m->getContext()));
-                    bb.CreateBr(true_br);
-                    bb.SetInsertPoint(true_br);
-                    auto phi = bb.CreatePHI(llvm::Type::getInt1Ty(m->getContext()), 2);
+                std::vector<Expression*> rhs_destructors;
+                llvm::Value* ComputeValue(CodegenContext& con) override final {
+                    auto val = con->CreateTrunc(lhs->GetValue(con), llvm::Type::getInt1Ty(con));
+                    auto cur_block = con->GetInsertBlock();
+                    auto true_br = llvm::BasicBlock::Create(con, "true", con->GetInsertBlock()->getParent());
+                    auto false_br = llvm::BasicBlock::Create(con, "false", con->GetInsertBlock()->getParent());
+                    con->CreateCondBr(val, false_br, true_br);
+                    con->SetInsertPoint(false_br);
+                    CodegenContext rhscon(con);
+                    auto false_val = con->CreateTrunc(rhs->GetValue(rhscon), llvm::Type::getInt1Ty(con));
+                    if (rhscon.Destructors.size() != con.Destructors.size()) {
+                        rhs_destructors = con.GetAddedDestructors(rhscon);
+                        // If we might need something destroyed, then we need to be destroyed.
+                        con.Destructors.push_back(this);
+                    }
+                    con->CreateBr(true_br);
+                    con->SetInsertPoint(true_br);
+                    auto phi = con->CreatePHI(llvm::Type::getInt1Ty(con), 2);
                     phi->addIncoming(val, cur_block);
                     phi->addIncoming(false_val, false_br);
-                    return bb.CreateZExt(phi, llvm::Type::getInt8Ty(m->getContext()));
+                    return con->CreateZExt(phi, llvm::Type::getInt8Ty(con));
                 }
                 Type* GetType() override final {
                     return lhs->GetType(); // Both args are bool and we produce bool
                 }
-                void DestroyExpressionLocals(llvm::Module* m, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) override final {
-                    lhs->DestroyLocals(m, bb, allocas);
-                    auto cont_bb = llvm::BasicBlock::Create(m->getContext(), "cont_destroy", bb.GetInsertBlock()->getParent());
-                    auto true_bb = llvm::BasicBlock::Create(m->getContext(), "true_destroy", bb.GetInsertBlock()->getParent());
-                    bb.CreateCondBr(bb.CreateTrunc(lhs->GetValue(m, bb, allocas), llvm::Type::getInt1Ty(m->getContext())), true_bb, cont_bb);
-                    bb.SetInsertPoint(true_bb);
-                    rhs->DestroyLocals(m, bb, allocas);
-                    bb.CreateBr(cont_bb);
-                    bb.SetInsertPoint(cont_bb);
+                void DestroyExpressionLocals(CodegenContext& con) override final {
+                    assert(!rhs_destructors.empty());
+                    auto cont_bb = llvm::BasicBlock::Create(con, "cont_destroy", con->GetInsertBlock()->getParent());
+                    auto true_bb = llvm::BasicBlock::Create(con, "true_destroy", con->GetInsertBlock()->getParent());
+                    con->CreateCondBr(con->CreateTrunc(lhs->GetValue(con), llvm::Type::getInt1Ty(con)), true_bb, cont_bb);
+                    con->SetInsertPoint(true_bb);
+                    for (auto rit = rhs_destructors.rbegin(); rit != rhs_destructors.rend(); ++rit) {
+                        (*rit)->DestroyLocals(con);
+                    }
+                    con->CreateBr(cont_bb);
+                    con->SetInsertPoint(cont_bb);
                 }
             };
             return Wide::Memory::MakeUnique<ShortCircuitAnd>(std::move(args[0]), std::move(args[1]));
@@ -144,22 +162,22 @@ OverloadSet* Bool::CreateOperatorOverloadSet(Type* t, Lexer::TokenType name, Lex
         return analyzer.GetOverloadSet(AndOperator.get());
     case Lexer::TokenType::LT:
         LTOperator = MakeResolvable([](std::vector<std::unique_ptr<Expression>> args, Context c) -> std::unique_ptr<Expression> {
-            return CreatePrimOp(std::move(args[0]), std::move(args[1]), c.from->analyzer.GetBooleanType(), [](llvm::Value* lhs, llvm::Value* rhs, llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
-                return bb.CreateZExt(bb.CreateICmpSLT(lhs, rhs), llvm::Type::getInt8Ty(module->getContext()));
+            return CreatePrimOp(std::move(args[0]), std::move(args[1]), c.from->analyzer.GetBooleanType(), [](llvm::Value* lhs, llvm::Value* rhs, CodegenContext& con) {
+                return con->CreateZExt(con->CreateICmpSLT(lhs, rhs), llvm::Type::getInt8Ty(con));
             });
         }, { this, this });
         return analyzer.GetOverloadSet(LTOperator.get());
     case Lexer::TokenType::EqCmp:
         EQOperator = MakeResolvable([](std::vector<std::unique_ptr<Expression>> args, Context c) -> std::unique_ptr<Expression> {
-            return CreatePrimOp(std::move(args[0]), std::move(args[1]), c.from->analyzer.GetBooleanType(), [](llvm::Value* lhs, llvm::Value* rhs, llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
-                return bb.CreateZExt(bb.CreateICmpEQ(lhs, rhs), llvm::Type::getInt8Ty(module->getContext()));
+            return CreatePrimOp(std::move(args[0]), std::move(args[1]), c.from->analyzer.GetBooleanType(), [](llvm::Value* lhs, llvm::Value* rhs, CodegenContext& con) {
+                return con->CreateZExt(con->CreateICmpEQ(lhs, rhs), llvm::Type::getInt8Ty(con));
             });
         }, { this, this });
         return analyzer.GetOverloadSet(EQOperator.get());
     case Lexer::TokenType::Negate:
         NegOperator = MakeResolvable([](std::vector<std::unique_ptr<Expression>> args, Context c)->std::unique_ptr<Expression> {
-            return CreatePrimUnOp(std::move(args[0]), c.from->analyzer.GetBooleanType(), [](llvm::Value* v, llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {
-                return bb.CreateNot(v);
+            return CreatePrimUnOp(std::move(args[0]), c.from->analyzer.GetBooleanType(), [](llvm::Value* v, CodegenContext& con) {
+                return con->CreateNot(v);
             });
         }, { this });
         return analyzer.GetOverloadSet(NegOperator.get());

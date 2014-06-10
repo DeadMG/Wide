@@ -94,8 +94,7 @@ std::vector<std::tuple<Lexer::Range, std::string>> Wide::Semantic::GetNonvoidFal
             auto instance = args.second.get();
             if (instance->GetSignature()->GetReturnType() == a.GetVoidType()) continue;
             struct EntryExitStatement : Statement {
-                void GenerateCode(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {}
-                void DestroyLocals(llvm::Module* module, llvm::IRBuilder<>& bb, llvm::IRBuilder<>& allocas) {}
+                void GenerateCode(CodegenContext& con) {}
             };
             EntryExitStatement entry;
             EntryExitStatement exit;
