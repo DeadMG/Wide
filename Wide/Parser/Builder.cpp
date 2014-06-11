@@ -223,6 +223,12 @@ Typeid* Builder::CreateTypeid(Expression* arg, Lexer::Range loc) {
 DynamicCast* Builder::CreateDynamicCast(Expression* type, Expression* object, Lexer::Range loc) {
     return arena.Allocate<DynamicCast>(type, object, loc);
 }
+Throw* Builder::CreateThrow(Lexer::Range loc) {
+    return arena.Allocate<Throw>(loc);
+}
+Throw* Builder::CreateThrow(Lexer::Range loc, Expression* expr) {
+    return arena.Allocate<Throw>(loc, expr);
+}
 
 Lambda* Builder::CreateLambda(std::vector<FunctionArgument> args, std::vector<Statement*> body, Lexer::Range loc, bool defaultref, std::vector<Variable*> caps) 
 { return arena.Allocate<Lambda>(std::move(body), std::move(args), loc, defaultref, std::move(caps)); }

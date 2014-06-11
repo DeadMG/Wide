@@ -80,6 +80,7 @@ namespace Wide {
             DynamicCastNoOpenBracket,
             DynamicCastNoComma,
             DynamicCastNoCloseBracket,
+            ThrowNoSemicolon,
         };         
 
         enum class Warning : int {
@@ -178,6 +179,7 @@ namespace Wide {
                 std::make_pair(Error::DynamicCastNoOpenBracket, "Expected ( after dynamic_cast to introduce a dynamic_cast expression."),
                 std::make_pair(Error::DynamicCastNoCloseBracket, "Expected ) after dynamic_cast(expr, expr to close a dynamic_cast expression."),
                 std::make_pair(Error::DynamicCastNoComma, "Expected , after dynamic_cast(expr to continue a dynamic_cast expression."),
+                std::make_pair(Error::ThrowNoSemicolon, "Expected ; after throw expr to indicate a throw expression."),
             };
             return std::unordered_map<Error, std::string>(std::begin(strings), std::end(strings));
         }());

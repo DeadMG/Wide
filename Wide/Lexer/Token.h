@@ -80,7 +80,10 @@ namespace Wide {
             True,
             False,
             Typeid,
-            DynamicCast
+            DynamicCast,
+            Try,
+            Catch,
+            Throw,
         };
         enum Access {
             Public,

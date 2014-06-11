@@ -352,6 +352,45 @@ void Function::ContinueStatement::GenerateCode(CodegenContext& con) {
     while_stmt->source_con->DestroyDifference(con);
     con->CreateBr(while_stmt->check_bb);
 }
+Function::ThrowStatement::ThrowStatement(std::unique_ptr<Expression> expr, Context c) {
+    // http://mentorembedded.github.io/cxx-abi/abi-eh.html
+    // 2.4.2
+    struct ExceptionAllocateMemory : Expression {
+        ExceptionAllocateMemory(Type* t)
+        : alloc(t) {
+            auto&& analyzer = t->analyzer;
+            if (t->alignment() > std::max(analyzer.GetDataLayout().getABIIntegerTypeAlignment(64), analyzer.GetDataLayout().getPointerABIAlignment()))
+                throw std::runtime_error("EH runtime does not provide memory of enough alignment to support this exception type.");
+        }
+        Type* alloc;
+        Type* GetType() override final { return alloc->analyzer.GetLvalueType(alloc); }
+        llvm::Value* ComputeValue(CodegenContext& con) override final {
+            auto size_t_ty = llvm::IntegerType::get(con, alloc->analyzer.GetDataLayout().getPointerSizeInBits());
+            auto allocate_exception = con.module->getFunction("__cxa_allocate_exception");
+            if (!allocate_exception) {
+                llvm::Type* args[] = { size_t_ty };
+                auto fty = llvm::FunctionType::get(llvm::Type::getInt8PtrTy(con), args, false);
+                allocate_exception = llvm::Function::Create(fty, llvm::GlobalValue::LinkageTypes::ExternalLinkage, "__cxa_allocate_exception", con.module);
+            }
+            return con->CreatePointerCast(con->CreateCall(allocate_exception, { llvm::ConstantInt::get(size_t_ty, alloc->size(), false) }), GetType()->GetLLVMType(con));
+        }
+    };
+    ty = expr->GetType()->Decay();
+    auto except_memory = Wide::Memory::MakeUnique<ExceptionAllocateMemory>(ty);
+    exception = ty->BuildInplaceConstruction(std::move(except_memory), Expressions(std::move(expr)), c);
+}
+void Function::ThrowStatement::GenerateCode(CodegenContext& con) {
+    auto value = exception->GetValue(con);
+    // Throw this shit.
+    auto cxa_throw = con.module->getFunction("__cxa_throw");
+    if (!cxa_throw) {
+        llvm::Type* args[] = { con.GetInt8PtrTy(), con.GetInt8PtrTy(), llvm::FunctionType::get(llvm::Type::getVoidTy(con), { con.GetInt8PtrTy() }, false)->getPointerTo() };
+        auto fty = llvm::FunctionType::get(llvm::Type::getVoidTy(con), args, false);
+        cxa_throw = llvm::Function::Create(fty, llvm::GlobalValue::LinkageTypes::ExternalLinkage, "__cxa_throw", con);
+    }
+    llvm::Value* args[] = { con->CreatePointerCast(value, con.GetInt8PtrTy()), ty->GetRTTI(con), ty->GetDestructorFunction(con) };
+    con->CreateCall(cxa_throw, args);
+}
 std::unique_ptr<Statement> Function::AnalyzeStatement(const AST::Statement* s) {
     if (auto ret = dynamic_cast<const AST::Return*>(s)) {
         if (ret->RetExpr) {
@@ -454,6 +493,10 @@ std::unique_ptr<Statement> Function::AnalyzeStatement(const AST::Statement* s) {
         return Wide::Memory::MakeUnique<IfStatement>(condexpr, true_br, false_br, if_stmt->location, this);
     }
 
+    if (auto thro = dynamic_cast<const Wide::AST::Throw*>(s)) {
+        auto expression = analyzer.AnalyzeExpression(this, thro->expr);
+        return Wide::Memory::MakeUnique<ThrowStatement>(std::move(expression), Context(this, thro->location));
+    }
     assert(false && "Unsupported statement.");
 }
 
@@ -745,8 +788,13 @@ void Function::EmitCode(llvm::Module* module) {
     if (llvm::verifyFunction(*llvmfunc, llvm::VerifierFailureAction::PrintMessageAction))
         throw std::runtime_error("Internal Compiler Error: An LLVM function failed verification.");
 
+    // Keep track - we may be asked to export to the same name multiple times.
+    std::unordered_set<std::string> names;
     for (auto exportnam : trampoline) {
         auto exportname = exportnam(module);
+        if (names.find(exportname) != names.end())
+            continue;
+        names.insert(exportname);
         // oh yay.
         // Gotta handle ABI mismatch.
 
@@ -771,16 +819,22 @@ void Function::EmitCode(llvm::Module* module) {
                         if (CastType != cast->getDestTy()) {
                             throw std::runtime_error("Found a function of the same name in the module but it had the wrong LLVM type.");
                         }
-                    } else
-                        CastType = cast->getDestTy();
+                    } else {
+                        if (auto ptrty = llvm::dyn_cast<llvm::PointerType>(cast->getDestTy()))
+                            if (auto functy = llvm::dyn_cast<llvm::FunctionType>(ptrty->getElementType()))
+                                CastType = cast->getDestTy();
+                    }
                 }
                 if (auto constant = llvm::dyn_cast<llvm::ConstantExpr>(use)) {
                     if (CastType) {
                         if (CastType != constant->getType()) {
                             throw std::runtime_error("Found a function of the same name in the module but it had the wrong LLVM type.");
                         }
-                    } else
-                        CastType = constant->getType();
+                    } else {
+                        if (auto ptrty = llvm::dyn_cast<llvm::PointerType>(constant->getType()))
+                            if (auto functy = llvm::dyn_cast<llvm::FunctionType>(ptrty->getElementType()))
+                                CastType = constant->getType();
+                    }
                 }
             }
             // There are no uses that are invalid.
@@ -798,6 +852,7 @@ void Function::EmitCode(llvm::Module* module) {
                     if (auto constant = llvm::dyn_cast<llvm::ConstantExpr>(use))
                         constant->replaceAllUsesWith(tramp);
                 }
+                badf->removeFromParent();
             }
 
             trampret = tramp->getFunctionType()->getReturnType();

@@ -22,6 +22,13 @@ namespace Wide {
             Expression(Lexer::Range r)
                 : Statement(r) {}
         };
+        struct Throw : Statement {
+            Throw(Lexer::Range where, Expression* e)
+            : Statement(where), expr(e) {}
+            Throw(Lexer::Range where)
+                : Statement(where), expr() {}
+            Expression* expr;
+        };
         struct This : Expression {
             This(Lexer::Range r)
                 : Expression(r) {}

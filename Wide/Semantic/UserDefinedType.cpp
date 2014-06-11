@@ -280,9 +280,31 @@ Wide::Util::optional<clang::QualType> UserDefinedType::GetClangType(ClangTU& TU)
 
     auto recdecl = clang::CXXRecordDecl::Create(TU.GetASTContext(), clang::TagDecl::TagKind::TTK_Struct, TU.GetDeclContext(), clang::SourceLocation(), clang::SourceLocation(), TU.GetIdentifierInfo(stream.str()));
     recdecl->startDefinition();
-    clangtypes[&TU] = TU.GetASTContext().getTypeDeclType(recdecl);
-    if (type->bases.size() != 0) return Util::none;
-
+    std::vector<clang::CXXBaseSpecifier*> basespecs;
+    for (auto base : GetBases()) {
+        if (!base->GetClangType(TU)) return Util::none;
+        basespecs.push_back(new clang::CXXBaseSpecifier(
+            clang::SourceRange(), 
+            false, 
+            false, 
+            clang::AccessSpecifier::AS_public, 
+            TU.GetASTContext().getTrivialTypeSourceInfo(*base->GetClangType(TU)),
+            clang::SourceLocation()
+        ));
+    }
+    recdecl->setBases(basespecs.data(), basespecs.size());
+    auto Access = [](Lexer::Access access) {
+        switch (access) {
+        case Lexer::Access::Private:
+            return clang::AccessSpecifier::AS_private;
+        case Lexer::Access::Public:
+            return clang::AccessSpecifier::AS_public;
+        case Lexer::Access::Protected:
+            return clang::AccessSpecifier::AS_protected;
+        default:
+            throw std::runtime_error("Wat- new access specifier?");
+        }
+    };
     for (std::size_t i = 0; i < type->variables.size(); ++i) {
         auto memberty = GetMembers()[i]->GetClangType(TU);
         if (!memberty) return Wide::Util::none;
@@ -297,33 +319,149 @@ Wide::Util::optional<clang::QualType> UserDefinedType::GetClangType(ClangTU& TU)
             nullptr,
             false,
             clang::InClassInitStyle::ICIS_NoInit
-            );
-        var->setAccess(clang::AccessSpecifier::AS_public);
+        );
+        var->setAccess(Access(type->variables[i].second));
         recdecl->addDecl(var);
     }
-    /*for (auto overset : type->Functions) {
+    auto GetArgsForFunc = [this](const Wide::AST::Function* func) {
+        std::vector<Type*> types;
+        if (func->args.size() == 0 || func->args.front().name != "this")
+            types.push_back(analyzer.GetLvalueType(this));
+        for (auto arg : func->args) {
+            auto expr = analyzer.AnalyzeCachedExpression(GetContext(), arg.type);
+            if (auto ty = dynamic_cast<ConstructorType*>(expr->GetType()->Decay()))
+                types.push_back(ty->GetConstructedType());
+            else
+                assert(false);
+        }
+        return types;
+    };
+    auto GetClangTypesForArgs = [this](std::vector<Type*> types, ClangTU& TU) -> Wide::Util::optional<std::vector<clang::QualType>> {
+        std::vector<clang::QualType> args;
+        for (auto&& ty : types)  {
+            // Skip "this"
+            if (&ty == &types.front()) continue;
+            if (auto clangty = ty->GetClangType(TU))
+                args.push_back(*clangty);
+            else
+                return Wide::Util::none;
+        }
+        return args;
+    };
+    auto GetParmVarDecls = [this](std::vector<clang::QualType> types, ClangTU& TU, clang::CXXRecordDecl* recdecl) {
+        std::vector<clang::ParmVarDecl*> parms;
+        for (auto qualty : types) {
+            parms.push_back(clang::ParmVarDecl::Create(
+                TU.GetASTContext(),
+                recdecl,
+                clang::SourceLocation(),
+                clang::SourceLocation(),
+                nullptr,
+                qualty,
+                TU.GetASTContext().getTrivialTypeSourceInfo(qualty),
+                clang::VarDecl::StorageClass::SC_None,
+                nullptr
+            ));
+        }
+        return parms;
+    };
+    for (auto overset : type->Functions) {
         for (auto func : overset.second->functions) {
             if (IsMultiTyped(func)) continue;
-            std::vector<Type*> types;
-            for (auto arg : func->args) {
-                if (!arg.type) return;
-                auto expr = a.AnalyzeExpression(GetContext(a), arg.type, [](ConcreteExpression expr) {});
-                if (auto ty = dynamic_cast<ConstructorType*>(expr.t->Decay()))
-                    types.push_back(ty->GetConstructedType());
-                else
-                    return;
+            if (func->access == Lexer::Access::Private) continue;
+            auto access = Access(func->access);
+            
+            if (overset.first == "type") {
+                auto types = GetArgsForFunc(func);
+                auto ty = clang::CanQualType::CreateUnsafe(TU.GetASTContext().getRecordType(recdecl));
+                clang::FunctionProtoType::ExtProtoInfo ext_proto_info;
+                auto mfunc = analyzer.GetWideFunction(func, GetContext(), types, overset.first);
+                mfunc->ComputeBody();
+                auto args = GetClangTypesForArgs(types, TU);
+                if (!args) continue;
+                auto fty = TU.GetASTContext().getFunctionType(*analyzer.GetVoidType()->GetClangType(TU), *args, ext_proto_info);
+                auto con = clang::CXXConstructorDecl::Create(
+                    TU.GetASTContext(),
+                    recdecl,
+                    clang::SourceLocation(),
+                    clang::DeclarationNameInfo(clang::DeclarationName(TU.GetASTContext().DeclarationNames.getCXXConstructorName(ty)), clang::SourceLocation()),
+                    fty,
+                    TU.GetASTContext().getTrivialTypeSourceInfo(fty),
+                    true,
+                    false,
+                    false,
+                    false
+                );
+                con->setAccess(access);
+                con->setParams(GetParmVarDecls(*args, TU, recdecl));
+                recdecl->addDecl(con);
+                mfunc->AddExportName(TU.MangleName(con));
+            } else if (overset.first == DestructorName) {
+                auto ty = clang::CanQualType::CreateUnsafe(TU.GetASTContext().getRecordType(recdecl));
+                clang::FunctionProtoType::ExtProtoInfo ext_proto_info;
+                std::vector<clang::QualType> args;
+                auto fty = TU.GetASTContext().getFunctionType(*analyzer.GetVoidType()->GetClangType(TU), args, ext_proto_info);
+                auto des = clang::CXXDestructorDecl::Create(
+                    TU.GetASTContext(),
+                    recdecl,
+                    clang::SourceLocation(),
+                    clang::DeclarationNameInfo(clang::DeclarationName(TU.GetASTContext().DeclarationNames.getCXXDestructorName(ty)), clang::SourceLocation()),
+                    fty,
+                    TU.GetASTContext().getTrivialTypeSourceInfo(fty),
+                    false,
+                    false
+                );
+                des->setAccess(access);
+                recdecl->addDecl(des);
+                auto widedes = analyzer.GetWideFunction(func, analyzer.GetLvalueType(this), {}, overset.first);
+                widedes->ComputeBody();
+                widedes->AddExportName(TU.MangleName(des));
+            } else {
+                auto types = GetArgsForFunc(func);
+                auto mfunc = analyzer.GetWideFunction(func, GetContext(), types, overset.first);
+                mfunc->ComputeBody();
+                std::vector<clang::QualType> args;
+                for (auto&& ty : types)  {
+                    // Skip "this"
+                    if (&ty == &types.front()) continue;
+                    if (auto clangty = ty->GetClangType(TU))
+                        args.push_back(*clangty);
+                }
+                if (args.size() != types.size()) continue;
+                auto ret = mfunc->GetSignature()->GetReturnType()->GetClangType(TU);
+                if (!ret) continue;
+                clang::FunctionProtoType::ExtProtoInfo ext_proto_info;
+                if (func->args.front().name == "this") {
+                    if (types.front() == analyzer.GetLvalueType(this))
+                        ext_proto_info.RefQualifier = clang::RefQualifierKind::RQ_LValue;
+                    else
+                        ext_proto_info.RefQualifier = clang::RefQualifierKind::RQ_RValue;
+                }
+                auto fty = TU.GetASTContext().getFunctionType(*ret, args, ext_proto_info);
+                auto meth = clang::CXXMethodDecl::Create(
+                    TU.GetASTContext(),
+                    recdecl,
+                    clang::SourceLocation(),
+                    clang::DeclarationNameInfo(clang::DeclarationName(TU.GetIdentifierInfo(overset.first)), clang::SourceLocation()),
+                    fty,
+                    TU.GetASTContext().getTrivialTypeSourceInfo(fty),
+                    clang::FunctionDecl::StorageClass::SC_None,
+                    false,
+                    false,
+                    clang::SourceLocation()
+                );
+                meth->setAccess(access);
+                meth->setVirtualAsWritten(func->dynamic);
+                meth->setParams(GetParmVarDecls(args, TU, recdecl));
+                recdecl->addDecl(meth);
+                mfunc->AddExportName(TU.MangleName(meth));
             }
-            auto mfunc = a.GetWideFunction(func, GetContext(a), types, overset.first);
-            mfunc->ComputeBody(a);
-
         }
-    }*/
-    // Todo: Expose member functions
-    // Only those which are not generic right now
+    }
     recdecl->completeDefinition();
-    auto size = TU.GetASTContext().getTypeSizeInChars(TU.GetASTContext().getTypeDeclType(recdecl).getTypePtr());
+    clangtypes[&TU] = TU.GetASTContext().getTypeDeclType(recdecl);
     TU.GetDeclContext()->addDecl(recdecl);
-    analyzer.AddClangType(TU.GetASTContext().getTypeDeclType(recdecl), this);
+    analyzer.AddClangType(clangtypes[&TU], this);
     return clangtypes[&TU];
 }
 
@@ -689,6 +827,9 @@ bool UserDefinedType::IsA(Type* self, Type* other, Lexer::Access access) {
 }
 llvm::Constant* UserDefinedType::GetRTTI(llvm::Module* module) {
     // If we have a Clang type, then use it for compat.
+    if (auto clangty = GetClangType(*analyzer.GetAggregateTU())) {
+        return analyzer.GetAggregateTU()->GetItaniumRTTI(*clangty, module);
+    }
     if (GetBases().size() == 0) {
         return AggregateType::GetRTTI(module);
     }

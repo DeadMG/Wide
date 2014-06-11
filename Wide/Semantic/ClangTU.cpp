@@ -247,7 +247,6 @@ ClangTU::ClangTU(ClangTU&& other)
 void ClangTU::GenerateCodeAndLinkModule(llvm::Module* module, llvm::DataLayout& layout) {
     impl->sema.ActOnEndOfTranslationUnit();
     impl->CreateCodegen(*module, layout);
-    
     // Cause all the side effects. Fuck you, Clang.
     for (auto&& decl : impl->addrs) {
         if (auto vardecl = llvm::dyn_cast<clang::VarDecl>(decl)) {

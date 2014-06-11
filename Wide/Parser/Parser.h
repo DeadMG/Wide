@@ -751,6 +751,16 @@ namespace Wide {
                     auto semi = Check(Error::ContinueNoSemicolon, Lexer::TokenType::Semicolon);
                     return sema.CreateContinue(t.GetLocation() + semi.GetLocation());
                 }
+                // try, throw
+                if (t.GetType() == Lexer::TokenType::Throw) {
+                    auto next = lex();
+                    if (next.GetType() == Lexer::TokenType::Semicolon)
+                        return sema.CreateThrow(t.GetLocation() + next.GetLocation());
+                    lex(next);
+                    auto expr = ParseExpression();
+                    auto semi = Check(Error::ThrowNoSemicolon, Lexer::TokenType::Semicolon);
+                    return sema.CreateThrow(t.GetLocation() + semi.GetLocation(), expr);
+                }
                 lex(t);
                 // Else, expression statement.
                 auto expr = ParseExpression();

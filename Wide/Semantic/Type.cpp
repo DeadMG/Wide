@@ -876,3 +876,35 @@ Type::VTableLayout Type::ComputeVTableLayout() {
     }
     return playout;
 }
+llvm::Value* Type::GetDestructorFunction(llvm::Module* module) {
+    if (DestructorFunction) return DestructorFunction;
+    auto fty = llvm::FunctionType::get(llvm::Type::getVoidTy(module->getContext()), { llvm::Type::getInt8PtrTy(module->getContext()) }, false);
+    std::stringstream str;
+    str << "__" << this << "destructor";
+    DestructorFunction = llvm::Function::Create(fty, llvm::GlobalValue::LinkageTypes::InternalLinkage, str.str(), module);
+    llvm::BasicBlock* allocas = llvm::BasicBlock::Create(module->getContext(), "allocas", DestructorFunction);
+    llvm::IRBuilder<> alloca_builder(allocas);
+    llvm::BasicBlock* entry = llvm::BasicBlock::Create(module->getContext(), "entry", DestructorFunction);
+    llvm::IRBuilder<> ir_builder(entry);
+    alloca_builder.SetInsertPoint(alloca_builder.CreateBr(entry));
+    CodegenContext c;
+    c.insert_builder = &ir_builder;
+    c.module = module;
+    c.alloca_builder = &alloca_builder;
+    struct DestructorExpression : Expression {
+        DestructorExpression(Type* self, llvm::Value* val)
+            : self(self), val(val) {}
+        llvm::Value* val;
+        Type* self;
+        Type* GetType() override final {
+            return self->analyzer.GetLvalueType(self);
+        }
+        llvm::Value* ComputeValue(CodegenContext& con) override final {
+            return con->CreateBitCast(val, GetType()->GetLLVMType(con));
+        }
+    };
+    auto obj = Wide::Memory::MakeUnique<DestructorExpression>(this, DestructorFunction->arg_begin());
+    BuildDestructorCall(std::move(obj), { this, Lexer::Range(nullptr) })->GetValue(c);
+    c->CreateRetVoid();
+    return DestructorFunction;
+}

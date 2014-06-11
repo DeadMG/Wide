@@ -102,6 +102,9 @@ const std::unordered_map<std::string, TokenType> Arguments::keywords = []() -> s
     keywords["false"] = TokenType::False;
     keywords["typeid"] = TokenType::Typeid;
     keywords["dynamic_cast"] = TokenType::DynamicCast;
+    keywords["try"] = TokenType::Try;
+    keywords["catch"] = TokenType::Catch;
+    keywords["throw"] = TokenType::Throw;
     return keywords;
 }();
 

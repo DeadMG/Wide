@@ -174,6 +174,7 @@ namespace Wide {
             std::unordered_map<std::vector<std::pair<Type*, unsigned>>, std::unique_ptr<Expression>, VectorTypeHasher> ComputedVTables;
             Wide::Util::optional<VTableLayout> VtableLayout;
             Wide::Util::optional<VTableLayout> PrimaryVtableLayout;
+            llvm::Function* DestructorFunction = nullptr;
 
             VTableLayout ComputeVTableLayout();
             std::unique_ptr<Expression> CreateVTable(std::vector<std::pair<Type*, unsigned>> path);
@@ -194,6 +195,7 @@ namespace Wide {
             virtual std::string explain() = 0;
             virtual llvm::Type* GetLLVMType(llvm::Module* module) = 0;
             virtual llvm::Constant* GetRTTI(llvm::Module* module);
+            llvm::Value* GetDestructorFunction(llvm::Module* module);
 
             virtual bool IsReference(Type* to);
             virtual bool IsReference();

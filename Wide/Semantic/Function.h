@@ -148,6 +148,19 @@ namespace Wide {
 
                 void GenerateCode(CodegenContext& con);
             };
+
+            struct ThrowStatement : public Statement {
+                Type* ty;
+                std::unique_ptr<Expression> exception;
+                ThrowStatement(std::unique_ptr<Expression> expr, Context c);
+                void GenerateCode(CodegenContext& con);
+            };
+
+            struct RethrowStatement : public Statement {
+                RethrowStatement();
+                void GenerateCode(CodegenContext& con);
+            };
+
             struct Parameter : Expression {
                 Lexer::Range where;
                 Function* self;
@@ -184,6 +197,7 @@ namespace Wide {
             std::unique_ptr<Expression> LookupLocal(std::string name);
             Type* GetConstantContext() override final;
             void AddExportName(std::string name) {trampoline.push_back([name](llvm::Module*) { return name; }); }
+            void AddExportName(std::function<std::string(llvm::Module*)> mod) { trampoline.push_back(mod); }
             std::string explain() override final;
             std::string GetSourceName() { return source_name; }
             ~Function();
