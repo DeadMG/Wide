@@ -877,6 +877,7 @@ Type::VTableLayout Type::ComputeVTableLayout() {
     return playout;
 }
 llvm::Value* Type::GetDestructorFunction(llvm::Module* module) {
+    if (!IsComplexType(module)) return llvm::Constant::getNullValue(llvm::Type::getInt8PtrTy(module->getContext()));
     if (DestructorFunction) return DestructorFunction;
     auto fty = llvm::FunctionType::get(llvm::Type::getVoidTy(module->getContext()), { llvm::Type::getInt8PtrTy(module->getContext()) }, false);
     std::stringstream str;

@@ -1,0 +1,19 @@
+using header := cpp("JITSuccess/CPPInterop/ThrowDerivedCatchBase.h");
+f(arg := bool.lvalue) prolog { ExportAs = header.f; }
+{
+    throw Derived(arg);
+}
+using base := header.base;
+type Derived : base {
+    ptr := bool.pointer;
+    g() { return true; }
+    type(arg := bool.lvalue) : ptr(&arg) {}
+    type(other := Derived.rvalue) : ptr(other.ptr) {}
+    type(other := Derived.lvalue) : ptr(other.ptr) {}
+    ~type() { *ptr = true; }
+}
+Main() {
+    ret := false;
+    ret2 := header.g(ret);
+    return ret & ret2;
+}

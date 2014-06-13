@@ -157,6 +157,18 @@ namespace Wide {
                 : Statement(loc), stmts(std::move(body)) {}
             std::vector<Statement*> stmts;
         };
+        struct Catch {
+            std::string name;
+            Expression* type = nullptr;
+            bool all;
+            std::vector<Statement*> statements;
+        };
+        struct TryCatch : public Statement {
+            TryCatch(CompoundStatement* stmt, std::vector<Catch> catches, Lexer::Range range)
+            : statements(stmt), catches(catches), Statement(range) {}
+            CompoundStatement* statements;
+            std::vector<Catch> catches;
+        };
         struct If : public Statement {
             If(Expression* c, Statement* t, Statement* f, Lexer::Range loc)
                 :  Statement(loc), true_statement(t), false_statement(f), condition(c), var_condition(nullptr) {}

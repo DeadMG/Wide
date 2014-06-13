@@ -465,6 +465,9 @@ clang::Expr* ClangTU::ParseMacro(std::string macro, Lexer::Range where) {
     throw MacroNotValidExpression(macrodata, macro, where);
 }
 unsigned int ClangTU::GetVirtualFunctionOffset(clang::CXXMethodDecl* meth, llvm::Module* module) {
+    if (auto des = llvm::dyn_cast<clang::CXXDestructorDecl>(meth)) {
+        return impl->GetCodegenModule(module).getItaniumVTableContext().getMethodVTableIndex(clang::GlobalDecl(des, clang::CXXDtorType::Dtor_Complete));
+    }
     return impl->GetCodegenModule(module).getItaniumVTableContext().getMethodVTableIndex(clang::GlobalDecl(meth));
 }
 llvm::Constant* ClangTU::GetItaniumRTTI(clang::QualType rec, llvm::Module* m) {

@@ -92,7 +92,14 @@ namespace Wide {
             std::vector<Statement*> CreateStatementGroup();
             std::vector<Expression*> CreateExpressionGroup();
             std::vector<Variable*> CreateCaptureGroup();
-            std::vector<Variable*> CreateInitializerGroup();            
+            std::vector<Variable*> CreateInitializerGroup();         
+
+            std::vector<Catch> CreateCatchGroup();
+            void AddCatchToGroup(Catch c, std::vector<Catch>& catches);
+            Catch CreateCatch(std::vector<Statement*>, Lexer::Range);
+            Catch CreateCatch(std::string name, Expression* type, std::vector<Statement*>, Lexer::Range);
+            TryCatch* CreateTryCatch(CompoundStatement* stmts, std::vector<Catch> catches, Lexer::Range where);
+
             Module* CreateModule(std::string val, Module* p, Lexer::Range decl, Lexer::Access a);
             Using* CreateUsing(std::string val, Lexer::Range loc, Expression* expr, Module* p, Lexer::Access a);
             void CreateFunction(std::string name, std::vector<Statement*> body, std::vector<Statement*> prolog, Lexer::Range where, Lexer::Range r, Module* p, std::vector<FunctionArgument>, std::vector<Variable*> caps, Lexer::Access a, bool dynamic);

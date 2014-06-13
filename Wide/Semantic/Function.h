@@ -4,6 +4,7 @@
 #include <Wide/Semantic/Expression.h>
 #include <vector>
 #include <unordered_map>
+#include <memory>
 
 namespace llvm {
     class Function;
@@ -12,9 +13,7 @@ namespace Wide {
     namespace AST {
         struct FunctionBase;
         struct Statement;
-    }
-    namespace Codegen {
-        class Function;
+        struct TryCatch;
     }
     namespace Semantic {
         class FunctionType;
@@ -32,7 +31,6 @@ namespace Wide {
             std::vector<std::function<std::string(llvm::Module*)>> trampoline;
 
             // You can only be exported as constructors of one, or nonstatic member of one, class.
-            //
             Wide::Util::optional<Semantic::ConstructorContext*> ConstructorContext;
             Wide::Util::optional<Type*> NonstaticMemberContext;
             std::unordered_set<Type*> ClangContexts;
@@ -152,6 +150,7 @@ namespace Wide {
             struct ThrowStatement : public Statement {
                 Type* ty;
                 std::unique_ptr<Expression> exception;
+                std::unique_ptr<Expression> except_memory;
                 ThrowStatement(std::unique_ptr<Expression> expr, Context c);
                 void GenerateCode(CodegenContext& con);
             };
@@ -160,7 +159,7 @@ namespace Wide {
                 RethrowStatement();
                 void GenerateCode(CodegenContext& con);
             };
-
+            
             struct Parameter : Expression {
                 Lexer::Range where;
                 Function* self;
@@ -173,6 +172,26 @@ namespace Wide {
                 Type* GetType() override final;
                 void DestroyExpressionLocals(CodegenContext& con) override final;
                 llvm::Value* ComputeValue(CodegenContext& con) override final;
+            };
+            struct TryStatement : public Statement {
+                struct Catch {
+                    Catch(Type* t, std::vector<std::unique_ptr<Statement>> stmts)
+                    : t(t), stmts(std::move(stmts)) {}
+                    Catch(Catch&& other)
+                    : t(other.t)
+                    , stmts(std::move(other.stmts)) {}
+                    Catch& operator=(Catch&& other) {
+                        t = other.t;
+                        stmts = std::move(other.stmts);
+                    }
+                    Type* t; // Null for catch-all
+                    std::vector<std::unique_ptr<Statement>> stmts;
+                };
+                TryStatement(std::vector<std::unique_ptr<Statement>> stmts, std::vector<Catch> catches)
+                    : statements(std::move(stmts)), catches(std::move(catches)) {}
+                std::vector<Catch> catches;
+                std::vector<std::unique_ptr<Statement>> statements;
+                void GenerateCode(CodegenContext& con);
             };
         private:
             std::unordered_set<ReturnStatement*> returns;

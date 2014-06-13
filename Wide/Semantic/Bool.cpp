@@ -88,6 +88,7 @@ OverloadSet* Bool::CreateOperatorOverloadSet(Type* t, Lexer::TokenType name, Lex
                         con.Destructors.push_back(this);
                     }
                     con->CreateBr(true_br);
+                    false_br = con->GetInsertBlock();
                     con->SetInsertPoint(true_br);
                     auto phi = con->CreatePHI(llvm::Type::getInt1Ty(con), 2);
                     phi->addIncoming(val, cur_block);
@@ -135,6 +136,7 @@ OverloadSet* Bool::CreateOperatorOverloadSet(Type* t, Lexer::TokenType name, Lex
                         con.Destructors.push_back(this);
                     }
                     con->CreateBr(true_br);
+                    false_br = con->GetInsertBlock();
                     con->SetInsertPoint(true_br);
                     auto phi = con->CreatePHI(llvm::Type::getInt1Ty(con), 2);
                     phi->addIncoming(val, cur_block);

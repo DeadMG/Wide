@@ -2,6 +2,7 @@
 #include <Wide/Semantic/Analyzer.h>
 #include <Wide/Semantic/ClangTU.h>
 #include <Wide/Semantic/Expression.h>
+#include <Wide/Semantic/Function.h>
 #include <Wide/Semantic/Reference.h>
 
 #pragma warning(push, 0)
@@ -71,7 +72,28 @@ std::unique_ptr<Expression> FunctionType::BuildCall(std::unique_ptr<Expression> 
             }
             for (auto&& arg : args)
                 llvmargs.push_back(arg->GetValue(con));
-            auto call = con->CreateCall(llvmfunc, llvmargs);
+            llvm::Value* call;
+            if (!con.destructing) {
+                llvm::BasicBlock* continueblock = llvm::BasicBlock::Create(con, "continue", con->GetInsertBlock()->getParent());
+                // If we have a try/catch block, let the catch block figure out what to do.
+                // Else, kill everything in the scope and resume.
+                if (auto handler = con.EHHandler) {
+                    call = con->CreateInvoke(llvmfunc, continueblock, con.CreateLandingpadForEH(), llvmargs);
+                    con->SetInsertPoint(continueblock);
+                } else {
+                    llvm::BasicBlock* landingpadblock = llvm::BasicBlock::Create(con, "landingpad", con->GetInsertBlock()->getParent());
+                    call = con->CreateInvoke(llvmfunc, continueblock, landingpadblock, llvmargs);
+                    con->SetInsertPoint(landingpadblock);
+                    llvm::Type* landingpad_ret_values[] = { con.GetInt8PtrTy(), llvm::IntegerType::getInt32Ty(con) };
+                    auto pad = con->CreateLandingPad(llvm::StructType::get(con, landingpad_ret_values, false), con.GetEHPersonality(), 1);
+                    pad->setCleanup(true);
+                    con.DestroyAll(true);
+                    con->CreateResume(pad);
+                    con->SetInsertPoint(continueblock);
+                }
+            } else {
+                call = con->CreateCall(llvmfunc, llvmargs);
+            }
             if (Ret) {
                 con.Destructors.push_back(Ret.get());
                 return Ret->GetValue(con);

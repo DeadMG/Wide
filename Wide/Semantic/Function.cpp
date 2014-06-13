@@ -175,7 +175,7 @@ void Function::ReturnStatement::GenerateCode(CodegenContext& con) {
         if (ret_expr) {
             ret_expr->GetValue(con);
         }
-        con.DestroyAll();
+        con.DestroyAll(false);
         con->CreateRetVoid();
         return;
     }
@@ -186,14 +186,14 @@ void Function::ReturnStatement::GenerateCode(CodegenContext& con) {
         if (ret_expr->GetType() == self->ReturnType) {
             // then great, just return it directly.
             auto val = ret_expr->GetValue(con);
-            con.DestroyAll();
+            con.DestroyAll(false);
             con->CreateRet(val);
             return;
         }
         // If we have a reference to it, just load it right away.
         if (ret_expr->GetType()->IsReference(self->ReturnType)) {
             auto val = con->CreateLoad(ret_expr->GetValue(con));
-            con.DestroyAll();
+            con.DestroyAll(false);
             con->CreateRet(val);
             return;
         }
@@ -201,7 +201,7 @@ void Function::ReturnStatement::GenerateCode(CodegenContext& con) {
         // We would fix this up, but, cannot query the complexity of a type prior to code generation.
         build = self->ReturnType->BuildValueConstruction(Expressions(Wide::Memory::MakeUnique<ExpressionReference>(ret_expr.get())), { self, where });
         auto val = build->GetValue(con);
-        con.DestroyAll();
+        con.DestroyAll(false);
         con->CreateRet(val);
         return;
     }
@@ -210,7 +210,7 @@ void Function::ReturnStatement::GenerateCode(CodegenContext& con) {
     // build should be a function taking the memory and our ret's value and emplacing it.
     // Then return void.
     build->GetValue(con);
-    con.DestroyAll();
+    con.DestroyAll(false);
     con->CreateRetVoid();
     return;
 }
@@ -352,6 +352,10 @@ void Function::ContinueStatement::GenerateCode(CodegenContext& con) {
     while_stmt->source_con->DestroyDifference(con);
     con->CreateBr(while_stmt->check_bb);
 }
+static const std::string except_alloc = "__cxa_allocate_exception";
+static const std::string free_except = "__cxa_free_exception";
+static const std::string throw_except = "__cxa_throw";
+
 Function::ThrowStatement::ThrowStatement(std::unique_ptr<Expression> expr, Context c) {
     // http://mentorembedded.github.io/cxx-abi/abi-eh.html
     // 2.4.2
@@ -363,33 +367,55 @@ Function::ThrowStatement::ThrowStatement(std::unique_ptr<Expression> expr, Conte
                 throw std::runtime_error("EH runtime does not provide memory of enough alignment to support this exception type.");
         }
         Type* alloc;
+        llvm::Value* except_memory;
         Type* GetType() override final { return alloc->analyzer.GetLvalueType(alloc); }
         llvm::Value* ComputeValue(CodegenContext& con) override final {
             auto size_t_ty = llvm::IntegerType::get(con, alloc->analyzer.GetDataLayout().getPointerSizeInBits());
-            auto allocate_exception = con.module->getFunction("__cxa_allocate_exception");
+            auto allocate_exception = con.module->getFunction(except_alloc);
             if (!allocate_exception) {
                 llvm::Type* args[] = { size_t_ty };
                 auto fty = llvm::FunctionType::get(llvm::Type::getInt8PtrTy(con), args, false);
-                allocate_exception = llvm::Function::Create(fty, llvm::GlobalValue::LinkageTypes::ExternalLinkage, "__cxa_allocate_exception", con.module);
+                allocate_exception = llvm::Function::Create(fty, llvm::GlobalValue::LinkageTypes::ExternalLinkage, except_alloc, con.module);
             }
-            return con->CreatePointerCast(con->CreateCall(allocate_exception, { llvm::ConstantInt::get(size_t_ty, alloc->size(), false) }), GetType()->GetLLVMType(con));
+            except_memory = con->CreateCall(allocate_exception, { llvm::ConstantInt::get(size_t_ty, alloc->size(), false) });
+            con.Destructors.push_back(this);
+            return con->CreatePointerCast(except_memory, GetType()->GetLLVMType(con));
+        }
+        void DestroyExpressionLocals(CodegenContext& con) override final {
+            auto free_exception = con.module->getFunction(free_except);
+            if (!free_exception) {
+                llvm::Type* args[] = { con.GetInt8PtrTy() };
+                auto fty = llvm::FunctionType::get(llvm::Type::getVoidTy(con), args, false);
+                free_exception = llvm::Function::Create(fty, llvm::GlobalValue::LinkageTypes::ExternalLinkage, free_except, con.module);
+            }
+            con->CreateCall(free_exception, { except_memory });
         }
     };
     ty = expr->GetType()->Decay();
-    auto except_memory = Wide::Memory::MakeUnique<ExceptionAllocateMemory>(ty);
-    exception = ty->BuildInplaceConstruction(std::move(except_memory), Expressions(std::move(expr)), c);
+    except_memory = Wide::Memory::MakeUnique<ExceptionAllocateMemory>(ty);
+    auto mem_ref = Wide::Memory::MakeUnique<ExpressionReference>(except_memory.get());
+    exception = BuildChain(ty->BuildInplaceConstruction(Wide::Memory::MakeUnique<ExpressionReference>(except_memory.get()), Expressions(std::move(expr)), c), std::move(mem_ref));
 }
 void Function::ThrowStatement::GenerateCode(CodegenContext& con) {
     auto value = exception->GetValue(con);
     // Throw this shit.
-    auto cxa_throw = con.module->getFunction("__cxa_throw");
+    auto cxa_throw = con.module->getFunction(throw_except);
     if (!cxa_throw) {
-        llvm::Type* args[] = { con.GetInt8PtrTy(), con.GetInt8PtrTy(), llvm::FunctionType::get(llvm::Type::getVoidTy(con), { con.GetInt8PtrTy() }, false)->getPointerTo() };
+        llvm::Type* args[] = { con.GetInt8PtrTy(), con.GetInt8PtrTy(), con.GetInt8PtrTy() };
         auto fty = llvm::FunctionType::get(llvm::Type::getVoidTy(con), args, false);
-        cxa_throw = llvm::Function::Create(fty, llvm::GlobalValue::LinkageTypes::ExternalLinkage, "__cxa_throw", con);
+        cxa_throw = llvm::Function::Create(fty, llvm::GlobalValue::LinkageTypes::ExternalLinkage, throw_except, con);
     }
-    llvm::Value* args[] = { con->CreatePointerCast(value, con.GetInt8PtrTy()), ty->GetRTTI(con), ty->GetDestructorFunction(con) };
-    con->CreateCall(cxa_throw, args);
+    // If we got here then creating the exception value didn't throw. Don't destroy it now.
+    con.Destructors.erase(std::remove(con.Destructors.begin(), con.Destructors.end(), except_memory.get()), con.Destructors.end());
+    llvm::Value* args[] = { con->CreatePointerCast(value, con.GetInt8PtrTy()), ty->GetRTTI(con), con->CreatePointerCast(ty->GetDestructorFunction(con), con.GetInt8PtrTy()) };
+    // Do we have an existing handler to go to? If we do, then first land, then branch directly to it.
+    // Else, kill everything and GTFO this function and let the EH routines worry about it.
+    if (auto handler = con.EHHandler) {
+        con->CreateInvoke(cxa_throw, con.GetUnreachableBlock(), con.CreateLandingpadForEH(), args);
+    } else {
+        con.DestroyAll(true);
+        con->CreateCall(cxa_throw, args);
+    }
 }
 std::unique_ptr<Statement> Function::AnalyzeStatement(const AST::Statement* s) {
     if (auto ret = dynamic_cast<const AST::Return*>(s)) {
@@ -496,6 +522,28 @@ std::unique_ptr<Statement> Function::AnalyzeStatement(const AST::Statement* s) {
     if (auto thro = dynamic_cast<const Wide::AST::Throw*>(s)) {
         auto expression = analyzer.AnalyzeExpression(this, thro->expr);
         return Wide::Memory::MakeUnique<ThrowStatement>(std::move(expression), Context(this, thro->location));
+    }
+
+    // Fuck yeah! Or me, at least.
+    if (auto try_ = dynamic_cast<const Wide::AST::TryCatch*>(s)) {
+        std::vector<std::unique_ptr<Statement>> try_stmts;
+        {
+            LocalScope tryscope(this);
+            for (auto stmt : try_->statements->stmts)
+                try_stmts.push_back(AnalyzeStatement(stmt));
+        }
+        std::vector<TryStatement::Catch> catches;
+        for (auto catch_ : try_->catches) {
+            LocalScope catchscope(this);
+            if (catch_.all) {
+                std::vector<std::unique_ptr<Statement>> stmts;
+                for (auto stmt : catch_.statements)
+                    stmts.push_back(AnalyzeStatement(stmt));
+                catches.push_back(TryStatement::Catch(nullptr, std::move(stmts)));
+                continue;
+            }
+        }
+        return Wide::Memory::MakeUnique<TryStatement>(std::move(try_stmts), std::move(catches));
     }
     assert(false && "Unsupported statement.");
 }
@@ -669,27 +717,55 @@ void Function::ComputeBody() {
                 auto num = x.num;
                 auto result = analyzer.GetLvalueType(x.t);
                 // Gotta get the correct this pointer.
+                struct MemberConstructionAccess : Expression {
+                    Type* member;
+                    Lexer::Range where;
+                    std::unique_ptr<Expression> Construction;
+                    Expression* memexpr;
+                    llvm::Value* ComputeValue(CodegenContext& con) override final {
+                        auto val = Construction->GetValue(con);
+                        con.Destructors.push_back(this);
+                        // Destroy the members on destruction.
+                        con.ExceptionOnlyDestructors.insert(this);
+                        // Make sure the destructor is referenced here.
+                        member->BuildDestructorCall(Wide::Memory::MakeUnique<ExpressionReference>(memexpr), { member, where });
+                        return val;
+                    }
+                    Type* GetType() override final {
+                        return Construction->GetType();
+                    }
+                    void DestroyExpressionLocals(CodegenContext& con) override final {
+                        member->BuildDestructorCall(Wide::Memory::MakeUnique<ExpressionReference>(memexpr), { member, where })->GetValue(con);
+                    }
+                    MemberConstructionAccess(Type* mem, Lexer::Range where, std::unique_ptr<Expression> expr, Expression* memexpr)
+                        : member(mem), where(where), Construction(std::move(expr)), memexpr(memexpr) {}
+                };
                 auto member = CreatePrimUnOp(LookupLocal("this"), result, [num, result](llvm::Value* val, CodegenContext& con) -> llvm::Value* {
                     auto self = con->CreatePointerCast(val, con.GetInt8PtrTy());
                     self = con->CreateConstGEP1_32(self, num.offset);
                     return con->CreatePointerCast(self, result->GetLLVMType(con));
                 });
+                auto make_member_initializer = [&, this](std::unique_ptr<Expression> init, Lexer::Range where) {
+                    auto preserve_member = member.get();
+                    auto construction = x.t->BuildInplaceConstruction(std::move(member), init ? Expressions(std::move(init)) : Expressions(), { this, where });
+                    return Wide::Memory::MakeUnique<MemberConstructionAccess>(x.t, where, std::move(construction), preserve_member);
+                };
                 if (auto init = has_initializer(x.name)) {
                     // AccessMember will automatically give us back a T*, but we need the T** here
                     // if the type of this member is a reference.
                     
                     if (init->initializer)
-                        root_scope->active.push_back(x.t->BuildInplaceConstruction(std::move(member), Expressions(analyzer.AnalyzeExpression(this, init->initializer)), { this, init->location }));
+                        root_scope->active.push_back(make_member_initializer(analyzer.AnalyzeExpression(this, init->initializer), init->location));
                     else
-                        root_scope->active.push_back(x.t->BuildInplaceConstruction(std::move(member), Expressions(), { this, init->location }));
+                        root_scope->active.push_back(make_member_initializer(nullptr, init->location));
                     continue;
                 }
                 // Don't care about if x.t is ref because refs can't be default-constructed anyway.
                 if (x.InClassInitializer) {
-                    root_scope->active.push_back(x.t->BuildInplaceConstruction(std::move(member), Expressions(x.InClassInitializer(LookupLocal("this"))), { this, x.location }));
+                    root_scope->active.push_back(make_member_initializer(x.InClassInitializer(LookupLocal("this")), x.location));
                     continue;
                 }
-                root_scope->active.push_back(x.t->BuildInplaceConstruction(std::move(member), Expressions(), { this, fun->where }));
+                root_scope->active.push_back(make_member_initializer(nullptr, fun->where));
             }
             for (auto&& x : con->initializers) {
                 if (std::find_if(members.begin(), members.end(), [&](decltype(*members.begin())& ref) { return ref.name == x->name.front().name; }) == members.end())
@@ -778,7 +854,7 @@ void Function::EmitCode(llvm::Module* module) {
 
     if (!is_terminated(irbuilder.GetInsertBlock())) {
         if (ReturnType == analyzer.GetVoidType()) {
-            c.DestroyAll();
+            c.DestroyAll(false);
             irbuilder.CreateRetVoid();
         }
         else
@@ -1015,3 +1091,38 @@ std::string Function::explain() {
     return context_name + args + " at " + fun->where;
 }
 Function::~Function() {}
+void Function::TryStatement::GenerateCode(CodegenContext& con) {
+    auto source_block = con->GetInsertBlock();
+
+    auto try_con = con;
+    auto catch_block = llvm::BasicBlock::Create(con, "catch_block", con->GetInsertBlock()->getParent());
+    auto dest_block = llvm::BasicBlock::Create(con, "dest_block", con->GetInsertBlock()->getParent());
+
+    con->SetInsertPoint(catch_block);
+    auto phi = con->CreatePHI(con.GetLpadType(), 0);
+    std::vector<llvm::Constant*> rttis;
+    for (auto&& catch_ : catches) {
+        if (catch_.t)
+            rttis.push_back(catch_.t->GetRTTI(con));
+    }
+    try_con.EHHandler = CodegenContext::EHScope{ &con, catch_block, phi, rttis};
+    try_con->SetInsertPoint(source_block);
+
+    for (auto&& stmt : statements)
+        stmt->GenerateCode(try_con);
+    if (try_con->GetInsertBlock()->empty() || !try_con->GetInsertBlock()->back().isTerminator())
+        try_con->CreateBr(dest_block);
+
+    // Generate the code for all the catch statements.
+    // Catch-all only supported right now.
+    assert(catches.size() == 1);
+    assert(!catches.back().t);
+
+    auto catch_con = con;
+    catch_con->SetInsertPoint(catch_block);
+    for (auto&& stmt : catches.back().stmts)
+        stmt->GenerateCode(catch_con);
+    if (catch_con->GetInsertBlock()->empty() || !catch_con->GetInsertBlock()->back().isTerminator())
+        catch_con->CreateBr(dest_block);
+    con->SetInsertPoint(dest_block);
+}

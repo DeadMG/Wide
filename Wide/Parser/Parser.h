@@ -761,6 +761,55 @@ namespace Wide {
                     auto semi = Check(Error::ThrowNoSemicolon, Lexer::TokenType::Semicolon);
                     return sema.CreateThrow(t.GetLocation() + semi.GetLocation(), expr);
                 }
+                if (t.GetType() == Lexer::TokenType::Try) {
+                    auto open = Check(Error::TryNoOpenCurly, Lexer::TokenType::OpenCurlyBracket);
+                    auto grp = sema.CreateStatementGroup();
+                    auto next = lex();
+                    while (next.GetType() != Lexer::TokenType::CloseCurlyBracket) {
+                        lex(next);
+                        sema.AddStatementToGroup(grp, ParseStatement());
+                        next = lex();
+                    }
+                    auto compound = sema.CreateCompoundStatement(std::move(grp), open.GetLocation() + t.GetLocation());
+                    // Catches- there must be at least one.
+                    auto catches = sema.CreateCatchGroup();
+                    auto catch_ = Check(Error::TryNoCatch, Lexer::TokenType::Catch);
+                    while (catch_.GetType() == Lexer::TokenType::Catch) {
+                        Check(Error::CatchNoOpenBracket, Lexer::TokenType::OpenBracket);
+                        next = lex();
+                        auto group = sema.CreateStatementGroup();
+                        if (next.GetType() == Lexer::TokenType::Ellipsis) {
+                            Check(Error::CatchAllNoCloseBracket, Lexer::TokenType::CloseBracket);
+                            Check(Error::CatchAllNoOpenCurly, Lexer::TokenType::OpenCurlyBracket);
+                            next = lex();
+                            while (next.GetType() != Lexer::TokenType::CloseCurlyBracket) {
+                                lex(next);
+                                sema.AddStatementToGroup(group, ParseStatement());
+                                next = lex();
+                            }
+                            sema.AddCatchToGroup(sema.CreateCatch(group, catch_.GetLocation() + next.GetLocation()), catches);
+                            catch_ = lex();
+                            break;
+                        }
+                        if (next.GetType() != Lexer::TokenType::Identifier)
+                            BadToken(next, Error::CatchNoIdentifier);
+                        auto name = next.GetValue();
+                        Check(Error::CatchNoVarCreate, Lexer::TokenType::VarCreate);
+                        auto type = ParseExpression();
+                        Check(Error::CatchNoCloseBracket, Lexer::TokenType::CloseBracket);
+                        Check(Error::CatchNoOpenCurly, Lexer::TokenType::OpenCurlyBracket);
+                        next = lex();
+                        while (next.GetType() != Lexer::TokenType::CloseCurlyBracket) {
+                            lex(next);
+                            sema.AddStatementToGroup(group, ParseStatement());
+                            next = lex();
+                        }
+                        sema.AddCatchToGroup(sema.CreateCatch(name, type, group, catch_.GetLocation() + next.GetLocation()), catches);
+                        catch_ = lex();
+                    }
+                    lex(catch_);
+                    return sema.CreateTryCatch(compound, catches, t.GetLocation() + next.GetLocation());
+                }
                 lex(t);
                 // Else, expression statement.
                 auto expr = ParseExpression();

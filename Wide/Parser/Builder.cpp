@@ -236,6 +236,34 @@ Lambda* Builder::CreateLambda(std::vector<FunctionArgument> args, std::vector<St
 Negate* Builder::CreateNegate(Expression* e, Lexer::Range loc) 
 { return arena.Allocate<Negate>(e, loc); }
 
+std::vector<Catch> Builder::CreateCatchGroup() {
+    return std::vector<Catch>();
+}
+
+void Builder::AddCatchToGroup(Catch c, std::vector<Catch>& catches) {
+    catches.push_back(c);
+}
+
+Catch Builder::CreateCatch(std::vector<Statement*> statements, Lexer::Range) {
+    Catch c;
+    c.statements = statements;
+    c.all = true;
+    return c;
+}
+
+Catch Builder::CreateCatch(std::string name, Expression* type, std::vector<Statement*> statements, Lexer::Range) {
+    Catch c;
+    c.name = name;
+    c.all = false;
+    c.statements = statements;
+    c.type = type;
+    return c;
+}
+TryCatch* Builder::CreateTryCatch(CompoundStatement* stmts, std::vector<Catch> catches, Lexer::Range where) {
+    return arena.Allocate<TryCatch>(stmts, std::move(catches), where);
+}
+
+
 Dereference* Builder::CreateDereference(Expression* e, Lexer::Range loc) 
 { return arena.Allocate<Dereference>(e, loc); }
 

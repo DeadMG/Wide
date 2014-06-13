@@ -5,6 +5,7 @@
 #include <Wide/Semantic/Expression.h>
 #include <Wide/Util/Memory/MakeUnique.h>
 #include <Wide/Semantic/Analyzer.h>
+#include <Wide/Semantic/Function.h>
 
 using namespace Wide;
 using namespace Semantic;
@@ -215,14 +216,65 @@ llvm::Value* Expression::GetValue(CodegenContext& con) {
 }
 
 void CodegenContext::DestroyDifference(CodegenContext& other) {
+    other.destructing = true;
     auto vec = GetAddedDestructors(other);
     for (auto rit = vec.rbegin(); rit != vec.rend(); ++rit)
-        (*rit)->DestroyLocals(*this);
+        (*rit)->DestroyLocals(other);
+    other.destructing = false;
 }
-void CodegenContext::DestroyAll() {
-    for (auto rit = Destructors.rbegin(); rit != Destructors.rend(); ++rit)
-        (*rit)->DestroyLocals(*this);
+void CodegenContext::DestroyAll(bool EH) {
+    destructing = true;
+    for (auto rit = Destructors.rbegin(); rit != Destructors.rend(); ++rit) {
+        if (EH || ExceptionOnlyDestructors.find(*rit) == ExceptionOnlyDestructors.end())
+            (*rit)->DestroyLocals(*this);
+    }
+    destructing = false;
 }
 llvm::PointerType* CodegenContext::GetInt8PtrTy() {
     return llvm::Type::getInt8PtrTy(*this);
 }
+llvm::Function* CodegenContext::GetEHPersonality() {
+    auto val = module->getFunction("__gxx_personality_v0");
+    if (!val) {
+        // i32(...)*
+        auto fty = llvm::FunctionType::get(llvm::Type::getInt8Ty(*this), true);
+        val = llvm::Function::Create(fty, llvm::GlobalValue::LinkageTypes::ExternalLinkage, "__gxx_personality_v0", module);
+    }
+    return val;
+}
+llvm::BasicBlock* CodegenContext::CreateLandingpadForEH() {
+    assert(EHHandler);
+    auto lpad = llvm::BasicBlock::Create(*this, "landingpad", insert_builder->GetInsertBlock()->getParent());
+    auto sourceblock = insert_builder->GetInsertBlock();
+    insert_builder->SetInsertPoint(lpad);
+    llvm::Type* landingpad_ret_values[] = { GetInt8PtrTy(), llvm::IntegerType::getInt32Ty(*this) };
+    auto pad = insert_builder->CreateLandingPad(llvm::StructType::get(*this, landingpad_ret_values, false), GetEHPersonality(), 1);
+    for (auto rtti : EHHandler->types)
+        pad->addClause(rtti);
+    pad->addClause(llvm::Constant::getNullValue(GetInt8PtrTy()));
+    // Nuke the local difference.
+    // Then transfer control to the catch and add a phi for our incoming.
+    EHHandler->context->DestroyDifference(*this);
+    assert(!lpad->back().isTerminator());
+    insert_builder->CreateBr(EHHandler->target);
+    // Some destructors like short-circuit booleans do require more than one BB
+    // so don't use the lpad block directly.
+    EHHandler->phi->addIncoming(pad, insert_builder->GetInsertBlock());
+    insert_builder->SetInsertPoint(sourceblock);
+    return lpad;
+}
+
+llvm::BasicBlock* CodegenContext::GetUnreachableBlock() {
+    auto source_block = insert_builder->GetInsertBlock();
+    llvm::BasicBlock* bb = llvm::BasicBlock::Create(*this, "unreachable", source_block->getParent());
+    insert_builder->SetInsertPoint(bb);
+    insert_builder->CreateUnreachable();
+    insert_builder->SetInsertPoint(source_block);
+    return bb;
+}
+
+llvm::Type* CodegenContext::GetLpadType() {
+    llvm::Type* landingpad_ret_values[] = { GetInt8PtrTy(), llvm::IntegerType::getInt32Ty(*this) };
+    return llvm::StructType::get(*this, landingpad_ret_values, false);
+}
+

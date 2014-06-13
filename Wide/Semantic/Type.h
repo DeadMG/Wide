@@ -92,9 +92,17 @@ namespace Wide {
 
         struct Expression;
         struct CodegenContext {
+            struct EHScope {
+                CodegenContext* context;
+                llvm::BasicBlock* target;
+                llvm::PHINode* phi;
+                std::vector<llvm::Constant*> types;
+            };
+
             operator llvm::LLVMContext&() { return module->getContext(); }
             llvm::IRBuilder<>* operator->() { return insert_builder; }
             operator llvm::Module*() { return module; }
+
             std::vector<Expression*> GetAddedDestructors(CodegenContext& other) {
                 return std::vector<Expression*>(other.Destructors.begin() + Destructors.size(), other.Destructors.end());
             }
@@ -104,13 +112,23 @@ namespace Wide {
                 DestroyDifference(nested);
             }
             void DestroyDifference(CodegenContext& other);
-            void DestroyAll();
-            llvm::PointerType* GetInt8PtrTy();
+            void DestroyAll(bool EH);
+            void DestroyTillLastTry();
 
+            llvm::Function* GetEHPersonality();
+            llvm::BasicBlock* GetUnreachableBlock();
+            llvm::Type* GetLpadType();
+
+            llvm::BasicBlock* CreateLandingpadForEH();
+
+            llvm::PointerType* GetInt8PtrTy();
+            bool destructing = false;
             llvm::Module* module;
             llvm::IRBuilder<>* insert_builder;
             llvm::IRBuilder<>* alloca_builder;
+            std::unordered_set<Expression*> ExceptionOnlyDestructors;
             std::vector<Expression*> Destructors;
+            Wide::Util::optional<EHScope> EHHandler;
         };
 
         struct Statement : public Node {

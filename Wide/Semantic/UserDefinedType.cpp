@@ -79,7 +79,7 @@ UserDefinedType::VTableData::VTableData(UserDefinedType* self) {
             if (overset.first == DestructorName) {
                 for (auto base : all_bases) {
                     for (unsigned i = 0; i < base->GetPrimaryVTable().layout.size(); ++i) {
-                        if (auto mem = boost::get<VTableLayout::SpecialMember*>(base->GetPrimaryVTable().layout[i].function)) {
+                        if (auto mem = boost::get<VTableLayout::SpecialMember>(&base->GetPrimaryVTable().layout[i].function)) {
                             if (*mem == VTableLayout::SpecialMember::Destructor) {
                                 if (base == self->GetPrimaryBase())
                                     primary_dynamic_functions[func] = i;
@@ -279,6 +279,7 @@ Wide::Util::optional<clang::QualType> UserDefinedType::GetClangType(ClangTU& TU)
     stream << "__" << (AggregateType*)this;
 
     auto recdecl = clang::CXXRecordDecl::Create(TU.GetASTContext(), clang::TagDecl::TagKind::TTK_Struct, TU.GetDeclContext(), clang::SourceLocation(), clang::SourceLocation(), TU.GetIdentifierInfo(stream.str()));
+    clangtypes[&TU] = TU.GetASTContext().getTypeDeclType(recdecl);
     recdecl->startDefinition();
     std::vector<clang::CXXBaseSpecifier*> basespecs;
     for (auto base : GetBases()) {
@@ -413,7 +414,7 @@ Wide::Util::optional<clang::QualType> UserDefinedType::GetClangType(ClangTU& TU)
                 );
                 des->setAccess(access);
                 recdecl->addDecl(des);
-                auto widedes = analyzer.GetWideFunction(func, analyzer.GetLvalueType(this), {}, overset.first);
+                auto widedes = analyzer.GetWideFunction(func, analyzer.GetLvalueType(this), { analyzer.GetLvalueType(this) }, overset.first);
                 widedes->ComputeBody();
                 widedes->AddExportName(TU.MangleName(des));
             } else {
@@ -459,7 +460,6 @@ Wide::Util::optional<clang::QualType> UserDefinedType::GetClangType(ClangTU& TU)
         }
     }
     recdecl->completeDefinition();
-    clangtypes[&TU] = TU.GetASTContext().getTypeDeclType(recdecl);
     TU.GetDeclContext()->addDecl(recdecl);
     analyzer.AddClangType(clangtypes[&TU], this);
     return clangtypes[&TU];

@@ -81,6 +81,15 @@ namespace Wide {
             DynamicCastNoComma,
             DynamicCastNoCloseBracket,
             ThrowNoSemicolon,
+            TryNoOpenCurly,
+            TryNoCatch,
+            CatchNoOpenBracket,
+            CatchNoCloseBracket,
+            CatchAllNoCloseBracket,
+            CatchAllNoOpenCurly,
+            CatchNoIdentifier,
+            CatchNoVarCreate,
+            CatchNoOpenCurly,
         };         
 
         enum class Warning : int {
@@ -173,13 +182,22 @@ namespace Wide {
                 std::make_pair(Error::TypeExpectedBracketAfterIdentifier, "Expected ( after dynamic identifier to introduce dynamic member function."),
                 std::make_pair(Error::DecltypeNoOpenBracket, "Expected ( after decltype to introduce a decltype expression."),
                 std::make_pair(Error::DecltypeNoCloseBracket, "Expected ) after decltype(expr to close a decltype expression."),
-                std::make_pair(Error::FunctionArgumentOnlyFirstThis, "Only the first argument in a function definition can be this"),
+                std::make_pair(Error::FunctionArgumentOnlyFirstThis, "Only the first argument in a function definition can be this."),
                 std::make_pair(Error::TypeidNoOpenBracket, "Expected ( after typeid to introduce a typeid expression."),
                 std::make_pair(Error::TypeidNoCloseBracket, "Expected ) after typeid(expr to close a typeid expression."),
                 std::make_pair(Error::DynamicCastNoOpenBracket, "Expected ( after dynamic_cast to introduce a dynamic_cast expression."),
                 std::make_pair(Error::DynamicCastNoCloseBracket, "Expected ) after dynamic_cast(expr, expr to close a dynamic_cast expression."),
                 std::make_pair(Error::DynamicCastNoComma, "Expected , after dynamic_cast(expr to continue a dynamic_cast expression."),
                 std::make_pair(Error::ThrowNoSemicolon, "Expected ; after throw expr to indicate a throw expression."),
+                std::make_pair(Error::TryNoOpenCurly, "Expected a { after try to begin a try statement."),
+                std::make_pair(Error::TryNoCatch, "Expected catch after try { statements } to introduce a catch block."),
+                std::make_pair(Error::CatchNoOpenBracket, "Expected ( after catch to denote catch block parameter."),
+                std::make_pair(Error::CatchNoCloseBracket, "Expected ) after catch(ident := expr to denote end of catch parameter block."),
+                std::make_pair(Error::CatchAllNoCloseBracket, "Expected ) after catch(... to denote end of catch-all parameter block."),
+                std::make_pair(Error::CatchAllNoOpenCurly, "Expected { after catch(...) to denote a catch-all block."),
+                std::make_pair(Error::CatchNoIdentifier, "Expected ... or identifier after catch( to denote a catch parameter."),
+                std::make_pair(Error::CatchNoVarCreate, "Expected := after catch(identifier."),
+                std::make_pair(Error::CatchNoOpenCurly, "Expected { after catch(identifier := expression) to open a catch block."),
             };
             return std::unordered_map<Error, std::string>(std::begin(strings), std::end(strings));
         }());
