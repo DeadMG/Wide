@@ -78,7 +78,7 @@ int main(int argc, char** argv) {
         total_failed += result.fails;
     }
     std::cout << "Total succeeded: " << total_succeeded << " failed: " << total_failed;
-    //Jit(clangopts, "JITSuccess/OverloadResolution/AcceptQualifiedThis.wide");
+    //Jit(clangopts, "JITSuccess/Exceptions/ThrowDerivedCatchBase.wide");
     //Compile(clangopts, "CompileFail/OverloadResolutionFailure/CopyWithMoveOnlyElement.wide");
     if (input.count("break"))
         Wide::Util::DebugBreak();

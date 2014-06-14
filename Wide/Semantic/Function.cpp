@@ -14,6 +14,7 @@
 #include <Wide/Semantic/LambdaType.h>
 #include <Wide/Semantic/SemanticError.h>
 #include <Wide/Semantic/Expression.h>
+#include <Wide/Semantic/PointerType.h>
 #include <Wide/Semantic/ClangType.h>
 #include <unordered_set>
 #include <sstream>
@@ -23,6 +24,7 @@
 #include <llvm/IR/Function.h>
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/Analysis/Verifier.h>
+#include <llvm/IR/Intrinsics.h>
 #include <llvm/Support/raw_os_ostream.h>
 #include <clang/AST/Type.h>
 #include <clang/AST/ASTContext.h>
@@ -410,12 +412,7 @@ void Function::ThrowStatement::GenerateCode(CodegenContext& con) {
     llvm::Value* args[] = { con->CreatePointerCast(value, con.GetInt8PtrTy()), ty->GetRTTI(con), con->CreatePointerCast(ty->GetDestructorFunction(con), con.GetInt8PtrTy()) };
     // Do we have an existing handler to go to? If we do, then first land, then branch directly to it.
     // Else, kill everything and GTFO this function and let the EH routines worry about it.
-    if (auto handler = con.EHHandler) {
-        con->CreateInvoke(cxa_throw, con.GetUnreachableBlock(), con.CreateLandingpadForEH(), args);
-    } else {
-        con.DestroyAll(true);
-        con->CreateCall(cxa_throw, args);
-    }
+    con->CreateInvoke(cxa_throw, con.GetUnreachableBlock(), con.CreateLandingpadForEH(), args);
 }
 std::unique_ptr<Statement> Function::AnalyzeStatement(const AST::Statement* s) {
     if (auto ret = dynamic_cast<const AST::Return*>(s)) {
@@ -539,11 +536,26 @@ std::unique_ptr<Statement> Function::AnalyzeStatement(const AST::Statement* s) {
                 std::vector<std::unique_ptr<Statement>> stmts;
                 for (auto stmt : catch_.statements)
                     stmts.push_back(AnalyzeStatement(stmt));
-                catches.push_back(TryStatement::Catch(nullptr, std::move(stmts)));
-                continue;
+                catches.push_back(TryStatement::Catch(nullptr, std::move(stmts), nullptr));                
+                break;
             }
+            auto type = analyzer.AnalyzeExpression(this, catch_.type);
+            auto con = dynamic_cast<ConstructorType*>(type->GetType());
+            if (!con) throw std::runtime_error("Catch parameter type was not a type.");
+            auto catch_type = con->GetConstructedType();
+            assert(IsLvalueType(catch_type) || dynamic_cast<PointerType*>(catch_type));
+            auto target_type = IsLvalueType(catch_type)
+                ? catch_type->Decay()
+                : dynamic_cast<PointerType*>(catch_type)->GetPointee();
+            auto catch_parameter = Wide::Memory::MakeUnique<TryStatement::CatchParameter>();
+            catch_parameter->t = catch_type;
+            catchscope->named_variables.insert(std::make_pair(catch_.name, std::make_pair(Wide::Memory::MakeUnique<ExpressionReference>(catch_parameter.get()), catch_.type->location)));
+            std::vector<std::unique_ptr<Statement>> stmts;
+            for (auto stmt : catch_.statements)
+                stmts.push_back(AnalyzeStatement(stmt));
+            catches.push_back(TryStatement::Catch(catch_type, std::move(stmts), std::move(catch_parameter)));
         }
-        return Wide::Memory::MakeUnique<TryStatement>(std::move(try_stmts), std::move(catches));
+        return Wide::Memory::MakeUnique<TryStatement>(std::move(try_stmts), std::move(catches), analyzer);
     }
     assert(false && "Unsupported statement.");
 }
@@ -1114,15 +1126,57 @@ void Function::TryStatement::GenerateCode(CodegenContext& con) {
         try_con->CreateBr(dest_block);
 
     // Generate the code for all the catch statements.
-    // Catch-all only supported right now.
-    assert(catches.size() == 1);
-    assert(!catches.back().t);
-
+    auto for_ = llvm::Intrinsic::getDeclaration(con, llvm::Intrinsic::eh_typeid_for);
     auto catch_con = con;
     catch_con->SetInsertPoint(catch_block);
-    for (auto&& stmt : catches.back().stmts)
-        stmt->GenerateCode(catch_con);
-    if (catch_con->GetInsertBlock()->empty() || !catch_con->GetInsertBlock()->back().isTerminator())
-        catch_con->CreateBr(dest_block);
+    auto selector = catch_con->CreateExtractValue(phi, { 1 });
+    auto except_object = catch_con->CreateExtractValue(phi, { 0 });
+
+    struct cxa_end_catch_caller : Expression {
+        Type* int8ptrty;
+        Type* GetType() override final { return int8ptrty; }
+        llvm::Value* ComputeValue(CodegenContext& con) override final { return llvm::Constant::getNullValue(con.GetInt8PtrTy()); }
+        void DestroyExpressionLocals(CodegenContext& con) override final {
+            con->CreateCall(con.GetCXAEndCatch());
+        }
+    };
+    cxa_end_catch_caller catch_ender;
+    catch_ender.int8ptrty = a.GetPointerType(a.GetIntegralType(8, true));
+    catch_ender.GetValue(catch_con);
+    for (auto&& catch_ : catches) {
+        CodegenContext catch_block_con(catch_con);
+        if (!catch_.t) {
+            for (auto&& stmt : catch_.stmts)
+                stmt->GenerateCode(catch_block_con);
+            if (catch_block_con->GetInsertBlock()->empty() || !catch_block_con->GetInsertBlock()->back().isTerminator())
+                catch_block_con->CreateBr(dest_block);
+            break;
+        }
+        auto catch_target = llvm::BasicBlock::Create(con, "catch_target", catch_block_con->GetInsertBlock()->getParent());
+        auto catch_continue = llvm::BasicBlock::Create(con, "catch_continue", catch_block_con->GetInsertBlock()->getParent());
+        auto target_selector = catch_block_con->CreateCall(for_, { catch_.t->GetRTTI(con) });
+        auto result = catch_block_con->CreateICmpEQ(selector, target_selector);
+        catch_block_con->CreateCondBr(result, catch_target, catch_continue);
+        catch_block_con->SetInsertPoint(catch_target);
+        // Call __cxa_begin_catch and get our result. We don't need __cxa_get_exception_ptr as Wide cannot catch by value.
+        auto except = catch_block_con->CreateCall(catch_block_con.GetCXABeginCatch(), { except_object });
+        catch_.catch_param->param = except;
+        // Ensure __cxa_end_catch is called.
+        catch_block_con.Destructors.push_back(&catch_ender);
+
+        for (auto&& stmt : catch_.stmts)
+            stmt->GenerateCode(catch_block_con);
+        if (catch_block_con->GetInsertBlock()->empty() || !catch_con->GetInsertBlock()->back().isTerminator()) {
+            con.DestroyDifference(catch_block_con);
+            catch_block_con->CreateBr(dest_block);
+        }
+        catch_con->SetInsertPoint(catch_continue);
+    }
+    // If we had no catch all, then we need to clean up and rethrow to the next try.
+    if (catches.back().t) {
+        auto except = catch_con->CreateCall(catch_con.GetCXABeginCatch(), { except_object });
+        catch_con.Destructors.push_back(&catch_ender);
+        catch_con->CreateInvoke(catch_con.GetCXARethrow(), catch_con.GetUnreachableBlock(), catch_con.CreateLandingpadForEH());
+    }
     con->SetInsertPoint(dest_block);
 }

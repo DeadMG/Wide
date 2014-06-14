@@ -139,3 +139,6 @@ std::string LvalueType::explain() {
 std::string RvalueType::explain() {
     return Decay()->explain() + ".rvalue";
 }
+llvm::Constant* Reference::GetRTTI(llvm::Module* module) {
+    return Decay()->GetRTTI(module);
+}

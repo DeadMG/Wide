@@ -118,6 +118,9 @@ namespace Wide {
             llvm::Function* GetEHPersonality();
             llvm::BasicBlock* GetUnreachableBlock();
             llvm::Type* GetLpadType();
+            llvm::Function* GetCXABeginCatch();
+            llvm::Function* GetCXAEndCatch();
+            llvm::Function* GetCXARethrow();
 
             llvm::BasicBlock* CreateLandingpadForEH();
 

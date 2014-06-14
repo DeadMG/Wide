@@ -237,18 +237,24 @@ llvm::Function* CodegenContext::GetEHPersonality() {
     auto val = module->getFunction("__gxx_personality_v0");
     if (!val) {
         // i32(...)*
-        auto fty = llvm::FunctionType::get(llvm::Type::getInt8Ty(*this), true);
+        auto fty = llvm::FunctionType::get(llvm::Type::getInt32Ty(*this), true);
         val = llvm::Function::Create(fty, llvm::GlobalValue::LinkageTypes::ExternalLinkage, "__gxx_personality_v0", module);
     }
     return val;
 }
 llvm::BasicBlock* CodegenContext::CreateLandingpadForEH() {
-    assert(EHHandler);
     auto lpad = llvm::BasicBlock::Create(*this, "landingpad", insert_builder->GetInsertBlock()->getParent());
     auto sourceblock = insert_builder->GetInsertBlock();
     insert_builder->SetInsertPoint(lpad);
     llvm::Type* landingpad_ret_values[] = { GetInt8PtrTy(), llvm::IntegerType::getInt32Ty(*this) };
     auto pad = insert_builder->CreateLandingPad(llvm::StructType::get(*this, landingpad_ret_values, false), GetEHPersonality(), 1);
+    if (!EHHandler) {
+        pad->setCleanup(true);
+        DestroyAll(true);
+        insert_builder->CreateResume(pad);
+        insert_builder->SetInsertPoint(sourceblock);
+        return lpad;
+    }
     for (auto rtti : EHHandler->types)
         pad->addClause(rtti);
     pad->addClause(llvm::Constant::getNullValue(GetInt8PtrTy()));
@@ -278,3 +284,30 @@ llvm::Type* CodegenContext::GetLpadType() {
     return llvm::StructType::get(*this, landingpad_ret_values, false);
 }
 
+llvm::Function* CodegenContext::GetCXABeginCatch() {
+    auto val = module->getFunction("__cxa_begin_catch");
+    if (!val) {
+        // void *__cxa_begin_catch ( void *exceptionObject );
+        auto fty = llvm::FunctionType::get(GetInt8PtrTy(), { GetInt8PtrTy() }, true);
+        val = llvm::Function::Create(fty, llvm::GlobalValue::LinkageTypes::ExternalLinkage, "__cxa_begin_catch", module);
+    }
+    return val;
+}
+llvm::Function* CodegenContext::GetCXAEndCatch() {
+    auto val = module->getFunction("__cxa_end_catch");
+    if (!val) {
+        // void __cxa_end_catch ();
+        auto fty = llvm::FunctionType::get(llvm::Type::getVoidTy(*this), {}, false);
+        val = llvm::Function::Create(fty, llvm::GlobalValue::LinkageTypes::ExternalLinkage, "__cxa_end_catch", module);
+    }
+    return val;
+}
+llvm::Function* CodegenContext::GetCXARethrow() {
+    auto val = module->getFunction("__cxa_rethrow");
+    if (!val) {
+        // void __cxa_rethrow ();
+        auto fty = llvm::FunctionType::get(llvm::Type::getVoidTy(*this), {}, false);
+        val = llvm::Function::Create(fty, llvm::GlobalValue::LinkageTypes::ExternalLinkage, "__cxa_rethrow", module);
+    }
+    return val;
+}

@@ -174,21 +174,31 @@ namespace Wide {
                 llvm::Value* ComputeValue(CodegenContext& con) override final;
             };
             struct TryStatement : public Statement {
+                struct CatchParameter : Expression {
+                    llvm::Value* param;
+                    Type* t;
+                    llvm::Value* ComputeValue(CodegenContext& con) override final { return con->CreatePointerCast(param, t->GetLLVMType(con)); }
+                    Type* GetType() override final { return t; }
+                };
                 struct Catch {
-                    Catch(Type* t, std::vector<std::unique_ptr<Statement>> stmts)
-                    : t(t), stmts(std::move(stmts)) {}
+                    Catch(Type* t, std::vector<std::unique_ptr<Statement>> stmts, std::unique_ptr<CatchParameter> catch_param)
+                    : t(t), stmts(std::move(stmts)), catch_param(std::move(catch_param)) {}
                     Catch(Catch&& other)
                     : t(other.t)
-                    , stmts(std::move(other.stmts)) {}
+                    , stmts(std::move(other.stmts))
+                    , catch_param(std::move(other.catch_param)) {}
                     Catch& operator=(Catch&& other) {
                         t = other.t;
                         stmts = std::move(other.stmts);
+                        catch_param = std::move(other.catch_param);
                     }
                     Type* t; // Null for catch-all
                     std::vector<std::unique_ptr<Statement>> stmts;
+                    std::unique_ptr<CatchParameter> catch_param;
                 };
-                TryStatement(std::vector<std::unique_ptr<Statement>> stmts, std::vector<Catch> catches)
-                    : statements(std::move(stmts)), catches(std::move(catches)) {}
+                TryStatement(std::vector<std::unique_ptr<Statement>> stmts, std::vector<Catch> catches, Analyzer& a)
+                    : statements(std::move(stmts)), catches(std::move(catches)), a(a) {}
+                Analyzer& a;
                 std::vector<Catch> catches;
                 std::vector<std::unique_ptr<Statement>> statements;
                 void GenerateCode(CodegenContext& con);

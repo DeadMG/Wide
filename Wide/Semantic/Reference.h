@@ -10,6 +10,7 @@ namespace Wide {
             Reference(Type* p, Analyzer& a)
                 : Pointee(p), Type(a) {}
 
+            llvm::Constant* GetRTTI(llvm::Module* module) override final;
             llvm::Type* GetLLVMType(llvm::Module* module) override final;
             
             bool IsReference() override final {
