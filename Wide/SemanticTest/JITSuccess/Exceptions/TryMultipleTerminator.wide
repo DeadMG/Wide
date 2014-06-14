@@ -1,0 +1,10 @@
+f() {}
+Main() {
+    try {
+        f();
+        return true;
+        return true;
+    } catch(...) {
+        return false;
+    }
+}

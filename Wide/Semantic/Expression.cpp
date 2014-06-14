@@ -311,3 +311,12 @@ llvm::Function* CodegenContext::GetCXARethrow() {
     }
     return val;
 }
+void CodegenContext::GenerateCodeAndDestroyLocals(std::function<void(CodegenContext&)> action) {
+    auto nested = *this;
+    action(nested);
+    if (!IsTerminated(insert_builder->GetInsertBlock()))
+        DestroyDifference(nested);
+}
+bool CodegenContext::IsTerminated(llvm::BasicBlock* bb) {
+    return !bb->empty() && bb->back().isTerminator();
+}

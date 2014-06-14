@@ -100,6 +100,7 @@ namespace Wide {
             std::unique_ptr<Expression> BuildDestructorCall(std::unique_ptr<Expression> self, Context c) override final;
             OverloadSet* CreateConstructorOverloadSet(Lexer::Access access) override final;
             OverloadSet* CreateOperatorOverloadSet(Type* self, Lexer::TokenType member, Lexer::Access access) override final;
+            Type* GetConstantContext() override final;
 
             bool IsCopyConstructible(Lexer::Access access) override final;
             bool IsMoveConstructible(Lexer::Access access) override final;

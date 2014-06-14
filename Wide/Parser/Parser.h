@@ -1100,7 +1100,7 @@ namespace Wide {
                         t = lex();
                         continue;
                     }
-                    if(t.GetType() == Lexer::TokenType::Identifier) {
+                    if (t.GetType() == Lexer::TokenType::Identifier) {
                         // Must be either := for variable or ( for function. Don't support functions yet.
                         Check(Error::TypeScopeExpectedMemberAfterIdentifier, [&](decltype(lex())& tok) {
                             if(tok.GetType() == Lexer::TokenType::VarCreate) {

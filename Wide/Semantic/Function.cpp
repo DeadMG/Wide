@@ -135,7 +135,8 @@ Function::CompoundStatement::CompoundStatement(Scope* s)
 void Function::CompoundStatement::GenerateCode(CodegenContext& con) {
     con.GenerateCodeAndDestroyLocals([this](CodegenContext& nested) {
         for (auto&& stmt : s->active)
-            stmt->GenerateCode(nested);
+            if (!nested.IsTerminated(nested->GetInsertBlock()))
+                stmt->GenerateCode(nested);
     });
 }
 
@@ -218,9 +219,6 @@ void Function::ReturnStatement::GenerateCode(CodegenContext& con) {
 }
 
 
-bool is_terminated(llvm::BasicBlock* bb) {
-    return !bb->empty() && bb->back().isTerminator();
-}
 
 Function::WhileStatement::WhileStatement(Expression* ex, Lexer::Range where, Function* s)
 : cond(std::move(ex)), where(where), self(s)
@@ -254,10 +252,11 @@ void Function::WhileStatement::GenerateCode(CodegenContext& con) {
     condition_context.GenerateCodeAndDestroyLocals([this](CodegenContext& body_context) {
         body->GenerateCode(body_context);
     });
-    con.DestroyDifference(condition_context);
     // If, for example, we unconditionally return or break/continue, it can happen that we were already terminated.
-    if (!is_terminated(con->GetInsertBlock()))
+    if (!con.IsTerminated(con->GetInsertBlock())) {
+        con.DestroyDifference(condition_context);
         con->CreateBr(check_bb);
+    }
     con->SetInsertPoint(continue_bb);
     con.DestroyDifference(condition_context);
     condition_con = nullptr;
@@ -287,17 +286,16 @@ void Function::IfStatement::GenerateCode(CodegenContext& con) {
         condition_con->SetInsertPoint(true_bb);
         condition_con.GenerateCodeAndDestroyLocals([this, continue_bb](CodegenContext& true_con) {
             true_br->GenerateCode(true_con);
-            if (!is_terminated(true_con->GetInsertBlock()))
-                true_con->CreateBr(continue_bb);
         });
+        if (!condition_con.IsTerminated(condition_con->GetInsertBlock()))
+            condition_con->CreateBr(continue_bb);
         if (false_br) {
             condition_con->SetInsertPoint(else_bb);
             condition_con.GenerateCodeAndDestroyLocals([this, continue_bb](CodegenContext& false_con) {
                 false_br->GenerateCode(false_con);
-                false_con.DestroyDifference(false_con);
-                if (!is_terminated(false_con->GetInsertBlock()))
-                    false_con->CreateBr(continue_bb);
             });
+            if (!condition_con.IsTerminated(condition_con->GetInsertBlock()))
+                condition_con->CreateBr(continue_bb);
         }
         condition_con->SetInsertPoint(continue_bb);
     });
@@ -862,9 +860,10 @@ void Function::EmitCode(llvm::Module* module) {
     c.insert_builder = &irbuilder;
     c.module = module;
     for (auto&& stmt : root_scope->active)
-        stmt->GenerateCode(c);
+        if (!c.IsTerminated(c->GetInsertBlock()))
+            stmt->GenerateCode(c);
 
-    if (!is_terminated(irbuilder.GetInsertBlock())) {
+    if (!c.IsTerminated(irbuilder.GetInsertBlock())) {
         if (ReturnType == analyzer.GetVoidType()) {
             c.DestroyAll(false);
             irbuilder.CreateRetVoid();
@@ -1121,9 +1120,16 @@ void Function::TryStatement::GenerateCode(CodegenContext& con) {
     try_con->SetInsertPoint(source_block);
 
     for (auto&& stmt : statements)
-        stmt->GenerateCode(try_con);
-    if (try_con->GetInsertBlock()->empty() || !try_con->GetInsertBlock()->back().isTerminator())
+        if (!try_con.IsTerminated(try_con->GetInsertBlock()))
+            stmt->GenerateCode(try_con);
+    if (!try_con.IsTerminated(try_con->GetInsertBlock()))
         try_con->CreateBr(dest_block);
+    if (phi->getNumIncomingValues() == 0) {
+        phi->removeFromParent();
+        catch_block->removeFromParent();
+        con->SetInsertPoint(dest_block);
+        return;
+    }
 
     // Generate the code for all the catch statements.
     auto for_ = llvm::Intrinsic::getDeclaration(con, llvm::Intrinsic::eh_typeid_for);
@@ -1147,9 +1153,12 @@ void Function::TryStatement::GenerateCode(CodegenContext& con) {
         CodegenContext catch_block_con(catch_con);
         if (!catch_.t) {
             for (auto&& stmt : catch_.stmts)
-                stmt->GenerateCode(catch_block_con);
-            if (catch_block_con->GetInsertBlock()->empty() || !catch_block_con->GetInsertBlock()->back().isTerminator())
+                if (!catch_block_con.IsTerminated(catch_block_con->GetInsertBlock()))
+                    stmt->GenerateCode(catch_block_con);
+            if (!catch_block_con.IsTerminated(catch_block_con->GetInsertBlock())) {
+                con.DestroyDifference(catch_block_con);
                 catch_block_con->CreateBr(dest_block);
+            }
             break;
         }
         auto catch_target = llvm::BasicBlock::Create(con, "catch_target", catch_block_con->GetInsertBlock()->getParent());
@@ -1165,8 +1174,9 @@ void Function::TryStatement::GenerateCode(CodegenContext& con) {
         catch_block_con.Destructors.push_back(&catch_ender);
 
         for (auto&& stmt : catch_.stmts)
-            stmt->GenerateCode(catch_block_con);
-        if (catch_block_con->GetInsertBlock()->empty() || !catch_con->GetInsertBlock()->back().isTerminator()) {
+            if (!catch_block_con.IsTerminated(catch_block_con->GetInsertBlock()))
+                stmt->GenerateCode(catch_block_con);
+        if (!catch_block_con.IsTerminated(catch_block_con->GetInsertBlock())) {
             con.DestroyDifference(catch_block_con);
             catch_block_con->CreateBr(dest_block);
         }

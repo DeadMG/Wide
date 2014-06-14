@@ -898,3 +898,8 @@ UserDefinedType::VTableData& UserDefinedType::VTableData::operator=(VTableData&&
     VTableIndices = std::move(other.VTableIndices);
     return *this;
 }
+Type* UserDefinedType::GetConstantContext() {
+    if (type->Functions.find(DestructorName) != type->Functions.end())
+        return false;
+    return AggregateType::GetConstantContext();
+}

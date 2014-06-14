@@ -1,0 +1,10 @@
+type t {
+    type() {}
+    ~type() {}
+}
+Main() {
+    while(true) {
+        var := t();
+        return true;
+    }
+}

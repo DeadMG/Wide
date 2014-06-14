@@ -73,7 +73,8 @@ std::unique_ptr<Expression> FunctionType::BuildCall(std::unique_ptr<Expression> 
             for (auto&& arg : args)
                 llvmargs.push_back(arg->GetValue(con));
             llvm::Value* call;
-            if (!con.destructing && !con.Destructors.empty()) {
+            // We need to invoke if we're not destructing, and we have something to destroy OR a catch block we may need to jump to.
+            if (!con.destructing && (!con.Destructors.empty() || con.EHHandler)) {
                 llvm::BasicBlock* continueblock = llvm::BasicBlock::Create(con, "continue", con->GetInsertBlock()->getParent());
                 // If we have a try/catch block, let the catch block figure out what to do.
                 // Else, kill everything in the scope and resume.

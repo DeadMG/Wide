@@ -1,0 +1,17 @@
+type t {
+    ptr := bool.pointer;
+    type(arg := bool.lvalue) : ptr(&arg) {}
+    ~type() { *ptr = true; }
+}
+f(arg := bool.lvalue) {
+    try {
+        throw 1;
+    } catch(...) {
+        var := t(arg);
+    }
+}
+Main() {
+    ret := false;
+    f(ret);
+    return ret;
+}

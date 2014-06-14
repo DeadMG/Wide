@@ -106,14 +106,11 @@ namespace Wide {
             std::vector<Expression*> GetAddedDestructors(CodegenContext& other) {
                 return std::vector<Expression*>(other.Destructors.begin() + Destructors.size(), other.Destructors.end());
             }
-            template<typename F> void GenerateCodeAndDestroyLocals(F&& action) {
-                CodegenContext nested(*this);
-                action(nested);
-                DestroyDifference(nested);
-            }
+            void GenerateCodeAndDestroyLocals(std::function<void(CodegenContext&)> action);
             void DestroyDifference(CodegenContext& other);
             void DestroyAll(bool EH);
             void DestroyTillLastTry();
+            bool IsTerminated(llvm::BasicBlock* bb);
 
             llvm::Function* GetEHPersonality();
             llvm::BasicBlock* GetUnreachableBlock();
@@ -129,6 +126,7 @@ namespace Wide {
             llvm::Module* module;
             llvm::IRBuilder<>* insert_builder;
             llvm::IRBuilder<>* alloca_builder;
+            // Mostly used for e.g. member variables.
             std::unordered_set<Expression*> ExceptionOnlyDestructors;
             std::vector<Expression*> Destructors;
             Wide::Util::optional<EHScope> EHHandler;
