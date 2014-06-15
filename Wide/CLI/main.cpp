@@ -189,7 +189,7 @@ int main(int argc, char** argv)
             auto overset = dynamic_cast<Wide::Semantic::OverloadSet*>(main->GetType()->Decay());
             auto f = overset->Resolve({}, c.from);
             auto func = dynamic_cast<Wide::Semantic::Function*>(f);
-            func->AddExportName("main");
+            func->AddExportName(std::string("main"));
             func->ComputeBody();
             a.GenerateCode(mod.get());
             if (llvm::verifyModule(*mod, llvm::VerifierFailureAction::PrintMessageAction))

@@ -382,8 +382,11 @@ std::string ClangType::explain() {
 std::vector<std::pair<Type*, unsigned>> ClangType::GetBasesAndOffsets() {
     auto&& layout = from->GetASTContext().getASTRecordLayout(type->getAsCXXRecordDecl());
     std::vector<std::pair<Type*, unsigned>> out;
+    // Skip virtual bases for now, we don't support.
+    // Skip them silently because we need a base list to compute stuff like access specifiers.
     for (auto basespec = type->getAsCXXRecordDecl()->bases_begin(); basespec != type->getAsCXXRecordDecl()->bases_end(); basespec++) {
-        out.push_back(std::make_pair(analyzer.GetClangType(*from, basespec->getType()), layout.getBaseClassOffset(basespec->getType()->getAsCXXRecordDecl()).getQuantity()));
+        if (!basespec->isVirtual())
+            out.push_back(std::make_pair(analyzer.GetClangType(*from, basespec->getType()), layout.getBaseClassOffset(basespec->getType()->getAsCXXRecordDecl()).getQuantity()));
     }
     return out;
 }

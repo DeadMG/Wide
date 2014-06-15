@@ -191,7 +191,7 @@ public:
         if (!entry)
             throw CantFindHeader(filename, paths, where);
 
-        auto fileid = sm.createFileID(entry, clang::SourceLocation(), clang::SrcMgr::CharacteristicKind::C_User);
+        auto fileid = sm.createFileID(entry, sm.getLocForEndOfFile(sm.getMainFileID()), clang::SrcMgr::CharacteristicKind::C_User);
         if (fileid.isInvalid())
             throw CannotTranslateFile(filename, where);
         if (files.find(entry) != files.end())
@@ -199,7 +199,7 @@ public:
         files.insert(entry);
         // Partially a re-working of clang::ParseAST's implementation
 
-        preproc.EnterSourceFile(fileid, preproc.GetCurDirLookup(), clang::SourceLocation());
+        preproc.EnterSourceFile(fileid, preproc.GetCurDirLookup(), sm.getLocForEndOfFile(sm.getMainFileID()));
        
         auto Consumer = &sema.getASTConsumer();
         auto External = sema.getASTContext().getExternalSource();
