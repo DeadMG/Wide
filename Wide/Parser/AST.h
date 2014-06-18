@@ -84,6 +84,12 @@ namespace Wide {
             Expression* rhs;
             Lexer::TokenType type;
         };
+        struct Index : Expression {
+            Index(Expression* obj, Expression* ind, Lexer::Range where)
+            : Expression(where), object(obj), index(ind) {}
+            Expression* object;
+            Expression* index;
+        };
         struct FunctionArgument {
             FunctionArgument(Lexer::Range where)
                 : location(std::move(where)) {}

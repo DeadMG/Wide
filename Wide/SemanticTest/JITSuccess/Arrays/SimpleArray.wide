@@ -1,0 +1,4 @@
+Main() {
+    var := bool.array(2)({ true, true });
+    return var[0] & var[1];
+}

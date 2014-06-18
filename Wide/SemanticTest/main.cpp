@@ -78,7 +78,7 @@ int main(int argc, char** argv) {
         total_failed += result.fails;
     }
     std::cout << "Total succeeded: " << total_succeeded << " failed: " << total_failed;
-    //Jit(clangopts, "JITSuccess/StdlibSmoke/CoutTypeidComparison.wide");
+    //Jit(clangopts, "JITSuccess/Arrays/ArrayValueAccess.wide");
     //Compile(clangopts, "CompileFail/OverloadResolutionFailure/CopyWithMoveOnlyElement.wide");
     if (input.count("break"))
         Wide::Util::DebugBreak();

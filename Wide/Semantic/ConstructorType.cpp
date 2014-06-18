@@ -5,30 +5,51 @@
 #include <Wide/Semantic/Reference.h>
 #include <Wide/Semantic/ClangType.h>
 #include <Wide/Semantic/OverloadSet.h>
+#include <Wide/Semantic/ArrayType.h>
 #include <sstream>
 #include <Wide/Semantic/Expression.h>
 
 using namespace Wide;
 using namespace Semantic;
 
-struct EmplaceType : public MetaType {
-    EmplaceType(ConstructorType* con, Analyzer& a)
+namespace {
+    struct EmplaceType : public MetaType {
+        EmplaceType(ConstructorType* con, Analyzer& a)
         : t(con), MetaType(a) {}
-    ConstructorType* t;
+        ConstructorType* t;
 
-    std::unique_ptr<Expression> BuildCall(std::unique_ptr<Expression> val, std::vector<std::unique_ptr<Expression>> args, Context c) override final {
-        auto constructed = t->GetConstructedType();
-        if (args.size() == 0)
-            throw std::runtime_error("Attempted to emplace a type without providing any memory into which to emplace it.");
-        if (args[0]->GetType()->Decay() != analyzer.GetPointerType(constructed))
-            throw std::runtime_error("Attempted to emplace a T into a type that was not a pointer to T.");
-        auto expr = std::move(args.front());
-        args.erase(args.begin());
-        return constructed->BuildInplaceConstruction(std::move(expr), std::move(args), c);
-    }
+        std::unique_ptr<Expression> BuildCall(std::unique_ptr<Expression> val, std::vector<std::unique_ptr<Expression>> args, Context c) override final {
+            auto constructed = t->GetConstructedType();
+            if (args.size() == 0)
+                throw std::runtime_error("Attempted to emplace a type without providing any memory into which to emplace it.");
+            if (args[0]->GetType()->Decay() != analyzer.GetPointerType(constructed))
+                throw std::runtime_error("Attempted to emplace a T into a type that was not a pointer to T.");
+            auto expr = std::move(args.front());
+            args.erase(args.begin());
+            return constructed->BuildInplaceConstruction(std::move(expr), std::move(args), c);
+        }
 
-    std::string explain() override final { return t->explain() + ".emplace"; }
-};
+        std::string explain() override final { return t->explain() + ".emplace"; }
+    };
+
+    struct Array : public MetaType {
+        ConstructorType* t;
+        Array(ConstructorType* con, Analyzer& a)
+            : MetaType(a), t(con) {}
+
+        std::unique_ptr<Expression> BuildCall(std::unique_ptr<Expression> self, std::vector<std::unique_ptr<Expression>> args, Context c) override final {
+            auto constructed = t->GetConstructedType();
+            if (args.size() == 0)
+                throw std::runtime_error("Attempted to make an array without passing a size.");
+            auto integer = dynamic_cast<Wide::Semantic::Integer*>(args[0]->GetImplementation());
+            if (!integer)
+                throw std::runtime_error("Attempted to make an array but the argument was not an integer.");
+            return BuildChain(std::move(self), analyzer.GetConstructorType(analyzer.GetArrayType(t->GetConstructedType(), integer->value.getLimitedValue()))->BuildValueConstruction(Expressions(), { this, c.where }));
+        }
+
+        std::string explain() override final { return t->explain() + ".array"; }
+    };
+}
 
 std::unique_ptr<Expression> ConstructorType::BuildCall(std::unique_ptr<Expression> val, std::vector<std::unique_ptr<Expression>> args, Context c) {
     assert(val->GetType()->Decay() == this);
@@ -62,6 +83,13 @@ std::unique_ptr<Expression> ConstructorType::AccessMember(std::unique_ptr<Expres
         }
         if (name == "destructor") {
             return BuildChain(std::move(self), clangty->GetDestructorOverloadSet()->BuildValueConstruction(Expressions(), c));
+        }
+    }
+    // If we're not a reference type, offer array.
+    if (!t->IsReference()) {
+        if (name == "array") {
+            if (!array) array = Wide::Memory::MakeUnique<Array>(this, analyzer);
+            return BuildChain(std::move(self), array->BuildValueConstruction(Expressions(), { this, c.where }));
         }
     }
     return nullptr;

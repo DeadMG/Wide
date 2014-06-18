@@ -69,6 +69,7 @@ const std::unordered_map<Lexer::TokenType, std::pair<clang::OverloadedOperatorKi
         ret[Lexer::TokenType::And] = std::make_pair(clang::OverloadedOperatorKind::OO_Amp, clang::BinaryOperatorKind::BO_And);
         ret[Lexer::TokenType::AndAssign] = std::make_pair(clang::OverloadedOperatorKind::OO_AmpEqual, clang::BinaryOperatorKind::BO_AndAssign);
         ret[Lexer::TokenType::OpenBracket] = std::make_pair(clang::OverloadedOperatorKind::OO_Call, clang::BinaryOperatorKind::BO_Add);
+        ret[Lexer::TokenType::OpenSquareBracket] = std::make_pair(clang::OverloadedOperatorKind::OO_Subscript, clang::BinaryOperatorKind::BO_Sub);
         return ret;
     }();
     return BinaryTokenMapping;

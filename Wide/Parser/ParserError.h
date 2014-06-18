@@ -90,6 +90,7 @@ namespace Wide {
             CatchNoIdentifier,
             CatchNoVarCreate,
             CatchNoOpenCurly,
+            IndexNoCloseBracket,
         };         
 
         enum class Warning : int {
@@ -198,6 +199,7 @@ namespace Wide {
                 std::make_pair(Error::CatchNoIdentifier, "Expected ... or identifier after catch( to denote a catch parameter."),
                 std::make_pair(Error::CatchNoVarCreate, "Expected := after catch(identifier."),
                 std::make_pair(Error::CatchNoOpenCurly, "Expected { after catch(identifier := expression) to open a catch block."),
+                std::make_pair(Error::CatchNoOpenCurly, "Expected ] after expression[expression to finish an index expression."),
             };
             return std::unordered_map<Error, std::string>(std::begin(strings), std::end(strings));
         }());

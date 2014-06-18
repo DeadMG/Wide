@@ -1,0 +1,6 @@
+f() {
+    return bool.array(1)({true});
+}
+Main() {
+    return f()[0];
+}

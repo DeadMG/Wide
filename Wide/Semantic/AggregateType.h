@@ -5,7 +5,7 @@
 namespace Wide {
     namespace Semantic {
         class AggregateType : public Type {
-            virtual const std::vector<Type*>& GetMembers() = 0;
+            virtual std::vector<Type*> GetMembers() = 0;
             virtual bool HasDeclaredDynamicFunctions() = 0;
 
             struct Layout {
@@ -65,12 +65,12 @@ namespace Wide {
 
             MemberLocation GetLocation(unsigned i);
 
-            std::unique_ptr<Expression> PrimitiveAccessMember(std::unique_ptr<Expression> self, unsigned num);
+            virtual std::unique_ptr<Expression> PrimitiveAccessMember(std::unique_ptr<Expression> self, unsigned num);
             
-            std::size_t size() override final;
-            std::size_t alignment() override final;
+            std::size_t size() override;
+            std::size_t alignment() override;
+            llvm::Type* GetLLVMType(llvm::Module* module) override;
             Type* GetConstantContext() override;
-            llvm::Type* GetLLVMType(llvm::Module* module) override final;
             
             OverloadSet* CreateNondefaultConstructorOverloadSet();
             OverloadSet* CreateOperatorOverloadSet(Type* t, Lexer::TokenType type, Lexer::Access access) override;

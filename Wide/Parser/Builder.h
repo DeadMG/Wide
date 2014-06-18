@@ -77,6 +77,7 @@ namespace Wide {
             BinaryExpression* CreateMultiply(Expression* lhs, Expression* rhs);
             BinaryExpression* CreateModulus(Expression* lhs, Expression* rhs);
             BinaryExpression* CreateDivision(Expression* lhs, Expression* rhs);
+            Index* CreateIndex(Expression* object, Expression* index, Lexer::Range where);
             Decltype* CreateDecltype(Expression* arg, Lexer::Range loc);
             Typeid* CreateTypeid(Expression* arg, Lexer::Range loc);
             DynamicCast* CreateDynamicCast(Expression* type, Expression* object, Lexer::Range loc);

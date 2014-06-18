@@ -7,6 +7,7 @@ namespace Wide {
         class ConstructorType : public MetaType {
             Type* t;
             std::unique_ptr<Type> emplace;
+            std::unique_ptr<Type> array;
         public:
             ConstructorType(Type* con, Analyzer& a);
             std::unique_ptr<Expression> BuildCall(std::unique_ptr<Expression> val, std::vector<std::unique_ptr<Expression>> args, Context c) override final;

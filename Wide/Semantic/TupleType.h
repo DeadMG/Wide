@@ -9,7 +9,7 @@ namespace Wide {
             bool HasDeclaredDynamicFunctions() override final { return false; }
         public:
             TupleType(std::vector<Type*> types, Analyzer& a);
-            const std::vector<Type*>& GetMembers() override final { return contents; }
+            std::vector<Type*> GetMembers() override final { return contents; }
 
             std::unique_ptr<Expression> ConstructFromLiteral(std::vector<std::unique_ptr<Expression>> exprs, Context c);
             bool IsA(Type* self, Type* other, Lexer::Access access) override final;

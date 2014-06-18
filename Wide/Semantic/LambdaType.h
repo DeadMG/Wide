@@ -12,7 +12,7 @@ namespace Wide {
             std::unordered_map<std::string, std::size_t> names;
             std::vector<Type*> contents;
             Type* context;
-            const std::vector<Type*>& GetMembers() { return contents; }
+            std::vector<Type*> GetMembers() { return contents; }
             bool HasDeclaredDynamicFunctions() override final { return false; }
         public:
             Type* GetContext() { return context; }

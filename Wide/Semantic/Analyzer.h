@@ -73,6 +73,7 @@ namespace Wide {
         class VoidType;
         class Bool;
         class StringType;
+        class ArrayType;
         class TemplateType;
         class LambdaType;
         class Analyzer {
@@ -103,6 +104,7 @@ namespace Wide {
             std::unordered_map<std::vector<Type*>, std::unique_ptr<TupleType>, VectorTypeHasher> tupletypes;
             std::unordered_map<std::string, std::unique_ptr<StringType>> LiteralStringTypes;
             std::unordered_map<const AST::Lambda*, std::unordered_map<std::vector<std::pair<std::string, Type*>>, std::unique_ptr<LambdaType>, VectorTypeHasher>> LambdaTypes;
+            std::unordered_map<Type*, std::unordered_map<unsigned, std::unique_ptr<ArrayType>>> ArrayTypes;
 
             const Options::Clang* clangopts;
 
@@ -159,6 +161,7 @@ namespace Wide {
             OverloadResolvable* GetCallableForTemplateType(const AST::TemplateType* t, Type* context);
             TemplateType* GetTemplateType(const AST::TemplateType* t, Type* context, std::vector<Type*> arguments, std::string name);
             LambdaType* GetLambdaType(const AST::Lambda* funcbase, std::vector<std::pair<std::string, Type*>> types, Type* context);
+            ArrayType* GetArrayType(Type* t, unsigned num);
 
             std::unordered_map<std::type_index, std::function<std::unique_ptr<Expression>(Analyzer& a, Type* lookup, const AST::Expression* e)>> expression_handlers;
             template<typename T, typename F> void AddExpressionHandler(F f) {

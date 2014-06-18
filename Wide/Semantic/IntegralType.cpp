@@ -125,41 +125,83 @@ OverloadSet* IntegralType::CreateADLOverloadSet(Lexer::TokenType name, Type* lhs
             return con->CreateLShr(lhs, rhs);
         });
         return analyzer.GetOverloadSet(RightShiftAssign.get());
+    case Lexer::TokenType::RightShift:
+        RightShift = CreateOp([this](llvm::Value* lhs, llvm::Value* rhs, CodegenContext& con) {
+            if (is_signed)
+                return con->CreateAShr(lhs, rhs);
+            return con->CreateLShr(lhs, rhs);
+        });
+        return analyzer.GetOverloadSet(RightShift.get());
     case Lexer::TokenType::LeftShiftAssign:
         LeftShiftAssign = CreateAssOp([](llvm::Value* lhs, llvm::Value* rhs, CodegenContext& con) {
             return con->CreateShl(lhs, rhs);
         });
         return analyzer.GetOverloadSet(LeftShiftAssign.get());
+    case Lexer::TokenType::LeftShift:
+        LeftShift = CreateAssOp([](llvm::Value* lhs, llvm::Value* rhs, CodegenContext& con) {
+            return con->CreateShl(lhs, rhs);
+        });
+        return analyzer.GetOverloadSet(LeftShift.get());
     case Lexer::TokenType::MulAssign:
         MulAssign = CreateAssOp([](llvm::Value* lhs, llvm::Value* rhs, CodegenContext& con) {
             return con->CreateMul(lhs, rhs);
         });
         return analyzer.GetOverloadSet(MulAssign.get());
+    case Lexer::TokenType::Dereference:
+        Mul = CreateAssOp([](llvm::Value* lhs, llvm::Value* rhs, CodegenContext& con) {
+            return con->CreateMul(lhs, rhs);
+        });
+        return analyzer.GetOverloadSet(Mul.get());
     case Lexer::TokenType::PlusAssign:
         PlusAssign = CreateAssOp([](llvm::Value* lhs, llvm::Value* rhs, CodegenContext& con) {
             return con->CreateAdd(lhs, rhs);
         });
         return analyzer.GetOverloadSet(PlusAssign.get());
+    case Lexer::TokenType::Plus:
+        Plus = CreateAssOp([](llvm::Value* lhs, llvm::Value* rhs, CodegenContext& con) {
+            return con->CreateAdd(lhs, rhs);
+        });
+        return analyzer.GetOverloadSet(Plus.get());
     case Lexer::TokenType::OrAssign:
         OrAssign = CreateAssOp([](llvm::Value* lhs, llvm::Value* rhs, CodegenContext& con) {
             return con->CreateOr(lhs, rhs);
         });
         return analyzer.GetOverloadSet(OrAssign.get());
+    case Lexer::TokenType::Or:
+        Or = CreateAssOp([](llvm::Value* lhs, llvm::Value* rhs, CodegenContext& con) {
+            return con->CreateOr(lhs, rhs);
+        });
+        return analyzer.GetOverloadSet(Or.get());
     case Lexer::TokenType::AndAssign:
         AndAssign = CreateAssOp([](llvm::Value* lhs, llvm::Value* rhs, CodegenContext& con) {
             return con->CreateAnd(lhs, rhs);
         });
         return analyzer.GetOverloadSet(AndAssign.get());
+    case Lexer::TokenType::And:
+        And = CreateAssOp([](llvm::Value* lhs, llvm::Value* rhs, CodegenContext& con) {
+            return con->CreateAnd(lhs, rhs);
+        });
+        return analyzer.GetOverloadSet(And.get());
     case Lexer::TokenType::XorAssign:
         XorAssign = CreateAssOp([](llvm::Value* lhs, llvm::Value* rhs, CodegenContext& con) {
             return con->CreateXor(lhs, rhs);
         });
         return analyzer.GetOverloadSet(XorAssign.get());
+    case Lexer::TokenType::Xor:
+        XorAssign = CreateAssOp([](llvm::Value* lhs, llvm::Value* rhs, CodegenContext& con) {
+            return con->CreateXor(lhs, rhs);
+        });
+        return analyzer.GetOverloadSet(Xor.get());
     case Lexer::TokenType::MinusAssign:
         MinusAssign = CreateAssOp([](llvm::Value* lhs, llvm::Value* rhs, CodegenContext& con) {
             return con->CreateSub(lhs, rhs);
         });
         return analyzer.GetOverloadSet(MinusAssign.get());
+    case Lexer::TokenType::Minus:
+        Minus = CreateAssOp([](llvm::Value* lhs, llvm::Value* rhs, CodegenContext& con) {
+            return con->CreateSub(lhs, rhs);
+        });
+        return analyzer.GetOverloadSet(Minus.get());
     case Lexer::TokenType::ModAssign:
         ModAssign = CreateAssOp([this](llvm::Value* lhs, llvm::Value* rhs, CodegenContext& con) {
             if (is_signed)
@@ -167,6 +209,13 @@ OverloadSet* IntegralType::CreateADLOverloadSet(Lexer::TokenType name, Type* lhs
             return con->CreateURem(lhs, rhs);
         });
         return analyzer.GetOverloadSet(ModAssign.get());
+    case Lexer::TokenType::Modulo:
+        Mod = CreateAssOp([this](llvm::Value* lhs, llvm::Value* rhs, CodegenContext& con) {
+            if (is_signed)
+                return con->CreateSRem(lhs, rhs);
+            return con->CreateURem(lhs, rhs);
+        });
+        return analyzer.GetOverloadSet(Mod.get());
     case Lexer::TokenType::DivAssign:
         DivAssign = CreateAssOp([this](llvm::Value* lhs, llvm::Value* rhs, CodegenContext& con) {
             if (is_signed)
@@ -174,6 +223,13 @@ OverloadSet* IntegralType::CreateADLOverloadSet(Lexer::TokenType name, Type* lhs
             return con->CreateUDiv(lhs, rhs);
         });
         return analyzer.GetOverloadSet(DivAssign.get());
+    case Lexer::TokenType::Divide:
+        Div = CreateAssOp([this](llvm::Value* lhs, llvm::Value* rhs, CodegenContext& con) {
+            if (is_signed)
+                return con->CreateSDiv(lhs, rhs);
+            return con->CreateUDiv(lhs, rhs);
+        });
+        return analyzer.GetOverloadSet(Div.get());
     case Lexer::TokenType::LT:
         LT = MakeResolvable([this](std::vector<std::unique_ptr<Expression>> args, Context c) {
             return CreatePrimOp(std::move(args[0]), std::move(args[1]), c.from->analyzer.GetBooleanType(), [this](llvm::Value* lhs, llvm::Value* rhs, CodegenContext& con) {

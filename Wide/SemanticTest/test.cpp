@@ -45,7 +45,7 @@ results TestDirectory(std::string path, std::string mode, std::string program, b
             0,
             &err,
             &failed
-            );
+        );
 
         if (failed || ret) {
             tests_failed++;
@@ -181,11 +181,11 @@ void Jit(Wide::Options::Clang& copts, std::string file) {
     b.setErrorStr(&errstring);
     auto ee = b.create();
     AddStdlibLink(ee, mod);
+    // Fuck you, shitty LLVM ownership semantics.
     if (ee)
         module.release();
     ee->finalizeObject();
     ee->runStaticConstructorsDestructors(false);
-    // Fuck you, shitty LLVM ownership semantics.
     auto f = ee->FindFunctionNamed(name.c_str());
     auto result = ee->runFunction(f, std::vector<llvm::GenericValue>());
     ee->runStaticConstructorsDestructors(true);

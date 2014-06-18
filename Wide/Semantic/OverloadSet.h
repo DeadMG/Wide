@@ -29,7 +29,7 @@ namespace Wide {
             ClangTU* from;
 
             std::vector<Type*> contents;
-            const std::vector<Type*>& GetMembers() override final;
+            std::vector<Type*> GetMembers() override final;
             bool HasDeclaredDynamicFunctions() override final { return false; }
 
             Type* nonstatic;
@@ -50,7 +50,6 @@ namespace Wide {
             }
 
             std::string explain() override final;
-            Type* GetConstantContext() override final;
 
             void IssueResolutionError(std::vector<Type*> types, Context c);
             std::pair<ClangTU*, clang::FunctionDecl*> GetSingleFunction();

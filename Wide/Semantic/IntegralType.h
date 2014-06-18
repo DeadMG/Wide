@@ -9,15 +9,25 @@ namespace Wide {
 
             std::unique_ptr<OverloadResolvable> ConvertingConstructor;
             std::unique_ptr<OverloadResolvable> RightShiftAssign;
+            std::unique_ptr<OverloadResolvable> RightShift;
             std::unique_ptr<OverloadResolvable> LeftShiftAssign;
+            std::unique_ptr<OverloadResolvable> LeftShift;
             std::unique_ptr<OverloadResolvable> MulAssign;
+            std::unique_ptr<OverloadResolvable> Mul;
             std::unique_ptr<OverloadResolvable> PlusAssign;
+            std::unique_ptr<OverloadResolvable> Plus;
             std::unique_ptr<OverloadResolvable> OrAssign;
+            std::unique_ptr<OverloadResolvable> Or;
             std::unique_ptr<OverloadResolvable> AndAssign;
+            std::unique_ptr<OverloadResolvable> And;
             std::unique_ptr<OverloadResolvable> XorAssign;
+            std::unique_ptr<OverloadResolvable> Xor;
             std::unique_ptr<OverloadResolvable> MinusAssign;
+            std::unique_ptr<OverloadResolvable> Minus;
             std::unique_ptr<OverloadResolvable> ModAssign;
+            std::unique_ptr<OverloadResolvable> Mod;
             std::unique_ptr<OverloadResolvable> DivAssign;
+            std::unique_ptr<OverloadResolvable> Div;
             std::unique_ptr<OverloadResolvable> LT;
             std::unique_ptr<OverloadResolvable> EQ;
             std::unique_ptr<OverloadResolvable> Increment;

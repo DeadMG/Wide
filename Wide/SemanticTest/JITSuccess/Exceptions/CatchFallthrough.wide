@@ -1,0 +1,11 @@
+Main() {
+    try {
+        try {
+            throw true;
+        } catch(var := int32.lvalue) {
+            return false;
+        }
+    } catch(var := bool.lvalue) {
+        return var;
+    }
+}

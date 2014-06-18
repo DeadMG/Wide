@@ -26,6 +26,7 @@
 #include <Wide/Semantic/FloatType.h>
 #include <Wide/Semantic/TupleType.h>
 #include <Wide/Semantic/LambdaType.h>
+#include <Wide/Semantic/ArrayType.h>
 #include <Wide/Util/Codegen/InitializeLLVM.h>
 #include <Wide/Util/DebugUtilities.h>
 #include <Wide/Semantic/Expression.h>
@@ -716,6 +717,13 @@ Analyzer::Analyzer(const Options::Clang& opts, const AST::Module* GlobalModule)
         }
         throw std::runtime_error("Used unimplemented dynamic_cast functionality.");
     });
+
+    AddExpressionHandler<AST::Index>([](Analyzer& a, Type* lookup, const AST::Index* index) {
+        auto obj = a.AnalyzeExpression(lookup, index->object);
+        auto ind = a.AnalyzeExpression(lookup, index->index);
+        auto ty = obj->GetType();
+        return ty->BuildIndex(std::move(obj), std::move(ind), { lookup, index->location });
+    });
 }
 
 
@@ -1262,4 +1270,11 @@ std::unique_ptr<Expression> Analyzer::AnalyzeCachedExpression(Type* lookup, cons
 }
 ClangTU* Analyzer::GetAggregateTU() {
     return AggregateTU.get();
+}
+
+ArrayType* Analyzer::GetArrayType(Type* t, unsigned num) {
+    if (ArrayTypes.find(t) == ArrayTypes.end()
+        || ArrayTypes[t].find(num) == ArrayTypes[t].end())
+        ArrayTypes[t][num] = Wide::Memory::MakeUnique<ArrayType>(*this, t, num);
+    return ArrayTypes[t][num].get();
 }

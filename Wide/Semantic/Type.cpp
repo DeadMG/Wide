@@ -263,8 +263,8 @@ struct ValueConstruction : Expression {
         if (self->GetConstantContext() == self && no_args) {
             return llvm::UndefValue::get(self->GetLLVMType(con));
         }
-        if (auto func = dynamic_cast<Function*>(self))
-            return llvm::UndefValue::get(self->GetLLVMType(con));
+        //if (auto func = dynamic_cast<Function*>(self))
+        //    return llvm::UndefValue::get(self->GetLLVMType(con));
         if (!self->Decay()->IsComplexType(con)) {
             if (single_arg) {
                 auto otherty = single_arg->GetType();
@@ -471,21 +471,6 @@ std::unique_ptr<Expression> Type::BuildUnaryExpression(std::unique_ptr<Expressio
     return callable->Call(Expressions(std::move(self)), c);
 }
 
-static const std::unordered_map<Lexer::TokenType, Lexer::TokenType> Assign = []() -> std::unordered_map<Lexer::TokenType, Lexer::TokenType> {
-    std::unordered_map<Lexer::TokenType, Lexer::TokenType> assign;
-    assign[Lexer::TokenType::LeftShift] = Lexer::TokenType::LeftShiftAssign;
-    assign[Lexer::TokenType::RightShift] = Lexer::TokenType::RightShiftAssign;
-    assign[Lexer::TokenType::Minus] = Lexer::TokenType::MinusAssign;
-    assign[Lexer::TokenType::Plus] = Lexer::TokenType::PlusAssign;
-    assign[Lexer::TokenType::Or] = Lexer::TokenType::OrAssign;
-    assign[Lexer::TokenType::And] = Lexer::TokenType::AndAssign;
-    assign[Lexer::TokenType::Xor] = Lexer::TokenType::XorAssign;
-    assign[Lexer::TokenType::Dereference] = Lexer::TokenType::MulAssign;
-    assign[Lexer::TokenType::Modulo] = Lexer::TokenType::ModAssign;
-    assign[Lexer::TokenType::Divide] = Lexer::TokenType::DivAssign;
-    return assign;
-}();
-
 std::unique_ptr<Expression> Type::BuildBinaryExpression(std::unique_ptr<Expression> lhs, std::unique_ptr<Expression> rhs, Lexer::TokenType type, Context c) {
     if (IsReference())
         return Decay()->BuildBinaryExpression(std::move(lhs), std::move(rhs), type, c);
@@ -503,11 +488,6 @@ std::unique_ptr<Expression> Type::BuildBinaryExpression(std::unique_ptr<Expressi
         return call->Call(Expressions(std::move(lhs), std::move(rhs)), c);
     }
     
-    // If we're a binary operator like +, and we have an assignment form like +=, try that.
-    if (Assign.find(type) != Assign.end() && lhs->GetType()->IsCopyConstructible(lhsaccess)) {
-        return Wide::Memory::MakeUnique<RvalueCast>(BuildBinaryExpression(lhs->GetType()->Decay()->BuildLvalueConstruction(Expressions(std::move(lhs)), c), std::move(rhs), Assign.at(type), c));
-    }
-
     switch (type) {
     case Lexer::TokenType::EqCmp: {
         // a == b if (!(a < b) && !(b > a)).
@@ -908,4 +888,19 @@ llvm::Value* Type::GetDestructorFunction(llvm::Module* module) {
     BuildDestructorCall(std::move(obj), { this, Lexer::Range(nullptr) })->GetValue(c);
     c->CreateRetVoid();
     return DestructorFunction;
+}
+
+std::unique_ptr<Expression> Type::BuildIndex(std::unique_ptr<Expression> val, std::unique_ptr<Expression> arg, Context c) {
+    if (IsReference())
+        return Decay()->BuildIndex(std::move(val), std::move(arg), c);
+    auto set = AccessMember(val->GetType(), Lexer::TokenType::OpenSquareBracket, GetAccessSpecifier(c.from, this));
+    std::vector<std::unique_ptr<Expression>> args;
+    args.push_back(std::move(val));
+    args.push_back(std::move(arg));
+    std::vector<Type*> types;
+    for (auto&& arg : args)
+        types.push_back(arg->GetType());
+    auto call = set->Resolve(types, c.from);
+    if (!call) set->IssueResolutionError(types, c);
+    return call->Call(std::move(args), c);
 }

@@ -22,7 +22,7 @@ namespace Wide {
         class Module;
         class UserDefinedType : public AggregateType, public TupleInitializable, public MemberFunctionContext, public ConstructorContext {
 
-            const std::vector<Type*>& GetMembers() { return GetMemberData().members; }
+            std::vector<Type*> GetMembers() { return GetMemberData().members; }
 
             const AST::Type* type;
             std::string source_name;

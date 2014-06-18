@@ -352,11 +352,6 @@ OverloadSet::OverloadSet(std::unordered_set<clang::NamedDecl*> clangdecls, Clang
         if(dynamic_cast<ClangType*>(context->Decay()))
             nonstatic = context;
 }
-
-Type* OverloadSet::GetConstantContext() {
-    if (!nonstatic) return this;
-    return nullptr;
-}
 OverloadSet* OverloadSet::CreateConstructorOverloadSet(Lexer::Access access) {
     if (access != Lexer::Access::Public) return GetConstructorOverloadSet(Lexer::Access::Public);
     if (nonstatic) {
@@ -423,7 +418,7 @@ std::pair<ClangTU*, clang::FunctionDecl*> OverloadSet::GetSingleFunction() {
     return { nullptr, nullptr };
 }
 
-const std::vector<Type*>& OverloadSet::GetMembers() {
+std::vector<Type*> OverloadSet::GetMembers() {
     if (nonstatic && contents.empty()) {
         contents.push_back(nonstatic);
     }

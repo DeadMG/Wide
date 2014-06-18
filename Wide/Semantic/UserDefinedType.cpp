@@ -900,6 +900,6 @@ UserDefinedType::VTableData& UserDefinedType::VTableData::operator=(VTableData&&
 }
 Type* UserDefinedType::GetConstantContext() {
     if (type->Functions.find(DestructorName) != type->Functions.end())
-        return false;
+        return nullptr;
     return AggregateType::GetConstantContext();
 }

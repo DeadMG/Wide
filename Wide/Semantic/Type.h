@@ -262,6 +262,7 @@ namespace Wide {
             std::unique_ptr<Expression> BuildUnaryExpression(std::unique_ptr<Expression> self, Lexer::TokenType type, Context c);
             std::unique_ptr<Expression> BuildBinaryExpression(std::unique_ptr<Expression> lhs, std::unique_ptr<Expression> rhs, Lexer::TokenType type, Context c);
             std::unique_ptr<Expression> SetVirtualPointers(std::unique_ptr<Expression>);
+            std::unique_ptr<Expression> BuildIndex(std::unique_ptr<Expression> obj, std::unique_ptr<Expression> arg, Context c);
         };
 
         struct Callable {

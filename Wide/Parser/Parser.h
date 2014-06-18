@@ -341,6 +341,12 @@ namespace Wide {
                     if(!lex)
                         return expr;
                     auto t = lex();
+                    if (t.GetType() == Lexer::TokenType::OpenSquareBracket) {
+                        auto index = ParseExpression();
+                        auto close = Check(Error::IndexNoCloseBracket, Lexer::TokenType::CloseSquareBracket);
+                        expr = sema.CreateIndex(std::move(expr), std::move(index), t.GetLocation() + close.GetLocation());
+                        continue;
+                    }
                     if(t.GetType() == Lexer::TokenType::Dot) {
                         Check(Error::MemberAccessNoIdentifierOrDestructor, [&](decltype(lex())& tok) {
                             if(tok.GetType() == Lexer::TokenType::Identifier) {

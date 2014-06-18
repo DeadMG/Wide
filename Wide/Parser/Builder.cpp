@@ -325,7 +325,13 @@ std::vector<Variable*> Builder::CreateCaptureGroup()
 { return std::vector<Variable*>(); }
 
 std::vector<Variable*> Builder::CreateInitializerGroup() 
-{ return CreateCaptureGroup(); }
+{
+    return CreateCaptureGroup();
+}
+
+Index* Builder::CreateIndex(Expression* object, Expression* index, Lexer::Range where) {
+    return arena.Allocate<Index>(object, index, where);
+}
 
 void Builder::SetTypeEndLocation(Lexer::Range loc, Type* t) { outlining(loc, OutliningType::Type); }
 void Builder::SetModuleEndLocation(Module* m, Lexer::Range loc) { outlining(loc, OutliningType::Module); }
