@@ -1,7 +1,6 @@
 using header := cpp("JITSuccess/CPPInterop/WideThrowCppCatch.h");
-func() prolog {
-    ExportAs = header.f;
-} {
+[export := header.f]
+func() {
     throw int32(1);
 }
 Main() {

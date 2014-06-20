@@ -641,6 +641,51 @@ Function::Function(std::vector<Type*> args, const AST::FunctionBase* astfun, Ana
 
     // Deal with the prolog first- if we have one.
     if (auto fun = dynamic_cast<const AST::Function*>(astfun)) {
+        for (auto attr : fun->attributes) {
+            if (auto name = dynamic_cast<const AST::Identifier*>(attr.initialized)) {
+                if (name->val == "export") {
+                    auto expr = analyzer.AnalyzeExpression(GetContext(), attr.initializer);
+                    if (auto str = dynamic_cast<StringType*>(expr->GetType()->Decay())) {
+                        trampoline.push_back([str](llvm::Module* module) { return str->GetValue(); });
+                        continue;
+                    }
+                    auto overset = dynamic_cast<OverloadSet*>(expr->GetType()->Decay());
+                    if (!overset)
+                        throw NotAType(expr->GetType()->Decay(), attr.initializer->location);
+                    auto tuanddecl = overset->GetSingleFunction();
+                    if (!tuanddecl.second) throw NotAType(expr->GetType()->Decay(), attr.initializer->location);
+                    auto tu = tuanddecl.first;
+                    auto decl = tuanddecl.second;
+                    trampoline.push_back(tu->MangleName(decl));
+                    if (auto meth = llvm::dyn_cast<clang::CXXMethodDecl>(decl)) {
+                        ClangContexts.insert(analyzer.GetClangType(*tu, tu->GetASTContext().getRecordType(meth->getParent())));
+                        if (!meth->isStatic()) {
+                            // Add "this".
+                            auto param = Wide::Memory::MakeUnique<Parameter>(this, 0, Lexer::Range(nullptr));
+                            root_scope->named_variables.insert(std::make_pair("this", std::make_pair(Wide::Memory::MakeUnique<ExpressionReference>(param.get()), Lexer::Range(nullptr))));
+                            root_scope->active.push_back(std::move(param));
+                            auto clangty = dynamic_cast<ClangType*>(analyzer.GetClangType(*tu, tu->GetASTContext().getRecordType(meth->getParent())));
+                            if (auto con = llvm::dyn_cast<clang::CXXConstructorDecl>(meth)) {
+                                // Error if we have a constructor context and it's not the same one.
+                                // Error if we have a nonstatic member context.
+                                // Error if we have any other clang contexts, since constructors cannot be random static members.
+                                if (NonstaticMemberContext) throw std::runtime_error("fuck");
+                                if (ConstructorContext && *ConstructorContext != clangty) throw std::runtime_error("fuck");
+                                if (ClangContexts.size() >= 2) throw std::runtime_error("fuck");
+                                ConstructorContext = clangty;
+                                continue;
+                            }
+                            // Error if we have a constructor context.
+                            // Error if we have a nonstatic member context and it's not this one.
+                            if (ConstructorContext) throw std::runtime_error("fuck");
+                            if (NonstaticMemberContext && *NonstaticMemberContext != clangty) throw std::runtime_error("fuck");
+                            NonstaticMemberContext = clangty;
+                            continue;
+                        }
+                    }
+                }
+            }
+        }
         for (auto&& prolog : fun->prolog) {
             auto ass = dynamic_cast<const AST::BinaryExpression*>(prolog);
             if (!ass || ass->type != Lexer::TokenType::Assignment)
@@ -649,54 +694,12 @@ Function::Function(std::vector<Type*> args, const AST::FunctionBase* astfun, Ana
             if (!ident)
                 throw PrologAssignmentNotIdentifier(ass->lhs->location);
             auto expr = analyzer.AnalyzeExpression(this, ass->rhs);
-            if (ident->val == "ExportName") {
-                auto str = dynamic_cast<StringType*>(expr->GetType()->Decay());
-                if (!str)
-                    throw PrologExportNotAString(ass->rhs->location);
-                trampoline.push_back([str](llvm::Module* module) { return str->GetValue(); });
-            }
             if (ident->val == "ReturnType") {
                 auto ty = dynamic_cast<ConstructorType*>(expr->GetType()->Decay());
                 if (!ty)
                     throw NotAType(expr->GetType()->Decay(), ass->rhs->location);
                 ExplicitReturnType = ty->GetConstructedType();
                 ReturnType = *ExplicitReturnType;
-            }
-            if (ident->val == "ExportAs") {
-                auto overset = dynamic_cast<OverloadSet*>(expr->GetType()->Decay());
-                if (!overset)
-                    throw NotAType(expr->GetType()->Decay(), ass->rhs->location);
-                auto tuanddecl = overset->GetSingleFunction();
-                if (!tuanddecl.second) throw NotAType(expr->GetType()->Decay(), ass->rhs->location);
-                auto tu = tuanddecl.first;
-                auto decl = tuanddecl.second;
-                trampoline.push_back(tu->MangleName(decl));
-                if (auto meth = llvm::dyn_cast<clang::CXXMethodDecl>(decl)) {
-                    ClangContexts.insert(analyzer.GetClangType(*tu, tu->GetASTContext().getRecordType(meth->getParent())));
-                    if (!meth->isStatic()) {
-                        // Add "this".
-                        auto param = Wide::Memory::MakeUnique<Parameter>(this, 0, Lexer::Range(nullptr));
-                        root_scope->named_variables.insert(std::make_pair("this", std::make_pair(Wide::Memory::MakeUnique<ExpressionReference>(param.get()), Lexer::Range(nullptr))));
-                        root_scope->active.push_back(std::move(param));
-                        auto clangty = dynamic_cast<ClangType*>(analyzer.GetClangType(*tu, tu->GetASTContext().getRecordType(meth->getParent())));
-                        if (auto con = llvm::dyn_cast<clang::CXXConstructorDecl>(meth)) {
-                            // Error if we have a constructor context and it's not the same one.
-                            // Error if we have a nonstatic member context.
-                            // Error if we have any other clang contexts, since constructors cannot be random static members.
-                            if (NonstaticMemberContext) throw std::runtime_error("fuck");
-                            if (ConstructorContext && *ConstructorContext != clangty) throw std::runtime_error("fuck");
-                            if (ClangContexts.size() >= 2) throw std::runtime_error("fuck");
-                            ConstructorContext = clangty;
-                            continue;
-                        }
-                        // Error if we have a constructor context.
-                        // Error if we have a nonstatic member context and it's not this one.
-                        if (ConstructorContext) throw std::runtime_error("fuck");
-                        if (NonstaticMemberContext && *NonstaticMemberContext != clangty) throw std::runtime_error("fuck");
-                        NonstaticMemberContext = clangty;
-                        continue;
-                    }
-                }
             }
         }
     }

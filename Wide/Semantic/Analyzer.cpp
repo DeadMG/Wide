@@ -1088,17 +1088,10 @@ Lexer::Access Semantic::GetAccessSpecifier(Type* from, Type* to) {
 
 void ProcessFunction(const AST::Function* f, Analyzer& a, Module* m, std::string name) {
     bool exported = false;
-    for (auto stmt : f->prolog) {
-        auto ass = dynamic_cast<const AST::BinaryExpression*>(stmt);
-        if (!ass || ass->type != Lexer::TokenType::Assignment)
-            continue;
-        auto ident = dynamic_cast<const AST::Identifier*>(ass->lhs);
-        if (!ident)
-            continue;
-        if (ident->val == "ExportName")
-            exported = true;
-        if (ident->val == "ExportAs")
-            exported = true;
+    for (auto attr : f->attributes) {
+        if (auto ident = dynamic_cast<const AST::Identifier*>(attr.initialized))
+            if (ident->val == "export")
+                exported = true;
     }
     if (!exported) return;
     std::vector<Type*> types;

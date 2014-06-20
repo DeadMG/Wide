@@ -1,5 +1,6 @@
 using header := cpp("JITSuccess/CPPInterop/ThrowDerivedCatchBase.h");
-f(arg := bool.lvalue) prolog { ExportAs = header.f; }
+[export := header.f]
+f(arg := bool.lvalue)
 {
     throw Derived(arg);
 }

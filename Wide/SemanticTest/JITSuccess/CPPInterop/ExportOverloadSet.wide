@@ -1,7 +1,6 @@
 using header := cpp("JITSuccess/CPPInterop/ExportOverloadSet.h");
-f() prolog {
-    ExportAs = header.f.resolve();
-} {
+[export := header.f.resolve()]
+f() {
     return true;
 }
 Main() {

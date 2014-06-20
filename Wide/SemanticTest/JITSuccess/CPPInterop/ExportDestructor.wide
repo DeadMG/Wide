@@ -1,6 +1,7 @@
 using test := cpp("JITSuccess/CPPInterop/ExportDestructor.h").test;
 
-~type(this := test.lvalue) prolog { ExportAs = test.destructor; }
+[export := test.destructor]
+~type(this := test.lvalue)
 {
     *p = true;
 }

@@ -284,7 +284,9 @@ Callable* OverloadSet::Resolve(std::vector<Type*> f_args, Type* source) {
                     clang::DeclAccessPair d;
                     d.setDecl(decl);
                     d.setAccess(decl->getAccess());
-                    from->GetSema().AddMethodCandidate(d, f_args[0]->GetClangType(*from)->getNonLValueExprType(from->GetASTContext()), clang::Expr::Classification::makeSimpleLValue(), exprptrs, s, false);
+                    auto ty = f_args[0]->GetClangType(*from)->getNonLValueExprType(from->GetASTContext());
+                    clang::OpaqueValueExpr valuexpr(clang::SourceLocation(), ty, Wide::Semantic::GetKindOfType(f_args[0]));
+                    from->GetSema().AddMethodCandidate(d, ty, valuexpr.Classify(from->GetASTContext()), exprptrs, s, false);
                     continue;
                 }
             }

@@ -1,9 +1,10 @@
 using header := cpp("JITSuccess/CPPInterop/ExportEmptyMemberFunction.h");
-f(self := header.test.pointer) prolog {
-    ExportAs = header.test().f;
-} {
+
+[export := header.test().f]
+f(self := header.test.pointer) {
     return true;
 }
+
 Main() {
     return header.test().g();
 }

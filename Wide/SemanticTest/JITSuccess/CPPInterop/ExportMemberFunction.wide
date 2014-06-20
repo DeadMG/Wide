@@ -1,7 +1,7 @@
 using header := cpp("JITSuccess/CPPInterop/ExportMemberFunction.h");
-f(self := header.test.pointer) prolog {
-    ExportAs = header.test().f;
-} {
+
+[export := header.test().f]
+f(self := header.test.pointer) {
     if (self)
         self->var = true;
 }

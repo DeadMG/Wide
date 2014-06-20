@@ -1,9 +1,10 @@
 using header := cpp("JITSuccess/CPPInterop/DerivedSingleInheritance.h");
-f(arg := header.x.rvalue) prolog {
-    ExportAs = header.f.resolve(header.x.rvalue);
-} {
+
+[export := header.f.resolve(header.x.rvalue)]
+f(arg := header.x.rvalue) {
     return arg.f();
 }
+
 Main() {
     return header.g() & header.y().f();
 }

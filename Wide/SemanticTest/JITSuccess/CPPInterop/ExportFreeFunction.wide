@@ -1,7 +1,6 @@
 using header := cpp("JITSuccess/CPPInterop/ExportFreeFunction.h");
-f() prolog {
-    ExportAs = header.f;
-} {
+[export := header.f]
+f() {
     return true;
 }
 Main() {

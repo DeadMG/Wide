@@ -9,7 +9,44 @@
 #include <sstream>
 #include <unordered_set>
 
+struct TestStatement {
+    virtual ~TestStatement() {}
+};
+struct TestExpression : public TestStatement {};
+struct TestAttribute {
+    template<typename X, typename Y> TestAttribute(X x, Y y)
+    : initialized(Wide::Memory::MakeUnique<X>(std::move(x))), initializer(Wide::Memory::MakeUnique<Y>(std::move(y))) {}
+    TestAttribute(TestAttribute&& other)
+        : initialized(std::move(other.initialized)), initializer(std::move(other.initializer)) {}
+    TestAttribute& operator=(TestAttribute&& other) {
+        initialized = std::move(other.initialized);
+        initializer = std::move(other.initializer);
+        return *this;
+    }
+    std::unique_ptr<TestExpression> initialized;
+    std::unique_ptr<TestExpression> initializer;
+};
+struct TestFunction;
+struct TestAttributes {
+    TestAttributes() {}
+    TestAttributes(TestAttributes&& other)
+    : attributes(std::move(other.attributes)) {}
+    TestAttributes& operator=(TestAttributes&& other) {
+        attributes = std::move(other.attributes);
+        return *this;
+    }
+    std::vector<TestAttribute> attributes;
+    TestAttributes&& operator()(TestAttribute attr) {
+        attributes.push_back(std::move(attr));
+        return std::move(*this);
+    }
+    TestFunction operator()(TestFunction f);
+};
 struct TestFunction {
+    TestFunction() {}
+    TestFunction(TestFunction&& other)
+        : attrs(std::move(other.attrs)) {}
+    TestAttributes attrs;
 };
 struct TestOverloadSet {
     std::unordered_set<std::unique_ptr<TestFunction>> functions;
@@ -49,10 +86,10 @@ struct TestModule {
         return std::move(*this);
     }
 };
-struct TestStatement {
-    virtual ~TestStatement() {}
-};
-struct TestExpression : public TestStatement {};
+TestFunction TestAttributes::operator()(TestFunction f) {
+    f.attrs = std::move(*this);
+    return std::move(f);
+}
 struct TestInteger : public TestExpression {
     TestInteger(int arg)
     : val(arg) {}
@@ -62,6 +99,11 @@ struct TestString : public TestExpression {
     TestString(std::string arg)
     : val(arg) {}
     std::string val;
+};
+struct TestIdentifier : public TestExpression {
+    std::string ident;
+    TestIdentifier(std::string arg)
+        : ident(arg) {}
 };
 struct TestTuple : public TestExpression {
     std::vector<std::unique_ptr<TestExpression>> expressions;
@@ -94,13 +136,40 @@ bool operator==(const Wide::AST::Module* m, const TestModule& rhs) {
         }
     }
     for(auto&& mod : rhs.modules)
-    if(m->decls.find(mod.first) == m->decls.end() || !dynamic_cast<Wide::AST::Module*>(m->decls.at(mod.first)))
-        result = false;
+        if (m->decls.find(mod.first) == m->decls.end() || !dynamic_cast<Wide::AST::Module*>(m->decls.at(mod.first)))
+            return false;
     
     return result;
 }
-bool operator==(const Wide::AST::Statement* s, const TestStatement& rhs);
 bool operator==(const Wide::AST::Expression* e, const TestExpression& rhs);
+bool operator!=(const Wide::AST::Expression* e, const TestExpression& rhs) {
+    return !(e == rhs);
+}
+bool operator==(const Wide::AST::Function* func, const TestFunction& testfunc) {
+    if (func->attributes.size() != testfunc.attrs.attributes.size()) return false;
+    for (unsigned i = 0; i < func->attributes.size(); ++i) {
+        if (func->attributes[i].initialized != *testfunc.attrs.attributes[i].initialized)
+            return false;
+        if (func->attributes[i].initializer != *testfunc.attrs.attributes[i].initializer)
+            return false;
+    }
+    return true;
+}
+bool operator==(const Wide::AST::FunctionOverloadSet* overset, const TestOverloadSet& testoverset) {
+    std::unordered_map<const Wide::AST::Function*, const TestFunction*> mapping;
+    for (auto func : overset->functions) {
+         // Every function should have a 1:1 correspondence with some function in the test overset.
+        for (auto&& testfunc : testoverset.functions) {
+            if (func == *testfunc) {
+                if (mapping.find(func) != mapping.end())
+                    return false;
+                mapping[func] = testfunc.get();                
+            }
+        }
+    }
+    return mapping.size() == overset->functions.size();
+}
+bool operator==(const Wide::AST::Statement* s, const TestStatement& rhs);
 
 bool operator==(const Wide::AST::Tuple* t, const TestTuple& rhs) {
     if (t->expressions.size() != rhs.expressions.size())
@@ -128,6 +197,10 @@ bool operator==(const Wide::AST::Expression* e, const TestExpression& rhs) {
         if (auto testtup = dynamic_cast<const TestTuple*>(&rhs))
             return tup == *testtup;
 
+    if (auto ident = dynamic_cast<const Wide::AST::Identifier*>(e))
+        if (auto testident = dynamic_cast<const TestIdentifier*>(&rhs))
+            return ident->val == testident->ident;
+
     return false;
 }
 
@@ -147,7 +220,6 @@ struct result {
 template<typename T, typename F> result test(T&& t, F&& f) {
     auto parserwarninghandler = [](Wide::Lexer::Range where, Wide::Parser::Warning what) {};
     auto parsererrorhandler = [](std::vector<Wide::Lexer::Range> where, Wide::Parser::Error what) {};
-    auto combineerrorhandler = [](std::vector<std::pair<Wide::Lexer::Range, Wide::AST::DeclContext*>> errs) {};
     auto parseroutlininghandler = [](Wide::Lexer::Range, Wide::AST::OutliningType) {};
 
     unsigned testsfailed = 0;
@@ -188,6 +260,7 @@ int main() {
         ret["ModuleShortForm"] = std::make_pair("module X.Y.Z {}", TestModule()("X", TestModule()("Y", TestModule()("Z", TestModule()))));
         ret["ModuleBasic"] = std::make_pair("module X {}", TestModule()("X", TestModule()));
         ret["FunctionShortForm"] = std::make_pair("X.Y.Z() {}", TestModule()("X", TestModule()("Y", TestModule()("Z", TestOverloadSet()(TestFunction())))));
+        ret["AttrBasic"] = std::make_pair("[attr := initializer]f() {}", TestModule()("f", TestOverloadSet()(TestAttributes()(TestAttribute(TestIdentifier("attr"), TestIdentifier("initializer")))(TestFunction()))));
         return ret;
     }();
 

@@ -91,6 +91,8 @@ namespace Wide {
             CatchNoVarCreate,
             CatchNoOpenCurly,
             IndexNoCloseBracket,
+            AttributeNoVarCreate,
+            AttributeNoEnd
         };         
 
         enum class Warning : int {
@@ -200,6 +202,8 @@ namespace Wide {
                 std::make_pair(Error::CatchNoVarCreate, "Expected := after catch(identifier."),
                 std::make_pair(Error::CatchNoOpenCurly, "Expected { after catch(identifier := expression) to open a catch block."),
                 std::make_pair(Error::CatchNoOpenCurly, "Expected ] after expression[expression to finish an index expression."),
+                std::make_pair(Error::AttributeNoVarCreate, "Expected := after [expression to initialize an attribute."),
+                std::make_pair(Error::AttributeNoEnd, "Expected ] after [expression := expression to close an attribute"),
             };
             return std::unordered_map<Error, std::string>(std::begin(strings), std::end(strings));
         }());

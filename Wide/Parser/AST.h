@@ -22,6 +22,13 @@ namespace Wide {
             Expression(Lexer::Range r)
                 : Statement(r) {}
         };
+        struct Attribute {
+            Attribute(Expression* begin, Expression* end, Lexer::Range where)
+            : where(where), initialized(begin), initializer(end) {}
+            Lexer::Range where;
+            Expression* initializer;
+            Expression* initialized;
+        };
         struct Throw : Statement {
             Throw(Lexer::Range where, Expression* e)
             : Statement(where), expr(e) {}
@@ -54,11 +61,12 @@ namespace Wide {
         };
         struct Variable;
         struct Type : public DeclContext, Expression {
-            Type(std::vector<Expression*> base, Lexer::Range loc, Lexer::Access a) : DeclContext(loc, a), Expression(loc), bases(base) {}
+            Type(std::vector<Expression*> base, Lexer::Range loc, Lexer::Access a, std::vector<Attribute> attributes) : DeclContext(loc, a), Expression(loc), bases(base), attributes(attributes) {}
             std::vector<std::pair<Variable*, Lexer::Access>> variables;
             std::unordered_map<std::string, FunctionOverloadSet*> Functions;
             std::unordered_map<Lexer::TokenType, FunctionOverloadSet*> opcondecls;
             std::vector<Expression*> bases;
+            std::vector<Attribute> attributes;
         };
         struct Identifier : Expression {
             Identifier(std::string nam, Lexer::Range loc)
@@ -114,14 +122,15 @@ namespace Wide {
         };
         struct Function : FunctionBase {
             Lexer::Access access;
-            Function(std::vector<Statement*> b, std::vector<Statement*> prolog, Lexer::Range loc, std::vector<FunctionArgument> ar, Lexer::Access a, bool dyn)
-                : FunctionBase(std::move(ar), std::move(b), loc), access(a), prolog(std::move(prolog)), dynamic(dyn) {}
+            Function(std::vector<Statement*> b, std::vector<Statement*> prolog, Lexer::Range loc, std::vector<FunctionArgument> ar, Lexer::Access a, bool dyn, std::vector<Attribute> attributes)
+                : FunctionBase(std::move(ar), std::move(b), loc), access(a), prolog(std::move(prolog)), dynamic(dyn), attributes(attributes) {}
             std::vector<Statement*> prolog;
+            std::vector<Attribute> attributes;
             bool dynamic;
         };
         struct Constructor : Function {
-            Constructor(std::vector<Statement*> b, std::vector<Statement*> prolog, Lexer::Range loc, std::vector<FunctionArgument> ar, std::vector<Variable*> caps, Lexer::Access a)
-                : Function(std::move(b), std::move(prolog), loc, std::move(ar), a, false), initializers(std::move(caps)) {}
+            Constructor(std::vector<Statement*> b, std::vector<Statement*> prolog, Lexer::Range loc, std::vector<FunctionArgument> ar, std::vector<Variable*> caps, Lexer::Access a, std::vector<Attribute> attributes)
+                : Function(std::move(b), std::move(prolog), loc, std::move(ar), a, false, attributes), initializers(std::move(caps)) {}
             std::vector<Variable*> initializers;
         };
         struct FunctionCall : Expression {

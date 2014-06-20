@@ -29,8 +29,8 @@ std::unique_ptr<Expression> TupleType::ConstructFromLiteral(std::vector<std::uni
         initializers.push_back(call->Call(Expressions(PrimitiveAccessMember(Wide::Memory::MakeUnique<ExpressionReference>(self.get()), i), std::move(exprs[i])), c));
     }
 
-    struct LambdaConstruction : Expression {
-        LambdaConstruction(std::unique_ptr<Expression> self, std::vector<std::unique_ptr<Expression>> inits)
+    struct TupleConstruction : Expression {
+        TupleConstruction(std::unique_ptr<Expression> self, std::vector<std::unique_ptr<Expression>> inits)
         : self(std::move(self)), inits(std::move(inits)) {}
         std::vector<std::unique_ptr<Expression>> inits;
         std::unique_ptr<Expression> self;
@@ -46,7 +46,7 @@ std::unique_ptr<Expression> TupleType::ConstructFromLiteral(std::vector<std::uni
         }
     };
 
-    return Wide::Memory::MakeUnique<LambdaConstruction>(std::move(self), std::move(initializers));
+    return Wide::Memory::MakeUnique<TupleConstruction>(std::move(self), std::move(initializers));
 }
 
 bool TupleType::IsA(Type* self, Type* other, Lexer::Access access) {

@@ -1,7 +1,6 @@
 using test := cpp("JITSuccess/CPPInterop/ExportFunctionImplicitLookup.h").test;
-f(this := test.lvalue) prolog {
-    ExportAs = test().f;
-} {
+[export := test().f]
+f(this := test.lvalue) {
     return val;
 }
 Main() {

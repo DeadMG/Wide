@@ -1,9 +1,6 @@
 using header := cpp("JITSuccess/CPPInterop/ExportABIMismatch.h");
-f(b := bool, arg := header.test) 
-prolog {
-    ExportAs = header.f;
-}
-{
+[export := header.f]
+f(b := bool, arg := header.test) {
     return b;
 }
 Main() {

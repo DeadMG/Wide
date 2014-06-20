@@ -6,7 +6,6 @@ Add tests.
 
 Parser:
 Add local using statements.
-Add type X.Y.Z {}
 Add short-form lambdas.
 Cleanup some of the old parsing style that required construct with all parameters for concurrency.
 Add tests.
@@ -18,24 +17,30 @@ Analyzer:
 Add unsafe pointer indexing.
 Add library is-a.
 Add polymorphic types.
-
-Add Malloc/Free to system.
-
-Add basic inheritance (no virtual functions or inheritance, just is-a and composition).
-
+Add boolean testing for UDTs.
 Add inheriting constructors.
-
-Add exceptions.
-Add static reflection.
+Add defaulted members.
+Add C++ operator understanding.
+Add exception re-throwing.
+Add abstract functions, override/final/new.
+Add static reflection.#
+Change ADL to look up in base class.
+Fix bases to not have to be an identifier.
+Fix member initialization syntax.
 Consider constraints.
-
-Fix default arguments.
+Add default arguments for Wide functions.
+Add dynamic destructors.
+Add noexcept handling.
+Add C++ handling of in-class initializers.
 Add all primitive operators and types.
 Add metafunctions.
 Add ability for C++ to call into Wide public global functions without having to declare it.
-Add ability for C++ to understand Wide member functions, constructors, and destructors.
 Add the ability for Wide to expose Wide generic functions as C++ templates
 Consider parameterised destructors.
+Add the ability to add token types, parsing paths, statement types, etc.
+Add access to instance member overload sets.
+Add dynamic operator overloads.
+More tests.
 
 WideLibrary:
 Add the ability for optional to contain lvalue references.
