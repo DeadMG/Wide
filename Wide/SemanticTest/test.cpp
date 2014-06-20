@@ -185,10 +185,14 @@ void Jit(Wide::Options::Clang& copts, std::string file) {
     if (ee)
         module.release();
     ee->finalizeObject();
+#ifdef _MSC_VER
     ee->runStaticConstructorsDestructors(false);
+#endif
     auto f = ee->FindFunctionNamed(name.c_str());
     auto result = ee->runFunction(f, std::vector<llvm::GenericValue>());
+#ifdef _MSC_VER
     ee->runStaticConstructorsDestructors(true);
+#endif
     auto intval = result.IntVal.getLimitedValue();
     if (!intval)
         throw std::runtime_error("Test returned false.");
