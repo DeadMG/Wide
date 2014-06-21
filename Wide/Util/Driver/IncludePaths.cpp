@@ -1,6 +1,7 @@
 #include <Wide/Util/Driver/IncludePaths.h>
 #include <Wide/Semantic/ClangOptions.h>
 #include <llvm/Support/Path.h>
+#include <boost/algorithm/string.hpp>
 /*
 /usr/include/c++/4.7
 /usr/include/c++/4.7/x86_64-linux-gnu
@@ -46,49 +47,49 @@ void Wide::Driver::AddLinuxIncludePaths(Options::Clang& ClangOpts, int gnuc, int
     std::string gccver = std::to_string(gnuc) + "." + std::to_string(gnucminor) + "." + std::to_string(gnucpatchlevel);
     return AddLinuxIncludePaths(ClangOpts, gccver);
 }
+
+namespace {
+    FILE* really_popen(const char* cmd, const char* mode) {
+#ifdef _MSC_VER
+        return _popen(cmd, mode);
+#else
+        return popen(cmd, mode);
+#endif
+    }
+    void really_pclose(FILE* pipe) {
+#ifdef _MSC_VER
+        _pclose(pipe);
+#else
+        pclose(pipe);
+#endif
+    }
+    std::string ExecuteProcess(const char* cmd) {
+        FILE* pipe = really_popen(cmd, "r");
+        if (!pipe) throw std::runtime_error("Could not invoke command " + std::string(cmd));
+        char buffer[128];
+        std::string result = "";
+        while(!feof(pipe)) {
+            if(fgets(buffer, 128, pipe) != NULL)
+                result += buffer;
+        }
+        really_pclose(pipe);
+        return result;
+    }
+}
 void Wide::Driver::AddLinuxIncludePaths(Options::Clang& ClangOpts) {
-    auto end = llvm::sys::fs::directory_iterator();
-    llvm::error_code fuck_error_codes;
-    bool out = true;
-    auto path = "/usr/include/c++";
-    fuck_error_codes = llvm::sys::fs::is_directory(path, out);
-    if (!out || fuck_error_codes) {
-        throw std::runtime_error("Could not find the libstdc++ install path.");
+    auto result = ExecuteProcess("g++ -E -x c++ - -v < /dev/null 2>&1");
+    auto begin = boost::algorithm::find_first(result, "#include <...> search starts here:");
+    auto end = boost::algorithm::find_first(result, "End of search list.");
+    if (!begin || !end)
+        throw std::runtime_error("Could not find G++ header search paths in G++ output.");
+    auto path_strings = std::string(begin.end(), end.begin());
+    std::vector<std::string> paths;
+    boost::algorithm::split(paths, path_strings, [](char c) { return c == '\n'; });
+    for(auto&& path : paths) {
+        boost::algorithm::trim(path);
+        if (path.empty()) continue;
+        ClangOpts.HeaderSearchOptions->AddPath(path, clang::frontend::IncludeDirGroup::CXXSystem, false, false);
     }
-    auto begin = llvm::sys::fs::directory_iterator(path, fuck_error_codes);
-    std::set<std::string> entries;
-    while (!fuck_error_codes && begin != end) {
-        entries.insert(begin->path());
-        begin.increment(fuck_error_codes);
-    }
-    if (entries.size() == 1)
-        return AddLinuxIncludePaths(ClangOpts, *entries.begin());
-    std::set<std::tuple<int, int, int>> versions;
-    for (auto entry : entries) {
-        // Expecting entry in the form /usr/include/c++/X.Y.Z
-        entry = llvm::sys::path::filename(entry);
-        if (entry.size() != 5 && entry.size() != 3)
-            continue;
-        auto value_from_character = [](char c) -> int {
-            switch (c) {
-            case '0': return 0;
-            case '1': return 1;
-            case '2': return 2;
-            case '3': return 3;
-            case '4': return 4;
-            case '5': return 5;
-            case '6': return 6;
-            case '7': return 7;
-            case '8': return 8;
-            case '9': return 9;
-            };
-        };
-        versions.insert(std::make_tuple(value_from_character(entry[0]), value_from_character(entry[2]), value_from_character(entry[4])));
-    }
-    if (versions.size() == 0)
-        throw std::runtime_error("Could not find the libstdc++ install path.");
-    auto latest = *--versions.end();
-    return AddLinuxIncludePaths(ClangOpts, std::get<0>(latest), std::get<1>(latest), std::get<2>(latest));
 }
 void Wide::Driver::AddMinGWIncludePaths(Options::Clang& ClangOpts, std::string MinGWInstallPath) {
     ClangOpts.HeaderSearchOptions->AddPath(MinGWInstallPath + "mingw32-dw2\\include\\c++\\4.6.3", clang::frontend::IncludeDirGroup::CXXSystem, false, false);

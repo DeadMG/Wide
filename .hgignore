@@ -101,3 +101,6 @@ ClangExperiments/Backup/CAPI.dll
 ClangExperiments/Wide.opensdf
 ClangExperiments/a.o
 *.opensdf
+*/Makefile
+*.orig
+*~
