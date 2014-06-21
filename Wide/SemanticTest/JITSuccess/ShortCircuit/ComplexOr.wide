@@ -2,7 +2,9 @@ type t {
     val := bool.pointer;
     result := bool;
     type(arg := bool.lvalue, arg2 := bool)
-       : val(&arg) : result(arg2) {}
+       : val := &arg
+       : result := arg2 
+   {}
     f() { return true; }
     ~type() { *val = result;}
 }

@@ -215,6 +215,12 @@ Analyzer::Analyzer(const Options::Clang& opts, const AST::Module* GlobalModule)
         return Wide::Memory::MakeUnique<MemberAccess>(lookup, a, memaccess, a.AnalyzeExpression(lookup, memaccess->expr));
     });
 
+    AddExpressionHandler<AST::BooleanTest>([](Analyzer& a, Type* lookup, const AST::BooleanTest* test) {
+        auto expr = a.AnalyzeExpression(lookup, test->ex);
+        auto ty = expr->GetType();
+        return ty->BuildBooleanConversion(std::move(expr), { lookup, test->location });
+    });
+
     AddExpressionHandler<AST::FunctionCall>([](Analyzer& a, Type* lookup, const AST::FunctionCall* call) -> std::unique_ptr<Expression> {
         struct FunctionCall : Expression {
             FunctionCall(Type* from, Lexer::Range where, std::unique_ptr<Expression> obj, std::vector<std::unique_ptr<Expression>> params)

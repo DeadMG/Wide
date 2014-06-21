@@ -1,9 +1,7 @@
 type t {
-    type() {}
     dynamic f() { return false; }
 }
 type x : t {
-    type() {}
     f() { return true; }
 }
 f(arg := t.rvalue) {

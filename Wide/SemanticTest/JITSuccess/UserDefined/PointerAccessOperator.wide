@@ -1,6 +1,6 @@
 type sub {
     val := bool;
-    type() : val(true) {}
+    type() : val := true {}
 }
 type outer {
     var := sub;

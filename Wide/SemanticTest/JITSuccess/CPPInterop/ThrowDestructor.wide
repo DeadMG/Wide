@@ -1,7 +1,7 @@
 using header := cpp("JITSuccess/CPPInterop/ThrowDestructor.h");
 type hi {
     ptr := bool.pointer;
-    type(arg := bool.lvalue) : ptr(&arg) {}
+    type(arg := bool.lvalue) : ptr := &arg {}
     ~type() { *ptr = true; }
 }
 [export := header.f]

@@ -2,7 +2,7 @@ using test := cpp("JITSuccess/CPPInterop/ExportConstructor.h").test;
 
 [export := test.constructors.resolve(test.lvalue)]
 type(this := test.lvalue)
-    : val(true)
+    : val := true
 {
 }
 

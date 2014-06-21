@@ -1,5 +1,5 @@
 type base { dynamic f() {} }
-type derived : base { type() {} }
+type derived : base { }
 f(arg := base.lvalue) prolog { ReturnType = base.lvalue; }
 { return arg; }
 Main() {

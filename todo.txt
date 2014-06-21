@@ -8,6 +8,7 @@ Parser:
 Add local using statements.
 Add short-form lambdas.
 Cleanup some of the old parsing style that required construct with all parameters for concurrency.
+Clean up the parser in general because holy fucking shit seriously?
 Add tests.
 
 Builder:
@@ -17,13 +18,12 @@ Analyzer:
 Add unsafe pointer indexing.
 Add library is-a.
 Add polymorphic types.
-Add boolean testing for UDTs.
 Add inheriting constructors.
-Add defaulted members.
+Add defaulted members and deleted functions.
 Add C++ operator understanding.
 Add exception re-throwing.
 Add abstract functions, override/final/new.
-Add static reflection.#
+Add static reflection.
 Change ADL to look up in base class.
 Fix bases to not have to be an identifier.
 Fix member initialization syntax.
@@ -40,7 +40,16 @@ Consider parameterised destructors.
 Add the ability to add token types, parsing paths, statement types, etc.
 Add access to instance member overload sets.
 Add dynamic operator overloads.
+Add ability to inherit from primitives.
+Add short-circuiting for &= and |=.
 More tests.
+Add warnings and errors.
+Fix runtime_errors.
+Refactor error handling away from exceptions.
+Fix conversion of UDT member operators.
+Fix conversion of overload sets.
+Fix CompileFail tests to not be quite so damn fussy.
+Add tests for warnings, and add more warnings.
 
 WideLibrary:
 Add the ability for optional to contain lvalue references.

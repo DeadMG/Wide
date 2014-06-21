@@ -128,10 +128,17 @@ namespace Wide {
             std::vector<Attribute> attributes;
             bool dynamic;
         };
+        struct VariableInitializer {
+            VariableInitializer(Expression* begin, Expression* end, Lexer::Range where)
+            : where(where), initialized(begin), initializer(end) {}
+            Lexer::Range where;
+            Expression* initializer;
+            Expression* initialized;
+        };
         struct Constructor : Function {
-            Constructor(std::vector<Statement*> b, std::vector<Statement*> prolog, Lexer::Range loc, std::vector<FunctionArgument> ar, std::vector<Variable*> caps, Lexer::Access a, std::vector<Attribute> attributes)
+            Constructor(std::vector<Statement*> b, std::vector<Statement*> prolog, Lexer::Range loc, std::vector<FunctionArgument> ar, std::vector<VariableInitializer> caps, Lexer::Access a, std::vector<Attribute> attributes)
                 : Function(std::move(b), std::move(prolog), loc, std::move(ar), a, false, attributes), initializers(std::move(caps)) {}
-            std::vector<Variable*> initializers;
+            std::vector<VariableInitializer> initializers;
         };
         struct FunctionCall : Expression {
             FunctionCall(Expression* obj, std::vector<Expression*> arg, Lexer::Range loc)
@@ -139,9 +146,6 @@ namespace Wide {
             Expression* callee;
             std::vector<Expression*> args;
         };
-        /*struct QualifiedName {
-            std::vector<std::string> components;
-        };*/
         struct Using : public DeclContext {
             Using(Expression* ex, Lexer::Range where, Lexer::Access a)
                 :  DeclContext(where, a), expr(ex) {}
@@ -202,6 +206,10 @@ namespace Wide {
             UnaryExpression(Expression* expr, Lexer::Range loc)
                 : Expression(loc), ex(expr) {}
             Expression* ex;
+        };
+        struct BooleanTest : public UnaryExpression {
+            BooleanTest(Expression* e, Lexer::Range where)
+            : UnaryExpression(e, where) {}
         };
         struct PointerMemberAccess : public UnaryExpression {
             Lexer::Range memloc;

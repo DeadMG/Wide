@@ -1,6 +1,6 @@
 type t {
     val := bool;
-    type() : val(false) {}
+    type() : val := false {}
     operator=(i := int64) { val = true; }
 }
 Main() {

@@ -1,0 +1,10 @@
+type t {
+    val := bool;
+    operator?() { return val; }
+}
+f(arg := bool) {
+    return arg;
+}
+Main() {
+    return ~f(t({false})?) & f(t({true})?);
+}

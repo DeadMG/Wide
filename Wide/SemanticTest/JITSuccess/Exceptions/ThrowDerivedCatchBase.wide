@@ -4,9 +4,9 @@ type base {
 type Derived : base {
     ptr := bool.pointer;
     g() { return true; }
-    type(arg := bool.lvalue) : ptr(&arg) {}
-    type(other := Derived.rvalue) : ptr(other.ptr) { other.ptr = null; }
-    type(other := Derived.lvalue) : ptr(other.ptr) {}
+    type(arg := bool.lvalue) : ptr := &arg {}
+    type(other := Derived.rvalue) : ptr := other.ptr { other.ptr = null; }
+    type(other := Derived.lvalue) : ptr := other.ptr {}
     ~type() { if (ptr) *ptr = true; }
 }
 Main() {

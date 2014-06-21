@@ -27,7 +27,8 @@ const std::unordered_map<char, TokenType> Arguments::singles = []() -> std::unor
     singles['!'] = TokenType::Exclaim;
     singles['/'] = TokenType::Divide;
     singles['^'] = TokenType::Xor;
-    singles[':'] = TokenType::Colon;    
+    singles[':'] = TokenType::Colon;
+    singles['?'] = TokenType::QuestionMark;
     return singles;
 }();
 

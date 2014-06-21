@@ -1,7 +1,7 @@
-ExpectedFailure() { return { "OverloadResolutionFailure", 231, 241 }; }
+ExpectedFailure() { return { "OverloadResolutionFailure", 233, 243 }; }
 type t {
     val := bool;
-    type() : val(true) {}
+    type() : val := true {}
     operator=(other := t.rvalue) { val = false; }
 }
 Main() {

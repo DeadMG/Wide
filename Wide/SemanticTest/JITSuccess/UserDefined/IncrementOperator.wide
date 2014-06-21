@@ -1,9 +1,9 @@
 type t {
     val := bool;
     operator++() { val = true; }
-    type() : val(false) {}
-    type(other := this.lvalue) : val(other.val) {}
-    type(other := this.rvalue) : val(other.val) {}
+    type() : val := false {}
+    type(other := this.lvalue) : val := other.val {}
+    type(other := this.rvalue) : val := other.val {}
 }
 Main() {
     val := t();

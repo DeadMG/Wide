@@ -84,6 +84,7 @@ namespace Wide {
             Try,
             Catch,
             Throw,
+            QuestionMark,
         };
         enum Access {
             Public,

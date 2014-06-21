@@ -608,7 +608,6 @@ std::vector<ConstructorContext::member> ClangType::GetConstructionMembers() {
         ConstructorContext::member mem(RangeFromSourceRange(baseit->getSourceRange(), from->GetASTContext().getSourceManager()));
         mem.t = analyzer.GetClangType(*from, baseit->getType());
         mem.num = EmptyBaseOffset{ layout.getBaseClassOffset(baseit->getType()->getAsCXXRecordDecl()).getQuantity() };
-        mem.name = baseit->getType()->getAsCXXRecordDecl()->getName();
         out.push_back(std::move(mem));
     }
     unsigned i = 0;

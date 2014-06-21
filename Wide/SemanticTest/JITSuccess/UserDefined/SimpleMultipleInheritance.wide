@@ -1,13 +1,10 @@
 type b1 {
-    type() {}
     dynamic f() { return false; }
 }
 type b2 {
-    type() {}
     dynamic g() { return false; }
 }
 type der : b1 : b2 {
-    type() {}
     f() { return true; }
     g() { return true; }
 }

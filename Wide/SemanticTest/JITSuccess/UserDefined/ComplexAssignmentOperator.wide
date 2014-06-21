@@ -1,7 +1,7 @@
 type t {
     val := bool;
-    type() : val(false) {}
-    type(other := this.rvalue) : val(other.val) {}
+    type() : val := false {}
+    type(other := this.rvalue) : val := other.val {}
     operator=(other := this.lvalue) { val = true; }
 }
 Main() {

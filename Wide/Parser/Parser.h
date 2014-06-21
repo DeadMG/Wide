@@ -28,7 +28,8 @@ namespace Wide {
                 Lexer::TokenType::Xor,
                 Lexer::TokenType::OpenBracket,
                 Lexer::TokenType::Plus,
-                Lexer::TokenType::Increment
+                Lexer::TokenType::Increment,
+                Lexer::TokenType::QuestionMark,
             };
             return std::unordered_set<Lexer::TokenType>(std::begin(tokens), std::end(tokens));
         }());
@@ -410,6 +411,10 @@ namespace Wide {
                             ParseFunctionArguments(argexprs);
                         }
                         expr = sema.CreateMetaFunctionCall(std::move(expr), std::move(argexprs), sema.GetLocation(expr) + t.GetLocation());
+                        continue;
+                    }
+                    if (t.GetType() == Lexer::TokenType::QuestionMark) {
+                        expr = sema.CreateBooleanTest(std::move(expr), sema.GetLocation(expr) + t.GetLocation());
                         continue;
                     }
                     // Did not recognize either of these, so put it back and return the final result.
@@ -955,33 +960,11 @@ namespace Wide {
                 if(first.GetType() == Lexer::TokenType::Type) {
                     // Constructor- check for initializer list
                     while(t.GetType() == Lexer::TokenType::Colon) {
-                        auto name = Check(Error::ConstructorNoIdentifierAfterColon, Lexer::TokenType::Identifier);
-                        auto open = Check(Error::ConstructorNoBracketAfterMemberName, Lexer::TokenType::OpenBracket);
-
-                        if(!lex)
-                            throw ParserError(lex.GetLastPosition(), Error::ConstructorNoBracketOrExpressionAfterMemberName);
-                        auto next = lex();
-                        if(next.GetType() == Lexer::TokenType::CloseBracket) {
-                            // Empty initializer- e.g. : x()
-                            sema.AddInitializerToGroup(initializers, sema.CreateVariable(name.GetValue(), t.GetLocation() + next.GetLocation(), name.GetLocation()));
-                            t = lex();
-                            continue;
-                        }
-                        lex(next);
-                        try {
-                            auto expr = ParseExpression();
-                            next = Check(Error::ConstructorNoBracketClosingInitializer, Lexer::TokenType::CloseBracket);
-                            sema.AddInitializerToGroup(initializers, sema.CreateVariable(name.GetValue(), std::move(expr), t.GetLocation() + next.GetLocation(), name.GetLocation()));
-                        } catch(ParserError& e) {
-                            if(!lex) throw;
-                            auto t = lex();
-                            if(t.GetType() == Lexer::TokenType::CloseBracket) {
-                                sema.Error(e.recover_where(), e.error());
-                                continue;
-                            }
-                            lex(t);
-                            throw;
-                        }
+                        // : expr := expr
+                        auto initialized = ParseExpression();
+                        Check(Error::ConstructorInitializerNoVarCreate, Lexer::TokenType::VarCreate);
+                        auto initializer = ParseExpression();
+                        sema.AddInitializerToGroup(initializers, sema.CreateInitializer(initialized, initializer, t.GetLocation() + sema.GetLocation(initializer)));
                         t = lex();
                     }
                 }

@@ -7,7 +7,7 @@ type testty {
         return true;
     }
     type(arg := int64.pointer)
-        : result(arg) {}
+        : result := arg {}
 }
 Main() {
     des := 0;

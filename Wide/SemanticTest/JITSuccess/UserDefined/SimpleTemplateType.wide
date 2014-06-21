@@ -1,6 +1,6 @@
 template(t) type f {
     var := t;
-    type(arg := t) : var(arg) {}
+    type(arg := t) : var := arg {}
 }
 Main() {
     return f(bool)(true).var;

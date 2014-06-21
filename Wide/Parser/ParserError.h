@@ -92,7 +92,8 @@ namespace Wide {
             CatchNoOpenCurly,
             IndexNoCloseBracket,
             AttributeNoVarCreate,
-            AttributeNoEnd
+            AttributeNoEnd,
+            ConstructorInitializerNoVarCreate
         };         
 
         enum class Warning : int {
@@ -204,6 +205,7 @@ namespace Wide {
                 std::make_pair(Error::CatchNoOpenCurly, "Expected ] after expression[expression to finish an index expression."),
                 std::make_pair(Error::AttributeNoVarCreate, "Expected := after [expression to initialize an attribute."),
                 std::make_pair(Error::AttributeNoEnd, "Expected ] after [expression := expression to close an attribute"),
+                std::make_pair(Error::ConstructorInitializerNoVarCreate, "Expected := after : expression to denote an initializer in a constructor."),
             };
             return std::unordered_map<Error, std::string>(std::begin(strings), std::end(strings));
         }());

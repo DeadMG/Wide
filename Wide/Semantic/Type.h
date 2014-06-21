@@ -307,7 +307,7 @@ namespace Wide {
                     , num(other.num)
                     , InClassInitializer(std::move(other.InClassInitializer))
                     , location(std::move(other.location)) {}
-                std::string name;
+                Wide::Util::optional<std::string> name;
                 Type* t;
                 // Not necessarily actually an empty base but ClangType will only give us offsets pre-codegen.
                 // and it could be an empty base so use offsets

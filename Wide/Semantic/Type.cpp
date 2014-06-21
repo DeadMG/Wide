@@ -189,10 +189,18 @@ std::unique_ptr<Expression> Type::BuildCall(std::unique_ptr<Expression> val, std
     return call->Call(std::move(args), c);
 }
 
-std::unique_ptr<Expression> Type::BuildBooleanConversion(std::unique_ptr<Expression> ex, Context c) {
+std::unique_ptr<Expression> Type::BuildBooleanConversion(std::unique_ptr<Expression> val, Context c) {
     if (IsReference())
-        return Decay()->BuildBooleanConversion(std::move(ex), c);
-    return nullptr;
+        return Decay()->BuildBooleanConversion(std::move(val), c);
+    auto set = AccessMember(val->GetType(), Lexer::TokenType::QuestionMark, GetAccessSpecifier(c.from, this));
+    std::vector<std::unique_ptr<Expression>> args;
+    args.push_back(std::move(val));
+    std::vector<Type*> types;
+    for (auto&& arg : args)
+        types.push_back(arg->GetType());
+    auto call = set->Resolve(types, c.from);
+    if (!call) set->IssueResolutionError(types, c);
+    return call->Call(std::move(args), c);
 }
 
 std::unique_ptr<Expression> Type::BuildDestructorCall(std::unique_ptr<Expression> self, Context c) {

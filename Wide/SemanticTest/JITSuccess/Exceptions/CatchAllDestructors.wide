@@ -1,6 +1,6 @@
 type t {
     ptr := bool.pointer;
-    type(arg := bool.lvalue) : ptr(&arg) {}
+    type(arg := bool.lvalue) : ptr := &arg {}
     ~type() { *ptr = true; }
 }
 f(arg := bool.lvalue) {

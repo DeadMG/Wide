@@ -72,14 +72,14 @@ int main(int argc, char** argv) {
     // Run with Image File Options attaching a debugger to debug a test.
     // Run without to see test results.
 #pragma warning(disable : 4800)
-    //for(auto mode : modes) {
-    //    auto result = TestDirectory(mode.first, mode.first, argv[0], input.count("break"));
-    //    total_succeeded += result.passes;
-    //    total_failed += result.fails;
-    //}
-    //std::cout << "Total succeeded: " << total_succeeded << " failed: " << total_failed;
-    Jit(clangopts, "JITSuccess/UserDefined/TemplateParameterAttribute.wide");
-    //Compile(clangopts, "CompileFail/OverloadResolutionFailure/CopyWithMoveOnlyElement.wide");
+    for(auto mode : modes) {
+        auto result = TestDirectory(mode.first, mode.first, argv[0], input.count("break"));
+        total_succeeded += result.passes;
+        total_failed += result.fails;
+    }
+    std::cout << "Total succeeded: " << total_succeeded << " failed: " << total_failed;
+    //Jit(clangopts, "JITSuccess/UserDefined/MultipleInheritanceVariable.wide");
+    //Compile(clangopts, "CompileFail/OverloadResolutionFailure/NoCopyAssignmentOperatorWithConstructor.wide");
     if (input.count("break"))
         Wide::Util::DebugBreak();
     return total_failed != 0;

@@ -1,7 +1,7 @@
 type t {
     val := bool;
     type(arg := bool)
-        : val(arg) {}
+        : val := arg {}
 }
 Main() {
     var := t(true);

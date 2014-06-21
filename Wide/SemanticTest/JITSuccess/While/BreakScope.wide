@@ -5,7 +5,7 @@ type testty {
          *result = false;
     }
     type(arg := bool.pointer)
-        : result(arg) {}
+        : result := arg {}
 }
 Main() {
     result := true;

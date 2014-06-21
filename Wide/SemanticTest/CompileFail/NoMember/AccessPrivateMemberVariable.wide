@@ -1,6 +1,6 @@
-ExpectedFailure() { return { "NoMember", 146, 153 }; }
+ExpectedFailure() { return { "NoMember", 148, 155 }; }
 type t {
-    type() : val(false) {}
+    type() : val := false {}
 private:
     val := bool;
 }

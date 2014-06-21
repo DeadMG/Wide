@@ -202,7 +202,6 @@ std::vector<UserDefinedType::member> UserDefinedType::GetConstructionMembers() {
     for (unsigned i = 0; i < type->bases.size(); ++i) {
         member m(type->bases[i]->location);
         m.t = GetBases()[i];
-        m.name = dynamic_cast<AST::Identifier*>(type->bases[i])->val;
         m.num = { GetOffset(i) };
         out.push_back(std::move(m));
     }

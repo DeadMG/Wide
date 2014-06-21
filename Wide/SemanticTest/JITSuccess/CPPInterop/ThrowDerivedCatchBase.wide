@@ -8,9 +8,9 @@ using base := header.base;
 type Derived : base {
     ptr := bool.pointer;
     g() { return true; }
-    type(arg := bool.lvalue) : ptr(&arg) {}
-    type(other := Derived.rvalue) : ptr(other.ptr) {}
-    type(other := Derived.lvalue) : ptr(other.ptr) {}
+    type(arg := bool.lvalue) : ptr := &arg {}
+    type(other := Derived.rvalue) : ptr := other.ptr {}
+    type(other := Derived.lvalue) : ptr := other.ptr {}
     ~type() { *ptr = true; }
 }
 Main() {

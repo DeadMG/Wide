@@ -1,6 +1,6 @@
-ExpectedFailure() { return { "NoMemberToInitialize", 87, 94 }; }
+ExpectedFailure() { return { "NoMemberToInitialize", 87, 98 }; }
 type t {
-    type() : oops() {}
+    type() : oops := 5 {}
 }
 Main() {
     var := t();

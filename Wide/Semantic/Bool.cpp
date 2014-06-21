@@ -124,8 +124,8 @@ OverloadSet* Bool::CreateOperatorOverloadSet(Type* t, Lexer::TokenType name, Lex
                 llvm::Value* ComputeValue(CodegenContext& con) override final {
                     auto val = con->CreateTrunc(lhs->GetValue(con), llvm::Type::getInt1Ty(con));
                     auto cur_block = con->GetInsertBlock();
-                    auto false_br = llvm::BasicBlock::Create(con, "false", con->GetInsertBlock()->getParent());
-                    auto true_br = llvm::BasicBlock::Create(con, "true", con->GetInsertBlock()->getParent());
+                    auto false_br = llvm::BasicBlock::Create(con, "true", con->GetInsertBlock()->getParent());
+                    auto true_br = llvm::BasicBlock::Create(con, "false", con->GetInsertBlock()->getParent());
                     con->CreateCondBr(val, false_br, true_br);
                     con->SetInsertPoint(false_br);
                     CodegenContext rhscon(con);

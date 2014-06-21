@@ -1,7 +1,7 @@
 type base {
     b := bool;
     f() { return b; }
-    type() : b(true) {}
+    type() : b := true {}
 }
 type derived : base {}
 Main() {

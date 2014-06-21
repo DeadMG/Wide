@@ -8,7 +8,7 @@ type testty {
         return true;
     }
     type(arg := bool.pointer)
-        : result(arg) {}
+        : result := arg {}
 }
 Main() {
     result := false;

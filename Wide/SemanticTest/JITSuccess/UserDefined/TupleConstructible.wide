@@ -2,7 +2,7 @@ type inner {
     x := int64;
     y := int64;
     type(blah := int64)
-        : x(blah) : y(blah) {}
+        : x := blah : y := blah {}
     valid(arg := int64) {
         return x == arg & y == arg;
     }

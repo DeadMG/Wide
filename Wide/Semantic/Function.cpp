@@ -717,13 +717,23 @@ void Function::ComputeBody() {
             if (!ConstructorContext) throw std::runtime_error("fuck");
             auto member = *ConstructorContext;
             auto members = member->GetConstructionMembers();
+            std::unordered_set<const AST::VariableInitializer*> used_initializers;
             for (auto&& x : members) {
-                auto has_initializer = [&](std::string name) -> const AST::Variable* {
-                    for (auto&& x : con->initializers) {
-                        // Can only have 1 name- AST restriction
-                        assert(x->name.size() == 1);
-                        if (x->name.front().name == name)
-                            return x;
+                auto has_initializer = [&]() -> const AST::VariableInitializer* {
+                    for (auto&& init : con->initializers) {
+                        // Match if it's a name and the one we were looking for.
+                        auto ident = dynamic_cast<const AST::Identifier*>(init.initialized);
+                        if (x.name && ident) {
+                            if (ident->val == *x.name)
+                                return &init;
+                        } else {
+                            // Match if it's a type and the one we were looking for.
+                            auto ty = analyzer.AnalyzeExpression(this, init.initialized);
+                            if (auto conty = dynamic_cast<ConstructorType*>(ty->GetType())) {
+                                if (conty->GetConstructedType() == x.t)
+                                    return &init;
+                            }
+                        }
                     }
                     return nullptr;
                 };
@@ -758,31 +768,44 @@ void Function::ComputeBody() {
                     self = con->CreateConstGEP1_32(self, num.offset);
                     return con->CreatePointerCast(self, result->GetLLVMType(con));
                 });
-                auto make_member_initializer = [&, this](std::unique_ptr<Expression> init, Lexer::Range where) {
+                auto make_member_initializer = [&, this](std::vector<std::unique_ptr<Expression>> init, Lexer::Range where) {
                     auto preserve_member = member.get();
-                    auto construction = x.t->BuildInplaceConstruction(std::move(member), init ? Expressions(std::move(init)) : Expressions(), { this, where });
+                    auto construction = x.t->BuildInplaceConstruction(std::move(member), std::move(init), { this, where });
                     return Wide::Memory::MakeUnique<MemberConstructionAccess>(x.t, where, std::move(construction), preserve_member);
                 };
-                if (auto init = has_initializer(x.name)) {
+                if (auto init = has_initializer()) {
                     // AccessMember will automatically give us back a T*, but we need the T** here
                     // if the type of this member is a reference.
-                    
-                    if (init->initializer)
-                        root_scope->active.push_back(make_member_initializer(analyzer.AnalyzeExpression(this, init->initializer), init->location));
+                    used_initializers.insert(init);
+                    if (init->initializer) {
+                        // If it's a tuple, pass each subexpression.
+                        std::vector<std::unique_ptr<Expression>> exprs;
+                        if (auto tup = dynamic_cast<const AST::Tuple*>(init->initializer)) {
+                            for (auto expr : tup->expressions)
+                                exprs.push_back(analyzer.AnalyzeExpression(this, expr));
+                        } else
+                            exprs.push_back(analyzer.AnalyzeExpression(this, init->initializer));
+                        root_scope->active.push_back(make_member_initializer(std::move(exprs), init->where));
+                    }
                     else
-                        root_scope->active.push_back(make_member_initializer(nullptr, init->location));
+                        root_scope->active.push_back(make_member_initializer(Expressions(), init->where));
                     continue;
                 }
                 // Don't care about if x.t is ref because refs can't be default-constructed anyway.
                 if (x.InClassInitializer) {
-                    root_scope->active.push_back(make_member_initializer(x.InClassInitializer(LookupLocal("this")), x.location));
+                    root_scope->active.push_back(make_member_initializer(Expressions(x.InClassInitializer(LookupLocal("this"))), x.location));
                     continue;
                 }
-                root_scope->active.push_back(make_member_initializer(nullptr, fun->where));
+                root_scope->active.push_back(make_member_initializer(Expressions(), fun->where));
             }
             for (auto&& x : con->initializers) {
-                if (std::find_if(members.begin(), members.end(), [&](decltype(*members.begin())& ref) { return ref.name == x->name.front().name; }) == members.end())
-                    throw NoMemberToInitialize(context->Decay(), x->name.front().name, x->location);
+                if (used_initializers.find(&x) == used_initializers.end()) {
+                    if (auto ident = dynamic_cast<const AST::Identifier*>(x.initialized))
+                        throw NoMemberToInitialize(context->Decay(), ident->val, x.where);
+                    auto expr = analyzer.AnalyzeExpression(this, x.initializer);
+                    auto conty = dynamic_cast<ConstructorType*>(expr->GetType());
+                    throw NoMemberToInitialize(context->Decay(), conty->GetConstructedType()->explain(), x.where);
+                }
             }
             // set the vptrs if necessary
             auto ty = dynamic_cast<Type*>(member);

@@ -56,7 +56,7 @@ void Builder::CreateFunction(
     Lexer::Range r,
     Type* p, 
     std::vector<FunctionArgument> args, 
-    std::vector<Variable*> caps, 
+    std::vector<VariableInitializer> caps,
     Lexer::Access a,
     bool dynamic,
     std::vector<Attribute> attrs
@@ -85,7 +85,7 @@ void Builder::CreateFunction(
     Lexer::Range r,
     Module* m, 
     std::vector<FunctionArgument> args, 
-    std::vector<Variable*> caps,
+    std::vector<VariableInitializer> caps,
     Lexer::Access a,
     bool dynamic,
     std::vector<Attribute> attrs
@@ -328,9 +328,9 @@ std::vector<Expression*> Builder::CreateExpressionGroup()
 std::vector<Variable*> Builder::CreateCaptureGroup() 
 { return std::vector<Variable*>(); }
 
-std::vector<Variable*> Builder::CreateInitializerGroup() 
+std::vector<VariableInitializer> Builder::CreateInitializerGroup()
 {
-    return CreateCaptureGroup();
+    return std::vector<VariableInitializer>();
 }
 
 Index* Builder::CreateIndex(Expression* object, Expression* index, Lexer::Range where) {
@@ -468,5 +468,14 @@ Attribute Builder::CreateAttribute(Expression* begin, Expression* end, Lexer::Ra
     return Attribute(begin, end, where);
 }
 void Builder::AddAttributeToGroup(std::vector<Attribute>& attrs, Attribute attr) {
+    attrs.push_back(attr);
+}
+BooleanTest* Builder::CreateBooleanTest(Expression* expr, Lexer::Range where) {
+    return arena.Allocate<BooleanTest>(std::move(expr), where);
+}
+VariableInitializer Builder::CreateInitializer(Expression* begin, Expression* end, Lexer::Range where) {
+    return VariableInitializer(begin, end, where);
+}
+void Builder::AddInitializerToGroup(std::vector<VariableInitializer>& attrs, VariableInitializer attr) {
     attrs.push_back(attr);
 }

@@ -296,9 +296,9 @@ void Compile(const Wide::Options::Clang& copts, std::string file) {
             if (!error_type_strings.at(str->GetValue())(err))
                 throw std::runtime_error("The error type string was incorrect.");
             if (err.location().begin.offset != begin)
-                throw std::runtime_error("Exception location did not match return from ExpectedFailure!");
+                throw std::runtime_error("Exception location did not match return from ExpectedFailure!" + to_string(err.location()));
             if (err.location().end.offset != end)
-                throw std::runtime_error("Exception location did not match return from ExpectedFailure!");
+                throw std::runtime_error("Exception location did not match return from ExpectedFailure!" + to_string(err.location()));
         }
     }, { file });
 }
