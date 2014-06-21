@@ -194,12 +194,22 @@ std::unique_ptr<Expression> Semantic::BuildValue(std::unique_ptr<Expression> e) 
         return Wide::Memory::MakeUnique<ImplicitLoadExpr>(std::move(e));
     return std::move(e);
 }
+Chain::Chain(std::unique_ptr<Expression> effect, std::unique_ptr<Expression> result)
+: SideEffect(std::move(effect)), result(std::move(result)) {}
+Type* Chain::GetType() {
+    return result->GetType();
+}
+llvm::Value* Chain::ComputeValue(CodegenContext& con) {
+    SideEffect->GetValue(con);
+    return result->GetValue(con);
+}
+Expression* Chain::GetImplementation() {
+    return result->GetImplementation();
+}
 std::unique_ptr<Expression> Semantic::BuildChain(std::unique_ptr<Expression> lhs, std::unique_ptr<Expression> rhs) {
     assert(lhs);
     assert(rhs);
-    return CreatePrimOp(std::move(lhs), std::move(rhs), rhs->GetType(), [](llvm::Value* lhs, llvm::Value* rhs, CodegenContext& con) {
-        return rhs;
-    });
+    return Wide::Memory::MakeUnique<Chain>(std::move(lhs), std::move(rhs));
 }
 llvm::Value* Expression::GetValue(CodegenContext& con) {
     if (!val) val = ComputeValue(con);

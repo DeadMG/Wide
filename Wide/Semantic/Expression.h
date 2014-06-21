@@ -103,6 +103,15 @@ namespace Wide {
             llvm::Value* ComputeValue(CodegenContext& con) override final;
         };
 
+        struct Chain : Expression {
+            Chain(std::unique_ptr<Expression> effect, std::unique_ptr<Expression> result);
+            std::unique_ptr<Expression> SideEffect;
+            std::unique_ptr<Expression> result;
+            Type* GetType() override final;
+            llvm::Value* ComputeValue(CodegenContext& con) override final;
+            Expression* GetImplementation() override final;
+        };
+
         std::unique_ptr<Expression> CreatePrimUnOp(std::unique_ptr<Expression> self, Type* ret, std::function<llvm::Value*(llvm::Value*, CodegenContext&)>);
         std::unique_ptr<Expression> CreatePrimOp(std::unique_ptr<Expression> lhs, std::unique_ptr<Expression> rhs, std::function<llvm::Value*(llvm::Value*, llvm::Value*, CodegenContext&)>);
         std::unique_ptr<Expression> CreatePrimAssOp(std::unique_ptr<Expression> lhs, std::unique_ptr<Expression> rhs, std::function<llvm::Value*(llvm::Value*, llvm::Value*, CodegenContext&)>);

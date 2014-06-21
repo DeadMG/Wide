@@ -30,7 +30,6 @@ namespace Wide {
 
             std::vector<Type*> contents;
             std::vector<Type*> GetMembers() override final;
-            bool HasDeclaredDynamicFunctions() override final { return false; }
 
             Type* nonstatic;
         public:

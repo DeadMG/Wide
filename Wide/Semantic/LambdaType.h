@@ -13,7 +13,6 @@ namespace Wide {
             std::vector<Type*> contents;
             Type* context;
             std::vector<Type*> GetMembers() { return contents; }
-            bool HasDeclaredDynamicFunctions() override final { return false; }
         public:
             Type* GetContext() { return context; }
             LambdaType(std::vector<std::pair<std::string, Type*>> capturetypes, const AST::Lambda* l, Type* context, Analyzer& a);

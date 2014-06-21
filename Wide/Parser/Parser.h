@@ -1217,6 +1217,22 @@ namespace Wide {
                     if (token.GetType() == Lexer::TokenType::Protected) {
                         throw ParserError(token.GetLocation(), Error::ProtectedModuleScope);
                     }
+                    if (token.GetType() == Lexer::TokenType::Template){
+                        auto args = ParseFunctionDefinitionArguments(Check(Error::TemplateNoArguments, Lexer::TokenType::OpenBracket).GetLocation());
+                        auto attrs = sema.CreateAttributeGroup();
+                        auto loc = token.GetLocation();
+                        token = lex();
+                        while (token.GetType() == Lexer::TokenType::OpenSquareBracket) {
+                            ParseAttribute(attrs);
+                            token = lex();
+                        }
+                        lex(token);
+                        auto type = Check(Error::ModuleScopeTemplateNoType, Lexer::TokenType::Type);
+                        auto ident = Check(Error::ModuleScopeTypeNoIdentifier, Lexer::TokenType::Identifier);
+                        auto ty = ParseTypeDeclaration(m, loc, a, ident, attrs);
+                        sema.AddTemplateTypeToModule(m, ident.GetValue(), args, ty);
+                        return a;
+                    }
                     auto attrs = sema.CreateAttributeGroup();
                     while (token.GetType() == Lexer::TokenType::OpenSquareBracket) {
                         ParseAttribute(attrs);
@@ -1230,14 +1246,6 @@ namespace Wide {
                             lex(maybedot);
                         auto t = Check(Error::ModuleScopeFunctionNoOpenBracket, Lexer::TokenType::OpenBracket);
                         ParseFunction(token, m, t.GetLocation(), a, false, attrs);
-                        return a;
-                    }
-                    if (token.GetType() == Lexer::TokenType::Template){
-                        auto args = ParseFunctionDefinitionArguments(Check(Error::TemplateNoArguments, Lexer::TokenType::OpenBracket).GetLocation());
-                        auto type = Check(Error::ModuleScopeTemplateNoType, Lexer::TokenType::Type);
-                        auto ident = Check(Error::ModuleScopeTypeNoIdentifier, Lexer::TokenType::Identifier);
-                        auto ty = ParseTypeDeclaration(m, token.GetLocation(), a, ident, attrs);
-                        sema.AddTemplateTypeToModule(m, ident.GetValue(), args, ty);
                         return a;
                     }
                     if (token.GetType() == Lexer::TokenType::Type) {

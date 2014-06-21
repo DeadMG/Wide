@@ -202,6 +202,12 @@ Analyzer::Analyzer(const Options::Clang& opts, const AST::Module* GlobalModule)
                 return nullptr;
             }
 
+            Expression* GetImplementation() override final {
+                if (access)
+                    return access->GetImplementation();
+                return this;
+            }
+
             llvm::Value* ComputeValue(CodegenContext& con) override final {
                 return access->GetValue(con);
             }

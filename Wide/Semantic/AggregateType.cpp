@@ -149,6 +149,20 @@ AggregateType::Layout::Layout(AggregateType* agg, Wide::Semantic::Analyzer& a)
         layout_nonemptybase(member, false, dsizec, i + agg->GetBases().size());
     }
 
+    // Check our size and alignment overrides.
+    auto size_override = agg->SizeOverride();
+    if (size_override) {
+        if (*size_override < sizec)
+            throw std::runtime_error("Size override was too small.");
+        sizec = *size_override;
+    }
+    auto align_override = agg->AlignOverride();
+    if (align_override) {
+        if (*align_override < alignc)
+            throw std::runtime_error("Alignment override was too small.");
+        alignc = *align_override;
+    }
+
     // Round sizeof(C) up to a non-zero multiple of align(C). If C is a POD, but not a POD for the purpose of layout, set nvsize(C) = sizeof(C). 
     if (sizec % alignc != 0)
         sizec += alignc - (sizec % alignc);

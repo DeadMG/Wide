@@ -903,3 +903,31 @@ Type* UserDefinedType::GetConstantContext() {
         return nullptr;
     return AggregateType::GetConstantContext();
 }
+Wide::Util::optional<unsigned> UserDefinedType::SizeOverride() {
+    for (auto attr : type->attributes) {
+        if (auto ident = dynamic_cast<const AST::Identifier*>(attr.initialized)) {
+            if (ident->val == "size") {
+                auto expr = analyzer.AnalyzeExpression(GetContext(), attr.initializer);
+                if (auto integer = dynamic_cast<Integer*>(expr->GetImplementation())) {
+                    return integer->value.getLimitedValue();
+                }
+                throw std::runtime_error("Found size attribute but the initializing expression was not a constant integer.");
+            }
+        }
+    }
+    return Util::none;
+}
+Wide::Util::optional<unsigned> UserDefinedType::AlignOverride() {
+    for (auto attr : type->attributes) {
+        if (auto ident = dynamic_cast<const AST::Identifier*>(attr.initialized)) {
+            if (ident->val == "alignment") {
+                auto expr = analyzer.AnalyzeExpression(GetContext(), attr.initializer);
+                if (auto integer = dynamic_cast<Integer*>(expr->GetImplementation())) {
+                    return integer->value.getLimitedValue();
+                }
+                throw std::runtime_error("Found size attribute but the initializing expression was not a constant integer.");
+            }
+        }
+    }
+    return Util::none;
+}

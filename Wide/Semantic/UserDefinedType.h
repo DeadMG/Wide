@@ -90,6 +90,8 @@ namespace Wide {
             std::vector<std::pair<Type*, unsigned>> GetBasesAndOffsets() override final;
             std::vector<member> GetConstructionMembers() override final;
             Type* GetPrimaryBase() override final { return GetBaseData().PrimaryBase; }
+            Wide::Util::optional<unsigned> SizeOverride() override final;
+            Wide::Util::optional<unsigned> AlignOverride() override final;
         public:
             llvm::Constant* GetRTTI(llvm::Module* module) override final;
             UserDefinedType(const AST::Type* t, Analyzer& a, Type* context, std::string);           
