@@ -154,12 +154,7 @@ namespace Wide {
                 ThrowStatement(std::unique_ptr<Expression> expr, Context c);
                 void GenerateCode(CodegenContext& con);
             };
-
-            struct RethrowStatement : public Statement {
-                RethrowStatement();
-                void GenerateCode(CodegenContext& con);
-            };
-            
+                        
             struct Parameter : Expression {
                 Lexer::Range where;
                 Function* self;
@@ -201,6 +196,9 @@ namespace Wide {
                 Analyzer& a;
                 std::vector<Catch> catches;
                 std::vector<std::unique_ptr<Statement>> statements;
+                void GenerateCode(CodegenContext& con);
+            };
+            struct RethrowStatement : public Statement {
                 void GenerateCode(CodegenContext& con);
             };
         private:

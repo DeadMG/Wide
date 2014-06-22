@@ -515,6 +515,8 @@ std::unique_ptr<Statement> Function::AnalyzeStatement(const AST::Statement* s) {
     }
 
     if (auto thro = dynamic_cast<const Wide::AST::Throw*>(s)) {
+        if (!thro->expr)
+            return Wide::Memory::MakeUnique<RethrowStatement>();
         auto expression = analyzer.AnalyzeExpression(this, thro->expr);
         return Wide::Memory::MakeUnique<ThrowStatement>(std::move(expression), Context(this, thro->location));
     }
@@ -1215,4 +1217,9 @@ void Function::TryStatement::GenerateCode(CodegenContext& con) {
         catch_con->CreateInvoke(catch_con.GetCXARethrow(), catch_con.GetUnreachableBlock(), catch_con.CreateLandingpadForEH());
     }
     con->SetInsertPoint(dest_block);
+}
+void Function::RethrowStatement::GenerateCode(CodegenContext& con) {
+    auto landingpad = con.CreateLandingpadForEH();
+    auto source = con->GetInsertBlock();
+    con->CreateInvoke(con.GetCXARethrow(), con.GetUnreachableBlock(), landingpad);
 }

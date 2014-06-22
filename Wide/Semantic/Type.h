@@ -123,6 +123,7 @@ namespace Wide {
 
             llvm::PointerType* GetInt8PtrTy();
             bool destructing = false;
+            bool catching = false;
             llvm::Module* module;
             llvm::IRBuilder<>* insert_builder;
             llvm::IRBuilder<>* alloca_builder;

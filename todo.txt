@@ -21,7 +21,6 @@ Add polymorphic types.
 Add inheriting constructors.
 Add defaulted members and deleted functions.
 Add C++ operator understanding.
-Add exception re-throwing.
 Add abstract functions, override/final/new.
 Add static reflection.
 Change ADL to look up in base class.
@@ -46,6 +45,7 @@ Fix runtime_errors.
 Refactor error handling away from exceptions.
 Fix conversion of UDT member operators.
 Fix conversion of overload sets.
+Fix automatically-generated aggregate operators to be function calls if complex.
 Fix CompileFail tests to not be quite so damn fussy.
 Add tests for warnings, and add more warnings.
 
