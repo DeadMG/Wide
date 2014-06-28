@@ -61,7 +61,7 @@ namespace {
 // After definition of type
 Analyzer::~Analyzer() {}
 
-Analyzer::Analyzer(const Options::Clang& opts, const AST::Module* GlobalModule)
+Analyzer::Analyzer(const Options::Clang& opts, const Parse::Module* GlobalModule)
 : clangopts(&opts)
 , QuickInfo([](Lexer::Range, Type*) {})
 , ParameterHighlight([](Lexer::Range){})
@@ -164,13 +164,13 @@ Analyzer::Analyzer(const Options::Clang& opts, const AST::Module* GlobalModule)
     file.close();
     AggregateCPPHeader(path, context.where);
 
-    AddExpressionHandler<AST::String>([](Analyzer& a, Type* lookup, const AST::String* str) {
+    AddExpressionHandler<Parse::String>([](Analyzer& a, Type* lookup, const Parse::String* str) {
         return Wide::Memory::MakeUnique<String>(str->val, a);
     });
 
-    AddExpressionHandler<AST::MemberAccess>([](Analyzer& a, Type* lookup, const AST::MemberAccess* memaccess) -> std::unique_ptr<Expression> {
+    AddExpressionHandler<Parse::MemberAccess>([](Analyzer& a, Type* lookup, const Parse::MemberAccess* memaccess) -> std::unique_ptr<Expression> {
         struct MemberAccess : Expression {
-            MemberAccess(Type* l, Analyzer& an, const AST::MemberAccess* mem, std::unique_ptr<Expression> obj)
+            MemberAccess(Type* l, Analyzer& an, const Parse::MemberAccess* mem, std::unique_ptr<Expression> obj)
             : lookup(l), a(an), ast_node(mem), object(std::move(obj))
             {
                 ListenToNode(object.get());
@@ -178,7 +178,7 @@ Analyzer::Analyzer(const Options::Clang& opts, const AST::Module* GlobalModule)
             }
             std::unique_ptr<Expression> object;
             std::unique_ptr<Expression> access;
-            const AST::MemberAccess* ast_node;
+            const Parse::MemberAccess* ast_node;
             Analyzer& a;
             Type* lookup;
 
@@ -215,13 +215,13 @@ Analyzer::Analyzer(const Options::Clang& opts, const AST::Module* GlobalModule)
         return Wide::Memory::MakeUnique<MemberAccess>(lookup, a, memaccess, a.AnalyzeExpression(lookup, memaccess->expr));
     });
 
-    AddExpressionHandler<AST::BooleanTest>([](Analyzer& a, Type* lookup, const AST::BooleanTest* test) {
+    AddExpressionHandler<Parse::BooleanTest>([](Analyzer& a, Type* lookup, const Parse::BooleanTest* test) {
         auto expr = a.AnalyzeExpression(lookup, test->ex);
         auto ty = expr->GetType();
         return ty->BuildBooleanConversion(std::move(expr), { lookup, test->location });
     });
 
-    AddExpressionHandler<AST::FunctionCall>([](Analyzer& a, Type* lookup, const AST::FunctionCall* call) -> std::unique_ptr<Expression> {
+    AddExpressionHandler<Parse::FunctionCall>([](Analyzer& a, Type* lookup, const Parse::FunctionCall* call) -> std::unique_ptr<Expression> {
         struct FunctionCall : Expression {
             FunctionCall(Type* from, Lexer::Range where, std::unique_ptr<Expression> obj, std::vector<std::unique_ptr<Expression>> params)
             : object(std::move(obj)), args(std::move(params)), from(from), where(where)
@@ -279,7 +279,7 @@ Analyzer::Analyzer(const Options::Clang& opts, const AST::Module* GlobalModule)
         return Wide::Memory::MakeUnique<FunctionCall>(lookup, call->location, a.AnalyzeExpression(lookup, call->callee), std::move(args));
     });
 
-    AddExpressionHandler<AST::Identifier>([](Analyzer& a, Type* lookup, const AST::Identifier* ident) -> std::unique_ptr<Expression> {
+    AddExpressionHandler<Parse::Identifier>([](Analyzer& a, Type* lookup, const Parse::Identifier* ident) -> std::unique_ptr<Expression> {
         struct IdentifierLookup : public Expression {
             std::unique_ptr<Expression> LookupIdentifier(Type* context) {
                 if (!context) return nullptr;
@@ -324,7 +324,7 @@ Analyzer::Analyzer(const Options::Clang& opts, const AST::Module* GlobalModule)
                     return result;
                 return LookupIdentifier(context->GetContext());
             }
-            IdentifierLookup(const AST::Identifier* id, Analyzer& an, Type* lookup)
+            IdentifierLookup(const Parse::Identifier* id, Analyzer& an, Type* lookup)
                 : a(an), location(id->location), val(id->val), lookup(lookup)
             {
                 OnNodeChanged(lookup);
@@ -355,63 +355,57 @@ Analyzer::Analyzer(const Options::Clang& opts, const AST::Module* GlobalModule)
         return Wide::Memory::MakeUnique<IdentifierLookup>(ident, a, lookup);
     });
 
-    AddExpressionHandler<AST::True>([](Analyzer& a, Type* lookup, const AST::True* tru) {
+    AddExpressionHandler<Parse::True>([](Analyzer& a, Type* lookup, const Parse::True* tru) {
         return Wide::Memory::MakeUnique<Semantic::Boolean>(true, a);
     });
 
-    AddExpressionHandler<AST::False>([](Analyzer& a, Type* lookup, const AST::False* fals) {
+    AddExpressionHandler<Parse::False>([](Analyzer& a, Type* lookup, const Parse::False* fals) {
         return Wide::Memory::MakeUnique<Semantic::Boolean>(false, a);
     });
 
-    AddExpressionHandler<AST::This>([](Analyzer& a, Type* lookup, const AST::This* thi) {
-        AST::Identifier i("this", thi->location);
+    AddExpressionHandler<Parse::This>([](Analyzer& a, Type* lookup, const Parse::This* thi) {
+        Parse::Identifier i("this", thi->location);
         return a.AnalyzeExpression(lookup, &i);
     });
 
-    AddExpressionHandler<AST::Type>([](Analyzer& a, Type* lookup, const AST::Type* ty) {
+    AddExpressionHandler<Parse::Type>([](Analyzer& a, Type* lookup, const Parse::Type* ty) {
         auto udt = a.GetUDT(ty, lookup->GetConstantContext() ? lookup->GetConstantContext() : lookup->GetContext(), "anonymous");
-        return a.GetConstructorType(udt)->BuildValueConstruction(Expressions(), { lookup, ty->where.front() });
+        return a.GetConstructorType(udt)->BuildValueConstruction(Expressions(), { lookup, ty->location });
     });
 
-    AddExpressionHandler<AST::AddressOf>([](Analyzer& a, Type* lookup, const AST::AddressOf* addr) {
-        return Wide::Memory::MakeUnique<ImplicitAddressOf>(a.AnalyzeExpression(lookup, addr->ex), Context(lookup, addr->location));
-    });
 
-    AddExpressionHandler<AST::Integer>([](Analyzer& a, Type* lookup, const AST::Integer* integer) {
+    AddExpressionHandler<Parse::Integer>([](Analyzer& a, Type* lookup, const Parse::Integer* integer) {
         return Wide::Memory::MakeUnique<Integer>(llvm::APInt(64, std::stoll(integer->integral_value), true), a);
     });
 
-    AddExpressionHandler<AST::BinaryExpression>([](Analyzer& a, Type* lookup, const AST::BinaryExpression* bin) {
+    AddExpressionHandler<Parse::BinaryExpression>([](Analyzer& a, Type* lookup, const Parse::BinaryExpression* bin) {
         auto lhs = a.AnalyzeExpression(lookup, bin->lhs);
         auto rhs = a.AnalyzeExpression(lookup, bin->rhs);
         auto ty = lhs->GetType();
         return ty->BuildBinaryExpression(std::move(lhs), std::move(rhs), bin->type, { lookup, bin->location });
     });
 
-    AddExpressionHandler<AST::Dereference>([](Analyzer& a, Type* lookup, const AST::Dereference* deref) {
-        auto expr = a.AnalyzeExpression(lookup, deref->ex);
+    AddExpressionHandler<Parse::UnaryExpression>([](Analyzer& a, Type* lookup, const Parse::UnaryExpression* unex) -> std::unique_ptr<Expression> {
+        auto expr = a.AnalyzeExpression(lookup, unex->ex);
         auto ty = expr->GetType();
-        return ty->BuildUnaryExpression(std::move(expr), Wide::Lexer::TokenType::Dereference, { lookup, deref->location });
+        if (unex->type == &Lexer::TokenTypes::And)
+            return Wide::Memory::MakeUnique<ImplicitAddressOf>(std::move(expr), Context(lookup, unex->location));
+        return ty->BuildUnaryExpression(std::move(expr), unex->type, { lookup, unex->location });
     });
 
-    AddExpressionHandler<AST::Negate>([](Analyzer& a, Type* lookup, const AST::Negate* neg) {
-        auto expr = a.AnalyzeExpression(lookup, neg->ex);
-        auto ty = expr->GetType();
-        return ty->BuildUnaryExpression(std::move(expr), Lexer::TokenType::Negate, { lookup, neg->location });
-    });
 
-    AddExpressionHandler<AST::Increment>([](Analyzer& a, Type* lookup, const AST::Increment* inc) {
+    AddExpressionHandler<Parse::Increment>([](Analyzer& a, Type* lookup, const Parse::Increment* inc) {
         auto expr = a.AnalyzeExpression(lookup, inc->ex);
         auto ty = expr->GetType();
         if (inc->postfix) {
             auto copy = ty->Decay()->BuildValueConstruction(Expressions(Wide::Memory::MakeUnique<ExpressionReference>(expr.get())), { lookup, inc->location });
-            auto result = ty->Decay()->BuildUnaryExpression(std::move(expr), Lexer::TokenType::Increment, { lookup, inc->location });
+            auto result = ty->Decay()->BuildUnaryExpression(std::move(expr), &Lexer::TokenTypes::Increment, { lookup, inc->location });
             return BuildChain(std::move(copy), BuildChain(std::move(result), Wide::Memory::MakeUnique<ExpressionReference>(copy.get())));
         }
-        return ty->Decay()->BuildUnaryExpression(std::move(expr), Lexer::TokenType::Increment, { lookup, inc->location });
+        return ty->Decay()->BuildUnaryExpression(std::move(expr), &Lexer::TokenTypes::Increment, { lookup, inc->location });
     });
 
-    AddExpressionHandler<AST::Tuple>([](Analyzer& a, Type* lookup, const AST::Tuple* tup) {
+    AddExpressionHandler<Parse::Tuple>([](Analyzer& a, Type* lookup, const Parse::Tuple* tup) {
         std::vector<std::unique_ptr<Expression>> exprs;
         for (auto elem : tup->expressions)
             exprs.push_back(a.AnalyzeExpression(lookup, elem));
@@ -421,19 +415,19 @@ Analyzer::Analyzer(const Options::Clang& opts, const AST::Module* GlobalModule)
         return a.GetTupleType(types)->ConstructFromLiteral(std::move(exprs), { lookup, tup->location });
     });
 
-    AddExpressionHandler<AST::PointerMemberAccess>([](Analyzer& a, Type* lookup, const AST::PointerMemberAccess* paccess) {
+    AddExpressionHandler<Parse::PointerMemberAccess>([](Analyzer& a, Type* lookup, const Parse::PointerMemberAccess* paccess) {
         auto obj = a.AnalyzeExpression(lookup, paccess->ex);
         auto objty = obj->GetType();
-        auto subobj = objty->BuildUnaryExpression(std::move(obj), Lexer::TokenType::Dereference, { lookup, paccess->location });
+        auto subobj = objty->BuildUnaryExpression(std::move(obj), &Lexer::TokenTypes::Star, { lookup, paccess->location });
         return subobj->GetType()->AccessMember(std::move(subobj), paccess->member, { lookup, paccess->location });
     });
 
-    AddExpressionHandler<AST::Decltype>([](Analyzer& a, Type* lookup, const AST::Decltype* declty) {
+    AddExpressionHandler<Parse::Decltype>([](Analyzer& a, Type* lookup, const Parse::Decltype* declty) {
         auto expr = a.AnalyzeExpression(lookup, declty->ex);
         return a.GetConstructorType(expr->GetType())->BuildValueConstruction(Expressions(), { lookup, declty->location });
     });
 
-    AddExpressionHandler<AST::Typeid>([](Analyzer& a, Type* lookup, const AST::Typeid* rtti) -> std::unique_ptr<Expression> {
+    AddExpressionHandler<Parse::Typeid>([](Analyzer& a, Type* lookup, const Parse::Typeid* rtti) -> std::unique_ptr<Expression> {
         auto expr = a.AnalyzeExpression(lookup, rtti->ex);
         auto tu = expr->GetType()->analyzer.AggregateCPPHeader("typeinfo", rtti->location);
         auto global_namespace = expr->GetType()->analyzer.GetClangNamespace(*tu, tu->GetDeclContext());
@@ -496,26 +490,26 @@ Analyzer::Analyzer(const Options::Clang& opts, const AST::Module* GlobalModule)
         return Wide::Memory::MakeUnique<RTTI>(std::move(expr), result);
     });
     
-    AddExpressionHandler<AST::Lambda>([](Analyzer& a, Type* lookup, const AST::Lambda* lam) {
+    AddExpressionHandler<Parse::Lambda>([](Analyzer& a, Type* lookup, const Parse::Lambda* lam) {
         std::vector<std::unordered_set<std::string>> lambda_locals;
 
         // Only implicit captures.
         std::unordered_set<std::string> captures;
-        struct LambdaVisitor : AST::Visitor<LambdaVisitor> {
+        struct LambdaVisitor : Parse::Visitor<LambdaVisitor> {
             std::vector<std::unordered_set<std::string>>* lambda_locals;
             std::unordered_set<std::string>* captures;
-            void VisitVariableStatement(const AST::Variable* v) {
+            void VisitVariableStatement(const Parse::Variable* v) {
                 for (auto&& name : v->name)
                     lambda_locals->back().insert(name.name);
             }
-            void VisitLambdaCapture(const AST::Variable* v) {
+            void VisitLambdaCapture(const Parse::Variable* v) {
                 for (auto&& name : v->name)
                     lambda_locals->back().insert(name.name);
             }
-            void VisitLambdaArgument(const AST::FunctionArgument* arg) {
+            void VisitLambdaArgument(const Parse::FunctionArgument* arg) {
                 lambda_locals->back().insert(arg->name);
             }
-            void VisitLambda(const AST::Lambda* l) {
+            void VisitLambda(const Parse::Lambda* l) {
                 lambda_locals->emplace_back();
                 for (auto&& x : l->args)
                     VisitLambdaArgument(&x);
@@ -527,25 +521,25 @@ Analyzer::Analyzer(const Options::Clang& opts, const AST::Module* GlobalModule)
                 lambda_locals->pop_back();
                 lambda_locals->pop_back();
             }
-            void VisitIdentifier(const AST::Identifier* e) {
+            void VisitIdentifier(const Parse::Identifier* e) {
                 for (auto&& scope : *lambda_locals)
                 if (scope.find(e->val) != scope.end())
                     return;
                 captures->insert(e->val);
             }
-            void VisitCompoundStatement(const AST::CompoundStatement* cs) {
+            void VisitCompoundStatement(const Parse::CompoundStatement* cs) {
                 lambda_locals->emplace_back();
                 for (auto&& x : cs->stmts)
                     VisitStatement(x);
                 lambda_locals->pop_back();
             }
-            void VisitWhileStatement(const AST::While* wh) {
+            void VisitWhileStatement(const Parse::While* wh) {
                 lambda_locals->emplace_back();
                 VisitExpression(wh->condition);
                 VisitStatement(wh->body);
                 lambda_locals->pop_back();
             }
-            void VisitIfStatement(const AST::If* br) {
+            void VisitIfStatement(const Parse::If* br) {
                 lambda_locals->emplace_back();
                 VisitExpression(br->condition);
                 lambda_locals->emplace_back();
@@ -590,7 +584,7 @@ Analyzer::Analyzer(const Options::Clang& opts, const AST::Module* GlobalModule)
             cap_expressions.push_back(std::make_pair(arg->name.front().name, a.AnalyzeExpression(lookup, arg->initializer)));
         }
         for (auto&& name : captures) {
-            AST::Identifier ident(name, lam->location);
+            Parse::Identifier ident(name, lam->location);
             cap_expressions.push_back(std::make_pair(name, a.AnalyzeExpression(lookup, &ident)));
         }
         std::vector<std::pair<std::string, Type*>> types;
@@ -617,7 +611,7 @@ Analyzer::Analyzer(const Options::Clang& opts, const AST::Module* GlobalModule)
         return type->BuildLambdaFromCaptures(std::move(expressions), c);
     });
 
-    AddExpressionHandler<AST::DynamicCast>([](Analyzer& a, Type* lookup, const AST::DynamicCast* dyn_cast) -> std::unique_ptr<Expression> {
+    AddExpressionHandler<Parse::DynamicCast>([](Analyzer& a, Type* lookup, const Parse::DynamicCast* dyn_cast) -> std::unique_ptr<Expression> {
         auto type = a.AnalyzeExpression(lookup, dyn_cast->type);
         auto object = a.AnalyzeExpression(lookup, dyn_cast->object);
 
@@ -730,7 +724,7 @@ Analyzer::Analyzer(const Options::Clang& opts, const AST::Module* GlobalModule)
         throw std::runtime_error("Used unimplemented dynamic_cast functionality.");
     });
 
-    AddExpressionHandler<AST::Index>([](Analyzer& a, Type* lookup, const AST::Index* index) {
+    AddExpressionHandler<Parse::Index>([](Analyzer& a, Type* lookup, const Parse::Index* index) {
         auto obj = a.AnalyzeExpression(lookup, index->object);
         auto ind = a.AnalyzeExpression(lookup, index->index);
         auto ty = obj->GetType();
@@ -815,14 +809,14 @@ FunctionType* Analyzer::GetFunctionType(Type* ret, const std::vector<Type*>& t, 
     return FunctionTypes[ret][t][variadic].get();
 }
 
-Function* Analyzer::GetWideFunction(const AST::FunctionBase* p, Type* context, const std::vector<Type*>& types, std::string name) {
+Function* Analyzer::GetWideFunction(const Parse::FunctionBase* p, Type* context, const std::vector<Type*>& types, std::string name) {
     if (WideFunctions.find(p) == WideFunctions.end()
      || WideFunctions[p].find(types) == WideFunctions[p].end())
         WideFunctions[p][types] = Wide::Memory::MakeUnique<Function>(types, p, *this, context, name);
     return WideFunctions[p][types].get();
 }
 
-Module* Analyzer::GetWideModule(const AST::Module* p, Module* higher) {
+Module* Analyzer::GetWideModule(const Parse::Module* p, Module* higher) {
     if (WideModules.find(p) == WideModules.end())
         WideModules[p] = Wide::Memory::MakeUnique<Module>(p, higher, *this);
     return WideModules[p].get();
@@ -866,13 +860,6 @@ ClangTemplateClass* Analyzer::GetClangTemplateClass(ClangTU& from, clang::ClassT
         ClangTemplateClasses[decl] = Wide::Memory::MakeUnique<ClangTemplateClass>(decl, &from, *this);
     return ClangTemplateClasses[decl].get();
 }
-
-OverloadSet* Analyzer::GetOverloadSet(const AST::FunctionOverloadSet* set, Type* t, std::string name) {
-    std::unordered_set<OverloadResolvable*> resolvable;
-    for (auto x : set->functions)
-        resolvable.insert(GetCallableForFunction(x, t, name));
-    return GetOverloadSet(resolvable, t);
-}
 OverloadSet* Analyzer::GetOverloadSet() {
     return EmptyOverloadSet.get();
 }
@@ -892,7 +879,7 @@ OverloadSet* Analyzer::GetOverloadSet(std::unordered_set<OverloadResolvable*> se
     return callable_overload_sets[set][nonstatic].get();
 }
 
-UserDefinedType* Analyzer::GetUDT(const AST::Type* t, Type* context, std::string name) {
+UserDefinedType* Analyzer::GetUDT(const Parse::Type* t, Type* context, std::string name) {
     if (UDTs.find(t) == UDTs.end()
      || UDTs[t].find(context) == UDTs[t].end()) {
         UDTs[t][context] = Wide::Memory::MakeUnique<UserDefinedType>(t, *this, context, name);
@@ -960,14 +947,14 @@ OverloadSet* Analyzer::GetOverloadSet(std::unordered_set<clang::NamedDecl*> decl
     }
     return clang_overload_sets[decls][context].get();
 }
-OverloadResolvable* Analyzer::GetCallableForFunction(const AST::FunctionBase* f, Type* context, std::string name) {
+OverloadResolvable* Analyzer::GetCallableForFunction(const Parse::FunctionBase* f, Type* context, std::string name) {
     if (FunctionCallables.find(f) != FunctionCallables.end())
         return FunctionCallables.at(f).get();
 
     struct FunctionCallable : public OverloadResolvable {
-        FunctionCallable(const AST::FunctionBase* f, Type* con, std::string str)
+        FunctionCallable(const Parse::FunctionBase* f, Type* con, std::string str)
         : func(f), context(con), name(str) {}
-        const AST::FunctionBase* func;
+        const Parse::FunctionBase* func;
         Type* context;
         std::string name;
 
@@ -1098,10 +1085,10 @@ Lexer::Access Semantic::GetAccessSpecifier(Type* from, Type* to) {
     return Lexer::Access::Public;
 }
 
-void ProcessFunction(const AST::Function* f, Analyzer& a, Module* m, std::string name) {
+void ProcessFunction(const Parse::AttributeFunctionBase* f, Analyzer& a, Module* m, std::string name) {
     bool exported = false;
     for (auto attr : f->attributes) {
-        if (auto ident = dynamic_cast<const AST::Identifier*>(attr.initialized))
+        if (auto ident = dynamic_cast<const Parse::Identifier*>(attr.initialized))
             if (ident->val == "export")
                 exported = true;
     }
@@ -1118,40 +1105,35 @@ void ProcessFunction(const AST::Function* f, Analyzer& a, Module* m, std::string
     auto func = a.GetWideFunction(f, m, types, name);
     func->ComputeBody();
 }
-void ProcessOverloadSet(const AST::FunctionOverloadSet* set, Analyzer& a, Module* m, std::string name) {
-    for (auto func : set->functions) {
+template<typename T> void ProcessOverloadSet(std::unordered_set<T*> set, Analyzer& a, Module* m, std::string name) {
+    for (auto func : set) {
         ProcessFunction(func, a, m, name);
     }
 }
 
-std::string Semantic::GetNameForOperator(Lexer::TokenType t) {
-    return "";
-}
-
 void AnalyzeExportedFunctionsInModule(Analyzer& a, Module* m) {
     auto mod = m->GetASTModule();
-    for (auto decl : mod->decls) {
-        if (auto overset = dynamic_cast<const AST::FunctionOverloadSet*>(decl.second))
-            ProcessOverloadSet(overset, a, m, decl.first);
+    ProcessOverloadSet(mod->constructor_decls, a, m, "type");
+    ProcessOverloadSet(mod->destructor_decls, a, m, "~type");
+    for (auto&& decl : mod->named_decls) {
+        if (auto overset = boost::get<std::unordered_map<Lexer::Access, std::unordered_set<Parse::Function*>>>(&decl.second)) {
+            for (auto access : (*overset))
+                ProcessOverloadSet(access.second, a, m, decl.first);
+        }
     }
-    for (auto overset : mod->opcondecls)
-        ProcessOverloadSet(overset.second, a, m, GetNameForOperator(overset.first));
-    for (auto decl : mod->decls)
-        if (auto nested = dynamic_cast<const AST::Module*>(decl.second))
-            AnalyzeExportedFunctionsInModule(a, a.GetWideModule(nested, m));
 }
 void Semantic::AnalyzeExportedFunctions(Analyzer& a) {
     AnalyzeExportedFunctionsInModule(a, a.GetGlobalModule());
 }
-OverloadResolvable* Analyzer::GetCallableForTemplateType(const AST::TemplateType* t, Type* context) {
+OverloadResolvable* Analyzer::GetCallableForTemplateType(const Parse::TemplateType* t, Type* context) {
     if (TemplateTypeCallables.find(t) != TemplateTypeCallables.end())
         return TemplateTypeCallables[t].get();
 
     struct TemplateTypeCallable : Callable {
-        TemplateTypeCallable(Type* con, const Wide::AST::TemplateType* tempty, std::vector<Type*> args)
+        TemplateTypeCallable(Type* con, const Wide::Parse::TemplateType* tempty, std::vector<Type*> args)
         : context(con), templatetype(tempty), types(args) {}
         Type* context;
-        const Wide::AST::TemplateType* templatetype;
+        const Wide::Parse::TemplateType* templatetype;
         std::vector<Type*> types;
         std::vector<std::unique_ptr<Expression>> AdjustArguments(std::vector<std::unique_ptr<Expression>> args, Context c) override final { return args; }
         std::unique_ptr<Expression> CallFunction(std::vector<std::unique_ptr<Expression>> args, Context c) override final {
@@ -1160,10 +1142,10 @@ OverloadResolvable* Analyzer::GetCallableForTemplateType(const AST::TemplateType
     };
 
     struct TemplateTypeResolvable : OverloadResolvable {
-        TemplateTypeResolvable(const AST::TemplateType* f, Type* con)
+        TemplateTypeResolvable(const Parse::TemplateType* f, Type* con)
         : templatetype(f), context(con) {}
         Type* context;
-        const Wide::AST::TemplateType* templatetype;
+        const Wide::Parse::TemplateType* templatetype;
         std::unordered_map<std::vector<Type*>, std::unique_ptr<TemplateTypeCallable>, VectorTypeHasher> Callables;
 
         Util::optional<std::vector<Type*>> MatchParameter(std::vector<Type*> types, Analyzer& a, Type* source) override final {
@@ -1202,7 +1184,7 @@ OverloadResolvable* Analyzer::GetCallableForTemplateType(const AST::TemplateType
     return TemplateTypeCallables[t].get();
 }
 
-TemplateType* Analyzer::GetTemplateType(const Wide::AST::TemplateType* ty, Type* context, std::vector<Type*> arguments, std::string name) {
+TemplateType* Analyzer::GetTemplateType(const Wide::Parse::TemplateType* ty, Type* context, std::vector<Type*> arguments, std::string name) {
     if (WideTemplateInstantiations.find(ty) == WideTemplateInstantiations.end()
      || WideTemplateInstantiations[ty].find(arguments) == WideTemplateInstantiations[ty].end()) {
 
@@ -1227,17 +1209,17 @@ Type* Analyzer::GetTypeForString(std::string str) {
         LiteralStringTypes[str] = Wide::Memory::MakeUnique<StringType>(str, *this);
     return LiteralStringTypes[str].get();
 }
-LambdaType* Analyzer::GetLambdaType(const AST::Lambda* lam, std::vector<std::pair<std::string, Type*>> types, Type* context) {
+LambdaType* Analyzer::GetLambdaType(const Parse::Lambda* lam, std::vector<std::pair<std::string, Type*>> types, Type* context) {
     if (LambdaTypes.find(lam) == LambdaTypes.end()
      || LambdaTypes[lam].find(types) == LambdaTypes[lam].end())
         LambdaTypes[lam][types] = Wide::Memory::MakeUnique<LambdaType>(types, lam, context, *this);
     return LambdaTypes[lam][types].get();
 }
-bool Semantic::IsMultiTyped(const AST::FunctionArgument& f) {
+bool Semantic::IsMultiTyped(const Parse::FunctionArgument& f) {
     if (!f.type) return true;
-    struct Visitor : public AST::Visitor<Visitor> {
+    struct Visitor : public Parse::Visitor<Visitor> {
         bool auto_found = false;
-        void VisitIdentifier(const AST::Identifier* i) {
+        void VisitIdentifier(const Parse::Identifier* i) {
             auto_found = auto_found || i->val == "auto";
         }
     };
@@ -1245,15 +1227,15 @@ bool Semantic::IsMultiTyped(const AST::FunctionArgument& f) {
     v.VisitExpression(f.type);
     return v.auto_found;
 }
-bool Semantic::IsMultiTyped(const AST::FunctionBase* f) {
+bool Semantic::IsMultiTyped(const Parse::FunctionBase* f) {
     bool ret = false;
     for (auto&& var : f->args)
         ret = ret || IsMultiTyped(var);
     return ret;
 }
 
-std::unique_ptr<Expression> Analyzer::AnalyzeExpression(Type* lookup, const AST::Expression* e) {
-    static_assert(std::is_polymorphic<AST::Expression>::value, "Expression must be polymorphic.");
+std::unique_ptr<Expression> Analyzer::AnalyzeExpression(Type* lookup, const Parse::Expression* e) {
+    static_assert(std::is_polymorphic<Parse::Expression>::value, "Expression must be polymorphic.");
     auto&& type_info = typeid(*e);
     if (expression_handlers.find(type_info) != expression_handlers.end())
         return expression_handlers[type_info](*this, lookup, e);
@@ -1268,7 +1250,7 @@ Type* Semantic::InferTypeFromExpression(Expression* e, bool local) {
     }
     return e->GetType()->Decay();
 }
-std::unique_ptr<Expression> Analyzer::AnalyzeCachedExpression(Type* lookup, const AST::Expression* e) {
+std::unique_ptr<Expression> Analyzer::AnalyzeCachedExpression(Type* lookup, const Parse::Expression* e) {
     if (ExpressionCache.find(e) == ExpressionCache.end())
         ExpressionCache[e] = AnalyzeExpression(lookup, e);
     return Wide::Memory::MakeUnique<ExpressionReference>(ExpressionCache[e].get());

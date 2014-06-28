@@ -34,14 +34,14 @@
 using namespace Wide;
 using namespace Semantic;
 
-Function::LocalVariable::LocalVariable(Expression* ex, Function* self, Lexer::Range where)
-: init_expr(std::move(ex)), self(self), where(where)
+Function::LocalVariable::LocalVariable(Expression* ex, Function* self, Lexer::Range where, Lexer::Range init_where)
+: init_expr(std::move(ex)), self(self), where(where), init_where(init_where)
 {
     ListenToNode(init_expr);
     OnNodeChanged(init_expr, Change::Contents);
 }
-Function::LocalVariable::LocalVariable(Expression* ex, unsigned u, Function* self, Lexer::Range where)
-    : init_expr(std::move(ex)), tuple_num(u), self(self), where(where)
+Function::LocalVariable::LocalVariable(Expression* ex, unsigned u, Function* self, Lexer::Range where, Lexer::Range init_where)
+: init_expr(std::move(ex)), tuple_num(u), self(self), where(where), init_where(init_where)
 {
     ListenToNode(init_expr);
     OnNodeChanged(init_expr, Change::Contents);
@@ -56,7 +56,7 @@ void Function::LocalVariable::OnNodeChanged(Node* n, Change what) {
                 auto tuple_access = tupty->PrimitiveAccessMember(Wide::Memory::MakeUnique<ExpressionReference>(init_expr), *tuple_num);
                 newty = tuple_access->GetType()->Decay();
                 variable = Wide::Memory::MakeUnique<ImplicitTemporaryExpr>(newty, Context{ self, where });
-                construction = newty->BuildInplaceConstruction(Wide::Memory::MakeUnique<ExpressionReference>(variable.get()), Expressions(std::move(tuple_access)), { self, where });
+                construction = newty->BuildInplaceConstruction(Wide::Memory::MakeUnique<ExpressionReference>(variable.get()), Expressions(std::move(tuple_access)), { self, init_where });
                 if (newty != var_type) {
                     var_type = newty;
                     OnChange();
@@ -80,7 +80,7 @@ void Function::LocalVariable::OnNodeChanged(Node* n, Change what) {
         if (newty != var_type) {
             if (newty) {
                 variable = Wide::Memory::MakeUnique<ImplicitTemporaryExpr>(newty, Context{ self, where });
-                construction = newty->BuildInplaceConstruction(Wide::Memory::MakeUnique<ExpressionReference>(variable.get()), Expressions(Wide::Memory::MakeUnique<ExpressionReference>(init_expr)), { self, where });
+                construction = newty->BuildInplaceConstruction(Wide::Memory::MakeUnique<ExpressionReference>(variable.get()), Expressions(Wide::Memory::MakeUnique<ExpressionReference>(init_expr)), { self, init_where });
             }
             var_type = newty;
             OnChange();
@@ -412,32 +412,32 @@ void Function::ThrowStatement::GenerateCode(CodegenContext& con) {
     // Else, kill everything and GTFO this function and let the EH routines worry about it.
     con->CreateInvoke(cxa_throw, con.GetUnreachableBlock(), con.CreateLandingpadForEH(), args);
 }
-std::unique_ptr<Statement> Function::AnalyzeStatement(const AST::Statement* s) {
-    if (auto ret = dynamic_cast<const AST::Return*>(s)) {
+std::unique_ptr<Statement> Function::AnalyzeStatement(const Parse::Statement* s) {
+    if (auto ret = dynamic_cast<const Parse::Return*>(s)) {
         if (ret->RetExpr) {
             return Wide::Memory::MakeUnique<ReturnStatement>(this, analyzer.AnalyzeExpression(this, ret->RetExpr), current_scope, ret->location);
         }
         return Wide::Memory::MakeUnique<ReturnStatement>(this, nullptr, current_scope, ret->location);
     }
 
-    if (auto comp = dynamic_cast<const AST::CompoundStatement*>(s)) {
+    if (auto comp = dynamic_cast<const Parse::CompoundStatement*>(s)) {
         LocalScope compound(this);
         for (auto stmt : comp->stmts)
             compound->active.push_back(AnalyzeStatement(stmt));
         return Wide::Memory::MakeUnique<CompoundStatement>(compound.s);
     }
 
-    if (auto expr = dynamic_cast<const AST::Expression*>(s))
+    if (auto expr = dynamic_cast<const Parse::Expression*>(s))
         return analyzer.AnalyzeExpression(this, expr);
 
-    if (auto var = dynamic_cast<const AST::Variable*>(s)) {
+    if (auto var = dynamic_cast<const Parse::Variable*>(s)) {
         std::vector<LocalVariable*> locals;
         auto init_expr = analyzer.AnalyzeExpression(this, var->initializer);
         if (var->name.size() == 1) {
             auto&& name = var->name.front();
             if (current_scope->named_variables.find(var->name.front().name) != current_scope->named_variables.end())
                 throw VariableShadowing(name.name, current_scope->named_variables.at(name.name).second, name.where);
-            auto var_stmt = Wide::Memory::MakeUnique<LocalVariable>(init_expr.get(), this, var->name.front().where);
+            auto var_stmt = Wide::Memory::MakeUnique<LocalVariable>(init_expr.get(), this, var->name.front().where, var->initializer->location);
             locals.push_back(var_stmt.get());
             current_scope->named_variables.insert(std::make_pair(name.name, std::make_pair(std::move(var_stmt), name.where)));
         } else {
@@ -445,7 +445,7 @@ std::unique_ptr<Statement> Function::AnalyzeStatement(const AST::Statement* s) {
             for (auto&& name : var->name) {
                 if (current_scope->named_variables.find(name.name) != current_scope->named_variables.end())
                     throw VariableShadowing(name.name, current_scope->named_variables.at(name.name).second, name.where);
-                auto var_stmt = Wide::Memory::MakeUnique<LocalVariable>(init_expr.get(), i++, this, name.where);
+                auto var_stmt = Wide::Memory::MakeUnique<LocalVariable>(init_expr.get(), i++, this, name.where, var->initializer->location);
                 locals.push_back(var_stmt.get());
                 current_scope->named_variables.insert(std::make_pair(name.name, std::make_pair(std::move(var_stmt), name.where)));
             }
@@ -453,7 +453,7 @@ std::unique_ptr<Statement> Function::AnalyzeStatement(const AST::Statement* s) {
         return Wide::Memory::MakeUnique<VariableStatement>(std::move(locals), std::move(init_expr));
     }
 
-    if (auto whil = dynamic_cast<const AST::While*>(s)) {
+    if (auto whil = dynamic_cast<const Parse::While*>(s)) {
         LocalScope condscope(this);
         auto get_expr = [&, this]() -> std::unique_ptr<Expression> {
             if (whil->var_condition) {
@@ -474,18 +474,18 @@ std::unique_ptr<Statement> Function::AnalyzeStatement(const AST::Statement* s) {
         return std::move(while_stmt);
     }
 
-    if (auto break_stmt = dynamic_cast<const AST::Break*>(s)) {
+    if (auto break_stmt = dynamic_cast<const Parse::Break*>(s)) {
         if (!current_scope->GetCurrentWhile())
             throw NoControlFlowStatement(break_stmt->location);
         return Wide::Memory::MakeUnique<BreakStatement>(current_scope);
     }
-    if (auto continue_stmt = dynamic_cast<const AST::Continue*>(s)) {
+    if (auto continue_stmt = dynamic_cast<const Parse::Continue*>(s)) {
         if (!current_scope->GetCurrentWhile())
             throw NoControlFlowStatement(continue_stmt->location);
         return Wide::Memory::MakeUnique<ContinueStatement>(current_scope);
     }
 
-    if (auto if_stmt = dynamic_cast<const AST::If*>(s)) {
+    if (auto if_stmt = dynamic_cast<const Parse::If*>(s)) {
         LocalScope condscope(this);
         auto get_expr = [&, this]() -> std::unique_ptr<Expression> {
             if (if_stmt->var_condition) {
@@ -514,7 +514,7 @@ std::unique_ptr<Statement> Function::AnalyzeStatement(const AST::Statement* s) {
         return Wide::Memory::MakeUnique<IfStatement>(condexpr, true_br, false_br, if_stmt->location, this);
     }
 
-    if (auto thro = dynamic_cast<const Wide::AST::Throw*>(s)) {
+    if (auto thro = dynamic_cast<const Wide::Parse::Throw*>(s)) {
         if (!thro->expr)
             return Wide::Memory::MakeUnique<RethrowStatement>();
         auto expression = analyzer.AnalyzeExpression(this, thro->expr);
@@ -522,7 +522,7 @@ std::unique_ptr<Statement> Function::AnalyzeStatement(const AST::Statement* s) {
     }
 
     // Fuck yeah! Or me, at least.
-    if (auto try_ = dynamic_cast<const Wide::AST::TryCatch*>(s)) {
+    if (auto try_ = dynamic_cast<const Wide::Parse::TryCatch*>(s)) {
         std::vector<std::unique_ptr<Statement>> try_stmts;
         {
             LocalScope tryscope(this);
@@ -605,7 +605,7 @@ llvm::Value* Function::Parameter::ComputeValue(CodegenContext& con) {
     return alloc;
 }
 
-Function::Function(std::vector<Type*> args, const AST::FunctionBase* astfun, Analyzer& a, Type* mem, std::string src_name)
+Function::Function(std::vector<Type*> args, const Parse::FunctionBase* astfun, Analyzer& a, Type* mem, std::string src_name)
 : MetaType(a)
 , ReturnType(nullptr)
 , fun(astfun)
@@ -641,10 +641,10 @@ Function::Function(std::vector<Type*> args, const AST::FunctionBase* astfun, Ana
     strstr << "__" << std::hex << this;
     name = strstr.str();
 
-    // Deal with the prolog first- if we have one.
-    if (auto fun = dynamic_cast<const AST::Function*>(astfun)) {
+    // Deal with the attributes first, if any
+    if (auto fun = dynamic_cast<const Parse::AttributeFunctionBase*>(astfun)) {
         for (auto attr : fun->attributes) {
-            if (auto name = dynamic_cast<const AST::Identifier*>(attr.initialized)) {
+            if (auto name = dynamic_cast<const Parse::Identifier*>(attr.initialized)) {
                 if (name->val == "export") {
                     auto expr = analyzer.AnalyzeExpression(GetContext(), attr.initializer);
                     if (auto str = dynamic_cast<StringType*>(expr->GetType()->Decay())) {
@@ -688,21 +688,16 @@ Function::Function(std::vector<Type*> args, const AST::FunctionBase* astfun, Ana
                 }
             }
         }
-        for (auto&& prolog : fun->prolog) {
-            auto ass = dynamic_cast<const AST::BinaryExpression*>(prolog);
-            if (!ass || ass->type != Lexer::TokenType::Assignment)
-                throw PrologNonAssignment(prolog->location);
-            auto ident = dynamic_cast<const AST::Identifier*>(ass->lhs);
-            if (!ident)
-                throw PrologAssignmentNotIdentifier(ass->lhs->location);
-            auto expr = analyzer.AnalyzeExpression(this, ass->rhs);
-            if (ident->val == "ReturnType") {
-                auto ty = dynamic_cast<ConstructorType*>(expr->GetType()->Decay());
-                if (!ty)
-                    throw NotAType(expr->GetType()->Decay(), ass->rhs->location);
-                ExplicitReturnType = ty->GetConstructedType();
-                ReturnType = *ExplicitReturnType;
-            }
+    }
+
+    // Explicit return type, if any
+    if (auto fun = dynamic_cast<const Parse::Function*>(astfun)) {
+        if (fun->explicit_return) {
+            auto expr = analyzer.AnalyzeExpression(this, fun->explicit_return);
+            if (auto con = dynamic_cast<ConstructorType*>(expr->GetType()->Decay()))
+                ExplicitReturnType = con->GetConstructedType();
+            else
+                throw NotAType(expr->GetType(), fun->explicit_return->location);
         }
     }
 }
@@ -715,16 +710,16 @@ void Function::ComputeBody() {
     if (s == State::NotYetAnalyzed) {
         s = State::AnalyzeInProgress;
         // Initializers first, if we are a constructor
-        if (auto con = dynamic_cast<const AST::Constructor*>(fun)) {
+        if (auto con = dynamic_cast<const Parse::Constructor*>(fun)) {
             if (!ConstructorContext) throw std::runtime_error("fuck");
             auto member = *ConstructorContext;
             auto members = member->GetConstructionMembers();
-            std::unordered_set<const AST::VariableInitializer*> used_initializers;
+            std::unordered_set<const Parse::VariableInitializer*> used_initializers;
             for (auto&& x : members) {
-                auto has_initializer = [&]() -> const AST::VariableInitializer* {
+                auto has_initializer = [&]() -> const Parse::VariableInitializer*{
                     for (auto&& init : con->initializers) {
                         // Match if it's a name and the one we were looking for.
-                        auto ident = dynamic_cast<const AST::Identifier*>(init.initialized);
+                        auto ident = dynamic_cast<const Parse::Identifier*>(init.initialized);
                         if (x.name && ident) {
                             if (ident->val == *x.name)
                                 return &init;
@@ -782,7 +777,7 @@ void Function::ComputeBody() {
                     if (init->initializer) {
                         // If it's a tuple, pass each subexpression.
                         std::vector<std::unique_ptr<Expression>> exprs;
-                        if (auto tup = dynamic_cast<const AST::Tuple*>(init->initializer)) {
+                        if (auto tup = dynamic_cast<const Parse::Tuple*>(init->initializer)) {
                             for (auto expr : tup->expressions)
                                 exprs.push_back(analyzer.AnalyzeExpression(this, expr));
                         } else
@@ -802,7 +797,7 @@ void Function::ComputeBody() {
             }
             for (auto&& x : con->initializers) {
                 if (used_initializers.find(&x) == used_initializers.end()) {
-                    if (auto ident = dynamic_cast<const AST::Identifier*>(x.initialized))
+                    if (auto ident = dynamic_cast<const Parse::Identifier*>(x.initialized))
                         throw NoMemberToInitialize(context->Decay(), ident->val, x.where);
                     auto expr = analyzer.AnalyzeExpression(this, x.initializer);
                     auto conty = dynamic_cast<ConstructorType*>(expr->GetType());
@@ -868,7 +863,8 @@ void Function::ComputeReturnType() {
             return;
         }
         throw std::runtime_error("Fuck");
-    }
+    } else
+        ReturnType = *ExplicitReturnType;
 }
 
 void Function::EmitCode(llvm::Module* module) {
@@ -1055,7 +1051,7 @@ std::unique_ptr<Expression> Function::BuildCall(std::unique_ptr<Expression> val,
         : self(self), val(std::move(val))
         {
             if (!expr) return;
-            if (auto func = dynamic_cast<const AST::Function*>(self->fun)) {
+            if (auto func = dynamic_cast<const Parse::Function*>(self->fun)) {
                 udt = dynamic_cast<UserDefinedType*>(expr->GetType()->Decay());
                 if (!udt) return;
                 obj = udt->GetVirtualPointer(Wide::Memory::MakeUnique<ExpressionReference>(expr));
@@ -1073,7 +1069,7 @@ std::unique_ptr<Expression> Function::BuildCall(std::unique_ptr<Expression> val,
                 self->EmitCode(con);
             val->GetValue(con);
             if (obj) {
-                auto func = dynamic_cast<const AST::Function*>(self->fun);
+                auto func = dynamic_cast<const Parse::Function*>(self->fun);
                 assert(func);
                 auto vindex = udt->GetVirtualFunctionIndex(func);
                 if (!vindex) return self->llvmfunc;

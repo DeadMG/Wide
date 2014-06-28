@@ -1,4 +1,4 @@
-ExpectedFailure() { return { "InvalidBase", 96, 106 }; }
+ExpectedFailure() { return { "InvalidBase", 5, 10, 5, 21 }; }
 f() {
     return false;
 }

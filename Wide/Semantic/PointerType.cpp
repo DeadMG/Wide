@@ -96,7 +96,7 @@ bool PointerType::IsA(Type* self, Type* other, Lexer::Access access) {
 OverloadSet* PointerType::CreateOperatorOverloadSet(Type* self, Lexer::TokenType what, Lexer::Access access) {
     if (access != Lexer::Access::Public)
         return AccessMember(self, what, Lexer::Access::Public);
-    if (what != Lexer::TokenType::Dereference) return PrimitiveType::CreateOperatorOverloadSet(self, what, access);
+    if (what != &Lexer::TokenTypes::Star) return PrimitiveType::CreateOperatorOverloadSet(self, what, access);
     DereferenceOperator = MakeResolvable([this](std::vector<std::unique_ptr<Expression>> args, Context c) {
         return CreatePrimUnOp(std::move(args[0]), analyzer.GetLvalueType(pointee), [](llvm::Value* val, CodegenContext& con) {
             return val;

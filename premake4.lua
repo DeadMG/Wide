@@ -266,6 +266,12 @@ WideProjects = {
         end
     },
     Parser = {
+        dependencies = function(proj) 
+            return CheckBoost(proj)
+        end, 
+        configure = function(plat, conf)
+            AddBoostDependencies(conf)
+        end,
         action = function()
             links { "Util" }
         end
@@ -359,6 +365,7 @@ if not os.is("Windows") then
     buildoptions  {"-std=c++11", "-D __STDC_CONSTANT_MACROS", "-D __STDC_LIMIT_MACROS", "-fPIC" }
 else
     defines { "_SCL_SECURE_NO_WARNINGS" }
+    buildoptions  {"/wd4503" }
 end
 includedirs("./")
 location("Wide")

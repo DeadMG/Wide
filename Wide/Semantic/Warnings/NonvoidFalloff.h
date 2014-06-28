@@ -5,9 +5,6 @@
 #include <utility>
 
 namespace Wide {
-    namespace AST {
-        struct FunctionBase;
-    }
     namespace Lexer {
         struct Range;
     }

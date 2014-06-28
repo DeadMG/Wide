@@ -10,17 +10,6 @@
 
 namespace Wide {
     namespace Lexer {
-        class Token {
-            Range location;
-            TokenType type;
-            std::string value;
-        public:
-            Token(Range r, TokenType t, std::string val)
-                : location(r), type(t), value(std::move(val)) {}
-            Range GetLocation() const { return location; }
-            TokenType GetType() const { return type; }
-            const std::string& GetValue() const { return value; }
-        };
         class Arguments {
         public:
             enum Failure {
@@ -28,19 +17,15 @@ namespace Wide {
                 UnlexableCharacter,
                 UnterminatedComment
             };
-            static const std::unordered_map<char, TokenType> singles;
-            static const std::unordered_map<char, std::unordered_map<char, TokenType>> doubles;
-            static const std::unordered_map<char, std::unordered_map<char, std::unordered_map<char, TokenType>>> triples;
-            static const std::unordered_set<char> whitespace;
-            static const std::unordered_map<std::string, TokenType> keywords;
-            static const std::unordered_set<TokenType> KeywordTypes;
+            std::unordered_map<char, Lexer::TokenType> singles;
+            std::unordered_map<char, std::unordered_map<char, Lexer::TokenType>> doubles;
+            std::unordered_map<char, std::unordered_map<char, std::unordered_map<char, Lexer::TokenType>>> triples;
+            std::unordered_set<char> whitespace;
+            std::unordered_map<std::string, const std::string*> keywords;
+            std::unordered_set<Lexer::TokenType> KeywordTypes;
             std::function<void(Range)> OnComment;
             int tabsize;
-            Arguments()
-                : tabsize(4) 
-            {
-                OnComment = [](Range) {};
-            }
+            Arguments();
         };
         template<typename Range> class Invocation {
             const Arguments* args;
@@ -204,7 +189,7 @@ namespace Wide {
                         current_position = firstpos;
                     }
                     if (args->singles.find(*val) != args->singles.end()) {
-                        return Wide::Lexer::Token(begin_pos, args->singles.at(*val), std::string(1, *val));
+                        return Wide::Lexer::Token(begin_pos + current_position, args->singles.at(*val), std::string(1, *val));
                     }
                 }
 
@@ -231,13 +216,13 @@ namespace Wide {
                     }
                     if (!next)
                         return OnError(begin_pos, Arguments::Failure::UnterminatedStringLiteral, this);
-                    return Wide::Lexer::Token(begin_pos + current_position, TokenType::String, escape(variable_length_value));
+                    return Wide::Lexer::Token(begin_pos + current_position, &TokenTypes::String, escape(variable_length_value));
                 }
 
-                TokenType result = TokenType::Integer;
+                TokenType result = &TokenTypes::Integer;
                 auto old_pos = current_position;
                 if (*val == '@') {
-                    result = TokenType::Identifier;
+                    result = &TokenTypes::Identifier;
                     val = get();
                 } else if (!((*val >= '0' && *val <= '9') || (*val >= 'a' && *val <= 'z') || (*val >= 'A' && *val <= 'Z') || *val == '_')) {
                     return OnError(begin_pos, Arguments::Failure::UnlexableCharacter, this);
@@ -245,7 +230,7 @@ namespace Wide {
                 while(val) {
                     if (*val < '0' || *val > '9')
                         if ((*val >= 'a' && *val <= 'z') || (*val >= 'A' && *val <= 'Z') || *val == '_')
-                            result = TokenType::Identifier;
+                            result = &TokenTypes::Identifier;
                         else {
                             putback.push_back(std::make_pair(*val, current_position));
                             current_position = old_pos;

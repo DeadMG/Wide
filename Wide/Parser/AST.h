@@ -8,9 +8,10 @@
 #include <unordered_set>
 #include <memory>
 #include <Wide/Lexer/Token.h>
+#include <boost/variant.hpp>
 
 namespace Wide {
-    namespace AST {
+    namespace Parse {
         struct Statement { 
             Statement(Lexer::Range r)
                 : location(r) {}
@@ -40,31 +41,46 @@ namespace Wide {
             This(Lexer::Range r)
                 : Expression(r) {}
         };
-        struct DeclContext {
-            DeclContext(Lexer::Range decl, Lexer::Access a)
-                : where(), access(a) { where.push_back(decl); }
-            Lexer::Access access;
-            std::vector<Wide::Lexer::Range> where;
-            virtual ~DeclContext() {} 
-            //std::string name;
-        };
         struct Function;
-        struct FunctionOverloadSet : DeclContext {
-            FunctionOverloadSet(Lexer::Range r) : DeclContext(r, Lexer::Access::Public) {}
-            std::unordered_set<Function*> functions;
+        struct TemplateType;
+        struct Type;
+        struct Using;
+        struct Constructor;
+        struct Module {
+            Module() {}
+            
+            std::unordered_map<std::string, 
+                boost::variant<
+                    std::pair<Lexer::Access, Module*>,
+                    std::pair<Lexer::Access, Type*>,
+                    std::pair<Lexer::Access, Using*>,
+                    std::unordered_map<Lexer::Access, std::unordered_set<Function*>>, 
+                    std::unordered_map<Lexer::Access, std::unordered_set<TemplateType*>>
+                >
+            > named_decls;
+
+            std::unordered_set<Constructor*> constructor_decls;
+            std::unordered_set<Function*> destructor_decls;
+            std::vector<Lexer::Range> locations;
+            virtual ~Module() {}
         };
-        struct Module : public DeclContext {
-            Module(Lexer::Range where, Lexer::Access a)
-                : DeclContext(where, a) {}
-            std::unordered_map<std::string, DeclContext*> decls;
-            std::unordered_map<Lexer::TokenType, FunctionOverloadSet*> opcondecls;
+       
+        struct MemberVariable {
+            MemberVariable(std::string nam, Expression* expr, Lexer::Access access, Lexer::Range loc, std::vector<Attribute> attributes)
+            : name(std::move(nam)), initializer(expr), where(loc), access(access), attributes(std::move(attributes)) {}
+            std::string name;
+            Lexer::Range where;
+            Lexer::Access access;
+            Expression* initializer;
+            std::vector<Attribute> attributes;
         };
-        struct Variable;
-        struct Type : public DeclContext, Expression {
-            Type(std::vector<Expression*> base, Lexer::Range loc, Lexer::Access a, std::vector<Attribute> attributes) : DeclContext(loc, a), Expression(loc), bases(base), attributes(attributes) {}
-            std::vector<std::pair<Variable*, Lexer::Access>> variables;
-            std::unordered_map<std::string, FunctionOverloadSet*> Functions;
-            std::unordered_map<Lexer::TokenType, FunctionOverloadSet*> opcondecls;
+        struct Type : Expression {
+            Type(std::vector<Expression*> base, Lexer::Range loc, std::vector<Attribute> attributes) : Expression(loc), bases(base), attributes(attributes), destructor_decl(nullptr) {}
+            std::vector<MemberVariable> variables;
+            std::unordered_map<std::string, std::unordered_map<Lexer::Access, std::unordered_set<Function*>>> functions;
+            std::unordered_map<Lexer::Access, std::unordered_set<Constructor*>> constructor_decls;
+            Function* destructor_decl;
+
             std::vector<Expression*> bases;
             std::vector<Attribute> attributes;
         };
@@ -85,6 +101,11 @@ namespace Wide {
             Expression* expr;
             Lexer::Range memloc;
         };
+        struct DestructorAccess : Expression {
+            DestructorAccess(Expression* e, Lexer::Range r)
+            : Expression(r), expr(e) {}
+            Expression* expr;
+        };
         struct BinaryExpression : public Expression {
             BinaryExpression(Expression* l, Expression* r, Lexer::TokenType t)
                 : Expression(l->location + r->location), lhs(l), rhs(r), type(t) {}
@@ -99,12 +120,20 @@ namespace Wide {
             Expression* index;
         };
         struct FunctionArgument {
-            FunctionArgument(Lexer::Range where)
-                : location(std::move(where)) {}
+            FunctionArgument(Lexer::Range where, std::string name, Expression* ty)
+                : location(std::move(where)), name(std::move(name)), type(ty) {}
+            FunctionArgument(Lexer::Range where, std::string name)
+                : location(std::move(where)), name(std::move(name)), type(nullptr) {}
              // May be null
             Expression* type;
             std::string name;
             Lexer::Range location;
+        };
+        struct TemplateType {
+            Type* t;
+            std::vector<FunctionArgument> arguments;
+            TemplateType(Type* what, std::vector<FunctionArgument> args)
+                : t(what), arguments(args) {}
         };
         struct FunctionBase {
             Lexer::Range where;
@@ -114,19 +143,24 @@ namespace Wide {
             std::vector<Statement*> statements;
             virtual ~FunctionBase() {} // Need dynamic_cast.
         };
+        struct AttributeFunctionBase : FunctionBase {
+            AttributeFunctionBase(std::vector<Statement*> b, Lexer::Range loc, std::vector<FunctionArgument> ar, std::vector<Attribute> attributes)
+            : FunctionBase(std::move(ar), std::move(b), loc), attributes(attributes) {}
+            std::vector<Attribute> attributes;
+
+        };
+        struct Variable;
         struct Lambda : Expression, FunctionBase {
             std::vector<Variable*> Captures;
             bool defaultref;
             Lambda(std::vector<Statement*> body, std::vector<FunctionArgument> arg, Lexer::Range r, bool ref, std::vector<Variable*> caps)
                 : Expression(r), FunctionBase(std::move(arg), std::move(body), r), Captures(std::move(caps)), defaultref(ref) {}
         };
-        struct Function : FunctionBase {
-            Lexer::Access access;
-            Function(std::vector<Statement*> b, std::vector<Statement*> prolog, Lexer::Range loc, std::vector<FunctionArgument> ar, Lexer::Access a, bool dyn, std::vector<Attribute> attributes)
-                : FunctionBase(std::move(ar), std::move(b), loc), access(a), prolog(std::move(prolog)), dynamic(dyn), attributes(attributes) {}
-            std::vector<Statement*> prolog;
-            std::vector<Attribute> attributes;
-            bool dynamic;
+        struct Function : AttributeFunctionBase {
+            Function(std::vector<Statement*> b, Lexer::Range loc, std::vector<FunctionArgument> ar, Expression* explicit_ret, std::vector<Attribute> attributes)
+                : AttributeFunctionBase(std::move(b), loc, std::move(ar), std::move(attributes)), explicit_return(explicit_ret) {}
+            Expression* explicit_return = nullptr;
+            bool dynamic = false;
         };
         struct VariableInitializer {
             VariableInitializer(Expression* begin, Expression* end, Lexer::Range where)
@@ -135,9 +169,9 @@ namespace Wide {
             Expression* initializer;
             Expression* initialized;
         };
-        struct Constructor : Function {
-            Constructor(std::vector<Statement*> b, std::vector<Statement*> prolog, Lexer::Range loc, std::vector<FunctionArgument> ar, std::vector<VariableInitializer> caps, Lexer::Access a, std::vector<Attribute> attributes)
-                : Function(std::move(b), std::move(prolog), loc, std::move(ar), a, false, attributes), initializers(std::move(caps)) {}
+        struct Constructor : AttributeFunctionBase {
+            Constructor(std::vector<Statement*> b, Lexer::Range loc, std::vector<FunctionArgument> ar, std::vector<VariableInitializer> caps, std::vector<Attribute> attributes)
+            : AttributeFunctionBase(std::move(b), loc, std::move(ar), std::move(attributes)), initializers(std::move(caps)) {}
             std::vector<VariableInitializer> initializers;
         };
         struct FunctionCall : Expression {
@@ -146,9 +180,10 @@ namespace Wide {
             Expression* callee;
             std::vector<Expression*> args;
         };
-        struct Using : public DeclContext {
-            Using(Expression* ex, Lexer::Range where, Lexer::Access a)
-                :  DeclContext(where, a), expr(ex) {}
+        struct Using {
+            Using(Expression* ex, Lexer::Range where)
+                :  location(where), expr(ex) {}
+            Lexer::Range location;
             Expression* expr;
         };
         struct Return : public Statement {
@@ -177,6 +212,10 @@ namespace Wide {
             std::vector<Statement*> stmts;
         };
         struct Catch {
+            Catch(std::vector<Statement*> statements)
+            : statements(std::move(statements)), all(true) {}
+            Catch(std::vector<Statement*> statements, std::string name, Expression* type)
+                : statements(std::move(statements)), all(false), name(name), type(type) {}
             std::string name;
             Expression* type = nullptr;
             bool all;
@@ -203,43 +242,41 @@ namespace Wide {
                 : Expression(loc) {}
         };
         struct UnaryExpression : public Expression {
-            UnaryExpression(Expression* expr, Lexer::Range loc)
-                : Expression(loc), ex(expr) {}
+            UnaryExpression(Expression* expr, Lexer::TokenType type, Lexer::Range loc)
+                : Expression(loc), ex(expr), type(type) {}
+            Lexer::TokenType type;
             Expression* ex;
         };
-        struct BooleanTest : public UnaryExpression {
+        struct BooleanTest : public Expression {
+            Expression* ex;
             BooleanTest(Expression* e, Lexer::Range where)
-            : UnaryExpression(e, where) {}
+            : Expression(where), ex(e) {}
         };
-        struct PointerMemberAccess : public UnaryExpression {
+        struct PointerMemberAccess : public Expression {
             Lexer::Range memloc;
             std::string member;
+            Expression* ex;
             PointerMemberAccess(std::string name, Expression* expr, Lexer::Range loc, Lexer::Range mem)
-                : UnaryExpression(expr, loc), member(std::move(name)), memloc(mem) {}
+                : Expression(loc), member(std::move(name)), memloc(mem), ex(expr) {}
         };
-        struct Dereference : public UnaryExpression {
-            Dereference(Expression* e, Lexer::Range pos)
-                : UnaryExpression(e, pos) {}
-        };
-        struct AddressOf : public UnaryExpression {
-            AddressOf(Expression* e, Lexer::Range pos)
-                : UnaryExpression(e, pos) {}
-        };
-        struct Negate : public UnaryExpression {
-            Negate(Expression* e, Lexer::Range pos)
-                : UnaryExpression(e, pos) {}
+        struct PointerDestructorAccess : public Expression {
+            Expression* ex;
+            PointerDestructorAccess(Expression* expr, Lexer::Range loc)
+                : Expression(loc), ex(expr) {}
         };
         struct ErrorExpr : public Expression {
             ErrorExpr(Lexer::Range pos)
                 : Expression(pos) {}
         };
-        struct Decltype : UnaryExpression {
+        struct Decltype : Expression {
+            Expression* ex;
             Decltype(Expression* expr, Lexer::Range loc)
-                : UnaryExpression(expr, loc) {}
+                : Expression(loc), ex(expr) {}
         };
-        struct Typeid : UnaryExpression {
+        struct Typeid : Expression {
+            Expression* ex;
             Typeid(Expression* expr, Lexer::Range loc)
-            : UnaryExpression(expr, loc) {}
+            : Expression(loc), ex(expr) {}
         };
         struct DynamicCast : Expression {
             Expression* type;
@@ -279,12 +316,12 @@ namespace Wide {
         struct Increment : public UnaryExpression {
             bool postfix;
             Increment(Expression* ex, Lexer::Range r, bool post)
-                : UnaryExpression(ex, r), postfix(post) {}
+                : UnaryExpression(ex, &Lexer::TokenTypes::Increment, r), postfix(post) {}
         };
         struct Decrement : public UnaryExpression {
             bool postfix;
             Decrement(Expression* ex, Lexer::Range r, bool post)
-                : UnaryExpression(ex, r), postfix(post) {}
+                : UnaryExpression(ex, &Lexer::TokenTypes::Decrement, r), postfix(post) {}
         };
         struct Tuple : public Expression {
             std::vector<Expression*> expressions;
@@ -292,45 +329,25 @@ namespace Wide {
             Tuple(std::vector<Expression*> exprs, Lexer::Range where)
                 : expressions(std::move(exprs)), Expression(where) {}
         };
-        struct TemplateType {
-            Type* t;
-            std::vector<FunctionArgument> arguments;
-            TemplateType(Type* what, std::vector<FunctionArgument> args)
-                : t(what), arguments(args) {}
-        };
-        struct TemplateTypeOverloadSet : DeclContext {
-            TemplateTypeOverloadSet(Lexer::Range where) : DeclContext(where, Lexer::Access::Public) {}
-            std::unordered_set<TemplateType*> templatetypes;
-        };
-        static const std::shared_ptr<std::string> global_module_location;
-    }
-    namespace Parser {
         enum class Error : int;
-    }
-    namespace AST {
+
         struct Combiner {
             std::unordered_set<Module*> modules;
 
-            struct CombinedModule : public AST::Module {
-                CombinedModule(Lexer::Range where, Lexer::Access a)
-                : Module(where, a) {}
+            struct CombinedModule : public Module {
+                CombinedModule()
+                : Module() {}
 
                 std::unordered_map<std::string, std::unique_ptr<CombinedModule>> combined_modules;
-                std::unordered_map<std::string, std::unique_ptr<FunctionOverloadSet>> combined_overload_sets;
-                std::unordered_map<Lexer::TokenType, std::unique_ptr<FunctionOverloadSet>> operator_overload_sets;
-                std::unordered_map<std::string, std::unordered_set<DeclContext*>> errors;
 
-                void Add(DeclContext* d, std::string name);
-                void Remove(DeclContext* d, std::string name);
                 void AddModuleToSelf(Module* m);
                 void RemoveModuleFromSelf(Module* m);
-                void ReportErrors(std::function<void(std::vector<std::pair<Wide::Lexer::Range*, Wide::AST::DeclContext*>>&)> error, std::vector<std::pair<Wide::Lexer::Range*, Wide::AST::DeclContext*>>& scratch);
             };
 
             CombinedModule root;
             
         public:
-            Combiner() : root(Lexer::Range(global_module_location), Lexer::Access::Public) {}
+            Combiner() {}
 
             Module* GetGlobalModule() { return &root; }
 
@@ -338,8 +355,6 @@ namespace Wide {
             void Remove(Module* m);
             bool ContainsModule(Module* m) { return modules.find(m) != modules.end(); }
             void SetModules(std::unordered_set<Module*> modules);
-
-            void ReportErrors(std::function<void(std::vector<std::pair<Wide::Lexer::Range*, Wide::AST::DeclContext*>>&)> error);
         };
     }
 }

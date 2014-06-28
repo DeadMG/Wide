@@ -1,4 +1,4 @@
-ExpectedFailure() { return { "NotAType", 77, 81 }; }
+ExpectedFailure() { return { "NotAType", 3, 8, 3, 12 }; }
 module Test {}
 f(t := Test) {}
 f(i := int64) {}

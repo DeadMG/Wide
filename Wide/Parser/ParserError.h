@@ -6,7 +6,7 @@
 #include <string>
 
 namespace Wide {
-    namespace Parser {
+    namespace Parse {
         enum class Error : int {
             ModuleScopeFunctionNoOpenBracket,
             ModuleScopeOperatorNoOpenBracket,
@@ -117,7 +117,7 @@ namespace std {
 }
 #endif
 namespace Wide {
-    namespace Parser {
+    namespace Parse {
         static const std::unordered_map<Error, std::string> ErrorStrings([]() -> std::unordered_map<Error, std::string> {
             std::pair<Error, std::string> strings[] = {
                 std::make_pair(Error::ModuleScopeFunctionNoOpenBracket, "Expected ( after identifier, to denote a function at module scope."),

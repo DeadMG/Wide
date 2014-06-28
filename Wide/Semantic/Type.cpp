@@ -82,7 +82,7 @@ bool Type::IsCopyConstructible(Lexer::Access access) {
 }
 
 bool Type::IsMoveAssignable(Lexer::Access access) {
-    auto set = AccessMember(analyzer.GetLvalueType(this), Lexer::TokenType::Assignment, access);
+    auto set = AccessMember(analyzer.GetLvalueType(this), &Lexer::TokenTypes::Assignment, access);
     std::vector<Type*> arguments;
     arguments.push_back(analyzer.GetLvalueType(this));
     arguments.push_back(analyzer.GetRvalueType(this));
@@ -90,7 +90,7 @@ bool Type::IsMoveAssignable(Lexer::Access access) {
 }
 
 bool Type::IsCopyAssignable(Lexer::Access access) {
-    auto set = AccessMember(analyzer.GetLvalueType(this), Lexer::TokenType::Assignment, access);
+    auto set = AccessMember(analyzer.GetLvalueType(this), &Lexer::TokenTypes::Assignment, access);
     std::vector<Type*> arguments;
     arguments.push_back(analyzer.GetLvalueType(this));
     arguments.push_back(analyzer.GetLvalueType(this));
@@ -179,7 +179,7 @@ std::unique_ptr<Expression> Type::BuildMetaCall(std::unique_ptr<Expression> val,
 std::unique_ptr<Expression> Type::BuildCall(std::unique_ptr<Expression> val, std::vector<std::unique_ptr<Expression>> args, Context c) {
     if (IsReference())
         return Decay()->BuildCall(std::move(val), std::move(args), c);
-    auto set = AccessMember(val->GetType(), Lexer::TokenType::OpenBracket, GetAccessSpecifier(c.from, this));
+    auto set = AccessMember(val->GetType(), &Lexer::TokenTypes::OpenBracket, GetAccessSpecifier(c.from, this));
     args.insert(args.begin(), std::move(val));
     std::vector<Type*> types;
     for (auto&& arg : args)
@@ -192,7 +192,7 @@ std::unique_ptr<Expression> Type::BuildCall(std::unique_ptr<Expression> val, std
 std::unique_ptr<Expression> Type::BuildBooleanConversion(std::unique_ptr<Expression> val, Context c) {
     if (IsReference())
         return Decay()->BuildBooleanConversion(std::move(val), c);
-    auto set = AccessMember(val->GetType(), Lexer::TokenType::QuestionMark, GetAccessSpecifier(c.from, this));
+    auto set = AccessMember(val->GetType(), &Lexer::TokenTypes::QuestionMark, GetAccessSpecifier(c.from, this));
     std::vector<std::unique_ptr<Expression>> args;
     args.push_back(std::move(val));
     std::vector<Type*> types;
@@ -470,9 +470,9 @@ std::unique_ptr<Expression> Type::BuildUnaryExpression(std::unique_ptr<Expressio
     auto opset = AccessMember(self->GetType(), type, GetAccessSpecifier(c.from, this));
     auto callable = opset->Resolve({ self->GetType() }, c.from);
     if (!callable) {
-        if (type == Lexer::TokenType::Negate) {
+        if (type == &Lexer::TokenTypes::Negate) {
             if (BuildBooleanConversion(Wide::Memory::MakeUnique<ExpressionReference>(self.get()), c))
-                return analyzer.GetBooleanType()->BuildUnaryExpression(BuildBooleanConversion(std::move(self), c), Lexer::TokenType::Negate, c);
+                return analyzer.GetBooleanType()->BuildUnaryExpression(BuildBooleanConversion(std::move(self), c), &Lexer::TokenTypes::Negate, c);
         }
         opset->IssueResolutionError({ self->GetType() }, c);
     }
@@ -496,29 +496,25 @@ std::unique_ptr<Expression> Type::BuildBinaryExpression(std::unique_ptr<Expressi
         return call->Call(Expressions(std::move(lhs), std::move(rhs)), c);
     }
     
-    switch (type) {
-    case Lexer::TokenType::EqCmp: {
+    if (type == &Lexer::TokenTypes::EqCmp) {
         // a == b if (!(a < b) && !(b > a)).
-        auto a_lt_b = BuildBinaryExpression(Wide::Memory::MakeUnique<ExpressionReference>(lhs.get()), Wide::Memory::MakeUnique<ExpressionReference>(rhs.get()), Lexer::TokenType::LT, c);
-        auto b_lt_a = rhs->GetType()->BuildBinaryExpression(std::move(rhs), std::move(lhs), Lexer::TokenType::LT, c);
-        auto not_a_lt_b = a_lt_b->GetType()->BuildUnaryExpression(std::move(a_lt_b), Lexer::TokenType::Negate, c);
-        auto not_b_lt_a = b_lt_a->GetType()->BuildUnaryExpression(std::move(b_lt_a), Lexer::TokenType::Negate, c);
-        return a_lt_b->GetType()->BuildBinaryExpression(std::move(not_a_lt_b), std::move(not_b_lt_a), Lexer::TokenType::And, c);
-    }
-    case Lexer::TokenType::LTE: {
-        auto subexpr = rhs->GetType()->BuildBinaryExpression(std::move(rhs), std::move(lhs), Wide::Lexer::TokenType::LT, c);
-        return subexpr->GetType()->BuildUnaryExpression(std::move(subexpr), Lexer::TokenType::Negate, c);
-    } 
-    case Lexer::TokenType::GT:
-        return rhs->GetType()->BuildBinaryExpression(std::move(rhs), std::move(lhs), Wide::Lexer::TokenType::LT, c);
-    case Lexer::TokenType::GTE: {
-        auto subexpr = BuildBinaryExpression(std::move(lhs), std::move(rhs), Lexer::TokenType::LT, c);
-        return subexpr->GetType()->BuildUnaryExpression(std::move(subexpr), Lexer::TokenType::Negate, c);
-    }
-    case Lexer::TokenType::NotEqCmp:
-        auto subexpr = BuildBinaryExpression(std::move(lhs), std::move(rhs), Lexer::TokenType::EqCmp, c);
+        auto a_lt_b = BuildBinaryExpression(Wide::Memory::MakeUnique<ExpressionReference>(lhs.get()), Wide::Memory::MakeUnique<ExpressionReference>(rhs.get()), &Lexer::TokenTypes::LT, c);
+        auto b_lt_a = rhs->GetType()->BuildBinaryExpression(std::move(rhs), std::move(lhs), &Lexer::TokenTypes::LT, c);
+        auto not_a_lt_b = a_lt_b->GetType()->BuildUnaryExpression(std::move(a_lt_b), &Lexer::TokenTypes::Negate, c);
+        auto not_b_lt_a = b_lt_a->GetType()->BuildUnaryExpression(std::move(b_lt_a), &Lexer::TokenTypes::Negate, c);
+        return a_lt_b->GetType()->BuildBinaryExpression(std::move(not_a_lt_b), std::move(not_b_lt_a), &Lexer::TokenTypes::And, c);
+    } else if (type == &Lexer::TokenTypes::LTE) {
+        auto subexpr = rhs->GetType()->BuildBinaryExpression(std::move(rhs), std::move(lhs), &Lexer::TokenTypes::LT, c);
+        return subexpr->GetType()->BuildUnaryExpression(std::move(subexpr), &Lexer::TokenTypes::Negate, c);
+    } else if (type == &Lexer::TokenTypes::GT) {
+        return rhs->GetType()->BuildBinaryExpression(std::move(rhs), std::move(lhs), &Lexer::TokenTypes::LT, c);
+    } else if (type == &Lexer::TokenTypes::GTE) {
+        auto subexpr = BuildBinaryExpression(std::move(lhs), std::move(rhs), &Lexer::TokenTypes::LT, c);
+        return subexpr->GetType()->BuildUnaryExpression(std::move(subexpr), &Lexer::TokenTypes::Negate, c);
+    } else if (type == &Lexer::TokenTypes::NotEqCmp) {
+        auto subexpr = BuildBinaryExpression(std::move(lhs), std::move(rhs), &Lexer::TokenTypes::EqCmp, c);
         auto ty = subexpr->GetType();
-        return ty->BuildUnaryExpression(std::move(subexpr), Lexer::TokenType::Negate, c);
+        return ty->BuildUnaryExpression(std::move(subexpr), &Lexer::TokenTypes::Negate, c);
     }
 
     finalset->IssueResolutionError(arguments, c);
@@ -539,7 +535,7 @@ OverloadSet* PrimitiveType::CreateConstructorOverloadSet(Lexer::Access access) {
 }
 
 OverloadSet* PrimitiveType::CreateOperatorOverloadSet(Type* t, Lexer::TokenType what, Lexer::Access access) {
-    if (what != Lexer::TokenType::Assignment)
+    if (what != &Lexer::TokenTypes::Assignment)
         return Type::CreateOperatorOverloadSet(t, what, access);
 
     if (t != analyzer.GetLvalueType(this))
@@ -901,7 +897,7 @@ llvm::Value* Type::GetDestructorFunction(llvm::Module* module) {
 std::unique_ptr<Expression> Type::BuildIndex(std::unique_ptr<Expression> val, std::unique_ptr<Expression> arg, Context c) {
     if (IsReference())
         return Decay()->BuildIndex(std::move(val), std::move(arg), c);
-    auto set = AccessMember(val->GetType(), Lexer::TokenType::OpenSquareBracket, GetAccessSpecifier(c.from, this));
+    auto set = AccessMember(val->GetType(), &Lexer::TokenTypes::OpenSquareBracket, GetAccessSpecifier(c.from, this));
     std::vector<std::unique_ptr<Expression>> args;
     args.push_back(std::move(val));
     args.push_back(std::move(arg));

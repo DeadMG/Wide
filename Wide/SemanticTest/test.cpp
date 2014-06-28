@@ -140,9 +140,9 @@ void Jit(Wide::Options::Clang& copts, std::string file) {
     static const auto loc = Wide::Lexer::Range(std::make_shared<std::string>("Test harness internal"));
     llvm::LLVMContext con;
     auto module = Wide::Util::CreateModuleForTriple(copts.TargetOptions.Triple, con);
-    Wide::Driver::Compile(copts, [&](Wide::Semantic::Analyzer& a, const Wide::AST::Module* root) {
+    Wide::Driver::Compile(copts, [&](Wide::Semantic::Analyzer& a, const Wide::Parse::Module* root) {
         Wide::Semantic::AnalyzeExportedFunctions(a);
-        auto m = a.GetGlobalModule()->AccessMember(a.GetGlobalModule()->BuildValueConstruction(Wide::Semantic::Expressions(), { a.GetGlobalModule(), root->where.front() }), "Main", { a.GetGlobalModule(), root->where.front() });
+        auto m = a.GetGlobalModule()->AccessMember(a.GetGlobalModule()->BuildValueConstruction(Wide::Semantic::Expressions(), { a.GetGlobalModule(), loc }), "Main", { a.GetGlobalModule(), loc });
         if (!m)
             throw std::runtime_error("No Main() found for test!");
         auto func = dynamic_cast<Wide::Semantic::OverloadSet*>(m->GetType()->Decay());
@@ -226,9 +226,9 @@ void Compile(const Wide::Options::Clang& copts, std::string file) {
     static const auto loc = Wide::Lexer::Range(std::make_shared<std::string>("Test harness internal"));
     llvm::LLVMContext con;
     auto module = Wide::Util::CreateModuleForTriple(copts.TargetOptions.Triple, con);
-    Wide::Driver::Compile(copts, [&](Wide::Semantic::Analyzer& a, const Wide::AST::Module* root) {
-        auto global = a.GetGlobalModule()->BuildValueConstruction(Wide::Semantic::Expressions(), { a.GetGlobalModule(), root->where.front() });
-        auto failure = global->GetType()->AccessMember(Wide::Memory::MakeUnique<Wide::Semantic::ExpressionReference>(global.get()), "ExpectedFailure", { a.GetGlobalModule(), root->where.front() });
+    Wide::Driver::Compile(copts, [&](Wide::Semantic::Analyzer& a, const Wide::Parse::Module* root) {
+        auto global = a.GetGlobalModule()->BuildValueConstruction(Wide::Semantic::Expressions(), { a.GetGlobalModule(), loc });
+        auto failure = global->GetType()->AccessMember(Wide::Memory::MakeUnique<Wide::Semantic::ExpressionReference>(global.get()), "ExpectedFailure", { a.GetGlobalModule(), loc });
         if (!failure)
             throw std::runtime_error("Did not find a function indicating what failure was to be expected.");
         auto failureos = dynamic_cast<Wide::Semantic::OverloadSet*>(failure->GetType()->Decay());
@@ -248,26 +248,29 @@ void Compile(const Wide::Options::Clang& copts, std::string file) {
         a.GenerateCode(module.get());
 
         // JIT cannot handle aggregate returns so check it.
-        int64_t begin, end;
-        std::vector<llvm::Type*> types = { llvm::Type::getInt64PtrTy(con), llvm::Type::getInt64PtrTy(con) };
+        std::vector<llvm::Type*> types = { llvm::Type::getInt64PtrTy(con), llvm::Type::getInt64PtrTy(con), llvm::Type::getInt64PtrTy(con), llvm::Type::getInt64PtrTy(con) };
         auto tramp = llvm::Function::Create(llvm::FunctionType::get(llvm::Type::getVoidTy(con), types, false), llvm::GlobalValue::LinkageTypes::ExternalLinkage, "tramp", module.get());
         auto bb = llvm::BasicBlock::Create(con, "entry", tramp);
         auto builder = llvm::IRBuilder<>(bb);
         auto call = builder.CreateCall(module->getFunction(failfunc->GetName()));
-        builder.CreateStore(builder.CreateExtractValue(call, { boost::get<Wide::Semantic::LLVMFieldIndex>(tupty->GetLocation(1)).index }), tramp->arg_begin());
-        builder.CreateStore(builder.CreateExtractValue(call, { boost::get<Wide::Semantic::LLVMFieldIndex>(tupty->GetLocation(2)).index }), ++tramp->arg_begin());
+        auto current = tramp->arg_begin();
+        builder.CreateStore(builder.CreateExtractValue(call, { boost::get<Wide::Semantic::LLVMFieldIndex>(tupty->GetLocation(1)).index }), current++);
+        builder.CreateStore(builder.CreateExtractValue(call, { boost::get<Wide::Semantic::LLVMFieldIndex>(tupty->GetLocation(2)).index }), current++);
+        builder.CreateStore(builder.CreateExtractValue(call, { boost::get<Wide::Semantic::LLVMFieldIndex>(tupty->GetLocation(3)).index }), current++);
+        builder.CreateStore(builder.CreateExtractValue(call, { boost::get<Wide::Semantic::LLVMFieldIndex>(tupty->GetLocation(4)).index }), current++);
         builder.CreateRetVoid();
+        int64_t beginline, begincolumn, endline, endcolumn;
         if (llvm::verifyFunction(*tramp, llvm::VerifierFailureAction::PrintMessageAction))
             throw std::runtime_error("Internal Compiler Error: An LLVM function failed verification.");
         if (llvm::verifyModule(*module, llvm::VerifierFailureAction::PrintMessageAction))
             throw std::runtime_error("An LLVM module failed verification.");
         GenerateCode(module.get(), [&](llvm::ExecutionEngine* ee) {
             ee->finalizeObject();
-            auto fptr = (void(*)(int64_t*, int64_t*))ee->getPointerToFunction(tramp);
-            fptr(&begin, &end);
+            auto fptr = (void(*)(int64_t*, int64_t*, int64_t*, int64_t*))ee->getPointerToFunction(tramp);
+            fptr(&beginline, &begincolumn, &endline, &endcolumn);
         });
 
-        auto m = global->GetType()->AccessMember(Wide::Memory::MakeUnique<Wide::Semantic::ExpressionReference>(global.get()), "Main", { a.GetGlobalModule(), root->where.front() });
+        auto m = global->GetType()->AccessMember(Wide::Memory::MakeUnique<Wide::Semantic::ExpressionReference>(global.get()), "Main", { a.GetGlobalModule(), loc });
         if (!m)
             throw std::runtime_error("No Main() found for test!");
         auto func = dynamic_cast<Wide::Semantic::OverloadSet*>(m->GetType()->Decay());
@@ -284,9 +287,13 @@ void Compile(const Wide::Options::Clang& copts, std::string file) {
                 throw std::runtime_error("Could not find error type string.");
             if (!error_type_strings.at(str->GetValue())(err))
                 throw std::runtime_error("The error type string was incorrect.");
-            if (err.location().begin.offset != begin)
+            if (err.location().begin.line != beginline)
                 throw std::runtime_error("Exception location did not match return from ExpectedFailure!" + to_string(err.location()));
-            if (err.location().end.offset != end)
+            if (err.location().begin.column != begincolumn)
+                throw std::runtime_error("Exception location did not match return from ExpectedFailure!" + to_string(err.location()));
+            if (err.location().end.line != endline)
+                throw std::runtime_error("Exception location did not match return from ExpectedFailure!" + to_string(err.location()));
+            if (err.location().end.column != endcolumn)
                 throw std::runtime_error("Exception location did not match return from ExpectedFailure!" + to_string(err.location()));
         }
     }, { file });

@@ -355,7 +355,7 @@ std::unique_ptr<Expression> AggregateType::BuildDestructorCall(std::unique_ptr<E
 }
 
 OverloadSet* AggregateType::CreateOperatorOverloadSet(Type* t, Lexer::TokenType type, Lexer::Access access) {
-    if (type != Lexer::TokenType::Assignment)
+    if (type != &Lexer::TokenTypes::Assignment)
         return analyzer.GetOverloadSet();
     if (access != Lexer::Access::Public)
         return AccessMember(t, type, Lexer::Access::Public);
@@ -378,7 +378,7 @@ OverloadSet* AggregateType::CreateOperatorOverloadSet(Type* t, Lexer::TokenType 
                 std::vector<Type*> types;
                 types.push_back(analyzer.GetLvalueType(type));
                 types.push_back(modify(type));
-                auto overset = type->AccessMember(analyzer.GetLvalueType(type), Lexer::TokenType::Assignment, GetAccessSpecifier(this, type));
+                auto overset = type->AccessMember(analyzer.GetLvalueType(type), &Lexer::TokenTypes::Assignment, GetAccessSpecifier(this, type));
                 auto callable = overset->Resolve(types, this);
                 if (!callable)
                     assert(false); // dafuq, the appropriate assignable was set but we're not assignable?

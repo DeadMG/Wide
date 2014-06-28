@@ -1,4 +1,4 @@
-ExpectedFailure() { return { "RecursiveMember", 82, 83 }; }
+ExpectedFailure() { return { "RecursiveMember", 3, 12, 3, 13 }; }
 type t {
     var := t;
 }

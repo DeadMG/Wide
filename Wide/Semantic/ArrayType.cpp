@@ -70,7 +70,7 @@ llvm::Type* ArrayType::GetLLVMType(llvm::Module* module) {
     return llvm::ArrayType::get(t->GetLLVMType(module), count);
 }
 OverloadSet* ArrayType::CreateOperatorOverloadSet(Type* t, Lexer::TokenType what, Lexer::Access access) {
-    if (what != Lexer::TokenType::OpenSquareBracket)
+    if (what != &Lexer::TokenTypes::OpenSquareBracket)
         return AggregateType::CreateOperatorOverloadSet(t, what, access);
     if (access != Lexer::Access::Public)
         return AccessMember(t, what, Lexer::Access::Public);

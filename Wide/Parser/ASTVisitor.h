@@ -3,7 +3,7 @@
 #include <Wide/Parser/AST.h>
 
 namespace Wide {
-    namespace AST {
+    namespace Parse {
         template<typename F> class Visitor {
             F& crtp_cast() { return *static_cast<F*>(this); }
         public:
@@ -26,14 +26,12 @@ namespace Wide {
                 if (auto call = dynamic_cast<const FunctionCall*>(e)) { return crtp_cast().VisitCall(call); }
                 if (auto call = dynamic_cast<const MetaCall*>(e)) { return crtp_cast().VisitMetaCall(call); }
                 if (auto lam = dynamic_cast<const Lambda*>(e)) { return crtp_cast().VisitLambda(lam); }
-                if (auto deref = dynamic_cast<const Dereference*>(e)) { return crtp_cast().VisitDereference(deref); }
-                if (auto neg = dynamic_cast<const Negate*>(e)) { return crtp_cast().VisitNegate(neg); }
                 if (auto inc = dynamic_cast<const Increment*>(e)) { return crtp_cast().VisitIncrement(inc); }
                 if (auto ptr = dynamic_cast<const PointerMemberAccess*>(e)) { return crtp_cast().VisitPointerAccess(ptr); }
                 if (auto self = dynamic_cast<const This*>(e)) { return crtp_cast().VisitThis(self); }
                 if (auto dec = dynamic_cast<const Decrement*>(e)) { return crtp_cast().VisitDecrement(dec); }
                 if (auto bin = dynamic_cast<const BinaryExpression*>(e)) { return crtp_cast().VisitBinaryExpression(bin); }
-                if (auto addr = dynamic_cast<const AddressOf*>(e)) { return crtp_cast().VisitAddressOf(addr); }
+                if (auto addr = dynamic_cast<const UnaryExpression*>(e)) { return crtp_cast().VisitUnaryExpression(addr); }
                 if (auto ty = dynamic_cast<const Type*>(e)) { return crtp_cast().VisitType(ty); }
                 if (auto tup = dynamic_cast<const Tuple*>(e)) { return crtp_cast().VisitTuple(tup); }
                 if (auto decl = dynamic_cast<const Decltype*>(e)) { return crtp_cast().VisitExpression(decl->ex); }
@@ -41,7 +39,9 @@ namespace Wide {
                 if (auto tru = dynamic_cast<const True*>(e)) { return; }
                 assert(false && "Internal Compiler Error: Encountered unknown expression node in AST::Visitor.");
             }            
-
+            void VisitUnaryExpression(const UnaryExpression* ex) {
+                return crtp_cast().VisitExpression(ex->ex);
+            }
             void VisitTuple(const Tuple* t) {
                 for (auto expr : t->expressions)
                     crtp_cast().VisitExpression(expr);
@@ -94,15 +94,12 @@ namespace Wide {
             }
             void VisitIdentifier(const Identifier* e) {}
             void VisitString(const String* e) {}
-            void VisitDereference(const Dereference* e) { return crtp_cast().VisitExpression(e->ex); }
             void VisitMemberAccess(const MemberAccess* e) { return crtp_cast().VisitExpression(e->expr); }  
             void VisitInteger(const Integer* e) { }
-            void VisitNegate(const Negate* e) { return crtp_cast().VisitExpression(e->ex); }
             void VisitIncrement(const Increment* i) { return crtp_cast().VisitExpression(i->ex); }
             void VisitPointerAccess(const PointerMemberAccess* p) { return crtp_cast().VisitExpression(p->ex); }
             void VisitThis(const This* expr) {}
             void VisitDecrement(const Decrement* d) { return crtp_cast().VisitExpression(d->ex); }
-            void VisitAddressOf(const AddressOf* e) { return crtp_cast().VisitExpression(e->ex); }
             void VisitType(const Type* t) { }
         };
     }

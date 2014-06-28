@@ -3,6 +3,7 @@
 #include <string>
 #include <unordered_map>
 #include <Wide/Semantic/Type.h>
+#include <Wide/Lexer/Token.h>
 
 namespace clang {
     class QualType;
@@ -16,9 +17,6 @@ namespace clang {
 #pragma warning(pop)
 
 namespace Wide {
-    namespace Lexer {
-        enum class TokenType : int;
-    }
     namespace Semantic {
         struct Type;
         clang::ExprValueKind GetKindOfType(Type* t);

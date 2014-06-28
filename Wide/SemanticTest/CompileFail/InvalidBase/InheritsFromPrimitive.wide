@@ -1,4 +1,4 @@
-ExpectedFailure() { return { "InvalidBase", 66, 69 }; }
+ExpectedFailure() { return { "InvalidBase", 2, 10, 2, 13 }; }
 type t : int {
     f() { return false; }
 }

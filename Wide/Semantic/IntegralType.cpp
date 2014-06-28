@@ -117,120 +117,119 @@ OverloadSet* IntegralType::CreateADLOverloadSet(Lexer::TokenType name, Type* lhs
             return CreatePrimOp(std::move(args[0]), std::move(args[1]), func);
         }, { this, this });
     };
-    switch (name) {
-    case Lexer::TokenType::RightShiftAssign:
+    if (name == &Lexer::TokenTypes::RightShiftAssign) {
         RightShiftAssign = CreateAssOp([this](llvm::Value* lhs, llvm::Value* rhs, CodegenContext& con) {
             if (is_signed)
                 return con->CreateAShr(lhs, rhs);
             return con->CreateLShr(lhs, rhs);
         });
         return analyzer.GetOverloadSet(RightShiftAssign.get());
-    case Lexer::TokenType::RightShift:
+    } else if (name == &Lexer::TokenTypes::RightShift) {
         RightShift = CreateOp([this](llvm::Value* lhs, llvm::Value* rhs, CodegenContext& con) {
             if (is_signed)
                 return con->CreateAShr(lhs, rhs);
             return con->CreateLShr(lhs, rhs);
         });
         return analyzer.GetOverloadSet(RightShift.get());
-    case Lexer::TokenType::LeftShiftAssign:
+    } else if (name == &Lexer::TokenTypes::LeftShiftAssign) {
         LeftShiftAssign = CreateAssOp([](llvm::Value* lhs, llvm::Value* rhs, CodegenContext& con) {
             return con->CreateShl(lhs, rhs);
         });
         return analyzer.GetOverloadSet(LeftShiftAssign.get());
-    case Lexer::TokenType::LeftShift:
+    } else if (name == &Lexer::TokenTypes::LeftShift) {
         LeftShift = CreateAssOp([](llvm::Value* lhs, llvm::Value* rhs, CodegenContext& con) {
             return con->CreateShl(lhs, rhs);
         });
         return analyzer.GetOverloadSet(LeftShift.get());
-    case Lexer::TokenType::MulAssign:
+    } else if (name == &Lexer::TokenTypes::MulAssign) {
         MulAssign = CreateAssOp([](llvm::Value* lhs, llvm::Value* rhs, CodegenContext& con) {
             return con->CreateMul(lhs, rhs);
         });
         return analyzer.GetOverloadSet(MulAssign.get());
-    case Lexer::TokenType::Dereference:
+    } else if (name == &Lexer::TokenTypes::Star) {
         Mul = CreateAssOp([](llvm::Value* lhs, llvm::Value* rhs, CodegenContext& con) {
             return con->CreateMul(lhs, rhs);
         });
         return analyzer.GetOverloadSet(Mul.get());
-    case Lexer::TokenType::PlusAssign:
+    } else if (name == &Lexer::TokenTypes::PlusAssign) {
         PlusAssign = CreateAssOp([](llvm::Value* lhs, llvm::Value* rhs, CodegenContext& con) {
             return con->CreateAdd(lhs, rhs);
         });
         return analyzer.GetOverloadSet(PlusAssign.get());
-    case Lexer::TokenType::Plus:
+    } else if (name == &Lexer::TokenTypes::Plus) {
         Plus = CreateAssOp([](llvm::Value* lhs, llvm::Value* rhs, CodegenContext& con) {
             return con->CreateAdd(lhs, rhs);
         });
         return analyzer.GetOverloadSet(Plus.get());
-    case Lexer::TokenType::OrAssign:
+    } else if (name == &Lexer::TokenTypes::OrAssign) {
         OrAssign = CreateAssOp([](llvm::Value* lhs, llvm::Value* rhs, CodegenContext& con) {
             return con->CreateOr(lhs, rhs);
         });
         return analyzer.GetOverloadSet(OrAssign.get());
-    case Lexer::TokenType::Or:
+    } else if (name == &Lexer::TokenTypes::Or) {
         Or = CreateAssOp([](llvm::Value* lhs, llvm::Value* rhs, CodegenContext& con) {
             return con->CreateOr(lhs, rhs);
         });
         return analyzer.GetOverloadSet(Or.get());
-    case Lexer::TokenType::AndAssign:
+    } else if (name == &Lexer::TokenTypes::AndAssign) {
         AndAssign = CreateAssOp([](llvm::Value* lhs, llvm::Value* rhs, CodegenContext& con) {
             return con->CreateAnd(lhs, rhs);
         });
         return analyzer.GetOverloadSet(AndAssign.get());
-    case Lexer::TokenType::And:
+    } else if (name == &Lexer::TokenTypes::And) {
         And = CreateAssOp([](llvm::Value* lhs, llvm::Value* rhs, CodegenContext& con) {
             return con->CreateAnd(lhs, rhs);
         });
         return analyzer.GetOverloadSet(And.get());
-    case Lexer::TokenType::XorAssign:
+    } else if (name == &Lexer::TokenTypes::XorAssign) {
         XorAssign = CreateAssOp([](llvm::Value* lhs, llvm::Value* rhs, CodegenContext& con) {
             return con->CreateXor(lhs, rhs);
         });
         return analyzer.GetOverloadSet(XorAssign.get());
-    case Lexer::TokenType::Xor:
+    } else if (name == &Lexer::TokenTypes::Xor) {
         XorAssign = CreateAssOp([](llvm::Value* lhs, llvm::Value* rhs, CodegenContext& con) {
             return con->CreateXor(lhs, rhs);
         });
         return analyzer.GetOverloadSet(Xor.get());
-    case Lexer::TokenType::MinusAssign:
+    } else if (name == &Lexer::TokenTypes::MinusAssign) {
         MinusAssign = CreateAssOp([](llvm::Value* lhs, llvm::Value* rhs, CodegenContext& con) {
             return con->CreateSub(lhs, rhs);
         });
         return analyzer.GetOverloadSet(MinusAssign.get());
-    case Lexer::TokenType::Minus:
+    } else if (name == &Lexer::TokenTypes::Minus) {
         Minus = CreateAssOp([](llvm::Value* lhs, llvm::Value* rhs, CodegenContext& con) {
             return con->CreateSub(lhs, rhs);
         });
         return analyzer.GetOverloadSet(Minus.get());
-    case Lexer::TokenType::ModAssign:
+    } else if (name == &Lexer::TokenTypes::ModAssign) {
         ModAssign = CreateAssOp([this](llvm::Value* lhs, llvm::Value* rhs, CodegenContext& con) {
             if (is_signed)
                 return con->CreateSRem(lhs, rhs);
             return con->CreateURem(lhs, rhs);
         });
         return analyzer.GetOverloadSet(ModAssign.get());
-    case Lexer::TokenType::Modulo:
+    } else if (name == &Lexer::TokenTypes::Modulo) {
         Mod = CreateAssOp([this](llvm::Value* lhs, llvm::Value* rhs, CodegenContext& con) {
             if (is_signed)
                 return con->CreateSRem(lhs, rhs);
             return con->CreateURem(lhs, rhs);
         });
         return analyzer.GetOverloadSet(Mod.get());
-    case Lexer::TokenType::DivAssign:
+    } else if (name == &Lexer::TokenTypes::DivAssign) {
         DivAssign = CreateAssOp([this](llvm::Value* lhs, llvm::Value* rhs, CodegenContext& con) {
             if (is_signed)
                 return con->CreateSDiv(lhs, rhs);
             return con->CreateUDiv(lhs, rhs);
         });
         return analyzer.GetOverloadSet(DivAssign.get());
-    case Lexer::TokenType::Divide:
+    } else if (name == &Lexer::TokenTypes::Divide) {
         Div = CreateAssOp([this](llvm::Value* lhs, llvm::Value* rhs, CodegenContext& con) {
             if (is_signed)
                 return con->CreateSDiv(lhs, rhs);
             return con->CreateUDiv(lhs, rhs);
         });
         return analyzer.GetOverloadSet(Div.get());
-    case Lexer::TokenType::LT:
+    } else if (name == &Lexer::TokenTypes::LT) {
         LT = MakeResolvable([this](std::vector<std::unique_ptr<Expression>> args, Context c) {
             return CreatePrimOp(std::move(args[0]), std::move(args[1]), c.from->analyzer.GetBooleanType(), [this](llvm::Value* lhs, llvm::Value* rhs, CodegenContext& con) {
                 llvm::Value* result = is_signed ? con->CreateICmpSLT(lhs, rhs) : con->CreateICmpULT(lhs, rhs);
@@ -238,14 +237,14 @@ OverloadSet* IntegralType::CreateADLOverloadSet(Lexer::TokenType name, Type* lhs
             });
         }, { this, this });
         return analyzer.GetOverloadSet(LT.get());
-    case Lexer::TokenType::EqCmp:
+    } else if (name == &Lexer::TokenTypes::EqCmp) {
         EQ = MakeResolvable([](std::vector<std::unique_ptr<Expression>> args, Context c) {
             return CreatePrimOp(std::move(args[0]), std::move(args[1]), c.from->analyzer.GetBooleanType(), [](llvm::Value* lhs, llvm::Value* rhs, CodegenContext& con) {
                 return con->CreateZExt(con->CreateICmpEQ(lhs, rhs), llvm::Type::getInt8Ty(con));
             });
         }, { this, this });
         return analyzer.GetOverloadSet(EQ.get());
-    case Lexer::TokenType::Increment:
+    } else if (name == &Lexer::TokenTypes::Increment) {
         Increment = MakeResolvable([this](std::vector<std::unique_ptr<Expression>> args, Context c) {
             return CreatePrimUnOp(std::move(args[0]), analyzer.GetLvalueType(this), [](llvm::Value* val, CodegenContext& con) {
                 con->CreateStore(con->CreateAdd(con->CreateLoad(val), llvm::ConstantInt::get(val->getType(), llvm::APInt(64, 1, false))), val);
@@ -277,8 +276,7 @@ bool IntegralType::IsA(Type* self, Type* other, Lexer::Access access) {
 OverloadSet* IntegralType::CreateOperatorOverloadSet(Type* self, Lexer::TokenType what, Lexer::Access access) {
     if (access != Lexer::Access::Public)
         return AccessMember(self, what, Lexer::Access::Public);
-    switch (what) {
-    case Lexer::TokenType::Increment:
+    if (what == &Lexer::TokenTypes::Increment) {
         Increment = MakeResolvable([this](std::vector<std::unique_ptr<Expression>> args, Context c) {
             return CreatePrimUnOp(std::move(args[0]), analyzer.GetLvalueType(this), [this](llvm::Value* self, CodegenContext& con) {
                 con->CreateStore(con->CreateAdd(con->CreateLoad(self), llvm::ConstantInt::get(GetLLVMType(con), 1, is_signed)), self);

@@ -10,7 +10,7 @@ namespace llvm {
     class Function;
 }
 namespace Wide {
-    namespace AST {
+    namespace Parse {
         struct FunctionBase;
         struct Statement;
         struct TryCatch;
@@ -20,11 +20,11 @@ namespace Wide {
         class UserDefinedType;
         class Function : public MetaType, public Callable {
             llvm::Function* llvmfunc = nullptr;
-            std::unique_ptr<Statement> AnalyzeStatement(const AST::Statement*);
+            std::unique_ptr<Statement> AnalyzeStatement(const Parse::Statement*);
             Wide::Util::optional<Type*> ExplicitReturnType;
             Type* ReturnType = nullptr;
             std::vector<Type*> Args;
-            const AST::FunctionBase* fun;
+            const Parse::FunctionBase* fun;
             Type* context;
             std::string source_name;
             std::string name;
@@ -59,10 +59,11 @@ namespace Wide {
                 Expression* init_expr;
                 Function* self;
                 Lexer::Range where;
+                Lexer::Range init_where;
 
                 void OnNodeChanged(Node* n, Change what) override final;
-                LocalVariable(Expression* ex, unsigned u, Function* self, Lexer::Range where);
-                LocalVariable(Expression* ex, Function* self, Lexer::Range where);
+                LocalVariable(Expression* ex, unsigned u, Function* self, Lexer::Range where, Lexer::Range init_where);
+                LocalVariable(Expression* ex, Function* self, Lexer::Range where, Lexer::Range init_where);
                 llvm::Value* ComputeValue(CodegenContext& con) override final;
                 Type* GetType() override final;
             };
@@ -211,7 +212,7 @@ namespace Wide {
 
             void ComputeBody();
             void EmitCode(llvm::Module* module);
-            Function(std::vector<Type*> args, const AST::FunctionBase* astfun, Analyzer& a, Type* container, std::string name);        
+            Function(std::vector<Type*> args, const Parse::FunctionBase* astfun, Analyzer& a, Type* container, std::string name);
 
             Wide::Util::optional<clang::QualType> GetClangType(ClangTU& where) override final;
      

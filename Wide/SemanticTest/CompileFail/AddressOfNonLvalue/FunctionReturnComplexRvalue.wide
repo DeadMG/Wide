@@ -1,10 +1,11 @@
-ExpectedFailure() { return { "AddressOfNonLvalue", 266, 272 }; }
+ExpectedFailure() { return { "AddressOfNonLvalue", 13, 13, 13, 20 }; }
 type t {
     val := false;
     type(other := t.rvalue) {}
     type() {}
 }
-f(arg := t.lvalue) prolog { ReturnType = t.rvalue; } {
+f(arg := t.lvalue) := t.rvalue
+{
     return move(arg);
 }
 Main() {

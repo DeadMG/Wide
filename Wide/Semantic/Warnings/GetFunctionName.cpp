@@ -4,7 +4,7 @@
 #include <Wide/Semantic/ConstructorType.h>
 #include <Wide/Parser/AST.h>
 
-std::string Wide::Semantic::GetFunctionName(const AST::FunctionBase* func, Analyzer& a, std::string context, Wide::Semantic::Module* root) {
+std::string Wide::Semantic::GetFunctionName(const Parse::FunctionBase* func, Analyzer& a, std::string context, Wide::Semantic::Module* root) {
     context += "(";
     for (auto&& arg : func->args) {
         context += arg.name;

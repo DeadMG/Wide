@@ -1,4 +1,4 @@
-ExpectedFailure() { return { "NoMember", 127, 132 }; }
+ExpectedFailure() { return { "NoMember", 7, 12, 7, 17 }; }
 type t {
 private:
     f() { return false; }

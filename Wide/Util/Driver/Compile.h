@@ -14,10 +14,10 @@ namespace Wide {
     namespace Codegen {
         class Generator;
     }
-    namespace AST {
+    namespace Parse {
         struct Module;
     }
     namespace Driver {
-        void Compile(const Wide::Options::Clang& copts, std::function<void(Semantic::Analyzer&, const AST::Module*)>, const std::vector<std::string>& files);
+        void Compile(const Wide::Options::Clang& copts, std::function<void(Semantic::Analyzer&, const Parse::Module*)>, const std::vector<std::string>& files);
     }
 }

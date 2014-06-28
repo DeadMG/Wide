@@ -41,22 +41,21 @@ OverloadSet* Bool::CreateOperatorOverloadSet(Type* t, Lexer::TokenType name, Lex
         return AccessMember(t, name, Lexer::Access::Public);
 
     if (t == analyzer.GetLvalueType(this)) {
-        switch (name) {
-        case Lexer::TokenType::OrAssign:
+        if (name == &Lexer::TokenTypes::OrAssign) {
             OrAssignOperator = MakeResolvable([](std::vector<std::unique_ptr<Expression>> args, Context c) -> std::unique_ptr<Expression> {
                 return CreatePrimAssOp(std::move(args[0]), std::move(args[1]), [](llvm::Value* lhs, llvm::Value* rhs, CodegenContext& con) {
                     return con->CreateOr(lhs, rhs);
                 });
             }, { analyzer.GetLvalueType(this), this });
             return analyzer.GetOverloadSet(OrAssignOperator.get());
-        case Lexer::TokenType::AndAssign:
+        } else if (name == &Lexer::TokenTypes::AndAssign) {
             AndAssignOperator = MakeResolvable([](std::vector<std::unique_ptr<Expression>> args, Context c) -> std::unique_ptr<Expression> {
                 return CreatePrimAssOp(std::move(args[0]), std::move(args[1]), [](llvm::Value* lhs, llvm::Value* rhs, CodegenContext& con) {
                     return con->CreateAnd(lhs, rhs);
                 });
             }, { analyzer.GetLvalueType(this), this });
             return analyzer.GetOverloadSet(AndAssignOperator.get());
-        case Lexer::TokenType::XorAssign:
+        } else if (name == &Lexer::TokenTypes::XorAssign) {
             XorAssignOperator = MakeResolvable([](std::vector<std::unique_ptr<Expression>> args, Context c) -> std::unique_ptr<Expression> {
                 return CreatePrimAssOp(std::move(args[0]), std::move(args[1]), [](llvm::Value* lhs, llvm::Value* rhs, CodegenContext& con) {
                     return con->CreateXor(lhs, rhs);
@@ -65,8 +64,7 @@ OverloadSet* Bool::CreateOperatorOverloadSet(Type* t, Lexer::TokenType name, Lex
             return analyzer.GetOverloadSet(XorAssignOperator.get());
         }
     }
-    switch (name) {
-    case Lexer::TokenType::Or:
+    if (name == &Lexer::TokenTypes::Or) {
         OrOperator = MakeResolvable([](std::vector<std::unique_ptr<Expression>> args, Context c) -> std::unique_ptr<Expression> {
             struct ShortCircuitOr : Expression {
                 ShortCircuitOr(std::unique_ptr<Expression> lhs, std::unique_ptr<Expression> rhs)
@@ -114,7 +112,7 @@ OverloadSet* Bool::CreateOperatorOverloadSet(Type* t, Lexer::TokenType name, Lex
             return Wide::Memory::MakeUnique<ShortCircuitOr>(std::move(args[0]), std::move(args[1]));
         }, { this, this });
         return analyzer.GetOverloadSet(OrOperator.get());
-    case Lexer::TokenType::And:
+    } else if (name == &Lexer::TokenTypes::And) {
         AndOperator = MakeResolvable([](std::vector<std::unique_ptr<Expression>> args, Context c) -> std::unique_ptr<Expression> {
             struct ShortCircuitAnd : Expression {
                 ShortCircuitAnd(std::unique_ptr<Expression> lhs, std::unique_ptr<Expression> rhs)
@@ -162,21 +160,21 @@ OverloadSet* Bool::CreateOperatorOverloadSet(Type* t, Lexer::TokenType name, Lex
             return Wide::Memory::MakeUnique<ShortCircuitAnd>(std::move(args[0]), std::move(args[1]));
         }, { this, this });
         return analyzer.GetOverloadSet(AndOperator.get());
-    case Lexer::TokenType::LT:
+    } else if (name == &Lexer::TokenTypes::LT) {
         LTOperator = MakeResolvable([](std::vector<std::unique_ptr<Expression>> args, Context c) -> std::unique_ptr<Expression> {
             return CreatePrimOp(std::move(args[0]), std::move(args[1]), c.from->analyzer.GetBooleanType(), [](llvm::Value* lhs, llvm::Value* rhs, CodegenContext& con) {
                 return con->CreateZExt(con->CreateICmpSLT(lhs, rhs), llvm::Type::getInt8Ty(con));
             });
         }, { this, this });
         return analyzer.GetOverloadSet(LTOperator.get());
-    case Lexer::TokenType::EqCmp:
+    } else if (name == &Lexer::TokenTypes::EqCmp) {
         EQOperator = MakeResolvable([](std::vector<std::unique_ptr<Expression>> args, Context c) -> std::unique_ptr<Expression> {
             return CreatePrimOp(std::move(args[0]), std::move(args[1]), c.from->analyzer.GetBooleanType(), [](llvm::Value* lhs, llvm::Value* rhs, CodegenContext& con) {
                 return con->CreateZExt(con->CreateICmpEQ(lhs, rhs), llvm::Type::getInt8Ty(con));
             });
         }, { this, this });
         return analyzer.GetOverloadSet(EQOperator.get());
-    case Lexer::TokenType::Negate:
+    } else if (name == &Lexer::TokenTypes::Negate) {
         NegOperator = MakeResolvable([](std::vector<std::unique_ptr<Expression>> args, Context c)->std::unique_ptr<Expression> {
             return CreatePrimUnOp(std::move(args[0]), c.from->analyzer.GetBooleanType(), [](llvm::Value* v, CodegenContext& con) {
                 return con->CreateNot(v);

@@ -15,7 +15,7 @@ std::vector<Type*> GetTypesFrom(std::vector<std::pair<std::string, Type*>>& vec)
         out.push_back(cap.second);
     return out;
 }
-LambdaType::LambdaType(std::vector<std::pair<std::string, Type*>> capturetypes, const AST::Lambda* l, Type* con, Analyzer& a)
+LambdaType::LambdaType(std::vector<std::pair<std::string, Type*>> capturetypes, const Parse::Lambda* l, Type* con, Analyzer& a)
 : contents(GetTypesFrom(capturetypes)), lam(l), AggregateType(a), context(con)
 {
     std::size_t i = 0;
@@ -28,7 +28,7 @@ std::unique_ptr<Expression> LambdaType::BuildCall(std::unique_ptr<Expression> va
     std::vector<Type*> types;
     for (auto&& arg : args)
         types.push_back(arg->GetType());
-    auto overset = analyzer.GetOverloadSet(analyzer.GetCallableForFunction(lam, args[0]->GetType(), GetNameForOperator(Lexer::TokenType::OpenBracket)));
+    auto overset = analyzer.GetOverloadSet(analyzer.GetCallableForFunction(lam, args[0]->GetType(), "operator()"));
     auto call = overset->Resolve(types, c.from);
     if (!call) overset->IssueResolutionError(types, c);
     return call->Call(std::move(args), c);

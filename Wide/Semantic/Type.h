@@ -26,14 +26,6 @@
 // Performance warning for implicitly integers or pointers to bool
 #pragma warning(disable : 4800)
 
-namespace std {
-    template<> struct hash<Wide::Lexer::Access> {
-        std::size_t operator()(Wide::Lexer::Access a) const {
-            return std::hash<int>()(int(a));
-        }
-    };
-}
-
 namespace llvm {
     class Type;
     class LLVMContext;
@@ -44,9 +36,6 @@ namespace clang {
     class QualType;
 }
 namespace Wide {
-    namespace Lexer {
-        enum class TokenType : int;
-    }
     namespace Semantic {
         class ClangTU;
         class Analyzer;

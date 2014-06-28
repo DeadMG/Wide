@@ -10,7 +10,7 @@ namespace Wide {
             std::unordered_map<std::string, Type*> templatearguments;
         public:
             ~TemplateType();
-            TemplateType(const AST::Type* t, Analyzer& a, Type* context, std::unordered_map<std::string, Type*> arguments, std::string name);
+            TemplateType(const Parse::Type* t, Analyzer& a, Type* context, std::unordered_map<std::string, Type*> arguments, std::string name);
             std::unordered_map<std::string, Type*>  GetTemplateArguments() { return templatearguments; }
         };
     }

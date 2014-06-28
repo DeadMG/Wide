@@ -220,7 +220,7 @@ OverloadSet* ClangType::CreateADLOverloadSet(Lexer::TokenType what, Type* lhs, T
 }
 
 OverloadSet* ClangType::CreateOperatorOverloadSet(Type* self, Lexer::TokenType name, Lexer::Access access) {
-    if (!ProcessedAssignmentOperators && name == Lexer::TokenType::Assignment) {
+    if (!ProcessedAssignmentOperators && name == &Lexer::TokenTypes::Assignment) {
         ProcessedAssignmentOperators = true;
         auto recdecl = type->getAsCXXRecordDecl();
         ProcessImplicitSpecialMember(

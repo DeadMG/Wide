@@ -34,12 +34,11 @@ namespace clang {
 }
 
 namespace Wide {
-    namespace AST {
+    namespace Parse {
         struct Module;
         struct FunctionBase;
         struct Expression;
         struct ModuleLevelDeclaration;
-        struct FunctionOverloadSet;
         struct Type;
         struct FunctionArgument;
         struct DeclContext;
@@ -86,24 +85,24 @@ namespace Wide {
             std::unordered_map<clang::QualType, std::unique_ptr<ClangType>, ClangTypeHasher> ClangTypes;
             std::unordered_map<clang::DeclContext*, std::unique_ptr<ClangNamespace>> ClangNamespaces;
             std::unordered_map<Type*, std::unordered_map<std::vector<Type*>, std::unordered_map<bool, std::unique_ptr<FunctionType>>, VectorTypeHasher>> FunctionTypes;
-            std::unordered_map<const AST::FunctionBase*, std::unordered_map<std::vector<Type*>, std::unique_ptr<Function>, VectorTypeHasher>> WideFunctions;
-            std::unordered_map<const AST::TemplateType*, std::unordered_map<std::vector<Type*>, std::unique_ptr<TemplateType>, VectorTypeHasher>> WideTemplateInstantiations;
+            std::unordered_map<const Parse::FunctionBase*, std::unordered_map<std::vector<Type*>, std::unique_ptr<Function>, VectorTypeHasher>> WideFunctions;
+            std::unordered_map<const Parse::TemplateType*, std::unordered_map<std::vector<Type*>, std::unique_ptr<TemplateType>, VectorTypeHasher>> WideTemplateInstantiations;
             std::unordered_map<Type*, std::unique_ptr<LvalueType>> LvalueTypes;
             std::unordered_map<Type*, std::unique_ptr<RvalueType>> RvalueTypes;
             std::unordered_map<Type*, std::unique_ptr<ConstructorType>> ConstructorTypes;
             std::unordered_map<clang::ClassTemplateDecl*, std::unique_ptr<ClangTemplateClass>> ClangTemplateClasses;
             std::unordered_map<unsigned, std::unique_ptr<FloatType>> FloatTypes;
             std::unordered_map<std::unordered_set<clang::NamedDecl*>, std::unordered_map<Type*, std::unique_ptr<OverloadSet>>, SetTypeHasher> clang_overload_sets;
-            std::unordered_map<const AST::Type*, std::unordered_map<Type*, std::unique_ptr<UserDefinedType>>> UDTs;
-            std::unordered_map<const AST::Module*, std::unique_ptr<Module>> WideModules;
+            std::unordered_map<const Parse::Type*, std::unordered_map<Type*, std::unique_ptr<UserDefinedType>>> UDTs;
+            std::unordered_map<const Parse::Module*, std::unique_ptr<Module>> WideModules;
             std::unordered_map<unsigned, std::unordered_map<bool, std::unique_ptr<IntegralType>>> integers;
             std::unordered_map<Type*, std::unique_ptr<PointerType>> Pointers;
             std::unordered_map<OverloadSet*, std::unordered_map<OverloadSet*, std::unique_ptr<OverloadSet>>> CombinedOverloadSets;
-            std::unordered_map<const AST::FunctionBase*, std::unique_ptr<OverloadResolvable>> FunctionCallables;
-            std::unordered_map<const AST::TemplateType*, std::unique_ptr<OverloadResolvable>> TemplateTypeCallables;
+            std::unordered_map<const Parse::FunctionBase*, std::unique_ptr<OverloadResolvable>> FunctionCallables;
+            std::unordered_map<const Parse::TemplateType*, std::unique_ptr<OverloadResolvable>> TemplateTypeCallables;
             std::unordered_map<std::vector<Type*>, std::unique_ptr<TupleType>, VectorTypeHasher> tupletypes;
             std::unordered_map<std::string, std::unique_ptr<StringType>> LiteralStringTypes;
-            std::unordered_map<const AST::Lambda*, std::unordered_map<std::vector<std::pair<std::string, Type*>>, std::unique_ptr<LambdaType>, VectorTypeHasher>> LambdaTypes;
+            std::unordered_map<const Parse::Lambda*, std::unordered_map<std::vector<std::pair<std::string, Type*>>, std::unique_ptr<LambdaType>, VectorTypeHasher>> LambdaTypes;
             std::unordered_map<Type*, std::unordered_map<unsigned, std::unique_ptr<ArrayType>>> ArrayTypes;
 
             const Options::Clang* clangopts;
@@ -117,7 +116,7 @@ namespace Wide {
             std::unique_ptr<OverloadResolvable> Move;
 
             llvm::DataLayout layout;
-            std::unordered_map<const AST::Expression*, std::unique_ptr<Expression>> ExpressionCache;
+            std::unordered_map<const Parse::Expression*, std::unique_ptr<Expression>> ExpressionCache;
         public:
             auto GetFunctions() -> const decltype(WideFunctions)& { return WideFunctions; }
 
@@ -139,8 +138,8 @@ namespace Wide {
             Type* GetClangType(ClangTU& from, clang::QualType t);
             ClangNamespace* GetClangNamespace(ClangTU& from, clang::DeclContext* dc);
             FunctionType* GetFunctionType(Type* ret, const std::vector<Type*>& t, bool variadic);
-            Module* GetWideModule(const AST::Module* m, Module* higher);
-            Function* GetWideFunction(const AST::FunctionBase* p, Type* context, const std::vector<Type*>&, std::string name);
+            Module* GetWideModule(const Parse::Module* m, Module* higher);
+            Function* GetWideFunction(const Parse::FunctionBase* p, Type* context, const std::vector<Type*>&, std::string name);
             LvalueType* GetLvalueType(Type* t);
             Type* GetRvalueType(Type* t);
             ConstructorType* GetConstructorType(Type* t);
@@ -148,31 +147,30 @@ namespace Wide {
             OverloadSet* GetOverloadSet();
             OverloadSet* GetOverloadSet(std::unordered_set<OverloadResolvable*> c, Type* nonstatic = nullptr);
             OverloadSet* GetOverloadSet(OverloadResolvable* c);
-            OverloadSet* GetOverloadSet(const AST::FunctionOverloadSet* set, Type* nonstatic, std::string name);
             OverloadSet* GetOverloadSet(OverloadSet*, OverloadSet*, Type* context = nullptr);
             OverloadSet* GetOverloadSet(std::unordered_set<clang::NamedDecl*> decls, ClangTU* from, Type* context);
-            UserDefinedType* GetUDT(const AST::Type*, Type* context, std::string name);
+            UserDefinedType* GetUDT(const Parse::Type*, Type* context, std::string name);
             IntegralType* GetIntegralType(unsigned, bool);
             PointerType* GetPointerType(Type* to);
             FloatType* GetFloatType(unsigned);
             Module* GetGlobalModule();
             TupleType* GetTupleType(std::vector<Type*> types);
-            OverloadResolvable* GetCallableForFunction(const AST::FunctionBase* f, Type* context, std::string name);
-            OverloadResolvable* GetCallableForTemplateType(const AST::TemplateType* t, Type* context);
-            TemplateType* GetTemplateType(const AST::TemplateType* t, Type* context, std::vector<Type*> arguments, std::string name);
-            LambdaType* GetLambdaType(const AST::Lambda* funcbase, std::vector<std::pair<std::string, Type*>> types, Type* context);
+            OverloadResolvable* GetCallableForFunction(const Parse::FunctionBase* f, Type* context, std::string name);
+            OverloadResolvable* GetCallableForTemplateType(const Parse::TemplateType* t, Type* context);
+            TemplateType* GetTemplateType(const Parse::TemplateType* t, Type* context, std::vector<Type*> arguments, std::string name);
+            LambdaType* GetLambdaType(const Parse::Lambda* funcbase, std::vector<std::pair<std::string, Type*>> types, Type* context);
             ArrayType* GetArrayType(Type* t, unsigned num);
 
-            std::unordered_map<std::type_index, std::function<std::unique_ptr<Expression>(Analyzer& a, Type* lookup, const AST::Expression* e)>> expression_handlers;
+            std::unordered_map<std::type_index, std::function<std::unique_ptr<Expression>(Analyzer& a, Type* lookup, const Parse::Expression* e)>> expression_handlers;
             template<typename T, typename F> void AddExpressionHandler(F f) {
-                expression_handlers[typeid(const T)] = [f](Analyzer& a, Type* lookup, const AST::Expression* e) {
+                expression_handlers[typeid(const T)] = [f](Analyzer& a, Type* lookup, const Parse::Expression* e) {
                     return f(a, lookup, static_cast<const T*>(e));
                 };
             }
-            std::unique_ptr<Expression> AnalyzeCachedExpression(Type* lookup, const AST::Expression* e);
-            std::unique_ptr<Expression> AnalyzeExpression(Type* lookup, const AST::Expression* e);
+            std::unique_ptr<Expression> AnalyzeCachedExpression(Type* lookup, const Parse::Expression* e);
+            std::unique_ptr<Expression> AnalyzeExpression(Type* lookup, const Parse::Expression* e);
 
-            Analyzer(const Options::Clang&, const AST::Module*);     
+            Analyzer(const Options::Clang&, const Parse::Module*);
 
             ClangTU* LoadCPPHeader(std::string file, Lexer::Range where);
             ClangTU* AggregateCPPHeader(std::string file, Lexer::Range where);
@@ -186,9 +184,8 @@ namespace Wide {
         bool IsLvalueType(Type* t);
         Lexer::Access GetAccessSpecifier(Type* from, Type* to);
         void AnalyzeExportedFunctions(Analyzer& a);
-        std::string GetNameForOperator(Lexer::TokenType t);
-        bool IsMultiTyped(const AST::FunctionArgument& f); 
-        bool IsMultiTyped(const AST::FunctionBase* f);
+        bool IsMultiTyped(const Parse::FunctionArgument& f);
+        bool IsMultiTyped(const Parse::FunctionBase* f);
         Type* InferTypeFromExpression(Expression* e, bool local);
     }
 }

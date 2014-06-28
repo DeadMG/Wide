@@ -12,19 +12,23 @@
 using namespace Wide;
 using namespace Semantic;
 
-Module::Module(const AST::Module* p, Module* higher, Analyzer& a)
+Module::Module(const Parse::Module* p, Module* higher, Analyzer& a)
     : m(p), context(higher), MetaType(a) {}
 
 void Module::AddSpecialMember(std::string name, std::unique_ptr<Expression> t){
     SpecialMembers.insert(std::make_pair(std::move(name), std::move(t)));
 }
 OverloadSet* Module::CreateOperatorOverloadSet(Type* t, Wide::Lexer::TokenType ty, Lexer::Access access) {
-    if (m->opcondecls.find(ty) != m->opcondecls.end()) {
+    auto name = "operator" + *ty;
+    if (m->named_decls.find(name) != m->named_decls.end()) {
+        auto overset = boost::get<std::unordered_map<Lexer::Access, std::unordered_set<Parse::Function*>>>(m->named_decls.at(name));
         std::unordered_set<OverloadResolvable*> resolvable;
-        for (auto func : m->opcondecls.at(ty)->functions) {
-            if (func->access > access)
-                continue;
-            resolvable.insert(analyzer.GetCallableForFunction(func, this, GetNameForOperator(ty)));
+        for (auto set : overset) {
+            for (auto func : set.second) {
+                if (set.first > access)
+                    continue;
+                resolvable.insert(analyzer.GetCallableForFunction(func, this, name));
+            }
         }
         if (resolvable.empty()) return PrimitiveType::CreateOperatorOverloadSet(t, ty, access);
         return analyzer.GetOverloadSet(resolvable);
@@ -33,44 +37,47 @@ OverloadSet* Module::CreateOperatorOverloadSet(Type* t, Wide::Lexer::TokenType t
 }
 std::unique_ptr<Expression> Module::AccessMember(std::unique_ptr<Expression> val, std::string name, Context c)  {
     auto access = GetAccessSpecifier(c.from, this);
-    if (m->decls.find(name) != m->decls.end()) {
-        auto decl = m->decls.at(name);
-        if (decl->access > access)
-            return nullptr;
-
-        if (auto moddecl = dynamic_cast<const AST::Module*>(decl)) {
-            return BuildChain(std::move(val), analyzer.GetWideModule(moddecl, this)->BuildValueConstruction(Expressions(), c));
+    if (m->named_decls.find(name) != m->named_decls.end()) {
+        if (auto mod = boost::get<std::pair<Lexer::Access, Parse::Module*>>(&m->named_decls.at(name))) {
+            if (mod->first > access)
+                return nullptr;
+            return BuildChain(std::move(val), analyzer.GetWideModule(mod->second, this)->BuildValueConstruction(Expressions(), c));
         }
-        if (auto usedecl = dynamic_cast<const AST::Using*>(decl)) {
-            auto expr = analyzer.AnalyzeCachedExpression(this, usedecl->expr);
+        if (auto usedecl = boost::get<std::pair<Lexer::Access, Parse::Using*>>(&m->named_decls.at(name))) {
+            if (usedecl->first > access)
+                return nullptr;
+            auto expr = analyzer.AnalyzeCachedExpression(this, usedecl->second->expr);
             if (auto constant = expr->GetType()->Decay()->GetConstantContext())
                 return BuildChain(std::move(val), constant->BuildValueConstruction(Expressions(), c));
-            throw BadUsingTarget(expr->GetType()->Decay(), usedecl->expr->location);
+            throw BadUsingTarget(expr->GetType()->Decay(), usedecl->second->expr->location);
         }
-        if (auto overdecl = dynamic_cast<const AST::FunctionOverloadSet*>(decl)) {
+        if (auto tydecl = boost::get<std::pair<Lexer::Access, Parse::Type*>>(&m->named_decls.at(name))) {
+            if (tydecl->first > access)
+                return nullptr;
+            return BuildChain(std::move(val), analyzer.GetConstructorType(analyzer.GetUDT(tydecl->second, this, name))->BuildValueConstruction(Expressions(), c));
+        }
+        if (auto overdecl = boost::get<std::unordered_map<Lexer::Access, std::unordered_set<Parse::Function*>>>(&m->named_decls.at(name))) {
             std::unordered_set<OverloadResolvable*> resolvable;
-            for (auto func : overdecl->functions) {
-                if (func->access > access)
+            for (auto map : *overdecl) {
+                if (map.first > access)
                     continue;
-                resolvable.insert(analyzer.GetCallableForFunction(func, this, name));
+                for (auto func : map.second)
+                    resolvable.insert(analyzer.GetCallableForFunction(func, this, name));
             }
             if (resolvable.empty()) return nullptr;
             return BuildChain(std::move(val), analyzer.GetOverloadSet(resolvable)->BuildValueConstruction(Expressions(), c));
         }
-        if (auto temptydecl = dynamic_cast<const AST::TemplateTypeOverloadSet*>(decl)) {
+        if (auto overdecl = boost::get<std::unordered_map<Lexer::Access, std::unordered_set<Parse::TemplateType*>>>(&m->named_decls.at(name))) {
             std::unordered_set<OverloadResolvable*> resolvable;
-            for (auto func : temptydecl->templatetypes) {
-                if (func->t->access > access)
+            for (auto map : *overdecl) {
+                if (map.first > access)
                     continue;
-                resolvable.insert(analyzer.GetCallableForTemplateType(func, this));
+                for (auto func : map.second)
+                    resolvable.insert(analyzer.GetCallableForTemplateType(func, this));
             }
             if (resolvable.empty()) return nullptr;
             return BuildChain(std::move(val), analyzer.GetOverloadSet(resolvable)->BuildValueConstruction(Expressions(), c));
         }
-        if (auto tydecl = dynamic_cast<const AST::Type*>(decl)) {
-            return BuildChain(std::move(val), analyzer.GetConstructorType(analyzer.GetUDT(tydecl, this, name))->BuildValueConstruction(Expressions(), c));
-        }
-        assert(false && "Looked up a member of a module but did not recognize the AST node used.");
     }
     if (SpecialMembers.find(name) != SpecialMembers.end())
         return BuildChain(std::move(val), Wide::Memory::MakeUnique<ExpressionReference>(SpecialMembers.at(name).get()));
@@ -79,8 +86,8 @@ std::unique_ptr<Expression> Module::AccessMember(std::unique_ptr<Expression> val
 std::string Module::explain() {
     if (!context) return "";
     std::string name;
-    for (auto decl : context->GetASTModule()->decls) {
-        if (decl.second == m)
+    for (auto decl : context->GetASTModule()->named_decls) {
+        if (auto mod = boost::get<std::pair<Lexer::Access, Parse::Module*>>(&decl.second))
             name = decl.first;
     }
     if (context == analyzer.GetGlobalModule())

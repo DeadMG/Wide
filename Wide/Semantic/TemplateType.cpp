@@ -20,7 +20,7 @@ struct TemplateType::TemplateTypeLookupContext : MetaType {
     }
 };
 
-TemplateType::TemplateType(const AST::Type* t, Analyzer& a, Type* context, std::unordered_map<std::string, Type*> arguments, std::string name)
+TemplateType::TemplateType(const Parse::Type* t, Analyzer& a, Type* context, std::unordered_map<std::string, Type*> arguments, std::string name)
     : UserDefinedType(t, a, new TemplateTypeLookupContext(context, arguments, a), name), templatearguments(std::move(arguments)), owned_context(static_cast<TemplateTypeLookupContext*>(GetContext())) {}
 
 TemplateType::~TemplateType() {}
