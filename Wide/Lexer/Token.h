@@ -160,3 +160,10 @@ namespace Wide {
         }
     }
 }
+namespace std {
+    template<> struct hash<Wide::Lexer::Access> {
+        std::size_t operator()(Wide::Lexer::Access ty) const {
+            return std::hash<int>()((int)ty);
+        }
+    };
+}
