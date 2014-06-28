@@ -178,7 +178,7 @@ int main(int argc, char** argv)
     try {
         llvm::LLVMContext con;
         auto mod = Wide::Util::CreateModuleForTriple(ClangOpts.TargetOptions.Triple, con);
-        Wide::Driver::Compile(ClangOpts, [&](Wide::Semantic::Analyzer& a, const Wide::AST::Module* root) {
+        Wide::Driver::Compile(ClangOpts, [&](Wide::Semantic::Analyzer& a, const Wide::Parse::Module* root) {
             Wide::Semantic::AnalyzeExportedFunctions(a);
             static const Wide::Lexer::Range location = std::make_shared<std::string>("Analyzer entry point");
             Wide::Semantic::Context c(a.GetGlobalModule(), location);

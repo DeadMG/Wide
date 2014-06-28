@@ -102,20 +102,18 @@ namespace Wide {
         };
     }
 }
-#ifndef _MSC_VER
 namespace std {
     template<> struct hash<Wide::Parse::Error> {
-        std::size_t operator()(Wide::Parser::Error p) const {
+        std::size_t operator()(Wide::Parse::Error p) const {
             return hash<int>()((int)p);
         }
     };
     template<> struct hash<Wide::Parse::Warning> {
-        std::size_t operator()(Wide::Parser::Warning p) const {
+        std::size_t operator()(Wide::Parse::Warning p) const {
             return hash<int>()((int)p);
         }
     };
 }
-#endif
 namespace Wide {
     namespace Parse {
         static const std::unordered_map<Error, std::string> ErrorStrings([]() -> std::unordered_map<Error, std::string> {
