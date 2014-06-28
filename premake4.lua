@@ -309,7 +309,11 @@ WideProjects = {
             kind("ConsoleApp")
             links { "Util", "Lexer", "Parser" }
         end,
+        dependencies = function(proj)
+            return WideProjects.Parser.dependencies(proj)
+        end, 
         configure = function(plat, conf)
+            WideProjects.Parser.configure(plat, conf)
             if os.is("windows") then
                 postbuildcommands ({ "$(TargetPath)" })
             else

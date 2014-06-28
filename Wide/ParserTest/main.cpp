@@ -3,7 +3,6 @@
 #include <Wide/Util/Ranges/StringRange.h>
 #include <Wide/Parser/ParserError.h>
 #include <Wide/Util/Memory/MakeUnique.h>
-#include <Wide/Parser/Builder.h>
 #include <Wide/Parser/AST.h>
 #include <iostream>
 #include <sstream>
@@ -70,10 +69,12 @@ struct TestModule {
 
     TestModule() {}
     TestModule(TestModule&& mod)
-        : modules(std::move(mod.modules)) {}
+        : modules(std::move(mod.modules))
+        , overloadsets(std::move(mod.overloadsets)) {}
 
     TestModule& operator=(TestModule&& other) {
         modules = std::move(other.modules);
+        overloadsets = std::move(other.overloadsets);
         return *this;
     }
 
@@ -125,27 +126,11 @@ struct TestTuple : public TestExpression {
         return *this;
     }
 };
-bool operator==(const Wide::AST::Module* m, const TestModule& rhs) {
-    auto result = true;
-
-    for(auto decl : m->decls) {
-        if(auto mod = dynamic_cast<Wide::AST::Module*>(decl.second)) {
-            if(rhs.modules.find(decl.first) == rhs.modules.end())
-                return false;
-            result = result && mod == *rhs.modules.at(decl.first);
-        }
-    }
-    for(auto&& mod : rhs.modules)
-        if (m->decls.find(mod.first) == m->decls.end() || !dynamic_cast<Wide::AST::Module*>(m->decls.at(mod.first)))
-            return false;
-    
-    return result;
-}
-bool operator==(const Wide::AST::Expression* e, const TestExpression& rhs);
-bool operator!=(const Wide::AST::Expression* e, const TestExpression& rhs) {
+bool operator==(const Wide::Parse::Expression* e, const TestExpression& rhs);
+bool operator!=(const Wide::Parse::Expression* e, const TestExpression& rhs) {
     return !(e == rhs);
 }
-bool operator==(const Wide::AST::Function* func, const TestFunction& testfunc) {
+bool operator==(const Wide::Parse::Function* func, const TestFunction& testfunc) {
     if (func->attributes.size() != testfunc.attrs.attributes.size()) return false;
     for (unsigned i = 0; i < func->attributes.size(); ++i) {
         if (func->attributes[i].initialized != *testfunc.attrs.attributes[i].initialized)
@@ -155,23 +140,44 @@ bool operator==(const Wide::AST::Function* func, const TestFunction& testfunc) {
     }
     return true;
 }
-bool operator==(const Wide::AST::FunctionOverloadSet* overset, const TestOverloadSet& testoverset) {
-    std::unordered_map<const Wide::AST::Function*, const TestFunction*> mapping;
-    for (auto func : overset->functions) {
-         // Every function should have a 1:1 correspondence with some function in the test overset.
+bool operator==(const std::unordered_set<Wide::Parse::Function*>& overset, const TestOverloadSet& testoverset) {
+    std::unordered_map<const Wide::Parse::Function*, const TestFunction*> mapping;
+    for (auto func : overset) {
+        // Every function should have a 1:1 correspondence with some function in the test overset.
         for (auto&& testfunc : testoverset.functions) {
             if (func == *testfunc) {
                 if (mapping.find(func) != mapping.end())
                     return false;
-                mapping[func] = testfunc.get();                
+                mapping[func] = testfunc.get();
             }
         }
     }
-    return mapping.size() == overset->functions.size();
+    return mapping.size() == overset.size();
 }
-bool operator==(const Wide::AST::Statement* s, const TestStatement& rhs);
+bool operator==(const Wide::Parse::Module* m, const TestModule& rhs) {
+    auto result = true;
 
-bool operator==(const Wide::AST::Tuple* t, const TestTuple& rhs) {
+    for(auto decl : m->named_decls) {
+        if (auto mod = boost::get<std::pair<Wide::Lexer::Access, Wide::Parse::Module*>>(&decl.second)) {
+            if(rhs.modules.find(decl.first) == rhs.modules.end())
+                return false;
+            result = result && mod->second == *rhs.modules.at(decl.first);
+        }
+        if (auto overset = boost::get<std::unordered_map<Wide::Lexer::Access, std::unordered_set<Wide::Parse::Function*>>>(&decl.second)) {
+            if (rhs.overloadsets.find(decl.first) == rhs.overloadsets.end())
+                return false;
+            result = result && overset->at(Wide::Lexer::Access::Public) == *rhs.overloadsets.at(decl.first);
+        }
+    }
+    for(auto&& mod : rhs.modules)
+        if (m->named_decls.find(mod.first) == m->named_decls.end() || !boost::get<std::pair<Wide::Lexer::Access, Wide::Parse::Module*>>(&m->named_decls.at(mod.first)))
+            return false;
+    
+    return result;
+}
+bool operator==(const Wide::Parse::Statement* s, const TestStatement& rhs);
+
+bool operator==(const Wide::Parse::Tuple* t, const TestTuple& rhs) {
     if (t->expressions.size() != rhs.expressions.size())
         return false;
 
@@ -181,31 +187,31 @@ bool operator==(const Wide::AST::Tuple* t, const TestTuple& rhs) {
     return result;
 }
 
-bool operator==(const Wide::AST::String* s, const TestString& rhs) {
+bool operator==(const Wide::Parse::String* s, const TestString& rhs) {
     return s->val == rhs.val;
 }
-bool operator==(const Wide::AST::Integer* e, const TestInteger& rhs) {
+bool operator==(const Wide::Parse::Integer* e, const TestInteger& rhs) {
     return e->integral_value == std::to_string(rhs.val);
 }
 
-bool operator==(const Wide::AST::Expression* e, const TestExpression& rhs) {
-    if (auto integer = dynamic_cast<const Wide::AST::Integer*>(e))
+bool operator==(const Wide::Parse::Expression* e, const TestExpression& rhs) {
+    if (auto integer = dynamic_cast<const Wide::Parse::Integer*>(e))
         if (auto testint = dynamic_cast<const TestInteger*>(&rhs))
             return integer == *testint;
 
-    if (auto tup = dynamic_cast<const Wide::AST::Tuple*>(e))
+    if (auto tup = dynamic_cast<const Wide::Parse::Tuple*>(e))
         if (auto testtup = dynamic_cast<const TestTuple*>(&rhs))
             return tup == *testtup;
 
-    if (auto ident = dynamic_cast<const Wide::AST::Identifier*>(e))
+    if (auto ident = dynamic_cast<const Wide::Parse::Identifier*>(e))
         if (auto testident = dynamic_cast<const TestIdentifier*>(&rhs))
             return ident->val == testident->ident;
 
     return false;
 }
 
-bool operator==(const Wide::AST::Statement* s, const TestStatement& rhs) {
-    if (auto expr = dynamic_cast<const Wide::AST::Expression*>(s)) 
+bool operator==(const Wide::Parse::Statement* s, const TestStatement& rhs) {
+    if (auto expr = dynamic_cast<const Wide::Parse::Expression*>(s)) 
         if (auto teststmt = dynamic_cast<const TestExpression*>(&rhs))
             return expr == *teststmt;
 
@@ -218,10 +224,6 @@ struct result {
 };
 
 template<typename T, typename F> result test(T&& t, F&& f) {
-    auto parserwarninghandler = [](Wide::Lexer::Range where, Wide::Parser::Warning what) {};
-    auto parsererrorhandler = [](std::vector<Wide::Lexer::Range> where, Wide::Parser::Error what) {};
-    auto parseroutlininghandler = [](Wide::Lexer::Range, Wide::AST::OutliningType) {};
-
     unsigned testsfailed = 0;
     unsigned testssucceeded = 0;
 
@@ -231,11 +233,8 @@ template<typename T, typename F> result test(T&& t, F&& f) {
             Wide::Lexer::Arguments largs;
             auto contents = Wide::Range::StringRange(test.second.first);
             Wide::Lexer::Invocation<decltype(contents)> lex(largs, contents, std::make_shared<std::string>(test.first));
-            Wide::AST::Builder builder(parsererrorhandler, parserwarninghandler, parseroutlininghandler);
-            Wide::Parser::AssumeLexer<decltype(lex)> lexer;
-            lexer.lex = &lex;
-            Wide::Parser::Parser<decltype(lexer), decltype(builder)> parser(lexer, builder);
-            failed = failed || !f(parser, builder, test.second);
+            Wide::Parse::Parser parser(lex);
+            failed = !f(parser, test.second);
         } catch (...) {
             failed = true;
         }
@@ -278,23 +277,15 @@ int main() {
     unsigned testsfailed = 0;
     unsigned testssucceeded = 0;
 
-    auto module_test_results = test(module_tests, [](
-        Wide::Parser::Parser<Wide::Parser::AssumeLexer<Wide::Lexer::Invocation<Wide::Range::stringrange>>, Wide::AST::Builder>& parser,
-        Wide::AST::Builder& builder,
-        const std::pair<std::string, TestModule>& test
-    ) -> bool {
-        parser.ParseGlobalModuleContents(builder.GetGlobalModule());
-        return builder.GetGlobalModule() == test.second;
+    auto module_test_results = test(module_tests, [](Wide::Parse::Parser& parser, const std::pair<std::string, TestModule>& test) -> bool {
+        parser.ParseGlobalModuleContents(&parser.GlobalModule);
+        return &parser.GlobalModule == test.second;
     });
 
     testssucceeded += module_test_results.passed;
     testsfailed += module_test_results.failed;
 
-    auto expression_test_results = test(expression_tests, [](
-        Wide::Parser::Parser<Wide::Parser::AssumeLexer<Wide::Lexer::Invocation<Wide::Range::stringrange>>, Wide::AST::Builder>& parser,
-        Wide::AST::Builder& builder,
-        const std::pair<std::string, std::unique_ptr<TestExpression>>& test
-        ) -> bool {
+    auto expression_test_results = test(expression_tests, [](Wide::Parse::Parser& parser, const std::pair<std::string, std::unique_ptr<TestExpression>>& test) -> bool {
         return parser.ParseExpression() == *test.second.get();
     });
 
