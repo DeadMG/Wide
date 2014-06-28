@@ -104,12 +104,12 @@ namespace Wide {
 }
 #ifndef _MSC_VER
 namespace std {
-    template<> struct hash<Wide::Parser::Error> {
+    template<> struct hash<Wide::Parse::Error> {
         std::size_t operator()(Wide::Parser::Error p) const {
             return hash<int>()((int)p);
         }
     };
-    template<> struct hash<Wide::Parser::Warning> {
+    template<> struct hash<Wide::Parse::Warning> {
         std::size_t operator()(Wide::Parser::Warning p) const {
             return hash<int>()((int)p);
         }
