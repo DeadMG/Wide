@@ -53,8 +53,8 @@ OverloadSet* PointerType::CreateConstructorOverloadSet(Lexer::Access access) {
             if (!types[1]->IsA(types[1], self, GetAccessSpecifier(source, types[1]))) return Util::none;
             return types;
         }
-        std::vector<std::unique_ptr<Expression>> AdjustArguments(std::vector<std::unique_ptr<Expression>> args, Context c) override final { return args; }
-        std::unique_ptr<Expression> CallFunction(std::vector<std::unique_ptr<Expression>> args, Context c) override final {
+        std::vector<std::shared_ptr<Expression>> AdjustArguments(std::vector<std::shared_ptr<Expression>> args, Context c) override final { return args; }
+        std::shared_ptr<Expression> CallFunction(std::vector<std::shared_ptr<Expression>> args, Context c) override final {
             auto other = BuildValue(std::move(args[1]));
             auto udt = dynamic_cast<PointerType*>(other->GetType())->pointee;
             return Wide::Memory::MakeUnique<ImplicitStoreExpr>(std::move(args[0]), udt->AccessBase(std::move(other), self->pointee));
@@ -62,7 +62,7 @@ OverloadSet* PointerType::CreateConstructorOverloadSet(Lexer::Access access) {
         Callable* GetCallableForResolution(std::vector<Type*>, Analyzer& a) override final { return this; }
     };
     auto usual = PrimitiveType::CreateConstructorOverloadSet(Lexer::Access::Public);
-    NullConstructor = MakeResolvable([this](std::vector<std::unique_ptr<Expression>> args, Context c) {
+    NullConstructor = MakeResolvable([this](std::vector<std::shared_ptr<Expression>> args, Context c) {
         return CreatePrimOp(std::move(args[0]), std::move(args[1]), analyzer.GetLvalueType(this), [this](llvm::Value* lhs, llvm::Value* rhs, CodegenContext& con) {
             con->CreateStore(llvm::Constant::getNullValue(GetLLVMType(con)), lhs);
             return lhs;
@@ -74,7 +74,7 @@ OverloadSet* PointerType::CreateConstructorOverloadSet(Lexer::Access access) {
     return analyzer.GetOverloadSet(analyzer.GetOverloadSet(usual, analyzer.GetOverloadSet(NullConstructor.get())), analyzer.GetOverloadSet(DerivedConstructor.get())); 
 }
 
-std::unique_ptr<Expression> PointerType::BuildBooleanConversion(std::unique_ptr<Expression> c, Context) {
+std::shared_ptr<Expression> PointerType::BuildBooleanConversion(std::shared_ptr<Expression> c, Context) {
     return CreatePrimUnOp(BuildValue(std::move(c)), analyzer.GetBooleanType(), [](llvm::Value* v, CodegenContext& con) {
         return con->CreateZExt(con->CreateIsNotNull(v), llvm::Type::getInt8Ty(con));
     });
@@ -97,7 +97,7 @@ OverloadSet* PointerType::CreateOperatorOverloadSet(Type* self, Lexer::TokenType
     if (access != Lexer::Access::Public)
         return AccessMember(self, what, Lexer::Access::Public);
     if (what != &Lexer::TokenTypes::Star) return PrimitiveType::CreateOperatorOverloadSet(self, what, access);
-    DereferenceOperator = MakeResolvable([this](std::vector<std::unique_ptr<Expression>> args, Context c) {
+    DereferenceOperator = MakeResolvable([this](std::vector<std::shared_ptr<Expression>> args, Context c) {
         return CreatePrimUnOp(std::move(args[0]), analyzer.GetLvalueType(pointee), [](llvm::Value* val, CodegenContext& con) {
             return val;
         });

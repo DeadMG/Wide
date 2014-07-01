@@ -22,7 +22,7 @@
 using namespace Wide;
 using namespace Semantic;
 
-std::unique_ptr<Expression> ClangNamespace::AccessMember(std::unique_ptr<Expression> t, std::string name, Context c) {
+std::shared_ptr<Expression> ClangNamespace::AccessMember(std::shared_ptr<Expression> t, std::string name, Context c) {
     clang::LookupResult lr(
         from->GetSema(), 
         clang::DeclarationNameInfo(clang::DeclarationName(from->GetIdentifierInfo(name)), clang::SourceLocation()),

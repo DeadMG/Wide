@@ -92,8 +92,8 @@ namespace Wide {
             llvm::IRBuilder<>* operator->() { return insert_builder; }
             operator llvm::Module*() { return module; }
 
-            std::vector<Expression*> GetAddedDestructors(CodegenContext& other) {
-                return std::vector<Expression*>(other.Destructors.begin() + Destructors.size(), other.Destructors.end());
+            std::list<std::pair<std::function<void(CodegenContext&)>, bool>> GetAddedDestructors(CodegenContext& other) {
+                return std::list<std::pair<std::function<void(CodegenContext&)>, bool>>(std::next(other.Destructors.begin(), Destructors.size()), other.Destructors.end());
             }
             void GenerateCodeAndDestroyLocals(std::function<void(CodegenContext&)> action);
             void DestroyDifference(CodegenContext& other);
@@ -117,9 +117,14 @@ namespace Wide {
             llvm::IRBuilder<>* insert_builder;
             llvm::IRBuilder<>* alloca_builder;
             // Mostly used for e.g. member variables.
-            std::unordered_set<Expression*> ExceptionOnlyDestructors;
-            std::vector<Expression*> Destructors;
             Wide::Util::optional<EHScope> EHHandler;
+        private:
+            std::list<std::pair<std::function<void(CodegenContext&)>, bool>> Destructors;
+        public:
+            bool HasDestructors();
+            std::list<std::pair<std::function<void(CodegenContext&)>, bool>>::iterator AddDestructor(std::function<void(CodegenContext&)>);
+            void AddExceptionOnlyDestructor(std::function<void(CodegenContext&)>);
+            void EraseDestructor(std::list<std::pair<std::function<void(CodegenContext&)>, bool>>::iterator it);
         };
 
         struct Statement : public Node {
@@ -129,13 +134,8 @@ namespace Wide {
             virtual Type* GetType() = 0; // If the type is unknown then nullptr
             llvm::Value* GetValue(CodegenContext& con);
             virtual Expression* GetImplementation() { return this; }
-            void DestroyLocals(CodegenContext& con) {
-                assert(val);
-                DestroyExpressionLocals(con);
-            }
         private:
-            llvm::Value* val = nullptr;
-            virtual void DestroyExpressionLocals(CodegenContext& con) {}
+            Wide::Util::optional<llvm::Value*> val;
             void GenerateCode(CodegenContext& con) override final {
                 GetValue(con);
             }
@@ -180,21 +180,21 @@ namespace Wide {
             std::unordered_map<Lexer::Access, OverloadSet*> ConstructorOverloadSets;
             std::unordered_map<Type*, std::unordered_map<Lexer::Access, std::unordered_map<Lexer::TokenType, OverloadSet*>>> OperatorOverloadSets;
             std::unordered_map<Type*, std::unordered_map<Type*, std::unordered_map<Lexer::Access, std::unordered_map<Lexer::TokenType, OverloadSet*>>>> ADLResults;
-            std::unordered_map<std::vector<std::pair<Type*, unsigned>>, std::unique_ptr<Expression>, VectorTypeHasher> ComputedVTables;
+            std::unordered_map<std::vector<std::pair<Type*, unsigned>>, std::shared_ptr<Expression>, VectorTypeHasher> ComputedVTables;
             Wide::Util::optional<VTableLayout> VtableLayout;
             Wide::Util::optional<VTableLayout> PrimaryVtableLayout;
             llvm::Function* DestructorFunction = nullptr;
 
             VTableLayout ComputeVTableLayout();
-            std::unique_ptr<Expression> CreateVTable(std::vector<std::pair<Type*, unsigned>> path);
-            std::unique_ptr<Expression> GetVTablePointer(std::vector<std::pair<Type*, unsigned>> path);
-            std::unique_ptr<Expression> SetVirtualPointers(std::vector<std::pair<Type*, unsigned>> path, std::unique_ptr<Expression> self);
+            std::shared_ptr<Expression> CreateVTable(std::vector<std::pair<Type*, unsigned>> path);
+            std::shared_ptr<Expression> GetVTablePointer(std::vector<std::pair<Type*, unsigned>> path);
+            std::shared_ptr<Expression> SetVirtualPointers(std::vector<std::pair<Type*, unsigned>> path, std::shared_ptr<Expression> self);
         protected:
             virtual OverloadSet* CreateOperatorOverloadSet(Type* self, Lexer::TokenType what, Lexer::Access access);
             virtual OverloadSet* CreateADLOverloadSet(Lexer::TokenType name, Type* lhs, Type* rhs, Lexer::Access access);
             virtual OverloadSet* CreateConstructorOverloadSet(Lexer::Access access) = 0;
         public:
-            virtual std::unique_ptr<Expression> VirtualEntryFor(VTableLayout::VirtualFunctionEntry entry, unsigned offset) { assert(false); throw std::runtime_error("ICE"); }
+            virtual std::shared_ptr<Expression> VirtualEntryFor(VTableLayout::VirtualFunctionEntry entry, unsigned offset) { assert(false); throw std::runtime_error("ICE"); }
             Type(Analyzer& a) : analyzer(a) {}
 
             Analyzer& analyzer;
@@ -204,13 +204,16 @@ namespace Wide {
             virtual std::string explain() = 0;
             virtual llvm::Type* GetLLVMType(llvm::Module* module) = 0;
             virtual llvm::Constant* GetRTTI(llvm::Module* module);
+
             llvm::Value* GetDestructorFunction(llvm::Module* module);
 
             virtual bool IsReference(Type* to);
             virtual bool IsReference();
             virtual Type* Decay();
             virtual Type* GetContext();
-            virtual bool IsComplexType(llvm::Module* module);
+            virtual bool IsComplexType();
+            virtual bool IsTriviallyDestructible();
+            virtual bool IsTriviallyCopyConstructible();
             virtual Wide::Util::optional<clang::QualType> GetClangType(ClangTU& TU);
             virtual bool IsMoveConstructible(Lexer::Access access);
             virtual bool IsCopyConstructible(Lexer::Access access);
@@ -226,20 +229,20 @@ namespace Wide {
             virtual VTableLayout ComputePrimaryVTableLayout();
             virtual std::vector<std::pair<Type*, unsigned>> GetBasesAndOffsets();
 
-            virtual std::unique_ptr<Expression> GetVirtualPointer(std::unique_ptr<Expression> self);
-            virtual std::unique_ptr<Expression> AccessStaticMember(std::string name);
-            virtual std::unique_ptr<Expression> AccessMember(std::unique_ptr<Expression> t, std::string name, Context c);
-            virtual std::unique_ptr<Expression> BuildMetaCall(std::unique_ptr<Expression> val, std::vector<std::unique_ptr<Expression>> args);
-            virtual std::unique_ptr<Expression> BuildCall(std::unique_ptr<Expression> val, std::vector<std::unique_ptr<Expression>> args, Context c);
-            virtual std::unique_ptr<Expression> BuildValueConstruction(std::vector<std::unique_ptr<Expression>> args, Context c);
-            virtual std::unique_ptr<Expression> BuildBooleanConversion(std::unique_ptr<Expression>, Context);
-            virtual std::unique_ptr<Expression> BuildDestructorCall(std::unique_ptr<Expression> self, Context c);;
-            virtual std::unique_ptr<Expression> BuildRvalueConstruction(std::vector<std::unique_ptr<Expression>> exprs, Context c);
-            virtual std::unique_ptr<Expression> BuildLvalueConstruction(std::vector<std::unique_ptr<Expression>> exprs, Context c);
+            virtual std::shared_ptr<Expression> GetVirtualPointer(std::shared_ptr<Expression> self);
+            virtual std::shared_ptr<Expression> AccessStaticMember(std::string name);
+            virtual std::shared_ptr<Expression> AccessMember(std::shared_ptr<Expression> t, std::string name, Context c);
+            virtual std::shared_ptr<Expression> BuildMetaCall(std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args);
+            virtual std::shared_ptr<Expression> BuildCall(std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c);
+            virtual std::shared_ptr<Expression> BuildValueConstruction(std::vector<std::shared_ptr<Expression>> args, Context c);
+            virtual std::shared_ptr<Expression> BuildBooleanConversion(std::shared_ptr<Expression>, Context);
+            virtual std::function<void(CodegenContext&)> BuildDestructorCall(std::shared_ptr<Expression> self, Context c, bool devirtualize);
+            virtual std::shared_ptr<Expression> BuildRvalueConstruction(std::vector<std::shared_ptr<Expression>> exprs, Context c);
+            virtual std::shared_ptr<Expression> BuildLvalueConstruction(std::vector<std::shared_ptr<Expression>> exprs, Context c);
 
             virtual ~Type() {}
 
-            std::unique_ptr<Expression> AccessBase(std::unique_ptr<Expression> self, Type* other);
+            std::shared_ptr<Expression> AccessBase(std::shared_ptr<Expression> self, Type* other);
             InheritanceRelationship IsDerivedFrom(Type* other);
             VTableLayout GetVtableLayout();
             VTableLayout GetPrimaryVTable();
@@ -248,27 +251,28 @@ namespace Wide {
             OverloadSet* AccessMember(Type* t, Lexer::TokenType type, Lexer::Access access);
             bool InheritsFromAtOffsetZero(Type* other);
 
-            std::unique_ptr<Expression> BuildInplaceConstruction(std::unique_ptr<Expression> self, std::vector<std::unique_ptr<Expression>> exprs, Context c);
-            std::unique_ptr<Expression> BuildUnaryExpression(std::unique_ptr<Expression> self, Lexer::TokenType type, Context c);
-            std::unique_ptr<Expression> BuildBinaryExpression(std::unique_ptr<Expression> lhs, std::unique_ptr<Expression> rhs, Lexer::TokenType type, Context c);
-            std::unique_ptr<Expression> SetVirtualPointers(std::unique_ptr<Expression>);
-            std::unique_ptr<Expression> BuildIndex(std::unique_ptr<Expression> obj, std::unique_ptr<Expression> arg, Context c);
+            std::shared_ptr<Expression> BuildInplaceConstruction(std::shared_ptr<Expression> self, std::vector<std::shared_ptr<Expression>> exprs, Context c);
+            std::shared_ptr<Expression> BuildUnaryExpression(std::shared_ptr<Expression> self, Lexer::TokenType type, Context c);
+            std::shared_ptr<Expression> BuildBinaryExpression(std::shared_ptr<Expression> lhs, std::shared_ptr<Expression> rhs, Lexer::TokenType type, Context c);
+            std::shared_ptr<Expression> SetVirtualPointers(std::shared_ptr<Expression>);
+            std::shared_ptr<Expression> BuildIndex(std::shared_ptr<Expression> obj, std::shared_ptr<Expression> arg, Context c);
+            
         };
 
         struct Callable {
         public:
-            std::unique_ptr<Expression> Call(std::vector<std::unique_ptr<Expression>> args, Context c);
+            std::shared_ptr<Expression> Call(std::vector<std::shared_ptr<Expression>> args, Context c);
         private:
-            virtual std::unique_ptr<Expression> CallFunction(std::vector<std::unique_ptr<Expression>> args, Context c) = 0;
-            virtual std::vector<std::unique_ptr<Expression>> AdjustArguments(std::vector<std::unique_ptr<Expression>> args, Context c) = 0;
+            virtual std::shared_ptr<Expression> CallFunction(std::vector<std::shared_ptr<Expression>> args, Context c) = 0;
+            virtual std::vector<std::shared_ptr<Expression>> AdjustArguments(std::vector<std::shared_ptr<Expression>> args, Context c) = 0;
         };
         struct OverloadResolvable {
             virtual Wide::Util::optional<std::vector<Type*>> MatchParameter(std::vector<Type*>, Analyzer& a, Type* source) = 0;
             virtual Callable* GetCallableForResolution(std::vector<Type*>, Analyzer& a) = 0;
         };
 
-        std::vector<std::unique_ptr<Expression>> AdjustArgumentsForTypes(std::vector<std::unique_ptr<Expression>> args, std::vector<Type*> types, Context c);
-        std::unique_ptr<OverloadResolvable> MakeResolvable(std::function<std::unique_ptr<Expression>(std::vector<std::unique_ptr<Expression>>, Context)> f, std::vector<Type*> types);
+        std::vector<std::shared_ptr<Expression>> AdjustArgumentsForTypes(std::vector<std::shared_ptr<Expression>> args, std::vector<Type*> types, Context c);
+        std::unique_ptr<OverloadResolvable> MakeResolvable(std::function<std::shared_ptr<Expression>(std::vector<std::shared_ptr<Expression>>, Context)> f, std::vector<Type*> types);
 
         struct TupleInitializable {
         private:
@@ -277,7 +281,7 @@ namespace Wide {
             OverloadSet* CreateConstructorOverloadSet(Lexer::Access access);
             virtual Type* GetSelfAsType() = 0;
             virtual Wide::Util::optional<std::vector<Type*>> GetTypesForTuple() = 0;
-            virtual std::unique_ptr<Expression> PrimitiveAccessMember(std::unique_ptr<Expression> self, unsigned num) = 0;
+            virtual std::shared_ptr<Expression> PrimitiveAccessMember(std::shared_ptr<Expression> self, unsigned num) = 0;
         };
         
 
@@ -302,7 +306,7 @@ namespace Wide {
                 // Not necessarily actually an empty base but ClangType will only give us offsets pre-codegen.
                 // and it could be an empty base so use offsets
                 EmptyBaseOffset num;
-                std::function<std::unique_ptr<Expression>(std::unique_ptr<Expression>)> InClassInitializer;
+                std::function<std::shared_ptr<Expression>(std::shared_ptr<Expression>)> InClassInitializer;
                 Lexer::Range location;
             };
             virtual std::vector<member> GetConstructionMembers() = 0;
@@ -332,15 +336,7 @@ namespace Wide {
             Type* GetConstantContext() override;
             OverloadSet* CreateConstructorOverloadSet(Lexer::Access access) override final;
         };
-
-        // Fuck you, C++ fail. This is basically just { args } but it doesn't fail super hard for move-only types
-        template<typename... Args> std::vector<std::unique_ptr<Expression>> Expressions(Args&&... args) {
-            using swallow = int[];
-            std::vector<std::unique_ptr<Expression>> ret;
-            swallow x = { 0, (ret.push_back(std::forward<Args>(args)), void(), 0)... };
-            return std::move(ret);
-        }
-
+        
         llvm::Constant* GetGlobalString(std::string string, llvm::Module* m);
     }
 }

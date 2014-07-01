@@ -40,7 +40,7 @@ namespace {
         }
 
         if (auto if_stmt = dynamic_cast<Function::IfStatement*>(s)) {
-            if (auto constant = dynamic_cast<Boolean*>(if_stmt->cond)) {
+            if (auto constant = dynamic_cast<Boolean*>(if_stmt->cond.get())) {
                 // It will be unconditionally executed.                
                 if (constant->b) {
                     predecessors[if_stmt->true_br].insert(s);
@@ -67,8 +67,8 @@ namespace {
         }
 
         if (auto whil_stmt = dynamic_cast<Function::WhileStatement*>(s)) {
-            predecessors[whil_stmt->body].insert(s);
-            GetControlFlowForStatements(whil_stmt->body, predecessors, whil_stmt, whil_stmt, next);
+            predecessors[whil_stmt->body.get()].insert(s);
+            GetControlFlowForStatements(whil_stmt->body.get(), predecessors, whil_stmt, whil_stmt, next);
             return;
         }
 

@@ -20,7 +20,7 @@ namespace Wide {
             llvm::PointerType* GetLLVMType(llvm::Module* module) override final;
 
             Wide::Util::optional<clang::QualType> GetClangType(ClangTU& from) override final;
-            std::unique_ptr<Expression> BuildCall(std::unique_ptr<Expression> val, std::vector<std::unique_ptr<Expression>> args, Context c) override final;
+            std::shared_ptr<Expression> BuildCall(std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c) override final;
             std::size_t size() override final;
             std::size_t alignment() override final;
             Type* GetReturnType() { return ReturnType; }

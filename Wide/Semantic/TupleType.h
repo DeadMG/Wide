@@ -10,7 +10,7 @@ namespace Wide {
             TupleType(std::vector<Type*> types, Analyzer& a);
             std::vector<Type*> GetMembers() override final { return contents; }
 
-            std::unique_ptr<Expression> ConstructFromLiteral(std::vector<std::unique_ptr<Expression>> exprs, Context c);
+            std::shared_ptr<Expression> ConstructFromLiteral(std::vector<std::shared_ptr<Expression>> exprs, Context c);
             bool IsA(Type* self, Type* other, Lexer::Access access) override final;
             std::string explain() override final;
         };

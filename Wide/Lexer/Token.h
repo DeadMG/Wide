@@ -88,6 +88,9 @@ namespace Wide {
             extern const std::string Catch;
             extern const std::string Throw;
             extern const std::string QuestionMark;
+            extern const std::string Abstract;
+            extern const std::string Delete;
+            extern const std::string Default;
         };
         enum Access {
             Public,

@@ -77,7 +77,7 @@ namespace Wide {
             // Type attribute
             std::unordered_map<Lexer::TokenType, std::function<Lexer::Access(Parser&, Type*, Lexer::Access, Lexer::Token&, std::vector<Attribute>)>> TypeAttributeTokens;
             // Dynamic members
-            std::unordered_map<Lexer::TokenType, std::function<Function*(Parser&, Type*, Lexer::Access, Lexer::Token&, std::vector<Attribute>)>> DynamicMemberFunctions;
+            std::unordered_map<Lexer::TokenType, std::function<DynamicFunction*(Parser&, Type*, Lexer::Access, Lexer::Token&, std::vector<Attribute>)>> DynamicMemberFunctions;
 
 
             Parser(std::function<Wide::Util::optional<Lexer::Token>()> l);
@@ -121,6 +121,7 @@ namespace Wide {
             std::vector<FunctionArgument> ParseFunctionDefinitionArguments();
             Constructor* ParseConstructor(const Lexer::Token& first, std::vector<Attribute> attrs);
             Function* ParseFunction(const Lexer::Token& first, std::vector<Attribute> attrs);
+            Destructor* ParseDestructor(const Lexer::Token& first, std::vector<Attribute> attrs);
             
             Module* ParseQualifiedName(Lexer::Token& first, Module* m, Lexer::Access a, Parse::Error err);
             void ParseTypeBody(Type* ty);

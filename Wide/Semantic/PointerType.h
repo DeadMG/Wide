@@ -14,7 +14,7 @@ namespace Wide {
 
             PointerType(Type* point, Analyzer& a); 
             OverloadSet* CreateOperatorOverloadSet(Type* self, Lexer::TokenType what, Lexer::Access access) override final;
-            std::unique_ptr<Expression> BuildBooleanConversion(std::unique_ptr<Expression>, Context) override final;
+            std::shared_ptr<Expression> BuildBooleanConversion(std::shared_ptr<Expression>, Context) override final;
             Wide::Util::optional<clang::QualType> GetClangType(ClangTU& TU) override final;
             llvm::Type* GetLLVMType(llvm::Module* module) override final;
             std::size_t size() override final;

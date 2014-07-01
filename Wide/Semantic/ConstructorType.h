@@ -10,22 +10,22 @@ namespace Wide {
             std::unique_ptr<Type> array;
         public:
             ConstructorType(Type* con, Analyzer& a);
-            std::unique_ptr<Expression> BuildCall(std::unique_ptr<Expression> val, std::vector<std::unique_ptr<Expression>> args, Context c) override final;
+            std::shared_ptr<Expression> BuildCall(std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c) override final;
 
             Type* GetConstructedType() {
                 return t;
             }
-            std::unique_ptr<Expression> AccessMember(std::unique_ptr<Expression> t, std::string name, Context c) override final;
+            std::shared_ptr<Expression> AccessMember(std::shared_ptr<Expression> t, std::string name, Context c) override final;
             std::string explain() override final;
         };
         struct ExplicitConstruction : Expression {
-            ExplicitConstruction(std::unique_ptr<Expression> self, std::vector<std::unique_ptr<Expression>> args, Context c, Type* t)
+            ExplicitConstruction(std::shared_ptr<Expression> self, std::vector<std::shared_ptr<Expression>> args, Context c, Type* t)
             : c(c), self(std::move(self)) {
                 result = t->BuildValueConstruction(std::move(args), c);
             }
             Context c;
-            std::unique_ptr<Expression> self;
-            std::unique_ptr<Expression> result;
+            std::shared_ptr<Expression> self;
+            std::shared_ptr<Expression> result;
             llvm::Value* ComputeValue(CodegenContext& con) override final {
                 self->GetValue(con);
                 return result->GetValue(con);

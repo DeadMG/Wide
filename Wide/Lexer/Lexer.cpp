@@ -80,6 +80,9 @@ const std::string TokenTypes::Try = "try";
 const std::string TokenTypes::Catch = "catch";
 const std::string TokenTypes::Throw = "throw";
 const std::string TokenTypes::QuestionMark = "?";
+const std::string TokenTypes::Abstract = "abstract";
+const std::string TokenTypes::Delete = "delete";
+const std::string TokenTypes::Default = "default";
 
 Arguments::Arguments() {
     singles['+'] = &TokenTypes::Plus;
@@ -164,6 +167,9 @@ Arguments::Arguments() {
     keywords["try"] =          &TokenTypes::Try;
     keywords["catch"] =        &TokenTypes::Catch;
     keywords["throw"] =        &TokenTypes::Throw;
+    keywords["delete"] =       &TokenTypes::Delete;
+    keywords["abstract"] =     &TokenTypes::Abstract;
+    keywords["default"] =      &TokenTypes::Default;
 
     for (auto&& x : keywords)
         KeywordTypes.insert(x.second);

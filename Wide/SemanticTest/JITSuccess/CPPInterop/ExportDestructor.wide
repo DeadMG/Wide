@@ -1,7 +1,7 @@
 using test := cpp("JITSuccess/CPPInterop/ExportDestructor.h").test;
 
 [export := test.destructor]
-~type(this := test.lvalue)
+~type()
 {
     *p = true;
 }

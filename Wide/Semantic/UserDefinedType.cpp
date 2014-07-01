@@ -62,8 +62,8 @@ UserDefinedType::VTableData::VTableData(UserDefinedType* self) {
     for (auto&& base : self->GetBases())
         AddAllBases(all_bases, base);
 
-    std::unordered_map<const Parse::Function*, unsigned> primary_dynamic_functions;
-    std::unordered_map<const Parse::Function*, VTableLayout::VirtualFunctionEntry> dynamic_functions;
+    std::unordered_map<const Parse::DynamicFunction*, unsigned> primary_dynamic_functions;
+    std::unordered_map<const Parse::DynamicFunction*, VTableLayout::VirtualFunctionEntry> dynamic_functions;
     unsigned index = 0;
     for (auto overset : self->type->functions) {
         for (auto pair : overset.second) {
@@ -98,14 +98,14 @@ UserDefinedType::VTableData::VTableData(UserDefinedType* self) {
                                 primary_dynamic_functions[func] = i;
                             else {
                                 auto vfunc = VTableLayout::VirtualFunction{ overset.first, arguments, self->analyzer.GetWideFunction(func, self, arguments, overset.first)->GetSignature()->GetReturnType() };
-                                dynamic_functions[func] = { false, vfunc };
+                                dynamic_functions[func] = { func->abstract, vfunc };
                             }
                         }
                     }
                 }
                 if (func->dynamic){
                     auto vfunc = VTableLayout::VirtualFunction{ overset.first, arguments, self->analyzer.GetWideFunction(func, self, arguments, overset.first)->GetSignature()->GetReturnType() };
-                    dynamic_functions[func] = { false, vfunc };                    
+                    dynamic_functions[func] = { func->abstract, vfunc };                    
                 }
             }
         }
@@ -208,13 +208,13 @@ std::vector<UserDefinedType::member> UserDefinedType::GetConstructionMembers() {
         m.name = type->variables[i].name;
         m.num = { GetOffset(i + type->bases.size()) };
         if (GetMemberData().NSDMIs[i])
-            m.InClassInitializer = [this, i](std::unique_ptr<Expression>) { return analyzer.AnalyzeExpression(context, GetMemberData().NSDMIs[i]); };
+            m.InClassInitializer = [this, i](std::shared_ptr<Expression>) { return analyzer.AnalyzeExpression(context, GetMemberData().NSDMIs[i]); };
         out.push_back(std::move(m));
     }
     return out;
 }
 
-std::unique_ptr<Expression> UserDefinedType::AccessMember(std::unique_ptr<Expression> self, std::string name, Context c) {
+std::shared_ptr<Expression> UserDefinedType::AccessMember(std::shared_ptr<Expression> self, std::string name, Context c) {
     //if (!self->GetType()->IsReference())
     //    self = BuildRvalueConstruction(Expressions(std::move(self)), { this, c.where });
     auto spec = GetAccessSpecifier(c.from, this);
@@ -232,13 +232,13 @@ std::unique_ptr<Expression> UserDefinedType::AccessMember(std::unique_ptr<Expres
         }
         auto selfty = self->GetType();
         if (!resolvables.empty())
-            return analyzer.GetOverloadSet(resolvables, analyzer.GetRvalueType(selfty))->BuildValueConstruction(Expressions(std::move(self)), c);
+            return analyzer.GetOverloadSet(resolvables, analyzer.GetRvalueType(selfty))->BuildValueConstruction({ std::move(self) }, c);
     }
     // Any of our bases have this member?
     Type* BaseType = nullptr;
     OverloadSet* BaseOverloadSet = nullptr;
     for (auto base : GetBaseData().bases) {
-        auto baseobj = AccessBase(Wide::Memory::MakeUnique<ExpressionReference>(self.get()), base);
+        auto baseobj = AccessBase(self, base);
         if (auto member = base->AccessMember(std::move(baseobj), name, c)) {
             // If there's nothing there, we win.
             // If we're an OS and the existing is an OS, we win by unifying.
@@ -259,7 +259,7 @@ std::unique_ptr<Expression> UserDefinedType::AccessMember(std::unique_ptr<Expres
         }
     }
     if (BaseOverloadSet)
-        return BaseOverloadSet->BuildValueConstruction(Expressions(std::move(self)), c);
+        return BaseOverloadSet->BuildValueConstruction({ std::move(self) }, c);
     if (!BaseType)
         return nullptr;
     return BaseType->AccessMember(AccessBase(std::move(self), BaseType), name, c);
@@ -467,22 +467,6 @@ bool UserDefinedType::HasMember(std::string name) {
     return GetMemberData().member_indices.find(name) != GetMemberData().member_indices.end();
 }
 
-bool UserDefinedType::BinaryComplex(llvm::Module* module) {
-    if (BCCache)
-        return *BCCache;
-    bool IsBinaryComplex = AggregateType::IsComplexType(module);
-    if (!type->constructor_decls.empty()) {
-        std::vector<Type*> copytypes;
-        copytypes.push_back(analyzer.GetLvalueType(this));
-        copytypes.push_back(copytypes.front());
-        IsBinaryComplex = IsBinaryComplex || GetConstructorOverloadSet(Lexer::Access::Private)->Resolve(copytypes, this);
-    }
-    if (type->destructor_decl) 
-        IsBinaryComplex = true;
-    BCCache = IsBinaryComplex;
-    return *BCCache;
-}
-
 #pragma warning(disable : 4800)
 
 bool UserDefinedType::UserDefinedComplex() {
@@ -582,30 +566,30 @@ OverloadSet* UserDefinedType::CreateConstructorOverloadSet(Lexer::Access access)
                 return args;
             }
             Callable* GetCallableForResolution(std::vector<Type*> tys, Analyzer& a) override final { return this; }
-            std::vector<std::unique_ptr<Expression>> AdjustArguments(std::vector<std::unique_ptr<Expression>> args, Context c)  override final { return args; }
-            std::unique_ptr<Expression> CallFunction(std::vector<std::unique_ptr<Expression>> args, Context c) override final {
+            std::vector<std::shared_ptr<Expression>> AdjustArguments(std::vector<std::shared_ptr<Expression>> args, Context c)  override final { return args; }
+            std::shared_ptr<Expression> CallFunction(std::vector<std::shared_ptr<Expression>> args, Context c) override final {
                 struct NSDMIConstructor : Expression {
                     UserDefinedType* self;
-                    std::unique_ptr<Expression> arg;
-                    std::vector<std::unique_ptr<Expression>> initializers;
-                    NSDMIConstructor(UserDefinedType* s, std::unique_ptr<Expression> obj, Lexer::Range where)
+                    std::shared_ptr<Expression> arg;
+                    std::vector<std::shared_ptr<Expression>> initializers;
+                    NSDMIConstructor(UserDefinedType* s, std::shared_ptr<Expression> obj, Lexer::Range where)
                         : self(s), arg(std::move(obj)) 
                     {
                         for (auto&& mem : self->GetConstructionMembers()) {
                             auto num = mem.num;
                             auto result = self->analyzer.GetLvalueType(mem.t);
-                            auto member = CreatePrimUnOp(Wide::Memory::MakeUnique<ExpressionReference>(arg.get()), self->analyzer.GetLvalueType(mem.t), [num, result](llvm::Value* val, CodegenContext& con) {
+                            auto member = CreatePrimUnOp(arg, self->analyzer.GetLvalueType(mem.t), [num, result](llvm::Value* val, CodegenContext& con) {
                                 auto self = con->CreatePointerCast(val, con.GetInt8PtrTy());
                                 self = con->CreateConstGEP1_32(self, num.offset);
                                 return con->CreatePointerCast(self, result->GetLLVMType(con));                            
                             });
                             if (mem.InClassInitializer)
-                                initializers.push_back(mem.t->BuildInplaceConstruction(std::move(member), Expressions(mem.InClassInitializer(Wide::Memory::MakeUnique<ExpressionReference>(arg.get()))), Context(self, where)));
+                                initializers.push_back(mem.t->BuildInplaceConstruction(std::move(member), { mem.InClassInitializer(arg) }, Context(self, where)));
                             else
-                                initializers.push_back(mem.t->BuildInplaceConstruction(std::move(member), Expressions(), { self, where }));
+                                initializers.push_back(mem.t->BuildInplaceConstruction(std::move(member), {}, { self, where }));
                         }
                         // We can be asked to use this constructor to initialize a base vptr override.
-                        initializers.push_back(self->SetVirtualPointers(Wide::Memory::MakeUnique<ExpressionReference>(arg.get())));
+                        initializers.push_back(self->SetVirtualPointers(arg));
                     }
                     Type* GetType() override final {
                         return self->analyzer.GetLvalueType(self);
@@ -655,17 +639,25 @@ OverloadSet* UserDefinedType::CreateOperatorOverloadSet(Type* self, Lexer::Token
     return AggregateType::CreateOperatorOverloadSet(self, name, access);
 }
 
-std::unique_ptr<Expression> UserDefinedType::BuildDestructorCall(std::unique_ptr<Expression> self, Context c) {
-    auto selfref = Wide::Memory::MakeUnique<ExpressionReference>(self.get());
-    auto aggcall = AggregateType::BuildDestructorCall(std::move(self), c);
+std::function<void(CodegenContext&)> UserDefinedType::BuildDestructorCall(std::shared_ptr<Expression> self, Context c, bool devirtualize) {
     if (type->destructor_decl) {
+        assert(self->GetType()->IsReference(this));
         std::unordered_set<OverloadResolvable*> resolvables;
-        resolvables.insert(analyzer.GetCallableForFunction(type->destructor_decl, selfref->GetType(), "~type"));
-        auto desset = analyzer.GetOverloadSet(resolvables, selfref->GetType());
-        auto call = desset->BuildCall(desset->BuildValueConstruction(Expressions(std::move(selfref)), { this, type->destructor_decl->where }), Expressions(), { this, type->destructor_decl->where });
-        return BuildChain(std::move(call), std::move(aggcall));
+        resolvables.insert(analyzer.GetCallableForFunction(type->destructor_decl, self->GetType(), "~type"));
+        auto desset = analyzer.GetOverloadSet(resolvables, self->GetType());
+        auto callable = dynamic_cast<Wide::Semantic::Function*>(desset->Resolve({ self->GetType() }, c.from));
+        auto call = callable->Call({ self }, { this, c.where });
+        if (type->destructor_decl->dynamic && !devirtualize) 
+            return [=](CodegenContext& c) {
+                call->GetValue(c);
+            };
+        return [=](CodegenContext& c) {
+            auto name = callable->GetName();
+            callable->EmitCode(c.module);
+            c->CreateCall(c.module->getFunction(name), self->GetValue(c));
+        };
     }
-    return aggcall;
+    return AggregateType::BuildDestructorCall(self, c, true);
 }
 
 // Gotta override these to respect our user-defined functions
@@ -692,10 +684,6 @@ bool UserDefinedType::IsMoveAssignable(Lexer::Access access) {
     return AggregateType::IsMoveAssignable(access);
 }
 
-bool UserDefinedType::IsComplexType(llvm::Module* module) {
-    return BinaryComplex(module);
-}
-
 Wide::Util::optional<std::vector<Type*>> UserDefinedType::GetTypesForTuple() {
     if (UserDefinedComplex())
         return Wide::Util::none;
@@ -706,7 +694,7 @@ Wide::Util::optional<std::vector<Type*>> UserDefinedType::GetTypesForTuple() {
 }
 
 // Implements TupleInitializable::PrimitiveAccessMember.
-std::unique_ptr<Expression> UserDefinedType::PrimitiveAccessMember(std::unique_ptr<Expression> self, unsigned num) {
+std::shared_ptr<Expression> UserDefinedType::PrimitiveAccessMember(std::shared_ptr<Expression> self, unsigned num) {
     return AggregateType::PrimitiveAccessMember(std::move(self), num);
 }
 
@@ -719,7 +707,7 @@ Type::VTableLayout UserDefinedType::ComputePrimaryVTableLayout() {
     return GetVtableData().funcs;
 }
 
-std::unique_ptr<Expression> UserDefinedType::VirtualEntryFor(VTableLayout::VirtualFunctionEntry entry, unsigned offset) {
+std::shared_ptr<Expression> UserDefinedType::VirtualEntryFor(VTableLayout::VirtualFunctionEntry entry, unsigned offset) {
     struct VTableThunk : Expression {
         VTableThunk(Function* f, unsigned off)
         : widefunc(f), offset(off) {}
@@ -732,13 +720,13 @@ std::unique_ptr<Expression> UserDefinedType::VirtualEntryFor(VTableLayout::Virtu
             widefunc->EmitCode(con);
             if (offset == 0)
                 return con.module->getFunction(widefunc->GetName());
-            auto this_index = (std::size_t)widefunc->GetSignature()->GetReturnType()->IsComplexType(con);
+            auto this_index = (std::size_t)widefunc->GetSignature()->GetReturnType()->IsComplexType();
             std::stringstream strstr;
             strstr << "__" << this << offset;
             auto thunk = llvm::Function::Create(llvm::dyn_cast<llvm::FunctionType>(widefunc->GetSignature()->GetLLVMType(con)->getElementType()), llvm::GlobalValue::LinkageTypes::InternalLinkage, strstr.str(), con.module);
             llvm::BasicBlock* bb = llvm::BasicBlock::Create(con.module->getContext(), "entry", thunk);
             llvm::IRBuilder<> irbuilder(bb);
-            auto self = std::next(thunk->arg_begin(), widefunc->GetSignature()->GetReturnType()->IsComplexType(con.module));
+            auto self = std::next(thunk->arg_begin(), widefunc->GetSignature()->GetReturnType()->IsComplexType());
             auto offset_self = irbuilder.CreateConstGEP1_32(irbuilder.CreatePointerCast(self, llvm::IntegerType::getInt8PtrTy(con.module->getContext())), -offset);
             auto cast_self = irbuilder.CreatePointerCast(offset_self, std::next(con.module->getFunction(widefunc->GetName())->arg_begin(), this_index)->getType());
             std::vector<llvm::Value*> args;
@@ -824,7 +812,7 @@ std::vector<std::pair<Type*, unsigned>> UserDefinedType::GetBasesAndOffsets() {
 std::vector<Type*> UserDefinedType::GetBases() {
     return GetBaseData().bases;
 }
-Wide::Util::optional<unsigned> UserDefinedType::GetVirtualFunctionIndex(const Parse::Function* func) {
+Wide::Util::optional<unsigned> UserDefinedType::GetVirtualFunctionIndex(const Parse::DynamicFunction* func) {
     if (GetVtableData().VTableIndices.find(func) == GetVtableData().VTableIndices.end())
         return Wide::Util::none;
     return GetVtableData().VTableIndices.at(func);
@@ -890,6 +878,8 @@ bool UserDefinedType::HasDeclaredDynamicFunctions() {
             for (auto func : access.second)
                 if (func->dynamic)
                     return true;
+    if (type->destructor_decl)
+        return type->destructor_decl->dynamic;
     return false;
 }
 UserDefinedType::BaseData::BaseData(BaseData&& other)
@@ -941,4 +931,23 @@ Wide::Util::optional<unsigned> UserDefinedType::AlignOverride() {
         }
     }
     return Util::none;
+}
+bool UserDefinedType::IsTriviallyCopyConstructible() {
+    auto user_defined = [&, this] {
+        if (type->constructor_decls.empty())
+            return analyzer.GetOverloadSet();
+        std::unordered_set<OverloadResolvable*> resolvables;
+        for (auto f : type->constructor_decls) {
+            for (auto func : f.second)
+                resolvables.insert(analyzer.GetCallableForFunction(func, analyzer.GetLvalueType(this), "type"));
+        }
+        return analyzer.GetOverloadSet(resolvables, analyzer.GetLvalueType(this));
+    };
+    auto user_defined_constructors = user_defined();
+    if (user_defined_constructors->Resolve({ analyzer.GetLvalueType(this), analyzer.GetLvalueType(this) }, this))
+        return false;
+    return AggregateType::IsTriviallyCopyConstructible();
+}
+bool UserDefinedType::IsTriviallyDestructible() {
+    return !type->destructor_decl && AggregateType::IsTriviallyDestructible();
 }

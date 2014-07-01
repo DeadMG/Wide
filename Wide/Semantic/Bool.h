@@ -19,7 +19,7 @@ namespace Wide {
             Wide::Util::optional<clang::QualType> GetClangType(ClangTU&) override final;
             
             OverloadSet* CreateOperatorOverloadSet(Type* t, Lexer::TokenType name, Lexer::Access access) override final;
-            std::unique_ptr<Expression> BuildBooleanConversion(std::unique_ptr<Expression>, Context c) override final;
+            std::shared_ptr<Expression> BuildBooleanConversion(std::shared_ptr<Expression>, Context c) override final;
             std::size_t size() override final;
             std::size_t alignment() override final;
             std::string explain() override final;

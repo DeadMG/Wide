@@ -33,7 +33,7 @@ template<typename T, typename U> T* debug_cast(U* other) {
     return static_cast<T*>(other);
 }
 
-std::unique_ptr<Expression> OverloadSet::BuildCall(std::unique_ptr<Expression> val, std::vector<std::unique_ptr<Expression>> args, Context c) {
+std::shared_ptr<Expression> OverloadSet::BuildCall(std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c) {
     std::vector<Type*> targs;
 
     if (nonstatic)
@@ -63,9 +63,9 @@ struct cppcallable : public Callable {
     ClangTU* from;
     std::vector<std::pair<Type*, bool>> types;
 
-    std::unique_ptr<Expression> CallFunction(std::vector<std::unique_ptr<Expression>> args, Context c) override final {
+    std::shared_ptr<Expression> CallFunction(std::vector<std::shared_ptr<Expression>> args, Context c) override final {
         struct CPPSelf : Expression {
-            CPPSelf(clang::FunctionDecl* func, ClangTU* from, Type* fty, Expression* arg)
+            CPPSelf(clang::FunctionDecl* func, ClangTU* from, Type* fty, std::shared_ptr<Expression> arg)
             : func(func), from(from), fty(fty), self(arg) 
             {
                 mangle = from->MangleName(func);
@@ -74,7 +74,7 @@ struct cppcallable : public Callable {
                         auto selfty = self->GetType();
                         if (selfty->IsReference()) {
                             auto clangty = dynamic_cast<ClangType*>(selfty->Decay());
-                            vtable = clangty->GetVirtualPointer(Wide::Memory::MakeUnique<ExpressionReference>(self));
+                            vtable = clangty->GetVirtualPointer(self);
                         }
                     }
                 }
@@ -82,8 +82,8 @@ struct cppcallable : public Callable {
             clang::FunctionDecl* func;
             ClangTU* from;
             Type* fty;
-            Expression* self;
-            std::unique_ptr<Expression> vtable;
+            std::shared_ptr<Expression> self;
+            std::shared_ptr<Expression> vtable;
             std::function<std::string(llvm::Module*)> mangle;
 
             Type* GetType() override final {
@@ -114,10 +114,10 @@ struct cppcallable : public Callable {
             local.push_back(x.first);
         auto&& analyzer = source->analyzer;
         auto fty = analyzer.GetFunctionType(analyzer.GetClangType(*from, fun->getResultType()), local, fun->isVariadic());
-        auto self = args.size() > 0 ? args[0].get() : nullptr;
+        auto self = args.size() > 0 ? args[0] : nullptr;
         return fty->BuildCall(Wide::Memory::MakeUnique<CPPSelf>(fun, from, fty, self), std::move(args), { source, c.where });
     }
-    std::vector<std::unique_ptr<Expression>> AdjustArguments(std::vector<std::unique_ptr<Expression>> args, Context c) override final {
+    std::vector<std::shared_ptr<Expression>> AdjustArguments(std::vector<std::shared_ptr<Expression>> args, Context c) override final {
         // Clang may ask us to call an overload that doesn't have the right number of arguments
         // because it has a default argument.
         // types includes this when Clang doesn't include it, so subtract 1 for that.
@@ -136,7 +136,7 @@ struct cppcallable : public Callable {
         // Clang may ask us to call overloads where we think the arguments are not a match
         // for example, implicit conversion from int64 to int32
         // so do the conversion ourselves if lvalues were not involved.
-        std::vector<std::unique_ptr<Expression>> out;
+        std::vector<std::shared_ptr<Expression>> out;
         for (std::size_t i = 0; i < types.size(); ++i) {
             if (types[i].first == args[i]->GetType()) {
                 out.push_back(std::move(args[i]));
@@ -147,7 +147,7 @@ struct cppcallable : public Callable {
             auto derived = args[i]->GetType()->Decay(); 
             auto base = types[i].first->Decay();
             if (derived->IsDerivedFrom(types[i].first->Decay()) == Type::InheritanceRelationship::UnambiguouslyDerived) {
-                out.push_back(types[i].first->BuildValueConstruction(Expressions(std::move(args[i])), c));
+                out.push_back(types[i].first->BuildValueConstruction({ std::move(args[i]) }, c));
                 continue;
             }
             
@@ -163,16 +163,16 @@ struct cppcallable : public Callable {
                 !IsLvalueType(args[i]->GetType())
             ) {
                 if (types[i].first->Decay() == args[i]->GetType()->Decay())
-                    out.push_back(types[i].first->analyzer.GetRvalueType(types[i].first->Decay())->BuildValueConstruction(Expressions(std::move(args[i])), c));
+                    out.push_back(types[i].first->analyzer.GetRvalueType(types[i].first->Decay())->BuildValueConstruction({ std::move(args[i]) }, c));
                 else
-                    out.push_back(types[i].first->Decay()->BuildRvalueConstruction(Expressions(std::move(args[i])), c));
+                    out.push_back(types[i].first->Decay()->BuildRvalueConstruction({ std::move(args[i]) }, c));
                 continue;
             }
 
             struct ImplicitStringDecay : Expression {
-                ImplicitStringDecay(std::unique_ptr<Expression> expr)
+                ImplicitStringDecay(std::shared_ptr<Expression> expr)
                 : StringExpr(std::move(expr)) {}
-                std::unique_ptr<Expression> StringExpr;
+                std::shared_ptr<Expression> StringExpr;
                 llvm::Value* ComputeValue(CodegenContext& con) override final {
                     return StringExpr->GetValue(con);
                 }
@@ -185,11 +185,11 @@ struct cppcallable : public Callable {
             // Clang may ask us to build an int8* from a string literal.
             // Just pretend that the argument was an int8*.
             if (types[i].first->Decay() == source->analyzer.GetPointerType(source->analyzer.GetIntegralType(8, true)) && dynamic_cast<StringType*>(args[i]->GetType()->Decay())) {
-                out.push_back(types[i].first->BuildValueConstruction(Expressions(Wide::Memory::MakeUnique<ImplicitStringDecay>(BuildValue(std::move(args[i])))), c));
+                out.push_back(types[i].first->BuildValueConstruction({ Wide::Memory::MakeUnique<ImplicitStringDecay>(BuildValue(std::move(args[i]))) }, c));
                 continue;
             }
             
-            out.push_back(types[i].first->BuildValueConstruction(Expressions(std::move(args[i])), c));
+            out.push_back(types[i].first->BuildValueConstruction({ std::move(args[i]) }, c));
         }
         return out;
     }
@@ -358,7 +358,7 @@ OverloadSet* OverloadSet::CreateConstructorOverloadSet(Lexer::Access access) {
     if (access != Lexer::Access::Public) return GetConstructorOverloadSet(Lexer::Access::Public);
     if (nonstatic) {
         std::unordered_set<OverloadResolvable*> constructors;
-        ReferenceConstructor = MakeResolvable([this](std::vector<std::unique_ptr<Expression>> args, Context c) {
+        ReferenceConstructor = MakeResolvable([this](std::vector<std::shared_ptr<Expression>> args, Context c) {
             return CreatePrimAssOp(std::move(args[0]), std::move(args[1]), [this](llvm::Value* lhs, llvm::Value* rhs, CodegenContext& con) {
                 auto agg = llvm::ConstantAggregateZero::get(GetLLVMType(con));
                 return con->CreateInsertValue(agg, rhs, { 0 });
@@ -371,17 +371,17 @@ OverloadSet* OverloadSet::CreateConstructorOverloadSet(Lexer::Access access) {
         
     return AggregateType::CreateConstructorOverloadSet(access);
 }
-std::unique_ptr<Expression> OverloadSet::AccessMember(std::unique_ptr<Expression> t, std::string name, Context c) {
+std::shared_ptr<Expression> OverloadSet::AccessMember(std::shared_ptr<Expression> t, std::string name, Context c) {
     if (name != "resolve")
         return Type::AccessMember(std::move(t), name, c);
     if (ResolveType)
-        return ResolveType->BuildValueConstruction(Expressions(), Context( this, c.where ));
+        return ResolveType->BuildValueConstruction({}, Context( this, c.where ));
     struct ResolveCallable : public MetaType 
     {
         ResolveCallable(OverloadSet* f, Analyzer& a)
         : from(f), MetaType(a) {}
         OverloadSet* from;
-        std::unique_ptr<Expression> BuildCall(std::unique_ptr<Expression> val, std::vector<std::unique_ptr<Expression>> args, Context c) override final {
+        std::shared_ptr<Expression> BuildCall(std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c) override final {
             std::vector<Type*> types;
             for (auto&& arg : args) {
                 auto con = dynamic_cast<ConstructorType*>(arg->GetType()->Decay());
@@ -393,14 +393,14 @@ std::unique_ptr<Expression> OverloadSet::AccessMember(std::unique_ptr<Expression
             auto clangfunc = dynamic_cast<cppcallable*>(call);
             std::unordered_set<clang::NamedDecl*> decls;
             decls.insert(clangfunc->fun);
-            return analyzer.GetOverloadSet(decls, clangfunc->from, nullptr)->BuildValueConstruction(Expressions(), c);
+            return analyzer.GetOverloadSet(decls, clangfunc->from, nullptr)->BuildValueConstruction({}, c);
         }
         std::string explain() override final {
             return from->explain() + ".resolve";
         }
     };
     if (!ResolveType) ResolveType = Wide::Memory::MakeUnique<ResolveCallable>(this, analyzer);
-    return ResolveType->BuildValueConstruction(Expressions(), Context( this, c.where ));
+    return ResolveType->BuildValueConstruction({}, Context( this, c.where ));
 }
 std::string OverloadSet::explain() {
     std::stringstream strstr;

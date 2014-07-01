@@ -208,9 +208,7 @@ Parser::Parser(std::function<Wide::Util::optional<Lexer::Token>()> l)
     };
 
     GlobalModuleAttributeTokens[&Lexer::TokenTypes::Negate] = [](Parser& p, Module* m, Lexer::Access a, Lexer::Token& token, std::vector<Attribute> attributes) {
-        auto next = p.Check(Error::DestructorNoType, &Lexer::TokenTypes::Type);
-        auto open = p.Check(Error::DestructorNoOpenBracket, &Lexer::TokenTypes::OpenBracket);
-        auto des = p.ParseFunction(token, attributes);
+        auto des = p.ParseDestructor(token, attributes);
         m->destructor_decls.insert(des);
     };
     
@@ -226,7 +224,9 @@ Parser::Parser(std::function<Wide::Util::optional<Lexer::Token>()> l)
             return p.arena.Allocate<MemberAccess>(t.GetValue(), e, e->location + t.GetLocation(), t.GetLocation());
         if (t.GetType() == &Lexer::TokenTypes::Negate) {
             auto typ = p.Check(Error::MemberAccessNoTypeAfterNegate, &Lexer::TokenTypes::Type);
-            return p.arena.Allocate<DestructorAccess>(e, e->location + typ.GetLocation());
+            auto open = p.Check(Error::DestructorNoOpenBracket, &Lexer::TokenTypes::OpenBracket);
+            auto close = p.Check(Error::DestructorNoOpenBracket, &Lexer::TokenTypes::CloseBracket);
+            return p.arena.Allocate<DestructorAccess>(e, e->location + close.GetLocation());
         }
         throw p.BadToken(t, Error::MemberAccessNoIdentifierOrDestructor);
         return nullptr; // shut up warning
@@ -635,11 +635,9 @@ Parser::Parser(std::function<Wide::Util::optional<Lexer::Token>()> l)
     };
 
     DynamicMemberFunctions[&Lexer::TokenTypes::Negate] = [](Parser& p, Type* t, Lexer::Access a, Lexer::Token& tok, std::vector<Attribute> attrs) {
-        auto type = p.Check(Error::DestructorNoType, &Lexer::TokenTypes::Type);
-        p.Check(Error::DestructorNoOpenBracket, &Lexer::TokenTypes::OpenBracket);
-        auto func = p.ParseFunction(tok, attrs);
-        t->destructor_decl = func;
-        return func;
+        auto des = p.ParseDestructor(tok, attrs);
+        t->destructor_decl = des;
+        return des;
     };
 
     DynamicMemberFunctions[&Lexer::TokenTypes::Operator] = [](Parser& p, Type* t, Lexer::Access a, Lexer::Token& tok, std::vector<Attribute> attrs) -> Function* {
@@ -855,12 +853,6 @@ Statement* Parser::ParseStatement() {
     Check(Error::ExpressionStatementNoSemicolon, &Lexer::TokenTypes::Semicolon);
     return std::move(expr);
 }
-/*auto ParseVariableStatement(TokenType t) -> decltype(sema.CreateVariable(t.GetValue(), std::declval<ExpressionType>(), t.GetLocation(), t.GetLocation())) {
-// Expect to have already seen :=
-auto expr = ParseExpression();
-auto semi = Check(Error::VariableStatementNoSemicolon, Lexer::TokenType::Semicolon);
-return sema.CreateVariable(t.GetValue(), std::move(expr), t.GetLocation() + semi.GetLocation(), t.GetLocation());
-}*/
 std::vector<Expression*> Parser::ParseTypeBases() {
     auto colon = lex(Error::BreakNoSemicolon);
     auto group = std::vector<Expression*>();
@@ -981,6 +973,21 @@ Constructor* Parser::ParseConstructor(const Lexer::Token& first, std::vector<Att
         t = lex(Error::FunctionNoClosingCurly);
     }
     return arena.Allocate<Constructor>(std::move(statements), first.GetLocation() + t.GetLocation(), std::move(args), std::move(initializers), attrs);
+}
+Destructor* Parser::ParseDestructor(const Lexer::Token& first, std::vector<Attribute> attrs) {
+    // ~ type ( ) { stuff }
+    Check(Error::DestructorNoType, &Lexer::TokenTypes::Type);
+    Check(Error::DestructorNoOpenBracket, &Lexer::TokenTypes::OpenBracket);
+    Check(Error::DestructorNoOpenBracket, &Lexer::TokenTypes::CloseBracket);
+    Check(Error::DestructorNoOpenBracket, &Lexer::TokenTypes::OpenCurlyBracket);
+    std::vector<Statement*> body;
+    auto t = lex(Error::DecltypeNoCloseBracket);
+    while (t.GetType() != &Lexer::TokenTypes::CloseCurlyBracket) {
+        lex(t);
+        body.push_back(ParseStatement());
+        t = lex(Error::DecltypeNoCloseBracket);
+    }
+    return arena.Allocate<Destructor>(std::move(body), first.GetLocation() + t.GetLocation(), attrs);
 }
 
 void Parser::AddTypeToModule(Module* m, std::string name, Type* t, Lexer::Access specifier) {

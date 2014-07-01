@@ -16,7 +16,7 @@ namespace Wide {
             Wide::Util::optional<clang::QualType> GetClangType(ClangTU& TU) override final;
             Wide::Util::optional<std::vector<Type*>> GetTypesForTuple() override final;
             std::string explain() override final;
-            std::unique_ptr<Expression> PrimitiveAccessMember(std::unique_ptr<Expression> self, unsigned num) override final;
+            std::shared_ptr<Expression> PrimitiveAccessMember(std::shared_ptr<Expression> self, unsigned num) override final;
             std::size_t size() override final;
             std::size_t alignment() override final;
             llvm::Type* GetLLVMType(llvm::Module* module) override final; 

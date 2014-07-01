@@ -45,6 +45,7 @@ namespace Wide {
         struct TemplateType;
         struct Type;
         struct Using;
+        struct Destructor;
         struct Constructor;
         struct Module {
             Module() {}
@@ -60,7 +61,7 @@ namespace Wide {
             > named_decls;
 
             std::unordered_set<Constructor*> constructor_decls;
-            std::unordered_set<Function*> destructor_decls;
+            std::unordered_set<Destructor*> destructor_decls;
             std::vector<Lexer::Range> locations;
             virtual ~Module() {}
         };
@@ -74,12 +75,13 @@ namespace Wide {
             Expression* initializer;
             std::vector<Attribute> attributes;
         };
+        struct Destructor;
         struct Type : Expression {
             Type(std::vector<Expression*> base, Lexer::Range loc, std::vector<Attribute> attributes) : Expression(loc), bases(base), attributes(attributes), destructor_decl(nullptr) {}
             std::vector<MemberVariable> variables;
             std::unordered_map<std::string, std::unordered_map<Lexer::Access, std::unordered_set<Function*>>> functions;
             std::unordered_map<Lexer::Access, std::unordered_set<Constructor*>> constructor_decls;
-            Function* destructor_decl;
+            Destructor* destructor_decl;
 
             std::vector<Expression*> bases;
             std::vector<Attribute> attributes;
@@ -147,7 +149,8 @@ namespace Wide {
             AttributeFunctionBase(std::vector<Statement*> b, Lexer::Range loc, std::vector<FunctionArgument> ar, std::vector<Attribute> attributes)
             : FunctionBase(std::move(ar), std::move(b), loc), attributes(attributes) {}
             std::vector<Attribute> attributes;
-
+            bool deleted = false;
+            bool defaulted = false;
         };
         struct Variable;
         struct Lambda : Expression, FunctionBase {
@@ -156,11 +159,20 @@ namespace Wide {
             Lambda(std::vector<Statement*> body, std::vector<FunctionArgument> arg, Lexer::Range r, bool ref, std::vector<Variable*> caps)
                 : Expression(r), FunctionBase(std::move(arg), std::move(body), r), Captures(std::move(caps)), defaultref(ref) {}
         };
-        struct Function : AttributeFunctionBase {
-            Function(std::vector<Statement*> b, Lexer::Range loc, std::vector<FunctionArgument> ar, Expression* explicit_ret, std::vector<Attribute> attributes)
-                : AttributeFunctionBase(std::move(b), loc, std::move(ar), std::move(attributes)), explicit_return(explicit_ret) {}
-            Expression* explicit_return = nullptr;
+        struct DynamicFunction : AttributeFunctionBase {
+            DynamicFunction(std::vector<Statement*> b, std::vector<FunctionArgument> args, Lexer::Range loc, std::vector<Attribute> attributes)
+            : AttributeFunctionBase(std::move(b), loc, args, std::move(attributes)) {}
             bool dynamic = false;
+        };
+        struct Function : DynamicFunction {
+            Function(std::vector<Statement*> b, Lexer::Range loc, std::vector<FunctionArgument> ar, Expression* explicit_ret, std::vector<Attribute> attributes)
+                : DynamicFunction(std::move(b), std::move(ar), loc, std::move(attributes)), explicit_return(explicit_ret) {}
+            Expression* explicit_return = nullptr;
+            bool abstract = false;
+        };
+        struct Destructor : DynamicFunction {
+            Destructor(std::vector<Statement*> b, Lexer::Range loc, std::vector<Attribute> attributes)
+            : DynamicFunction(std::move(b), std::vector<FunctionArgument>(), loc, std::move(attributes)) {}
         };
         struct VariableInitializer {
             VariableInitializer(Expression* begin, Expression* end, Lexer::Range where)

@@ -23,7 +23,7 @@ LambdaType::LambdaType(std::vector<std::pair<std::string, Type*>> capturetypes, 
         names[pair.first] = i++;
 }
 
-std::unique_ptr<Expression> LambdaType::BuildCall(std::unique_ptr<Expression> val, std::vector<std::unique_ptr<Expression>> args, Context c) {
+std::shared_ptr<Expression> LambdaType::BuildCall(std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c) {
     args.insert(args.begin(), std::move(val));
     std::vector<Type*> types;
     for (auto&& arg : args)
@@ -33,11 +33,11 @@ std::unique_ptr<Expression> LambdaType::BuildCall(std::unique_ptr<Expression> va
     if (!call) overset->IssueResolutionError(types, c);
     return call->Call(std::move(args), c);
 }
-std::unique_ptr<Expression> LambdaType::BuildLambdaFromCaptures(std::vector<std::unique_ptr<Expression>> exprs, Context c) {
-    auto self = Wide::Memory::MakeUnique<ImplicitTemporaryExpr>(this, c);
+std::shared_ptr<Expression> LambdaType::BuildLambdaFromCaptures(std::vector<std::shared_ptr<Expression>> exprs, Context c) {
+    auto self = std::make_shared<ImplicitTemporaryExpr>(this, c);
     if (contents.size() == 0)
         return std::move(self);
-    std::vector<std::unique_ptr<Expression>> initializers;
+    std::vector<std::shared_ptr<Expression>> initializers;
     for (std::size_t i = 0; i < exprs.size(); ++i) {
         std::vector<Type*> types;
         types.push_back(analyzer.GetLvalueType(GetMembers()[i]));
@@ -46,33 +46,34 @@ std::unique_ptr<Expression> LambdaType::BuildLambdaFromCaptures(std::vector<std:
         auto call = conset->Resolve(types, c.from);
         if (!call) conset->IssueResolutionError(types, c);
         // Don't PrimAccessMember because it collapses references, and DO NOT WANT
-        auto obj = CreatePrimUnOp(Wide::Memory::MakeUnique<ExpressionReference>(self.get()), types[0], [this, i](llvm::Value* val, CodegenContext& con) {
+        auto obj = CreatePrimUnOp(self, types[0], [this, i](llvm::Value* val, CodegenContext& con) {
             return con->CreateStructGEP(val, boost::get<LLVMFieldIndex>(GetLocation(i)).index);
         });
-        initializers.push_back(call->Call(Expressions(std::move(obj), std::move(exprs[i])), c));
+        initializers.push_back(call->Call({ std::move(obj), std::move(exprs[i]) }, c));
     }
     
     struct LambdaConstruction : Expression {
-        LambdaConstruction(std::unique_ptr<Expression> self, std::vector<std::unique_ptr<Expression>> inits)
-        : self(std::move(self)), inits(std::move(inits)) {}
-        std::vector<std::unique_ptr<Expression>> inits;
-        std::unique_ptr<Expression> self;
+        LambdaConstruction(std::shared_ptr<Expression> self, std::vector<std::shared_ptr<Expression>> inits, std::function<void(CodegenContext&)> destructor)
+        : self(std::move(self)), inits(std::move(inits)), destructor(std::move(destructor)) {}
+        std::vector<std::shared_ptr<Expression>> inits;
+        std::shared_ptr<Expression> self;
+        std::function<void(CodegenContext&)> destructor;
         Type* GetType() override final {
             return self->GetType();
         }
         llvm::Value* ComputeValue(CodegenContext& con) override final {
             for (auto&& init : inits)
                 init->GetValue(con);
-            if (self->GetType()->IsComplexType(con))
-                con.Destructors.push_back(self.get());
+            if (self->GetType()->IsComplexType())
+                con.AddDestructor(destructor);
             return self->GetValue(con);
         }
     };
 
-    return Wide::Memory::MakeUnique<LambdaConstruction>(std::move(self), std::move(initializers));
+    return Wide::Memory::MakeUnique<LambdaConstruction>(self, std::move(initializers), BuildDestructorCall(self, c, true));
 }
 
-std::unique_ptr<Expression> LambdaType::LookupCapture(std::unique_ptr<Expression> self, std::string name) {
+std::shared_ptr<Expression> LambdaType::LookupCapture(std::shared_ptr<Expression> self, std::string name) {
     if (names.find(name) != names.end())
         return PrimitiveAccessMember(std::move(self), names[name]);
     return nullptr;

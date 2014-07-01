@@ -116,7 +116,7 @@ namespace Wide {
             std::unique_ptr<OverloadResolvable> Move;
 
             llvm::DataLayout layout;
-            std::unordered_map<const Parse::Expression*, std::unique_ptr<Expression>> ExpressionCache;
+            std::unordered_map<const Parse::Expression*, std::shared_ptr<Expression>> ExpressionCache;
         public:
             auto GetFunctions() -> const decltype(WideFunctions)& { return WideFunctions; }
 
@@ -161,14 +161,14 @@ namespace Wide {
             LambdaType* GetLambdaType(const Parse::Lambda* funcbase, std::vector<std::pair<std::string, Type*>> types, Type* context);
             ArrayType* GetArrayType(Type* t, unsigned num);
 
-            std::unordered_map<std::type_index, std::function<std::unique_ptr<Expression>(Analyzer& a, Type* lookup, const Parse::Expression* e)>> expression_handlers;
+            std::unordered_map<std::type_index, std::function<std::shared_ptr<Expression>(Analyzer& a, Type* lookup, const Parse::Expression* e)>> expression_handlers;
             template<typename T, typename F> void AddExpressionHandler(F f) {
                 expression_handlers[typeid(const T)] = [f](Analyzer& a, Type* lookup, const Parse::Expression* e) {
                     return f(a, lookup, static_cast<const T*>(e));
                 };
             }
-            std::unique_ptr<Expression> AnalyzeCachedExpression(Type* lookup, const Parse::Expression* e);
-            std::unique_ptr<Expression> AnalyzeExpression(Type* lookup, const Parse::Expression* e);
+            std::shared_ptr<Expression> AnalyzeCachedExpression(Type* lookup, const Parse::Expression* e);
+            std::shared_ptr<Expression> AnalyzeExpression(Type* lookup, const Parse::Expression* e);
 
             Analyzer(const Options::Clang&, const Parse::Module*);
 

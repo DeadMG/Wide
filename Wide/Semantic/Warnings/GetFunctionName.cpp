@@ -12,10 +12,10 @@ std::string Wide::Semantic::GetFunctionName(const Parse::FunctionBase* func, Ana
             struct autotype : public Wide::Semantic::MetaType {
                 autotype(Type* con) : context(con), MetaType(con->analyzer) {}
                 std::unique_ptr<ConstructorType> conty;
-                std::unique_ptr<Expression> AccessMember(std::unique_ptr<Expression> self, std::string name, Context c) override final {
+                std::shared_ptr<Expression> AccessMember(std::shared_ptr<Expression> self, std::string name, Context c) override final {
                     if (name == "auto") {
                         if (!conty) conty = Wide::Memory::MakeUnique<ConstructorType>(this, analyzer);
-                        return conty->BuildValueConstruction(Expressions(), c);
+                        return conty->BuildValueConstruction({}, c);
                     }
                     return nullptr;
                 }

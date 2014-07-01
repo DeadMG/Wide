@@ -13,7 +13,6 @@ namespace Wide {
             struct Layout {
                 struct CodeGen {
                     CodeGen(AggregateType* self, Layout& lay, llvm::Module* module);
-                    bool IsComplex;
                     llvm::Type* llvmtype;
                     llvm::Type* GetLLVMType(AggregateType* agg, llvm::Module* module);
                 };
@@ -31,6 +30,8 @@ namespace Wide {
                 };
                 std::vector<Location> Offsets;
 
+                bool triviallycopyconstructible = true;
+                bool triviallydestructible = true;
                 bool copyconstructible;
                 bool copyassignable;
                 bool moveconstructible;
@@ -67,7 +68,7 @@ namespace Wide {
 
             MemberLocation GetLocation(unsigned i);
 
-            virtual std::unique_ptr<Expression> PrimitiveAccessMember(std::unique_ptr<Expression> self, unsigned num);
+            virtual std::shared_ptr<Expression> PrimitiveAccessMember(std::shared_ptr<Expression> self, unsigned num);
             
             std::size_t size() override;
             std::size_t alignment() override;
@@ -77,15 +78,16 @@ namespace Wide {
             OverloadSet* CreateNondefaultConstructorOverloadSet();
             OverloadSet* CreateOperatorOverloadSet(Type* t, Lexer::TokenType type, Lexer::Access access) override;
             OverloadSet* CreateConstructorOverloadSet(Lexer::Access access) override; 
-            std::unique_ptr<Expression> BuildDestructorCall(std::unique_ptr<Expression> self, Context c) override;
-            std::unique_ptr<Expression> GetVirtualPointer(std::unique_ptr<Expression> self) override final;
+            std::function<void(CodegenContext&)> BuildDestructorCall(std::shared_ptr<Expression> self, Context c, bool devirtualize) override;
+            std::shared_ptr<Expression> GetVirtualPointer(std::shared_ptr<Expression> self) override final;
 
             bool IsCopyConstructible(Lexer::Access access) override;
             bool IsMoveConstructible(Lexer::Access access) override;
             bool IsCopyAssignable(Lexer::Access access) override;
             bool IsMoveAssignable(Lexer::Access access) override;
-            bool IsComplexType(llvm::Module* module) override;
             bool IsEmpty() override final;
+            bool IsTriviallyDestructible() override;
+            bool IsTriviallyCopyConstructible() override;
             bool HasMemberOfType(Type* t);
 
             std::unordered_map<unsigned, std::unordered_set<Type*>> GetEmptyLayout() override final { return GetLayout().EmptyTypes; }

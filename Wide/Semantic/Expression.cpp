@@ -10,7 +10,7 @@
 using namespace Wide;
 using namespace Semantic;
 
-ImplicitLoadExpr::ImplicitLoadExpr(std::unique_ptr<Expression> arg)
+ImplicitLoadExpr::ImplicitLoadExpr(std::shared_ptr<Expression> arg)
 : src(std::move(arg)) {}
 Type* ImplicitLoadExpr::GetType() {
     assert(src->GetType()->IsReference());
@@ -20,7 +20,7 @@ llvm::Value* ImplicitLoadExpr::ComputeValue(CodegenContext& con) {
     return con->CreateLoad(src->GetValue(con));
 }
 
-ImplicitStoreExpr::ImplicitStoreExpr(std::unique_ptr<Expression> memory, std::unique_ptr<Expression> value)
+ImplicitStoreExpr::ImplicitStoreExpr(std::shared_ptr<Expression> memory, std::shared_ptr<Expression> value)
 : mem(std::move(memory)), val(std::move(value)) {
     auto memty = mem->GetType();
     auto valty = val->GetType();
@@ -40,8 +40,6 @@ llvm::Value* ImplicitStoreExpr::ComputeValue(CodegenContext& con) {
 ImplicitTemporaryExpr::ImplicitTemporaryExpr(Type* what, Context c)
 : of(what), c(c)
 {
-    // Make sure this is prepared before code-generation time.
-    of->BuildDestructorCall(Wide::Memory::MakeUnique<ExpressionReference>(this), c);
 }
 Type* ImplicitTemporaryExpr::GetType() {
     return of->analyzer.GetLvalueType(of);
@@ -52,11 +50,8 @@ llvm::Value* ImplicitTemporaryExpr::ComputeValue(CodegenContext& con) {
     alloc = local;
     return alloc;
 }
-void ImplicitTemporaryExpr::DestroyExpressionLocals(CodegenContext& con) {
-    of->BuildDestructorCall(Wide::Memory::MakeUnique<ExpressionReference>(this), c)->GetValue(con);
-}
 
-LvalueCast::LvalueCast(std::unique_ptr<Expression> expr)
+LvalueCast::LvalueCast(std::shared_ptr<Expression> expr)
 : expr(std::move(expr)) {}
 Type* LvalueCast::GetType() {
     assert(IsRvalueType(expr->GetType()));
@@ -66,7 +61,7 @@ llvm::Value* LvalueCast::ComputeValue(CodegenContext& con) {
     return expr->GetValue(con);
 }
 
-RvalueCast::RvalueCast(std::unique_ptr<Expression> ex)
+RvalueCast::RvalueCast(std::shared_ptr<Expression> ex)
 : expr(std::move(ex)) {
     assert(!IsRvalueType(expr->GetType()));
 }
@@ -77,7 +72,7 @@ Type* RvalueCast::GetType() {
 llvm::Value* RvalueCast::ComputeValue(CodegenContext& con) {
     if (IsLvalueType(expr->GetType()))
         return expr->GetValue(con);
-    if (expr->GetType()->IsComplexType(con))
+    if (expr->GetType()->IsComplexType())
         return expr->GetValue(con);
     assert(!IsRvalueType(expr->GetType()));
     auto tempalloc = con.alloca_builder->CreateAlloca(expr->GetType()->GetLLVMType(con));
@@ -86,26 +81,7 @@ llvm::Value* RvalueCast::ComputeValue(CodegenContext& con) {
     return tempalloc;
 }
 
-ExpressionReference::ExpressionReference(Expression* e)
-: expr(e) {
-    ListenToNode(expr);
-}
-void ExpressionReference::OnNodeChanged(Node* n, Change what) {
-    if (what == Change::Destroyed)
-        assert(false);
-    OnChange();
-}
-Type* ExpressionReference::GetType() {
-    return expr->GetType();
-}
-llvm::Value* ExpressionReference::ComputeValue(CodegenContext& con) {
-    return expr->GetValue(con);
-}
-Expression* ExpressionReference::GetImplementation() {
-    return expr->GetImplementation();
-}
-
-ImplicitAddressOf::ImplicitAddressOf(std::unique_ptr<Expression> expr, Context c)
+ImplicitAddressOf::ImplicitAddressOf(std::shared_ptr<Expression> expr, Context c)
 : expr(std::move(expr)), c(c) { GetType(); }
 Type* ImplicitAddressOf::GetType() {
     if (!IsLvalueType(expr->GetType())) throw AddressOfNonLvalue(expr->GetType(), c.where);
@@ -146,12 +122,12 @@ llvm::Value* Boolean::ComputeValue(CodegenContext& con) {
     return con->getInt8(b);
 }
 
-std::unique_ptr<Expression> Semantic::CreatePrimUnOp(std::unique_ptr<Expression> self, Type* ret, std::function<llvm::Value*(llvm::Value*, CodegenContext& con)> func) {
+std::shared_ptr<Expression> Semantic::CreatePrimUnOp(std::shared_ptr<Expression> self, Type* ret, std::function<llvm::Value*(llvm::Value*, CodegenContext& con)> func) {
     struct PrimUnOp : Expression {
-        PrimUnOp(std::unique_ptr<Expression> expr, Type* r, std::function<llvm::Value*(llvm::Value*, CodegenContext& con)> func)
+        PrimUnOp(std::shared_ptr<Expression> expr, Type* r, std::function<llvm::Value*(llvm::Value*, CodegenContext& con)> func)
         : src(std::move(expr)), ret(std::move(r)), action(std::move(func)) {}
 
-        std::unique_ptr<Expression> src;
+        std::shared_ptr<Expression> src;
         Type* ret;
         std::function<llvm::Value*(llvm::Value*, CodegenContext& con)> action;
 
@@ -165,18 +141,17 @@ std::unique_ptr<Expression> Semantic::CreatePrimUnOp(std::unique_ptr<Expression>
     assert(self);
     return Wide::Memory::MakeUnique<PrimUnOp>(std::move(self), ret, func);
 }
-std::unique_ptr<Expression> Semantic::CreatePrimOp(std::unique_ptr<Expression> lhs, std::unique_ptr<Expression> rhs, std::function<llvm::Value*(llvm::Value*, llvm::Value*, CodegenContext& con)> func) {
+std::shared_ptr<Expression> Semantic::CreatePrimOp(std::shared_ptr<Expression> lhs, std::shared_ptr<Expression> rhs, std::function<llvm::Value*(llvm::Value*, llvm::Value*, CodegenContext& con)> func) {
     return CreatePrimOp(std::move(lhs), std::move(rhs), lhs->GetType(), func);
 }
-std::unique_ptr<Expression> Semantic::CreatePrimAssOp(std::unique_ptr<Expression> lhs, std::unique_ptr<Expression> rhs, std::function<llvm::Value*(llvm::Value*, llvm::Value*, CodegenContext& con)> func) {
-    auto ref = Wide::Memory::MakeUnique<ExpressionReference>(lhs.get());
-    return Wide::Memory::MakeUnique<ImplicitStoreExpr>(std::move(ref), CreatePrimOp(Wide::Memory::MakeUnique<ImplicitLoadExpr>(std::move(lhs)), std::move(rhs), func));
+std::shared_ptr<Expression> Semantic::CreatePrimAssOp(std::shared_ptr<Expression> lhs, std::shared_ptr<Expression> rhs, std::function<llvm::Value*(llvm::Value*, llvm::Value*, CodegenContext& con)> func) {
+    return Wide::Memory::MakeUnique<ImplicitStoreExpr>(lhs, CreatePrimOp(Wide::Memory::MakeUnique<ImplicitLoadExpr>(lhs), std::move(rhs), func));
 }
-std::unique_ptr<Expression> Semantic::CreatePrimOp(std::unique_ptr<Expression> lhs, std::unique_ptr<Expression> rhs, Type* ret, std::function<llvm::Value*(llvm::Value*, llvm::Value*, CodegenContext& con)> func) {
+std::shared_ptr<Expression> Semantic::CreatePrimOp(std::shared_ptr<Expression> lhs, std::shared_ptr<Expression> rhs, Type* ret, std::function<llvm::Value*(llvm::Value*, llvm::Value*, CodegenContext& con)> func) {
     struct PrimBinOp : Expression {
-        PrimBinOp(std::unique_ptr<Expression> left, std::unique_ptr<Expression> right, Type* t, std::function<llvm::Value*(llvm::Value*, llvm::Value*, CodegenContext& con)> func)
+        PrimBinOp(std::shared_ptr<Expression> left, std::shared_ptr<Expression> right, Type* t, std::function<llvm::Value*(llvm::Value*, llvm::Value*, CodegenContext& con)> func)
         : lhs(std::move(left)), rhs(std::move(right)), ret(t), action(std::move(func)) {}
-        std::unique_ptr<Expression> lhs, rhs;
+        std::shared_ptr<Expression> lhs, rhs;
         Type* ret;
         std::function<llvm::Value*(llvm::Value*, llvm::Value*, CodegenContext& con)> action;
         Type* GetType() override final { return ret; }
@@ -189,12 +164,12 @@ std::unique_ptr<Expression> Semantic::CreatePrimOp(std::unique_ptr<Expression> l
     };
     return Wide::Memory::MakeUnique<PrimBinOp>(std::move(lhs), std::move(rhs), ret, std::move(func));
 }
-std::unique_ptr<Expression> Semantic::BuildValue(std::unique_ptr<Expression> e) {
+std::shared_ptr<Expression> Semantic::BuildValue(std::shared_ptr<Expression> e) {
     if (e->GetType()->IsReference())
         return Wide::Memory::MakeUnique<ImplicitLoadExpr>(std::move(e));
     return std::move(e);
 }
-Chain::Chain(std::unique_ptr<Expression> effect, std::unique_ptr<Expression> result)
+Chain::Chain(std::shared_ptr<Expression> effect, std::shared_ptr<Expression> result)
 : SideEffect(std::move(effect)), result(std::move(result)) {}
 Type* Chain::GetType() {
     return result->GetType();
@@ -206,38 +181,39 @@ llvm::Value* Chain::ComputeValue(CodegenContext& con) {
 Expression* Chain::GetImplementation() {
     return result->GetImplementation();
 }
-std::unique_ptr<Expression> Semantic::BuildChain(std::unique_ptr<Expression> lhs, std::unique_ptr<Expression> rhs) {
+std::shared_ptr<Expression> Semantic::BuildChain(std::shared_ptr<Expression> lhs, std::shared_ptr<Expression> rhs) {
     assert(lhs);
     assert(rhs);
     return Wide::Memory::MakeUnique<Chain>(std::move(lhs), std::move(rhs));
 }
 llvm::Value* Expression::GetValue(CodegenContext& con) {
     if (!val) val = ComputeValue(con);
+    else return *val;
     auto selfty = GetType()->GetLLVMType(con);
-    if (GetType()->IsComplexType(con)) {
-        auto ptrty = llvm::dyn_cast<llvm::PointerType>(val->getType());
+    if (GetType()->IsComplexType()) {
+        auto ptrty = llvm::dyn_cast<llvm::PointerType>((*val)->getType());
         assert(ptrty);
         assert(ptrty->getElementType() == selfty);
-    } else {
+    } else if (selfty != llvm::Type::getVoidTy(con) || *val) {
         // Extra variable because VS debugger typically won't load Type or Expression functions.
-        assert(val->getType() == selfty);
+        assert((*val)->getType() == selfty);
     }
-    return val;
+    return *val;
 }
 
 void CodegenContext::DestroyDifference(CodegenContext& other) {
     other.destructing = true;
     auto vec = GetAddedDestructors(other);
     for (auto rit = vec.rbegin(); rit != vec.rend(); ++rit)
-        (*rit)->DestroyLocals(other);
+        if (!rit->second)
+            rit->first(other);
     other.destructing = false;
 }
 void CodegenContext::DestroyAll(bool EH) {
     destructing = true;
-    for (auto rit = Destructors.rbegin(); rit != Destructors.rend(); ++rit) {
-        if (EH || ExceptionOnlyDestructors.find(*rit) == ExceptionOnlyDestructors.end())
-            (*rit)->DestroyLocals(*this);
-    }
+    for (auto rit = Destructors.rbegin(); rit != Destructors.rend(); ++rit) 
+        if (EH || !rit->second)
+           rit->first(*this);
     destructing = false;
 }
 llvm::PointerType* CodegenContext::GetInt8PtrTy() {
@@ -329,4 +305,17 @@ void CodegenContext::GenerateCodeAndDestroyLocals(std::function<void(CodegenCont
 }
 bool CodegenContext::IsTerminated(llvm::BasicBlock* bb) {
     return !bb->empty() && bb->back().isTerminator();
+}
+bool CodegenContext::HasDestructors() {
+    return !Destructors.empty();
+}
+std::list<std::pair<std::function<void(CodegenContext&)>, bool>>::iterator CodegenContext::AddDestructor(std::function<void(CodegenContext&)> func) {
+    Destructors.push_back({ func, false });
+    return --Destructors.end();
+}
+void CodegenContext::AddExceptionOnlyDestructor(std::function<void(CodegenContext&)> func) {
+    Destructors.push_back({ func, true });
+}
+void CodegenContext::EraseDestructor(std::list<std::pair<std::function<void(CodegenContext&)>, bool>>::iterator it) {
+    Destructors.erase(it);
 }

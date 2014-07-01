@@ -57,6 +57,8 @@ AggregateType::Layout::Layout(AggregateType* agg, Wide::Semantic::Analyzer& a)
         copyconstructible &= D->IsCopyConstructible(GetAccessSpecifier(agg, D));
         moveassignable &= D->IsMoveAssignable(GetAccessSpecifier(agg, D));
         copyassignable &= D->IsCopyAssignable(GetAccessSpecifier(agg, D));
+        triviallycopyconstructible &= D->IsTriviallyCopyConstructible();
+        triviallydestructible &= D->IsTriviallyDestructible();
     };
 
     Offsets.resize(agg->GetBases().size() + agg->GetMembers().size());
@@ -173,9 +175,6 @@ std::size_t AggregateType::size() {
 std::size_t AggregateType::alignment() {
     return GetLayout().align;
 }
-bool AggregateType::IsComplexType(llvm::Module* module) {
-    return GetLayout().GetCodegen(this, module).IsComplex;
-}
 
 bool AggregateType::IsMoveAssignable(Lexer::Access access) {
     return GetLayout().moveassignable;
@@ -189,16 +188,16 @@ bool AggregateType::IsCopyAssignable(Lexer::Access access) {
 bool AggregateType::IsCopyConstructible(Lexer::Access access) {
     return GetLayout().copyconstructible;
 }
-std::unique_ptr<Expression> AggregateType::GetVirtualPointer(std::unique_ptr<Expression> self) {
+std::shared_ptr<Expression> AggregateType::GetVirtualPointer(std::shared_ptr<Expression> self) {
     if (GetPrimaryBase()) return GetPrimaryBase()->GetVirtualPointer(AccessBase(std::move(self), GetPrimaryBase()));
     if (!HasDeclaredDynamicFunctions()) return nullptr;
     auto vptrty = analyzer.GetPointerType(GetVirtualPointerType());
     assert(self->GetType()->IsReference(this) || dynamic_cast<PointerType*>(self->GetType())->GetPointee() == this);
     struct VPtrAccess : Expression {
-        VPtrAccess(Type* t, std::unique_ptr<Expression> self)
+        VPtrAccess(Type* t, std::shared_ptr<Expression> self)
         : ty(t), self(std::move(self)) {}
         Type* ty;
-        std::unique_ptr<Expression> self;
+        std::shared_ptr<Expression> self;
         llvm::Value* ComputeValue(CodegenContext& con) override final { return con->CreateStructGEP(self->GetValue(con), 0); }
         Type* GetType() override final { return ty; }
     };
@@ -216,15 +215,8 @@ bool AggregateType::IsEmpty() {
 }
 
 AggregateType::Layout::CodeGen::CodeGen(AggregateType* self, Layout& lay, llvm::Module* module)
-: IsComplex(false) 
 {
     llvmtype = nullptr;
-
-    for (auto ty : self->GetBases())
-        IsComplex = IsComplex || ty->IsComplexType(module);
-    for (auto ty : self->GetMembers())
-        IsComplex = IsComplex || ty->IsComplexType(module);
-
 }
 llvm::Type* AggregateType::Layout::CodeGen::GetLLVMType(AggregateType* self, llvm::Module* module) {
     std::stringstream stream;
@@ -237,7 +229,7 @@ llvm::Type* AggregateType::Layout::CodeGen::GetLLVMType(AggregateType* self, llv
     llvmtype = ty;
     std::vector<llvm::Type*> llvmtypes;
 
-    if (self->IsEmpty()) {
+    if (self->IsEmpty() && !self->GetLayout().hasvptr) {
         llvmtypes.push_back(self->analyzer.GetIntegralType(8, true)->GetLLVMType(module));
         ty->setBody(llvmtypes, false);
         return ty;
@@ -279,11 +271,11 @@ Type* AggregateType::GetConstantContext() {
     return this;
 }
 
-std::unique_ptr<Expression> AggregateType::PrimitiveAccessMember(std::unique_ptr<Expression> self, unsigned num) {
+std::shared_ptr<Expression> AggregateType::PrimitiveAccessMember(std::shared_ptr<Expression> self, unsigned num) {
     struct FieldAccess : Expression {
-        FieldAccess(std::unique_ptr<Expression> src, AggregateType* agg, unsigned n)
+        FieldAccess(std::shared_ptr<Expression> src, AggregateType* agg, unsigned n)
         : source(std::move(src)), self(agg), num(n) {}
-        std::unique_ptr<Expression> source;
+        std::shared_ptr<Expression> source;
         AggregateType* self;
         unsigned num;
         Type* GetType() override final {
@@ -319,7 +311,7 @@ std::unique_ptr<Expression> AggregateType::PrimitiveAccessMember(std::unique_ptr
             }
             auto fieldindex = *offsets[num].FieldIndex;
             auto obj = src->getType()->isPointerTy() ? con->CreateStructGEP(src, fieldindex) : con->CreateExtractValue(src, { fieldindex });
-            if ((source->GetType()->IsReference() && offsets[num].ty->IsReference()) || (source->GetType()->IsComplexType(con) && !offsets[num].ty->IsComplexType(con)))
+            if ((source->GetType()->IsReference() && offsets[num].ty->IsReference()) || (source->GetType()->IsComplexType() && !offsets[num].ty->IsComplexType()))
                 return con->CreateLoad(obj);
             return obj;
         }
@@ -327,31 +319,17 @@ std::unique_ptr<Expression> AggregateType::PrimitiveAccessMember(std::unique_ptr
     assert(self);
     return Wide::Memory::MakeUnique<FieldAccess>(std::move(self), this, num);
 }
-std::unique_ptr<Expression> AggregateType::BuildDestructorCall(std::unique_ptr<Expression> self, Context c) {
-    std::vector<std::unique_ptr<Expression>> destructors;
+
+std::function<void(CodegenContext&)> AggregateType::BuildDestructorCall(std::shared_ptr<Expression> self, Context c, bool devirtualize) {
+    std::vector<std::function<void(CodegenContext&)>> destructors;
     for (int i = GetLayout().Offsets.size() - 1; i >= 0; --i) {
         auto member = GetLayout().Offsets[i].ty;
-        destructors.push_back(member->BuildDestructorCall(PrimitiveAccessMember(Wide::Memory::MakeUnique<ExpressionReference>(self.get()), i), c));
+        destructors.push_back(member->BuildDestructorCall(PrimitiveAccessMember(self, i), c, true));
     }
-
-    struct AggregateDestructor : Expression {
-        AggregateDestructor(AggregateType* agg, std::unique_ptr<Expression> s, std::vector<std::unique_ptr<Expression>> des)
-        : self(std::move(s)), destructors(std::move(des)), agg(agg) {}
-        AggregateType* agg;
-        std::unique_ptr<Expression> self;
-        std::vector<std::unique_ptr<Expression>> destructors;
-        Type* GetType() override final {
-            return self->GetType();
-        }
-        llvm::Value* ComputeValue(CodegenContext& con) override final {
-            if (!agg->GetLayout().GetCodegen(agg, con).IsComplex)
-                return self->GetValue(con);
-            for (auto&& des : destructors)
-                des->GetValue(con);
-            return self->GetValue(con);
-        }
+    return [=](CodegenContext& con) {
+        for (auto des : destructors)
+            des(con);
     };
-    return Wide::Memory::MakeUnique<AggregateDestructor>(this, std::move(self), std::move(destructors));
 }
 
 OverloadSet* AggregateType::CreateOperatorOverloadSet(Type* t, Lexer::TokenType type, Lexer::Access access) {
@@ -366,15 +344,15 @@ OverloadSet* AggregateType::CreateOperatorOverloadSet(Type* t, Lexer::TokenType 
         std::vector<Type*> types;
         types.push_back(analyzer.GetLvalueType(this));
         types.push_back(modify(this));
-        return MakeResolvable([this, modify](std::vector<std::unique_ptr<Expression>> args, Context c) -> std::unique_ptr<Expression> {
+        return MakeResolvable([this, modify](std::vector<std::shared_ptr<Expression>> args, Context c) -> std::shared_ptr<Expression> {
             if (GetLayout().Offsets.size() == 0)
                 return BuildChain(std::move(args[1]), std::move(args[0]));
             
-            std::vector<std::unique_ptr<Expression>> exprs;
+            std::vector<std::shared_ptr<Expression>> exprs;
             // For every type, call the operator
             for (std::size_t i = 0; i < GetLayout().Offsets.size(); ++i) {
                 auto type = GetLayout().Offsets[i].ty;
-                auto lhs = PrimitiveAccessMember(Wide::Memory::MakeUnique<ExpressionReference>(args[0].get()), i);
+                auto lhs = PrimitiveAccessMember(args[0], i);
                 std::vector<Type*> types;
                 types.push_back(analyzer.GetLvalueType(type));
                 types.push_back(modify(type));
@@ -382,17 +360,17 @@ OverloadSet* AggregateType::CreateOperatorOverloadSet(Type* t, Lexer::TokenType 
                 auto callable = overset->Resolve(types, this);
                 if (!callable)
                     assert(false); // dafuq, the appropriate assignable was set but we're not assignable?
-                exprs.push_back(callable->Call(Expressions( std::move(lhs), PrimitiveAccessMember(Wide::Memory::MakeUnique<ExpressionReference>(args[1].get()), i) ), c));
+                exprs.push_back(callable->Call({ std::move(lhs), PrimitiveAccessMember(args[1], i) }, c));
             }
 
             struct AggregateOperator : Expression {
                 AggregateType* this_type;
-                std::unique_ptr<Expression> self;
-                std::unique_ptr<Expression> arg;
-                std::vector<std::unique_ptr<Expression>> exprs;
+                std::shared_ptr<Expression> self;
+                std::shared_ptr<Expression> arg;
+                std::vector<std::shared_ptr<Expression>> exprs;
                 Type* GetType() override final { return self->GetType(); }
                 llvm::Value* ComputeValue(CodegenContext& con) override final {
-                    if (!this_type->IsComplexType(con) && !this_type->GetLayout().hasvptr) {
+                    if (!this_type->IsComplexType() && !this_type->GetLayout().hasvptr) {
                         // Screw calling all the operators, just store.
                         // This makes debugging the IR output a lot easier.
                         auto val = arg->GetType()->IsReference() ? con->CreateLoad(arg->GetValue(con)) : arg->GetValue(con);
@@ -403,7 +381,7 @@ OverloadSet* AggregateType::CreateOperatorOverloadSet(Type* t, Lexer::TokenType 
                         arg->GetValue(con);
                     return self->GetValue(con);
                 }
-                AggregateOperator(AggregateType* s, std::unique_ptr<Expression> expr, std::unique_ptr<Expression> arg, std::vector<std::unique_ptr<Expression>> exprs)
+                AggregateOperator(AggregateType* s, std::shared_ptr<Expression> expr, std::shared_ptr<Expression> arg, std::vector<std::shared_ptr<Expression>> exprs)
                     : self(std::move(expr)), arg(std::move(arg)), exprs(std::move(exprs)), this_type(s) {}
             };
             return Wide::Memory::MakeUnique<AggregateOperator>(this, std::move(args[0]), std::move(args[1]), std::move(exprs));
@@ -431,37 +409,38 @@ OverloadSet* AggregateType::CreateNondefaultConstructorOverloadSet() {
         std::vector<Type*> types;
         types.push_back(analyzer.GetLvalueType(this));
         types.push_back(modify(this));
-        return MakeResolvable([this, modify](std::vector<std::unique_ptr<Expression>> args, Context c) -> std::unique_ptr<Expression>  {
+        return MakeResolvable([this, modify](std::vector<std::shared_ptr<Expression>> args, Context c) -> std::shared_ptr<Expression>  {
             if (GetLayout().Offsets.size() == 0)
                 return BuildChain(std::move(args[1]), std::move(args[0]));
+
             // For every type, call the appropriate constructor.
-            std::vector<std::unique_ptr<Expression>> exprs;
+            std::vector<std::shared_ptr<Expression>> exprs;
             for (std::size_t i = 0; i < GetLayout().Offsets.size(); ++i) {
                 auto type = GetLayout().Offsets[i].ty;
                 // If it's a reference we need to not collapse it- otherwise use PrimAccessMember to take care of ECBO and such matters.
                 auto lhs = type->IsReference()
-                    ? CreatePrimUnOp(Wide::Memory::MakeUnique<ExpressionReference>(args[0].get()), analyzer.GetLvalueType(type), [this, i](llvm::Value* val, CodegenContext& con) {
+                    ? CreatePrimUnOp(args[0], analyzer.GetLvalueType(type), [this, i](llvm::Value* val, CodegenContext& con) {
                           return con->CreateStructGEP(val, *GetLayout().Offsets[i].FieldIndex);
                       })
-                    : PrimitiveAccessMember(Wide::Memory::MakeUnique<ExpressionReference>(args[0].get()), i);
-                auto rhs = PrimitiveAccessMember(Wide::Memory::MakeUnique<ExpressionReference>(args[1].get()), i);
+                    : PrimitiveAccessMember(args[0], i);
+                auto rhs = PrimitiveAccessMember(args[1], i);
                 auto set = type->GetConstructorOverloadSet(GetAccessSpecifier(this, type));
                 std::vector<Type*> types;
                 types.push_back(analyzer.GetLvalueType(type));
                 types.push_back(modify(type));
                 auto callable = set->Resolve(types, this);
                 assert(callable);// Should not be generated if this fails!
-                exprs.push_back(callable->Call(Expressions( std::move(lhs), std::move(rhs) ), c));                
+                exprs.push_back(callable->Call({ std::move(lhs), std::move(rhs) }, c));
             }
-            exprs.push_back(SetVirtualPointers(Wide::Memory::MakeUnique<ExpressionReference>(args[0].get())));
+            exprs.push_back(SetVirtualPointers(args[0]));
             struct AggregateConstructor : Expression {
                 AggregateType* this_type;
-                std::unique_ptr<Expression> self;
-                std::unique_ptr<Expression> arg;
-                std::vector<std::unique_ptr<Expression>> exprs;
+                std::shared_ptr<Expression> self;
+                std::shared_ptr<Expression> arg;
+                std::vector<std::shared_ptr<Expression>> exprs;
                 Type* GetType() override final { return self->GetType(); }
                 llvm::Value* ComputeValue(CodegenContext& con) override final {
-                    if (!this_type->IsComplexType(con) && !this_type->GetLayout().hasvptr) {
+                    if (!this_type->IsComplexType() && !this_type->GetLayout().hasvptr) {
                         // Screw calling all the operators, just store.
                         // This makes debugging the IR output a lot easier.
                         auto val = arg->GetType()->IsReference() ? con->CreateLoad(arg->GetValue(con)) : arg->GetValue(con);
@@ -472,7 +451,7 @@ OverloadSet* AggregateType::CreateNondefaultConstructorOverloadSet() {
                         arg->GetValue(con);
                     return self->GetValue(con);
                 }
-                AggregateConstructor(AggregateType* s, std::unique_ptr<Expression> expr, std::unique_ptr<Expression> arg, std::vector<std::unique_ptr<Expression>> exprs)
+                AggregateConstructor(AggregateType* s, std::shared_ptr<Expression> expr, std::shared_ptr<Expression> arg, std::vector<std::shared_ptr<Expression>> exprs)
                     : this_type(s), self(std::move(expr)), arg(std::move(arg)), exprs(std::move(exprs)) {}
             };
             return Wide::Memory::MakeUnique<AggregateConstructor>(this, std::move(args[0]), std::move(args[1]), std::move(exprs));
@@ -510,34 +489,34 @@ OverloadSet* AggregateType::CreateConstructorOverloadSet(Lexer::Access access) {
         std::vector<Type*> types;
         types.push_back(analyzer.GetLvalueType(this));
         if (!DefaultConstructor)
-            DefaultConstructor = MakeResolvable([this](std::vector<std::unique_ptr<Expression>> args, Context c) -> std::unique_ptr<Expression> {
+            DefaultConstructor = MakeResolvable([this](std::vector<std::shared_ptr<Expression>> args, Context c) -> std::shared_ptr<Expression> {
                 if (GetLayout().Offsets.size() == 0)
                     return std::move(args[0]);
                 
                 // For every type, call the appropriate constructor.
                 // No references possible so just use PrimAccessMember
-                std::vector<std::unique_ptr<Expression>> exprs;
+                std::vector<std::shared_ptr<Expression>> exprs;
                 for (std::size_t i = 0; i < GetLayout().Offsets.size(); ++i) {
                     auto type = GetLayout().Offsets[i].ty;
-                    auto lhs = PrimitiveAccessMember(Wide::Memory::MakeUnique<ExpressionReference>(args[0].get()), i);
+                    auto lhs = PrimitiveAccessMember(args[0], i);
                     auto set = type->GetConstructorOverloadSet(GetAccessSpecifier(this, type));
                     std::vector<Type*> types;
                     types.push_back(analyzer.GetLvalueType(type));
                     auto callable = set->Resolve(types, this);
                     assert(callable);// Should not be generated if this fails!
-                    exprs.push_back(callable->Call(Expressions( std::move(lhs) ), c));
+                    exprs.push_back(callable->Call({ std::move(lhs) }, c));
                 }
-                exprs.push_back(SetVirtualPointers(Wide::Memory::MakeUnique<ExpressionReference>(args[0].get())));
+                exprs.push_back(SetVirtualPointers(args[0]));
                 struct AggregateConstructor : Expression {
-                    std::unique_ptr<Expression> self;
-                    std::vector<std::unique_ptr<Expression>> exprs;
+                    std::shared_ptr<Expression> self;
+                    std::vector<std::shared_ptr<Expression>> exprs;
                     Type* GetType() override final { return self->GetType(); }
                     llvm::Value* ComputeValue(CodegenContext& con) override final {
                         for (auto&& arg : exprs)
                             arg->GetValue(con);
                         return self->GetValue(con);
                     }
-                    AggregateConstructor(std::unique_ptr<Expression> expr, std::vector<std::unique_ptr<Expression>> exprs)
+                    AggregateConstructor(std::shared_ptr<Expression> expr, std::vector<std::shared_ptr<Expression>> exprs)
                         : self(std::move(expr)), exprs(std::move(exprs)) {}
                 };
                 return Wide::Memory::MakeUnique<AggregateConstructor>(std::move(args[0]), std::move(exprs));
@@ -584,4 +563,10 @@ MemberLocation AggregateType::GetLocation(unsigned i) {
     if (GetLayout().Offsets[i].FieldIndex)
         return LLVMFieldIndex{ *GetLayout().Offsets[i].FieldIndex };
     return EmptyBaseOffset{ GetLayout().Offsets[i].ByteOffset };
+}
+bool AggregateType::IsTriviallyDestructible() {
+    return GetLayout().triviallydestructible;
+}
+bool AggregateType::IsTriviallyCopyConstructible() {
+    return GetLayout().triviallycopyconstructible;
 }

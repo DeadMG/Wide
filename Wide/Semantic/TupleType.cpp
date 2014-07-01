@@ -10,15 +10,15 @@ using namespace Semantic;
 TupleType::TupleType(std::vector<Type*> types, Analyzer& a)
 : contents(std::move(types)), AggregateType(a) {}
 
-std::unique_ptr<Expression> TupleType::ConstructFromLiteral(std::vector<std::unique_ptr<Expression>> exprs, Context c) {
+std::shared_ptr<Expression> TupleType::ConstructFromLiteral(std::vector<std::shared_ptr<Expression>> exprs, Context c) {
     assert(exprs.size() == GetMembers().size());
     for (std::size_t i = 0; i < exprs.size(); ++i)
         assert(GetMembers()[i] == exprs[i]->GetType()->Decay());
 
-    auto self = Wide::Memory::MakeUnique<ImplicitTemporaryExpr>(this, c);
+    auto self = std::make_shared<ImplicitTemporaryExpr>(this, c);
     if (GetMembers().size() == 0)
         return std::move(self);
-    std::vector<std::unique_ptr<Expression>> initializers;
+    std::vector<std::shared_ptr<Expression>> initializers;
     for (std::size_t i = 0; i < exprs.size(); ++i) {
         std::vector<Type*> types;
         types.push_back(analyzer.GetLvalueType(GetMembers()[i]));
@@ -26,27 +26,28 @@ std::unique_ptr<Expression> TupleType::ConstructFromLiteral(std::vector<std::uni
         auto conset = GetMembers()[i]->GetConstructorOverloadSet(GetAccessSpecifier(c.from, GetMembers()[i]));
         auto call = conset->Resolve(types, c.from);
         if (!call) conset->IssueResolutionError(types, c);
-        initializers.push_back(call->Call(Expressions(PrimitiveAccessMember(Wide::Memory::MakeUnique<ExpressionReference>(self.get()), i), std::move(exprs[i])), c));
+        initializers.push_back(call->Call({ PrimitiveAccessMember(self, i), std::move(exprs[i]) }, c));
     }
 
     struct TupleConstruction : Expression {
-        TupleConstruction(std::unique_ptr<Expression> self, std::vector<std::unique_ptr<Expression>> inits)
-        : self(std::move(self)), inits(std::move(inits)) {}
-        std::vector<std::unique_ptr<Expression>> inits;
-        std::unique_ptr<Expression> self;
+        TupleConstruction(std::shared_ptr<Expression> self, std::vector<std::shared_ptr<Expression>> inits, std::function<void(CodegenContext&)> destructor)
+        : self(std::move(self)), inits(std::move(inits)), destructor(destructor) {}
+        std::vector<std::shared_ptr<Expression>> inits;
+        std::shared_ptr<Expression> self; 
+        std::function<void(CodegenContext&)> destructor;
         Type* GetType() override final {
             return self->GetType()->analyzer.GetRvalueType(self->GetType()->Decay());
         }
         llvm::Value* ComputeValue(CodegenContext& con) override final {
             for (auto&& init : inits)
                 init->GetValue(con);
-            if (self->GetType()->IsComplexType(con))
-                con.Destructors.push_back(self.get());
+            if (self->GetType()->IsComplexType())
+                con.AddDestructor(destructor);
             return self->GetValue(con);
         }
     };
 
-    return Wide::Memory::MakeUnique<TupleConstruction>(std::move(self), std::move(initializers));
+    return Wide::Memory::MakeUnique<TupleConstruction>(self, std::move(initializers), BuildDestructorCall(self, c, true));
 }
 
 bool TupleType::IsA(Type* self, Type* other, Lexer::Access access) {

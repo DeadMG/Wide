@@ -17,7 +17,7 @@ namespace Wide {
             ClangNamespace(clang::DeclContext* p, ClangTU* f, Analyzer& a)
                 : con(p), from(f), MetaType(a) {}
         
-            std::unique_ptr<Expression> AccessMember(std::unique_ptr<Expression> t, std::string name, Context c) override final;
+            std::shared_ptr<Expression> AccessMember(std::shared_ptr<Expression> t, std::string name, Context c) override final;
             Type* GetContext() override final;
             ClangTU* GetTU() { return from; }
             std::string explain() override final;

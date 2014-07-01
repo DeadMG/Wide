@@ -32,17 +32,17 @@ Wide::Util::optional<std::vector<Type*>> ArrayType::GetTypesForTuple() {
 std::string ArrayType::explain() {
     return t->explain() + ".array(" + std::to_string(count) + ")";
 }
-std::unique_ptr<Expression> ArrayType::PrimitiveAccessMember(std::unique_ptr<Expression> self, unsigned num) {
+std::shared_ptr<Expression> ArrayType::PrimitiveAccessMember(std::shared_ptr<Expression> self, unsigned num) {
     struct ArrayIndex : Expression {
-        ArrayIndex(unsigned num, Type* elem, std::unique_ptr<Expression> self)
+        ArrayIndex(unsigned num, Type* elem, std::shared_ptr<Expression> self)
         : num(num), elem_ty(elem), self(std::move(self)) {}
         unsigned num;
-        std::unique_ptr<Expression> self;
+        std::shared_ptr<Expression> self;
         Type* elem_ty;
 
         llvm::Value* ComputeValue(CodegenContext& con) override final {
             auto val = self->GetValue(con);
-            if (!elem_ty->IsComplexType(con)) {
+            if (!elem_ty->IsComplexType()) {
                 if (val->getType()->isPointerTy())
                     return con->CreateStructGEP(val, num);
                 return con->CreateExtractValue(val, num);
@@ -78,7 +78,7 @@ OverloadSet* ArrayType::CreateOperatorOverloadSet(Type* t, Lexer::TokenType what
     struct IndexOperatorResolvable : OverloadResolvable, Callable {
         IndexOperatorResolvable(ArrayType* el) : array(el) {}
         ArrayType* array;
-        std::unique_ptr<Expression> CallFunction(std::vector<std::unique_ptr<Expression>> args, Context c) {
+        std::shared_ptr<Expression> CallFunction(std::vector<std::shared_ptr<Expression>> args, Context c) {
             args[1] = BuildValue(std::move(args[1]));
             auto get_zero = [](llvm::IntegerType* intty) {
                 return llvm::ConstantInt::get(intty, llvm::APInt(intty->getBitWidth(), uint64_t(0), false));
@@ -114,7 +114,7 @@ OverloadSet* ArrayType::CreateOperatorOverloadSet(Type* t, Lexer::TokenType what
             if (!arrty || !intty) return Util::none;
             return args;
         }
-        std::vector<std::unique_ptr<Expression>> AdjustArguments(std::vector<std::unique_ptr<Expression>> args, Context c) { return args; }
+        std::vector<std::shared_ptr<Expression>> AdjustArguments(std::vector<std::shared_ptr<Expression>> args, Context c) { return args; }
         Callable* GetCallableForResolution(std::vector<Type*>, Analyzer& a) { return this; }
     };
     if (!IndexOperator) IndexOperator = Wide::Memory::MakeUnique<IndexOperatorResolvable>(this);

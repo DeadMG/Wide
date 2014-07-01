@@ -29,24 +29,25 @@ namespace Wide {
             std::vector<std::pair<Type*, unsigned>> GetBasesAndOffsets() override final;
             Type* GetVirtualPointerType() override final;
             VTableLayout ComputePrimaryVTableLayout() override final;
-            std::unique_ptr<Expression> VirtualEntryFor(VTableLayout::VirtualFunctionEntry, unsigned offset) override final;
+            std::shared_ptr<Expression> VirtualEntryFor(VTableLayout::VirtualFunctionEntry, unsigned offset) override final;
             std::vector<member> GetConstructionMembers() override final;
         public:
             // Used for type.destructor access.
             llvm::Constant* GetRTTI(llvm::Module* module) override final;
             OverloadSet* GetDestructorOverloadSet();
-            std::unique_ptr<Expression> GetVirtualPointer(std::unique_ptr<Expression>) override final;
+            std::shared_ptr<Expression> GetVirtualPointer(std::shared_ptr<Expression>) override final;
             ClangType(ClangTU* src, clang::QualType t, Analyzer& a);
             llvm::Type* GetLLVMType(llvm::Module* m) override final;            
             Wide::Util::optional<clang::QualType> GetClangType(ClangTU& tu) override final;
-            std::unique_ptr<Expression> AccessMember(std::unique_ptr<Expression> t, std::string name, Context c) override final;        
-            std::unique_ptr<Expression> BuildBooleanConversion(std::unique_ptr<Expression> ex, Context c) override final; 
-            std::unique_ptr<Expression> BuildDestructorCall(std::unique_ptr<Expression> self, Context c) override final;
+            std::shared_ptr<Expression> AccessMember(std::shared_ptr<Expression> t, std::string name, Context c) override final;        
+            std::shared_ptr<Expression> BuildBooleanConversion(std::shared_ptr<Expression> ex, Context c) override final; 
+            std::function<void(CodegenContext&)> BuildDestructorCall(std::shared_ptr<Expression> self, Context c, bool devirtualize) override final;
             Type* GetConstantContext() override final; 
 
             bool IsA(Type* self, Type* other, Lexer::Access access) override final;
             bool IsEmpty() override final;
-            bool IsComplexType(llvm::Module* m) override final;
+            bool IsTriviallyDestructible() override final;
+            bool IsTriviallyCopyConstructible() override final;
             std::size_t size() override final;
             std::size_t alignment() override final;
             Type* GetContext() override final;
@@ -54,7 +55,7 @@ namespace Wide {
             OverloadSet* CreateOperatorOverloadSet(Type* self, Lexer::TokenType name, Lexer::Access access) override final;
             OverloadSet* CreateConstructorOverloadSet(Lexer::Access) override final;
             Wide::Util::optional<std::vector<Type*>> GetTypesForTuple() override final;
-            std::unique_ptr<Expression> PrimitiveAccessMember(std::unique_ptr<Expression> self, unsigned num) override final;
+            std::shared_ptr<Expression> PrimitiveAccessMember(std::shared_ptr<Expression> self, unsigned num) override final;
             std::string explain() override final;
         };
     }

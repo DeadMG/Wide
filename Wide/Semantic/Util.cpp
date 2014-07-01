@@ -75,7 +75,7 @@ const std::unordered_map<Lexer::TokenType, std::pair<clang::OverloadedOperatorKi
     return BinaryTokenMapping;
 }
 
-std::unique_ptr<Expression> Semantic::InterpretExpression(clang::Expr* expr, ClangTU& tu, Context c, Analyzer& a) {
+std::shared_ptr<Expression> Semantic::InterpretExpression(clang::Expr* expr, ClangTU& tu, Context c, Analyzer& a) {
     // Fun...
     llvm::APSInt out;
     if (expr->EvaluateAsInt(out, tu.GetASTContext())) {
@@ -100,7 +100,7 @@ std::unique_ptr<Expression> Semantic::InterpretExpression(clang::Expr* expr, Cla
     }
     if (auto call = llvm::dyn_cast<clang::CallExpr>(expr)) {
         auto func = InterpretExpression(call->getCallee(), tu, c, a);
-        std::vector<std::unique_ptr<Expression>> args;
+        std::vector<std::shared_ptr<Expression>> args;
         for (auto it = call->arg_begin(); it != call->arg_end(); ++it) {
             if (llvm::dyn_cast<clang::CXXDefaultArgExpr>(*it))
                 break;
@@ -109,11 +109,11 @@ std::unique_ptr<Expression> Semantic::InterpretExpression(clang::Expr* expr, Cla
         return func->GetType()->BuildCall(std::move(func), std::move(args), c);
     }
     if (auto null = llvm::dyn_cast<clang::CXXNullPtrLiteralExpr>(expr)) {
-        return a.GetNullType()->BuildValueConstruction(Expressions(), c);
+        return a.GetNullType()->BuildValueConstruction({}, c);
     }
     if (auto con = llvm::dyn_cast<clang::CXXConstructExpr>(expr)) {
         auto ty = a.GetClangType(tu, tu.GetASTContext().getRecordType(con->getConstructor()->getParent()));
-        std::vector<std::unique_ptr<Expression>> args;
+        std::vector<std::shared_ptr<Expression>> args;
         for (auto it = con->arg_begin(); it != con->arg_end(); ++it) {
             if (llvm::dyn_cast<clang::CXXDefaultArgExpr>(*it))
                 break;
@@ -133,7 +133,7 @@ std::unique_ptr<Expression> Semantic::InterpretExpression(clang::Expr* expr, Cla
         if (auto func = llvm::dyn_cast<clang::FunctionDecl>(decl)) {
             std::unordered_set<clang::NamedDecl*> decls;
             decls.insert(func);
-            return a.GetOverloadSet(decls, &tu, nullptr)->BuildValueConstruction(Expressions(), c);
+            return a.GetOverloadSet(decls, &tu, nullptr)->BuildValueConstruction({}, c);
         }
         std::string str;
         llvm::raw_string_ostream ostr(str);
@@ -149,7 +149,7 @@ std::unique_ptr<Expression> Semantic::InterpretExpression(clang::Expr* expr, Cla
         auto castexpr = InterpretExpression(cast->getSubExpr(), tu, c, a);
         if (castty == a.GetPointerType(a.GetIntegralType(8, true)) && dynamic_cast<StringType*>(castexpr->GetType()->Decay()))
             return castexpr;
-        return castty->BuildRvalueConstruction(Expressions(std::move(castexpr)), c);
+        return castty->BuildRvalueConstruction({ castexpr }, c);
     }
     std::string str;
     llvm::raw_string_ostream ostr(str);

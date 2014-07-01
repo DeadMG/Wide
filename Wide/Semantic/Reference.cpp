@@ -63,7 +63,7 @@ struct rvalueconvertible : OverloadResolvable, Callable {
     : self(s) {}
     RvalueType* self;
     Callable* GetCallableForResolution(std::vector<Type*>, Analyzer& a) override final { return this; }
-    std::vector<std::unique_ptr<Expression>> AdjustArguments(std::vector<std::unique_ptr<Expression>> args, Context c) override final { return args; }
+    std::vector<std::shared_ptr<Expression>> AdjustArguments(std::vector<std::shared_ptr<Expression>> args, Context c) override final { return args; }
     Util::optional<std::vector<Type*>> MatchParameter(std::vector<Type*> types, Analyzer& a, Type* source) override final {
         if (types.size() != 2) return Util::none;
         if (types[0] != a.GetLvalueType(self)) return Util::none;
@@ -76,7 +76,7 @@ struct rvalueconvertible : OverloadResolvable, Callable {
         if (!ptrt->IsA(ptrt, ptrself, GetAccessSpecifier(source, ptrt)) && !types[1]->Decay()->IsA(types[1]->Decay(), self->Decay(), GetAccessSpecifier(source, types[1]))) return Util::none;
         return types;
     }
-    std::unique_ptr<Expression> CallFunction(std::vector<std::unique_ptr<Expression>> args, Context c) override final {
+    std::shared_ptr<Expression> CallFunction(std::vector<std::shared_ptr<Expression>> args, Context c) override final {
         if (args[1]->GetType() == self)
             return Wide::Memory::MakeUnique<ImplicitStoreExpr>(std::move(args[0]), std::move(args[1]));
         if (args[1]->GetType()->Decay() == self->Decay())
@@ -90,7 +90,7 @@ struct rvalueconvertible : OverloadResolvable, Callable {
                 args[1] = Wide::Memory::MakeUnique<RvalueCast>(std::move(args[1]));
             return Wide::Memory::MakeUnique<ImplicitStoreExpr>(std::move(args[0]), basety->AccessBase(std::move(args[1]), self->Decay()));
         }
-        return self->Decay()->BuildRvalueConstruction(Expressions( std::move(args[1]) ), c);
+        return self->Decay()->BuildRvalueConstruction({ std::move(args[1]) }, c);
     }
 };
 struct PointerComparableResolvable : OverloadResolvable, Callable {
@@ -107,8 +107,8 @@ struct PointerComparableResolvable : OverloadResolvable, Callable {
         if (!ptrt->IsA(ptrt, ptrself, GetAccessSpecifier(source, ptrt))) return Util::none;
         return types;
     }
-    std::vector<std::unique_ptr<Expression>> AdjustArguments(std::vector<std::unique_ptr<Expression>> args, Context c) override final { return args; }
-    std::unique_ptr<Expression> CallFunction(std::vector<std::unique_ptr<Expression>> args, Context c) override final {
+    std::vector<std::shared_ptr<Expression>> AdjustArguments(std::vector<std::shared_ptr<Expression>> args, Context c) override final { return args; }
+    std::shared_ptr<Expression> CallFunction(std::vector<std::shared_ptr<Expression>> args, Context c) override final {
         auto ty = args[1]->GetType();
         if (args[1]->GetType() == self)
             return Wide::Memory::MakeUnique<ImplicitStoreExpr>(std::move(args[0]), std::move(args[1]));

@@ -16,10 +16,10 @@ namespace Wide {
         public:
             Type* GetContext() { return context; }
             LambdaType(std::vector<std::pair<std::string, Type*>> capturetypes, const Parse::Lambda* l, Type* context, Analyzer& a);
-            std::unique_ptr<Expression> BuildCall(std::unique_ptr<Expression> val, std::vector<std::unique_ptr<Expression>> args, Context c) override final;
-            std::unique_ptr<Expression> BuildLambdaFromCaptures(std::vector<std::unique_ptr<Expression>> exprs, Context c);
+            std::shared_ptr<Expression> BuildCall(std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c) override final;
+            std::shared_ptr<Expression> BuildLambdaFromCaptures(std::vector<std::shared_ptr<Expression>> exprs, Context c);
 
-            std::unique_ptr<Expression> LookupCapture(std::unique_ptr<Expression> self, std::string name);
+            std::shared_ptr<Expression> LookupCapture(std::shared_ptr<Expression> self, std::string name);
             std::string explain() override final;
        };
     }

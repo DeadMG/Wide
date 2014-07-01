@@ -64,7 +64,7 @@ OverloadSet* IntegralType::CreateConstructorOverloadSet(Lexer::Access access) {
             return types;
         }
         Callable* GetCallableForResolution(std::vector<Type*> types, Analyzer& a) override final { return this; }
-        std::unique_ptr<Expression> CallFunction(std::vector<std::unique_ptr<Expression>> args, Context c) override final {
+        std::shared_ptr<Expression> CallFunction(std::vector<std::shared_ptr<Expression>> args, Context c) override final {
             args[1] = BuildValue(std::move(args[1]));
             if (args[1]->GetType() == integral)
                 return Wide::Memory::MakeUnique<ImplicitStoreExpr>(std::move(args[0]), std::move(args[1]));
@@ -89,7 +89,7 @@ OverloadSet* IntegralType::CreateConstructorOverloadSet(Lexer::Access access) {
             assert(false && "Integer constructor called with conditions that OR should have prevented.");
             return nullptr;
         }
-        std::vector<std::unique_ptr<Expression>> AdjustArguments(std::vector<std::unique_ptr<Expression>> args, Context c) override final {
+        std::vector<std::shared_ptr<Expression>> AdjustArguments(std::vector<std::shared_ptr<Expression>> args, Context c) override final {
             return args;
         }
     };
@@ -108,12 +108,12 @@ std::size_t IntegralType::alignment() {
 OverloadSet* IntegralType::CreateADLOverloadSet(Lexer::TokenType name, Type* lhs, Type* rhs, Lexer::Access access) {
     if (access != Lexer::Access::Public) return CreateADLOverloadSet(name, lhs, rhs, Lexer::Access::Public);
     auto CreateAssOp = [this](std::function<llvm::Value*(llvm::Value*, llvm::Value*, CodegenContext& con)> func) {
-        return MakeResolvable([this, func](std::vector<std::unique_ptr<Expression>> args, Context c) {
+        return MakeResolvable([this, func](std::vector<std::shared_ptr<Expression>> args, Context c) {
             return CreatePrimAssOp(std::move(args[0]), std::move(args[1]), func);
         }, { analyzer.GetLvalueType(this), this });
     };
     auto CreateOp = [this](std::function<llvm::Value*(llvm::Value*, llvm::Value*, CodegenContext& con)> func) {
-        return MakeResolvable([this, func](std::vector<std::unique_ptr<Expression>> args, Context c) {
+        return MakeResolvable([this, func](std::vector<std::shared_ptr<Expression>> args, Context c) {
             return CreatePrimOp(std::move(args[0]), std::move(args[1]), func);
         }, { this, this });
     };
@@ -230,7 +230,7 @@ OverloadSet* IntegralType::CreateADLOverloadSet(Lexer::TokenType name, Type* lhs
         });
         return analyzer.GetOverloadSet(Div.get());
     } else if (name == &Lexer::TokenTypes::LT) {
-        LT = MakeResolvable([this](std::vector<std::unique_ptr<Expression>> args, Context c) {
+        LT = MakeResolvable([this](std::vector<std::shared_ptr<Expression>> args, Context c) {
             return CreatePrimOp(std::move(args[0]), std::move(args[1]), c.from->analyzer.GetBooleanType(), [this](llvm::Value* lhs, llvm::Value* rhs, CodegenContext& con) {
                 llvm::Value* result = is_signed ? con->CreateICmpSLT(lhs, rhs) : con->CreateICmpULT(lhs, rhs);
                 return con->CreateZExt(result, llvm::Type::getInt8Ty(con));
@@ -238,14 +238,14 @@ OverloadSet* IntegralType::CreateADLOverloadSet(Lexer::TokenType name, Type* lhs
         }, { this, this });
         return analyzer.GetOverloadSet(LT.get());
     } else if (name == &Lexer::TokenTypes::EqCmp) {
-        EQ = MakeResolvable([](std::vector<std::unique_ptr<Expression>> args, Context c) {
+        EQ = MakeResolvable([](std::vector<std::shared_ptr<Expression>> args, Context c) {
             return CreatePrimOp(std::move(args[0]), std::move(args[1]), c.from->analyzer.GetBooleanType(), [](llvm::Value* lhs, llvm::Value* rhs, CodegenContext& con) {
                 return con->CreateZExt(con->CreateICmpEQ(lhs, rhs), llvm::Type::getInt8Ty(con));
             });
         }, { this, this });
         return analyzer.GetOverloadSet(EQ.get());
     } else if (name == &Lexer::TokenTypes::Increment) {
-        Increment = MakeResolvable([this](std::vector<std::unique_ptr<Expression>> args, Context c) {
+        Increment = MakeResolvable([this](std::vector<std::shared_ptr<Expression>> args, Context c) {
             return CreatePrimUnOp(std::move(args[0]), analyzer.GetLvalueType(this), [](llvm::Value* val, CodegenContext& con) {
                 con->CreateStore(con->CreateAdd(con->CreateLoad(val), llvm::ConstantInt::get(val->getType(), llvm::APInt(64, 1, false))), val);
                 return val;
@@ -277,7 +277,7 @@ OverloadSet* IntegralType::CreateOperatorOverloadSet(Type* self, Lexer::TokenTyp
     if (access != Lexer::Access::Public)
         return AccessMember(self, what, Lexer::Access::Public);
     if (what == &Lexer::TokenTypes::Increment) {
-        Increment = MakeResolvable([this](std::vector<std::unique_ptr<Expression>> args, Context c) {
+        Increment = MakeResolvable([this](std::vector<std::shared_ptr<Expression>> args, Context c) {
             return CreatePrimUnOp(std::move(args[0]), analyzer.GetLvalueType(this), [this](llvm::Value* self, CodegenContext& con) {
                 con->CreateStore(con->CreateAdd(con->CreateLoad(self), llvm::ConstantInt::get(GetLLVMType(con), 1, is_signed)), self);
                 return self;

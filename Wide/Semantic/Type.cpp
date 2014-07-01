@@ -54,8 +54,16 @@ Type* Type::GetContext() {
     return analyzer.GetGlobalModule();
 }
 
-bool Type::IsComplexType(llvm::Module* module) {
-    return false;
+bool Type::IsComplexType() {
+    return !IsTriviallyDestructible() || !IsTriviallyCopyConstructible();
+}
+
+bool Type::IsTriviallyDestructible() {
+    return true;
+}
+
+bool Type::IsTriviallyCopyConstructible() {
+    return true;
 }
 
 Wide::Util::optional<clang::QualType> Type::GetClangType(ClangTU& TU) {
@@ -153,30 +161,30 @@ std::vector<std::pair<Type*, unsigned>> Type::GetBasesAndOffsets() {
     return {}; 
 }
 
-std::unique_ptr<Expression> Type::GetVirtualPointer(std::unique_ptr<Expression> self) { 
+std::shared_ptr<Expression> Type::GetVirtualPointer(std::shared_ptr<Expression> self) { 
     assert(false); 
     throw std::runtime_error("ICE"); 
 }
 
-std::unique_ptr<Expression> Type::AccessStaticMember(std::string name) {
+std::shared_ptr<Expression> Type::AccessStaticMember(std::string name) {
     if (IsReference())
         return Decay()->AccessStaticMember(name);
     return nullptr;
 }
 
-std::unique_ptr<Expression> Type::AccessMember(std::unique_ptr<Expression> t, std::string name, Context c) {
+std::shared_ptr<Expression> Type::AccessMember(std::shared_ptr<Expression> t, std::string name, Context c) {
     if (IsReference())
         return Decay()->AccessMember(std::move(t), name, c);
     return nullptr;
 }
 
-std::unique_ptr<Expression> Type::BuildMetaCall(std::unique_ptr<Expression> val, std::vector<std::unique_ptr<Expression>> args) {
+std::shared_ptr<Expression> Type::BuildMetaCall(std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args) {
     if (IsReference())
         return Decay()->BuildMetaCall(std::move(val), std::move(args));
     throw std::runtime_error("fuck");
 }
 
-std::unique_ptr<Expression> Type::BuildCall(std::unique_ptr<Expression> val, std::vector<std::unique_ptr<Expression>> args, Context c) {
+std::shared_ptr<Expression> Type::BuildCall(std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c) {
     if (IsReference())
         return Decay()->BuildCall(std::move(val), std::move(args), c);
     auto set = AccessMember(val->GetType(), &Lexer::TokenTypes::OpenBracket, GetAccessSpecifier(c.from, this));
@@ -189,11 +197,11 @@ std::unique_ptr<Expression> Type::BuildCall(std::unique_ptr<Expression> val, std
     return call->Call(std::move(args), c);
 }
 
-std::unique_ptr<Expression> Type::BuildBooleanConversion(std::unique_ptr<Expression> val, Context c) {
+std::shared_ptr<Expression> Type::BuildBooleanConversion(std::shared_ptr<Expression> val, Context c) {
     if (IsReference())
         return Decay()->BuildBooleanConversion(std::move(val), c);
     auto set = AccessMember(val->GetType(), &Lexer::TokenTypes::QuestionMark, GetAccessSpecifier(c.from, this));
-    std::vector<std::unique_ptr<Expression>> args;
+    std::vector<std::shared_ptr<Expression>> args;
     args.push_back(std::move(val));
     std::vector<Type*> types;
     for (auto&& arg : args)
@@ -203,8 +211,8 @@ std::unique_ptr<Expression> Type::BuildBooleanConversion(std::unique_ptr<Express
     return call->Call(std::move(args), c);
 }
 
-std::unique_ptr<Expression> Type::BuildDestructorCall(std::unique_ptr<Expression> self, Context c) {
-    return self;
+std::function<void(CodegenContext&)> Type::BuildDestructorCall(std::shared_ptr<Expression> self, Context c, bool devirtualize) {
+    return [](CodegenContext&) {};
 }
 
 OverloadSet* Type::GetConstructorOverloadSet(Lexer::Access access) {
@@ -233,7 +241,7 @@ OverloadSet* Type::AccessMember(Type* t, Lexer::TokenType type, Lexer::Access ac
     return OperatorOverloadSets[t][access][type] = CreateOperatorOverloadSet(t, type, access);
 }
 
-std::unique_ptr<Expression> Type::BuildInplaceConstruction(std::unique_ptr<Expression> self, std::vector<std::unique_ptr<Expression>> exprs, Context c) {
+std::shared_ptr<Expression> Type::BuildInplaceConstruction(std::shared_ptr<Expression> self, std::vector<std::shared_ptr<Expression>> exprs, Context c) {
     exprs.insert(exprs.begin(), std::move(self));
     std::vector<Type*> types;
     for (auto&& arg : exprs)
@@ -246,18 +254,20 @@ std::unique_ptr<Expression> Type::BuildInplaceConstruction(std::unique_ptr<Expre
 }
 
 struct ValueConstruction : Expression {
-    ValueConstruction(Type* self, std::vector<std::unique_ptr<Expression>> args, Context c)
+    ValueConstruction(Type* self, std::vector<std::shared_ptr<Expression>> args, Context c)
     : self(self) {
         ListenToNode(self);
         no_args = args.size() == 0;
         temporary = Wide::Memory::MakeUnique<ImplicitTemporaryExpr>(self, c);
         if (args.size() == 1)
-            single_arg = Wide::Memory::MakeUnique<ExpressionReference>(args[0].get());
-        InplaceConstruction = self->BuildInplaceConstruction(Wide::Memory::MakeUnique<ExpressionReference>(temporary.get()), std::move(args), c);
+            single_arg = args[0];
+        InplaceConstruction = self->BuildInplaceConstruction(temporary, std::move(args), c);
+        destructor = self->BuildDestructorCall(temporary, c, true);
     }
-    std::unique_ptr<ImplicitTemporaryExpr> temporary;
-    std::unique_ptr<Expression> InplaceConstruction;
-    std::unique_ptr<Expression> single_arg;
+    std::shared_ptr<ImplicitTemporaryExpr> temporary;
+    std::function<void(CodegenContext&)> destructor;
+    std::shared_ptr<Expression> InplaceConstruction;
+    std::shared_ptr<Expression> single_arg;
     bool no_args = false;
     Type* self;
     void OnNodeChanged(Node* n, Change what) {
@@ -271,9 +281,9 @@ struct ValueConstruction : Expression {
         if (self->GetConstantContext() == self && no_args) {
             return llvm::UndefValue::get(self->GetLLVMType(con));
         }
-        //if (auto func = dynamic_cast<Function*>(self))
-        //    return llvm::UndefValue::get(self->GetLLVMType(con));
-        if (!self->Decay()->IsComplexType(con)) {
+        if (auto func = dynamic_cast<Function*>(self))
+            return llvm::UndefValue::get(self->GetLLVMType(con));
+        if (!self->Decay()->IsComplexType()) {
             if (single_arg) {
                 auto otherty = single_arg->GetType();
                 if (single_arg->GetType()->Decay() == self->Decay()) {
@@ -297,57 +307,62 @@ struct ValueConstruction : Expression {
             }
         }
         InplaceConstruction->GetValue(con);
-        if (self->IsComplexType(con)) {
-            con.Destructors.push_back(temporary.get());
+        if (self->IsComplexType()) {
+            if (!self->IsTriviallyDestructible())
+                con.AddDestructor(destructor);
             return temporary->GetValue(con);
         }
         return con->CreateLoad(temporary->GetValue(con));
     }
 };
-std::unique_ptr<Expression> Type::BuildValueConstruction(std::vector<std::unique_ptr<Expression>> exprs, Context c) {
+std::shared_ptr<Expression> Type::BuildValueConstruction(std::vector<std::shared_ptr<Expression>> exprs, Context c) {
     return Wide::Memory::MakeUnique<ValueConstruction>(this, std::move(exprs), c);
 }
 
-std::unique_ptr<Expression> Type::BuildRvalueConstruction(std::vector<std::unique_ptr<Expression>> exprs, Context c) {
+std::shared_ptr<Expression> Type::BuildRvalueConstruction(std::vector<std::shared_ptr<Expression>> exprs, Context c) {
     struct RValueConstruction : Expression {
-        RValueConstruction(Type* self, std::vector<std::unique_ptr<Expression>> args, Context c)
+        RValueConstruction(Type* self, std::vector<std::shared_ptr<Expression>> args, Context c)
         : self(self) {
             temporary = Wide::Memory::MakeUnique<ImplicitTemporaryExpr>(self, c);
-            InplaceConstruction = self->BuildInplaceConstruction(Wide::Memory::MakeUnique<ExpressionReference>(temporary.get()), std::move(args), c);
+            InplaceConstruction = self->BuildInplaceConstruction(temporary, std::move(args), c);
+            destructor = self->BuildDestructorCall(temporary, c, true);
         }
-        std::unique_ptr<ImplicitTemporaryExpr> temporary;
-        std::unique_ptr<Expression> InplaceConstruction;
+        std::shared_ptr<ImplicitTemporaryExpr> temporary;
+        std::shared_ptr<Expression> InplaceConstruction;
+        std::function<void(CodegenContext&)> destructor;
         Type* self;
         Type* GetType() override final {
             return self->analyzer.GetRvalueType(self);
         }
         llvm::Value* ComputeValue(CodegenContext& con) override final {
             InplaceConstruction->GetValue(con);
-            if (self->IsComplexType(con))
-                con.Destructors.push_back(temporary.get());
+            if (self->IsComplexType())
+                con.AddDestructor(destructor);
             return temporary->GetValue(con);
         }
     };
     return Wide::Memory::MakeUnique<RValueConstruction>(this, std::move(exprs), c);
 }
 
-std::unique_ptr<Expression> Type::BuildLvalueConstruction(std::vector<std::unique_ptr<Expression>> exprs, Context c) {
+std::shared_ptr<Expression> Type::BuildLvalueConstruction(std::vector<std::shared_ptr<Expression>> exprs, Context c) {
     struct LValueConstruction : Expression {
-        LValueConstruction(Type* self, std::vector<std::unique_ptr<Expression>> args, Context c)
+        LValueConstruction(Type* self, std::vector<std::shared_ptr<Expression>> args, Context c)
         : self(self) {
             temporary = Wide::Memory::MakeUnique<ImplicitTemporaryExpr>(self, c);
-            InplaceConstruction = self->BuildInplaceConstruction(Wide::Memory::MakeUnique<ExpressionReference>(temporary.get()), std::move(args), c);
+            InplaceConstruction = self->BuildInplaceConstruction(temporary, std::move(args), c);
+            destructor = self->BuildDestructorCall(temporary, c, true);
         }
-        std::unique_ptr<ImplicitTemporaryExpr> temporary;
-        std::unique_ptr<Expression> InplaceConstruction;
+        std::shared_ptr<ImplicitTemporaryExpr> temporary;
+        std::shared_ptr<Expression> InplaceConstruction;
+        std::function<void(CodegenContext&)> destructor;
         Type* self;
         Type* GetType() override final {
             return self->analyzer.GetLvalueType(self);
         }
         llvm::Value* ComputeValue(CodegenContext& con) override final {
             InplaceConstruction->GetValue(con);
-            if (self->IsComplexType(con))
-                con.Destructors.push_back(temporary.get());
+            if (self->IsComplexType())
+                con.AddDestructor(destructor);
             return temporary->GetValue(con);
         }
     };
@@ -389,7 +404,7 @@ Type::VTableLayout Type::GetPrimaryVTable() {
     return *PrimaryVtableLayout;
 }
 
-std::unique_ptr<Expression> Type::AccessBase(std::unique_ptr<Expression> self, Type* other) {
+std::shared_ptr<Expression> Type::AccessBase(std::shared_ptr<Expression> self, Type* other) {
     assert(IsDerivedFrom(other) == InheritanceRelationship::UnambiguouslyDerived);
     assert(self->GetType()->IsReference(this) || self->GetType() == this || dynamic_cast<PointerType*>(self->GetType())->GetPointee() == this);
     assert(!other->IsReference());
@@ -399,9 +414,9 @@ std::unique_ptr<Expression> Type::AccessBase(std::unique_ptr<Expression> self, T
         ? analyzer.GetPointerType(other)
         : other;
     struct DerivedToBaseConversion : public Expression {
-        DerivedToBaseConversion(std::unique_ptr<Expression> self, Type* result, Type* derived, Type* targetbase)
+        DerivedToBaseConversion(std::shared_ptr<Expression> self, Type* result, Type* derived, Type* targetbase)
         : self(std::move(self)), result(result), derived(derived), targetbase(targetbase) {}
-        std::unique_ptr<Expression> self;
+        std::shared_ptr<Expression> self;
         Type* derived;
         Type* targetbase;
         Type* result;
@@ -464,22 +479,22 @@ bool Type::InheritsFromAtOffsetZero(Type* other) {
     return false;
 }
 
-std::unique_ptr<Expression> Type::BuildUnaryExpression(std::unique_ptr<Expression> self, Lexer::TokenType type, Context c) {
+std::shared_ptr<Expression> Type::BuildUnaryExpression(std::shared_ptr<Expression> self, Lexer::TokenType type, Context c) {
     if (IsReference())
         return Decay()->BuildUnaryExpression(std::move(self), type, c);
     auto opset = AccessMember(self->GetType(), type, GetAccessSpecifier(c.from, this));
     auto callable = opset->Resolve({ self->GetType() }, c.from);
     if (!callable) {
         if (type == &Lexer::TokenTypes::Negate) {
-            if (BuildBooleanConversion(Wide::Memory::MakeUnique<ExpressionReference>(self.get()), c))
-                return analyzer.GetBooleanType()->BuildUnaryExpression(BuildBooleanConversion(std::move(self), c), &Lexer::TokenTypes::Negate, c);
+            if (auto self_as_bool = BuildBooleanConversion(self, c))
+                return analyzer.GetBooleanType()->BuildUnaryExpression(self_as_bool, &Lexer::TokenTypes::Negate, c);
         }
         opset->IssueResolutionError({ self->GetType() }, c);
     }
-    return callable->Call(Expressions(std::move(self)), c);
+    return callable->Call({ std::move(self) }, c);
 }
 
-std::unique_ptr<Expression> Type::BuildBinaryExpression(std::unique_ptr<Expression> lhs, std::unique_ptr<Expression> rhs, Lexer::TokenType type, Context c) {
+std::shared_ptr<Expression> Type::BuildBinaryExpression(std::shared_ptr<Expression> lhs, std::shared_ptr<Expression> rhs, Lexer::TokenType type, Context c) {
     if (IsReference())
         return Decay()->BuildBinaryExpression(std::move(lhs), std::move(rhs), type, c);
 
@@ -493,12 +508,12 @@ std::unique_ptr<Expression> Type::BuildBinaryExpression(std::unique_ptr<Expressi
     arguments.push_back(lhs->GetType());
     arguments.push_back(rhs->GetType());
     if (auto call = finalset->Resolve(arguments, c.from)) {
-        return call->Call(Expressions(std::move(lhs), std::move(rhs)), c);
+        return call->Call({ std::move(lhs), std::move(rhs) }, c);
     }
     
     if (type == &Lexer::TokenTypes::EqCmp) {
         // a == b if (!(a < b) && !(b > a)).
-        auto a_lt_b = BuildBinaryExpression(Wide::Memory::MakeUnique<ExpressionReference>(lhs.get()), Wide::Memory::MakeUnique<ExpressionReference>(rhs.get()), &Lexer::TokenTypes::LT, c);
+        auto a_lt_b = BuildBinaryExpression(lhs, rhs , &Lexer::TokenTypes::LT, c);
         auto b_lt_a = rhs->GetType()->BuildBinaryExpression(std::move(rhs), std::move(lhs), &Lexer::TokenTypes::LT, c);
         auto not_a_lt_b = a_lt_b->GetType()->BuildUnaryExpression(std::move(a_lt_b), &Lexer::TokenTypes::Negate, c);
         auto not_b_lt_a = b_lt_a->GetType()->BuildUnaryExpression(std::move(b_lt_a), &Lexer::TokenTypes::Negate, c);
@@ -523,7 +538,8 @@ std::unique_ptr<Expression> Type::BuildBinaryExpression(std::unique_ptr<Expressi
 
 OverloadSet* PrimitiveType::CreateConstructorOverloadSet(Lexer::Access access) {
     if (access != Lexer::Access::Public) return GetConstructorOverloadSet(Lexer::Access::Public);
-    auto construct_from_ref = [](std::vector<std::unique_ptr<Expression>> args, Context c) {
+    auto construct_from_ref = [](std::vector<std::shared_ptr<Expression>> args, Context c) {
+        auto&& type = typeid(*args[1]->GetImplementation());
         return Wide::Memory::MakeUnique<ImplicitStoreExpr>(std::move(args[0]), BuildValue(std::move(args[1])));
     };
     CopyConstructor = MakeResolvable(construct_from_ref, { analyzer.GetLvalueType(this), analyzer.GetLvalueType(this) });
@@ -541,7 +557,7 @@ OverloadSet* PrimitiveType::CreateOperatorOverloadSet(Type* t, Lexer::TokenType 
     if (t != analyzer.GetLvalueType(this))
         return analyzer.GetOverloadSet();
 
-    AssignmentOperator = MakeResolvable([](std::vector<std::unique_ptr<Expression>> args, Context c) {
+    AssignmentOperator = MakeResolvable([](std::vector<std::shared_ptr<Expression>> args, Context c) {
         return Wide::Memory::MakeUnique<ImplicitStoreExpr>(std::move(args[0]), std::move(args[1]));
     }, { analyzer.GetLvalueType(this), this });
     return analyzer.GetOverloadSet(AssignmentOperator.get());
@@ -566,20 +582,20 @@ Type* MetaType::GetConstantContext() {
 
 OverloadSet* MetaType::CreateConstructorOverloadSet(Lexer::Access access) {
     if (access != Lexer::Access::Public) return GetConstructorOverloadSet(Lexer::Access::Public);
-    DefaultConstructor = MakeResolvable([](std::vector<std::unique_ptr<Expression>> args, Context c) {
+    DefaultConstructor = MakeResolvable([](std::vector<std::shared_ptr<Expression>> args, Context c) {
         return std::move(args[0]);
     }, { analyzer.GetLvalueType(this) });
     return analyzer.GetOverloadSet(PrimitiveType::CreateConstructorOverloadSet(access), analyzer.GetOverloadSet(DefaultConstructor.get()));
 }
 
-std::unique_ptr<Expression> Callable::Call(std::vector<std::unique_ptr<Expression>> args, Context c) {
+std::shared_ptr<Expression> Callable::Call(std::vector<std::shared_ptr<Expression>> args, Context c) {
     return CallFunction(AdjustArguments(std::move(args), c), c);
 }
 
-std::vector<std::unique_ptr<Expression>> Semantic::AdjustArgumentsForTypes(std::vector<std::unique_ptr<Expression>> args, std::vector<Type*> types, Context c) {
+std::vector<std::shared_ptr<Expression>> Semantic::AdjustArgumentsForTypes(std::vector<std::shared_ptr<Expression>> args, std::vector<Type*> types, Context c) {
     if (args.size() != types.size())
         Wide::Util::DebugBreak();
-    std::vector<std::unique_ptr<Expression>> out;
+    std::vector<std::shared_ptr<Expression>> out;
     for (std::size_t i = 0; i < types.size(); ++i) {
         if (args[i]->GetType() == types[i]) {
             out.push_back(std::move(args[i]));
@@ -587,16 +603,16 @@ std::vector<std::unique_ptr<Expression>> Semantic::AdjustArgumentsForTypes(std::
         }
         if (!args[i]->GetType()->IsA(args[i]->GetType(), types[i], GetAccessSpecifier(c.from, args[i]->GetType())))
             Wide::Util::DebugBreak();
-        out.push_back(types[i]->BuildValueConstruction(Expressions(std::move(args[i])), c));
+        out.push_back(types[i]->BuildValueConstruction({ std::move(args[i]) }, c));
     }
     return out;
 }
 
 struct Resolvable : OverloadResolvable, Callable {
     std::vector<Type*> types;
-    std::function<std::unique_ptr<Expression>(std::vector<std::unique_ptr<Expression>>, Context)> action;
+    std::function<std::shared_ptr<Expression>(std::vector<std::shared_ptr<Expression>>, Context)> action;
 
-    Resolvable(std::vector<Type*> tys, std::function<std::unique_ptr<Expression>(std::vector<std::unique_ptr<Expression>>, Context)> func)
+    Resolvable(std::vector<Type*> tys, std::function<std::shared_ptr<Expression>(std::vector<std::shared_ptr<Expression>>, Context)> func)
         : types(std::move(tys)), action(std::move(func)) {}
 
     Util::optional<std::vector<Type*>> MatchParameter(std::vector<Type*> args, Analyzer& a, Type* source) override final {
@@ -612,18 +628,18 @@ struct Resolvable : OverloadResolvable, Callable {
         assert(types == tys);
         return this;
     }
-    std::unique_ptr<Expression> CallFunction(std::vector<std::unique_ptr<Expression>> args, Context c) override final {
+    std::shared_ptr<Expression> CallFunction(std::vector<std::shared_ptr<Expression>> args, Context c) override final {
         assert(types.size() == args.size());
         for (std::size_t num = 0; num < types.size(); ++num)
             assert(types[num] == args[num]->GetType());
         return action(std::move(args), c);
     }
-    std::vector<std::unique_ptr<Expression>> AdjustArguments(std::vector<std::unique_ptr<Expression>> args, Context c) override final {
+    std::vector<std::shared_ptr<Expression>> AdjustArguments(std::vector<std::shared_ptr<Expression>> args, Context c) override final {
         return AdjustArgumentsForTypes(std::move(args), types, c);
     }
 };
 
-std::unique_ptr<OverloadResolvable> Semantic::MakeResolvable(std::function<std::unique_ptr<Expression>(std::vector<std::unique_ptr<Expression>>, Context)> f, std::vector<Type*> types) {
+std::unique_ptr<OverloadResolvable> Semantic::MakeResolvable(std::function<std::shared_ptr<Expression>(std::vector<std::shared_ptr<Expression>>, Context)> f, std::vector<Type*> types) {
     return Wide::Memory::MakeUnique<Resolvable>(types, std::move(f));
 }
 
@@ -641,8 +657,8 @@ OverloadSet* TupleInitializable::CreateConstructorOverloadSet(Lexer::Access acce
             if (!tup->IsA(args[1], self->GetSelfAsType(), GetAccessSpecifier(source, tup))) return Util::none;
             return args;
         }
-        std::vector<std::unique_ptr<Expression>> AdjustArguments(std::vector<std::unique_ptr<Expression>> args, Context c) override final { return args; }
-        std::unique_ptr<Expression> CallFunction(std::vector<std::unique_ptr<Expression>> args, Context c) override final {
+        std::vector<std::shared_ptr<Expression>> AdjustArguments(std::vector<std::shared_ptr<Expression>> args, Context c) override final { return args; }
+        std::shared_ptr<Expression> CallFunction(std::vector<std::shared_ptr<Expression>> args, Context c) override final {
             // We should already have properly-typed memory at 0.
             // and the tuple at 1.
             // This stuff won't be called unless we are valid
@@ -655,19 +671,19 @@ OverloadSet* TupleInitializable::CreateConstructorOverloadSet(Lexer::Access acce
             if (members.size() == 0)
                 return std::move(args[0]);
 
-            std::vector<std::unique_ptr<Expression>> initializers;
+            std::vector<std::shared_ptr<Expression>> initializers;
             for (std::size_t i = 0; i < members.size(); ++i) {
-                auto memory = self->PrimitiveAccessMember(Wide::Memory::MakeUnique<ExpressionReference>(args[0].get()), i);
-                auto argument = tupty->PrimitiveAccessMember(Wide::Memory::MakeUnique<ExpressionReference>(args[1].get()), i);
-                initializers.push_back(members[i]->BuildInplaceConstruction(std::move(memory), Expressions(std::move(argument)), c));
+                auto memory = self->PrimitiveAccessMember(args[0], i);
+                auto argument = tupty->PrimitiveAccessMember(args[1], i);
+                initializers.push_back(members[i]->BuildInplaceConstruction(std::move(memory), { std::move(argument) }, c));
             }
 
             struct TupleInitialization : Expression {
-                TupleInitialization(Type* this_t, std::unique_ptr<Expression> s, std::unique_ptr<Expression> t, std::vector<std::unique_ptr<Expression>> inits)
+                TupleInitialization(Type* this_t, std::shared_ptr<Expression> s, std::shared_ptr<Expression> t, std::vector<std::shared_ptr<Expression>> inits)
                 : self(std::move(s)), tuple(std::move(t)), initializers(std::move(inits)), this_type(this_t) {}
-                std::vector<std::unique_ptr<Expression>> initializers;
-                std::unique_ptr<Expression> self;
-                std::unique_ptr<Expression> tuple;
+                std::vector<std::shared_ptr<Expression>> initializers;
+                std::shared_ptr<Expression> self;
+                std::shared_ptr<Expression> tuple;
                 Type* this_type;
 
                 Type* GetType() override final {
@@ -689,8 +705,8 @@ OverloadSet* TupleInitializable::CreateConstructorOverloadSet(Lexer::Access acce
     return GetSelfAsType()->analyzer.GetOverloadSet(TupleConstructor.get());
 }
 
-std::unique_ptr<Expression> Type::CreateVTable(std::vector<std::pair<Type*, unsigned>> path) {
-    std::vector<std::unique_ptr<Expression>> entries;
+std::shared_ptr<Expression> Type::CreateVTable(std::vector<std::pair<Type*, unsigned>> path) {
+    std::vector<std::shared_ptr<Expression>> entries;
     unsigned offset_total = 0;
     for (auto base : path)
         offset_total += base.second;
@@ -738,10 +754,10 @@ std::unique_ptr<Expression> Type::CreateVTable(std::vector<std::pair<Type*, unsi
         assert(found);
     }
     struct VTable : Expression {
-        VTable(Type* self, std::vector<std::unique_ptr<Expression>> funcs, unsigned offset)
+        VTable(Type* self, std::vector<std::shared_ptr<Expression>> funcs, unsigned offset)
         : self(self), entries(std::move(funcs)), offset(offset) {}
         unsigned offset;
-        std::vector<std::unique_ptr<Expression>> entries;
+        std::vector<std::shared_ptr<Expression>> entries;
         Type* self;
         Type* GetType() override final {
             return self->analyzer.GetPointerType(self->GetVirtualPointerType());
@@ -772,36 +788,36 @@ std::unique_ptr<Expression> Type::CreateVTable(std::vector<std::pair<Type*, unsi
     return Wide::Memory::MakeUnique<VTable>(this, std::move(entries), GetVtableLayout().offset);
 }      
 
-std::unique_ptr<Expression> Type::GetVTablePointer(std::vector<std::pair<Type*, unsigned>> path) {
+std::shared_ptr<Expression> Type::GetVTablePointer(std::vector<std::pair<Type*, unsigned>> path) {
     if (ComputedVTables.find(path) == ComputedVTables.end())
         ComputedVTables[path] = CreateVTable(path);
-    return Wide::Memory::MakeUnique<ExpressionReference>(ComputedVTables.at(path).get());
+    return ComputedVTables.at(path);
 }
 
-std::unique_ptr<Expression> Type::SetVirtualPointers(std::unique_ptr<Expression> self) {
+std::shared_ptr<Expression> Type::SetVirtualPointers(std::shared_ptr<Expression> self) {
     return SetVirtualPointers({}, std::move(self));
 }
 
-std::unique_ptr<Expression> Type::SetVirtualPointers(std::vector<std::pair<Type*, unsigned>> path, std::unique_ptr<Expression> self) {
+std::shared_ptr<Expression> Type::SetVirtualPointers(std::vector<std::pair<Type*, unsigned>> path, std::shared_ptr<Expression> self) {
     // Set the base vptrs first, because some Clang types share vtables with their base.
-    std::vector<std::unique_ptr<Expression>> BasePointerInitializers;
+    std::vector<std::shared_ptr<Expression>> BasePointerInitializers;
     for (auto base : GetBasesAndOffsets()) {
         path.push_back(std::make_pair(this, base.second));
-        BasePointerInitializers.push_back(base.first->SetVirtualPointers(path, AccessBase(Wide::Memory::MakeUnique<ExpressionReference>(self.get()), base.first)));
+        BasePointerInitializers.push_back(base.first->SetVirtualPointers(path, AccessBase(self, base.first)));
         path.pop_back();
     }
     // If we actually have a vptr, then set it; else just set the bases.
-    auto vptr = GetVirtualPointer(Wide::Memory::MakeUnique<ExpressionReference>(self.get()));
+    auto vptr = GetVirtualPointer(self);
     if (vptr) {
         path.push_back(std::make_pair(this, 0));
         BasePointerInitializers.push_back(Wide::Memory::MakeUnique<ImplicitStoreExpr>(std::move(vptr), GetVTablePointer(path)));
     }
     
     struct VTableInitializer : Expression {
-        VTableInitializer(std::unique_ptr<Expression> obj, std::vector<std::unique_ptr<Expression>> inits)
+        VTableInitializer(std::shared_ptr<Expression> obj, std::vector<std::shared_ptr<Expression>> inits)
         : self(std::move(obj)), inits(std::move(inits)) {}
-        std::unique_ptr<Expression> self;
-        std::vector<std::unique_ptr<Expression>> inits;
+        std::shared_ptr<Expression> self;
+        std::vector<std::shared_ptr<Expression>> inits;
         Type* GetType() override final {
             return self->GetType();
         }
@@ -861,7 +877,7 @@ Type::VTableLayout Type::ComputeVTableLayout() {
     return playout;
 }
 llvm::Value* Type::GetDestructorFunction(llvm::Module* module) {
-    if (!IsComplexType(module)) return llvm::Constant::getNullValue(llvm::Type::getInt8PtrTy(module->getContext()));
+    if (!IsComplexType()) return llvm::Constant::getNullValue(llvm::Type::getInt8PtrTy(module->getContext()));
     if (DestructorFunction) return DestructorFunction;
     auto fty = llvm::FunctionType::get(llvm::Type::getVoidTy(module->getContext()), { llvm::Type::getInt8PtrTy(module->getContext()) }, false);
     std::stringstream str;
@@ -888,17 +904,17 @@ llvm::Value* Type::GetDestructorFunction(llvm::Module* module) {
             return con->CreateBitCast(val, GetType()->GetLLVMType(con));
         }
     };
-    auto obj = Wide::Memory::MakeUnique<DestructorExpression>(this, DestructorFunction->arg_begin());
-    BuildDestructorCall(std::move(obj), { this, Lexer::Range(nullptr) })->GetValue(c);
+    auto obj = std::make_shared<DestructorExpression>(this, DestructorFunction->arg_begin());
+    BuildDestructorCall(obj, { this, Lexer::Range(nullptr) }, true)(c);
     c->CreateRetVoid();
     return DestructorFunction;
 }
 
-std::unique_ptr<Expression> Type::BuildIndex(std::unique_ptr<Expression> val, std::unique_ptr<Expression> arg, Context c) {
+std::shared_ptr<Expression> Type::BuildIndex(std::shared_ptr<Expression> val, std::shared_ptr<Expression> arg, Context c) {
     if (IsReference())
         return Decay()->BuildIndex(std::move(val), std::move(arg), c);
     auto set = AccessMember(val->GetType(), &Lexer::TokenTypes::OpenSquareBracket, GetAccessSpecifier(c.from, this));
-    std::vector<std::unique_ptr<Expression>> args;
+    std::vector<std::shared_ptr<Expression>> args;
     args.push_back(std::move(val));
     args.push_back(std::move(arg));
     std::vector<Type*> types;

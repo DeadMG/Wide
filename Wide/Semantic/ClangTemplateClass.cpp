@@ -17,7 +17,7 @@
 using namespace Wide;
 using namespace Semantic;
 
-std::unique_ptr<Expression> ClangTemplateClass::BuildCall(std::unique_ptr<Expression> val, std::vector<std::unique_ptr<Expression>> args, Context c){
+std::shared_ptr<Expression> ClangTemplateClass::BuildCall(std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c){
     clang::TemplateArgumentListInfo tl;
     std::vector<Type*> types;
     std::list<clang::IntegerLiteral> literals;
@@ -31,7 +31,7 @@ std::unique_ptr<Expression> ClangTemplateClass::BuildCall(std::unique_ptr<Expres
             types.push_back(con->GetConstructedType());
             continue;
         }
-        if (auto in = dynamic_cast<Integer*>(x.get())) {
+        if (auto in = dynamic_cast<Integer*>(x->GetImplementation())) {
             literals.emplace_back(from->GetASTContext(), in->value, from->GetASTContext().LongLongTy, clang::SourceLocation());
             tl.addArgument(clang::TemplateArgumentLoc(clang::TemplateArgument(&literals.back()), clang::TemplateArgumentLocInfo(&literals.back())));
             types.push_back(x->GetType());

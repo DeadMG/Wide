@@ -20,7 +20,7 @@ namespace Wide {
         class UserDefinedType;
         class Function : public MetaType, public Callable {
             llvm::Function* llvmfunc = nullptr;
-            std::unique_ptr<Statement> AnalyzeStatement(const Parse::Statement*);
+            std::shared_ptr<Statement> AnalyzeStatement(const Parse::Statement*);
             Wide::Util::optional<Type*> ExplicitReturnType;
             Type* ReturnType = nullptr;
             std::vector<Type*> Args;
@@ -41,29 +41,30 @@ namespace Wide {
             };
             State s;
             void ComputeReturnType(); 
-            std::unique_ptr<Expression> CallFunction(std::vector<std::unique_ptr<Expression>> args, Context c) override final { 
-                return BuildCall(BuildValueConstruction(Expressions(), c), std::move(args), c);
+            std::shared_ptr<Expression> CallFunction(std::vector<std::shared_ptr<Expression>> args, Context c) override final { 
+                return BuildCall(BuildValueConstruction({}, c), std::move(args), c);
             }
-            std::vector<std::unique_ptr<Expression>> AdjustArguments(std::vector<std::unique_ptr<Expression>> args, Context c) override final {
+            std::vector<std::shared_ptr<Expression>> AdjustArguments(std::vector<std::shared_ptr<Expression>> args, Context c) override final {
                 return AdjustArgumentsForTypes(std::move(args), Args, c);
             }
         public:
             // Public for analysis.
             struct Scope;
             struct LocalVariable : public Expression {
-                std::unique_ptr<Expression> construction;
+                std::shared_ptr<Expression> construction;
                 Wide::Util::optional<unsigned> tuple_num;
                 Type* tup_ty = nullptr;
                 Type* var_type = nullptr;
-                std::unique_ptr<ImplicitTemporaryExpr> variable;
-                Expression* init_expr;
+                std::shared_ptr<ImplicitTemporaryExpr> variable;
+                std::shared_ptr<Expression> init_expr;
+                std::function<void(CodegenContext&)> destructor;
                 Function* self;
                 Lexer::Range where;
                 Lexer::Range init_where;
 
                 void OnNodeChanged(Node* n, Change what) override final;
-                LocalVariable(Expression* ex, unsigned u, Function* self, Lexer::Range where, Lexer::Range init_where);
-                LocalVariable(Expression* ex, Function* self, Lexer::Range where, Lexer::Range init_where);
+                LocalVariable(std::shared_ptr<Expression> ex, unsigned u, Function* self, Lexer::Range where, Lexer::Range init_where);
+                LocalVariable(std::shared_ptr<Expression> ex, Function* self, Lexer::Range where, Lexer::Range init_where);
                 llvm::Value* ComputeValue(CodegenContext& con) override final;
                 Type* GetType() override final;
             };
@@ -71,10 +72,10 @@ namespace Wide {
             struct ReturnStatement : public Statement {
                 Lexer::Range where;
                 Function* self;
-                std::unique_ptr<Expression> ret_expr;
-                std::unique_ptr<Expression> build;
+                std::shared_ptr<Expression> ret_expr;
+                std::shared_ptr<Expression> build;
 
-                ReturnStatement(Function* f, std::unique_ptr<Expression> expr, Scope* current, Lexer::Range where);
+                ReturnStatement(Function* f, std::shared_ptr<Expression> expr, Scope* current, Lexer::Range where);
                 void OnNodeChanged(Node* n, Change what) override final;
                 void GenerateCode(CodegenContext& con) override final;
             };
@@ -88,22 +89,22 @@ namespace Wide {
             struct WhileStatement : Statement {
                 Function* self;
                 Lexer::Range where;
-                Expression* cond;
-                Statement* body;
-                std::unique_ptr<Expression> boolconvert;
+                std::shared_ptr<Expression> cond;
+                std::shared_ptr<Statement> body;
+                std::shared_ptr<Expression> boolconvert;
                 llvm::BasicBlock* continue_bb = nullptr;
                 llvm::BasicBlock* check_bb = nullptr;
                 CodegenContext* source_con = nullptr;
                 CodegenContext* condition_con = nullptr;
 
-                WhileStatement(Expression* ex, Lexer::Range where, Function* s);
+                WhileStatement(std::shared_ptr<Expression> ex, Lexer::Range where, Function* s);
                 void OnNodeChanged(Node* n, Change what) override final;
                 void GenerateCode(CodegenContext& con) override final;
             };
 
             struct VariableStatement : public Statement {
-                VariableStatement(std::vector<LocalVariable*> locs, std::unique_ptr<Expression> expr);
-                std::unique_ptr<Expression> init_expr;
+                VariableStatement(std::vector<LocalVariable*> locs, std::shared_ptr<Expression> expr);
+                std::shared_ptr<Expression> init_expr;
                 std::vector<LocalVariable*> locals;
 
                 void GenerateCode(CodegenContext& con) override final;
@@ -113,22 +114,22 @@ namespace Wide {
                 Scope(Scope* s);
                 Scope* parent;
                 std::vector<std::unique_ptr<Scope>> children;
-                std::unordered_map<std::string, std::pair<std::unique_ptr<Expression>, Lexer::Range>> named_variables;
-                std::vector<std::unique_ptr<Statement>> active;
+                std::unordered_map<std::string, std::pair<std::shared_ptr<Expression>, Lexer::Range>> named_variables;
+                std::vector<std::shared_ptr<Statement>> active;
                 WhileStatement* current_while;
-                std::unique_ptr<Expression> LookupLocal(std::string name);
+                std::shared_ptr<Expression> LookupLocal(std::string name);
                 WhileStatement* GetCurrentWhile();
             };
             struct LocalScope;
             struct IfStatement : Statement {
                 Function* self;
                 Lexer::Range where;
-                Expression* cond;
+                std::shared_ptr<Expression> cond;
                 Statement* true_br;
                 Statement* false_br;
-                std::unique_ptr<Expression> boolconvert;
+                std::shared_ptr<Expression> boolconvert;
 
-                IfStatement(Expression* cond, Statement* true_b, Statement* false_b, Lexer::Range where, Function* s);
+                IfStatement(std::shared_ptr<Expression> cond, Statement* true_b, Statement* false_b, Lexer::Range where, Function* s);
                 void OnNodeChanged(Node* n, Change what) override final;
                 void GenerateCode(CodegenContext& con) override final;
 
@@ -149,24 +150,24 @@ namespace Wide {
             };
 
             struct ThrowStatement : public Statement {
+                struct ExceptionAllocateMemory;
                 Type* ty;
-                std::unique_ptr<Expression> exception;
-                std::unique_ptr<Expression> except_memory;
-                ThrowStatement(std::unique_ptr<Expression> expr, Context c);
+                std::shared_ptr<Expression> exception;
+                std::shared_ptr<ExceptionAllocateMemory> except_memory;
+                ThrowStatement(std::shared_ptr<Expression> expr, Context c);
                 void GenerateCode(CodegenContext& con);
             };
                         
-            struct Parameter : Expression {
+            struct Parameter : Expression, std::enable_shared_from_this<Parameter> {
                 Lexer::Range where;
                 Function* self;
                 unsigned num;
-                std::unique_ptr<Expression> destructor;
+                std::function<void(CodegenContext&)> destructor;
                 Type* cur_ty = nullptr;                
 
                 Parameter(Function* s, unsigned n, Lexer::Range where);
                 void OnNodeChanged(Node* n, Change what) override final;
                 Type* GetType() override final;
-                void DestroyExpressionLocals(CodegenContext& con) override final;
                 llvm::Value* ComputeValue(CodegenContext& con) override final;
             };
             struct TryStatement : public Statement {
@@ -177,7 +178,7 @@ namespace Wide {
                     Type* GetType() override final { return t; }
                 };
                 struct Catch {
-                    Catch(Type* t, std::vector<std::unique_ptr<Statement>> stmts, std::unique_ptr<CatchParameter> catch_param)
+                    Catch(Type* t, std::vector<std::shared_ptr<Statement>> stmts, std::shared_ptr<CatchParameter> catch_param)
                     : t(t), stmts(std::move(stmts)), catch_param(std::move(catch_param)) {}
                     Catch(Catch&& other)
                     : t(other.t)
@@ -189,19 +190,20 @@ namespace Wide {
                         catch_param = std::move(other.catch_param);
                     }
                     Type* t; // Null for catch-all
-                    std::vector<std::unique_ptr<Statement>> stmts;
-                    std::unique_ptr<CatchParameter> catch_param;
+                    std::vector<std::shared_ptr<Statement>> stmts;
+                    std::shared_ptr<CatchParameter> catch_param;
                 };
-                TryStatement(std::vector<std::unique_ptr<Statement>> stmts, std::vector<Catch> catches, Analyzer& a)
+                TryStatement(std::vector<std::shared_ptr<Statement>> stmts, std::vector<Catch> catches, Analyzer& a)
                     : statements(std::move(stmts)), catches(std::move(catches)), a(a) {}
                 Analyzer& a;
                 std::vector<Catch> catches;
-                std::vector<std::unique_ptr<Statement>> statements;
+                std::vector<std::shared_ptr<Statement>> statements;
                 void GenerateCode(CodegenContext& con);
             };
             struct RethrowStatement : public Statement {
                 void GenerateCode(CodegenContext& con);
             };
+            std::vector<std::function<void(CodegenContext&)>> param_destructors;
         private:
             std::unordered_set<ReturnStatement*> returns;
         public:
@@ -216,13 +218,13 @@ namespace Wide {
 
             Wide::Util::optional<clang::QualType> GetClangType(ClangTU& where) override final;
      
-            std::unique_ptr<Expression> BuildCall(std::unique_ptr<Expression> val, std::vector<std::unique_ptr<Expression>> args, Context c) override final;
+            std::shared_ptr<Expression> BuildCall(std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c) override final;
             std::string GetName();
             Type* GetContext() override final { return context; }
             Type* GetNonstaticMemberContext() { if (NonstaticMemberContext) return *NonstaticMemberContext; return nullptr; }
 
             FunctionType* GetSignature();
-            std::unique_ptr<Expression> LookupLocal(std::string name);
+            std::shared_ptr<Expression> LookupLocal(std::string name);
             Type* GetConstantContext() override final;
             void AddExportName(std::string name) {trampoline.push_back([name](llvm::Module*) { return name; }); }
             void AddExportName(std::function<std::string(llvm::Module*)> mod) { trampoline.push_back(mod); }

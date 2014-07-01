@@ -14,7 +14,7 @@ namespace Wide {
     namespace Parse {
         struct Type;
         struct Expression;
-        struct Function;
+        struct DynamicFunction;
     }
     namespace Semantic {
         class Function;
@@ -30,10 +30,7 @@ namespace Wide {
 
             Wide::Util::optional<bool> UDCCache;
             bool UserDefinedComplex();
-
-            Wide::Util::optional<bool> BCCache;
-            bool BinaryComplex(llvm::Module* module);
-            
+                        
             struct BaseData {
                 BaseData(UserDefinedType* self);
                 BaseData(BaseData&& other);
@@ -53,7 +50,7 @@ namespace Wide {
                 VTableData& operator=(VTableData&& other);
                 VTableLayout funcs;
                 // Relative to the first vptr, not the front of the vtable.
-                std::unordered_map<const Parse::Function*, unsigned> VTableIndices;
+                std::unordered_map<const Parse::DynamicFunction*, unsigned> VTableIndices;
             };
             Wide::Util::optional<VTableData> Vtable;
             VTableData& GetVtableData() {
@@ -83,7 +80,7 @@ namespace Wide {
             Type* GetSelfAsType() override final { return this; }
             std::unordered_map<ClangTU*, clang::QualType> clangtypes;
             // Virtual function support functions.
-            std::unique_ptr<Expression> VirtualEntryFor(VTableLayout::VirtualFunctionEntry entry, unsigned offset) override final;
+            std::shared_ptr<Expression> VirtualEntryFor(VTableLayout::VirtualFunctionEntry entry, unsigned offset) override final;
             VTableLayout ComputePrimaryVTableLayout() override final;
             Type* GetVirtualPointerType() override final;
             std::vector<std::pair<Type*, unsigned>> GetBasesAndOffsets() override final;
@@ -97,9 +94,9 @@ namespace Wide {
             Type* GetContext() override final { return context; }
             bool HasMember(std::string name);            
             Wide::Util::optional<clang::QualType> GetClangType(ClangTU& TU) override final;
-            std::unique_ptr<Expression> AccessMember(std::unique_ptr<Expression> t, std::string name, Context) override final;
+            std::shared_ptr<Expression> AccessMember(std::shared_ptr<Expression> t, std::string name, Context) override final;
             using Type::AccessMember;
-            std::unique_ptr<Expression> BuildDestructorCall(std::unique_ptr<Expression> self, Context c) override final;
+            std::function<void(CodegenContext&)> BuildDestructorCall(std::shared_ptr<Expression> self, Context c, bool devirtualize) override final;
             OverloadSet* CreateConstructorOverloadSet(Lexer::Access access) override final;
             OverloadSet* CreateOperatorOverloadSet(Type* self, Lexer::TokenType member, Lexer::Access access) override final;
             Type* GetConstantContext() override final;
@@ -108,13 +105,14 @@ namespace Wide {
             bool IsMoveConstructible(Lexer::Access access) override final;
             bool IsCopyAssignable(Lexer::Access access) override final;
             bool IsMoveAssignable(Lexer::Access access) override final;
-            bool IsComplexType(llvm::Module* module) override final;
+            bool IsTriviallyCopyConstructible() override final;
+            bool IsTriviallyDestructible() override final;
             bool IsA(Type* self, Type* other, Lexer::Access access) override final;
             std::vector<Type*> GetBases() override final;
             Wide::Util::optional<std::vector<Type*>> GetTypesForTuple() override final;
-            std::unique_ptr<Expression> PrimitiveAccessMember(std::unique_ptr<Expression> self, unsigned num) override final;
+            std::shared_ptr<Expression> PrimitiveAccessMember(std::shared_ptr<Expression> self, unsigned num) override final;
             std::string explain() override final;
-            Wide::Util::optional<unsigned> GetVirtualFunctionIndex(const Parse::Function* func);
+            Wide::Util::optional<unsigned> GetVirtualFunctionIndex(const Parse::DynamicFunction* func);
         };
     }
 }

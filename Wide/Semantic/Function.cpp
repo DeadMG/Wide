@@ -34,17 +34,17 @@
 using namespace Wide;
 using namespace Semantic;
 
-Function::LocalVariable::LocalVariable(Expression* ex, Function* self, Lexer::Range where, Lexer::Range init_where)
+Function::LocalVariable::LocalVariable(std::shared_ptr<Expression> ex, Function* self, Lexer::Range where, Lexer::Range init_where)
 : init_expr(std::move(ex)), self(self), where(where), init_where(init_where)
 {
-    ListenToNode(init_expr);
-    OnNodeChanged(init_expr, Change::Contents);
+    ListenToNode(init_expr.get());
+    OnNodeChanged(init_expr.get(), Change::Contents);
 }
-Function::LocalVariable::LocalVariable(Expression* ex, unsigned u, Function* self, Lexer::Range where, Lexer::Range init_where)
+Function::LocalVariable::LocalVariable(std::shared_ptr<Expression> ex, unsigned u, Function* self, Lexer::Range where, Lexer::Range init_where)
 : init_expr(std::move(ex)), tuple_num(u), self(self), where(where), init_where(init_where)
 {
-    ListenToNode(init_expr);
-    OnNodeChanged(init_expr, Change::Contents);
+    ListenToNode(init_expr.get());
+    OnNodeChanged(init_expr.get(), Change::Contents);
 }
 void Function::LocalVariable::OnNodeChanged(Node* n, Change what) {
     if (what == Change::Destroyed) return;
@@ -53,10 +53,11 @@ void Function::LocalVariable::OnNodeChanged(Node* n, Change what) {
         auto newty = InferTypeFromExpression(init_expr->GetImplementation(), true);
         if (tuple_num) {
             if (auto tupty = dynamic_cast<TupleType*>(newty)) {
-                auto tuple_access = tupty->PrimitiveAccessMember(Wide::Memory::MakeUnique<ExpressionReference>(init_expr), *tuple_num);
+                auto tuple_access = tupty->PrimitiveAccessMember(init_expr, *tuple_num);
                 newty = tuple_access->GetType()->Decay();
                 variable = Wide::Memory::MakeUnique<ImplicitTemporaryExpr>(newty, Context{ self, where });
-                construction = newty->BuildInplaceConstruction(Wide::Memory::MakeUnique<ExpressionReference>(variable.get()), Expressions(std::move(tuple_access)), { self, init_where });
+                construction = newty->BuildInplaceConstruction(variable, { std::move(tuple_access) }, { self, init_where });
+                destructor = newty->BuildDestructorCall(variable, Context{ self, where }, true);
                 if (newty != var_type) {
                     var_type = newty;
                     OnChange();
@@ -80,7 +81,8 @@ void Function::LocalVariable::OnNodeChanged(Node* n, Change what) {
         if (newty != var_type) {
             if (newty) {
                 variable = Wide::Memory::MakeUnique<ImplicitTemporaryExpr>(newty, Context{ self, where });
-                construction = newty->BuildInplaceConstruction(Wide::Memory::MakeUnique<ExpressionReference>(variable.get()), Expressions(Wide::Memory::MakeUnique<ExpressionReference>(init_expr)), { self, init_where });
+                construction = newty->BuildInplaceConstruction(variable, { init_expr }, { self, init_where });
+                destructor = newty->BuildDestructorCall(variable, Context{ self, where }, true);
             }
             var_type = newty;
             OnChange();
@@ -95,7 +97,7 @@ void Function::LocalVariable::OnNodeChanged(Node* n, Change what) {
 llvm::Value* Function::LocalVariable::ComputeValue(CodegenContext& con) {
     if (init_expr->GetType() == var_type) {
         // If they return a complex value by value, just steal it, and don't worry about destructors as it will already have handled it.
-        if (init_expr->GetType()->IsComplexType(con) || var_type->IsReference()) return init_expr->GetValue(con);
+        if (init_expr->GetType()->IsComplexType() || var_type->IsReference()) return init_expr->GetValue(con);
         // If they return a simple by value, then we can just alloca it fine, no destruction needed.
         auto alloc = con.alloca_builder->CreateAlloca(var_type->GetLLVMType(con));
         alloc->setAlignment(var_type->alignment());
@@ -104,8 +106,8 @@ llvm::Value* Function::LocalVariable::ComputeValue(CodegenContext& con) {
     }
    
     construction->GetValue(con);
-    if (var_type->IsComplexType(con))
-        con.Destructors.push_back(variable.get());
+    if (!var_type->IsTriviallyDestructible())
+        con.AddDestructor(destructor);
     return variable->GetValue(con);
 }
 Type* Function::LocalVariable::GetType() {
@@ -140,7 +142,7 @@ void Function::CompoundStatement::GenerateCode(CodegenContext& con) {
     });
 }
 
-Function::ReturnStatement::ReturnStatement(Function* f, std::unique_ptr<Expression> expr, Scope* current, Lexer::Range where)
+Function::ReturnStatement::ReturnStatement(Function* f, std::shared_ptr<Expression> expr, Scope* current, Lexer::Range where)
 : self(f), ret_expr(std::move(expr)), where(where)
 {
     self->returns.insert(this);
@@ -164,7 +166,7 @@ void Function::ReturnStatement::OnNodeChanged(Node* n, Change c) {
             }
         };
         if (self->ReturnType)
-            build = self->ReturnType->BuildInplaceConstruction(Wide::Memory::MakeUnique<ReturnEmplaceValue>(self), Expressions(Wide::Memory::MakeUnique<ExpressionReference>(ret_expr.get())), { self, where });
+            build = self->ReturnType->BuildInplaceConstruction(Wide::Memory::MakeUnique<ReturnEmplaceValue>(self), { ret_expr }, { self, where });
         else
             build = nullptr;
     } else
@@ -184,7 +186,7 @@ void Function::ReturnStatement::GenerateCode(CodegenContext& con) {
     }
 
     // If we return a simple type
-    if (!self->ReturnType->IsComplexType(con)) {
+    if (!self->ReturnType->IsComplexType()) {
         // and we already have an expression of that type
         if (ret_expr->GetType() == self->ReturnType) {
             // then great, just return it directly.
@@ -202,7 +204,7 @@ void Function::ReturnStatement::GenerateCode(CodegenContext& con) {
         }
         // Build will inplace construct this in our first argument, which is INCREDIBLY UNHELPFUL here.
         // We would fix this up, but, cannot query the complexity of a type prior to code generation.
-        build = self->ReturnType->BuildValueConstruction(Expressions(Wide::Memory::MakeUnique<ExpressionReference>(ret_expr.get())), { self, where });
+        build = self->ReturnType->BuildValueConstruction({ ret_expr }, { self, where });
         auto val = build->GetValue(con);
         con.DestroyAll(false);
         con->CreateRet(val);
@@ -218,18 +220,16 @@ void Function::ReturnStatement::GenerateCode(CodegenContext& con) {
     return;
 }
 
-
-
-Function::WhileStatement::WhileStatement(Expression* ex, Lexer::Range where, Function* s)
+Function::WhileStatement::WhileStatement(std::shared_ptr<Expression> ex, Lexer::Range where, Function* s)
 : cond(std::move(ex)), where(where), self(s)
 {
-    ListenToNode(cond);
-    OnNodeChanged(cond, Change::Contents);
+    ListenToNode(cond.get());
+    OnNodeChanged(cond.get(), Change::Contents);
 }
 void Function::WhileStatement::OnNodeChanged(Node* n, Change what) {
     if (what == Change::Destroyed) return;
     if (cond->GetType())
-        boolconvert = cond->GetType()->Decay()->BuildBooleanConversion(Wide::Memory::MakeUnique<ExpressionReference>(cond), { self, where });
+        boolconvert = cond->GetType()->Decay()->BuildBooleanConversion(cond, { self, where });
 }
 
 void Function::WhileStatement::GenerateCode(CodegenContext& con) {
@@ -263,16 +263,16 @@ void Function::WhileStatement::GenerateCode(CodegenContext& con) {
     source_con = nullptr;
 }
 
-Function::IfStatement::IfStatement(Expression* cond, Statement* true_b, Statement* false_b, Lexer::Range where, Function* s)
+Function::IfStatement::IfStatement(std::shared_ptr<Expression> cond, Statement* true_b, Statement* false_b, Lexer::Range where, Function* s)
 : cond(std::move(cond)), true_br(std::move(true_b)), false_br(std::move(false_b)), where(where), self(s)
 {
-    ListenToNode(cond);
-    OnNodeChanged(cond, Change::Contents);
+    ListenToNode(this->cond.get());
+    OnNodeChanged(this->cond.get(), Change::Contents);
 }
 void Function::IfStatement::OnNodeChanged(Node* n, Change what) {
     if (what == Change::Destroyed) return;
     if (cond->GetType())
-        boolconvert = cond->GetType()->Decay()->BuildBooleanConversion(Wide::Memory::MakeUnique<ExpressionReference>(cond), { self, where });
+        boolconvert = cond->GetType()->Decay()->BuildBooleanConversion(cond, { self, where });
 }
 void Function::IfStatement::GenerateCode(CodegenContext& con) {
     auto true_bb = llvm::BasicBlock::Create(con, "true_bb", con->GetInsertBlock()->getParent());
@@ -301,7 +301,7 @@ void Function::IfStatement::GenerateCode(CodegenContext& con) {
     });
 }
 
-Function::VariableStatement::VariableStatement(std::vector<LocalVariable*> locs, std::unique_ptr<Expression> expr)
+Function::VariableStatement::VariableStatement(std::vector<LocalVariable*> locs, std::shared_ptr<Expression> expr)
 : locals(std::move(locs)), init_expr(std::move(expr)){}
 void Function::VariableStatement::GenerateCode(CodegenContext& con) {
     init_expr->GetValue(con);
@@ -309,12 +309,9 @@ void Function::VariableStatement::GenerateCode(CodegenContext& con) {
         local->GetValue(con);
 }
 
-std::unique_ptr<Expression> Function::Scope::LookupLocal(std::string name) {
-    if (named_variables.find(name) != named_variables.end()) {
-        auto&& ref = named_variables.at(name);
-        auto&& first = ref.first;
-        return Wide::Memory::MakeUnique<ExpressionReference>(first.get());
-    }
+std::shared_ptr<Expression> Function::Scope::LookupLocal(std::string name) {
+    if (named_variables.find(name) != named_variables.end())
+        return named_variables.at(name).first;
     if (parent)
         return parent->LookupLocal(name);
     return nullptr;
@@ -356,32 +353,27 @@ static const std::string except_alloc = "__cxa_allocate_exception";
 static const std::string free_except = "__cxa_free_exception";
 static const std::string throw_except = "__cxa_throw";
 
-Function::ThrowStatement::ThrowStatement(std::unique_ptr<Expression> expr, Context c) {
-    // http://mentorembedded.github.io/cxx-abi/abi-eh.html
-    // 2.4.2
-    struct ExceptionAllocateMemory : Expression {
-        ExceptionAllocateMemory(Type* t)
-        : alloc(t) {
-            auto&& analyzer = t->analyzer;
-            if (t->alignment() > std::max(analyzer.GetDataLayout().getABIIntegerTypeAlignment(64), analyzer.GetDataLayout().getPointerABIAlignment()))
-                throw std::runtime_error("EH runtime does not provide memory of enough alignment to support this exception type.");
+struct Function::ThrowStatement::ExceptionAllocateMemory : Expression {
+    ExceptionAllocateMemory(Type* t)
+    : alloc(t) {
+        auto&& analyzer = t->analyzer;
+        if (t->alignment() > std::max(analyzer.GetDataLayout().getABIIntegerTypeAlignment(64), analyzer.GetDataLayout().getPointerABIAlignment()))
+            throw std::runtime_error("EH runtime does not provide memory of enough alignment to support this exception type.");
+    }
+    Type* alloc;
+    llvm::Value* except_memory;
+    std::list<std::pair<std::function<void(CodegenContext&)>, bool>>::iterator destructor;
+    Type* GetType() override final { return alloc->analyzer.GetLvalueType(alloc); }
+    llvm::Value* ComputeValue(CodegenContext& con) override final {
+        auto size_t_ty = llvm::IntegerType::get(con, alloc->analyzer.GetDataLayout().getPointerSizeInBits());
+        auto allocate_exception = con.module->getFunction(except_alloc);
+        if (!allocate_exception) {
+            llvm::Type* args[] = { size_t_ty };
+            auto fty = llvm::FunctionType::get(llvm::Type::getInt8PtrTy(con), args, false);
+            allocate_exception = llvm::Function::Create(fty, llvm::GlobalValue::LinkageTypes::ExternalLinkage, except_alloc, con.module);
         }
-        Type* alloc;
-        llvm::Value* except_memory;
-        Type* GetType() override final { return alloc->analyzer.GetLvalueType(alloc); }
-        llvm::Value* ComputeValue(CodegenContext& con) override final {
-            auto size_t_ty = llvm::IntegerType::get(con, alloc->analyzer.GetDataLayout().getPointerSizeInBits());
-            auto allocate_exception = con.module->getFunction(except_alloc);
-            if (!allocate_exception) {
-                llvm::Type* args[] = { size_t_ty };
-                auto fty = llvm::FunctionType::get(llvm::Type::getInt8PtrTy(con), args, false);
-                allocate_exception = llvm::Function::Create(fty, llvm::GlobalValue::LinkageTypes::ExternalLinkage, except_alloc, con.module);
-            }
-            except_memory = con->CreateCall(allocate_exception, { llvm::ConstantInt::get(size_t_ty, alloc->size(), false) });
-            con.Destructors.push_back(this);
-            return con->CreatePointerCast(except_memory, GetType()->GetLLVMType(con));
-        }
-        void DestroyExpressionLocals(CodegenContext& con) override final {
+        except_memory = con->CreateCall(allocate_exception, { llvm::ConstantInt::get(size_t_ty, alloc->size(), false) });
+        destructor = con.AddDestructor([this](CodegenContext& con) {
             auto free_exception = con.module->getFunction(free_except);
             if (!free_exception) {
                 llvm::Type* args[] = { con.GetInt8PtrTy() };
@@ -389,12 +381,16 @@ Function::ThrowStatement::ThrowStatement(std::unique_ptr<Expression> expr, Conte
                 free_exception = llvm::Function::Create(fty, llvm::GlobalValue::LinkageTypes::ExternalLinkage, free_except, con.module);
             }
             con->CreateCall(free_exception, { except_memory });
-        }
-    };
+        });
+        return con->CreatePointerCast(except_memory, GetType()->GetLLVMType(con));
+    }
+};
+Function::ThrowStatement::ThrowStatement(std::shared_ptr<Expression> expr, Context c) {
+    // http://mentorembedded.github.io/cxx-abi/abi-eh.html
+    // 2.4.2
     ty = expr->GetType()->Decay();
     except_memory = Wide::Memory::MakeUnique<ExceptionAllocateMemory>(ty);
-    auto mem_ref = Wide::Memory::MakeUnique<ExpressionReference>(except_memory.get());
-    exception = BuildChain(ty->BuildInplaceConstruction(Wide::Memory::MakeUnique<ExpressionReference>(except_memory.get()), Expressions(std::move(expr)), c), std::move(mem_ref));
+    exception = BuildChain(ty->BuildInplaceConstruction(except_memory, { std::move(expr) }, c), except_memory);
 }
 void Function::ThrowStatement::GenerateCode(CodegenContext& con) {
     auto value = exception->GetValue(con);
@@ -406,13 +402,13 @@ void Function::ThrowStatement::GenerateCode(CodegenContext& con) {
         cxa_throw = llvm::Function::Create(fty, llvm::GlobalValue::LinkageTypes::ExternalLinkage, throw_except, con);
     }
     // If we got here then creating the exception value didn't throw. Don't destroy it now.
-    con.Destructors.erase(std::remove(con.Destructors.begin(), con.Destructors.end(), except_memory.get()), con.Destructors.end());
+    con.EraseDestructor(except_memory->destructor);
     llvm::Value* args[] = { con->CreatePointerCast(value, con.GetInt8PtrTy()), ty->GetRTTI(con), con->CreatePointerCast(ty->GetDestructorFunction(con), con.GetInt8PtrTy()) };
     // Do we have an existing handler to go to? If we do, then first land, then branch directly to it.
     // Else, kill everything and GTFO this function and let the EH routines worry about it.
     con->CreateInvoke(cxa_throw, con.GetUnreachableBlock(), con.CreateLandingpadForEH(), args);
 }
-std::unique_ptr<Statement> Function::AnalyzeStatement(const Parse::Statement* s) {
+std::shared_ptr<Statement> Function::AnalyzeStatement(const Parse::Statement* s) {
     if (auto ret = dynamic_cast<const Parse::Return*>(s)) {
         if (ret->RetExpr) {
             return Wide::Memory::MakeUnique<ReturnStatement>(this, analyzer.AnalyzeExpression(this, ret->RetExpr), current_scope, ret->location);
@@ -437,7 +433,7 @@ std::unique_ptr<Statement> Function::AnalyzeStatement(const Parse::Statement* s)
             auto&& name = var->name.front();
             if (current_scope->named_variables.find(var->name.front().name) != current_scope->named_variables.end())
                 throw VariableShadowing(name.name, current_scope->named_variables.at(name.name).second, name.where);
-            auto var_stmt = Wide::Memory::MakeUnique<LocalVariable>(init_expr.get(), this, var->name.front().where, var->initializer->location);
+            auto var_stmt = Wide::Memory::MakeUnique<LocalVariable>(init_expr, this, var->name.front().where, var->initializer->location);
             locals.push_back(var_stmt.get());
             current_scope->named_variables.insert(std::make_pair(name.name, std::make_pair(std::move(var_stmt), name.where)));
         } else {
@@ -445,7 +441,7 @@ std::unique_ptr<Statement> Function::AnalyzeStatement(const Parse::Statement* s)
             for (auto&& name : var->name) {
                 if (current_scope->named_variables.find(name.name) != current_scope->named_variables.end())
                     throw VariableShadowing(name.name, current_scope->named_variables.at(name.name).second, name.where);
-                auto var_stmt = Wide::Memory::MakeUnique<LocalVariable>(init_expr.get(), i++, this, name.where, var->initializer->location);
+                auto var_stmt = Wide::Memory::MakeUnique<LocalVariable>(init_expr, i++, this, name.where, var->initializer->location);
                 locals.push_back(var_stmt.get());
                 current_scope->named_variables.insert(std::make_pair(name.name, std::make_pair(std::move(var_stmt), name.where)));
             }
@@ -455,22 +451,22 @@ std::unique_ptr<Statement> Function::AnalyzeStatement(const Parse::Statement* s)
 
     if (auto whil = dynamic_cast<const Parse::While*>(s)) {
         LocalScope condscope(this);
-        auto get_expr = [&, this]() -> std::unique_ptr<Expression> {
+        auto get_expr = [&, this]() -> std::shared_ptr<Expression> {
             if (whil->var_condition) {
                 if (whil->var_condition->name.size() != 1)
                     throw std::runtime_error("fuck");
                 condscope->active.push_back(AnalyzeStatement(whil->var_condition));
-                return Wide::Memory::MakeUnique<ExpressionReference>(condscope->named_variables.begin()->second.first.get());
+                return condscope->named_variables.begin()->second.first;
             }
             return analyzer.AnalyzeExpression(this, whil->condition);
         };
         auto cond = get_expr();
-        auto while_stmt = Wide::Memory::MakeUnique<WhileStatement>(cond.get(), whil->location, this);
+        auto while_stmt = Wide::Memory::MakeUnique<WhileStatement>(cond, whil->location, this);
         condscope->active.push_back(std::move(cond));
         condscope->current_while = while_stmt.get();
         LocalScope bodyscope(this);
         bodyscope->active.push_back(AnalyzeStatement(whil->body));
-        while_stmt->body = bodyscope->active.back().get();
+        while_stmt->body = bodyscope->active.back();
         return std::move(while_stmt);
     }
 
@@ -487,18 +483,17 @@ std::unique_ptr<Statement> Function::AnalyzeStatement(const Parse::Statement* s)
 
     if (auto if_stmt = dynamic_cast<const Parse::If*>(s)) {
         LocalScope condscope(this);
-        auto get_expr = [&, this]() -> std::unique_ptr<Expression> {
+        auto get_expr = [&, this]() -> std::shared_ptr<Expression> {
             if (if_stmt->var_condition) {
                 if (if_stmt->var_condition->name.size() != 1)
                     throw std::runtime_error("fuck");
                 condscope->active.push_back(AnalyzeStatement(if_stmt->var_condition));
-                return Wide::Memory::MakeUnique<ExpressionReference>(condscope->named_variables.begin()->second.first.get());
+                return condscope->named_variables.begin()->second.first;
             }
             return analyzer.AnalyzeExpression(this, if_stmt->condition);
         };
         auto cond = get_expr();
-        Expression* condexpr = cond.get();
-        condscope->active.push_back(std::move(cond));
+        condscope->active.push_back(cond);
         Statement* true_br = nullptr;
         {
             LocalScope truescope(this);
@@ -511,7 +506,7 @@ std::unique_ptr<Statement> Function::AnalyzeStatement(const Parse::Statement* s)
             falsescope->active.push_back(AnalyzeStatement(if_stmt->false_statement));
             false_br = falsescope->active.back().get();
         }
-        return Wide::Memory::MakeUnique<IfStatement>(condexpr, true_br, false_br, if_stmt->location, this);
+        return Wide::Memory::MakeUnique<IfStatement>(cond, true_br, false_br, if_stmt->location, this);
     }
 
     if (auto thro = dynamic_cast<const Wide::Parse::Throw*>(s)) {
@@ -523,7 +518,7 @@ std::unique_ptr<Statement> Function::AnalyzeStatement(const Parse::Statement* s)
 
     // Fuck yeah! Or me, at least.
     if (auto try_ = dynamic_cast<const Wide::Parse::TryCatch*>(s)) {
-        std::vector<std::unique_ptr<Statement>> try_stmts;
+        std::vector<std::shared_ptr<Statement>> try_stmts;
         {
             LocalScope tryscope(this);
             for (auto stmt : try_->statements->stmts)
@@ -533,7 +528,7 @@ std::unique_ptr<Statement> Function::AnalyzeStatement(const Parse::Statement* s)
         for (auto catch_ : try_->catches) {
             LocalScope catchscope(this);
             if (catch_.all) {
-                std::vector<std::unique_ptr<Statement>> stmts;
+                std::vector<std::shared_ptr<Statement>> stmts;
                 for (auto stmt : catch_.statements)
                     stmts.push_back(AnalyzeStatement(stmt));
                 catches.push_back(TryStatement::Catch(nullptr, std::move(stmts), nullptr));                
@@ -547,10 +542,10 @@ std::unique_ptr<Statement> Function::AnalyzeStatement(const Parse::Statement* s)
             auto target_type = IsLvalueType(catch_type)
                 ? catch_type->Decay()
                 : dynamic_cast<PointerType*>(catch_type)->GetPointee();
-            auto catch_parameter = Wide::Memory::MakeUnique<TryStatement::CatchParameter>();
+            auto catch_parameter = std::make_shared<TryStatement::CatchParameter>();
             catch_parameter->t = catch_type;
-            catchscope->named_variables.insert(std::make_pair(catch_.name, std::make_pair(Wide::Memory::MakeUnique<ExpressionReference>(catch_parameter.get()), catch_.type->location)));
-            std::vector<std::unique_ptr<Statement>> stmts;
+            catchscope->named_variables.insert(std::make_pair(catch_.name, std::make_pair(catch_parameter, catch_.type->location)));
+            std::vector<std::shared_ptr<Statement>> stmts;
             for (auto stmt : catch_.statements)
                 stmts.push_back(AnalyzeStatement(stmt));
             catches.push_back(TryStatement::Catch(catch_type, std::move(stmts), std::move(catch_parameter)));
@@ -563,7 +558,6 @@ std::unique_ptr<Statement> Function::AnalyzeStatement(const Parse::Statement* s)
 Function::Parameter::Parameter(Function* s, unsigned n, Lexer::Range where)
 : self(s), num(n), where(where)
 {
-    OnNodeChanged(s, Change::Contents);
     ListenToNode(self);
 }
 void Function::Parameter::OnNodeChanged(Node* n, Change what) {
@@ -576,27 +570,23 @@ void Function::Parameter::OnNodeChanged(Node* n, Change what) {
     auto new_ty = get_new_ty();
     if (new_ty != cur_ty) {
         cur_ty = new_ty;
-        destructor = cur_ty->BuildDestructorCall(Wide::Memory::MakeUnique<ExpressionReference>(this), { self, where });
+        if (!cur_ty->IsTriviallyDestructible())
+            self->param_destructors[num] = cur_ty->BuildDestructorCall(shared_from_this(), { self, where }, true);
+        else
+            self->param_destructors[num] = std::function<void(CodegenContext&)>();
         OnChange();
     }
 }
 Type* Function::Parameter::GetType() {
     return cur_ty;
 }
-void Function::Parameter::DestroyExpressionLocals(CodegenContext& con) {
-    if (self->Args[num]->IsComplexType(con))
-        destructor->GetValue(con);
-}
 llvm::Value* Function::Parameter::ComputeValue(CodegenContext& con) {
     auto argnum = num;
-    if (self->ReturnType->IsComplexType(con))
+    if (self->ReturnType->IsComplexType())
         ++argnum;
     auto llvm_argument = std::next(self->llvmfunc->arg_begin(), argnum);
-
-    if (self->Args[num]->IsComplexType(con))
-        con.Destructors.push_back(this);
-
-    if (self->Args[num]->IsComplexType(con) || self->Args[num]->IsReference())
+    
+    if (self->Args[num]->IsComplexType() || self->Args[num]->IsReference())
         return llvm_argument;
 
     auto alloc = con.alloca_builder->CreateAlloca(self->Args[num]->GetLLVMType(con));
@@ -614,6 +604,7 @@ Function::Function(std::vector<Type*> args, const Parse::FunctionBase* astfun, A
 , root_scope(nullptr)
 , source_name(src_name) {
     // Only match the non-concrete arguments.
+    param_destructors.resize(args.size());
     root_scope = Wide::Memory::MakeUnique<Scope>(nullptr);
     current_scope = root_scope.get();
     unsigned num = 0;
@@ -624,17 +615,19 @@ Function::Function(std::vector<Type*> args, const Parse::FunctionBase* astfun, A
         if (auto con = dynamic_cast<Semantic::ConstructorContext*>(args[0]->Decay()))
             ConstructorContext = con;
         args.erase(args.begin());
-        auto param = Wide::Memory::MakeUnique<Parameter>(this, num++, Lexer::Range(nullptr));
-        root_scope->named_variables.insert(std::make_pair("this", std::make_pair(Wide::Memory::MakeUnique<ExpressionReference>(param.get()), Lexer::Range(nullptr))));
-        root_scope->active.push_back(std::move(param));
+        auto param = std::make_shared<Parameter>(this, num++, Lexer::Range(nullptr));
+        root_scope->named_variables.insert(std::make_pair("this", std::make_pair(param, Lexer::Range(nullptr))));
+        root_scope->active.push_back(param);
+        param->OnNodeChanged(nullptr, Change::Contents);
     }
     Args.insert(Args.end(), args.begin(), args.end());
     for(auto&& arg : astfun->args) {
         if (arg.name == "this")
             continue;
-        auto param = Wide::Memory::MakeUnique<Parameter>(this, num++, arg.location);
-        root_scope->named_variables.insert(std::make_pair(arg.name, std::make_pair(Wide::Memory::MakeUnique<ExpressionReference>(param.get()), arg.location)));
-        root_scope->active.push_back(std::move(param));
+        auto param = std::make_shared<Parameter>(this, num++, arg.location);
+        root_scope->named_variables.insert(std::make_pair(arg.name, std::make_pair(param, arg.location)));
+        root_scope->active.push_back(param);
+        param->OnNodeChanged(nullptr, Change::Contents);
     }
 
     std::stringstream strstr;
@@ -662,11 +655,18 @@ Function::Function(std::vector<Type*> args, const Parse::FunctionBase* astfun, A
                     if (auto meth = llvm::dyn_cast<clang::CXXMethodDecl>(decl)) {
                         ClangContexts.insert(analyzer.GetClangType(*tu, tu->GetASTContext().getRecordType(meth->getParent())));
                         if (!meth->isStatic()) {
-                            // Add "this".
-                            auto param = Wide::Memory::MakeUnique<Parameter>(this, 0, Lexer::Range(nullptr));
-                            root_scope->named_variables.insert(std::make_pair("this", std::make_pair(Wide::Memory::MakeUnique<ExpressionReference>(param.get()), Lexer::Range(nullptr))));
-                            root_scope->active.push_back(std::move(param));
                             auto clangty = dynamic_cast<ClangType*>(analyzer.GetClangType(*tu, tu->GetASTContext().getRecordType(meth->getParent())));
+                            auto thisty = analyzer.GetLvalueType(clangty);
+                            // Add "this".
+                            if (auto des = dynamic_cast<const Parse::Destructor*>(fun)) {
+                                Args.push_back(analyzer.GetLvalueType(clangty));
+                                param_destructors.resize(1);
+                                ConstructorContext = clangty;
+                            }
+                            auto param = std::make_shared<Parameter>(this, 0, Lexer::Range(nullptr));
+                            root_scope->named_variables.insert(std::make_pair("this", std::make_pair(param, Lexer::Range(nullptr))));
+                            root_scope->active.push_back(param);
+                            param->OnNodeChanged(nullptr, Change::Contents);
                             if (auto con = llvm::dyn_cast<clang::CXXConstructorDecl>(meth)) {
                                 // Error if we have a constructor context and it's not the same one.
                                 // Error if we have a nonstatic member context.
@@ -679,7 +679,8 @@ Function::Function(std::vector<Type*> args, const Parse::FunctionBase* astfun, A
                             }
                             // Error if we have a constructor context.
                             // Error if we have a nonstatic member context and it's not this one.
-                            if (ConstructorContext) throw std::runtime_error("fuck");
+                            if (!dynamic_cast<const Parse::Destructor*>(fun))
+                                if (ConstructorContext) throw std::runtime_error("fuck");
                             if (NonstaticMemberContext && *NonstaticMemberContext != clangty) throw std::runtime_error("fuck");
                             NonstaticMemberContext = clangty;
                             continue;
@@ -700,6 +701,9 @@ Function::Function(std::vector<Type*> args, const Parse::FunctionBase* astfun, A
                 throw NotAType(expr->GetType(), fun->explicit_return->location);
         }
     }
+    // Constructors and destructors, we know in advance to return void.
+    if (dynamic_cast<const Parse::Constructor*>(fun) || dynamic_cast<const Parse::Destructor*>(fun))
+        ExplicitReturnType = analyzer.GetVoidType();
 }
 
 Wide::Util::optional<clang::QualType> Function::GetClangType(ClangTU& where) {
@@ -708,6 +712,7 @@ Wide::Util::optional<clang::QualType> Function::GetClangType(ClangTU& where) {
 
 void Function::ComputeBody() {
     if (s == State::NotYetAnalyzed) {
+
         s = State::AnalyzeInProgress;
         // Initializers first, if we are a constructor
         if (auto con = dynamic_cast<const Parse::Constructor*>(fun)) {
@@ -740,35 +745,33 @@ void Function::ComputeBody() {
                 struct MemberConstructionAccess : Expression {
                     Type* member;
                     Lexer::Range where;
-                    std::unique_ptr<Expression> Construction;
-                    Expression* memexpr;
+                    std::shared_ptr<Expression> Construction;
+                    std::shared_ptr<Expression> memexpr;
+                    std::function<void(CodegenContext&)> destructor;
                     llvm::Value* ComputeValue(CodegenContext& con) override final {
                         auto val = Construction->GetValue(con);
-                        con.Destructors.push_back(this);
-                        // Destroy the members on destruction.
-                        con.ExceptionOnlyDestructors.insert(this);
-                        // Make sure the destructor is referenced here.
-                        member->BuildDestructorCall(Wide::Memory::MakeUnique<ExpressionReference>(memexpr), { member, where });
+                        if (destructor)
+                            con.AddExceptionOnlyDestructor(destructor);
                         return val;
                     }
                     Type* GetType() override final {
                         return Construction->GetType();
                     }
-                    void DestroyExpressionLocals(CodegenContext& con) override final {
-                        member->BuildDestructorCall(Wide::Memory::MakeUnique<ExpressionReference>(memexpr), { member, where })->GetValue(con);
+                    MemberConstructionAccess(Type* mem, Lexer::Range where, std::shared_ptr<Expression> expr, std::shared_ptr<Expression> memexpr)
+                        : member(mem), where(where), Construction(std::move(expr)), memexpr(memexpr) 
+                    {
+                        if (!member->IsTriviallyDestructible())
+                            destructor = member->BuildDestructorCall(memexpr, { member, where }, true);
                     }
-                    MemberConstructionAccess(Type* mem, Lexer::Range where, std::unique_ptr<Expression> expr, Expression* memexpr)
-                        : member(mem), where(where), Construction(std::move(expr)), memexpr(memexpr) {}
                 };
                 auto member = CreatePrimUnOp(LookupLocal("this"), result, [num, result](llvm::Value* val, CodegenContext& con) -> llvm::Value* {
                     auto self = con->CreatePointerCast(val, con.GetInt8PtrTy());
                     self = con->CreateConstGEP1_32(self, num.offset);
                     return con->CreatePointerCast(self, result->GetLLVMType(con));
                 });
-                auto make_member_initializer = [&, this](std::vector<std::unique_ptr<Expression>> init, Lexer::Range where) {
-                    auto preserve_member = member.get();
-                    auto construction = x.t->BuildInplaceConstruction(std::move(member), std::move(init), { this, where });
-                    return Wide::Memory::MakeUnique<MemberConstructionAccess>(x.t, where, std::move(construction), preserve_member);
+                auto make_member_initializer = [&, this](std::vector<std::shared_ptr<Expression>> init, Lexer::Range where) {
+                    auto construction = x.t->BuildInplaceConstruction(member, std::move(init), { this, where });
+                    return Wide::Memory::MakeUnique<MemberConstructionAccess>(x.t, where, std::move(construction), member);
                 };
                 if (auto init = has_initializer()) {
                     // AccessMember will automatically give us back a T*, but we need the T** here
@@ -776,7 +779,7 @@ void Function::ComputeBody() {
                     used_initializers.insert(init);
                     if (init->initializer) {
                         // If it's a tuple, pass each subexpression.
-                        std::vector<std::unique_ptr<Expression>> exprs;
+                        std::vector<std::shared_ptr<Expression>> exprs;
                         if (auto tup = dynamic_cast<const Parse::Tuple*>(init->initializer)) {
                             for (auto expr : tup->expressions)
                                 exprs.push_back(analyzer.AnalyzeExpression(this, expr));
@@ -785,15 +788,15 @@ void Function::ComputeBody() {
                         root_scope->active.push_back(make_member_initializer(std::move(exprs), init->where));
                     }
                     else
-                        root_scope->active.push_back(make_member_initializer(Expressions(), init->where));
+                        root_scope->active.push_back(make_member_initializer({}, init->where));
                     continue;
                 }
                 // Don't care about if x.t is ref because refs can't be default-constructed anyway.
                 if (x.InClassInitializer) {
-                    root_scope->active.push_back(make_member_initializer(Expressions(x.InClassInitializer(LookupLocal("this"))), x.location));
+                    root_scope->active.push_back(make_member_initializer({ x.InClassInitializer(LookupLocal("this")) }, x.location));
                     continue;
                 }
-                root_scope->active.push_back(make_member_initializer(Expressions(), fun->where));
+                root_scope->active.push_back(make_member_initializer({}, fun->where));
             }
             for (auto&& x : con->initializers) {
                 if (used_initializers.find(&x) == used_initializers.end()) {
@@ -808,10 +811,41 @@ void Function::ComputeBody() {
             auto ty = dynamic_cast<Type*>(member);
             root_scope->active.push_back(ty->SetVirtualPointers(LookupLocal("this")));
         }
+
         // Now the body.
         for (std::size_t i = 0; i < fun->statements.size(); ++i) {
             root_scope->active.push_back(AnalyzeStatement(fun->statements[i]));
         }        
+
+        // If we were a destructor, destroy.
+        if (auto des = dynamic_cast<const Parse::Destructor*>(fun)) {
+            if (!ConstructorContext) throw std::runtime_error("fuck");
+            auto member = *ConstructorContext;
+            auto members = member->GetConstructionMembers();
+            for (auto rit = members.rbegin(); rit != members.rend(); ++rit) {
+                struct DestructorCall : Expression {
+                    DestructorCall(std::function<void(CodegenContext&)> destructor, Analyzer& a)
+                    : destructor(destructor), a(&a) {}
+                    std::function<void(CodegenContext&)> destructor;
+                    Analyzer* a;
+                    Type* GetType() override final {
+                        return a->GetVoidType();
+                    }
+                    llvm::Value* ComputeValue(CodegenContext& con) override final {
+                        destructor(con);
+                        return nullptr;
+                    }
+                };
+                auto num = rit->num;
+                auto result = analyzer.GetLvalueType(rit->t);
+                auto member = CreatePrimUnOp(LookupLocal("this"), result, [num, result](llvm::Value* val, CodegenContext& con) -> llvm::Value* {
+                    auto self = con->CreatePointerCast(val, con.GetInt8PtrTy());
+                    self = con->CreateConstGEP1_32(self, num.offset);
+                    return con->CreatePointerCast(self, result->GetLLVMType(con));
+                });
+                root_scope->active.push_back(std::make_shared<DestructorCall>(rit->t->BuildDestructorCall(member, { this, fun->where }, true), analyzer));
+            }
+        }
 
         // Compute the return type.
         ComputeReturnType();
@@ -883,6 +917,9 @@ void Function::EmitCode(llvm::Module* module) {
     c.alloca_builder = &allocs;
     c.insert_builder = &irbuilder;
     c.module = module;
+    for (auto rit = param_destructors.rbegin(); rit != param_destructors.rend(); ++rit)
+        if (*rit)
+            c.AddDestructor(*rit);
     for (auto&& stmt : root_scope->active)
         if (!c.IsTerminated(c->GetInsertBlock()))
             stmt->GenerateCode(c);
@@ -1043,23 +1080,24 @@ void Function::EmitCode(llvm::Module* module) {
     }
 }
 
-std::unique_ptr<Expression> Function::BuildCall(std::unique_ptr<Expression> val, std::vector<std::unique_ptr<Expression>> args, Context c) {
+std::shared_ptr<Expression> Function::BuildCall(std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c) {
     if (s == State::NotYetAnalyzed)
         ComputeBody();
     struct Self : public Expression {
-        Self(Function* self, Expression* expr, std::unique_ptr<Expression> val)
+        Self(Function* self, std::shared_ptr<Expression> expr, std::shared_ptr<Expression> val)
         : self(self), val(std::move(val))
         {
             if (!expr) return;
-            if (auto func = dynamic_cast<const Parse::Function*>(self->fun)) {
+            if (auto func = dynamic_cast<const Parse::DynamicFunction*>(self->fun)) {
                 udt = dynamic_cast<UserDefinedType*>(expr->GetType()->Decay());
-                if (!udt) return;
-                obj = udt->GetVirtualPointer(Wide::Memory::MakeUnique<ExpressionReference>(expr));
+                if (!udt) 
+                    return;
+                obj = udt->GetVirtualPointer(expr);
             }
         }
         UserDefinedType* udt;
-        std::unique_ptr<Expression> obj;
-        std::unique_ptr<Expression> val;
+        std::shared_ptr<Expression> obj;
+        std::shared_ptr<Expression> val;
         Function* self;
         Type* GetType() override final {
             return self->GetSignature();
@@ -1069,7 +1107,7 @@ std::unique_ptr<Expression> Function::BuildCall(std::unique_ptr<Expression> val,
                 self->EmitCode(con);
             val->GetValue(con);
             if (obj) {
-                auto func = dynamic_cast<const Parse::Function*>(self->fun);
+                auto func = dynamic_cast<const Parse::DynamicFunction*>(self->fun);
                 assert(func);
                 auto vindex = udt->GetVirtualFunctionIndex(func);
                 if (!vindex) return self->llvmfunc;
@@ -1079,13 +1117,12 @@ std::unique_ptr<Expression> Function::BuildCall(std::unique_ptr<Expression> val,
             return self->llvmfunc;
         }
     };
-    auto self = !args.empty() ? args[0].get() : nullptr;
+    auto self = !args.empty() ? args[0] : nullptr;
+   
     return GetSignature()->BuildCall(Wide::Memory::MakeUnique<Self>(this, self, std::move(val)), std::move(args), c);
 }
 
-std::unique_ptr<Expression> Function::LookupLocal(std::string name) {
-    //if (name == "this" && dynamic_cast<MemberFunctionContext*>(context->Decay()))
-    //    return ConcreteExpression(c->GetLvalueType(context->Decay()), c->gen->CreateParameterExpression([this, &a] { return ReturnType->IsComplexType(a); }));
+std::shared_ptr<Expression> Function::LookupLocal(std::string name) {
     return current_scope->LookupLocal(name);
 }
 std::string Function::GetName() {
@@ -1162,17 +1199,9 @@ void Function::TryStatement::GenerateCode(CodegenContext& con) {
     auto selector = catch_con->CreateExtractValue(phi, { 1 });
     auto except_object = catch_con->CreateExtractValue(phi, { 0 });
 
-    struct cxa_end_catch_caller : Expression {
-        Type* int8ptrty;
-        Type* GetType() override final { return int8ptrty; }
-        llvm::Value* ComputeValue(CodegenContext& con) override final { return llvm::Constant::getNullValue(con.GetInt8PtrTy()); }
-        void DestroyExpressionLocals(CodegenContext& con) override final {
-            con->CreateCall(con.GetCXAEndCatch());
-        }
+    auto catch_ender = [](CodegenContext& con) {
+        con->CreateCall(con.GetCXAEndCatch());
     };
-    cxa_end_catch_caller catch_ender;
-    catch_ender.int8ptrty = a.GetPointerType(a.GetIntegralType(8, true));
-    catch_ender.GetValue(catch_con);
     for (auto&& catch_ : catches) {
         CodegenContext catch_block_con(catch_con);
         if (!catch_.t) {
@@ -1195,7 +1224,7 @@ void Function::TryStatement::GenerateCode(CodegenContext& con) {
         auto except = catch_block_con->CreateCall(catch_block_con.GetCXABeginCatch(), { except_object });
         catch_.catch_param->param = except;
         // Ensure __cxa_end_catch is called.
-        catch_block_con.Destructors.push_back(&catch_ender);
+        catch_block_con.AddDestructor(catch_ender);
 
         for (auto&& stmt : catch_.stmts)
             if (!catch_block_con.IsTerminated(catch_block_con->GetInsertBlock()))
@@ -1209,7 +1238,7 @@ void Function::TryStatement::GenerateCode(CodegenContext& con) {
     // If we had no catch all, then we need to clean up and rethrow to the next try.
     if (catches.back().t) {
         auto except = catch_con->CreateCall(catch_con.GetCXABeginCatch(), { except_object });
-        catch_con.Destructors.push_back(&catch_ender);
+        catch_con.AddDestructor(catch_ender);
         catch_con->CreateInvoke(catch_con.GetCXARethrow(), catch_con.GetUnreachableBlock(), catch_con.CreateLandingpadForEH());
     }
     con->SetInsertPoint(dest_block);

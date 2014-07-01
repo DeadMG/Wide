@@ -25,15 +25,15 @@ namespace Wide {
     namespace Semantic {
         struct Context;
         struct ImplicitLoadExpr : public Expression {
-            ImplicitLoadExpr(std::unique_ptr<Expression> expr);
-            std::unique_ptr<Expression> src;
+            ImplicitLoadExpr(std::shared_ptr<Expression> expr);
+            std::shared_ptr<Expression> src;
             Type* GetType() override final;
             llvm::Value* ComputeValue(CodegenContext& con) override final;
         };
 
         struct ImplicitStoreExpr : public Expression {
-            ImplicitStoreExpr(std::unique_ptr<Expression> memory, std::unique_ptr<Expression> value);
-            std::unique_ptr<Expression> mem, val;
+            ImplicitStoreExpr(std::shared_ptr<Expression> memory, std::shared_ptr<Expression> value);
+            std::shared_ptr<Expression> mem, val;
             Type* GetType() override final;
             llvm::Value* ComputeValue(CodegenContext& con) override final;
         };
@@ -45,36 +45,26 @@ namespace Wide {
             Context c;
             Type* GetType() override final;
             llvm::Value* ComputeValue(CodegenContext& con) override final;
-            void DestroyExpressionLocals(CodegenContext& con) override final;
         };
 
         struct LvalueCast : public Expression {
-            LvalueCast(std::unique_ptr<Expression> expr);
-            std::unique_ptr<Expression> expr;
+            LvalueCast(std::shared_ptr<Expression> expr);
+            std::shared_ptr<Expression> expr;
             Type* GetType() override final;
             llvm::Value* ComputeValue(CodegenContext& con) override final;
         };
 
         struct RvalueCast : public Expression {
-            RvalueCast(std::unique_ptr<Expression> expr);
-            std::unique_ptr<Expression> expr;
+            RvalueCast(std::shared_ptr<Expression> expr);
+            std::shared_ptr<Expression> expr;
             Type* GetType() override final;
             llvm::Value* ComputeValue(CodegenContext& con) override final;
-        };
-
-        struct ExpressionReference : public Expression {
-            ExpressionReference(Expression* e);
-            Expression* expr;
-            void OnNodeChanged(Node* n, Change what) override final;
-            Type* GetType() override final;
-            llvm::Value* ComputeValue(CodegenContext& con) override final;
-            Expression* GetImplementation() override final;
         };
 
         struct ImplicitAddressOf : public Expression {
-            ImplicitAddressOf(std::unique_ptr<Expression>, Context c);
+            ImplicitAddressOf(std::shared_ptr<Expression>, Context c);
             Context c;
-            std::unique_ptr<Expression> expr;
+            std::shared_ptr<Expression> expr;
             Type* GetType() override final;
             llvm::Value* ComputeValue(CodegenContext& con) override final;
         };
@@ -104,19 +94,19 @@ namespace Wide {
         };
 
         struct Chain : Expression {
-            Chain(std::unique_ptr<Expression> effect, std::unique_ptr<Expression> result);
-            std::unique_ptr<Expression> SideEffect;
-            std::unique_ptr<Expression> result;
+            Chain(std::shared_ptr<Expression> effect, std::shared_ptr<Expression> result);
+            std::shared_ptr<Expression> SideEffect;
+            std::shared_ptr<Expression> result;
             Type* GetType() override final;
             llvm::Value* ComputeValue(CodegenContext& con) override final;
             Expression* GetImplementation() override final;
         };
 
-        std::unique_ptr<Expression> CreatePrimUnOp(std::unique_ptr<Expression> self, Type* ret, std::function<llvm::Value*(llvm::Value*, CodegenContext&)>);
-        std::unique_ptr<Expression> CreatePrimOp(std::unique_ptr<Expression> lhs, std::unique_ptr<Expression> rhs, std::function<llvm::Value*(llvm::Value*, llvm::Value*, CodegenContext&)>);
-        std::unique_ptr<Expression> CreatePrimAssOp(std::unique_ptr<Expression> lhs, std::unique_ptr<Expression> rhs, std::function<llvm::Value*(llvm::Value*, llvm::Value*, CodegenContext&)>);
-        std::unique_ptr<Expression> CreatePrimOp(std::unique_ptr<Expression> lhs, std::unique_ptr<Expression> rhs, Type* ret, std::function<llvm::Value*(llvm::Value*, llvm::Value*, CodegenContext&)>);
-        std::unique_ptr<Expression> BuildValue(std::unique_ptr<Expression>);
-        std::unique_ptr<Expression> BuildChain(std::unique_ptr<Expression>, std::unique_ptr<Expression>);
+        std::shared_ptr<Expression> CreatePrimUnOp(std::shared_ptr<Expression> self, Type* ret, std::function<llvm::Value*(llvm::Value*, CodegenContext&)>);
+        std::shared_ptr<Expression> CreatePrimOp(std::shared_ptr<Expression> lhs, std::shared_ptr<Expression> rhs, std::function<llvm::Value*(llvm::Value*, llvm::Value*, CodegenContext&)>);
+        std::shared_ptr<Expression> CreatePrimAssOp(std::shared_ptr<Expression> lhs, std::shared_ptr<Expression> rhs, std::function<llvm::Value*(llvm::Value*, llvm::Value*, CodegenContext&)>);
+        std::shared_ptr<Expression> CreatePrimOp(std::shared_ptr<Expression> lhs, std::shared_ptr<Expression> rhs, Type* ret, std::function<llvm::Value*(llvm::Value*, llvm::Value*, CodegenContext&)>);
+        std::shared_ptr<Expression> BuildValue(std::shared_ptr<Expression>);
+        std::shared_ptr<Expression> BuildChain(std::shared_ptr<Expression>, std::shared_ptr<Expression>);
     }
 }

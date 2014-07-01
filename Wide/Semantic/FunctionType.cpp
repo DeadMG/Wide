@@ -17,14 +17,14 @@ using namespace Semantic;
 llvm::PointerType* FunctionType::GetLLVMType(llvm::Module* module) {
     llvm::Type* ret;
     std::vector<llvm::Type*> args;
-    if (ReturnType->IsComplexType(module)) {
+    if (ReturnType->IsComplexType()) {
         ret = analyzer.GetVoidType()->GetLLVMType(module);
         args.push_back(analyzer.GetRvalueType(ReturnType)->GetLLVMType(module));
     } else {
         ret = ReturnType->GetLLVMType(module);
     }
     for(auto&& x : Args) {
-        if (x->IsComplexType(module)) {
+        if (x->IsComplexType()) {
             args.push_back(analyzer.GetRvalueType(x)->GetLLVMType(module));
         } else {
             args.push_back(x->GetLLVMType(module));
@@ -47,16 +47,22 @@ Wide::Util::optional<clang::QualType> FunctionType::GetClangType(ClangTU& from) 
     return from.GetASTContext().getFunctionType(*retty, types, protoinfo);
 }
 
-std::unique_ptr<Expression> FunctionType::BuildCall(std::unique_ptr<Expression> val, std::vector<std::unique_ptr<Expression>> args, Context c) {
+std::shared_ptr<Expression> FunctionType::BuildCall(std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c) {
     struct Call : Expression {
-        Call(Analyzer& an, std::unique_ptr<Expression> self, std::vector<std::unique_ptr<Expression>> args, Context c)
+        Call(Analyzer& an, std::shared_ptr<Expression> self, std::vector<std::shared_ptr<Expression>> args, Context c)
         : a(an), args(std::move(args)), val(std::move(self)), c(c)
-        {}
+        {
+            if (GetType()->IsComplexType()) {
+                Ret = Wide::Memory::MakeUnique<ImplicitTemporaryExpr>(GetType(), c);
+                Destructor = GetType()->BuildDestructorCall(Ret, c, true);
+            }
+        }
 
         Analyzer& a;
-        std::vector<std::unique_ptr<Expression>> args;
-        std::unique_ptr<Expression> val;
-        std::unique_ptr<Expression> Ret;
+        std::vector<std::shared_ptr<Expression>> args;
+        std::shared_ptr<Expression> val;
+        std::shared_ptr<Expression> Ret;
+        std::function<void(CodegenContext&)> Destructor;
         Context c;
         
         Type* GetType() override final {
@@ -66,15 +72,13 @@ std::unique_ptr<Expression> FunctionType::BuildCall(std::unique_ptr<Expression> 
         llvm::Value* ComputeValue(CodegenContext& con) override final {
             llvm::Value* llvmfunc = val->GetValue(con);
             std::vector<llvm::Value*> llvmargs;
-            if (GetType()->IsComplexType(con)) {
-                Ret = Wide::Memory::MakeUnique<ImplicitTemporaryExpr>(GetType(), c);
+            if (GetType()->IsComplexType())
                 llvmargs.push_back(Ret->GetValue(con));
-            }
             for (auto&& arg : args)
                 llvmargs.push_back(arg->GetValue(con));
             llvm::Value* call;
             // We need to invoke if we're not destructing, and we have something to destroy OR a catch block we may need to jump to.
-            if (!con.destructing && (!con.Destructors.empty() || con.EHHandler)) {
+            if (!con.destructing && (con.HasDestructors() || con.EHHandler)) {
                 llvm::BasicBlock* continueblock = llvm::BasicBlock::Create(con, "continue", con->GetInsertBlock()->getParent());
                 // If we have a try/catch block, let the catch block figure out what to do.
                 // Else, kill everything in the scope and resume.
@@ -84,13 +88,12 @@ std::unique_ptr<Expression> FunctionType::BuildCall(std::unique_ptr<Expression> 
                 call = con->CreateCall(llvmfunc, llvmargs);
             }
             if (Ret) {
-                con.Destructors.push_back(Ret.get());
+                con.AddDestructor(Destructor);
                 return Ret->GetValue(con);
             }
             return call;
         }
     };
-    val->GetType();
     return Wide::Memory::MakeUnique<Call>(analyzer, std::move(val), std::move(args), c);
 }
 std::string FunctionType::explain() {
