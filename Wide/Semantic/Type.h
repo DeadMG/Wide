@@ -10,6 +10,7 @@
 #include <functional>
 #include <string>
 #include <cassert>
+#include <list>
 #include <memory>
 #include <boost/variant.hpp>
 
