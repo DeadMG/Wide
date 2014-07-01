@@ -182,7 +182,7 @@ int main(int argc, char** argv)
             Wide::Semantic::AnalyzeExportedFunctions(a);
             static const Wide::Lexer::Range location = std::make_shared<std::string>("Analyzer entry point");
             Wide::Semantic::Context c(a.GetGlobalModule(), location);
-            auto global = a.GetGlobalModule()->BuildValueConstruction(Wide::Semantic::Expressions(), c);
+            auto global = a.GetGlobalModule()->BuildValueConstruction({}, c);
             auto main = global->GetType()->AccessMember(std::move(global), "Main", c);
             if (!main)
                 return;
