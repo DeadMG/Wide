@@ -4,6 +4,9 @@
 
 namespace Wide {
     namespace Semantic {
+        struct LLVMFieldIndex { unsigned index; };
+        struct EmptyBaseOffset { unsigned offset; };
+        typedef boost::variant<LLVMFieldIndex, EmptyBaseOffset> MemberLocation;
         class AggregateType : public Type {
             virtual std::vector<Type*> GetMembers() = 0;
             virtual bool HasDeclaredDynamicFunctions() { return false; }

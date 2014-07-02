@@ -105,8 +105,8 @@ std::size_t IntegralType::alignment() {
     return analyzer.GetDataLayout().getABIIntegerTypeAlignment(bits);
 }
 
-OverloadSet* IntegralType::CreateADLOverloadSet(Lexer::TokenType name, Type* lhs, Type* rhs, Lexer::Access access) {
-    if (access != Lexer::Access::Public) return CreateADLOverloadSet(name, lhs, rhs, Lexer::Access::Public);
+OverloadSet* IntegralType::CreateADLOverloadSet(Lexer::TokenType name, Lexer::Access access) {
+    if (access != Lexer::Access::Public) return CreateADLOverloadSet(name, Lexer::Access::Public);
     auto CreateAssOp = [this](std::function<llvm::Value*(llvm::Value*, llvm::Value*, CodegenContext& con)> func) {
         return MakeResolvable([this, func](std::vector<std::shared_ptr<Expression>> args, Context c) {
             return CreatePrimAssOp(std::move(args[0]), std::move(args[1]), func);
@@ -253,7 +253,7 @@ OverloadSet* IntegralType::CreateADLOverloadSet(Lexer::TokenType name, Type* lhs
         }, { analyzer.GetLvalueType(this) });
         return analyzer.GetOverloadSet(Increment.get());
     }
-    return PrimitiveType::CreateADLOverloadSet(name, lhs, rhs, access);
+    return PrimitiveType::CreateADLOverloadSet(name, access);
 }
 bool IntegralType::IsA(Type* self, Type* other, Lexer::Access access) {
     // If we already are, then don't bother.

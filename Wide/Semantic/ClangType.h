@@ -50,7 +50,7 @@ namespace Wide {
             std::size_t size() override final;
             std::size_t alignment() override final;
             Type* GetContext() override final;
-            OverloadSet* CreateADLOverloadSet(Lexer::TokenType what, Type* lhs, Type* rhs, Lexer::Access access) override final;
+            OverloadSet* CreateADLOverloadSet(Lexer::TokenType what, Lexer::Access access) override final;
             OverloadSet* CreateOperatorOverloadSet(Lexer::TokenType name, Lexer::Access access) override final;
             OverloadSet* CreateConstructorOverloadSet(Lexer::Access) override final;
             Wide::Util::optional<std::vector<Type*>> GetTypesForTuple() override final;

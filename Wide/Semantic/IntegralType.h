@@ -37,7 +37,7 @@ namespace Wide {
             Wide::Util::optional<clang::QualType> GetClangType(ClangTU& TU) override final;
             llvm::Type* GetLLVMType(llvm::Module* module) override final;
 
-            OverloadSet* CreateADLOverloadSet(Lexer::TokenType name, Type* lhs, Type* rhs, Lexer::Access access) override final;
+            OverloadSet* CreateADLOverloadSet(Lexer::TokenType name, Lexer::Access access) override final;
             std::size_t size() override final;
             std::size_t alignment() override final;
             bool IsA(Type* self, Type* other, Lexer::Access access) override final;

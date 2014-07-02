@@ -23,9 +23,9 @@ using namespace Semantic;
 #include <clang/AST/AST.h>
 #pragma warning(pop)
 
-OverloadSet* Type::CreateADLOverloadSet(Lexer::TokenType what, Type* lhs, Type* rhs, Lexer::Access access) {
+OverloadSet* Type::CreateADLOverloadSet(Lexer::TokenType what, Lexer::Access access) {
     if (IsReference())
-        return Decay()->CreateADLOverloadSet(what, lhs, rhs, access);
+        return Decay()->CreateADLOverloadSet(what, access);
     auto context = GetContext();
     if (!context)
         return analyzer.GetOverloadSet();
@@ -219,16 +219,13 @@ OverloadSet* Type::GetConstructorOverloadSet(Lexer::Access access) {
     return ConstructorOverloadSets[access];
 }
 
-OverloadSet* Type::PerformADL(Lexer::TokenType what, Type* lhs, Type* rhs, Lexer::Access access) {
+OverloadSet* Type::PerformADL(Lexer::TokenType what, Lexer::Access access) {
     if (IsReference())
-        return Decay()->PerformADL(what, lhs, rhs, access);
-    if (ADLResults.find(lhs) != ADLResults.end()) {
-        if (ADLResults[lhs].find(rhs) != ADLResults[lhs].end())
-            if (ADLResults[lhs][rhs].find(access) != ADLResults[lhs][rhs].end())
-                if (ADLResults[lhs][rhs][access].find(what) != ADLResults[lhs][rhs][access].end())
-                    return ADLResults[lhs][rhs][access][what];
-    }
-    return ADLResults[lhs][rhs][access][what] = CreateADLOverloadSet(what, lhs, rhs, access);
+        return Decay()->PerformADL(what, access);
+    if (ADLResults.find(access) != ADLResults.end())
+        if (ADLResults[access].find(what) != ADLResults[access].end())
+            return ADLResults[access][what];
+    return ADLResults[access][what] = CreateADLOverloadSet(what, access);
 }
 
 OverloadSet* Type::AccessMember(Lexer::TokenType type, Lexer::Access access) {
@@ -495,8 +492,8 @@ std::shared_ptr<Expression> Type::BuildBinaryExpression(std::shared_ptr<Expressi
     auto&& analyzer = lhs->GetType()->analyzer;
     auto lhsaccess = GetAccessSpecifier(c.from, lhs->GetType());
     auto rhsaccess = GetAccessSpecifier(c.from, rhs->GetType());
-    auto lhsadl = lhs->GetType()->PerformADL(type, lhs->GetType(), rhs->GetType(), lhsaccess);
-    auto rhsadl = rhs->GetType()->PerformADL(type, lhs->GetType(), rhs->GetType(), rhsaccess);
+    auto lhsadl = lhs->GetType()->PerformADL(type, lhsaccess);
+    auto rhsadl = rhs->GetType()->PerformADL(type, rhsaccess);
     auto lhsmember = lhs->GetType()->AccessMember(type, lhsaccess);
     auto finalset = analyzer.GetOverloadSet(lhsadl, analyzer.GetOverloadSet(rhsadl, lhsmember));
     std::vector<Type*> arguments;

@@ -181,7 +181,7 @@ namespace Wide {
         private:
             std::unordered_map<Lexer::Access, OverloadSet*> ConstructorOverloadSets;
             std::unordered_map<Lexer::Access, std::unordered_map<Lexer::TokenType, OverloadSet*>> OperatorOverloadSets;
-            std::unordered_map<Type*, std::unordered_map<Type*, std::unordered_map<Lexer::Access, std::unordered_map<Lexer::TokenType, OverloadSet*>>>> ADLResults;
+            std::unordered_map<Lexer::Access, std::unordered_map<Lexer::TokenType, OverloadSet*>> ADLResults;
             std::unordered_map<std::vector<std::pair<Type*, unsigned>>, std::shared_ptr<Expression>, VectorTypeHasher> ComputedVTables;
             Wide::Util::optional<VTableLayout> VtableLayout;
             Wide::Util::optional<VTableLayout> PrimaryVtableLayout;
@@ -193,7 +193,7 @@ namespace Wide {
             static std::shared_ptr<Expression> SetVirtualPointers(std::shared_ptr<Expression> self, std::vector<std::pair<Type*, unsigned>> path);
         protected:
             virtual OverloadSet* CreateOperatorOverloadSet(Lexer::TokenType what, Lexer::Access access);
-            virtual OverloadSet* CreateADLOverloadSet(Lexer::TokenType name, Type* lhs, Type* rhs, Lexer::Access access);
+            virtual OverloadSet* CreateADLOverloadSet(Lexer::TokenType name, Lexer::Access access);
             virtual OverloadSet* CreateConstructorOverloadSet(Lexer::Access access) = 0;
         public:
             virtual std::shared_ptr<Expression> VirtualEntryFor(VTableLayout::VirtualFunctionEntry entry, unsigned offset) { assert(false); throw std::runtime_error("ICE"); }
@@ -248,7 +248,7 @@ namespace Wide {
             VTableLayout GetVtableLayout();
             VTableLayout GetPrimaryVTable();
             OverloadSet* GetConstructorOverloadSet(Lexer::Access access);
-            OverloadSet* PerformADL(Lexer::TokenType what, Type* lhs, Type* rhs, Lexer::Access access);
+            OverloadSet* PerformADL(Lexer::TokenType what, Lexer::Access access);
             OverloadSet* AccessMember(Lexer::TokenType type, Lexer::Access access);
             bool InheritsFromAtOffsetZero(Type* other);
 
@@ -284,8 +284,7 @@ namespace Wide {
             virtual Type* GetSelfAsType() = 0;
             virtual Wide::Util::optional<std::vector<Type*>> GetTypesForTuple() = 0;
             virtual std::shared_ptr<Expression> PrimitiveAccessMember(std::shared_ptr<Expression> self, unsigned num) = 0;
-        };
-        
+        };        
 
         struct LLVMFieldIndex { unsigned index; };
         struct EmptyBaseOffset { unsigned offset; };

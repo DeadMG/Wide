@@ -170,14 +170,12 @@ namespace std {
     };
 }
 
-OverloadSet* ClangType::CreateADLOverloadSet(Lexer::TokenType what, Type* lhs, Type* rhs, Lexer::Access access) {
-    if (access != Lexer::Access::Public) return CreateADLOverloadSet(what, lhs, rhs, access);
+OverloadSet* ClangType::CreateADLOverloadSet(Lexer::TokenType what, Lexer::Access access) {
+    if (access != Lexer::Access::Public) return CreateADLOverloadSet(what, access);
     clang::ADLResult res;
-    clang::OpaqueValueExpr lhsexpr(clang::SourceLocation(), type.getNonLValueExprType(from->GetASTContext()), Semantic::GetKindOfType(lhs));
-    clang::OpaqueValueExpr rhsexpr(clang::SourceLocation(), type.getNonLValueExprType(from->GetASTContext()), Semantic::GetKindOfType(rhs));
+    clang::OpaqueValueExpr lhsexpr(clang::SourceLocation(), type.getNonLValueExprType(from->GetASTContext()), Semantic::GetKindOfType(this));
     std::vector<clang::Expr*> exprs;
     exprs.push_back(&lhsexpr);
-    exprs.push_back(&rhsexpr);
     from->GetSema().ArgumentDependentLookup(from->GetASTContext().DeclarationNames.getCXXOperatorName(GetTokenMappings().at(what).first), true, clang::SourceLocation(), exprs, res);
     std::unordered_set<clang::NamedDecl*> decls;
     decls.insert(res.begin(), res.end());
