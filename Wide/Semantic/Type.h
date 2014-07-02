@@ -190,7 +190,7 @@ namespace Wide {
             VTableLayout ComputeVTableLayout();
             std::shared_ptr<Expression> CreateVTable(std::vector<std::pair<Type*, unsigned>> path);
             std::shared_ptr<Expression> GetVTablePointer(std::vector<std::pair<Type*, unsigned>> path);
-            std::shared_ptr<Expression> SetVirtualPointers(std::vector<std::pair<Type*, unsigned>> path, std::shared_ptr<Expression> self);
+            static std::shared_ptr<Expression> SetVirtualPointers(std::shared_ptr<Expression> self, std::vector<std::pair<Type*, unsigned>> path);
         protected:
             virtual OverloadSet* CreateOperatorOverloadSet(Lexer::TokenType what, Lexer::Access access);
             virtual OverloadSet* CreateADLOverloadSet(Lexer::TokenType name, Type* lhs, Type* rhs, Lexer::Access access);

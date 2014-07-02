@@ -786,22 +786,23 @@ std::shared_ptr<Expression> Type::GetVTablePointer(std::vector<std::pair<Type*, 
 }
 
 std::shared_ptr<Expression> Type::SetVirtualPointers(std::shared_ptr<Expression> self) {
-    return self->GetType()->Decay()->SetVirtualPointers({}, std::move(self));
+    return Type::SetVirtualPointers(std::move(self), {});
 }
 
-std::shared_ptr<Expression> Type::SetVirtualPointers(std::vector<std::pair<Type*, unsigned>> path, std::shared_ptr<Expression> self) {
+std::shared_ptr<Expression> Type::SetVirtualPointers(std::shared_ptr<Expression> self, std::vector<std::pair<Type*, unsigned>> path) {
     // Set the base vptrs first, because some Clang types share vtables with their base.
     std::vector<std::shared_ptr<Expression>> BasePointerInitializers;
-    for (auto base : GetBasesAndOffsets()) {
-        path.push_back(std::make_pair(this, base.second));
-        BasePointerInitializers.push_back(base.first->SetVirtualPointers(path, Type::AccessBase(self, base.first)));
+    auto selfty = self->GetType()->Decay();
+    for (auto base : selfty->GetBasesAndOffsets()) {
+        path.push_back(std::make_pair(selfty, base.second));
+        BasePointerInitializers.push_back(Type::SetVirtualPointers(Type::AccessBase(self, base.first), path));
         path.pop_back();
     }
     // If we actually have a vptr, then set it; else just set the bases.
-    auto vptr = GetVirtualPointer(self);
+    auto vptr = selfty->GetVirtualPointer(self);
     if (vptr) {
-        path.push_back(std::make_pair(this, 0));
-        BasePointerInitializers.push_back(Wide::Memory::MakeUnique<ImplicitStoreExpr>(std::move(vptr), GetVTablePointer(path)));
+        path.push_back(std::make_pair(selfty, 0));
+        BasePointerInitializers.push_back(Wide::Memory::MakeUnique<ImplicitStoreExpr>(std::move(vptr), selfty->GetVTablePointer(path)));
     }
     
     struct VTableInitializer : Expression {
