@@ -20,7 +20,7 @@ namespace Wide {
             std::size_t size() override final;
             std::size_t alignment() override final;
             llvm::Type* GetLLVMType(llvm::Module* module) override final; 
-            OverloadSet* CreateOperatorOverloadSet(Type* t, Lexer::TokenType type, Lexer::Access access) override final;
+            OverloadSet* CreateOperatorOverloadSet(Lexer::TokenType type, Lexer::Access access) override final;
             OverloadSet* CreateConstructorOverloadSet(Lexer::Access access) override final;
         };
     }

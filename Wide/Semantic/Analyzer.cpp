@@ -216,9 +216,7 @@ Analyzer::Analyzer(const Options::Clang& opts, const Parse::Module* GlobalModule
     });
 
     AddExpressionHandler<Parse::BooleanTest>([](Analyzer& a, Type* lookup, const Parse::BooleanTest* test) {
-        auto expr = a.AnalyzeExpression(lookup, test->ex);
-        auto ty = expr->GetType();
-        return ty->BuildBooleanConversion(std::move(expr), { lookup, test->location });
+        return Type::BuildBooleanConversion(a.AnalyzeExpression(lookup, test->ex), { lookup, test->location });
     });
 
     AddExpressionHandler<Parse::FunctionCall>([](Analyzer& a, Type* lookup, const Parse::FunctionCall* call) -> std::shared_ptr<Expression> {
@@ -381,16 +379,14 @@ Analyzer::Analyzer(const Options::Clang& opts, const Parse::Module* GlobalModule
     AddExpressionHandler<Parse::BinaryExpression>([](Analyzer& a, Type* lookup, const Parse::BinaryExpression* bin) {
         auto lhs = a.AnalyzeExpression(lookup, bin->lhs);
         auto rhs = a.AnalyzeExpression(lookup, bin->rhs);
-        auto ty = lhs->GetType();
-        return ty->BuildBinaryExpression(std::move(lhs), std::move(rhs), bin->type, { lookup, bin->location });
+        return Type::BuildBinaryExpression(std::move(lhs), std::move(rhs), bin->type, { lookup, bin->location });
     });
 
     AddExpressionHandler<Parse::UnaryExpression>([](Analyzer& a, Type* lookup, const Parse::UnaryExpression* unex) -> std::shared_ptr<Expression> {
         auto expr = a.AnalyzeExpression(lookup, unex->ex);
-        auto ty = expr->GetType();
         if (unex->type == &Lexer::TokenTypes::And)
             return Wide::Memory::MakeUnique<ImplicitAddressOf>(std::move(expr), Context(lookup, unex->location));
-        return ty->BuildUnaryExpression(std::move(expr), unex->type, { lookup, unex->location });
+        return Type::BuildUnaryExpression(std::move(expr), unex->type, { lookup, unex->location });
     });
 
 
@@ -399,10 +395,10 @@ Analyzer::Analyzer(const Options::Clang& opts, const Parse::Module* GlobalModule
         auto ty = expr->GetType();
         if (inc->postfix) {
             auto copy = ty->Decay()->BuildValueConstruction({ expr }, { lookup, inc->location });
-            auto result = ty->Decay()->BuildUnaryExpression(expr, &Lexer::TokenTypes::Increment, { lookup, inc->location });
+            auto result = Type::BuildUnaryExpression(expr, &Lexer::TokenTypes::Increment, { lookup, inc->location });
             return BuildChain(std::move(copy), BuildChain(std::move(result), copy));
         }
-        return ty->Decay()->BuildUnaryExpression(std::move(expr), &Lexer::TokenTypes::Increment, { lookup, inc->location });
+        return Type::BuildUnaryExpression(std::move(expr), &Lexer::TokenTypes::Increment, { lookup, inc->location });
     });
 
     AddExpressionHandler<Parse::Tuple>([](Analyzer& a, Type* lookup, const Parse::Tuple* tup) {
@@ -416,9 +412,7 @@ Analyzer::Analyzer(const Options::Clang& opts, const Parse::Module* GlobalModule
     });
 
     AddExpressionHandler<Parse::PointerMemberAccess>([](Analyzer& a, Type* lookup, const Parse::PointerMemberAccess* paccess) {
-        auto obj = a.AnalyzeExpression(lookup, paccess->ex);
-        auto objty = obj->GetType();
-        auto subobj = objty->BuildUnaryExpression(std::move(obj), &Lexer::TokenTypes::Star, { lookup, paccess->location });
+        auto subobj = Type::BuildUnaryExpression(a.AnalyzeExpression(lookup, paccess->ex), &Lexer::TokenTypes::Star, { lookup, paccess->location });
         return subobj->GetType()->AccessMember(std::move(subobj), paccess->member, { lookup, paccess->location });
     });
 
@@ -728,7 +722,7 @@ Analyzer::Analyzer(const Options::Clang& opts, const Parse::Module* GlobalModule
         auto obj = a.AnalyzeExpression(lookup, index->object);
         auto ind = a.AnalyzeExpression(lookup, index->index);
         auto ty = obj->GetType();
-        return ty->BuildIndex(std::move(obj), std::move(ind), { lookup, index->location });
+        return Type::BuildIndex(std::move(obj), std::move(ind), { lookup, index->location });
     });
 
     AddExpressionHandler<Parse::DestructorAccess>([](Analyzer& a, Type* lookup, const Parse::DestructorAccess* des) -> std::shared_ptr<Expression> {

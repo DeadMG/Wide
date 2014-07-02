@@ -75,11 +75,10 @@ int main(int argc, char** argv) {
     for(auto mode : modes) {
         auto result = TestDirectory(mode.first, mode.first, argv[0], input.count("break"));
         total_succeeded += result.passes;
-        total_failed += result.fails;
-    
+        total_failed += result.fails;    
     }
     std::cout << "Total succeeded: " << total_succeeded << " failed: " << total_failed;
-    //Jit(clangopts, "JITSuccess/RAII/MultiParamDestructionOrderException.wide");
+    //Jit(clangopts, "JITSuccess/CPPInterop/ExportMemberFunction.wide");
     //Compile(clangopts, "CompileFail/AddressOfNonLvalue/FunctionReturn.wide");
     if (input.count("break"))
         Wide::Util::DebugBreak();

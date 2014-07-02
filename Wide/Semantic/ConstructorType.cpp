@@ -26,7 +26,7 @@ namespace {
                 throw std::runtime_error("Attempted to emplace a T into a space that was not T.lvalue.");
             auto expr = std::move(args.front());
             args.erase(args.begin());
-            return constructed->BuildInplaceConstruction(std::move(expr), std::move(args), c);
+            return Type::BuildInplaceConstruction(std::move(expr), std::move(args), c);
         }
 
         std::string explain() override final { return t->explain() + ".emplace"; }

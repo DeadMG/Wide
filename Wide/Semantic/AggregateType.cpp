@@ -189,7 +189,7 @@ bool AggregateType::IsCopyConstructible(Lexer::Access access) {
     return GetLayout().copyconstructible;
 }
 std::shared_ptr<Expression> AggregateType::GetVirtualPointer(std::shared_ptr<Expression> self) {
-    if (GetPrimaryBase()) return GetPrimaryBase()->GetVirtualPointer(AccessBase(std::move(self), GetPrimaryBase()));
+    if (GetPrimaryBase()) return GetPrimaryBase()->GetVirtualPointer(Type::AccessBase(std::move(self), GetPrimaryBase()));
     if (!HasDeclaredDynamicFunctions()) return nullptr;
     auto vptrty = analyzer.GetPointerType(GetVirtualPointerType());
     assert(self->GetType()->IsReference(this) || dynamic_cast<PointerType*>(self->GetType())->GetPointee() == this);
@@ -332,11 +332,11 @@ std::function<void(CodegenContext&)> AggregateType::BuildDestructorCall(std::sha
     };
 }
 
-OverloadSet* AggregateType::CreateOperatorOverloadSet(Type* t, Lexer::TokenType type, Lexer::Access access) {
+OverloadSet* AggregateType::CreateOperatorOverloadSet(Lexer::TokenType type, Lexer::Access access) {
     if (type != &Lexer::TokenTypes::Assignment)
         return analyzer.GetOverloadSet();
     if (access != Lexer::Access::Public)
-        return AccessMember(t, type, Lexer::Access::Public);
+        return AccessMember(type, Lexer::Access::Public);
 
     // Similar principle to constructor
     std::function<Type*(Type*)> modify;
@@ -356,7 +356,7 @@ OverloadSet* AggregateType::CreateOperatorOverloadSet(Type* t, Lexer::TokenType 
                 std::vector<Type*> types;
                 types.push_back(analyzer.GetLvalueType(type));
                 types.push_back(modify(type));
-                auto overset = type->AccessMember(analyzer.GetLvalueType(type), &Lexer::TokenTypes::Assignment, GetAccessSpecifier(this, type));
+                auto overset = type->AccessMember(&Lexer::TokenTypes::Assignment, GetAccessSpecifier(this, type));
                 auto callable = overset->Resolve(types, this);
                 if (!callable)
                     assert(false); // dafuq, the appropriate assignable was set but we're not assignable?
@@ -432,7 +432,7 @@ OverloadSet* AggregateType::CreateNondefaultConstructorOverloadSet() {
                 assert(callable);// Should not be generated if this fails!
                 exprs.push_back(callable->Call({ std::move(lhs), std::move(rhs) }, c));
             }
-            exprs.push_back(SetVirtualPointers(args[0]));
+            exprs.push_back(Type::SetVirtualPointers(args[0]));
             struct AggregateConstructor : Expression {
                 AggregateType* this_type;
                 std::shared_ptr<Expression> self;
@@ -506,7 +506,7 @@ OverloadSet* AggregateType::CreateConstructorOverloadSet(Lexer::Access access) {
                     assert(callable);// Should not be generated if this fails!
                     exprs.push_back(callable->Call({ std::move(lhs) }, c));
                 }
-                exprs.push_back(SetVirtualPointers(args[0]));
+                exprs.push_back(Type::SetVirtualPointers(args[0]));
                 struct AggregateConstructor : Expression {
                     std::shared_ptr<Expression> self;
                     std::vector<std::shared_ptr<Expression>> exprs;

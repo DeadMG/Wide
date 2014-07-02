@@ -40,7 +40,6 @@ namespace Wide {
             llvm::Type* GetLLVMType(llvm::Module* m) override final;            
             Wide::Util::optional<clang::QualType> GetClangType(ClangTU& tu) override final;
             std::shared_ptr<Expression> AccessMember(std::shared_ptr<Expression> t, std::string name, Context c) override final;        
-            std::shared_ptr<Expression> BuildBooleanConversion(std::shared_ptr<Expression> ex, Context c) override final; 
             std::function<void(CodegenContext&)> BuildDestructorCall(std::shared_ptr<Expression> self, Context c, bool devirtualize) override final;
             Type* GetConstantContext() override final; 
 
@@ -52,7 +51,7 @@ namespace Wide {
             std::size_t alignment() override final;
             Type* GetContext() override final;
             OverloadSet* CreateADLOverloadSet(Lexer::TokenType what, Type* lhs, Type* rhs, Lexer::Access access) override final;
-            OverloadSet* CreateOperatorOverloadSet(Type* self, Lexer::TokenType name, Lexer::Access access) override final;
+            OverloadSet* CreateOperatorOverloadSet(Lexer::TokenType name, Lexer::Access access) override final;
             OverloadSet* CreateConstructorOverloadSet(Lexer::Access) override final;
             Wide::Util::optional<std::vector<Type*>> GetTypesForTuple() override final;
             std::shared_ptr<Expression> PrimitiveAccessMember(std::shared_ptr<Expression> self, unsigned num) override final;

@@ -57,7 +57,7 @@ OverloadSet* PointerType::CreateConstructorOverloadSet(Lexer::Access access) {
         std::shared_ptr<Expression> CallFunction(std::vector<std::shared_ptr<Expression>> args, Context c) override final {
             auto other = BuildValue(std::move(args[1]));
             auto udt = dynamic_cast<PointerType*>(other->GetType())->pointee;
-            return Wide::Memory::MakeUnique<ImplicitStoreExpr>(std::move(args[0]), udt->AccessBase(std::move(other), self->pointee));
+            return Wide::Memory::MakeUnique<ImplicitStoreExpr>(std::move(args[0]), Type::AccessBase(std::move(other), self->pointee));
         }
         Callable* GetCallableForResolution(std::vector<Type*>, Analyzer& a) override final { return this; }
     };
@@ -74,12 +74,6 @@ OverloadSet* PointerType::CreateConstructorOverloadSet(Lexer::Access access) {
     return analyzer.GetOverloadSet(analyzer.GetOverloadSet(usual, analyzer.GetOverloadSet(NullConstructor.get())), analyzer.GetOverloadSet(DerivedConstructor.get())); 
 }
 
-std::shared_ptr<Expression> PointerType::BuildBooleanConversion(std::shared_ptr<Expression> c, Context) {
-    return CreatePrimUnOp(BuildValue(std::move(c)), analyzer.GetBooleanType(), [](llvm::Value* v, CodegenContext& con) {
-        return con->CreateZExt(con->CreateIsNotNull(v), llvm::Type::getInt8Ty(con));
-    });
-}
-
 bool PointerType::IsA(Type* self, Type* other, Lexer::Access access) {
     // T* is U* if T is derived from U.
     // But reference to T* is not reference to U* so keep that shit under wraps yo.
@@ -93,16 +87,25 @@ bool PointerType::IsA(Type* self, Type* other, Lexer::Access access) {
     return pointee->IsDerivedFrom(otherptr->pointee) == InheritanceRelationship::UnambiguouslyDerived;
 }
 
-OverloadSet* PointerType::CreateOperatorOverloadSet(Type* self, Lexer::TokenType what, Lexer::Access access) {
+OverloadSet* PointerType::CreateOperatorOverloadSet(Lexer::TokenType what, Lexer::Access access) {
     if (access != Lexer::Access::Public)
-        return AccessMember(self, what, Lexer::Access::Public);
-    if (what != &Lexer::TokenTypes::Star) return PrimitiveType::CreateOperatorOverloadSet(self, what, access);
-    DereferenceOperator = MakeResolvable([this](std::vector<std::shared_ptr<Expression>> args, Context c) {
-        return CreatePrimUnOp(std::move(args[0]), analyzer.GetLvalueType(pointee), [](llvm::Value* val, CodegenContext& con) {
-            return val;
-        });
-    }, { this });
-    return analyzer.GetOverloadSet(DereferenceOperator.get());
+        return AccessMember(what, Lexer::Access::Public);
+    if (what == &Lexer::TokenTypes::Star) {
+        DereferenceOperator = MakeResolvable([this](std::vector<std::shared_ptr<Expression>> args, Context c) {
+            return CreatePrimUnOp(std::move(args[0]), analyzer.GetLvalueType(pointee), [](llvm::Value* val, CodegenContext& con) {
+                return val;
+            });
+        }, { this });
+        return analyzer.GetOverloadSet(DereferenceOperator.get());
+    } else if (what == &Lexer::TokenTypes::QuestionMark) {
+        BooleanOperator = MakeResolvable([this](std::vector<std::shared_ptr<Expression>> args, Context c) {
+            return CreatePrimUnOp(BuildValue(std::move(args[0])), analyzer.GetBooleanType(), [](llvm::Value* v, CodegenContext& con) {
+                return con->CreateZExt(con->CreateIsNotNull(v), llvm::Type::getInt8Ty(con));
+            });
+        }, { this });
+        return analyzer.GetOverloadSet(BooleanOperator.get());
+    }
+    return PrimitiveType::CreateOperatorOverloadSet(what, access);
 }
 std::string PointerType::explain() {
     return pointee->explain() + ".pointer";

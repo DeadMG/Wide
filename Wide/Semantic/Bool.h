@@ -13,13 +13,13 @@ namespace Wide {
             std::unique_ptr<OverloadResolvable> LTOperator;
             std::unique_ptr<OverloadResolvable> EQOperator;
             std::unique_ptr<OverloadResolvable> NegOperator;
+            std::unique_ptr<OverloadResolvable> BooleanConversion;
         public:
             Bool(Analyzer& a) : PrimitiveType(a) {}
             llvm::Type* GetLLVMType(llvm::Module* module) override final;
             Wide::Util::optional<clang::QualType> GetClangType(ClangTU&) override final;
             
-            OverloadSet* CreateOperatorOverloadSet(Type* t, Lexer::TokenType name, Lexer::Access access) override final;
-            std::shared_ptr<Expression> BuildBooleanConversion(std::shared_ptr<Expression>, Context c) override final;
+            OverloadSet* CreateOperatorOverloadSet(Lexer::TokenType name, Lexer::Access access) override final;
             std::size_t size() override final;
             std::size_t alignment() override final;
             std::string explain() override final;

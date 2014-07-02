@@ -56,7 +56,7 @@ void Function::LocalVariable::OnNodeChanged(Node* n, Change what) {
                 auto tuple_access = tupty->PrimitiveAccessMember(init_expr, *tuple_num);
                 newty = tuple_access->GetType()->Decay();
                 variable = Wide::Memory::MakeUnique<ImplicitTemporaryExpr>(newty, Context{ self, where });
-                construction = newty->BuildInplaceConstruction(variable, { std::move(tuple_access) }, { self, init_where });
+                construction = Type::BuildInplaceConstruction(variable, { std::move(tuple_access) }, { self, init_where });
                 destructor = newty->BuildDestructorCall(variable, Context{ self, where }, true);
                 if (newty != var_type) {
                     var_type = newty;
@@ -81,7 +81,7 @@ void Function::LocalVariable::OnNodeChanged(Node* n, Change what) {
         if (newty != var_type) {
             if (newty) {
                 variable = Wide::Memory::MakeUnique<ImplicitTemporaryExpr>(newty, Context{ self, where });
-                construction = newty->BuildInplaceConstruction(variable, { init_expr }, { self, init_where });
+                construction = Type::BuildInplaceConstruction(variable, { init_expr }, { self, init_where });
                 destructor = newty->BuildDestructorCall(variable, Context{ self, where }, true);
             }
             var_type = newty;
@@ -166,7 +166,7 @@ void Function::ReturnStatement::OnNodeChanged(Node* n, Change c) {
             }
         };
         if (self->ReturnType)
-            build = self->ReturnType->BuildInplaceConstruction(Wide::Memory::MakeUnique<ReturnEmplaceValue>(self), { ret_expr }, { self, where });
+            build = Type::BuildInplaceConstruction(Wide::Memory::MakeUnique<ReturnEmplaceValue>(self), { ret_expr }, { self, where });
         else
             build = nullptr;
     } else
@@ -229,7 +229,7 @@ Function::WhileStatement::WhileStatement(std::shared_ptr<Expression> ex, Lexer::
 void Function::WhileStatement::OnNodeChanged(Node* n, Change what) {
     if (what == Change::Destroyed) return;
     if (cond->GetType())
-        boolconvert = cond->GetType()->Decay()->BuildBooleanConversion(cond, { self, where });
+        boolconvert = Type::BuildBooleanConversion(cond, { self, where });
 }
 
 void Function::WhileStatement::GenerateCode(CodegenContext& con) {
@@ -272,7 +272,7 @@ Function::IfStatement::IfStatement(std::shared_ptr<Expression> cond, Statement* 
 void Function::IfStatement::OnNodeChanged(Node* n, Change what) {
     if (what == Change::Destroyed) return;
     if (cond->GetType())
-        boolconvert = cond->GetType()->Decay()->BuildBooleanConversion(cond, { self, where });
+        boolconvert = Type::BuildBooleanConversion(cond, { self, where });
 }
 void Function::IfStatement::GenerateCode(CodegenContext& con) {
     auto true_bb = llvm::BasicBlock::Create(con, "true_bb", con->GetInsertBlock()->getParent());
@@ -393,7 +393,7 @@ Function::ThrowStatement::ThrowStatement(std::shared_ptr<Expression> expr, Conte
     // There is no longer a guarantee thas, as an argument, except_memory will be in the same CodegenContext
     // and the iterator could be invalidated. Strictly get the value in the original CodegenContext that ThrowStatement::GenerateCode
     // is called with so that we can erase the destructor later.
-    exception = BuildChain(BuildChain(except_memory, ty->BuildInplaceConstruction(except_memory, { std::move(expr) }, c)), except_memory);
+    exception = BuildChain(BuildChain(except_memory, Type::BuildInplaceConstruction(except_memory, { std::move(expr) }, c)), except_memory);
 }
 void Function::ThrowStatement::GenerateCode(CodegenContext& con) {
     auto value = exception->GetValue(con);
@@ -776,7 +776,7 @@ void Function::ComputeBody() {
                     return con->CreatePointerCast(self, result->GetLLVMType(con));
                 });
                 auto make_member_initializer = [&, this](std::vector<std::shared_ptr<Expression>> init, Lexer::Range where) {
-                    auto construction = x.t->BuildInplaceConstruction(member, std::move(init), { this, where });
+                    auto construction = Type::BuildInplaceConstruction(member, std::move(init), { this, where });
                     return Wide::Memory::MakeUnique<MemberConstructionAccess>(x.t, where, std::move(construction), member);
                 };
                 if (auto init = has_initializer()) {
@@ -815,7 +815,7 @@ void Function::ComputeBody() {
             }
             // set the vptrs if necessary
             auto ty = dynamic_cast<Type*>(member);
-            root_scope->active.push_back(ty->SetVirtualPointers(LookupLocal("this")));
+            root_scope->active.push_back(Type::SetVirtualPointers(LookupLocal("this")));
         }
 
         // Now the body.

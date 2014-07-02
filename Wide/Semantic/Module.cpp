@@ -18,7 +18,7 @@ Module::Module(const Parse::Module* p, Module* higher, Analyzer& a)
 void Module::AddSpecialMember(std::string name, std::shared_ptr<Expression> t){
     SpecialMembers.insert(std::make_pair(std::move(name), std::move(t)));
 }
-OverloadSet* Module::CreateOperatorOverloadSet(Type* t, Wide::Lexer::TokenType ty, Lexer::Access access) {
+OverloadSet* Module::CreateOperatorOverloadSet(Wide::Lexer::TokenType ty, Lexer::Access access) {
     auto name = "operator" + *ty;
     if (m->named_decls.find(name) != m->named_decls.end()) {
         auto overset = boost::get<std::unordered_map<Lexer::Access, std::unordered_set<Parse::Function*>>>(m->named_decls.at(name));
@@ -30,10 +30,10 @@ OverloadSet* Module::CreateOperatorOverloadSet(Type* t, Wide::Lexer::TokenType t
                 resolvable.insert(analyzer.GetCallableForFunction(func, this, name));
             }
         }
-        if (resolvable.empty()) return PrimitiveType::CreateOperatorOverloadSet(t, ty, access);
+        if (resolvable.empty()) return PrimitiveType::CreateOperatorOverloadSet(ty, access);
         return analyzer.GetOverloadSet(resolvable);
     }
-    return PrimitiveType::CreateOperatorOverloadSet(t, ty, access);
+    return PrimitiveType::CreateOperatorOverloadSet(ty, access);
 }
 std::shared_ptr<Expression> Module::AccessMember(std::shared_ptr<Expression> val, std::string name, Context c)  {
     auto access = GetAccessSpecifier(c.from, this);

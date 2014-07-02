@@ -238,7 +238,7 @@ std::shared_ptr<Expression> UserDefinedType::AccessMember(std::shared_ptr<Expres
     Type* BaseType = nullptr;
     OverloadSet* BaseOverloadSet = nullptr;
     for (auto base : GetBaseData().bases) {
-        auto baseobj = AccessBase(self, base);
+        auto baseobj = Type::AccessBase(self, base);
         if (auto member = base->AccessMember(std::move(baseobj), name, c)) {
             // If there's nothing there, we win.
             // If we're an OS and the existing is an OS, we win by unifying.
@@ -262,7 +262,7 @@ std::shared_ptr<Expression> UserDefinedType::AccessMember(std::shared_ptr<Expres
         return BaseOverloadSet->BuildValueConstruction({ std::move(self) }, c);
     if (!BaseType)
         return nullptr;
-    return BaseType->AccessMember(AccessBase(std::move(self), BaseType), name, c);
+    return BaseType->AccessMember(Type::AccessBase(std::move(self), BaseType), name, c);
 }
 
 Wide::Util::optional<clang::QualType> UserDefinedType::GetClangType(ClangTU& TU) {
@@ -584,12 +584,12 @@ OverloadSet* UserDefinedType::CreateConstructorOverloadSet(Lexer::Access access)
                                 return con->CreatePointerCast(self, result->GetLLVMType(con));                            
                             });
                             if (mem.InClassInitializer)
-                                initializers.push_back(mem.t->BuildInplaceConstruction(std::move(member), { mem.InClassInitializer(arg) }, Context(self, where)));
+                                initializers.push_back(Type::BuildInplaceConstruction(std::move(member), { mem.InClassInitializer(arg) }, Context(self, where)));
                             else
-                                initializers.push_back(mem.t->BuildInplaceConstruction(std::move(member), {}, { self, where }));
+                                initializers.push_back(Type::BuildInplaceConstruction(std::move(member), {}, { self, where }));
                         }
                         // We can be asked to use this constructor to initialize a base vptr override.
-                        initializers.push_back(self->SetVirtualPointers(arg));
+                        initializers.push_back(Type::SetVirtualPointers(arg));
                     }
                     Type* GetType() override final {
                         return self->analyzer.GetLvalueType(self);
@@ -609,8 +609,7 @@ OverloadSet* UserDefinedType::CreateConstructorOverloadSet(Lexer::Access access)
     return analyzer.GetOverloadSet(user_defined_constructors, AggregateType::CreateConstructorOverloadSet(access));
 }
 
-OverloadSet* UserDefinedType::CreateOperatorOverloadSet(Type* self, Lexer::TokenType name, Lexer::Access access) {
-    assert(self->Decay() == this);
+OverloadSet* UserDefinedType::CreateOperatorOverloadSet(Lexer::TokenType name, Lexer::Access access) {
     auto funcname = "operator" + *name;
     if (*name == "(")
         funcname += ")";
@@ -622,9 +621,9 @@ OverloadSet* UserDefinedType::CreateOperatorOverloadSet(Type* self, Lexer::Token
             for (auto&& f : type->functions.at(funcname)) {
                 if (f.first <= access)
                     for (auto func : f.second)
-                        resolvable.insert(analyzer.GetCallableForFunction(func, self, funcname));
+                        resolvable.insert(analyzer.GetCallableForFunction(func, this, funcname));
             }
-            return analyzer.GetOverloadSet(resolvable, self);
+            return analyzer.GetOverloadSet(resolvable);
         }
         return analyzer.GetOverloadSet();
     };
@@ -635,8 +634,8 @@ OverloadSet* UserDefinedType::CreateOperatorOverloadSet(Type* self, Lexer::Token
         }
     }
     if (type->functions.find(funcname) != type->functions.end())
-        return analyzer.GetOverloadSet(user_defined(), AggregateType::CreateOperatorOverloadSet(self, name, access));
-    return AggregateType::CreateOperatorOverloadSet(self, name, access);
+        return analyzer.GetOverloadSet(user_defined(), AggregateType::CreateOperatorOverloadSet(name, access));
+    return AggregateType::CreateOperatorOverloadSet(name, access);
 }
 
 std::function<void(CodegenContext&)> UserDefinedType::BuildDestructorCall(std::shared_ptr<Expression> self, Context c, bool devirtualize) {

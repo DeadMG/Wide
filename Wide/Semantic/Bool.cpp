@@ -32,39 +32,38 @@ std::size_t Bool::alignment() {
     return analyzer.GetDataLayout().getABIIntegerTypeAlignment(8);
 }
 
-std::shared_ptr<Expression> Bool::BuildBooleanConversion(std::shared_ptr<Expression> arg, Context c) {
-    return BuildValue(std::move(arg));
-}
-
-OverloadSet* Bool::CreateOperatorOverloadSet(Type* t, Lexer::TokenType name, Lexer::Access access) {
+OverloadSet* Bool::CreateOperatorOverloadSet(Lexer::TokenType name, Lexer::Access access) {
     if (access != Lexer::Access::Public)
-        return AccessMember(t, name, Lexer::Access::Public);
+        return AccessMember(name, Lexer::Access::Public);
 
-    if (t == analyzer.GetLvalueType(this)) {
-        if (name == &Lexer::TokenTypes::OrAssign) {
-            OrAssignOperator = MakeResolvable([](std::vector<std::shared_ptr<Expression>> args, Context c) -> std::shared_ptr<Expression> {
-                return CreatePrimAssOp(std::move(args[0]), std::move(args[1]), [](llvm::Value* lhs, llvm::Value* rhs, CodegenContext& con) {
-                    return con->CreateOr(lhs, rhs);
-                });
-            }, { analyzer.GetLvalueType(this), this });
-            return analyzer.GetOverloadSet(OrAssignOperator.get());
-        } else if (name == &Lexer::TokenTypes::AndAssign) {
-            AndAssignOperator = MakeResolvable([](std::vector<std::shared_ptr<Expression>> args, Context c) -> std::shared_ptr<Expression> {
-                return CreatePrimAssOp(std::move(args[0]), std::move(args[1]), [](llvm::Value* lhs, llvm::Value* rhs, CodegenContext& con) {
-                    return con->CreateAnd(lhs, rhs);
-                });
-            }, { analyzer.GetLvalueType(this), this });
-            return analyzer.GetOverloadSet(AndAssignOperator.get());
-        } else if (name == &Lexer::TokenTypes::XorAssign) {
-            XorAssignOperator = MakeResolvable([](std::vector<std::shared_ptr<Expression>> args, Context c) -> std::shared_ptr<Expression> {
-                return CreatePrimAssOp(std::move(args[0]), std::move(args[1]), [](llvm::Value* lhs, llvm::Value* rhs, CodegenContext& con) {
-                    return con->CreateXor(lhs, rhs);
-                });
-            }, { analyzer.GetLvalueType(this), this });
-            return analyzer.GetOverloadSet(XorAssignOperator.get());
-        }
+    if (name == &Lexer::TokenTypes::QuestionMark) {
+        BooleanConversion = MakeResolvable([](std::vector<std::shared_ptr<Expression>> args, Context c) {
+            return args[0];
+        }, { this });
+        return analyzer.GetOverloadSet(BooleanConversion.get());
     }
-    if (name == &Lexer::TokenTypes::Or) {
+    if (name == &Lexer::TokenTypes::OrAssign) {
+        OrAssignOperator = MakeResolvable([](std::vector<std::shared_ptr<Expression>> args, Context c) -> std::shared_ptr<Expression> {
+            return CreatePrimAssOp(std::move(args[0]), std::move(args[1]), [](llvm::Value* lhs, llvm::Value* rhs, CodegenContext& con) {
+                return con->CreateOr(lhs, rhs);
+            });
+        }, { analyzer.GetLvalueType(this), this });
+        return analyzer.GetOverloadSet(OrAssignOperator.get());
+    } else if (name == &Lexer::TokenTypes::AndAssign) {
+        AndAssignOperator = MakeResolvable([](std::vector<std::shared_ptr<Expression>> args, Context c) -> std::shared_ptr<Expression> {
+            return CreatePrimAssOp(std::move(args[0]), std::move(args[1]), [](llvm::Value* lhs, llvm::Value* rhs, CodegenContext& con) {
+                return con->CreateAnd(lhs, rhs);
+            });
+        }, { analyzer.GetLvalueType(this), this });
+        return analyzer.GetOverloadSet(AndAssignOperator.get());
+    } else if (name == &Lexer::TokenTypes::XorAssign) {
+        XorAssignOperator = MakeResolvable([](std::vector<std::shared_ptr<Expression>> args, Context c) -> std::shared_ptr<Expression> {
+            return CreatePrimAssOp(std::move(args[0]), std::move(args[1]), [](llvm::Value* lhs, llvm::Value* rhs, CodegenContext& con) {
+                return con->CreateXor(lhs, rhs);
+            });
+        }, { analyzer.GetLvalueType(this), this });
+        return analyzer.GetOverloadSet(XorAssignOperator.get());
+    } else if (name == &Lexer::TokenTypes::Or) {
         OrOperator = MakeResolvable([](std::vector<std::shared_ptr<Expression>> args, Context c) -> std::shared_ptr<Expression> {
             struct ShortCircuitOr : Expression {
                 ShortCircuitOr(std::shared_ptr<Expression> lhs, std::shared_ptr<Expression> rhs)
@@ -174,7 +173,7 @@ OverloadSet* Bool::CreateOperatorOverloadSet(Type* t, Lexer::TokenType name, Lex
         }, { this });
         return analyzer.GetOverloadSet(NegOperator.get());
     }
-    return PrimitiveType::CreateOperatorOverloadSet(t, name, access);
+    return PrimitiveType::CreateOperatorOverloadSet(name, access);
 }
 
 std::string Bool::explain() {

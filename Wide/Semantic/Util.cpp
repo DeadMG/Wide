@@ -90,7 +90,7 @@ std::shared_ptr<Expression> Semantic::InterpretExpression(clang::Expr* expr, Cla
         auto code = binop->getOpcode();
         for (auto pair : GetTokenMappings()) {
             if (pair.second.second == code) {
-                return lhs->GetType()->BuildBinaryExpression(std::move(lhs), std::move(rhs), pair.first, c);
+                return Type::BuildBinaryExpression(std::move(lhs), std::move(rhs), pair.first, c);
             }
         }
         std::string str;

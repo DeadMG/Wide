@@ -76,7 +76,7 @@ namespace Wide {
             Type* GetConstantContext() override;
             
             OverloadSet* CreateNondefaultConstructorOverloadSet();
-            OverloadSet* CreateOperatorOverloadSet(Type* t, Lexer::TokenType type, Lexer::Access access) override;
+            OverloadSet* CreateOperatorOverloadSet(Lexer::TokenType type, Lexer::Access access) override;
             OverloadSet* CreateConstructorOverloadSet(Lexer::Access access) override; 
             std::function<void(CodegenContext&)> BuildDestructorCall(std::shared_ptr<Expression> self, Context c, bool devirtualize) override;
             std::shared_ptr<Expression> GetVirtualPointer(std::shared_ptr<Expression> self) override final;

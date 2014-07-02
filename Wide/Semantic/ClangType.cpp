@@ -151,36 +151,6 @@ llvm::Type* ClangType::GetLLVMType(llvm::Module* module) {
     return from->GetLLVMTypeFromClangType(type, module);
 }
 
-std::shared_ptr<Expression> ClangType::BuildBooleanConversion(std::shared_ptr<Expression> ex, Context c) {
-    /*if (self.t->Decay() == self.t)
-        self = BuildRvalueConstruction({ self }, c);*/
-    if (!ex->GetType()->IsReference())
-        ex = ex->GetType()->Decay()->BuildRvalueConstruction({ ex }, c);
-
-    clang::OpaqueValueExpr ope(clang::SourceLocation(), type.getNonLValueExprType(from->GetASTContext()), Semantic::GetKindOfType(ex->GetType()));
-    auto p = from->GetSema().PerformContextuallyConvertToBool(&ope);
-    if (!p.get())
-        throw NoBooleanConversion(ex->GetType(), c.where);
-    clang::CallExpr* callexpr;
-    if (auto ice = llvm::dyn_cast<clang::ImplicitCastExpr>(p.get())) {
-        callexpr = llvm::dyn_cast<clang::CallExpr>(ice->getSubExpr());
-    } else {
-        callexpr = llvm::dyn_cast<clang::CallExpr>(p.get());
-    }
-       
-    auto fun = callexpr->getDirectCallee();
-    if (!fun) {
-        std::cout << "Fun was 0.\n";
-        llvm::raw_os_ostream out(std::cout);
-        callexpr->printPretty(out, 0, clang::PrintingPolicy(from->GetASTContext().getLangOpts()));
-        assert(false && "Attempted to contextually convert to bool, but Clang gave back an expression that did not involve a function call.");
-    }
-
-    auto set = GetOverloadSet(fun, from, std::move(ex), c, analyzer);
-    auto ty = set->GetType();
-    return ty->BuildCall(std::move(set), {}, c);
-}
-
 #pragma warning(disable : 4244)
 std::size_t ClangType::size() {
     return from->GetASTContext().getTypeSizeInChars(type).getQuantity();
@@ -214,7 +184,7 @@ OverloadSet* ClangType::CreateADLOverloadSet(Lexer::TokenType what, Type* lhs, T
     return analyzer.GetOverloadSet(std::move(decls), from, GetContext());
 }
 
-OverloadSet* ClangType::CreateOperatorOverloadSet(Type* self, Lexer::TokenType name, Lexer::Access access) {
+OverloadSet* ClangType::CreateOperatorOverloadSet(Lexer::TokenType name, Lexer::Access access) {
     if (!ProcessedAssignmentOperators && name == &Lexer::TokenTypes::Assignment) {
         ProcessedAssignmentOperators = true;
         auto recdecl = type->getAsCXXRecordDecl();
@@ -231,6 +201,32 @@ OverloadSet* ClangType::CreateOperatorOverloadSet(Type* self, Lexer::TokenType n
             [&]{ return from->GetSema().LookupMovingAssignment(recdecl, 0, false, 0); }
         );        
     }
+    if (name == &Lexer::TokenTypes::QuestionMark) {
+        auto get_bool_convert = [&](Type* t) {
+            clang::OpaqueValueExpr ope(clang::SourceLocation(), type.getNonLValueExprType(from->GetASTContext()), Semantic::GetKindOfType(t));
+            auto p = from->GetSema().PerformContextuallyConvertToBool(&ope);
+            if (!p.get())
+                return analyzer.GetOverloadSet();
+            clang::CallExpr* callexpr;
+            if (auto ice = llvm::dyn_cast<clang::ImplicitCastExpr>(p.get())) {
+                callexpr = llvm::dyn_cast<clang::CallExpr>(ice->getSubExpr());
+            } else {
+                callexpr = llvm::dyn_cast<clang::CallExpr>(p.get());
+            }
+
+            auto fun = callexpr->getDirectCallee();
+            if (!fun) {
+                std::cout << "Fun was 0.\n";
+                llvm::raw_os_ostream out(std::cout);
+                callexpr->printPretty(out, 0, clang::PrintingPolicy(from->GetASTContext().getLangOpts()));
+                assert(false && "Attempted to contextually convert to bool, but Clang gave back an expression that did not involve a function call.");
+            }
+            std::unordered_set<clang::NamedDecl*> decls;
+            decls.insert(fun);
+            return analyzer.GetOverloadSet(decls, from, t);
+        };
+        return analyzer.GetOverloadSet(get_bool_convert(analyzer.GetLvalueType(this)), get_bool_convert(analyzer.GetRvalueType(this)));
+    }
     auto opkind = GetTokenMappings().at(name).first;
     clang::LookupResult lr(
         from->GetSema(), 
@@ -246,7 +242,7 @@ OverloadSet* ClangType::CreateOperatorOverloadSet(Type* self, Lexer::TokenType n
     for (auto decl : lr)
         if (AccessMapping.at(decl->getAccess()) <= access)
             decls.insert(decl);
-    return analyzer.GetOverloadSet(std::move(decls), from, self);
+    return analyzer.GetOverloadSet(std::move(decls), from, this);
 }
 
 OverloadSet* ClangType::CreateConstructorOverloadSet(Lexer::Access access) {

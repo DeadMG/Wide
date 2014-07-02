@@ -180,7 +180,7 @@ namespace Wide {
 
         private:
             std::unordered_map<Lexer::Access, OverloadSet*> ConstructorOverloadSets;
-            std::unordered_map<Type*, std::unordered_map<Lexer::Access, std::unordered_map<Lexer::TokenType, OverloadSet*>>> OperatorOverloadSets;
+            std::unordered_map<Lexer::Access, std::unordered_map<Lexer::TokenType, OverloadSet*>> OperatorOverloadSets;
             std::unordered_map<Type*, std::unordered_map<Type*, std::unordered_map<Lexer::Access, std::unordered_map<Lexer::TokenType, OverloadSet*>>>> ADLResults;
             std::unordered_map<std::vector<std::pair<Type*, unsigned>>, std::shared_ptr<Expression>, VectorTypeHasher> ComputedVTables;
             Wide::Util::optional<VTableLayout> VtableLayout;
@@ -192,7 +192,7 @@ namespace Wide {
             std::shared_ptr<Expression> GetVTablePointer(std::vector<std::pair<Type*, unsigned>> path);
             std::shared_ptr<Expression> SetVirtualPointers(std::vector<std::pair<Type*, unsigned>> path, std::shared_ptr<Expression> self);
         protected:
-            virtual OverloadSet* CreateOperatorOverloadSet(Type* self, Lexer::TokenType what, Lexer::Access access);
+            virtual OverloadSet* CreateOperatorOverloadSet(Lexer::TokenType what, Lexer::Access access);
             virtual OverloadSet* CreateADLOverloadSet(Lexer::TokenType name, Type* lhs, Type* rhs, Lexer::Access access);
             virtual OverloadSet* CreateConstructorOverloadSet(Lexer::Access access) = 0;
         public:
@@ -236,29 +236,29 @@ namespace Wide {
             virtual std::shared_ptr<Expression> AccessMember(std::shared_ptr<Expression> t, std::string name, Context c);
             virtual std::shared_ptr<Expression> BuildMetaCall(std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args);
             virtual std::shared_ptr<Expression> BuildCall(std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c);
-            virtual std::shared_ptr<Expression> BuildValueConstruction(std::vector<std::shared_ptr<Expression>> args, Context c);
-            virtual std::shared_ptr<Expression> BuildBooleanConversion(std::shared_ptr<Expression>, Context);
             virtual std::function<void(CodegenContext&)> BuildDestructorCall(std::shared_ptr<Expression> self, Context c, bool devirtualize);
-            virtual std::shared_ptr<Expression> BuildRvalueConstruction(std::vector<std::shared_ptr<Expression>> exprs, Context c);
-            virtual std::shared_ptr<Expression> BuildLvalueConstruction(std::vector<std::shared_ptr<Expression>> exprs, Context c);
+
+            std::shared_ptr<Expression> BuildValueConstruction(std::vector<std::shared_ptr<Expression>> args, Context c);
+            std::shared_ptr<Expression> BuildRvalueConstruction(std::vector<std::shared_ptr<Expression>> exprs, Context c);
+            std::shared_ptr<Expression> BuildLvalueConstruction(std::vector<std::shared_ptr<Expression>> exprs, Context c);
 
             virtual ~Type() {}
 
-            std::shared_ptr<Expression> AccessBase(std::shared_ptr<Expression> self, Type* other);
             InheritanceRelationship IsDerivedFrom(Type* other);
             VTableLayout GetVtableLayout();
             VTableLayout GetPrimaryVTable();
             OverloadSet* GetConstructorOverloadSet(Lexer::Access access);
             OverloadSet* PerformADL(Lexer::TokenType what, Type* lhs, Type* rhs, Lexer::Access access);
-            OverloadSet* AccessMember(Type* t, Lexer::TokenType type, Lexer::Access access);
+            OverloadSet* AccessMember(Lexer::TokenType type, Lexer::Access access);
             bool InheritsFromAtOffsetZero(Type* other);
 
-            std::shared_ptr<Expression> BuildInplaceConstruction(std::shared_ptr<Expression> self, std::vector<std::shared_ptr<Expression>> exprs, Context c);
-            std::shared_ptr<Expression> BuildUnaryExpression(std::shared_ptr<Expression> self, Lexer::TokenType type, Context c);
-            std::shared_ptr<Expression> BuildBinaryExpression(std::shared_ptr<Expression> lhs, std::shared_ptr<Expression> rhs, Lexer::TokenType type, Context c);
-            std::shared_ptr<Expression> SetVirtualPointers(std::shared_ptr<Expression>);
-            std::shared_ptr<Expression> BuildIndex(std::shared_ptr<Expression> obj, std::shared_ptr<Expression> arg, Context c);
-            
+            static std::shared_ptr<Expression> BuildBooleanConversion(std::shared_ptr<Expression>, Context);
+            static std::shared_ptr<Expression> AccessBase(std::shared_ptr<Expression> self, Type* other);
+            static std::shared_ptr<Expression> BuildInplaceConstruction(std::shared_ptr<Expression> self, std::vector<std::shared_ptr<Expression>> exprs, Context c);
+            static std::shared_ptr<Expression> BuildUnaryExpression(std::shared_ptr<Expression> self, Lexer::TokenType type, Context c);
+            static std::shared_ptr<Expression> BuildBinaryExpression(std::shared_ptr<Expression> lhs, std::shared_ptr<Expression> rhs, Lexer::TokenType type, Context c);
+            static std::shared_ptr<Expression> SetVirtualPointers(std::shared_ptr<Expression>);
+            static std::shared_ptr<Expression> BuildIndex(std::shared_ptr<Expression> obj, std::shared_ptr<Expression> arg, Context c);            
         };
 
         struct Callable {
@@ -323,7 +323,7 @@ namespace Wide {
             PrimitiveType(Analyzer& a) : Type(a) {}
         public:
             OverloadSet* CreateConstructorOverloadSet(Lexer::Access access) override;
-            OverloadSet* CreateOperatorOverloadSet(Type* t, Lexer::TokenType what, Lexer::Access access) override;
+            OverloadSet* CreateOperatorOverloadSet(Lexer::TokenType what, Lexer::Access access) override;
         };
         class MetaType : public PrimitiveType {
             std::unique_ptr<OverloadResolvable> DefaultConstructor;

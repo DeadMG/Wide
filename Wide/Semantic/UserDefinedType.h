@@ -98,7 +98,7 @@ namespace Wide {
             using Type::AccessMember;
             std::function<void(CodegenContext&)> BuildDestructorCall(std::shared_ptr<Expression> self, Context c, bool devirtualize) override final;
             OverloadSet* CreateConstructorOverloadSet(Lexer::Access access) override final;
-            OverloadSet* CreateOperatorOverloadSet(Type* self, Lexer::TokenType member, Lexer::Access access) override final;
+            OverloadSet* CreateOperatorOverloadSet(Lexer::TokenType member, Lexer::Access access) override final;
             Type* GetConstantContext() override final;
 
             bool IsCopyConstructible(Lexer::Access access) override final;

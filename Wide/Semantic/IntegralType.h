@@ -42,7 +42,7 @@ namespace Wide {
             std::size_t alignment() override final;
             bool IsA(Type* self, Type* other, Lexer::Access access) override final;
             OverloadSet* CreateConstructorOverloadSet(Lexer::Access access) override final;
-            OverloadSet* CreateOperatorOverloadSet(Type* self, Lexer::TokenType what, Lexer::Access access) override final;
+            OverloadSet* CreateOperatorOverloadSet(Lexer::TokenType what, Lexer::Access access) override final;
             std::string explain() override final;
         };
     }

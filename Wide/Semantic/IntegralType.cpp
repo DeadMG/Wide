@@ -273,9 +273,9 @@ bool IntegralType::IsA(Type* self, Type* other, Lexer::Access access) {
         return true;
     return false;
 }
-OverloadSet* IntegralType::CreateOperatorOverloadSet(Type* self, Lexer::TokenType what, Lexer::Access access) {
+OverloadSet* IntegralType::CreateOperatorOverloadSet(Lexer::TokenType what, Lexer::Access access) {
     if (access != Lexer::Access::Public)
-        return AccessMember(self, what, Lexer::Access::Public);
+        return AccessMember(what, Lexer::Access::Public);
     if (what == &Lexer::TokenTypes::Increment) {
         Increment = MakeResolvable([this](std::vector<std::shared_ptr<Expression>> args, Context c) {
             return CreatePrimUnOp(std::move(args[0]), analyzer.GetLvalueType(this), [this](llvm::Value* self, CodegenContext& con) {
@@ -285,7 +285,7 @@ OverloadSet* IntegralType::CreateOperatorOverloadSet(Type* self, Lexer::TokenTyp
         }, { analyzer.GetLvalueType(this) });
         return analyzer.GetOverloadSet(Increment.get());
     }
-    return PrimitiveType::CreateOperatorOverloadSet(self, what, access);
+    return PrimitiveType::CreateOperatorOverloadSet(what, access);
 }
 std::string IntegralType::explain() {
     auto name = "int" + std::to_string(bits);

@@ -8,13 +8,13 @@ namespace Wide {
             std::unique_ptr<OverloadResolvable> NullConstructor;
             std::unique_ptr<OverloadResolvable> DerivedConstructor;
             std::unique_ptr<OverloadResolvable> DereferenceOperator;
+            std::unique_ptr<OverloadResolvable> BooleanOperator;
             Type* pointee;
         public:
             using Type::BuildInplaceConstruction;
 
             PointerType(Type* point, Analyzer& a); 
-            OverloadSet* CreateOperatorOverloadSet(Type* self, Lexer::TokenType what, Lexer::Access access) override final;
-            std::shared_ptr<Expression> BuildBooleanConversion(std::shared_ptr<Expression>, Context) override final;
+            OverloadSet* CreateOperatorOverloadSet(Lexer::TokenType what, Lexer::Access access) override final;
             Wide::Util::optional<clang::QualType> GetClangType(ClangTU& TU) override final;
             llvm::Type* GetLLVMType(llvm::Module* module) override final;
             std::size_t size() override final;
