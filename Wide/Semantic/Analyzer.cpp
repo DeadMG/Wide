@@ -163,7 +163,7 @@ Analyzer::Analyzer(const Options::Clang& opts, const Parse::Module* GlobalModule
     file.flush();
     file.close();
     AggregateCPPHeader(path, context.where);
-
+    
     AddExpressionHandler<Parse::String>([](Analyzer& a, Type* lookup, const Parse::String* str) {
         return Wide::Memory::MakeUnique<String>(str->val, a);
     });
@@ -1064,13 +1064,6 @@ OverloadResolvable* Analyzer::GetCallableForFunction(const Parse::FunctionBase* 
         }
 
         Callable* GetCallableForResolution(std::vector<Type*> types, Analyzer& a) override final {
-            // If it's a dynamic function might not be the one we looked up.
-            //if (auto function = dynamic_cast<const AST::Function*>(func)) {
-            //    if (function->dynamic) {
-            //        auto udt = dynamic_cast<UserDefinedType*>(context);
-            //        return udt->GetCallableForDynamicCall(function, types, name);
-            //    }
-            //}
             return a.GetWideFunction(func, context, std::move(types), name);
         }
     };

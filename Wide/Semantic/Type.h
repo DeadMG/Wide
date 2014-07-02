@@ -286,10 +286,6 @@ namespace Wide {
             virtual std::shared_ptr<Expression> PrimitiveAccessMember(std::shared_ptr<Expression> self, unsigned num) = 0;
         };        
 
-        struct LLVMFieldIndex { unsigned index; };
-        struct EmptyBaseOffset { unsigned offset; };
-        typedef boost::variant<LLVMFieldIndex, EmptyBaseOffset> MemberLocation;
-
         struct MemberFunctionContext { virtual ~MemberFunctionContext() {} };
         struct ConstructorContext {
             struct member {

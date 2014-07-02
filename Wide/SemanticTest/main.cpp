@@ -17,15 +17,9 @@ int main(int argc, char** argv) {
 #ifdef _MSC_VER
     // MCJIT can't handle non-ELF on Windows for some reason.
     clangopts.TargetOptions.Triple += "-elf";
-#else
-    // getProcessTriple returns x86_64 but TargetMachine expects x86-64.
-    // Fixing it only makes the problem WORSE.
-    //if (llvm::Triple(clangopts.TargetOptions.Triple).getArch() == llvm::Triple::ArchType::x86_64)
-    //    clangopts.TargetOptions.Triple[3] = '-';
 #endif
     // Enabling RTTI requires a Standard Library to be linked.
     // Else, there is an undefined reference to an ABI support class.
-    //clangopts.LanguageOptions.RTTI = false;
     boost::program_options::options_description desc;
     desc.add_options()
         ("input", boost::program_options::value<std::string>(), "One input file. May be specified multiple times.")
@@ -69,8 +63,6 @@ int main(int argc, char** argv) {
     unsigned total_failed = 0;
     unsigned total_succeeded = 0;
 
-    // Run with Image File Options attaching a debugger to debug a test.
-    // Run without to see test results.
 #pragma warning(disable : 4800)
     for(auto mode : modes) {
         auto result = TestDirectory(mode.first, mode.first, argv[0], input.count("break"));
