@@ -201,11 +201,11 @@ llvm::Value* Expression::GetValue(CodegenContext& con) {
     return *val;
 }
 
-void CodegenContext::DestroyDifference(CodegenContext& other) {
+void CodegenContext::DestroyDifference(CodegenContext& other, bool EH) {
     other.destructing = true;
     auto vec = GetAddedDestructors(other);
     for (auto rit = vec.rbegin(); rit != vec.rend(); ++rit)
-        if (!rit->second)
+        if (EH || !rit->second)
             rit->first(other);
     other.destructing = false;
 }
@@ -246,7 +246,7 @@ llvm::BasicBlock* CodegenContext::CreateLandingpadForEH() {
     pad->addClause(llvm::Constant::getNullValue(GetInt8PtrTy()));
     // Nuke the local difference.
     // Then transfer control to the catch and add a phi for our incoming.
-    EHHandler->context->DestroyDifference(*this);
+    EHHandler->context->DestroyDifference(*this, true);
     assert(!lpad->back().isTerminator());
     insert_builder->CreateBr(EHHandler->target);
     // Some destructors like short-circuit booleans do require more than one BB
@@ -301,7 +301,7 @@ void CodegenContext::GenerateCodeAndDestroyLocals(std::function<void(CodegenCont
     auto nested = *this;
     action(nested);
     if (!IsTerminated(insert_builder->GetInsertBlock()))
-        DestroyDifference(nested);
+        DestroyDifference(nested, false);
 }
 bool CodegenContext::IsTerminated(llvm::BasicBlock* bb) {
     return !bb->empty() && bb->back().isTerminator();
@@ -313,9 +313,13 @@ std::list<std::pair<std::function<void(CodegenContext&)>, bool>>::iterator Codeg
     Destructors.push_back({ func, false });
     return --Destructors.end();
 }
-void CodegenContext::AddExceptionOnlyDestructor(std::function<void(CodegenContext&)> func) {
+std::list<std::pair<std::function<void(CodegenContext&)>, bool>>::iterator CodegenContext::AddExceptionOnlyDestructor(std::function<void(CodegenContext&)> func) {
     Destructors.push_back({ func, true });
+    return --Destructors.end();
 }
 void CodegenContext::EraseDestructor(std::list<std::pair<std::function<void(CodegenContext&)>, bool>>::iterator it) {
     Destructors.erase(it);
+}
+void CodegenContext::AddDestructors(std::list<std::pair<std::function<void(CodegenContext&)>, bool>> list) {
+    Destructors.insert(Destructors.end(), list.begin(), list.end());
 }

@@ -97,7 +97,7 @@ namespace Wide {
                 return std::list<std::pair<std::function<void(CodegenContext&)>, bool>>(std::next(other.Destructors.begin(), Destructors.size()), other.Destructors.end());
             }
             void GenerateCodeAndDestroyLocals(std::function<void(CodegenContext&)> action);
-            void DestroyDifference(CodegenContext& other);
+            void DestroyDifference(CodegenContext& other, bool EH);
             void DestroyAll(bool EH);
             void DestroyTillLastTry();
             bool IsTerminated(llvm::BasicBlock* bb);
@@ -124,8 +124,9 @@ namespace Wide {
         public:
             bool HasDestructors();
             std::list<std::pair<std::function<void(CodegenContext&)>, bool>>::iterator AddDestructor(std::function<void(CodegenContext&)>);
-            void AddExceptionOnlyDestructor(std::function<void(CodegenContext&)>);
+            std::list<std::pair<std::function<void(CodegenContext&)>, bool>>::iterator AddExceptionOnlyDestructor(std::function<void(CodegenContext&)>);
             void EraseDestructor(std::list<std::pair<std::function<void(CodegenContext&)>, bool>>::iterator it);
+            void AddDestructors(std::list<std::pair<std::function<void(CodegenContext&)>, bool>>);
         };
 
         struct Statement : public Node {

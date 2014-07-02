@@ -336,7 +336,7 @@ std::shared_ptr<Expression> Type::BuildRvalueConstruction(std::vector<std::share
         }
         llvm::Value* ComputeValue(CodegenContext& con) override final {
             InplaceConstruction->GetValue(con);
-            if (self->IsComplexType())
+            if (!self->IsTriviallyDestructible())
                 con.AddDestructor(destructor);
             return temporary->GetValue(con);
         }
@@ -361,7 +361,7 @@ std::shared_ptr<Expression> Type::BuildLvalueConstruction(std::vector<std::share
         }
         llvm::Value* ComputeValue(CodegenContext& con) override final {
             InplaceConstruction->GetValue(con);
-            if (self->IsComplexType())
+            if (!self->IsTriviallyDestructible())
                 con.AddDestructor(destructor);
             return temporary->GetValue(con);
         }
@@ -877,7 +877,7 @@ Type::VTableLayout Type::ComputeVTableLayout() {
     return playout;
 }
 llvm::Value* Type::GetDestructorFunction(llvm::Module* module) {
-    if (!IsComplexType()) return llvm::Constant::getNullValue(llvm::Type::getInt8PtrTy(module->getContext()));
+    if (IsTriviallyDestructible()) return llvm::Constant::getNullValue(llvm::Type::getInt8PtrTy(module->getContext()));
     if (DestructorFunction) return DestructorFunction;
     auto fty = llvm::FunctionType::get(llvm::Type::getVoidTy(module->getContext()), { llvm::Type::getInt8PtrTy(module->getContext()) }, false);
     std::stringstream str;

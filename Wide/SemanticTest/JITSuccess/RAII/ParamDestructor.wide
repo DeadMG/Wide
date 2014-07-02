@@ -1,0 +1,14 @@
+type t {
+    ptr := int64.pointer;
+    type(arg := int64.lvalue, constructed := int64.lvalue) : ptr := &arg { ++constructed; }
+    ~type() { *ptr += 1; }
+}
+f(arg := t) {}
+Main() {
+    destructed := 0;
+    constructed := 0;
+    {
+        f(t(destructed, constructed));
+    }
+    return destructed == constructed;
+}

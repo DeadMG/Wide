@@ -254,11 +254,11 @@ void Function::WhileStatement::GenerateCode(CodegenContext& con) {
     });
     // If, for example, we unconditionally return or break/continue, it can happen that we were already terminated.
     if (!con.IsTerminated(con->GetInsertBlock())) {
-        con.DestroyDifference(condition_context);
+        con.DestroyDifference(condition_context, false);
         con->CreateBr(check_bb);
     }
     con->SetInsertPoint(continue_bb);
-    con.DestroyDifference(condition_context);
+    con.DestroyDifference(condition_context, false);
     condition_con = nullptr;
     source_con = nullptr;
 }
@@ -337,7 +337,7 @@ Function::BreakStatement::BreakStatement(Scope* s) {
     while_stmt = s->GetCurrentWhile();
 }
 void Function::BreakStatement::GenerateCode(CodegenContext& con) {
-    while_stmt->condition_con->DestroyDifference(con);
+    while_stmt->condition_con->DestroyDifference(con, false);
     con->CreateBr(while_stmt->continue_bb);
 }
 Function::ContinueStatement::ContinueStatement(Scope* s) {
@@ -346,7 +346,7 @@ Function::ContinueStatement::ContinueStatement(Scope* s) {
     while_stmt = s->GetCurrentWhile();
 }
 void Function::ContinueStatement::GenerateCode(CodegenContext& con) {
-    while_stmt->source_con->DestroyDifference(con);
+    while_stmt->source_con->DestroyDifference(con, false);
     con->CreateBr(while_stmt->check_bb);
 }
 static const std::string except_alloc = "__cxa_allocate_exception";
@@ -390,7 +390,10 @@ Function::ThrowStatement::ThrowStatement(std::shared_ptr<Expression> expr, Conte
     // 2.4.2
     ty = expr->GetType()->Decay();
     except_memory = Wide::Memory::MakeUnique<ExceptionAllocateMemory>(ty);
-    exception = BuildChain(ty->BuildInplaceConstruction(except_memory, { std::move(expr) }, c), except_memory);
+    // There is no longer a guarantee thas, as an argument, except_memory will be in the same CodegenContext
+    // and the iterator could be invalidated. Strictly get the value in the original CodegenContext that ThrowStatement::GenerateCode
+    // is called with so that we can erase the destructor later.
+    exception = BuildChain(BuildChain(except_memory, ty->BuildInplaceConstruction(except_memory, { std::move(expr) }, c)), except_memory);
 }
 void Function::ThrowStatement::GenerateCode(CodegenContext& con) {
     auto value = exception->GetValue(con);
@@ -406,7 +409,10 @@ void Function::ThrowStatement::GenerateCode(CodegenContext& con) {
     llvm::Value* args[] = { con->CreatePointerCast(value, con.GetInt8PtrTy()), ty->GetRTTI(con), con->CreatePointerCast(ty->GetDestructorFunction(con), con.GetInt8PtrTy()) };
     // Do we have an existing handler to go to? If we do, then first land, then branch directly to it.
     // Else, kill everything and GTFO this function and let the EH routines worry about it.
-    con->CreateInvoke(cxa_throw, con.GetUnreachableBlock(), con.CreateLandingpadForEH(), args);
+    if (con.HasDestructors() || con.EHHandler)
+        con->CreateInvoke(cxa_throw, con.GetUnreachableBlock(), con.CreateLandingpadForEH(), args);
+    else
+        con->CreateCall(cxa_throw, args);
 }
 std::shared_ptr<Statement> Function::AnalyzeStatement(const Parse::Statement* s) {
     if (auto ret = dynamic_cast<const Parse::Return*>(s)) {
@@ -570,8 +576,8 @@ void Function::Parameter::OnNodeChanged(Node* n, Change what) {
     auto new_ty = get_new_ty();
     if (new_ty != cur_ty) {
         cur_ty = new_ty;
-        if (!cur_ty->IsTriviallyDestructible())
-            self->param_destructors[num] = cur_ty->BuildDestructorCall(shared_from_this(), { self, where }, true);
+        if (!self->Args[num]->IsTriviallyDestructible())
+            self->param_destructors[num] = self->Args[num]->BuildDestructorCall(shared_from_this(), { self, where }, true);
         else
             self->param_destructors[num] = std::function<void(CodegenContext&)>();
         OnChange();
@@ -1148,7 +1154,7 @@ std::string Function::explain() {
             args += "this := ";
             ++i;
         } else {
-            args += fun->args[i++].name + " := ";
+            args += fun->args[i++ - Args.size() != fun->args.size()].name + " := ";
         }
         if (&ty != &Args.back())
             args += ty->explain() + ", ";
@@ -1209,7 +1215,7 @@ void Function::TryStatement::GenerateCode(CodegenContext& con) {
                 if (!catch_block_con.IsTerminated(catch_block_con->GetInsertBlock()))
                     stmt->GenerateCode(catch_block_con);
             if (!catch_block_con.IsTerminated(catch_block_con->GetInsertBlock())) {
-                con.DestroyDifference(catch_block_con);
+                con.DestroyDifference(catch_block_con, false);
                 catch_block_con->CreateBr(dest_block);
             }
             break;
@@ -1230,7 +1236,7 @@ void Function::TryStatement::GenerateCode(CodegenContext& con) {
             if (!catch_block_con.IsTerminated(catch_block_con->GetInsertBlock()))
                 stmt->GenerateCode(catch_block_con);
         if (!catch_block_con.IsTerminated(catch_block_con->GetInsertBlock())) {
-            con.DestroyDifference(catch_block_con);
+            con.DestroyDifference(catch_block_con, false);
             catch_block_con->CreateBr(dest_block);
         }
         catch_con->SetInsertPoint(catch_continue);
@@ -1244,7 +1250,8 @@ void Function::TryStatement::GenerateCode(CodegenContext& con) {
     con->SetInsertPoint(dest_block);
 }
 void Function::RethrowStatement::GenerateCode(CodegenContext& con) {
-    auto landingpad = con.CreateLandingpadForEH();
-    auto source = con->GetInsertBlock();
-    con->CreateInvoke(con.GetCXARethrow(), con.GetUnreachableBlock(), landingpad);
+    if (con.HasDestructors() || con.EHHandler)
+        con->CreateInvoke(con.GetCXARethrow(), con.GetUnreachableBlock(), con.CreateLandingpadForEH());
+    else
+        con->CreateCall(con.GetCXARethrow());
 }
