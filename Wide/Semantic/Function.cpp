@@ -923,9 +923,9 @@ void Function::EmitCode(llvm::Module* module) {
     c.alloca_builder = &allocs;
     c.insert_builder = &irbuilder;
     c.module = module;
-    for (auto rit = param_destructors.rbegin(); rit != param_destructors.rend(); ++rit)
-        if (*rit)
-            c.AddDestructor(*rit);
+    for (auto des : param_destructors)
+        if (des)
+            c.AddDestructor(des);
     for (auto&& stmt : root_scope->active)
         if (!c.IsTerminated(c->GetInsertBlock()))
             stmt->GenerateCode(c);

@@ -10,5 +10,5 @@ Main() {
     {
         f(t(destructed, constructed));
     }
-    return destructed == constructed;
+    return destructed == constructed & constructed > 0;
 }

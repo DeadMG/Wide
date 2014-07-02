@@ -76,9 +76,10 @@ int main(int argc, char** argv) {
         auto result = TestDirectory(mode.first, mode.first, argv[0], input.count("break"));
         total_succeeded += result.passes;
         total_failed += result.fails;
+    
     }
     std::cout << "Total succeeded: " << total_succeeded << " failed: " << total_failed;
-    //Jit(clangopts, "JITSuccess/CPPInterop/ThrowDerivedCatchBase.wide");
+    //Jit(clangopts, "JITSuccess/RAII/MultiParamDestructionOrderException.wide");
     //Compile(clangopts, "CompileFail/AddressOfNonLvalue/FunctionReturn.wide");
     if (input.count("break"))
         Wide::Util::DebugBreak();
