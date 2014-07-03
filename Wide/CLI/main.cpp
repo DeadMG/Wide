@@ -161,7 +161,7 @@ int main(int argc, char** argv)
     }
 
     std::string default_dir = "./WideLibrary/";
-    auto selfpath = llvm::sys::fs::getMainExecutable(argv[0], &main);
+    auto selfpath = llvm::sys::fs::getMainExecutable(argv[0], (void*)&main);
     if (selfpath != "") { // Fucking bullshit error handling
         llvm::SmallVector<char, 5> fuck_small_vector(selfpath.begin(), selfpath.end());
         llvm::sys::path::remove_filename(fuck_small_vector);
