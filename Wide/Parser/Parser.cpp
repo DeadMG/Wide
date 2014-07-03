@@ -1021,7 +1021,7 @@ void Parser::AddTemplateTypeToModule(Module* m, std::string name, std::vector<Fu
 }
 Module* Parser::CreateModule(std::string name, Module* m, Lexer::Range where, Lexer::Access access) {
     if (m->named_decls.find(name) != m->named_decls.end()) {
-        auto mod = boost::get<std::pair<Lexer::Access, Module*>*>(m->named_decls[name]);
+        auto mod = boost::get<std::pair<Lexer::Access, Module*>>(&m->named_decls[name]);
         if (!mod)
             throw ParserError(where, Error::TypeExpectedBracketAfterIdentifier);
         mod->second->locations.push_back(where);

@@ -50,12 +50,12 @@ void Combiner::CombinedModule::RemoveModuleFromSelf(Module* mod) {
         destructor_decls.erase(decl);
 
     for (auto decl : mod->named_decls) {
-        if (auto othermod = boost::get<std::pair<Lexer::Access, Module*>*>(decl.second)) {
+        if (auto othermod = boost::get<std::pair<Lexer::Access, Module*>>(&decl.second)) {
             auto&& combmod = combined_modules[decl.first].get();
             combmod->RemoveModuleFromSelf(othermod->second);
             if (combmod->constructor_decls.empty() && combmod->destructor_decls.empty() && combmod->named_decls.empty()) {
                 // It's empty- time to kill it.
-                if (boost::get<std::pair<Lexer::Access, Module*>*>(decl.second))
+                if (boost::get<std::pair<Lexer::Access, Module*>>(&decl.second))
                     named_decls.erase(decl.first);
                 combined_modules.erase(decl.first);
             }

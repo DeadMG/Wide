@@ -526,7 +526,7 @@ std::shared_ptr<Expression> ClangType::VirtualEntryFor(VTableLayout::VirtualFunc
             return thunk;
         }
     };
-    if (auto mem = boost::get<VTableLayout::SpecialMember*>(entry.function)) {
+    if (auto mem = boost::get<VTableLayout::SpecialMember>(&entry.function)) {
         if (*mem == VTableLayout::SpecialMember::Destructor) {
             return Wide::Memory::MakeUnique<VTableThunk>(from->MangleName(type->getAsCXXRecordDecl()->getDestructor()), offset, analyzer.GetFunctionType(analyzer.GetVoidType(), { analyzer.GetLvalueType(this) }, false));
         }
