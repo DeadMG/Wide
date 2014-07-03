@@ -979,7 +979,10 @@ Destructor* Parser::ParseDestructor(const Lexer::Token& first, std::vector<Attri
     Check(Error::DestructorNoType, &Lexer::TokenTypes::Type);
     Check(Error::DestructorNoOpenBracket, &Lexer::TokenTypes::OpenBracket);
     Check(Error::DestructorNoOpenBracket, &Lexer::TokenTypes::CloseBracket);
-    Check(Error::DestructorNoOpenBracket, &Lexer::TokenTypes::OpenCurlyBracket);
+    auto default_or_open = Check(Error::DestructorNoOpenBracket, [](Lexer::Token& t) { return t.GetType() == &Lexer::TokenTypes::OpenCurlyBracket || t.GetType() == &Lexer::TokenTypes::Default; });
+    if (default_or_open.GetType() == &Lexer::TokenTypes::Default) {
+        return arena.Allocate<Destructor>(std::vector<Statement*>(), first.GetLocation() + default_or_open.GetLocation(), attrs, true);
+    }
     std::vector<Statement*> body;
     auto t = lex(Error::DecltypeNoCloseBracket);
     while (t.GetType() != &Lexer::TokenTypes::CloseCurlyBracket) {
@@ -987,7 +990,7 @@ Destructor* Parser::ParseDestructor(const Lexer::Token& first, std::vector<Attri
         body.push_back(ParseStatement());
         t = lex(Error::DecltypeNoCloseBracket);
     }
-    return arena.Allocate<Destructor>(std::move(body), first.GetLocation() + t.GetLocation(), attrs);
+    return arena.Allocate<Destructor>(std::move(body), first.GetLocation() + t.GetLocation(), attrs, false);
 }
 
 void Parser::AddTypeToModule(Module* m, std::string name, Type* t, Lexer::Access specifier) {

@@ -27,6 +27,8 @@
 #include <llvm/Support/Program.h>
 #include <llvm/Support/FileSystem.h>
 #include <llvm/Support/raw_os_ostream.h>
+#include <llvm/Support/FileSystem.h>
+#include <llvm/Support/Path.h>
 #pragma warning(pop)
 
 std::unordered_set<std::string> SearchDirectory(std::string path, std::string system) {
@@ -158,8 +160,20 @@ int main(int argc, char** argv)
         }
     }
 
+    std::string default_dir = "./WideLibrary/";
+    auto selfpath = llvm::sys::fs::getMainExecutable(argv[0], &main);
+    if (selfpath != "") { // Fucking bullshit error handling
+        llvm::SmallVector<char, 5> fuck_small_vector(selfpath.begin(), selfpath.end());
+        llvm::sys::path::remove_filename(fuck_small_vector);
+        llvm::sys::path::append(fuck_small_vector, "WideLibrary");
+        std::string result_path(fuck_small_vector.begin(), fuck_small_vector.end());
+        if (llvm::sys::fs::is_directory(result_path)) {
+            default_dir = result_path;
+        }
+    }
+
     //std::cout << "Triple: " << ClangOpts.TargetOptions.Triple << "\n";
-    std::string stdlib = input.count("stdlib") ? input["stdlib"].as<std::string>() : "./WideLibrary/";
+    std::string stdlib = input.count("stdlib") ? input["stdlib"].as<std::string>() : default_dir;
 
     auto trip = llvm::Triple(ClangOpts.TargetOptions.Triple);
     if (!trip.isOSWindows() && !trip.isOSLinux() && !trip.isMacOSX()) {

@@ -79,7 +79,6 @@ namespace Wide {
             // Dynamic members
             std::unordered_map<Lexer::TokenType, std::function<DynamicFunction*(Parser&, Type*, Lexer::Access, Lexer::Token&, std::vector<Attribute>)>> DynamicMemberFunctions;
 
-
             Parser(std::function<Wide::Util::optional<Lexer::Token>()> l);
 
             ParserError BadToken(const Lexer::Token& first, Parse::Error err);

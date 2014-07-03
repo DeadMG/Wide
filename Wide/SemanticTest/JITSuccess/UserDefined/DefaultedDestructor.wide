@@ -1,0 +1,6 @@
+type t {
+    ~type() default
+}
+Main() {
+    return t.trivially_destructible;
+}

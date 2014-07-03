@@ -149,8 +149,6 @@ namespace Wide {
             AttributeFunctionBase(std::vector<Statement*> b, Lexer::Range loc, std::vector<FunctionArgument> ar, std::vector<Attribute> attributes)
             : FunctionBase(std::move(ar), std::move(b), loc), attributes(attributes) {}
             std::vector<Attribute> attributes;
-            bool deleted = false;
-            bool defaulted = false;
         };
         struct Variable;
         struct Lambda : Expression, FunctionBase {
@@ -169,10 +167,13 @@ namespace Wide {
                 : DynamicFunction(std::move(b), std::move(ar), loc, std::move(attributes)), explicit_return(explicit_ret) {}
             Expression* explicit_return = nullptr;
             bool abstract = false;
+            bool deleted = false;
         };
         struct Destructor : DynamicFunction {
-            Destructor(std::vector<Statement*> b, Lexer::Range loc, std::vector<Attribute> attributes)
-            : DynamicFunction(std::move(b), std::vector<FunctionArgument>(), loc, std::move(attributes)) {}
+            Destructor(std::vector<Statement*> b, Lexer::Range loc, std::vector<Attribute> attributes, bool defaulted)
+            : DynamicFunction(std::move(b), std::vector<FunctionArgument>(), loc, std::move(attributes)), defaulted(defaulted)
+            {}
+            bool defaulted = false;
         };
         struct VariableInitializer {
             VariableInitializer(Expression* begin, Expression* end, Lexer::Range where)
@@ -185,6 +186,8 @@ namespace Wide {
             Constructor(std::vector<Statement*> b, Lexer::Range loc, std::vector<FunctionArgument> ar, std::vector<VariableInitializer> caps, std::vector<Attribute> attributes)
             : AttributeFunctionBase(std::move(b), loc, std::move(ar), std::move(attributes)), initializers(std::move(caps)) {}
             std::vector<VariableInitializer> initializers;
+            bool deleted = false;
+            bool defaulted = false;
         };
         struct FunctionCall : Expression {
             FunctionCall(Expression* obj, std::vector<Expression*> arg, Lexer::Range loc)

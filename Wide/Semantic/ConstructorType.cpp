@@ -92,6 +92,20 @@ std::shared_ptr<Expression> ConstructorType::AccessMember(std::shared_ptr<Expres
             return BuildChain(std::move(self), array->BuildValueConstruction({}, { this, c.where }));
         }
     }
+    if (name == "trivially_destructible")
+        return BuildChain(std::move(self), Wide::Memory::MakeUnique<Boolean>(t->IsTriviallyDestructible(), analyzer));
+    if (name == "trivially_copy_constructible")
+        return BuildChain(std::move(self), Wide::Memory::MakeUnique<Boolean>(t->IsCopyConstructible(GetAccessSpecifier(c.from, t)) && t->IsTriviallyCopyConstructible(), analyzer));
+    if (name == "copy_constructible")
+        return BuildChain(std::move(self), Wide::Memory::MakeUnique<Boolean>(t->IsCopyConstructible(GetAccessSpecifier(c.from, t)), analyzer));
+    if (name == "copy_assignable")
+        return BuildChain(std::move(self), Wide::Memory::MakeUnique<Boolean>(t->IsCopyAssignable(GetAccessSpecifier(c.from, t)), analyzer));
+    if (name == "move_constructible")
+        return BuildChain(std::move(self), Wide::Memory::MakeUnique<Boolean>(t->IsMoveConstructible(GetAccessSpecifier(c.from, t)), analyzer));
+    if (name == "move_assignable")
+        return BuildChain(std::move(self), Wide::Memory::MakeUnique<Boolean>(t->IsMoveAssignable(GetAccessSpecifier(c.from, t)), analyzer));
+    if (name == "empty")
+        return BuildChain(std::move(self), Wide::Memory::MakeUnique<Boolean>(t->IsEmpty(), analyzer));
     return nullptr;
 }
 

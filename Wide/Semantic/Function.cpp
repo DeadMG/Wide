@@ -686,7 +686,8 @@ Function::Function(std::vector<Type*> args, const Parse::FunctionBase* astfun, A
                             // Error if we have a constructor context.
                             // Error if we have a nonstatic member context and it's not this one.
                             if (!dynamic_cast<const Parse::Destructor*>(fun))
-                                if (ConstructorContext) throw std::runtime_error("fuck");
+                                if (ConstructorContext) 
+                                    throw std::runtime_error("fuck");
                             if (NonstaticMemberContext && *NonstaticMemberContext != clangty) throw std::runtime_error("fuck");
                             NonstaticMemberContext = clangty;
                             continue;

@@ -948,5 +948,5 @@ bool UserDefinedType::IsTriviallyCopyConstructible() {
     return AggregateType::IsTriviallyCopyConstructible();
 }
 bool UserDefinedType::IsTriviallyDestructible() {
-    return !type->destructor_decl && AggregateType::IsTriviallyDestructible();
+    return (!type->destructor_decl || (type->destructor_decl->defaulted && !type->destructor_decl->dynamic)) && AggregateType::IsTriviallyDestructible();
 }
