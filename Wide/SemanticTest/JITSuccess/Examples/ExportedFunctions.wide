@@ -1,5 +1,5 @@
 using cplusplus := cpp("JITSuccess/Examples/ExportedFunctions.h");
-[export:= cplusplus.f]
+[export := cplusplus.f]
 f() {
     return "Hello, World!"; 
 }

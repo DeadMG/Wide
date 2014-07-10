@@ -3,6 +3,6 @@ Main() {
     ref := bool.lvalue(local);
     ref = true;    
     if (local) 
-        cplusplus.std.cout << "Hello, World!";
+        std.cout << "Hello, World!";
     return true;
 }
