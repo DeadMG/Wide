@@ -1155,7 +1155,7 @@ std::string Function::explain() {
             args += "this := ";
             ++i;
         } else {
-            args += fun->args[i++ - Args.size() != fun->args.size()].name + " := ";
+            args += fun->args[i++].name + " := ";
         }
         if (&ty != &Args.back())
             args += ty->explain() + ", ";

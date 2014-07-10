@@ -64,13 +64,13 @@ int main(int argc, char** argv) {
     unsigned total_succeeded = 0;
 
 #pragma warning(disable : 4800)
-    for(auto mode : modes) {
-        auto result = TestDirectory(mode.first, mode.first, argv[0], input.count("break"));
-        total_succeeded += result.passes;
-        total_failed += result.fails;    
-    }
-    std::cout << "Total succeeded: " << total_succeeded << " failed: " << total_failed;
-    //Jit(clangopts, "JITSuccess/Examples/LocalVariablesReference.wide");
+    //for(auto mode : modes) {
+    //    auto result = TestDirectory(mode.first, mode.first, argv[0], input.count("break"));
+    //    total_succeeded += result.passes;
+    //    total_failed += result.fails;    
+    //}
+    //std::cout << "Total succeeded: " << total_succeeded << " failed: " << total_failed;
+    Jit(clangopts, "JITSuccess/Examples/Functions.wide");
     //Compile(clangopts, "CompileFail/AddressOfNonLvalue/FunctionReturn.wide");
     if (input.count("break"))
         Wide::Util::DebugBreak();

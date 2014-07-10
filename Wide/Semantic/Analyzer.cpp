@@ -297,7 +297,9 @@ Analyzer::Analyzer(const Options::Clang& opts, const Parse::Module* GlobalModule
                         auto result = self->GetType()->AccessMember(std::move(self), val, { self->GetType(), location });
                         if (result)
                             return std::move(result);
-                        return LookupIdentifier(context->GetContext()->GetContext());
+                        if (member == context->GetContext())
+                            return LookupIdentifier(context->GetContext()->GetContext());
+                        return LookupIdentifier(context->GetContext());
                     }
                     return LookupIdentifier(context->GetContext());
                 }

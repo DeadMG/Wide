@@ -1,7 +1,8 @@
 Main() {
-    local := std.string("Fail.", std.allocator(int8)());
-    ref := std.string.lvalue(local);
-    ref = "Hello, World!";
-    std.cout << local;
+    local := false;
+    ref := bool.lvalue(local);
+    ref = true;    
+    if (local) 
+        cplusplus.std.cout << "Hello, World!";
     return true;
 }

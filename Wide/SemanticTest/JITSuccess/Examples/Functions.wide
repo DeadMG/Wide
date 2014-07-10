@@ -1,7 +1,7 @@
-f(x := std.string) := void {
-    std.cout << x;
+f(x := std.ostream.lvalue) := void {
+    x << "Hello, World!";
 }
 Main() {
-    f(std.string("Hello, World!", std.allocator(int8)()));
+    f(std.cout);
     return true;
 }
