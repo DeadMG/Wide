@@ -6,7 +6,6 @@ namespace Wide {
     namespace Semantic {
         class ConstructorType : public MetaType {
             Type* t;
-            std::unique_ptr<Type> emplace;
             std::unique_ptr<Type> array;
         public:
             ConstructorType(Type* con, Analyzer& a);

@@ -20,7 +20,7 @@ Main() {
     {
         val := derived(ret1, destructs);
         f(val);
-        derived.emplace(val, ret2, destructs);
+        derived.constructors(val, ret2, destructs);
     }
     return ret1 & ret2 & destructs == 2;
 }

@@ -362,7 +362,7 @@ std::function<std::string(llvm::Module*)> ClangTU::MangleName(clang::NamedDecl* 
     if (auto funcdecl = llvm::dyn_cast<clang::CXXMethodDecl>(D)) {
         if (funcdecl->getType()->getAs<clang::FunctionProtoType>()->getExtProtoInfo().ExceptionSpecType == clang::ExceptionSpecificationType::EST_Unevaluated) {
             GetSema().EvaluateImplicitExceptionSpec(clang::SourceLocation(), funcdecl);
-        }        
+        }
     }
     if (D->hasAttrs()) {
         D->addAttr(new (impl->astcon) clang::UsedAttr(clang::SourceLocation(), impl->astcon));

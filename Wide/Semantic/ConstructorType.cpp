@@ -13,25 +13,6 @@ using namespace Wide;
 using namespace Semantic;
 
 namespace {
-    struct EmplaceType : public MetaType {
-        EmplaceType(ConstructorType* con, Analyzer& a)
-        : t(con), MetaType(a) {}
-        ConstructorType* t;
-
-        std::shared_ptr<Expression> BuildCall(std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c) override final {
-            auto constructed = t->GetConstructedType();
-            if (args.size() == 0)
-                throw std::runtime_error("Attempted to emplace a type without providing any memory into which to emplace it.");
-            if (args[0]->GetType() != analyzer.GetLvalueType(constructed))
-                throw std::runtime_error("Attempted to emplace a T into a space that was not T.lvalue.");
-            auto expr = std::move(args.front());
-            args.erase(args.begin());
-            return Type::BuildInplaceConstruction(std::move(expr), std::move(args), c);
-        }
-
-        std::string explain() override final { return t->explain() + ".emplace"; }
-    };
-
     struct Array : public MetaType {
         ConstructorType* t;
         Array(ConstructorType* con, Analyzer& a)
@@ -68,19 +49,15 @@ std::shared_ptr<Expression> ConstructorType::AccessMember(std::shared_ptr<Expres
         return BuildChain(std::move(self), Wide::Memory::MakeUnique<Integer>(llvm::APInt(64, t->alignment()), analyzer));
     if (t == analyzer.GetVoidType())
         return nullptr;
-    if (name == "emplace") {
-        if (!emplace) emplace = Wide::Memory::MakeUnique<EmplaceType>(this, analyzer);
-        return BuildChain(std::move(self), emplace->BuildValueConstruction({}, { this, c.where }));
-    }
     if (name == "lvalue")
         return BuildChain(std::move(self), analyzer.GetConstructorType(analyzer.GetLvalueType(t))->BuildValueConstruction({}, { this, c.where }));
     if (name == "rvalue")
         return BuildChain(std::move(self), analyzer.GetConstructorType(analyzer.GetRvalueType(t))->BuildValueConstruction({}, { this, c.where }));
     // If we're a Clang type, offer constructor and destructor overload sets.
+    if (name == "constructors") {
+        return BuildChain(std::move(self), t->GetConstructorOverloadSet(GetAccessSpecifier(c.from, t))->BuildValueConstruction({}, c));
+    }
     if (auto clangty = dynamic_cast<ClangType*>(t)) {
-        if (name == "constructors") {
-            return BuildChain(std::move(self), clangty->GetConstructorOverloadSet(GetAccessSpecifier(c.from, clangty))->BuildValueConstruction({}, c));
-        }
         if (name == "destructor") {
             return BuildChain(std::move(self), clangty->GetDestructorOverloadSet()->BuildValueConstruction({}, c));
         }
@@ -113,7 +90,6 @@ ConstructorType::ConstructorType(Type* con, Analyzer& a)
 : MetaType(a) {
     t = con;
     assert(t);
-    emplace = nullptr;
 }
 std::string ConstructorType::explain() {
     return "decltype(" + t->explain() + ")";

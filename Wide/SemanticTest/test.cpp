@@ -14,6 +14,7 @@
 #include <Wide/Semantic/StringType.h>
 #include <Wide/Util/Codegen/CreateModule.h>
 #include <Wide/Parser/AST.h>
+#include <Wide/Util/Driver/StdlibDirectorySearch.h>
 
 #pragma warning(push, 0)
 #include <llvm/ExecutionEngine/GenericValue.h>
@@ -140,6 +141,10 @@ void Jit(Wide::Options::Clang& copts, std::string file) {
     static const auto loc = Wide::Lexer::Range(std::make_shared<std::string>("Test harness internal"));
     llvm::LLVMContext con;
     auto module = Wide::Util::CreateModuleForTriple(copts.TargetOptions.Triple, con);
+    auto stdlib = Wide::Driver::SearchStdlibDirectory("../WideLibrary", copts.TargetOptions.Triple);
+    std::vector<std::string> files(stdlib.begin(), stdlib.end());
+    files.push_back(file);
+    copts.HeaderSearchOptions->AddPath("../WideLibrary", clang::frontend::IncludeDirGroup::System, false, false);
     Wide::Driver::Compile(copts, [&](Wide::Semantic::Analyzer& a, const Wide::Parse::Module* root) {
         Wide::Semantic::AnalyzeExportedFunctions(a);
         auto m = a.GetGlobalModule()->AccessMember(a.GetGlobalModule()->BuildValueConstruction({}, { a.GetGlobalModule(), loc }), "Main", { a.GetGlobalModule(), loc });
@@ -156,7 +161,7 @@ void Jit(Wide::Options::Clang& copts, std::string file) {
         a.GenerateCode(module.get());
         if (llvm::verifyModule(*module, llvm::VerifierFailureAction::PrintMessageAction))
             throw std::runtime_error("An LLVM module failed verification.");
-    }, { file });
+    }, files);
     llvm::EngineBuilder b(module.get());
     auto mod = module.get();
     // MCJIT simplifies the code even if you don't ask it to so dump before it's invoked

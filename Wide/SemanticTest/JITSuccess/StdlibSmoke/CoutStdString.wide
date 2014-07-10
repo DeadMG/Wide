@@ -1,0 +1,7 @@
+f(x := std.string) := void {
+    std.cout << x;
+}
+Main() {
+    f(std.string("Hello, World!", std.allocator(int8)()));
+    return true;
+}

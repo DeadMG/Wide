@@ -842,6 +842,7 @@ std::vector<Variable*> Parser::ParseLambdaCaptures() {
         else
             throw std::runtime_error("Expected , or ] after a lambda capture.");
     }
+    return variables;
 }
 Statement* Parser::ParseStatement() {
     auto t = lex(Error::BreakNoSemicolon);

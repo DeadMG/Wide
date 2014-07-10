@@ -1,0 +1,4 @@
+Main() {
+    std.cout << "Hello, World!";
+    return true;
+}

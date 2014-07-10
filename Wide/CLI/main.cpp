@@ -15,6 +15,7 @@
 #include <iostream>
 #include <unordered_set>
 #include <Wide/Util/Driver/Warnings.h>
+#include <Wide/Util/Driver/StdlibDirectorySearch.h>
 
 #pragma warning(push, 0)
 #include <llvm/PassManager.h>
@@ -27,46 +28,7 @@
 #include <llvm/Support/Program.h>
 #include <llvm/Support/FileSystem.h>
 #include <llvm/Support/raw_os_ostream.h>
-#include <llvm/Support/FileSystem.h>
-#include <llvm/Support/Path.h>
 #pragma warning(pop)
-
-std::unordered_set<std::string> SearchDirectory(std::string path, std::string system) {
-    std::unordered_set<std::string> ret;
-    auto end = llvm::sys::fs::directory_iterator();
-    llvm::error_code fuck_error_codes;
-    bool out = true;
-    fuck_error_codes = llvm::sys::fs::is_directory(path, out);
-    if (!out || fuck_error_codes) {
-        std::cout << "Skipping " << path << " as a directory by this name did not exist.\n";
-    }
-    auto begin = llvm::sys::fs::directory_iterator(path, fuck_error_codes);
-    std::set<std::string> entries;
-    while (!fuck_error_codes && begin != end) {
-        entries.insert(begin->path());
-        begin.increment(fuck_error_codes);
-    }
-    if (llvm::sys::path::filename(path) == "System") {
-        llvm::SmallVector<char, 1> fuck_out_parameters;
-        llvm::sys::path::append(fuck_out_parameters, path, system);
-        std::string systempath(fuck_out_parameters.begin(), fuck_out_parameters.end());
-        return SearchDirectory(systempath, system);
-    }
-    for (auto file : entries) {
-        bool isfile = false;
-        llvm::sys::fs::is_regular_file(file, isfile);
-        if (isfile) {
-            if (llvm::sys::path::extension(file) == ".wide")
-                ret.insert(file);
-        }
-        llvm::sys::fs::is_directory(file, isfile);
-        if (isfile) {
-            auto more = SearchDirectory(file, system);
-            ret.insert(more.begin(), more.end());
-        }
-    }
-    return ret;
-}
 
 int main(int argc, char** argv)
 {
@@ -172,19 +134,9 @@ int main(int argc, char** argv)
         }
     }
 
-    //std::cout << "Triple: " << ClangOpts.TargetOptions.Triple << "\n";
     std::string stdlib = input.count("stdlib") ? input["stdlib"].as<std::string>() : default_dir;
 
-    auto trip = llvm::Triple(ClangOpts.TargetOptions.Triple);
-    if (!trip.isOSWindows() && !trip.isOSLinux() && !trip.isMacOSX()) {
-        std::cout << "Error: Wide only supports targetting Windows, Mac, and Linux right now.\n";
-        return 1;
-    }
-    std::string name =
-        trip.isOSWindows() ? "Windows" :
-        trip.isOSLinux() ? "Linux" :
-        "Mac";
-    auto stdfiles = SearchDirectory(stdlib, name);
+    auto stdfiles = Wide::Driver::SearchStdlibDirectory(stdlib, ClangOpts.TargetOptions.Triple);
     auto final_files = files;
     final_files.insert(stdfiles.begin(), stdfiles.end());
     ClangOpts.HeaderSearchOptions->AddPath(stdlib, clang::frontend::IncludeDirGroup::System, false, false);

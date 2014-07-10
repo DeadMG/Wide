@@ -273,12 +273,11 @@ struct ValueConstruction : Expression {
         return self;
     }
     llvm::Value* ComputeValue(CodegenContext& con) override final {
-        if (self->GetConstantContext() == self && no_args) {
-            return llvm::UndefValue::get(self->GetLLVMType(con));
-        }
-        if (auto func = dynamic_cast<Function*>(self))
-            return llvm::UndefValue::get(self->GetLLVMType(con));
         if (!self->Decay()->IsComplexType()) {
+            if (self->GetConstantContext() == self && no_args)
+                return llvm::UndefValue::get(self->GetLLVMType(con));
+            if (auto func = dynamic_cast<Function*>(self))
+                return llvm::UndefValue::get(self->GetLLVMType(con));
             if (single_arg) {
                 auto otherty = single_arg->GetType();
                 if (single_arg->GetType()->Decay() == self->Decay()) {

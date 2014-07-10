@@ -526,7 +526,7 @@ OverloadSet* UserDefinedType::CreateConstructorOverloadSet(Lexer::Access access)
                 for (auto func : f.second)
                     resolvables.insert(analyzer.GetCallableForFunction(func, analyzer.GetLvalueType(this), "type"));
         }
-        return analyzer.GetOverloadSet(resolvables, analyzer.GetLvalueType(this));
+        return analyzer.GetOverloadSet(resolvables, GetContext());
     };
     auto user_defined_constructors = user_defined();
 

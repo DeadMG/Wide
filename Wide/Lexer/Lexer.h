@@ -30,7 +30,6 @@ namespace Wide {
         template<typename Range> class Invocation {
             const Arguments* args;
             Position current_position;
-            std::deque<Token> token_putbacks;
             std::deque<std::pair<char, Position>> putback;
 
             std::string escape(std::string val) {
@@ -125,13 +124,7 @@ namespace Wide {
                 };
             }
 
-            Wide::Util::optional<Lexer::Token> operator()() {
-                if (!token_putbacks.empty()) {
-                    auto tok = token_putbacks.back();
-                    token_putbacks.pop_back();
-                    return tok;
-                }
-                
+            Wide::Util::optional<Lexer::Token> operator()() {                
                 auto begin_pos = current_position;
                 auto val = get();
                 if (!val) return Wide::Util::none;

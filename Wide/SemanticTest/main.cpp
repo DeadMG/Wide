@@ -70,7 +70,7 @@ int main(int argc, char** argv) {
         total_failed += result.fails;    
     }
     std::cout << "Total succeeded: " << total_succeeded << " failed: " << total_failed;
-    //Jit(clangopts, "JITSuccess/UserDefined/DefaultedDestructor.wide");
+    //Jit(clangopts, "JITSuccess/Examples/LocalVariablesReference.wide");
     //Compile(clangopts, "CompileFail/AddressOfNonLvalue/FunctionReturn.wide");
     if (input.count("break"))
         Wide::Util::DebugBreak();

@@ -1,0 +1,7 @@
+Main() {
+    local := std.string("Fail.", std.allocator(int8)());
+    ref := std.string.lvalue(local);
+    ref = "Hello, World!";
+    std.cout << local;
+    return true;
+}

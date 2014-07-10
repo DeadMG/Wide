@@ -187,8 +187,8 @@ std::shared_ptr<Expression> Semantic::BuildChain(std::shared_ptr<Expression> lhs
     return Wide::Memory::MakeUnique<Chain>(std::move(lhs), std::move(rhs));
 }
 llvm::Value* Expression::GetValue(CodegenContext& con) {
-    if (!val) val = ComputeValue(con);
-    else return *val;
+    if (val) return *val; 
+    val = ComputeValue(con);
     auto selfty = GetType()->GetLLVMType(con);
     if (GetType()->IsComplexType()) {
         auto ptrty = llvm::dyn_cast<llvm::PointerType>((*val)->getType());
