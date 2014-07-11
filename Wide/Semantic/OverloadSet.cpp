@@ -267,27 +267,36 @@ Callable* OverloadSet::Resolve(std::vector<Type*> f_args, Type* source) {
                 has_members = true;
                 continue;
             }
+            if (auto funtempl = llvm::dyn_cast<clang::FunctionTemplateDecl>(decl)) {
+                if (llvm::dyn_cast<clang::CXXMethodDecl>(funtempl->getTemplatedDecl())) {
+                    has_members = true;
+                    continue;
+                }
+            }
             us.addDecl(decl);
         }
         from->GetSema().AddFunctionCandidates(us, exprptrs, s, false, nullptr);
         if (has_members && !exprptrs.empty()) {
             exprptrs.erase(exprptrs.begin());
             for (auto decl : clangfuncs) {
-                if (llvm::dyn_cast<clang::CXXConstructorDecl>(decl)) {
+                auto funtempl = llvm::dyn_cast<clang::FunctionTemplateDecl>(decl);
+                if (llvm::dyn_cast<clang::CXXConstructorDecl>(decl) || funtempl && llvm::dyn_cast<clang::CXXConstructorDecl>(funtempl->getTemplatedDecl())) {
                     clang::DeclAccessPair d;
                     d.setDecl(decl);
                     d.setAccess(decl->getAccess());
-                    from->GetSema().AddOverloadCandidate(llvm::cast<clang::FunctionDecl>(decl), d, exprptrs, s, false, false, true);
+                    if (funtempl)
+                        from->GetSema().AddTemplateOverloadCandidate(funtempl, d, nullptr, exprptrs, s, false);
+                    else
+                        from->GetSema().AddOverloadCandidate(llvm::cast<clang::FunctionDecl>(decl), d, exprptrs, s, false, false, true);
                     continue;
-                }
-                if (llvm::dyn_cast<clang::CXXMethodDecl>(decl)) {
+                } 
+                if (auto meth = llvm::dyn_cast<clang::CXXMethodDecl>(decl) || funtempl && llvm::dyn_cast<clang::CXXMethodDecl>(funtempl->getTemplatedDecl())) {
                     clang::DeclAccessPair d;
                     d.setDecl(decl);
                     d.setAccess(decl->getAccess());
                     auto ty = f_args[0]->GetClangType(*from)->getNonLValueExprType(from->GetASTContext());
                     clang::OpaqueValueExpr valuexpr(clang::SourceLocation(), ty, Wide::Semantic::GetKindOfType(f_args[0]));
                     from->GetSema().AddMethodCandidate(d, ty, valuexpr.Classify(from->GetASTContext()), exprptrs, s, false);
-                    continue;
                 }
             }
         }
