@@ -150,7 +150,22 @@ struct cppcallable : public Callable {
                 out.push_back(types[i].first->BuildValueConstruction({ std::move(args[i]) }, c));
                 continue;
             }
-            
+
+            // Clang may ask us to build an int8* from a string literal.
+            // Just pretend that the argument was an int8*.
+            struct ImplicitStringDecay : Expression {
+                ImplicitStringDecay(std::shared_ptr<Expression> expr)
+                : StringExpr(std::move(expr)) {}
+                std::shared_ptr<Expression> StringExpr;
+                llvm::Value* ComputeValue(CodegenContext& con) override final {
+                    return StringExpr->GetValue(con);
+                }
+                Type* GetType() override final {
+                    auto&& analyzer = StringExpr->GetType()->analyzer;
+                    return analyzer.GetPointerType(analyzer.GetIntegralType(8, true));
+                }
+            };
+
             // If the function takes a const lvalue (as kindly provided by the second member),
             // and we provided an rvalue, pretend secretly that it took an rvalue reference instead.
             // Since is-a does not apply here, build construction from the underlying type, rather than going through rvaluetype.
@@ -164,23 +179,14 @@ struct cppcallable : public Callable {
             ) {
                 if (types[i].first->Decay() == args[i]->GetType()->Decay())
                     out.push_back(types[i].first->analyzer.GetRvalueType(types[i].first->Decay())->BuildValueConstruction({ std::move(args[i]) }, c));
-                else
-                    out.push_back(types[i].first->Decay()->BuildRvalueConstruction({ std::move(args[i]) }, c));
+                else {
+                    if (types[i].first->Decay() == source->analyzer.GetPointerType(source->analyzer.GetIntegralType(8, true)) && dynamic_cast<StringType*>(args[i]->GetType()->Decay()))
+                        out.push_back(types[i].first->Decay()->BuildRvalueConstruction({ Wide::Memory::MakeUnique<ImplicitStringDecay>(BuildValue(std::move(args[i]))) }, c));
+                    else
+                        out.push_back(types[i].first->Decay()->BuildRvalueConstruction({ std::move(args[i]) }, c));
+                }
                 continue;
             }
-
-            struct ImplicitStringDecay : Expression {
-                ImplicitStringDecay(std::shared_ptr<Expression> expr)
-                : StringExpr(std::move(expr)) {}
-                std::shared_ptr<Expression> StringExpr;
-                llvm::Value* ComputeValue(CodegenContext& con) override final {
-                    return StringExpr->GetValue(con);
-                }
-                Type* GetType() override final {
-                    auto&& analyzer = StringExpr->GetType()->analyzer;
-                    return analyzer.GetPointerType(analyzer.GetIntegralType(8, true));
-                }
-            };
             
             // Clang may ask us to build an int8* from a string literal.
             // Just pretend that the argument was an int8*.
