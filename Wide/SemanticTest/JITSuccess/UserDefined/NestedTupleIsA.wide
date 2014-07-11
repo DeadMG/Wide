@@ -13,5 +13,5 @@ f(var := outer) {
            var.second.y == 4 ;
 }
 Main() {
-    f({{1, 2}, {3, 4}});
+    return f({{1, 2}, {3, 4}});
 }

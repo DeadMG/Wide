@@ -60,8 +60,10 @@ OverloadSet* IntegralType::CreateConstructorOverloadSet(Lexer::Access access) {
             if (types[0] != a.GetLvalueType(integral)) return Util::none;
             auto intty = dynamic_cast<IntegralType*>(types[1]->Decay());
             if (!intty) return Util::none;
-            if (intty->bits > integral->bits && intty->is_signed != integral->is_signed) return Util::none;
-            return types;
+            if (integral->bits < intty->bits) return types;
+            if (integral->is_signed == intty->is_signed) return types;
+            if (integral->bits == intty->bits) return types;
+            return Util::none;
         }
         Callable* GetCallableForResolution(std::vector<Type*> types, Analyzer& a) override final { return this; }
         std::shared_ptr<Expression> CallFunction(std::vector<std::shared_ptr<Expression>> args, Context c) override final {

@@ -4,5 +4,6 @@ using cplusplus := cpp("JITSuccess/Examples/ExportedFunctionsDestructor.h");
     std.cout << "Hello, World!";
 }
 Main() {
-   cplusplus.g();
+    cplusplus.g();
+    return true;
 }

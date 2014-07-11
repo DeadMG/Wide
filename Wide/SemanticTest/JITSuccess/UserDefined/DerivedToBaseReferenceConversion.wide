@@ -6,5 +6,5 @@ f(arg := base.rvalue) {
     return arg.val;
 }
 Main() {
-    f(derived({{true}}));
+    return f(derived({{true}}));
 }

@@ -5,4 +5,5 @@ f() {
 }
 Main() {
     cplusplus.g();
+    return true;
 }

@@ -27,7 +27,7 @@
 #include <llvm/Analysis/Verifier.h>
 #pragma warning(pop)
 
-results TestDirectory(std::string path, std::string mode, std::string program, bool debugbreak) {
+results TestDirectory(std::string path, std::string mode, std::string program, bool debugbreak, std::unordered_set<std::string>& failedset) {
     unsigned tests_failed = 0;
     unsigned tests_succeeded = 0;
     auto run_test_process = [&](std::string file) {
@@ -50,10 +50,9 @@ results TestDirectory(std::string path, std::string mode, std::string program, b
 
         if (failed || ret) {
             tests_failed++;
-            std::cout << mode << " failed: " << file << "\n";
+            failedset.insert(file);
         } else {
             tests_succeeded++;
-            std::cout << mode << " succeeded: " << file << "\n";
         }
     };
 
@@ -81,7 +80,7 @@ results TestDirectory(std::string path, std::string mode, std::string program, b
         }
         llvm::sys::fs::is_directory(file, isfile);
         if (isfile) {
-            auto result = TestDirectory(file, mode, program, debugbreak);
+            auto result = TestDirectory(file, mode, program, debugbreak, failedset);
             tests_succeeded += result.passes;
             tests_failed += result.fails;
         }
@@ -158,6 +157,8 @@ void Jit(Wide::Options::Clang& copts, std::string file) {
             throw std::runtime_error("Could not resolve Main to a function.");
         name = f->GetName();
         f->ComputeBody();
+        if (f->GetSignature()->GetReturnType() != a.GetBooleanType())
+            throw std::runtime_error("Main did not return bool.");
         a.GenerateCode(module.get());
         if (llvm::verifyModule(*module, llvm::VerifierFailureAction::PrintMessageAction))
             throw std::runtime_error("An LLVM module failed verification.");

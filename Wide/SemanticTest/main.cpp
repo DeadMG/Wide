@@ -62,15 +62,23 @@ int main(int argc, char** argv) {
     }
     unsigned total_failed = 0;
     unsigned total_succeeded = 0;
-
+    std::unordered_set<std::string> failed;
 #pragma warning(disable : 4800)
     for(auto mode : modes) {
-        auto result = TestDirectory(mode.first, mode.first, argv[0], input.count("break"));
+        auto result = TestDirectory(mode.first, mode.first, argv[0], input.count("break"), failed);
         total_succeeded += result.passes;
         total_failed += result.fails;    
     }
-    std::cout << "Total succeeded: " << total_succeeded << " failed: " << total_failed;
-    //Jit(clangopts, "JITSuccess/Examples/Functions.wide");
+    std::cout << "Total succeeded: " << total_succeeded << " failed: " << total_failed << "\n";
+    if (!failed.empty())
+        for(auto fail : failed)
+            std::cout << "Failed: " << fail << "\n";
+/*Failed: JITSuccess/StdlibSmoke/CoutMalloc.wide // Bad integral constructor OR rules
+  Failed: JITSuccess/Examples/ExportedFunctionsMemberSets.wide // Forgot to add return true
+  Failed: JITSuccess/Examples/ExportedFunctionsDestructor.wide // Forgot to add return true
+  Failed: JITSuccess/Examples/ExportedFunctions.wide // Forgot to add return true*/
+
+    //Jit(clangopts, "JITSuccess/Examples/ExportedFunctionsMemberSets.wide");
     //Compile(clangopts, "CompileFail/AddressOfNonLvalue/FunctionReturn.wide");
     if (input.count("break"))
         Wide::Util::DebugBreak();

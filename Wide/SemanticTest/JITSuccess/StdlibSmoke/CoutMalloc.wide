@@ -1,5 +1,5 @@
 Main() {
-    std.cout << cpp("stdlib.h").malloc(int32(5));
+    std.cout << cpp("stdlib.h").malloc(5);
     return true;
 }
     
