@@ -73,12 +73,7 @@ int main(int argc, char** argv) {
     if (!failed.empty())
         for(auto fail : failed)
             std::cout << "Failed: " << fail << "\n";
-/*Failed: JITSuccess/StdlibSmoke/CoutMalloc.wide // Bad integral constructor OR rules
-  Failed: JITSuccess/Examples/ExportedFunctionsMemberSets.wide // Forgot to add return true
-  Failed: JITSuccess/Examples/ExportedFunctionsDestructor.wide // Forgot to add return true
-  Failed: JITSuccess/Examples/ExportedFunctions.wide // Forgot to add return true*/
-
-    //Jit(clangopts, "JITSuccess/Examples/ExportedFunctionsMemberSets.wide");
+    //Jit(clangopts, "JITSuccess/Examples/CppMacro.wide");
     //Compile(clangopts, "CompileFail/AddressOfNonLvalue/FunctionReturn.wide");
     if (input.count("break"))
         Wide::Util::DebugBreak();

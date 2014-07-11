@@ -141,6 +141,23 @@ std::shared_ptr<Expression> Semantic::CreatePrimUnOp(std::shared_ptr<Expression>
     assert(self);
     return Wide::Memory::MakeUnique<PrimUnOp>(std::move(self), ret, func);
 }
+std::shared_ptr<Expression> Semantic::CreatePrimGlobal(Type* ret, std::function<llvm::Value*(CodegenContext& con)> func) {
+    struct PrimGlobalOp : Expression {
+        PrimGlobalOp(Type* r, std::function<llvm::Value*(CodegenContext& con)> func)
+        : ret(std::move(r)), action(std::move(func)) {}
+
+        Type* ret;
+        std::function<llvm::Value*(CodegenContext& con)> action;
+
+        Type* GetType() override final {
+            return ret;
+        }
+        llvm::Value* ComputeValue(CodegenContext& con) override final {
+            return action(con);
+        }
+    };
+    return Wide::Memory::MakeUnique<PrimGlobalOp>(ret, func);
+}
 std::shared_ptr<Expression> Semantic::CreatePrimOp(std::shared_ptr<Expression> lhs, std::shared_ptr<Expression> rhs, std::function<llvm::Value*(llvm::Value*, llvm::Value*, CodegenContext& con)> func) {
     return CreatePrimOp(std::move(lhs), std::move(rhs), lhs->GetType(), func);
 }

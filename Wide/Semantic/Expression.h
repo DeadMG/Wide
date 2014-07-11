@@ -106,6 +106,7 @@ namespace Wide {
         std::shared_ptr<Expression> CreatePrimOp(std::shared_ptr<Expression> lhs, std::shared_ptr<Expression> rhs, std::function<llvm::Value*(llvm::Value*, llvm::Value*, CodegenContext&)>);
         std::shared_ptr<Expression> CreatePrimAssOp(std::shared_ptr<Expression> lhs, std::shared_ptr<Expression> rhs, std::function<llvm::Value*(llvm::Value*, llvm::Value*, CodegenContext&)>);
         std::shared_ptr<Expression> CreatePrimOp(std::shared_ptr<Expression> lhs, std::shared_ptr<Expression> rhs, Type* ret, std::function<llvm::Value*(llvm::Value*, llvm::Value*, CodegenContext&)>);
+        std::shared_ptr<Expression> CreatePrimGlobal(Type* ret, std::function<llvm::Value*(CodegenContext&)>);
         std::shared_ptr<Expression> BuildValue(std::shared_ptr<Expression>);
         std::shared_ptr<Expression> BuildChain(std::shared_ptr<Expression>, std::shared_ptr<Expression>);
     }
