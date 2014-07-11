@@ -75,6 +75,8 @@ namespace Wide {
         class ArrayType;
         class TemplateType;
         class LambdaType;
+        class MemberDataPointer;
+        class MemberFunctionPointer;
         class Analyzer {
             std::unique_ptr<ClangTU> AggregateTU;
             Module* global;
@@ -104,6 +106,8 @@ namespace Wide {
             std::unordered_map<std::string, std::unique_ptr<StringType>> LiteralStringTypes;
             std::unordered_map<const Parse::Lambda*, std::unordered_map<std::vector<std::pair<std::string, Type*>>, std::unique_ptr<LambdaType>, VectorTypeHasher>> LambdaTypes;
             std::unordered_map<Type*, std::unordered_map<unsigned, std::unique_ptr<ArrayType>>> ArrayTypes;
+            std::unordered_map<Type*, std::unordered_map<Type*, std::unique_ptr<MemberDataPointer>>> MemberDataPointers;
+            std::unordered_map<Type*, std::unordered_map<FunctionType*, std::unique_ptr<MemberFunctionPointer>>> MemberFunctionPointers;
 
             const Options::Clang* clangopts;
 
@@ -160,6 +164,8 @@ namespace Wide {
             TemplateType* GetTemplateType(const Parse::TemplateType* t, Type* context, std::vector<Type*> arguments, std::string name);
             LambdaType* GetLambdaType(const Parse::Lambda* funcbase, std::vector<std::pair<std::string, Type*>> types, Type* context);
             ArrayType* GetArrayType(Type* t, unsigned num);
+            MemberDataPointer* GetMemberDataPointer(Type* source, Type* dest);
+            MemberFunctionPointer* GetMemberFunctionPointer(Type* source, FunctionType* dest);
 
             std::unordered_map<std::type_index, std::function<std::shared_ptr<Expression>(Analyzer& a, Type* lookup, const Parse::Expression* e)>> expression_handlers;
             template<typename T, typename F> void AddExpressionHandler(F f) {

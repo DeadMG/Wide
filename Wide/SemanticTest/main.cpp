@@ -73,7 +73,7 @@ int main(int argc, char** argv) {
     if (!failed.empty())
         for(auto fail : failed)
             std::cout << "Failed: " << fail << "\n";
-    //Jit(clangopts, "JITSuccess/CPPInterop/StringConstChar.wide");
+    //Jit(clangopts, "JITSuccess/CPPInterop/PassMemberFunctionPointer.wide");
     //Compile(clangopts, "CompileFail/AddressOfNonLvalue/FunctionReturn.wide");
     if (input.count("break"))
         Wide::Util::DebugBreak();

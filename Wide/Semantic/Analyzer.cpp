@@ -27,6 +27,8 @@
 #include <Wide/Semantic/TupleType.h>
 #include <Wide/Semantic/LambdaType.h>
 #include <Wide/Semantic/ArrayType.h>
+#include <Wide/Semantic/MemberDataPointerType.h>
+#include <Wide/Semantic/MemberFunctionPointerType.h>
 #include <Wide/Util/Codegen/InitializeLLVM.h>
 #include <Wide/Util/DebugUtilities.h>
 #include <Wide/Semantic/Expression.h>
@@ -38,6 +40,7 @@
 #pragma warning(push, 0)
 #include <clang/AST/Type.h>
 #include <clang/AST/ASTContext.h>
+#include <clang/AST/AST.h>
 #include <llvm/Target/TargetOptions.h>
 #include <llvm/Target/TargetMachine.h>
 #include <llvm/Support/TargetRegistry.h>
@@ -797,6 +800,26 @@ Type* Analyzer::GetClangType(ClangTU& from, clang::QualType t) {
         return GetPointerType(GetClangType(from, t->getPointeeType()));
     if (t->isBooleanType())
         return Boolean.get();
+    if (t->isFunctionType()) {
+        auto funty = llvm::cast<const clang::FunctionProtoType>(t.getTypePtr());
+        std::vector<Type*> args;
+        for (auto ty : funty->getArgTypes())
+            args.push_back(GetClangType(from, ty));
+        return GetFunctionType(GetClangType(from, funty->getResultType()), args, funty->isVariadic());
+    }
+    if (t->isMemberDataPointerType()) {
+        auto memptrty = llvm::cast<const clang::MemberPointerType>(t.getTypePtr());
+        auto source = GetClangType(from, from.GetASTContext().getRecordType(memptrty->getClass()->getAsCXXRecordDecl()));
+        auto dest = GetClangType(from, memptrty->getPointeeType());
+        return GetMemberDataPointer(source, dest);
+    }
+    if (t->isMemberFunctionPointerType()) {
+        auto memfuncty = llvm::cast<const clang::MemberPointerType>(t.getTypePtr());
+        auto source = GetClangType(from, from.GetASTContext().getRecordType(memfuncty->getClass()->getAsCXXRecordDecl()));
+        auto dest = dynamic_cast<FunctionType*>(GetClangType(from, memfuncty->getPointeeType()));
+        assert(dest);
+        return GetMemberFunctionPointer(source, dest);
+    }
     if (GeneratedClangTypes.find(t) != GeneratedClangTypes.end())
         return GeneratedClangTypes[t];
     if (ClangTypes.find(t) == ClangTypes.end())
@@ -1272,4 +1295,16 @@ ArrayType* Analyzer::GetArrayType(Type* t, unsigned num) {
         || ArrayTypes[t].find(num) == ArrayTypes[t].end())
         ArrayTypes[t][num] = Wide::Memory::MakeUnique<ArrayType>(*this, t, num);
     return ArrayTypes[t][num].get();
+}
+MemberDataPointer* Analyzer::GetMemberDataPointer(Type* source, Type* dest) {
+    if (MemberDataPointers.find(source) == MemberDataPointers.end()
+     || MemberDataPointers[source].find(dest) == MemberDataPointers[source].end())
+        MemberDataPointers[source][dest] = Wide::Memory::MakeUnique<MemberDataPointer>(*this, source, dest);
+    return MemberDataPointers[source][dest].get();
+}
+MemberFunctionPointer* Analyzer::GetMemberFunctionPointer(Type* source, FunctionType* dest) {
+    if (MemberFunctionPointers.find(source) == MemberFunctionPointers.end()
+     || MemberFunctionPointers[source].find(dest) == MemberFunctionPointers[source].end())
+        MemberFunctionPointers[source][dest] = Wide::Memory::MakeUnique<MemberFunctionPointer>(*this, source, dest);
+    return MemberFunctionPointers[source][dest].get();
 }
