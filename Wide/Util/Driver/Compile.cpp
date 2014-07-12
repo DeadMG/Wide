@@ -41,9 +41,7 @@ void Wide::Driver::Compile(const Wide::Options::Clang& copts, std::function<void
         if (!inputfile)
             throw std::runtime_error("Could not open input file " + filename + "\n");
         std::noskipws(inputfile);
-        Wide::Lexer::Arguments largs;
-        auto contents = Wide::Range::IStreamRange(inputfile);
-        Wide::Lexer::Invocation<decltype(contents)> lex(largs, contents, std::make_shared<std::string>(filename));
+        Wide::Lexer::Invocation lex(Wide::Range::IStreamRange(inputfile), std::make_shared<std::string>(filename));
         auto parserwarninghandler = [&](Wide::Lexer::Range where, Wide::Parse::Warning what) {
             std::stringstream str;
             str << "Warning in file " << filename << ", line " << where.begin.line << " column " << where.begin.column << ":\n";

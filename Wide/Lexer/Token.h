@@ -27,7 +27,6 @@ namespace Wide {
             extern const std::string Comma;
             extern const std::string Integer;
             extern const std::string Using;
-            extern const std::string Prolog;
             extern const std::string Module;
             extern const std::string Break;
             extern const std::string Continue;

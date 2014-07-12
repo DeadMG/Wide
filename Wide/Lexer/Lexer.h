@@ -10,25 +10,7 @@
 
 namespace Wide {
     namespace Lexer {
-        class Arguments {
-        public:
-            enum Failure {
-                UnterminatedStringLiteral,
-                UnlexableCharacter,
-                UnterminatedComment
-            };
-            std::unordered_map<char, Lexer::TokenType> singles;
-            std::unordered_map<char, std::unordered_map<char, Lexer::TokenType>> doubles;
-            std::unordered_map<char, std::unordered_map<char, std::unordered_map<char, Lexer::TokenType>>> triples;
-            std::unordered_set<char> whitespace;
-            std::unordered_map<std::string, const std::string*> keywords;
-            std::unordered_set<Lexer::TokenType> KeywordTypes;
-            std::function<void(Range)> OnComment;
-            int tabsize;
-            Arguments();
-        };
-        template<typename Range> class Invocation {
-            const Arguments* args;
+        class Invocation {
             Position current_position;
             std::deque<std::pair<char, Position>> putback;
 
@@ -75,7 +57,7 @@ namespace Wide {
                         current_position.line++;
                         break;
                     case '\t':
-                        current_position.column += args->tabsize;
+                        current_position.column += tabsize;
                         break;
                     default:
                         current_position.column++;
@@ -106,139 +88,32 @@ namespace Wide {
                     }
                 }
                 if (num == 0) {
-                    args->OnComment(start + current_position);
+                    OnComment(start + current_position);
                     return (*this)();
                 }
-                return OnError(start, Arguments::Failure::UnterminatedComment, this);
+                return OnError(start, Failure::UnterminatedComment, this);
             }
         public:
-            Range r;
-            std::function<Wide::Util::optional<Token>(Position, Arguments::Failure, Invocation*)> OnError;
+            enum Failure {
+                UnterminatedStringLiteral,
+                UnlexableCharacter,
+                UnterminatedComment
+            };
+            std::function<Wide::Util::optional<char>()> r;
+            std::function<Wide::Util::optional<Token>(Position, Failure, Invocation*)> OnError;
+            std::function<void(Range)> OnComment;
 
-            // Used only for some error handling in the parser
-            Invocation(const Arguments& arg, Range range, std::shared_ptr<std::string> name)
-                : args(&arg), r(range), current_position(name) {
+            std::unordered_map<char, Lexer::TokenType> singles;
+            std::unordered_map<char, std::unordered_map<char, Lexer::TokenType>> doubles;
+            std::unordered_map<char, std::unordered_map<char, std::unordered_map<char, Lexer::TokenType>>> triples;
+            std::unordered_set<char> whitespace;
+            std::unordered_map<std::string, Lexer::TokenType> keywords;
+            std::unordered_set<Lexer::TokenType> KeywordTypes;
+            int tabsize;
 
-                OnError = [](Position, Arguments::Failure, Invocation* self) {
-                    return (*self)();
-                };
-            }
+            Invocation(std::function<Wide::Util::optional<char>()> range, std::shared_ptr<std::string> name);
 
-            Wide::Util::optional<Lexer::Token> operator()() {                
-                auto begin_pos = current_position;
-                auto val = get();
-                if (!val) return Wide::Util::none;
-
-                if (args->whitespace.find(*val) != args->whitespace.end())
-                    return (*this)();
-
-                if (*val == '/') {
-                    auto old_pos = current_position;
-                    auto next = get();
-                    if (next && *next == '/' || *next == '*') {
-                        if (*next == '/') {
-                            // An //comment at the end of the file is NOT an unterminated comment.
-                            while(auto val = get()) {
-                                if (*val == '\n')
-                                    break;
-                            }
-                            args->OnComment(begin_pos + current_position);
-                            return (*this)();
-                        }
-                        if (*next == '*') {
-                            return ParseCComments(begin_pos);
-                        }
-                    } else {
-                        if (next) {
-                            putback.push_back(std::make_pair(*next, current_position));
-                            current_position = old_pos;
-                        }
-                    }
-                }
-
-                {
-                    auto firstpos = current_position;
-                    auto second = get();
-                    if (second) {
-                        auto secpos = current_position;
-                        auto third = get();
-                        if (third) {
-                            if (args->triples.find(*val) != args->triples.end()) {
-                                if (args->triples.at(*val).find(*second) != args->triples.at(*val).end()) {
-                                    if (args->triples.at(*val).at(*second).find(*third) != args->triples.at(*val).at(*second).end()) {
-                                        return Wide::Lexer::Token(begin_pos + current_position, args->triples.at(*val).at(*second).at(*third), std::string(1, *val) + std::string(1, *second) + std::string(1, *third));
-                                    }
-                                }
-                            }
-                            putback.push_back(std::make_pair(*third, current_position));
-                            current_position = secpos;
-                        }
-                        if (args->doubles.find(*val) != args->doubles.end()) {
-                            if (args->doubles.at(*val).find(*second) != args->doubles.at(*val).end()) {
-                                return Wide::Lexer::Token(begin_pos + current_position, args->doubles.at(*val).at(*second), std::string(1, *val) + std::string(1, *second));
-                            }
-                        }
-                        putback.push_back(std::make_pair(*second, current_position));
-                        current_position = firstpos;
-                    }
-                    if (args->singles.find(*val) != args->singles.end()) {
-                        return Wide::Lexer::Token(begin_pos + current_position, args->singles.at(*val), std::string(1, *val));
-                    }
-                }
-
-                // Variable-length tokens.
-                std::string variable_length_value;
-                if (*val == '"') {
-                    Wide::Util::optional<char> next;
-                    while(next = get()) {
-                        if (*next == '"')
-                            break;
-                        if (*next == '\\') {
-                            auto very_next = get();
-                            if (!very_next)
-                                return OnError(current_position, Arguments::Failure::UnterminatedStringLiteral, this);
-                            if (*very_next == '"') {
-                                variable_length_value.push_back('"');
-                                continue;
-                            }
-                            variable_length_value.push_back(*next);
-                            variable_length_value.push_back(*very_next);
-                            continue;
-                        }
-                        variable_length_value.push_back(*next);
-                    }
-                    if (!next)
-                        return OnError(begin_pos, Arguments::Failure::UnterminatedStringLiteral, this);
-                    return Wide::Lexer::Token(begin_pos + current_position, &TokenTypes::String, escape(variable_length_value));
-                }
-
-                TokenType result = &TokenTypes::Integer;
-                auto old_pos = current_position;
-                if (*val == '@') {
-                    result = &TokenTypes::Identifier;
-                    val = get();
-                } else if (!((*val >= '0' && *val <= '9') || (*val >= 'a' && *val <= 'z') || (*val >= 'A' && *val <= 'Z') || *val == '_')) {
-                    return OnError(begin_pos, Arguments::Failure::UnlexableCharacter, this);
-                }
-                while(val) {
-                    if (*val < '0' || *val > '9')
-                        if ((*val >= 'a' && *val <= 'z') || (*val >= 'A' && *val <= 'Z') || *val == '_')
-                            result = &TokenTypes::Identifier;
-                        else {
-                            putback.push_back(std::make_pair(*val, current_position));
-                            current_position = old_pos;
-                            break;
-                        }
-                    variable_length_value.push_back(*val);
-                    old_pos = current_position;
-                    val = get();
-                }
-                auto lastpos = begin_pos + current_position;
-                if (args->keywords.find(variable_length_value) != args->keywords.end()) {
-                    return Wide::Lexer::Token(lastpos, args->keywords.at(variable_length_value), variable_length_value);
-                }
-                return Wide::Lexer::Token(lastpos, result, variable_length_value);
-            }
+            Wide::Util::optional<Lexer::Token> operator()();
         };
     }
 }
