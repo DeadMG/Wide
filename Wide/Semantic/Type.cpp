@@ -104,13 +104,14 @@ bool Type::IsCopyAssignable(Lexer::Access access) {
     arguments.push_back(analyzer.GetLvalueType(this));
     return set->Resolve(std::move(arguments), this);
 }
-
-bool Type::IsA(Type* self, Type* other, Lexer::Access access) {
-    return
-        other == self ||
-        other == analyzer.GetRvalueType(self) ||
-        self == analyzer.GetLvalueType(other) && other->IsCopyConstructible(access) ||
-        self == analyzer.GetRvalueType(other) && other->IsMoveConstructible(access);
+bool Type::IsFirstASecond(Type* source, Type* target, Type* context) {
+    if (source == target) return true;
+    if (target == target->analyzer.GetRvalueType(source)) return true;
+    if (source == target->analyzer.GetLvalueType(target) && target->IsCopyConstructible(GetAccessSpecifier(context, target))) return true;
+    if (source == target->analyzer.GetRvalueType(target) && target->IsMoveConstructible(GetAccessSpecifier(context, target))) return true;
+    if (source->IsSourceATarget(source, target, context)) return true;
+    if (target->IsSourceATarget(source, target, context)) return true;
+    return false;
 }
 
 Type* Type::GetConstantContext() {
@@ -588,7 +589,7 @@ std::vector<std::shared_ptr<Expression>> Semantic::AdjustArgumentsForTypes(std::
             out.push_back(std::move(args[i]));
             continue;
         }
-        if (!args[i]->GetType()->IsA(args[i]->GetType(), types[i], GetAccessSpecifier(c.from, args[i]->GetType())))
+        if (!Type::IsFirstASecond(args[i]->GetType(), types[i], c.from))
             Wide::Util::DebugBreak();
         out.push_back(types[i]->BuildValueConstruction({ std::move(args[i]) }, c));
     }
@@ -606,7 +607,7 @@ struct Resolvable : OverloadResolvable, Callable {
         if (args.size() != types.size()) return Util::none;
         for (unsigned num = 0; num < types.size(); ++num) {
             auto t = args[num];
-            if (!t->IsA(t, types[num], GetAccessSpecifier(source, t)))
+            if (!Type::IsFirstASecond(t, types[num], source))
                 return Util::none;
         }
         return types;
@@ -641,7 +642,7 @@ OverloadSet* TupleInitializable::CreateConstructorOverloadSet(Lexer::Access acce
             if (args[0] != a.GetLvalueType(self->GetSelfAsType())) return Util::none;
             auto tup = dynamic_cast<TupleType*>(args[1]->Decay());
             if (!tup) return Util::none;
-            if (!tup->IsA(args[1], self->GetSelfAsType(), GetAccessSpecifier(source, tup))) return Util::none;
+            if (!Type::IsFirstASecond(args[1], self->GetSelfAsType(), source)) return Util::none;
             return args;
         }
         std::vector<std::shared_ptr<Expression>> AdjustArguments(std::vector<std::shared_ptr<Expression>> args, Context c) override final { return args; }

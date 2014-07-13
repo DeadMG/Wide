@@ -43,7 +43,7 @@ namespace Wide {
             std::function<void(CodegenContext&)> BuildDestructorCall(std::shared_ptr<Expression> self, Context c, bool devirtualize) override final;
             Type* GetConstantContext() override final; 
 
-            bool IsA(Type* self, Type* other, Lexer::Access access) override final;
+            bool IsSourceATarget(Type* first, Type* second, Type* context) override final;
             bool IsEmpty() override final;
             bool IsTriviallyDestructible() override final;
             bool IsTriviallyCopyConstructible() override final;

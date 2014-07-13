@@ -107,7 +107,7 @@ namespace Wide {
             bool IsMoveAssignable(Lexer::Access access) override final;
             bool IsTriviallyCopyConstructible() override final;
             bool IsTriviallyDestructible() override final;
-            bool IsA(Type* self, Type* other, Lexer::Access access) override final;
+            bool IsSourceATarget(Type* first, Type* second, Type* context) override final;
             std::vector<Type*> GetBases() override final;
             Wide::Util::optional<std::vector<Type*>> GetTypesForTuple() override final;
             std::shared_ptr<Expression> PrimitiveAccessMember(std::shared_ptr<Expression> self, unsigned num) override final;

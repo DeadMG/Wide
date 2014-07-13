@@ -50,7 +50,7 @@ OverloadSet* PointerType::CreateConstructorOverloadSet(Lexer::Access access) {
             if (types[0] != a.GetLvalueType(self)) return Util::none;
             if (types[1]->Decay() == self) return Util::none;
             if (!dynamic_cast<PointerType*>(types[1]->Decay())) return Util::none;
-            if (!types[1]->IsA(types[1], self, GetAccessSpecifier(source, types[1]))) return Util::none;
+            if (!Type::IsFirstASecond(types[1], self, source)) return Util::none;
             return types;
         }
         std::vector<std::shared_ptr<Expression>> AdjustArguments(std::vector<std::shared_ptr<Expression>> args, Context c) override final { return args; }
@@ -74,17 +74,21 @@ OverloadSet* PointerType::CreateConstructorOverloadSet(Lexer::Access access) {
     return analyzer.GetOverloadSet(analyzer.GetOverloadSet(usual, analyzer.GetOverloadSet(NullConstructor.get())), analyzer.GetOverloadSet(DerivedConstructor.get())); 
 }
 
-bool PointerType::IsA(Type* self, Type* other, Lexer::Access access) {
-    // T* is U* if T is derived from U.
-    // But reference to T* is not reference to U* so keep that shit under wraps yo.
-    // T* or T*&& can be U* or U*&&
-    // T*& can be U*
-    if (Type::IsA(self, other, access)) return true;
-    if (IsLvalueType(other)) return false;
+bool PointerType::IsSourceATarget(Type* source, Type* target, Type* context) {
+    // All pointer conversions are value conversions so big fat nope if target is an lvalue.
+    if (IsLvalueType(target)) return false;
 
-    auto otherptr = dynamic_cast<PointerType*>(other->Decay());
-    if (!otherptr) return false;
-    return pointee->IsDerivedFrom(otherptr->pointee) == InheritanceRelationship::UnambiguouslyDerived;
+    // We accept: all nulls.
+    if (source->Decay() == analyzer.GetNullType()) return true;
+
+    // T*& can only be U*, not U*&&
+    if (IsLvalueType(source) && IsRvalueType(target) && source->Decay() != target->Decay()) return false;
+
+    auto sourceptr = dynamic_cast<PointerType*>(source->Decay());
+    if (!sourceptr) return false;
+    auto targetptr = dynamic_cast<PointerType*>(target->Decay());
+    if (!targetptr) return false;
+    return sourceptr->pointee->IsDerivedFrom(targetptr->pointee) == InheritanceRelationship::UnambiguouslyDerived;
 }
 
 OverloadSet* PointerType::CreateOperatorOverloadSet(Lexer::TokenType what, Lexer::Access access) {

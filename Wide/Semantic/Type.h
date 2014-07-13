@@ -221,7 +221,6 @@ namespace Wide {
             virtual bool IsCopyConstructible(Lexer::Access access);
             virtual bool IsMoveAssignable(Lexer::Access access);
             virtual bool IsCopyAssignable(Lexer::Access access);
-            virtual bool IsA(Type* self, Type* other, Lexer::Access access);
             virtual Type* GetConstantContext();
             virtual bool IsEmpty();
             virtual Type* GetVirtualPointerType();
@@ -230,6 +229,8 @@ namespace Wide {
             virtual std::unordered_map<unsigned, std::unordered_set<Type*>> GetEmptyLayout();
             virtual VTableLayout ComputePrimaryVTableLayout();
             virtual std::vector<std::pair<Type*, unsigned>> GetBasesAndOffsets();
+            // Do not ever call from public API, it is for derived types and implementation details only.
+            virtual bool IsSourceATarget(Type* source, Type* target, Type* context) { return false; }
 
             virtual std::shared_ptr<Expression> GetVirtualPointer(std::shared_ptr<Expression> self);
             virtual std::shared_ptr<Expression> AccessStaticMember(std::string name);
@@ -258,7 +259,8 @@ namespace Wide {
             static std::shared_ptr<Expression> BuildUnaryExpression(std::shared_ptr<Expression> self, Lexer::TokenType type, Context c);
             static std::shared_ptr<Expression> BuildBinaryExpression(std::shared_ptr<Expression> lhs, std::shared_ptr<Expression> rhs, Lexer::TokenType type, Context c);
             static std::shared_ptr<Expression> SetVirtualPointers(std::shared_ptr<Expression>);
-            static std::shared_ptr<Expression> BuildIndex(std::shared_ptr<Expression> obj, std::shared_ptr<Expression> arg, Context c);            
+            static std::shared_ptr<Expression> BuildIndex(std::shared_ptr<Expression> obj, std::shared_ptr<Expression> arg, Context c);           
+            static bool IsFirstASecond(Type* first, Type* second, Type* context);
         };
 
         struct Callable {

@@ -890,7 +890,7 @@ void Function::ComputeReturnType() {
             the_rest.erase(ret);
             auto all_isa = [&] {
                 for (auto other : the_rest) {
-                    if (!other->IsA(other, ret, GetAccessSpecifier(this, ret)))
+                    if (!Type::IsFirstASecond(other, ret, this))
                         return false;
                 }
                 return true;

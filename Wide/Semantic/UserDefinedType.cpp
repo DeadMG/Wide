@@ -816,10 +816,18 @@ Wide::Util::optional<unsigned> UserDefinedType::GetVirtualFunctionIndex(const Pa
         return Wide::Util::none;
     return GetVtableData().VTableIndices.at(func);
 }
-bool UserDefinedType::IsA(Type* self, Type* other, Lexer::Access access) {
-    if (Type::IsA(self, other, access)) return true;
-    if (self == this)
-        return analyzer.GetRvalueType(this)->IsA(analyzer.GetRvalueType(self), other, access);
+bool UserDefinedType::IsSourceATarget(Type* source, Type* target, Type* context) {
+    // We only have an interesting thing to say if target is a value.
+    if (target == this) {
+        if (!IsLvalueType(source)) {
+            if (source->Decay()->IsDerivedFrom(this) == InheritanceRelationship::UnambiguouslyDerived && IsMoveConstructible(GetAccessSpecifier(context, this)))
+                return true;
+            return false;
+        }
+        if (source->Decay()->IsDerivedFrom(this) == InheritanceRelationship::UnambiguouslyDerived && IsCopyConstructible(GetAccessSpecifier(source, this)))
+            return true;
+        return false;
+    }
     return false;
 }
 llvm::Constant* UserDefinedType::GetRTTI(llvm::Module* module) {

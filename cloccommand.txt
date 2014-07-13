@@ -1,1 +1,1 @@
-cloc-1.58.exe Wide premake4.lua ../VisualWide --exclude-dir="Deployment" --force-lang=C++,wide
+cloc-1.58.exe Wide premake4.lua ../VisualWide ../webby/build --exclude-dir="Deployment" --force-lang=C++,wide

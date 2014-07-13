@@ -257,22 +257,21 @@ OverloadSet* IntegralType::CreateADLOverloadSet(Lexer::TokenType name, Lexer::Ac
     }
     return PrimitiveType::CreateADLOverloadSet(name, access);
 }
-bool IntegralType::IsA(Type* self, Type* other, Lexer::Access access) {
-    // If we already are, then don't bother.
-    if (Type::IsA(self, other, access)) return true;
-
-    // T to U conversion
-    // Cannot be U&
-    if (IsLvalueType(other)) return false;
-
-    auto otherint = dynamic_cast<IntegralType*>(other->Decay());
-    if (!otherint)
+bool IntegralType::IsSourceATarget(Type* source, Type* target, Type* context) {
+    // If the target is an lvalue type, we fail
+    if (IsLvalueType(target)) return false;
+    auto sourceint = dynamic_cast<IntegralType*>(source->Decay());
+    if (!sourceint)
+        return false;
+    auto targetint = dynamic_cast<IntegralType*>(target->Decay());
+    if (!targetint)
         return false;
 
-    if (is_signed == otherint->is_signed && otherint->bits > bits)
+    if (sourceint->is_signed == targetint->is_signed && targetint->bits > sourceint->bits)
         return true;
-    if (!is_signed && otherint->is_signed && otherint->bits > bits)
+    if (!sourceint->is_signed && targetint->is_signed && targetint->bits > sourceint->bits)
         return true;
+
     return false;
 }
 OverloadSet* IntegralType::CreateOperatorOverloadSet(Lexer::TokenType what, Lexer::Access access) {

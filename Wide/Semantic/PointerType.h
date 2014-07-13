@@ -20,7 +20,7 @@ namespace Wide {
             std::size_t size() override final;
             std::size_t alignment() override final;
             OverloadSet* CreateConstructorOverloadSet(Lexer::Access access) override final;
-            bool IsA(Type* self, Type* other, Lexer::Access access) override final;
+            bool IsSourceATarget(Type* first, Type* second, Type* context) override final;
             std::string explain() override final;
             Type* GetPointee() { return pointee; }
         };

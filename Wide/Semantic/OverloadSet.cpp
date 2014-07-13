@@ -223,8 +223,8 @@ Callable* OverloadSet::Resolve(std::vector<Type*> f_args, Type* source) {
         // there is no other argument for which the reverse is true
         // it is more specialized.
         auto is_argument_more_specialized = [&](Type* lhs, Type* rhs) {
-            if (lhs->IsA(lhs, rhs, GetAccessSpecifier(source, lhs)))
-                if (!rhs->IsA(rhs, lhs, GetAccessSpecifier(source, rhs)))
+            if (Type::IsFirstASecond(lhs, rhs, source))
+                if (!Type::IsFirstASecond(rhs, lhs, source))
                     return true;
             return false;
         };

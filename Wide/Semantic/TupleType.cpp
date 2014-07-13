@@ -50,20 +50,47 @@ std::shared_ptr<Expression> TupleType::ConstructFromLiteral(std::vector<std::sha
     return Wide::Memory::MakeUnique<TupleConstruction>(self, std::move(initializers), BuildDestructorCall(self, c, true));
 }
 
-bool TupleType::IsA(Type* self, Type* other, Lexer::Access access) {
-    auto udt = dynamic_cast<TupleInitializable*>(other);
-    if (!udt) return Type::IsA(self, other, access);
-    auto udt_members = udt->GetTypesForTuple();
-    if (!udt_members) return false;
-    if (GetMembers().size() != udt_members->size()) return false;
-    bool is = true;
-    for (std::size_t i = 0; i < GetMembers().size(); ++i) {
-        std::vector<Type*> types;
-        types.push_back(analyzer.GetLvalueType(udt_members->at(i)));
-        types.push_back(IsLvalueType(self) ? analyzer.GetLvalueType(GetMembers()[i]) : analyzer.GetRvalueType(GetMembers()[i]));
-        is = is && udt_members->at(i)->GetConstructorOverloadSet(Lexer::Access::Public)->Resolve(types, this);
+bool TupleType::IsSourceATarget(Type* source, Type* target, Type* context) {
+    // Only value conversions allowed
+    if (IsLvalueType(target)) return false;
+
+    // We have nothing to say about sources that are not tuples.
+    auto sourcetup = dynamic_cast<TupleType*>(source->Decay());
+    if (!sourcetup) return false;
+
+    struct source_expr : public Expression {
+        source_expr(Type* s) :source(s) {}
+        Type* source;
+        Type* GetType() { return source; }
+        llvm::Value* ComputeValue(CodegenContext& e) { return nullptr; }
+    };
+    auto expr = std::make_shared<source_expr>(source);
+    std::vector<Type*> targettypes;
+
+    // The target should be either tuple initializable or a tuple but we have a different test.
+    if (auto tupleinit = dynamic_cast<TupleInitializable*>(target->Decay())) {
+        if (auto types = tupleinit->GetTypesForTuple())
+            targettypes = *types;
+        else
+            return false;
+        if (GetMembers().size() != targettypes.size()) return false;
+        for (std::size_t i = 0; i < GetMembers().size(); ++i) {
+            std::vector<Type*> types;
+            types.push_back(analyzer.GetLvalueType(targettypes.at(i)));
+            types.push_back(sourcetup->PrimitiveAccessMember(expr, i)->GetType());
+            if (!targettypes.at(i)->GetConstructorOverloadSet(GetAccessSpecifier(context, targettypes.at(i)))->Resolve(types, this))
+                return false;
+        }
+        return true;
     }
-    return is;
+    if (auto tupty = dynamic_cast<TupleType*>(target->Decay()))
+        targettypes = tupty->GetMembers();
+    else
+        return false;
+    if (GetMembers().size() != targettypes.size()) return false;
+    for (std::size_t i = 0; i < GetMembers().size(); ++i)
+        if (!Type::IsFirstASecond(sourcetup->PrimitiveAccessMember(expr, i)->GetType(), targettypes[i], context)) return false;
+    return true;
 }
 std::string TupleType::explain() {
     std::string name = "{ ";

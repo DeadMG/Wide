@@ -571,19 +571,15 @@ Type* ClangType::GetConstantContext() {
         return this;
     return nullptr;
 }
-bool ClangType::IsA(Type* self, Type* other, Lexer::Access access) {
-    // A ClangType is-a another if they are implicitly convertible.
-    if (Type::IsA(self, other, access)) return true;
-    if (self == this) {
-        if (analyzer.GetRvalueType(this)->IsA(analyzer.GetRvalueType(self), other, access))
-            return true;
-    }
-    auto selfclangty = self->GetClangType(*from);
-    assert(selfclangty);
-    auto clangty = other->GetClangType(*from);
-    if (!clangty) return false;
-    clang::OpaqueValueExpr ope(clang::SourceLocation(), selfclangty->getNonLValueExprType(from->GetASTContext()), Semantic::GetKindOfType(self));
-    auto sequence = from->GetSema().TryImplicitConversion(&ope, *clangty, false, false, false, false, false);
+bool ClangType::IsSourceATarget(Type* first, Type* second, Type* context) {
+    auto firstclangty = first->GetClangType(*from);
+    if (!firstclangty) return false;
+    // Must succeed when we're a ClangType.
+    auto secondclangty = second->GetClangType(*from);
+    if (!secondclangty) return false;
+
+    clang::OpaqueValueExpr ope(clang::SourceLocation(), firstclangty->getNonLValueExprType(from->GetASTContext()), Semantic::GetKindOfType(first));
+    auto sequence = from->GetSema().TryImplicitConversion(&ope, *secondclangty, false, false, false, false, false);
     if (sequence.getKind() == clang::ImplicitConversionSequence::Kind::UserDefinedConversion)
         return true;
     return false;

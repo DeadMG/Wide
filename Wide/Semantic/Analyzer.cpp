@@ -1019,12 +1019,12 @@ OverloadResolvable* Analyzer::GetCallableForFunction(const Parse::FunctionBase* 
             std::vector<Type*> result;
             if (HasImplicitThis()) {
                 if (IsLvalueType(types[0])) {
-                    if (types[0]->IsA(types[0], a.GetLvalueType(context), GetAccessSpecifier(source, types[0]))) {
+                    if (Type::IsFirstASecond(types[0], a.GetLvalueType(context), source)) {
                         result.push_back(a.GetLvalueType(context));
                     } else
                         return Util::none;
                 } else {
-                    if (types[0]->IsA(types[0], a.GetRvalueType(context), GetAccessSpecifier(source, types[0]))) {
+                    if (Type::IsFirstASecond(types[0], a.GetRvalueType(context), source)) {
                         result.push_back(a.GetRvalueType(context));
                     } else
                         return Util::none;
@@ -1080,7 +1080,7 @@ OverloadResolvable* Analyzer::GetCallableForFunction(const Parse::FunctionBase* 
                 };
                 auto parameter_type = get_con_type();
                 ++num;
-                if (argument->IsA(argument, parameter_type->GetConstructedType(), GetAccessSpecifier(source, argument)))
+                if (Type::IsFirstASecond(argument, parameter_type->GetConstructedType(), source))
                     result.push_back(parameter_type->GetConstructedType());
                 else
                     return Util::none;
@@ -1196,7 +1196,7 @@ OverloadResolvable* Analyzer::GetCallableForTemplateType(const Parse::TemplateTy
                     throw Wide::Semantic::NotAType(p_type, templatetype->arguments[num].location);
                 a.QuickInfo(templatetype->arguments[num].location, con_type->GetConstructedType());
                 a.ParameterHighlight(templatetype->arguments[num].location);
-                if (arg->IsA(arg, con_type->GetConstructedType(), GetAccessSpecifier(source, arg)))
+                if (Type::IsFirstASecond(arg, con_type->GetConstructedType(), source))
                     valid.push_back(con_type->GetConstructedType());
                 else
                     return Util::none;

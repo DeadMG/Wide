@@ -38,25 +38,23 @@ std::size_t Reference::alignment() {
     return analyzer.GetDataLayout().getPointerABIAlignment();
 }
 
-bool RvalueType::IsA(Type* self, Type* other, Lexer::Access access) {
-    if (other == this)
-        return true;
-    if (other == analyzer.GetLvalueType(Decay()))
+bool RvalueType::IsSourceATarget(Type* source, Type* target, Type* context){
+    if (source == analyzer.GetLvalueType(target->Decay()))
         return false;
-    // T&& is-a U&& if T* is-a U*
-    if (IsRvalueType(other) && analyzer.GetPointerType(Decay())->IsA(analyzer.GetPointerType(Decay()), analyzer.GetPointerType(other->Decay()), access))
+    if (!IsLvalueType(source) && !IsLvalueType(target) && Type::IsFirstASecond(analyzer.GetPointerType(source->Decay()), analyzer.GetPointerType(target->Decay()), context))
         return true;
-    return Decay()->IsA(self, other, access);
+
+    // Our decayed type may have something more useful to say.
+    return Decay()->IsSourceATarget(source, target, context);
 }
-bool LvalueType::IsA(Type* self, Type* other, Lexer::Access access) {
-    if (other == this)
-        return true;
-    if (other == analyzer.GetRvalueType(Decay()))
+bool LvalueType::IsSourceATarget(Type* source, Type* target, Type* context) {
+    if (source == analyzer.GetRvalueType(target->Decay()))
         return false;
-    // T& is-a U& if T* is-a U*
-    if (IsLvalueType(other) && analyzer.GetPointerType(Decay())->IsA(analyzer.GetPointerType(Decay()), analyzer.GetPointerType(other->Decay()), access))
+    if (IsLvalueType(source) && IsLvalueType(target) && Type::IsFirstASecond(analyzer.GetPointerType(source->Decay()), analyzer.GetPointerType(target->Decay()), context))
         return true;
-    return Decay()->IsA(self, other, access);
+
+    // Our decayed type may have something more useful to say.
+    return Decay()->IsSourceATarget(source, target, context);
 }
 struct rvalueconvertible : OverloadResolvable, Callable {
     rvalueconvertible(RvalueType* s)
@@ -73,7 +71,7 @@ struct rvalueconvertible : OverloadResolvable, Callable {
         // If it is or pointer-is then yay, else nay.
         auto ptrt = a.GetPointerType(types[1]->Decay());
         auto ptrself = a.GetPointerType(self->Decay());
-        if (!ptrt->IsA(ptrt, ptrself, GetAccessSpecifier(source, ptrt)) && !types[1]->Decay()->IsA(types[1]->Decay(), self->Decay(), GetAccessSpecifier(source, types[1]))) return Util::none;
+        if (!Type::IsFirstASecond(ptrt, ptrself, source) && !Type::IsFirstASecond(types[1]->Decay(), self->Decay(), source)) return Util::none;
         return types;
     }
     std::shared_ptr<Expression> CallFunction(std::vector<std::shared_ptr<Expression>> args, Context c) override final {
@@ -84,7 +82,7 @@ struct rvalueconvertible : OverloadResolvable, Callable {
         // If pointer-is then use that, else go with value-is.
         auto ptrt = self->analyzer.GetPointerType(args[1]->GetType()->Decay());
         auto ptrself = self->analyzer.GetPointerType(self->Decay());
-        if (ptrt->IsA(ptrt, ptrself, GetAccessSpecifier(c.from, ptrt))) {
+        if (Type::IsFirstASecond(ptrt, ptrself, c.from)) {
             auto basety = args[1]->GetType()->Decay();
             if (!args[1]->GetType()->IsReference())
                 args[1] = Wide::Memory::MakeUnique<RvalueCast>(std::move(args[1]));
@@ -104,7 +102,7 @@ struct PointerComparableResolvable : OverloadResolvable, Callable {
         if (types[1] == self) return types;
         auto ptrt = a.GetPointerType(types[1]->Decay());
         auto ptrself = a.GetPointerType(self->Decay());
-        if (!ptrt->IsA(ptrt, ptrself, GetAccessSpecifier(source, ptrt))) return Util::none;
+        if (!Type::IsFirstASecond(ptrt, ptrself, source)) return Util::none;
         return types;
     }
     std::vector<std::shared_ptr<Expression>> AdjustArguments(std::vector<std::shared_ptr<Expression>> args, Context c) override final { return args; }

@@ -26,13 +26,6 @@ std::size_t NullType::size() {
 std::size_t NullType::alignment() {
     return analyzer.GetDataLayout().getPointerABIAlignment();
 }
-bool NullType::IsA(Type* self, Type* other, Lexer::Access access) {
-    if (dynamic_cast<PointerType*>(other))
-        return true;
-    if (dynamic_cast<PointerType*>(other->Decay()) && IsRvalueType(other))
-        return true;
-    return Type::IsA(self, other, access);
-}
 std::string NullType::explain() {
     return "null";
 }

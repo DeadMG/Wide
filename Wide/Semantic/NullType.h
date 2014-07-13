@@ -10,7 +10,6 @@ namespace Wide {
             llvm::Type* GetLLVMType(llvm::Module* module) override final;
             std::size_t size() override final;
             std::size_t alignment() override final;
-            bool IsA(Type* self, Type* other, Lexer::Access) override final;
             std::string explain() override final;
         };
     }
