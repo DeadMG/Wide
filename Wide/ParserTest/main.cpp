@@ -230,9 +230,8 @@ template<typename T, typename F> result test(T&& t, F&& f) {
     for (auto&& test : t) {
         bool failed = false;
         try {
-            Wide::Lexer::Arguments largs;
             auto contents = Wide::Range::StringRange(test.second.first);
-            Wide::Lexer::Invocation<decltype(contents)> lex(largs, contents, std::make_shared<std::string>(test.first));
+            Wide::Lexer::Invocation lex(contents, std::make_shared<std::string>(test.first));
             Wide::Parse::Parser parser(lex);
             failed = !f(parser, test.second);
         } catch (...) {
