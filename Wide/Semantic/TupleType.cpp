@@ -62,7 +62,7 @@ bool TupleType::IsSourceATarget(Type* source, Type* target, Type* context) {
         source_expr(Type* s) :source(s) {}
         Type* source;
         Type* GetType() { return source; }
-        llvm::Value* ComputeValue(CodegenContext& e) { return nullptr; }
+        llvm::Value* ComputeValue(CodegenContext& e) { assert(false); return nullptr; }
     };
     auto expr = std::make_shared<source_expr>(source);
     std::vector<Type*> targettypes;

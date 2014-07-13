@@ -260,8 +260,6 @@ void ClangTU::GenerateCodeAndLinkModule(llvm::Module* module, llvm::DataLayout& 
         if (auto condecl = llvm::dyn_cast<clang::CXXDestructorDecl>(decl)) {
             auto gd = clang::GlobalDecl(condecl, clang::CXXDtorType::Dtor_Complete);
             impl->GetCodegenModule(module).GetAddrOfGlobal(gd);
-            gd = clang::GlobalDecl(condecl, clang::CXXDtorType::Dtor_Deleting);
-            impl->GetCodegenModule(module).GetAddrOfGlobal(gd);
             continue;
         }
         if (auto funcdecl = llvm::dyn_cast<clang::FunctionDecl>(decl)) {

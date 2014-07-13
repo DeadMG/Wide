@@ -169,6 +169,7 @@ void Jit(Wide::Options::Clang& copts, std::string file) {
     std::string mod_ir;
     llvm::raw_string_ostream stream(mod_ir);
     module->print(stream, nullptr);
+    stream.flush();
     b.setAllocateGVsWithCode(false);
     b.setUseMCJIT(true);
     b.setEngineKind(llvm::EngineKind::JIT);

@@ -163,6 +163,10 @@ int main(int argc, char** argv)
             Wide::Driver::PrintUnusedFunctionsWarning(files, a);
             Wide::Driver::PrintNonvoidFalloffWarning(files, a);
         }, std::vector<std::string>(final_files.begin(), final_files.end()));
+        std::string mod_ir;
+        llvm::raw_string_ostream stream(mod_ir);
+        mod->print(stream, nullptr);
+        stream.flush();
         llvm::PassManager pm;
         std::unique_ptr<llvm::TargetMachine> targetmachine;
         llvm::TargetOptions targetopts;

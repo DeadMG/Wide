@@ -139,7 +139,9 @@ std::shared_ptr<Expression> Semantic::InterpretExpression(clang::Expr* expr, Cla
         if (auto vardecl = llvm::dyn_cast<clang::VarDecl>(decl)) {
             auto mangle = tu.MangleName(vardecl);
             return CreatePrimGlobal(a.GetLvalueType(a.GetClangType(tu, vardecl->getType())), [mangle](CodegenContext& con) {
-                return con.module->getGlobalVariable(mangle(con));
+                auto value = con.module->getGlobalVariable(mangle(con), true);
+                assert(value);
+                return value;
             });
         }
         std::string str;

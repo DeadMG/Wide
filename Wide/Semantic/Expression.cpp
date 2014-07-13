@@ -135,7 +135,10 @@ std::shared_ptr<Expression> Semantic::CreatePrimUnOp(std::shared_ptr<Expression>
             return ret;
         }
         llvm::Value* ComputeValue(CodegenContext& con) override final {
-            return action(src->GetValue(con), con);
+            auto val = action(src->GetValue(con), con);
+            if (ret != ret->analyzer.GetVoidType())
+                assert(val);
+            return val;
         }
     };
     assert(self);
@@ -153,7 +156,10 @@ std::shared_ptr<Expression> Semantic::CreatePrimGlobal(Type* ret, std::function<
             return ret;
         }
         llvm::Value* ComputeValue(CodegenContext& con) override final {
-            return action(con);
+            auto val = action(con);
+            if (ret != ret->analyzer.GetVoidType())
+                assert(val);
+            return val;
         }
     };
     return Wide::Memory::MakeUnique<PrimGlobalOp>(ret, func);
@@ -176,7 +182,10 @@ std::shared_ptr<Expression> Semantic::CreatePrimOp(std::shared_ptr<Expression> l
             // Strict order of evaluation.
             auto left = lhs->GetValue(con);
             auto right = rhs->GetValue(con);
-            return action(left, right, con);
+            auto val = action(left, right, con);
+            if (ret != ret->analyzer.GetVoidType())
+                assert(val);
+            return val;
         }
     };
     return Wide::Memory::MakeUnique<PrimBinOp>(std::move(lhs), std::move(rhs), ret, std::move(func));
@@ -211,10 +220,11 @@ llvm::Value* Expression::GetValue(CodegenContext& con) {
         auto ptrty = llvm::dyn_cast<llvm::PointerType>((*val)->getType());
         assert(ptrty);
         assert(ptrty->getElementType() == selfty);
-    } else if (selfty != llvm::Type::getVoidTy(con) || *val) {
+    } else if (selfty != llvm::Type::getVoidTy(con)) {
         // Extra variable because VS debugger typically won't load Type or Expression functions.
         assert((*val)->getType() == selfty);
-    }
+    } else
+        assert(!*val || (*val)->getType() == selfty);
     return *val;
 }
 
