@@ -899,7 +899,7 @@ void Function::ComputeReturnType() {
                 isa_rets.insert(ret);
         }
         if (isa_rets.size() == 1) {
-            ReturnType = *ret_types.begin();
+            ReturnType = *isa_rets.begin();
             OnChange();
             return;
         }

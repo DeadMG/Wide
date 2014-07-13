@@ -10,6 +10,7 @@ namespace Wide {
         class MemberDataPointer : public PrimitiveType {
             Type* source;
             Type* dest;
+            std::unique_ptr<OverloadResolvable> booltest;
         public:
             MemberDataPointer(Analyzer& a, Type* source, Type* dest);
             llvm::Type* GetLLVMType(llvm::Module* mod) override final;
@@ -17,6 +18,7 @@ namespace Wide {
             std::size_t alignment() override final;
             std::string explain() override final;            
             Wide::Util::optional<clang::QualType> GetClangType(ClangTU& TU) override final;
+            OverloadSet* CreateOperatorOverloadSet(Lexer::TokenType what, Lexer::Access access) override final;
         };
     }
 }

@@ -11,6 +11,7 @@ namespace Wide {
         class MemberFunctionPointer : public PrimitiveType {
             Type* source;
             FunctionType* dest;
+            std::unique_ptr<OverloadResolvable> booltest;
         public:
             MemberFunctionPointer(Analyzer& a, Type* source, FunctionType* dest);
             llvm::Type* GetLLVMType(llvm::Module* mod) override final;
@@ -18,6 +19,7 @@ namespace Wide {
             std::size_t alignment() override final;
             std::string explain() override final;
             Wide::Util::optional<clang::QualType> GetClangType(ClangTU& TU) override final;
+            OverloadSet* CreateOperatorOverloadSet(Lexer::TokenType what, Lexer::Access access) override final;
         };
     }
 }

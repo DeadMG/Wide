@@ -73,7 +73,7 @@ int main(int argc, char** argv) {
     if (!failed.empty())
         for(auto fail : failed)
             std::cout << "Failed: " << fail << "\n";
-    //Jit(clangopts, "JITSuccess/UserDefined/SimpleDynamicFunction.wide");
+    //Jit(clangopts, "JITSuccess/CPPInterop/DefaultArgumentConstructor.wide");
     //Compile(clangopts, "CompileFail/AddressOfNonLvalue/FunctionReturn.wide");
     if (input.count("break"))
         Wide::Util::DebugBreak();

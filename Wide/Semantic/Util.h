@@ -23,5 +23,6 @@ namespace Wide {
         class ClangTU;
         const std::unordered_map<Lexer::TokenType, std::pair<clang::OverloadedOperatorKind, clang::BinaryOperatorKind>>& GetTokenMappings();
         std::shared_ptr<Expression> InterpretExpression(clang::Expr* p, ClangTU& from, Context c, Analyzer& a);
+        std::shared_ptr<Expression> InterpretExpression(clang::Expr* p, ClangTU& from, Context c, Analyzer& a, std::unordered_map<clang::Expr*, std::shared_ptr<Expression>> exprmap);
     }
 }

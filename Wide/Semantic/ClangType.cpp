@@ -200,30 +200,25 @@ OverloadSet* ClangType::CreateOperatorOverloadSet(Lexer::TokenType name, Lexer::
         );        
     }
     if (name == &Lexer::TokenTypes::QuestionMark) {
-        auto get_bool_convert = [&](Type* t) {
-            clang::OpaqueValueExpr ope(clang::SourceLocation(), type.getNonLValueExprType(from->GetASTContext()), Semantic::GetKindOfType(t));
-            auto p = from->GetSema().PerformContextuallyConvertToBool(&ope);
+        auto get_bool_convert = [&, this](Type* t)-> std::unique_ptr<OverloadResolvable> {
+            auto ope = std::make_shared<clang::OpaqueValueExpr>(clang::SourceLocation(), type.getNonLValueExprType(from->GetASTContext()), Semantic::GetKindOfType(t));
+            auto p = from->GetSema().PerformContextuallyConvertToBool(ope.get());
             if (!p.get())
-                return analyzer.GetOverloadSet();
-            clang::CallExpr* callexpr;
-            if (auto ice = llvm::dyn_cast<clang::ImplicitCastExpr>(p.get())) {
-                callexpr = llvm::dyn_cast<clang::CallExpr>(ice->getSubExpr());
-            } else {
-                callexpr = llvm::dyn_cast<clang::CallExpr>(p.get());
-            }
-
-            auto fun = callexpr->getDirectCallee();
-            if (!fun) {
-                std::cout << "Fun was 0.\n";
-                llvm::raw_os_ostream out(std::cout);
-                callexpr->printPretty(out, 0, clang::PrintingPolicy(from->GetASTContext().getLangOpts()));
-                assert(false && "Attempted to contextually convert to bool, but Clang gave back an expression that did not involve a function call.");
-            }
-            std::unordered_set<clang::NamedDecl*> decls;
-            decls.insert(fun);
-            return analyzer.GetOverloadSet(decls, from, t);
+                return nullptr;
+            // We have some expression. Try to interpret it.
+            
+            auto base = p.get();
+            return MakeResolvable([this, ope, base](std::vector<std::shared_ptr<Expression>> exprs, Context c) {
+                return InterpretExpression(base, *from, c, analyzer, { { ope.get(), exprs[0] } });
+            }, { t });
         };
-        return analyzer.GetOverloadSet(get_bool_convert(analyzer.GetLvalueType(this)), get_bool_convert(analyzer.GetRvalueType(this)));
+        if (!boollvalue) boollvalue = get_bool_convert(analyzer.GetLvalueType(this));
+        if (!boolrvalue) boolrvalue = get_bool_convert(analyzer.GetRvalueType(this));
+       
+        return analyzer.GetOverloadSet(
+            *boollvalue ? analyzer.GetOverloadSet(boollvalue->get()) : analyzer.GetOverloadSet(), 
+            *boollvalue ? analyzer.GetOverloadSet(boolrvalue->get()) : analyzer.GetOverloadSet()
+        );
     }
     auto opkind = GetTokenMappings().at(name).first;
     clang::LookupResult lr(

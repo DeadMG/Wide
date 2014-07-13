@@ -75,8 +75,9 @@ const std::unordered_map<Lexer::TokenType, std::pair<clang::OverloadedOperatorKi
     return BinaryTokenMapping;
 }
 
-std::shared_ptr<Expression> Semantic::InterpretExpression(clang::Expr* expr, ClangTU& tu, Context c, Analyzer& a) {
-    // Fun...
+std::shared_ptr<Expression> Semantic::InterpretExpression(clang::Expr* expr, ClangTU& tu, Context c, Analyzer& a, std::unordered_map<clang::Expr*, std::shared_ptr<Expression>> exprmap) {
+    if (exprmap.find(expr) != exprmap.end())
+        return exprmap[expr];
     llvm::APSInt out;
     if (expr->EvaluateAsInt(out, tu.GetASTContext())) {
         if (out.getBitWidth() == 1)
@@ -85,8 +86,8 @@ std::shared_ptr<Expression> Semantic::InterpretExpression(clang::Expr* expr, Cla
         return Wide::Memory::MakeUnique<Integer>(out, a);
     }
     if (auto binop = llvm::dyn_cast<clang::BinaryOperator>(expr)) {
-        auto lhs = InterpretExpression(binop->getLHS(), tu, c, a);
-        auto rhs = InterpretExpression(binop->getRHS(), tu, c, a);
+        auto lhs = InterpretExpression(binop->getLHS(), tu, c, a, exprmap);
+        auto rhs = InterpretExpression(binop->getRHS(), tu, c, a, exprmap);
         auto code = binop->getOpcode();
         for (auto pair : GetTokenMappings()) {
             if (pair.second.second == code) {
@@ -99,12 +100,12 @@ std::shared_ptr<Expression> Semantic::InterpretExpression(clang::Expr* expr, Cla
         throw BadMacroExpression(c.where, str);
     }
     if (auto call = llvm::dyn_cast<clang::CallExpr>(expr)) {
-        auto func = InterpretExpression(call->getCallee(), tu, c, a);
+        auto func = InterpretExpression(call->getCallee(), tu, c, a, exprmap);
         std::vector<std::shared_ptr<Expression>> args;
         for (auto it = call->arg_begin(); it != call->arg_end(); ++it) {
             if (llvm::dyn_cast<clang::CXXDefaultArgExpr>(*it))
                 break;
-            args.push_back(InterpretExpression(expr, tu, c, a));
+            args.push_back(InterpretExpression(expr, tu, c, a, exprmap));
         }
         return func->GetType()->BuildCall(std::move(func), std::move(args), c);
     }
@@ -117,12 +118,12 @@ std::shared_ptr<Expression> Semantic::InterpretExpression(clang::Expr* expr, Cla
         for (auto it = con->arg_begin(); it != con->arg_end(); ++it) {
             if (llvm::dyn_cast<clang::CXXDefaultArgExpr>(*it))
                 break;
-            args.push_back(InterpretExpression(*it, tu, c, a));
+            args.push_back(InterpretExpression(*it, tu, c, a, exprmap));
         }
         return ty->BuildRvalueConstruction(std::move(args), c);
     }
     if (auto paren = llvm::dyn_cast<clang::ParenExpr>(expr)) {
-        return InterpretExpression(paren->getSubExpr(), tu, c, a);
+        return InterpretExpression(paren->getSubExpr(), tu, c, a, exprmap);
     }
     if (auto str = llvm::dyn_cast<clang::StringLiteral>(expr)) {
         return Wide::Memory::MakeUnique<String>(str->getString(), a);
@@ -147,18 +148,42 @@ std::shared_ptr<Expression> Semantic::InterpretExpression(clang::Expr* expr, Cla
         throw BadMacroExpression(c.where, str);
     }
     if (auto temp = llvm::dyn_cast<clang::MaterializeTemporaryExpr>(expr)) {
-        return InterpretExpression(temp->GetTemporaryExpr(), tu, c, a);
+        return InterpretExpression(temp->GetTemporaryExpr(), tu, c, a, exprmap);
     }
     if (auto cast = llvm::dyn_cast<clang::ImplicitCastExpr>(expr)) {
         // C++ treats string lits as pointer to character so we need to special-case here.
         auto castty = a.GetClangType(tu, cast->getType());
-        auto castexpr = InterpretExpression(cast->getSubExpr(), tu, c, a);
+        auto castexpr = InterpretExpression(cast->getSubExpr(), tu, c, a, exprmap);
         if (castty == a.GetPointerType(a.GetIntegralType(8, true)) && dynamic_cast<StringType*>(castexpr->GetType()->Decay()))
             return castexpr;
+        if (castty == a.GetBooleanType()) {
+            return Type::BuildBooleanConversion(castexpr, c);
+        }
         return castty->BuildRvalueConstruction({ castexpr }, c);
+    }
+    if (auto mem = llvm::dyn_cast<clang::MemberExpr>(expr)) {
+        auto object = InterpretExpression(mem->getBase(), tu, c, a, exprmap);
+        auto decl = mem->getMemberDecl();
+        auto name = mem->getMemberNameInfo().getAsString();
+        if (auto vardecl = llvm::dyn_cast<clang::VarDecl>(decl)) {
+            return object->GetType()->AccessMember(object, name, c);
+        }
+        if (auto convdecl = llvm::dyn_cast<clang::CXXConversionDecl>(decl)) {
+            std::unordered_set<clang::NamedDecl*> decls;
+            decls.insert(convdecl);
+            return a.GetOverloadSet(decls, &tu, object->GetType())->BuildValueConstruction({ object }, c);
+        }
+        if (auto funcdecl = llvm::dyn_cast<clang::FunctionDecl>(decl)) {
+            return object->GetType()->AccessMember(object, name, c);
+        }
+        // Fuck
     }
     std::string str;
     llvm::raw_string_ostream ostr(str);
     expr->dump(ostr, tu.GetASTContext().getSourceManager());
+    ostr.flush();
     throw BadMacroExpression(c.where, str);
+}
+std::shared_ptr<Expression> Semantic::InterpretExpression(clang::Expr* expr, ClangTU& tu, Context c, Analyzer& a) {
+    return InterpretExpression(expr, tu, c, a, std::unordered_map<clang::Expr*, std::shared_ptr<Expression>>());
 }

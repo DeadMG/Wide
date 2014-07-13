@@ -1,5 +1,6 @@
 #include <Wide/Semantic/MemberDataPointerType.h>
 #include <Wide/Semantic/Analyzer.h>
+#include <Wide/Semantic/Expression.h>
 
 #pragma warning(push, 0)
 #include <llvm/IR/DataLayout.h>
@@ -29,4 +30,16 @@ Wide::Util::optional<clang::QualType> MemberDataPointer::GetClangType(ClangTU& T
     auto destty = dest->GetClangType(TU);
     if (!srcty || !destty) return Util::none;
     return TU.GetASTContext().getMemberPointerType(*destty, srcty->getTypePtr());
+}
+OverloadSet* MemberDataPointer::CreateOperatorOverloadSet(Lexer::TokenType what, Lexer::Access access) {
+    if (what != &Lexer::TokenTypes::QuestionMark) return analyzer.GetOverloadSet();
+    if (access != Lexer::Access::Public) return AccessMember(what, Lexer::Access::Public);
+    if (!booltest) 
+        booltest = MakeResolvable([](std::vector<std::shared_ptr<Expression>> args, Context c) {
+            return CreatePrimUnOp(std::move(args[0]), c.from->analyzer.GetBooleanType(), [](llvm::Value* val, CodegenContext& con) {
+                auto ptrbits = llvm::DataLayout(con.module->getDataLayout()).getPointerSizeInBits();
+                return con->CreateZExt(con->CreateICmpNE(val, llvm::ConstantInt::get(llvm::IntegerType::get(con, ptrbits), uint64_t(-1), true)), llvm::IntegerType::getInt8Ty(con));
+            });
+        }, { this });
+    return analyzer.GetOverloadSet(booltest.get());
 }

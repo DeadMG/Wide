@@ -25,6 +25,9 @@ namespace Wide {
             bool ProcessedAssignmentOperators = false;
             Wide::Util::optional<std::vector<Type*>> Bases;
 
+            Wide::Util::optional<std::unique_ptr<OverloadResolvable>> boollvalue;
+            Wide::Util::optional<std::unique_ptr<OverloadResolvable>> boolrvalue;
+
             Type* GetSelfAsType() override final { return this; }
             std::vector<std::pair<Type*, unsigned>> GetBasesAndOffsets() override final;
             Type* GetVirtualPointerType() override final;
