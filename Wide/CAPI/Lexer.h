@@ -42,14 +42,12 @@ namespace CEquivalents {
             : begin(first), end(last) {}
         Range(Wide::Lexer::Range r)
             : begin(r.begin), end(r.end) {}
-        Position begin, end;
-        
+        Position begin, end;        
     };
 
     struct LexerBody {
         LexerBody(LexerRange r, std::shared_ptr<std::string> what)
-            : inv(args, r, std::move(what)) {}
-        Wide::Lexer::Arguments args;
-        Wide::Lexer::Invocation<LexerRange> inv;
+            : inv(r, std::move(what)) {}
+        Wide::Lexer::Invocation inv;
     };
 }

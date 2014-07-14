@@ -85,94 +85,13 @@ const std::string TokenTypes::Default = "default";
 
 Lexer::Invocation::Invocation(std::function<Wide::Util::optional<char>()> range, std::shared_ptr<std::string> name) 
 : r(range), current_position(name) {
-    singles['+'] = &TokenTypes::Plus;
-    singles['.'] = &TokenTypes::Dot;
-    singles['-'] = &TokenTypes::Minus;
-    singles[','] = &TokenTypes::Comma;
-    singles[';'] = &TokenTypes::Semicolon;
-    singles['~'] = &TokenTypes::Negate;
-    singles[')'] = &TokenTypes::CloseBracket;
-    singles['('] = &TokenTypes::OpenBracket;
-    singles[']'] = &TokenTypes::CloseSquareBracket;
-    singles['['] = &TokenTypes::OpenSquareBracket;
-    singles['{'] = &TokenTypes::OpenCurlyBracket;
-    singles['}'] = &TokenTypes::CloseCurlyBracket;
-    singles['>'] = &TokenTypes::GT;
-    singles['<'] = &TokenTypes::LT;
-    singles['&'] = &TokenTypes::And;
-    singles['|'] = &TokenTypes::Or;
-    singles['*'] = &TokenTypes::Star;
-    singles['%'] = &TokenTypes::Modulo;
-    singles['='] = &TokenTypes::Assignment;
-    singles['!'] = &TokenTypes::Exclaim;
-    singles['/'] = &TokenTypes::Divide;
-    singles['^'] = &TokenTypes::Xor;
-    singles[':'] = &TokenTypes::Colon;
-    singles['?'] = &TokenTypes::QuestionMark;
-
-    doubles['+']['+'] = &TokenTypes::Increment;
-    doubles['-']['-'] = &TokenTypes::Decrement;
-    doubles['>']['>'] = &TokenTypes::RightShift;
-    doubles['<']['<'] = &TokenTypes::LeftShift;
-    doubles['-']['='] = &TokenTypes::MinusAssign;
-    doubles['+']['='] = &TokenTypes::PlusAssign;
-    doubles['-']['>'] = &TokenTypes::PointerAccess;
-    doubles['&']['='] = &TokenTypes::AndAssign;
-    doubles['|']['='] = &TokenTypes::OrAssign;
-    doubles['*']['='] = &TokenTypes::MulAssign;
-    doubles['%']['='] = &TokenTypes::ModAssign;
-    doubles['=']['='] = &TokenTypes::EqCmp;
-    doubles['~']['='] = &TokenTypes::NotEqCmp;
-    doubles['/']['='] = &TokenTypes::DivAssign;
-    doubles['^']['='] = &TokenTypes::XorAssign;
-    doubles['<']['='] = &TokenTypes::LTE;
-    doubles['>']['='] = &TokenTypes::GTE;
-    doubles[':']['='] = &TokenTypes::VarCreate;
-    doubles['=']['>'] = &TokenTypes::Lambda;
-
-    triples['>']['>']['='] = &TokenTypes::RightShiftAssign;
-    triples['<']['<']['='] = &TokenTypes::LeftShiftAssign;
-    triples['.']['.']['.'] = &TokenTypes::Ellipsis;
-
-    whitespace.insert('\r');
-    whitespace.insert('\t');
-    whitespace.insert('\n');
-    whitespace.insert(' ');
-
-    keywords["return"] = &TokenTypes::Return;
-    keywords["using"] = &TokenTypes::Using;
-    keywords["module"] = &TokenTypes::Module;
-    keywords["if"] = &TokenTypes::If;
-    keywords["else"] = &TokenTypes::Else;
-    keywords["while"] = &TokenTypes::While;
-    keywords["this"] = &TokenTypes::This;
-    keywords["type"] = &TokenTypes::Type;
-    keywords["operator"] = &TokenTypes::Operator;
-    keywords["function"] = &TokenTypes::Function;
-    keywords["break"] = &TokenTypes::Break;
-    keywords["continue"] = &TokenTypes::Continue;
-    keywords["concept"] = &TokenTypes::Concept;
-    keywords["template"] = &TokenTypes::Template;
-    keywords["concept_map"] = &TokenTypes::ConceptMap;
-    keywords["public"] = &TokenTypes::Public;
-    keywords["private"] = &TokenTypes::Private;
-    keywords["protected"] = &TokenTypes::Protected;
-    keywords["dynamic"] = &TokenTypes::Dynamic;
-    keywords["decltype"] = &TokenTypes::Decltype;
-    keywords["true"] = &TokenTypes::True;
-    keywords["false"] = &TokenTypes::False;
-    keywords["typeid"] = &TokenTypes::Typeid;
-    keywords["dynamic_cast"] = &TokenTypes::DynamicCast;
-    keywords["try"] = &TokenTypes::Try;
-    keywords["catch"] = &TokenTypes::Catch;
-    keywords["throw"] = &TokenTypes::Throw;
-    keywords["delete"] = &TokenTypes::Delete;
-    keywords["abstract"] = &TokenTypes::Abstract;
-    keywords["default"] = &TokenTypes::Default;
-
-    for (auto&& x : keywords)
-        KeywordTypes.insert(x.second);
-
+    singles = default_singles;
+    doubles = default_doubles;
+    triples = default_triples;
+    whitespace = default_whitespace;
+    keywords = default_keywords;
+    KeywordTypes = default_keyword_types;
+    
     OnComment = [](Range) {};
 
     OnError = [](Position, Failure, Invocation* self) {
@@ -307,3 +226,183 @@ Wide::Util::optional<Lexer::Token> Invocation::operator()() {
     }
     return Wide::Lexer::Token(lastpos, result, variable_length_value);
 }
+std::string Lexer::Invocation::escape(std::string val) {
+    std::string result;
+    for (auto begin = val.begin(); begin != val.end(); ++begin) {
+        if (*begin == '\\' && begin + 1 != val.end()) {
+            switch (*(begin + 1)) {
+            case 'n':
+                result.push_back('\n');
+                ++begin;
+                continue;
+            case 'r':
+                result.push_back('\r');
+                ++begin;
+                continue;
+            case 't':
+                result.push_back('\t');
+                ++begin;
+                continue;
+            case '"':
+                result.push_back('\"');
+                ++begin;
+                continue;
+            }
+        }
+        result.push_back(*begin);
+    }
+    return result;
+}
+Wide::Util::optional<char> Lexer::Invocation::get() {
+    if (!putback.empty()) {
+        auto out = putback.back();
+        putback.pop_back();
+        current_position = out.second;
+        return out.first;
+    }
+    auto val = r();
+    if (val) {
+        switch (*val) {
+        case '\n':
+            current_position.column = 1;
+            current_position.line++;
+            break;
+        case '\t':
+            current_position.column += tabsize;
+            break;
+        default:
+            current_position.column++;
+        }
+        current_position.offset++;
+    }
+    return val;
+}
+
+Wide::Util::optional<Lexer::Token> Lexer::Invocation::ParseCComments(Position start) {
+    // Already saw /*
+    unsigned num = 1;
+    while (auto val = get()) {
+        if (*val == '*') {
+            val = get();
+            if (!val) break;
+            if (*val == '/') {
+                --num;
+                if (num == 0)
+                    break;
+            }
+        }
+        if (*val == '/') {
+            val = get();
+            if (!val) break;
+            if (*val == '*')
+                ++num;
+        }
+    }
+    if (num == 0) {
+        OnComment(start + current_position);
+        return (*this)();
+    }
+    return OnError(start, Failure::UnterminatedComment, this);
+}
+
+const std::unordered_map<char, Lexer::TokenType> Lexer::default_singles = {
+    { '+', &TokenTypes::Plus },
+    { '.', &TokenTypes::Dot },
+    { '-', &TokenTypes::Minus },
+    { ',', &TokenTypes::Comma },
+    { ';', &TokenTypes::Semicolon },
+    { '~', &TokenTypes::Negate },
+    { ')', &TokenTypes::CloseBracket },
+    { '(', &TokenTypes::OpenBracket },
+    { ']', &TokenTypes::CloseSquareBracket },
+    { '[', &TokenTypes::OpenSquareBracket },
+    { '{', &TokenTypes::OpenCurlyBracket },
+    { '}', &TokenTypes::CloseCurlyBracket },
+    { '>', &TokenTypes::GT },
+    { '<', &TokenTypes::LT },
+    { '&', &TokenTypes::And },
+    { '|', &TokenTypes::Or },
+    { '*', &TokenTypes::Star },
+    { '%', &TokenTypes::Modulo },
+    { '=', &TokenTypes::Assignment },
+    { '!', &TokenTypes::Exclaim },
+    { '/', &TokenTypes::Divide },
+    { '^', &TokenTypes::Xor },
+    { ':', &TokenTypes::Colon },
+    { '?', &TokenTypes::QuestionMark },
+};
+
+const std::unordered_map<char, std::unordered_map<char, Lexer::TokenType>> Lexer::default_doubles = {
+    { '+', { { '+', &TokenTypes::Increment } } },
+    { '-', { { '-', &TokenTypes::Decrement } } },
+    { '>', { { '>', &TokenTypes::RightShift } } },
+    { '<', { { '<', &TokenTypes::LeftShift } } },
+    { '-', { { '=', &TokenTypes::MinusAssign } } },
+    { '+', { { '=', &TokenTypes::PlusAssign } } },
+    { '-', { { '>', &TokenTypes::PointerAccess } } },
+    { '&', { { '=', &TokenTypes::AndAssign } } },
+    { '|', { { '=', &TokenTypes::OrAssign } } },
+    { '*', { { '=', &TokenTypes::MulAssign } } },
+    { '%', { { '=', &TokenTypes::ModAssign } } },
+    { '=', { { '=', &TokenTypes::EqCmp } } },
+    { '~', { { '=', &TokenTypes::NotEqCmp } } },
+    { '/', { { '=', &TokenTypes::DivAssign } } },
+    { '^', { { '=', &TokenTypes::XorAssign } } },
+    { '<', { { '=', &TokenTypes::LTE } } },
+    { '>', { { '=', &TokenTypes::GTE } } },
+    { ':', { { '=', &TokenTypes::VarCreate } } },
+    { '=', { { '>', &TokenTypes::Lambda } } },
+}; 
+
+const std::unordered_map<char, std::unordered_map<char, std::unordered_map<char, Lexer::TokenType>>> Lexer::default_triples = {
+    { '>', { { '>', { { '=', &TokenTypes::RightShiftAssign } } } } },
+    { '<', { { '<', { { '=', &TokenTypes::LeftShiftAssign } } } } },
+    { '.', { { '.', { { '.', &TokenTypes::Ellipsis } } } } },
+};
+
+const std::unordered_set<char> Lexer::default_whitespace = {
+    '\r',
+    '\t',
+    '\n',
+    ' ',
+};
+
+const std::unordered_map<std::string, Lexer::TokenType> Lexer::default_keywords = {
+    { "return", &TokenTypes::Return },
+    { "using", &TokenTypes::Using },
+    { "module", &TokenTypes::Module },
+    { "if", &TokenTypes::If },
+    { "else", &TokenTypes::Else },
+    { "while", &TokenTypes::While },
+    { "this", &TokenTypes::This },
+    { "type", &TokenTypes::Type },
+    { "operator", &TokenTypes::Operator },
+    { "function", &TokenTypes::Function },
+    { "break", &TokenTypes::Break },
+    { "continue", &TokenTypes::Continue },
+    { "concept", &TokenTypes::Concept },
+    { "template", &TokenTypes::Template },
+    { "concept_map", &TokenTypes::ConceptMap },
+    { "public", &TokenTypes::Public },
+    { "private", &TokenTypes::Private },
+    { "protected", &TokenTypes::Protected },
+    { "dynamic", &TokenTypes::Dynamic },
+    { "decltype", &TokenTypes::Decltype },
+    { "true", &TokenTypes::True },
+    { "false", &TokenTypes::False },
+    { "typeid", &TokenTypes::Typeid },
+    { "dynamic_cast", &TokenTypes::DynamicCast },
+    { "try", &TokenTypes::Try },
+    { "catch", &TokenTypes::Catch },
+    { "throw", &TokenTypes::Throw },
+    { "delete", &TokenTypes::Delete },
+    { "abstract", &TokenTypes::Abstract },
+    { "default", &TokenTypes::Default },
+};
+
+const std::unordered_set<Lexer::TokenType> Lexer::default_keyword_types = [] {
+    std::unordered_set<Lexer::TokenType> KeywordTypes;
+    for (auto&& x : default_keywords)
+        KeywordTypes.insert(x.second);
+    return KeywordTypes;
+}();

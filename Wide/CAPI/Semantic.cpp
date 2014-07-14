@@ -9,8 +9,6 @@
 #include <Wide/Semantic/OverloadSet.h>
 #include <Wide/Semantic/Type.h>
 #include <Wide/Semantic/ConstructorType.h>
-#include <Wide/Util/Driver/NullCodeGenerator.h>
-#include <Wide/Util/Test/Test.h>
 #include <Wide/Semantic/FunctionType.h>
 #include <Wide/Util/DebugUtilities.h>
 #pragma warning(push, 0)
@@ -58,10 +56,9 @@ extern "C" DLLEXPORT void AnalyzeWide(
     std::add_pointer<void(CEquivalents::Range, void* context)>::type paramhighlight,
     void* context
 ) {
-    Wide::Driver::NullGenerator mockgen(clangopts->TargetOptions.Triple);
-    Wide::Semantic::Analyzer a(*clangopts, mockgen, comb->combiner.GetGlobalModule());
+    Wide::Semantic::Analyzer a(*clangopts, comb->combiner.GetGlobalModule());
     a.QuickInfo = [&](Wide::Lexer::Range r, Wide::Semantic::Type* t) {
-        std::string content = t->explain(a);
+        std::string content = t->explain();
         ContextType cty = ContextType::Unknown;
         if (dynamic_cast<Wide::Semantic::Module*>(t->Decay()))
             cty = ContextType::Module;
@@ -71,15 +68,15 @@ extern "C" DLLEXPORT void AnalyzeWide(
             cty = ContextType::OverloadSet;
         if (auto func = dynamic_cast<Wide::Semantic::Function*>(t->Decay())) {
             cty = ContextType::OverloadSet;
-            if (func->GetContext(a) != a.GetGlobalModule())
-                content = func->GetContext(a)->explain(a) + ".";
+            if (func->GetContext() != a.GetGlobalModule())
+                content = func->GetContext()->explain() + ".";
             else
                 content = "";
             content += func->GetSourceName();
-            auto args = func->GetSignature(a)->GetArguments();
+            auto args = func->GetSignature()->GetArguments();
             content += "(";
             for (auto arg : args) {
-                content += arg->explain(a);
+                content += arg->explain();
                 if (arg != args.back())
                     content += ", ";
             }
@@ -90,7 +87,5 @@ extern "C" DLLEXPORT void AnalyzeWide(
     a.ParameterHighlight = [&](Wide::Lexer::Range r) {
         paramhighlight(r, context);
     };
-    Wide::Test::Test(a, nullptr, comb->combiner.GetGlobalModule(), [&](Wide::Semantic::Error& e) { 
-            error(e.location(), e.what(), context); 
-    }, mockgen);
+    Wide::Semantic::AnalyzeExportedFunctions(a);
 }
