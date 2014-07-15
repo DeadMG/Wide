@@ -750,7 +750,6 @@ Analyzer::Analyzer(const Options::Clang& opts, const Parse::Module* GlobalModule
     });
 }
 
-
 ClangTU* Analyzer::LoadCPPHeader(std::string file, Lexer::Range where) {
     if (headers.find(file) != headers.end())
         return &headers.find(file)->second;

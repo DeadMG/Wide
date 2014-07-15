@@ -74,7 +74,7 @@ int main(int argc, char** argv) {
         for(auto fail : failed)
             std::cout << "Failed: " << fail << "\n";
     //Jit(clangopts, "JITSuccess/CPPInterop/ReferenceConstGlobal.wide");
-    //Compile(clangopts, "CompileFail/AddressOfNonLvalue/FunctionReturn.wide");
+    //Compile(clangopts, "CompileFail/AddressOfNonLvalue/FunctionReturnComplexValue.wide");
     if (input.count("break"))
         Wide::Util::DebugBreak();
     return total_failed != 0;

@@ -43,10 +43,10 @@ path.join = function(first, second, ...)
     elseif first and not second then
         return first
     end
-    error("Must provide at least one argument to path.join!")
+    error("Must provide at least one argument to path.join!\n" .. debug.traceback())
 end
 
-function AddClangDependencies(conf)
+function AddClangDependencies(plat, conf)
     local llvmconf = (os.is("windows") and conf) or _OPTIONS["llvm-conf"] or conf
     local llvmbuild = _OPTIONS["llvm-build"] or "build"
     local llvmincludes = {
@@ -61,6 +61,9 @@ function AddClangDependencies(conf)
             includedirs({ path.join(_OPTIONS["llvm-path"], v) })
         end
         if os.is("windows") then
+            if plat == 'x64' then
+                llvmbuild = path.join(llvmbuild, 'x64')
+            end
             libdirs({ path.join(_OPTIONS["llvm-path"], llvmbuild, "lib", llvmconf) })
         else
             libdirs({ path.join(_OPTIONS["llvm-path"], llvmbuild, llvmconf, "lib") })
@@ -192,19 +195,20 @@ function AddClangDependencies(conf)
         return
     end
 end
-function AddBoostDependencies(conf)
+function AddBoostDependencies(plat, conf)
     local boostincludes = {
         ""
     }
     for k, v in pairs(boostincludes) do
         includedirs({ path.join(_OPTIONS["boost-path"], v) })
     end
-    local boostlibs = {
-        "stage/lib"
-    }
-    for k, v in pairs(boostlibs) do
-        libdirs({ path.join(_OPTIONS["boost-path"], v) })
+    local boostlib = "stage"
+    if os.is("windows") then
+        if plat == "x64" then
+            boostlib = path.join(boostlib, plat)
+        end
     end
+    libdirs({ path.join(_OPTIONS["boost-path"], boostlib, 'lib') })
     if not os.is("windows") then
         links { "boost_program_options" }
     end
@@ -235,8 +239,8 @@ WideProjects = {
             kind ("ConsoleApp")
         end,
         configure = function(plat, conf)
-            AddClangDependencies(conf)
-            AddBoostDependencies(conf)
+            AddClangDependencies(plat, conf)
+            AddBoostDependencies(plat, conf)
             if os.is("windows") then
                 postbuildcommands ({ "copy /Y \"$(TargetDir)$(TargetName).exe\" \"$(SolutionDir)Deployment/Wide.exe\"" })
             else
@@ -249,8 +253,8 @@ WideProjects = {
             return CheckLLVM(proj) and CheckBoost(proj)
         end, 
         configure = function(plat, conf)
-            AddClangDependencies(conf)
-            AddBoostDependencies(conf)
+            AddClangDependencies(plat, conf)
+            AddBoostDependencies(plat, conf)
         end
     },
     Semantic = { 
@@ -258,8 +262,8 @@ WideProjects = {
             return CheckLLVM(proj) and CheckBoost(proj)
         end, 
         configure = function(plat, conf)
-            AddClangDependencies(conf)
-            AddBoostDependencies(conf)
+            AddClangDependencies(plat, conf)
+            AddBoostDependencies(plat, conf)
         end,
         action = function()
             links { "Util" }
@@ -270,7 +274,7 @@ WideProjects = {
             return CheckBoost(proj)
         end, 
         configure = function(plat, conf)
-            AddBoostDependencies(conf)
+            AddBoostDependencies(plat, conf)
         end,
         action = function()
             links { "Util" }
@@ -286,8 +290,8 @@ WideProjects = {
             return CheckLLVM(proj) and CheckBoost(proj)
         end,
         configure = function(plat, conf)
-            AddClangDependencies(conf)
-            AddBoostDependencies(conf)
+            AddClangDependencies(plat, conf)
+            AddBoostDependencies(plat, conf)
         end, 
         action = function()
             kind "SharedLib"

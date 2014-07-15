@@ -333,25 +333,19 @@ const std::unordered_map<char, Lexer::TokenType> Lexer::default_singles = {
 };
 
 const std::unordered_map<char, std::unordered_map<char, Lexer::TokenType>> Lexer::default_doubles = {
-    { '+', { { '+', &TokenTypes::Increment } } },
-    { '-', { { '-', &TokenTypes::Decrement } } },
-    { '>', { { '>', &TokenTypes::RightShift } } },
-    { '<', { { '<', &TokenTypes::LeftShift } } },
-    { '-', { { '=', &TokenTypes::MinusAssign } } },
-    { '+', { { '=', &TokenTypes::PlusAssign } } },
-    { '-', { { '>', &TokenTypes::PointerAccess } } },
+    { '-', { { '-', &TokenTypes::Decrement }, { '>', &TokenTypes::PointerAccess }, { '=', &TokenTypes::MinusAssign } } },
+    { '+', { { '=', &TokenTypes::PlusAssign }, { '+', &TokenTypes::Increment } } },
+    { '>', { { '=', &TokenTypes::GTE }, { '>', &TokenTypes::RightShift } } },
+    { '<', { { '<', &TokenTypes::LeftShift }, { '=', &TokenTypes::LTE } } },
+    { '=', { { '=', &TokenTypes::EqCmp }, { '>', &TokenTypes::Lambda } } },
     { '&', { { '=', &TokenTypes::AndAssign } } },
     { '|', { { '=', &TokenTypes::OrAssign } } },
     { '*', { { '=', &TokenTypes::MulAssign } } },
     { '%', { { '=', &TokenTypes::ModAssign } } },
-    { '=', { { '=', &TokenTypes::EqCmp } } },
     { '~', { { '=', &TokenTypes::NotEqCmp } } },
     { '/', { { '=', &TokenTypes::DivAssign } } },
     { '^', { { '=', &TokenTypes::XorAssign } } },
-    { '<', { { '=', &TokenTypes::LTE } } },
-    { '>', { { '=', &TokenTypes::GTE } } },
     { ':', { { '=', &TokenTypes::VarCreate } } },
-    { '=', { { '>', &TokenTypes::Lambda } } },
 }; 
 
 const std::unordered_map<char, std::unordered_map<char, std::unordered_map<char, Lexer::TokenType>>> Lexer::default_triples = {
