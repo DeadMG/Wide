@@ -22,7 +22,7 @@
 #include <llvm/IR/DataLayout.h>
 #include <clang/Sema/Sema.h>
 #include <clang/Sema/Overload.h>
-
+#include <clang/Sema/Template.h>
 #pragma warning(pop)
 
 using namespace Wide;
@@ -128,8 +128,10 @@ struct cppcallable : public Callable {
                 if (fun->isCXXInstanceMember())
                     argnum--;
                 auto paramdecl = fun->getParamDecl(argnum);
-                if (!paramdecl->hasDefaultArg())
-                    assert(false);
+                if (paramdecl->hasUninstantiatedDefaultArg()) {
+                    auto list = fun->getTemplateSpecializationArgs();
+                    from->GetSema().SetParamDefaultArgument(paramdecl, from->GetSema().SubstInitializer(paramdecl->getUninstantiatedDefaultArg(), from->GetSema().getTemplateInstantiationArgs(fun), paramdecl->isDirectInit()).get(), clang::SourceLocation());
+                }
                 args.push_back(InterpretExpression(paramdecl->getDefaultArg(), *from, { source, c.where }, source->analyzer));
             }
         }

@@ -1,0 +1,4 @@
+using header := cpp.literal("template<typename T> bool f(T t, T arg = T()) { return t && !arg; }");
+Main() {
+    return header.f(true);
+}
