@@ -406,7 +406,12 @@ void Function::ThrowStatement::GenerateCode(CodegenContext& con) {
     }
     // If we got here then creating the exception value didn't throw. Don't destroy it now.
     con.EraseDestructor(except_memory->destructor);
-    llvm::Value* args[] = { con->CreatePointerCast(value, con.GetInt8PtrTy()), ty->GetRTTI(con), con->CreatePointerCast(ty->GetDestructorFunction(con), con.GetInt8PtrTy()) };
+    llvm::Value* destructor;
+    if (ty->IsTriviallyDestructible()) {
+        destructor = llvm::Constant::getNullValue(con.GetInt8PtrTy());
+    } else
+        destructor = con->CreatePointerCast(ty->GetDestructorFunction(con), con.GetInt8PtrTy());
+    llvm::Value* args[] = { con->CreatePointerCast(value, con.GetInt8PtrTy()), ty->GetRTTI(con), destructor };
     // Do we have an existing handler to go to? If we do, then first land, then branch directly to it.
     // Else, kill everything and GTFO this function and let the EH routines worry about it.
     if (con.HasDestructors() || con.EHHandler)
@@ -702,15 +707,18 @@ Function::Function(std::vector<Type*> args, const Parse::FunctionBase* astfun, A
     if (auto fun = dynamic_cast<const Parse::Function*>(astfun)) {
         if (fun->explicit_return) {
             auto expr = analyzer.AnalyzeExpression(this, fun->explicit_return);
-            if (auto con = dynamic_cast<ConstructorType*>(expr->GetType()->Decay()))
+            if (auto con = dynamic_cast<ConstructorType*>(expr->GetType()->Decay())) {
                 ExplicitReturnType = con->GetConstructedType();
-            else
+                ReturnType = *ExplicitReturnType;
+            } else
                 throw NotAType(expr->GetType(), fun->explicit_return->location);
         }
     }
     // Constructors and destructors, we know in advance to return void.
-    if (dynamic_cast<const Parse::Constructor*>(fun) || dynamic_cast<const Parse::Destructor*>(fun))
+    if (dynamic_cast<const Parse::Constructor*>(fun) || dynamic_cast<const Parse::Destructor*>(fun)) {
         ExplicitReturnType = analyzer.GetVoidType();
+        ReturnType = *ExplicitReturnType;
+    }
 }
 
 Wide::Util::optional<clang::QualType> Function::GetClangType(ClangTU& where) {

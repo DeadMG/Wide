@@ -1,0 +1,10 @@
+type t {
+    var := std.string;
+    var2 := "World!";
+}
+Main() {
+    local := t();
+    local.var = "Hello, ";
+    std.cout << local.var << local.var2;
+    return true;
+}

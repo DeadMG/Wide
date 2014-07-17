@@ -185,13 +185,14 @@ namespace Wide {
             std::unordered_map<std::vector<std::pair<Type*, unsigned>>, std::shared_ptr<Expression>, VectorTypeHasher> ComputedVTables;
             Wide::Util::optional<VTableLayout> VtableLayout;
             Wide::Util::optional<VTableLayout> PrimaryVtableLayout;
-            llvm::Function* DestructorFunction = nullptr;
 
             VTableLayout ComputeVTableLayout();
             std::shared_ptr<Expression> CreateVTable(std::vector<std::pair<Type*, unsigned>> path);
             std::shared_ptr<Expression> GetVTablePointer(std::vector<std::pair<Type*, unsigned>> path);
             static std::shared_ptr<Expression> SetVirtualPointers(std::shared_ptr<Expression> self, std::vector<std::pair<Type*, unsigned>> path);
         protected:
+            llvm::Function* DestructorFunction = nullptr;
+            virtual llvm::Function* CreateDestructorFunction(llvm::Module* module);
             virtual OverloadSet* CreateOperatorOverloadSet(Lexer::TokenType what, Lexer::Access access);
             virtual OverloadSet* CreateADLOverloadSet(Lexer::TokenType name, Lexer::Access access);
             virtual OverloadSet* CreateConstructorOverloadSet(Lexer::Access access) = 0;
@@ -206,8 +207,6 @@ namespace Wide {
             virtual std::string explain() = 0;
             virtual llvm::Type* GetLLVMType(llvm::Module* module) = 0;
             virtual llvm::Constant* GetRTTI(llvm::Module* module);
-
-            llvm::Value* GetDestructorFunction(llvm::Module* module);
 
             virtual bool IsReference(Type* to);
             virtual bool IsReference();
@@ -245,6 +244,7 @@ namespace Wide {
 
             virtual ~Type() {}
 
+            llvm::Function* GetDestructorFunction(llvm::Module* module);
             InheritanceRelationship IsDerivedFrom(Type* other);
             VTableLayout GetVtableLayout();
             VTableLayout GetPrimaryVTable();

@@ -865,9 +865,11 @@ Type::VTableLayout Type::ComputeVTableLayout() {
     }
     return playout;
 }
-llvm::Value* Type::GetDestructorFunction(llvm::Module* module) {
-    if (IsTriviallyDestructible()) return llvm::Constant::getNullValue(llvm::Type::getInt8PtrTy(module->getContext()));
-    if (DestructorFunction) return DestructorFunction;
+llvm::Function* Type::GetDestructorFunction(llvm::Module* module) {
+    if (!DestructorFunction) DestructorFunction = CreateDestructorFunction(module);
+    return DestructorFunction;
+}
+llvm::Function* Type::CreateDestructorFunction(llvm::Module* module) {
     auto fty = llvm::FunctionType::get(llvm::Type::getVoidTy(module->getContext()), { llvm::Type::getInt8PtrTy(module->getContext()) }, false);
     std::stringstream str;
     str << "__" << this << "destructor";

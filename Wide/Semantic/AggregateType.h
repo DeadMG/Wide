@@ -54,14 +54,16 @@ namespace Wide {
             std::unique_ptr<OverloadResolvable> CopyConstructor;
             std::unique_ptr<OverloadResolvable> MoveConstructor;
             std::unique_ptr<OverloadResolvable> DefaultConstructor;
-
+            std::vector<std::function<void(CodegenContext&)>> destructors;
             Wide::Util::optional<Layout> layout;
             Layout& GetLayout() {
                 if (!layout) layout = Layout(this, analyzer);
                 return *layout;
             }
+        protected:
+            llvm::Function* CreateDestructorFunction(llvm::Module* module) override;
         public:
-            AggregateType(Analyzer& a) : Type(a) {}
+            AggregateType(Analyzer& a);
 
             llvm::Constant* GetRTTI(llvm::Module* module) override;
             unsigned GetOffset(unsigned num) { return GetLayout().Offsets[num].ByteOffset; }

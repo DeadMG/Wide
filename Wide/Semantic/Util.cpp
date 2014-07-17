@@ -180,6 +180,10 @@ std::shared_ptr<Expression> Semantic::InterpretExpression(clang::Expr* expr, Cla
         }
         // Fuck
     }
+    if (auto bindtemp = llvm::dyn_cast<clang::CXXBindTemporaryExpr>(expr)) {
+        return InterpretExpression(bindtemp->getSubExpr(), tu, c, a, exprmap);
+    }
+
     std::string str;
     llvm::raw_string_ostream ostr(str);
     expr->dump(ostr, tu.GetASTContext().getSourceManager());

@@ -12,6 +12,7 @@
 #include <llvm/IR/Module.h>
 #include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/DataLayout.h>
+#include <llvm/Analysis/Verifier.h>
 #pragma warning(pop)
 
 using namespace Wide;
@@ -61,7 +62,9 @@ AggregateType::Layout::Layout(AggregateType* agg, Wide::Semantic::Analyzer& a)
         triviallydestructible &= D->IsTriviallyDestructible();
     };
 
-    Offsets.resize(agg->GetBases().size() + agg->GetMembers().size());
+    auto bases_size = agg->GetBases().size();
+    auto members_size = agg->GetMembers().size();
+    Offsets.resize(bases_size + members_size);
 
     // If we have a vptr then all fields offset by 1.
     unsigned fieldnum = hasvptr ? 1 : 0;
@@ -168,6 +171,18 @@ AggregateType::Layout::Layout(AggregateType* agg, Wide::Semantic::Analyzer& a)
     // Round sizeof(C) up to a non-zero multiple of align(C). If C is a POD, but not a POD for the purpose of layout, set nvsize(C) = sizeof(C). 
     if (sizec % alignc != 0)
         sizec += alignc - (sizec % alignc);
+
+    struct Self : public Expression {
+        Self(AggregateType* me) : self(me) {}
+        AggregateType* self;
+        Type* GetType() override final { return self->analyzer.GetLvalueType(self); }
+        llvm::Value* ComputeValue(CodegenContext& c) override final { return self->DestructorFunction->arg_begin(); }
+    };
+    auto destructor_self = std::make_shared<Self>(agg);
+    for (int i = Offsets.size() - 1; i >= 0; --i) {
+        auto member = Offsets[i].ty;
+        agg->destructors.push_back(member->BuildDestructorCall(agg->PrimitiveAccessMember(destructor_self, i), { agg, Lexer::Range(std::make_shared<std::string>("AggregateDestructor")) }, true));
+    }
 }
 std::size_t AggregateType::size() {
     return GetLayout().allocsize;
@@ -319,16 +334,31 @@ std::shared_ptr<Expression> AggregateType::PrimitiveAccessMember(std::shared_ptr
     assert(self);
     return Wide::Memory::MakeUnique<FieldAccess>(std::move(self), this, num);
 }
+AggregateType::AggregateType(Analyzer& a) : Type(a) {}
 
+llvm::Function* AggregateType::CreateDestructorFunction(llvm::Module* module) {    
+    CodegenContext newcon;
+    newcon.module = module;
+    auto functy = llvm::FunctionType::get(llvm::Type::getVoidTy(newcon), { analyzer.GetLvalueType(this)->GetLLVMType(newcon) }, false);
+    auto DestructorFunction = llvm::Function::Create(functy, llvm::GlobalValue::LinkageTypes::InternalLinkage, "", newcon);
+    this->DestructorFunction = DestructorFunction;
+    llvm::BasicBlock* allocas = llvm::BasicBlock::Create(newcon, "allocas", DestructorFunction);
+    llvm::BasicBlock* entries = llvm::BasicBlock::Create(newcon, "entry", DestructorFunction);
+    llvm::IRBuilder<> allocabuilder(allocas);
+    allocabuilder.SetInsertPoint(allocabuilder.CreateBr(entries));
+    llvm::IRBuilder<> insertbuilder(entries);
+    newcon.alloca_builder = &allocabuilder;
+    newcon.insert_builder = &insertbuilder;
+    for (auto des : destructors)
+        des(newcon);
+    newcon->CreateRetVoid();
+    if (llvm::verifyFunction(*DestructorFunction, llvm::VerifierFailureAction::PrintMessageAction))
+        throw std::runtime_error("Internal Compiler Error: An LLVM function failed verification.");
+    return DestructorFunction;
+}
 std::function<void(CodegenContext&)> AggregateType::BuildDestructorCall(std::shared_ptr<Expression> self, Context c, bool devirtualize) {
-    std::vector<std::function<void(CodegenContext&)>> destructors;
-    for (int i = GetLayout().Offsets.size() - 1; i >= 0; --i) {
-        auto member = GetLayout().Offsets[i].ty;
-        destructors.push_back(member->BuildDestructorCall(PrimitiveAccessMember(self, i), c, true));
-    }
-    return [=](CodegenContext& con) {
-        for (auto des : destructors)
-            des(con);
+    return [this, self](CodegenContext& con) {
+        con->CreateCall(GetDestructorFunction(con), self->GetValue(con));
     };
 }
 

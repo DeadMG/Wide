@@ -705,6 +705,12 @@ std::string UserDefinedType::explain() {
 Type::VTableLayout UserDefinedType::ComputePrimaryVTableLayout() {
     return GetVtableData().funcs;
 }
+llvm::Function* UserDefinedType::CreateDestructorFunction(llvm::Module* module) {
+    if (!type->destructor_decl) return AggregateType::CreateDestructorFunction(module);
+    auto desfunc = analyzer.GetWideFunction(type->destructor_decl, analyzer.GetLvalueType(this), { analyzer.GetLvalueType(this) }, "~type");
+    desfunc->EmitCode(module);
+    return module->getFunction(desfunc->GetName());
+}
 
 std::shared_ptr<Expression> UserDefinedType::VirtualEntryFor(VTableLayout::VirtualFunctionEntry entry, unsigned offset) {
     struct VTableThunk : Expression {
