@@ -379,7 +379,7 @@ Wide::Util::optional<clang::QualType> UserDefinedType::GetClangType(ClangTU& TU)
             false
             );
         recdecl->addDecl(des);
-        auto widedes = analyzer.GetWideFunction(type->destructor_decl, analyzer.GetLvalueType(this), { analyzer.GetLvalueType(this) }, "~type");
+        auto widedes = analyzer.GetWideFunction(type->destructor_decl, this, { analyzer.GetLvalueType(this) }, "~type");
         widedes->ComputeBody();
         widedes->AddExportName(TU.MangleName(des));
     }
@@ -388,7 +388,7 @@ Wide::Util::optional<clang::QualType> UserDefinedType::GetClangType(ClangTU& TU)
             auto types = GetArgsForFunc(func);
             auto ty = clang::CanQualType::CreateUnsafe(TU.GetASTContext().getRecordType(recdecl));
             clang::FunctionProtoType::ExtProtoInfo ext_proto_info;
-            auto mfunc = analyzer.GetWideFunction(func, GetContext(), types, "type");
+            auto mfunc = analyzer.GetWideFunction(func, this, types, "type");
             mfunc->ComputeBody();
             auto args = GetClangTypesForArgs(types, TU);
             if (!args) continue;
@@ -417,7 +417,7 @@ Wide::Util::optional<clang::QualType> UserDefinedType::GetClangType(ClangTU& TU)
                 if (IsMultiTyped(func)) continue;
                 if (access.first == Lexer::Access::Private) continue;
                 auto types = GetArgsForFunc(func);
-                auto mfunc = analyzer.GetWideFunction(func, GetContext(), types, overset.first);
+                auto mfunc = analyzer.GetWideFunction(func, this, types, overset.first);
                 mfunc->ComputeBody();
                 std::vector<clang::QualType> args;
                 for (auto&& ty : types)  {
