@@ -15,39 +15,61 @@ std::shared_ptr<Expression> TupleType::ConstructFromLiteral(std::vector<std::sha
     for (std::size_t i = 0; i < exprs.size(); ++i)
         assert(GetMembers()[i] == exprs[i]->GetType()->Decay());
 
-    auto self = std::make_shared<ImplicitTemporaryExpr>(this, c);
+    // If we have no members, return value (will be undef).
     if (GetMembers().size() == 0)
-        return std::move(self);
+        return BuildValueConstruction({}, c);
+
+    // If we are complex, then build directly in-place.
+    // Else try to avoid making an allocation.
     std::vector<std::shared_ptr<Expression>> initializers;
-    for (std::size_t i = 0; i < exprs.size(); ++i) {
-        std::vector<Type*> types;
-        types.push_back(analyzer.GetLvalueType(GetMembers()[i]));
-        types.push_back(exprs[i]->GetType());
-        auto conset = GetMembers()[i]->GetConstructorOverloadSet(GetAccessSpecifier(c.from, GetMembers()[i]));
-        auto call = conset->Resolve(types, c.from);
-        if (!call) conset->IssueResolutionError(types, c);
-        initializers.push_back(call->Call({ PrimitiveAccessMember(self, i), std::move(exprs[i]) }, c));
+    auto self = std::make_shared<ImplicitTemporaryExpr>(this, c);
+    if (IsComplexType()) {
+        for (std::size_t i = 0; i < exprs.size(); ++i) {
+            initializers.push_back(GetMembers()[i]->BuildInplaceConstruction(PrimitiveAccessMember(self, i), { std::move(exprs[i]) }, c));
+        }
+    } else {
+        for (std::size_t i = 0; i < exprs.size(); ++i) {
+            initializers.push_back(GetMembers()[i]->BuildValueConstruction({ std::move(exprs[i]) }, c));
+            assert(initializers.back()->GetType() == GetMembers()[i]);
+        }
     }
 
     struct TupleConstruction : Expression {
-        TupleConstruction(std::shared_ptr<Expression> self, std::vector<std::shared_ptr<Expression>> inits, std::function<void(CodegenContext&)> destructor)
-        : self(std::move(self)), inits(std::move(inits)), destructor(destructor) {}
+        TupleConstruction(std::shared_ptr<Expression> self, std::vector<std::shared_ptr<Expression>> inits, TupleType* tup, Context c)
+            : self(std::move(self)), inits(std::move(inits)), tuplety(tup)
+        {
+            if (!tuplety->IsTriviallyDestructible())
+                destructor = tuplety->BuildDestructorCall(self, c, true);
+        }
+        TupleType* tuplety;
         std::vector<std::shared_ptr<Expression>> inits;
         std::shared_ptr<Expression> self; 
         std::function<void(CodegenContext&)> destructor;
         Type* GetType() override final {
-            return self->GetType()->analyzer.GetRvalueType(self->GetType()->Decay());
+            return self->GetType()->Decay();
         }
         llvm::Value* ComputeValue(CodegenContext& con) override final {
-            for (auto&& init : inits)
-                init->GetValue(con);
-            if (self->GetType()->IsComplexType())
-                con.AddDestructor(destructor);
-            return self->GetValue(con);
+            if (GetType()->IsComplexType()) {
+                for (auto&& init : inits)
+                    init->GetValue(con);
+                if (destructor)
+                    con.AddDestructor(destructor);
+                return self->GetValue(con);
+            }
+            llvm::Value* agg = llvm::UndefValue::get(tuplety->GetLLVMType(con));
+            // The inits will be values, so insert them.
+            for (unsigned i = 0; i < tuplety->GetMembers().size(); ++i) {
+                auto ty = inits[i]->GetType();
+                auto memty = tuplety->GetMembers()[i];
+                assert(ty == memty);
+                auto val = inits[i]->GetValue(con);
+                agg = con->CreateInsertValue(agg, val, { boost::get<LLVMFieldIndex>(tuplety->GetLocation(i)).index });
+            }
+            return agg;
         }
     };
 
-    return Wide::Memory::MakeUnique<TupleConstruction>(self, std::move(initializers), BuildDestructorCall(self, c, true));
+    return Wide::Memory::MakeUnique<TupleConstruction>(self, std::move(initializers), this, c);
 }
 
 bool TupleType::IsSourceATarget(Type* source, Type* target, Type* context) {
@@ -67,24 +89,14 @@ bool TupleType::IsSourceATarget(Type* source, Type* target, Type* context) {
     auto expr = std::make_shared<source_expr>(source);
     std::vector<Type*> targettypes;
 
-    // The target should be either tuple initializable or a tuple but we have a different test.
-    if (auto tupleinit = dynamic_cast<TupleInitializable*>(target->Decay())) {
+    // The target should be either tuple initializable or a tuple. We is-a them if the types are is-a.
+    if (auto tupty = dynamic_cast<TupleType*>(target->Decay()))
+        targettypes = tupty->GetMembers();
+    else if (auto tupleinit = dynamic_cast<TupleInitializable*>(target->Decay()))
         if (auto types = tupleinit->GetTypesForTuple())
             targettypes = *types;
         else
             return false;
-        if (GetMembers().size() != targettypes.size()) return false;
-        for (std::size_t i = 0; i < GetMembers().size(); ++i) {
-            std::vector<Type*> types;
-            types.push_back(analyzer.GetLvalueType(targettypes.at(i)));
-            types.push_back(sourcetup->PrimitiveAccessMember(expr, i)->GetType());
-            if (!targettypes.at(i)->GetConstructorOverloadSet(GetAccessSpecifier(context, targettypes.at(i)))->Resolve(types, this))
-                return false;
-        }
-        return true;
-    }
-    if (auto tupty = dynamic_cast<TupleType*>(target->Decay()))
-        targettypes = tupty->GetMembers();
     else
         return false;
     if (GetMembers().size() != targettypes.size()) return false;

@@ -72,22 +72,20 @@ OverloadSet* IntegralType::CreateConstructorOverloadSet(Lexer::Access access) {
                 return Wide::Memory::MakeUnique<ImplicitStoreExpr>(std::move(args[0]), std::move(args[1]));
             auto inttype = dynamic_cast<IntegralType*>(args[1]->GetType());
             if (integral->bits < inttype->bits)
-                return CreatePrimAssOp(std::move(args[0]), std::move(args[1]), [this](llvm::Value* lhs, llvm::Value* rhs, CodegenContext& con) {
+                return Wide::Memory::MakeUnique<ImplicitStoreExpr>(std::move(args[0]), CreatePrimUnOp(std::move(args[1]), integral, [this](llvm::Value* rhs, CodegenContext& con) {
                     return con->CreateTrunc(rhs, integral->GetLLVMType(con));
-                });
+                }));
             //    return ConcreteExpression(args[0].t, c->gen->CreateStore(args[0].Expr, c->gen->CreateTruncate(args[1].Expr, integral->GetLLVMType(*c))));
             if (integral->is_signed && inttype->is_signed)
-                return CreatePrimAssOp(std::move(args[0]), std::move(args[1]), [this](llvm::Value* lhs, llvm::Value* rhs, CodegenContext& con) {
+                return Wide::Memory::MakeUnique<ImplicitStoreExpr>(std::move(args[0]), CreatePrimUnOp(std::move(args[1]), integral, [this](llvm::Value* rhs, CodegenContext& con) {
                     return con->CreateSExt(rhs, integral->GetLLVMType(con));
-                });
+                }));
             if (!integral->is_signed && !inttype->is_signed)
-                return CreatePrimAssOp(std::move(args[0]), std::move(args[1]), [this](llvm::Value* lhs, llvm::Value* rhs, CodegenContext& con) {
+                return Wide::Memory::MakeUnique<ImplicitStoreExpr>(std::move(args[0]), CreatePrimUnOp(std::move(args[1]), integral, [this](llvm::Value* rhs, CodegenContext& con) {
                     return con->CreateZExt(rhs, integral->GetLLVMType(con));
-                });
+                }));
             if (integral->bits == inttype->bits)
-                return CreatePrimAssOp(std::move(args[0]), std::move(args[1]), [this](llvm::Value* lhs, llvm::Value* rhs, CodegenContext& con) {
-                    return rhs;
-                }); 
+                return Wide::Memory::MakeUnique<ImplicitStoreExpr>(std::move(args[0]), std::move(args[1])); 
             assert(false && "Integer constructor called with conditions that OR should have prevented.");
             return nullptr;
         }

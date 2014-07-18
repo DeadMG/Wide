@@ -99,8 +99,7 @@ llvm::Value* Function::LocalVariable::ComputeValue(CodegenContext& con) {
         // If they return a complex value by value, just steal it, and don't worry about destructors as it will already have handled it.
         if (init_expr->GetType()->IsComplexType() || var_type->IsReference()) return init_expr->GetValue(con);
         // If they return a simple by value, then we can just alloca it fine, no destruction needed.
-        auto alloc = con.alloca_builder->CreateAlloca(var_type->GetLLVMType(con));
-        alloc->setAlignment(var_type->alignment());
+        auto alloc = con.CreateAlloca(var_type);
         con->CreateStore(init_expr->GetValue(con), alloc);
         return alloc;
     }
@@ -600,8 +599,7 @@ llvm::Value* Function::Parameter::ComputeValue(CodegenContext& con) {
     if (self->Args[num]->IsComplexType() || self->Args[num]->IsReference())
         return llvm_argument;
 
-    auto alloc = con.alloca_builder->CreateAlloca(self->Args[num]->GetLLVMType(con));
-    alloc->setAlignment(self->Args[num]->alignment());
+    auto alloc = con.CreateAlloca(self->Args[num]);
     con->CreateStore(llvm_argument, alloc);
     return alloc;
 }
@@ -924,14 +922,14 @@ void Function::EmitCode(llvm::Module* module) {
     llvmfunc = llvm::Function::Create(llvm::dyn_cast<llvm::FunctionType>(llvmsig->getElementType()), llvm::GlobalValue::LinkageTypes::InternalLinkage, name, module);
 
     llvm::BasicBlock* allocas = llvm::BasicBlock::Create(module->getContext(), "allocas", llvmfunc);
+    llvm::BasicBlock* geps = llvm::BasicBlock::Create(module->getContext(), "geps", llvmfunc);
+    llvm::BasicBlock* entry = llvm::BasicBlock::Create(module->getContext(), "entry", llvmfunc);
     llvm::IRBuilder<> allocs(allocas);
-    llvm::BasicBlock* bb = llvm::BasicBlock::Create(module->getContext(), "entry", llvmfunc);
-    allocs.SetInsertPoint(allocs.CreateBr(bb));
-    llvm::IRBuilder<> irbuilder(bb);
-    CodegenContext c;
-    c.alloca_builder = &allocs;
-    c.insert_builder = &irbuilder;
-    c.module = module;
+    allocs.SetInsertPoint(allocs.CreateBr(geps));
+    llvm::IRBuilder<> gep(geps);
+    gep.SetInsertPoint(gep.CreateBr(entry));
+    llvm::IRBuilder<> irbuilder(entry);
+    CodegenContext c(module, allocs, gep, irbuilder);
     for (auto des : param_destructors)
         if (des)
             c.AddDestructor(des);

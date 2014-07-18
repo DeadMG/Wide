@@ -275,6 +275,9 @@ struct ValueConstruction : Expression {
     }
     llvm::Value* ComputeValue(CodegenContext& con) override final {
         if (!self->Decay()->IsComplexType()) {
+            if (auto implicitstore = dynamic_cast<ImplicitStoreExpr*>(InplaceConstruction.get())) {
+                return implicitstore->val->GetValue(con);
+            }
             if (self->GetConstantContext() == self && no_args)
                 return llvm::UndefValue::get(self->GetLLVMType(con));
             if (auto func = dynamic_cast<Function*>(self))
@@ -530,7 +533,6 @@ std::shared_ptr<Expression> Type::BuildBinaryExpression(std::shared_ptr<Expressi
 OverloadSet* PrimitiveType::CreateConstructorOverloadSet(Lexer::Access access) {
     if (access != Lexer::Access::Public) return GetConstructorOverloadSet(Lexer::Access::Public);
     auto construct_from_ref = [](std::vector<std::shared_ptr<Expression>> args, Context c) {
-        auto&& type = typeid(*args[1]->GetImplementation());
         return Wide::Memory::MakeUnique<ImplicitStoreExpr>(std::move(args[0]), BuildValue(std::move(args[1])));
     };
     CopyConstructor = MakeResolvable(construct_from_ref, { analyzer.GetLvalueType(this), analyzer.GetLvalueType(this) });
@@ -642,7 +644,23 @@ OverloadSet* TupleInitializable::CreateConstructorOverloadSet(Lexer::Access acce
             if (args[0] != a.GetLvalueType(self->GetSelfAsType())) return Util::none;
             auto tup = dynamic_cast<TupleType*>(args[1]->Decay());
             if (!tup) return Util::none;
-            if (!Type::IsFirstASecond(args[1], self->GetSelfAsType(), source)) return Util::none;
+            // We accept it if it's constructible.
+            auto types = self->GetTypesForTuple();
+            if (!types) return Util::none;
+            struct opaqueexpr : Expression {
+                Type* ty;
+                opaqueexpr(Type* t) : ty(t) {}
+                Type* GetType() override final { return ty; }
+                llvm::Value* ComputeValue(CodegenContext& con) override final { assert(false); return nullptr; }
+            };
+            if (tup->GetMembers().size() != types->size()) return Util::none;
+            for (unsigned i = 0; i < types->size(); ++i) {
+                auto member = (*types)[i];
+                auto sourcety = tup->PrimitiveAccessMember(std::make_shared<opaqueexpr>(args[1]), i)->GetType();
+                if (!member->GetConstructorOverloadSet(GetAccessSpecifier(self->GetSelfAsType(), member))->Resolve({ member->analyzer.GetLvalueType(member), sourcety }, source))
+                    return Util::none;
+            }
+
             return args;
         }
         std::vector<std::shared_ptr<Expression>> AdjustArguments(std::vector<std::shared_ptr<Expression>> args, Context c) override final { return args; }
@@ -770,7 +788,7 @@ std::shared_ptr<Expression> Type::CreateVTable(std::vector<std::pair<Type*, unsi
             global->setInitializer(vtable);
             global->setLinkage(llvm::GlobalValue::LinkageTypes::InternalLinkage);
             global->setConstant(true);
-            return con->CreatePointerCast(con->CreateStructGEP(global, offset), self->analyzer.GetPointerType(self->GetVirtualPointerType())->GetLLVMType(con));
+            return con->CreatePointerCast(con.CreateStructGEP(global, offset), self->analyzer.GetPointerType(self->GetVirtualPointerType())->GetLLVMType(con));
         }
     };
     return Wide::Memory::MakeUnique<VTable>(this, std::move(entries), GetVtableLayout().offset);
@@ -875,14 +893,14 @@ llvm::Function* Type::CreateDestructorFunction(llvm::Module* module) {
     str << "__" << this << "destructor";
     DestructorFunction = llvm::Function::Create(fty, llvm::GlobalValue::LinkageTypes::InternalLinkage, str.str(), module);
     llvm::BasicBlock* allocas = llvm::BasicBlock::Create(module->getContext(), "allocas", DestructorFunction);
-    llvm::IRBuilder<> alloca_builder(allocas);
+    llvm::BasicBlock* geps = llvm::BasicBlock::Create(module->getContext(), "geps", DestructorFunction);
     llvm::BasicBlock* entry = llvm::BasicBlock::Create(module->getContext(), "entry", DestructorFunction);
+    llvm::IRBuilder<> alloca_builder(allocas);
+    alloca_builder.SetInsertPoint(alloca_builder.CreateBr(geps));
+    llvm::IRBuilder<> gep_builder(geps);
+    gep_builder.SetInsertPoint(gep_builder.CreateBr(entry));
     llvm::IRBuilder<> ir_builder(entry);
-    alloca_builder.SetInsertPoint(alloca_builder.CreateBr(entry));
-    CodegenContext c;
-    c.insert_builder = &ir_builder;
-    c.module = module;
-    c.alloca_builder = &alloca_builder;
+    CodegenContext c(module, alloca_builder, gep_builder, ir_builder);
     struct DestructorExpression : Expression {
         DestructorExpression(Type* self, llvm::Value* val)
             : self(self), val(val) {}

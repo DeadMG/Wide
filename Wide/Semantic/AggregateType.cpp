@@ -213,7 +213,7 @@ std::shared_ptr<Expression> AggregateType::GetVirtualPointer(std::shared_ptr<Exp
         : ty(t), self(std::move(self)) {}
         Type* ty;
         std::shared_ptr<Expression> self;
-        llvm::Value* ComputeValue(CodegenContext& con) override final { return con->CreateStructGEP(self->GetValue(con), 0); }
+        llvm::Value* ComputeValue(CodegenContext& con) override final { return con.CreateStructGEP(self->GetValue(con), 0); }
         Type* GetType() override final { return ty; }
     };
     return Wide::Memory::MakeUnique<VPtrAccess>(analyzer.GetLvalueType(vptrty), std::move(self));
@@ -325,7 +325,7 @@ std::shared_ptr<Expression> AggregateType::PrimitiveAccessMember(std::shared_ptr
                 return llvm::Constant::getNullValue(self->GetLayout().Offsets[num].ty->GetLLVMType(con));
             }
             auto fieldindex = *offsets[num].FieldIndex;
-            auto obj = src->getType()->isPointerTy() ? con->CreateStructGEP(src, fieldindex) : con->CreateExtractValue(src, { fieldindex });
+            auto obj = src->getType()->isPointerTy() ? con.CreateStructGEP(src, fieldindex) : con->CreateExtractValue(src, { fieldindex });
             if ((source->GetType()->IsReference() && offsets[num].ty->IsReference()) || (source->GetType()->IsComplexType() && !offsets[num].ty->IsComplexType()))
                 return con->CreateLoad(obj);
             return obj;
@@ -337,18 +337,18 @@ std::shared_ptr<Expression> AggregateType::PrimitiveAccessMember(std::shared_ptr
 AggregateType::AggregateType(Analyzer& a) : Type(a) {}
 
 llvm::Function* AggregateType::CreateDestructorFunction(llvm::Module* module) {    
-    CodegenContext newcon;
-    newcon.module = module;
-    auto functy = llvm::FunctionType::get(llvm::Type::getVoidTy(newcon), { analyzer.GetLvalueType(this)->GetLLVMType(newcon) }, false);
-    auto DestructorFunction = llvm::Function::Create(functy, llvm::GlobalValue::LinkageTypes::InternalLinkage, "", newcon);
+    auto functy = llvm::FunctionType::get(llvm::Type::getVoidTy(module->getContext()), { analyzer.GetLvalueType(this)->GetLLVMType(module) }, false);
+    auto DestructorFunction = llvm::Function::Create(functy, llvm::GlobalValue::LinkageTypes::InternalLinkage, "", module);
     this->DestructorFunction = DestructorFunction;
-    llvm::BasicBlock* allocas = llvm::BasicBlock::Create(newcon, "allocas", DestructorFunction);
-    llvm::BasicBlock* entries = llvm::BasicBlock::Create(newcon, "entry", DestructorFunction);
+    llvm::BasicBlock* allocas = llvm::BasicBlock::Create(module->getContext(), "allocas", DestructorFunction);
+    llvm::BasicBlock* geps = llvm::BasicBlock::Create(module->getContext(), "geps", DestructorFunction);
+    llvm::BasicBlock* entries = llvm::BasicBlock::Create(module->getContext(), "entry", DestructorFunction);
     llvm::IRBuilder<> allocabuilder(allocas);
-    allocabuilder.SetInsertPoint(allocabuilder.CreateBr(entries));
+    allocabuilder.SetInsertPoint(allocabuilder.CreateBr(geps));
+    llvm::IRBuilder<> gepbuilder(geps);
+    gepbuilder.SetInsertPoint(gepbuilder.CreateBr(entries));
     llvm::IRBuilder<> insertbuilder(entries);
-    newcon.alloca_builder = &allocabuilder;
-    newcon.insert_builder = &insertbuilder;
+    CodegenContext newcon(module, allocabuilder, gepbuilder, insertbuilder);
     for (auto des : destructors)
         des(newcon);
     newcon->CreateRetVoid();
@@ -450,7 +450,7 @@ OverloadSet* AggregateType::CreateNondefaultConstructorOverloadSet() {
                 // If it's a reference we need to not collapse it- otherwise use PrimAccessMember to take care of ECBO and such matters.
                 auto lhs = type->IsReference()
                     ? CreatePrimUnOp(args[0], analyzer.GetLvalueType(type), [this, i](llvm::Value* val, CodegenContext& con) {
-                          return con->CreateStructGEP(val, *GetLayout().Offsets[i].FieldIndex);
+                          return con.CreateStructGEP(val, *GetLayout().Offsets[i].FieldIndex);
                       })
                     : PrimitiveAccessMember(args[0], i);
                 auto rhs = PrimitiveAccessMember(args[1], i);

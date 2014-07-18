@@ -88,7 +88,7 @@ struct rvalueconvertible : OverloadResolvable, Callable {
                 args[1] = Wide::Memory::MakeUnique<RvalueCast>(std::move(args[1]));
             return Wide::Memory::MakeUnique<ImplicitStoreExpr>(std::move(args[0]), Type::AccessBase(std::move(args[1]), self->Decay()));
         }
-        return self->Decay()->BuildRvalueConstruction({ std::move(args[1]) }, c);
+        return Wide::Memory::MakeUnique<ImplicitStoreExpr>(std::move(args[0]), self->Decay()->BuildRvalueConstruction({ std::move(args[1]) }, c));
     }
 };
 struct PointerComparableResolvable : OverloadResolvable, Callable {

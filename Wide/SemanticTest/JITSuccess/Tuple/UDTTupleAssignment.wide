@@ -1,0 +1,9 @@
+type t {
+    first := int64;
+    second := int64;
+}
+Main() {
+    local := t({1, 2});
+    local = { 3, 4 };
+    return local.first == 3 & local.second == 4;
+}

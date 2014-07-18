@@ -47,7 +47,7 @@ std::shared_ptr<Expression> LambdaType::BuildLambdaFromCaptures(std::vector<std:
         if (!call) conset->IssueResolutionError(types, c);
         // Don't PrimAccessMember because it collapses references, and DO NOT WANT
         auto obj = CreatePrimUnOp(self, types[0], [this, i](llvm::Value* val, CodegenContext& con) {
-            return con->CreateStructGEP(val, boost::get<LLVMFieldIndex>(GetLocation(i)).index);
+            return con.CreateStructGEP(val, boost::get<LLVMFieldIndex>(GetLocation(i)).index);
         });
         initializers.push_back(call->Call({ std::move(obj), std::move(exprs[i]) }, c));
     }

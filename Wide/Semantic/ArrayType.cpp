@@ -44,10 +44,10 @@ std::shared_ptr<Expression> ArrayType::PrimitiveAccessMember(std::shared_ptr<Exp
             auto val = self->GetValue(con);
             if (!elem_ty->IsComplexType()) {
                 if (val->getType()->isPointerTy())
-                    return con->CreateStructGEP(val, num);
+                    return con.CreateStructGEP(val, num);
                 return con->CreateExtractValue(val, num);
             }
-            return con->CreateStructGEP(val, num);
+            return con.CreateStructGEP(val, num);
         }
         Type* GetType() override final {
             if (IsLvalueType(self->GetType()))
@@ -99,8 +99,7 @@ OverloadSet* ArrayType::CreateOperatorOverloadSet(Lexer::TokenType what, Lexer::
                     llvm::Value* args[] = { get_zero(intty), index };                    
                     return con->CreateGEP(arr, args);
                 }
-                auto alloc = con.alloca_builder->CreateAlloca(array->GetLLVMType(con));
-                alloc->setAlignment(array->alignment());
+                auto alloc = con.CreateAlloca(array);
                 con->CreateStore(arr, alloc);
                 auto intty = llvm::dyn_cast<llvm::IntegerType>(index->getType());
                 llvm::Value* args[] = { get_zero(intty), index };

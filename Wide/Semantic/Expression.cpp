@@ -45,8 +45,7 @@ Type* ImplicitTemporaryExpr::GetType() {
     return of->analyzer.GetLvalueType(of);
 }
 llvm::Value* ImplicitTemporaryExpr::ComputeValue(CodegenContext& con) {
-    auto local = con.alloca_builder->CreateAlloca(of->GetLLVMType(con));
-    local->setAlignment(of->alignment());
+    auto local = con.CreateAlloca(of);
     alloc = local;
     return alloc;
 }
@@ -75,8 +74,7 @@ llvm::Value* RvalueCast::ComputeValue(CodegenContext& con) {
     if (expr->GetType()->IsComplexType())
         return expr->GetValue(con);
     assert(!IsRvalueType(expr->GetType()));
-    auto tempalloc = con.alloca_builder->CreateAlloca(expr->GetType()->GetLLVMType(con));
-    tempalloc->setAlignment(expr->GetType()->alignment());
+    auto tempalloc = con.CreateAlloca(expr->GetType());
     con->CreateStore(expr->GetValue(con), tempalloc);
     return tempalloc;
 }
@@ -349,4 +347,18 @@ void CodegenContext::EraseDestructor(std::list<std::pair<std::function<void(Code
 }
 void CodegenContext::AddDestructors(std::list<std::pair<std::function<void(CodegenContext&)>, bool>> list) {
     Destructors.insert(Destructors.end(), list.begin(), list.end());
+}
+llvm::AllocaInst* CodegenContext::CreateAlloca(Type* t) {
+    auto alloc = alloca_builder->CreateAlloca(t->GetLLVMType(module));
+    alloc->setAlignment(t->alignment());
+    return alloc;
+}
+llvm::Value* CodegenContext::CreateStructGEP(llvm::Value* v, unsigned num) {
+    if (auto alloc = llvm::dyn_cast<llvm::AllocaInst>(v)) {
+        if (gep_map->find(alloc) == gep_map->end()
+         || gep_map->at(alloc).find(num) == gep_map->at(alloc).end())
+          (*gep_map)[alloc][num] = gep_builder->CreateStructGEP(v, num);
+        return (*gep_map)[alloc][num];
+    }
+    return insert_builder->CreateStructGEP(v, num);
 }

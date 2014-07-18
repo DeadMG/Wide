@@ -352,8 +352,8 @@ std::shared_ptr<Expression> ClangType::PrimitiveAccessMember(std::shared_ptr<Exp
             return con->CreatePointerCast(self, result_type->GetLLVMType(con));
         if (source_type->IsReference())
             if (root_type->IsReference())
-                return con->CreateLoad(con->CreateStructGEP(self, fieldnum(con)));
-            return con->CreateStructGEP(self, fieldnum(con));
+                return con->CreateLoad(con.CreateStructGEP(self, fieldnum(con)));
+            return con.CreateStructGEP(self, fieldnum(con));
         return con->CreateExtractValue(self, fieldnum(con));
     });
 }
@@ -388,11 +388,11 @@ std::shared_ptr<Expression> GetVTablePointer(std::shared_ptr<Expression> self, c
     auto&& layout = from->GetASTContext().getASTRecordLayout(current);
     if (layout.hasOwnVFPtr())
         return CreatePrimUnOp(std::move(self), a.GetLvalueType(a.GetPointerType(vptrty)), [](llvm::Value* val, CodegenContext& con) {
-            return con->CreateStructGEP(val, 0);
+            return con.CreateStructGEP(val, 0);
         });
     auto basenum = from->GetBaseNumber(current, layout.getPrimaryBase());
     self = CreatePrimUnOp(std::move(self), a.GetPointerType(a.GetClangType(*from, from->GetASTContext().getTypeDeclType(layout.getPrimaryBase()))), [from, basenum](llvm::Value* val, CodegenContext& con) {
-        return con->CreateStructGEP(val, basenum(con));
+        return con.CreateStructGEP(val, basenum(con));
     });
     return GetVTablePointer(std::move(self), layout.getPrimaryBase(), a, from, vptrty);
 }
