@@ -85,7 +85,9 @@ OverloadSet* IntegralType::CreateConstructorOverloadSet(Lexer::Access access) {
                     return con->CreateZExt(rhs, integral->GetLLVMType(con));
                 }));
             if (integral->bits == inttype->bits)
-                return Wide::Memory::MakeUnique<ImplicitStoreExpr>(std::move(args[0]), std::move(args[1])); 
+                return Wide::Memory::MakeUnique<ImplicitStoreExpr>(std::move(args[0]), CreatePrimUnOp(std::move(args[1]), integral, [this](llvm::Value* rhs, CodegenContext& con) {
+                    return rhs;
+                }));
             assert(false && "Integer constructor called with conditions that OR should have prevented.");
             return nullptr;
         }

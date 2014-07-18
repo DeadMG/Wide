@@ -73,7 +73,7 @@ int main(int argc, char** argv) {
     if (!failed.empty())
         for(auto fail : failed)
             std::cout << "Failed: " << fail << "\n";
-    //Jit(clangopts, "JITSuccess/Tuple/UDTTupleAssignment.wide");
+    //Jit(clangopts, "JITSuccess/SignedToUnsignedIntegerConversion.wide");
     //Compile(clangopts, "CompileFail/AddressOfNonLvalue/FunctionReturnComplexValue.wide");
     if (input.count("break"))
         Wide::Util::DebugBreak();
