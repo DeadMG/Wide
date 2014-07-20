@@ -32,9 +32,9 @@ std::size_t Bool::alignment() {
     return analyzer.GetDataLayout().getABIIntegerTypeAlignment(8);
 }
 
-OverloadSet* Bool::CreateOperatorOverloadSet(Lexer::TokenType name, Lexer::Access access) {
-    if (access != Lexer::Access::Public)
-        return AccessMember(name, Lexer::Access::Public);
+OverloadSet* Bool::CreateOperatorOverloadSet(Lexer::TokenType name, Parse::Access access) {
+    if (access != Parse::Access::Public)
+        return AccessMember(name, Parse::Access::Public);
 
     if (name == &Lexer::TokenTypes::QuestionMark) {
         BooleanConversion = MakeResolvable([](std::vector<std::shared_ptr<Expression>> args, Context c) {

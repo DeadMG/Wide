@@ -3,87 +3,7 @@
 using namespace Wide;
 using namespace Lexer;
 
-const std::string TokenTypes::OpenBracket = "(";
-const std::string TokenTypes::CloseBracket = ")";
-const std::string TokenTypes::Dot = ".";
-const std::string TokenTypes::Semicolon = ";";
-const std::string TokenTypes::Identifier = "identifier";
-const std::string TokenTypes::String = "string";
-const std::string TokenTypes::LeftShift = "<<";
-const std::string TokenTypes::RightShift = ">>";
-const std::string TokenTypes::OpenCurlyBracket = "{";
-const std::string TokenTypes::CloseCurlyBracket = "}";
-const std::string TokenTypes::Return = "return";
-const std::string TokenTypes::Assignment = "=";
-const std::string TokenTypes::VarCreate = ":=";
-const std::string TokenTypes::Comma = ",";
-const std::string TokenTypes::Integer = "integer";
-const std::string TokenTypes::Using = "using";
-const std::string TokenTypes::Module = "module";
-const std::string TokenTypes::Break = "break";
-const std::string TokenTypes::Continue = "continue";
-const std::string TokenTypes::If = "if";
-const std::string TokenTypes::Else = "else";
-const std::string TokenTypes::EqCmp = "==";
-const std::string TokenTypes::Exclaim = "!";
-const std::string TokenTypes::While = "while";
-const std::string TokenTypes::NotEqCmp = "!=";
-const std::string TokenTypes::This = "this";
-const std::string TokenTypes::Type = "type";
-const std::string TokenTypes::Operator = "operator";
-const std::string TokenTypes::Function = "function";
-const std::string TokenTypes::OpenSquareBracket = "[";
-const std::string TokenTypes::CloseSquareBracket = "]";
-const std::string TokenTypes::Colon = ":";
-const std::string TokenTypes::Star = "*";
-const std::string TokenTypes::PointerAccess = "->";
-const std::string TokenTypes::Negate = "~";
-const std::string TokenTypes::Plus = "+";
-const std::string TokenTypes::Increment = "++";
-const std::string TokenTypes::Decrement = "--";
-const std::string TokenTypes::Minus = "-";
-const std::string TokenTypes::LT = "<";
-const std::string TokenTypes::LTE = "<=";
-const std::string TokenTypes::GT = ">";
-const std::string TokenTypes::GTE = ">=";
-const std::string TokenTypes::Or = "|";
-const std::string TokenTypes::And = "&";
-const std::string TokenTypes::Xor = "^";
-const std::string TokenTypes::RightShiftAssign = ">>=";
-const std::string TokenTypes::LeftShiftAssign = "<<=";
-const std::string TokenTypes::MinusAssign = "-=";
-const std::string TokenTypes::PlusAssign = "+=";
-const std::string TokenTypes::AndAssign = "&=";
-const std::string TokenTypes::OrAssign = "|=";
-const std::string TokenTypes::MulAssign = "*=";
-const std::string TokenTypes::Modulo = "%";
-const std::string TokenTypes::ModAssign = "%=";
-const std::string TokenTypes::Divide = "/";
-const std::string TokenTypes::DivAssign = "/=";
-const std::string TokenTypes::XorAssign = "^=";
-const std::string TokenTypes::Ellipsis = "...";
-const std::string TokenTypes::Lambda = "=>";
-const std::string TokenTypes::Template = "template";
-const std::string TokenTypes::Concept = "concept";
-const std::string TokenTypes::ConceptMap = "concept_map";
-const std::string TokenTypes::Public = "public";
-const std::string TokenTypes::Private = "private";
-const std::string TokenTypes::Protected = "protected";
-const std::string TokenTypes::Dynamic = "dynamic";
-const std::string TokenTypes::Decltype = "decltype";
-const std::string TokenTypes::True = "true";
-const std::string TokenTypes::False = "false";
-const std::string TokenTypes::Typeid = "typeid";
-const std::string TokenTypes::DynamicCast = "dynamic_cast";
-const std::string TokenTypes::Try = "try";
-const std::string TokenTypes::Catch = "catch";
-const std::string TokenTypes::Throw = "throw";
-const std::string TokenTypes::QuestionMark = "?";
-const std::string TokenTypes::Abstract = "abstract";
-const std::string TokenTypes::Delete = "delete";
-const std::string TokenTypes::Default = "default";
-
-Lexer::Invocation::Invocation(std::function<Wide::Util::optional<char>()> range, std::shared_ptr<std::string> name) 
+Lexer::Invocation::Invocation(std::function<Wide::Util::optional<char>()> range, Position name)
 : r(range), current_position(name) {
     singles = default_singles;
     doubles = default_doubles;
@@ -99,18 +19,6 @@ Lexer::Invocation::Invocation(std::function<Wide::Util::optional<char>()> range,
     };
 }
 
-std::string Lexer::to_string(Lexer::Position p) {
-    return *p.name + ":" + std::to_string(p.line) + ":" + std::to_string(p.column);
-}
-std::string Lexer::to_string(Lexer::Range r) {
-    return to_string(r.begin) + "-" + std::to_string(r.end.line) + ":" + std::to_string(r.end.column);
-}
-std::string Lexer::operator+(std::string s, Lexer::Range r) {
-    return s + to_string(r);
-}
-std::string Lexer::operator+(Lexer::Range r, std::string s) {
-    return to_string(r) + s;
-}
 Wide::Util::optional<Lexer::Token> Invocation::operator()() {
     auto begin_pos = current_position;
     auto val = get();
@@ -400,3 +308,96 @@ const std::unordered_set<Lexer::TokenType> Lexer::default_keyword_types = [] {
         KeywordTypes.insert(x.second);
     return KeywordTypes;
 }();
+
+const std::string TokenTypes::OpenBracket = "(";
+const std::string TokenTypes::CloseBracket = ")";
+const std::string TokenTypes::Dot = ".";
+const std::string TokenTypes::Semicolon = ";";
+const std::string TokenTypes::Identifier = "identifier";
+const std::string TokenTypes::String = "string";
+const std::string TokenTypes::LeftShift = "<<";
+const std::string TokenTypes::RightShift = ">>";
+const std::string TokenTypes::OpenCurlyBracket = "{";
+const std::string TokenTypes::CloseCurlyBracket = "}";
+const std::string TokenTypes::Return = "return";
+const std::string TokenTypes::Assignment = "=";
+const std::string TokenTypes::VarCreate = ":=";
+const std::string TokenTypes::Comma = ",";
+const std::string TokenTypes::Integer = "integer";
+const std::string TokenTypes::Using = "using";
+const std::string TokenTypes::Module = "module";
+const std::string TokenTypes::Break = "break";
+const std::string TokenTypes::Continue = "continue";
+const std::string TokenTypes::If = "if";
+const std::string TokenTypes::Else = "else";
+const std::string TokenTypes::EqCmp = "==";
+const std::string TokenTypes::Exclaim = "!";
+const std::string TokenTypes::While = "while";
+const std::string TokenTypes::NotEqCmp = "!=";
+const std::string TokenTypes::This = "this";
+const std::string TokenTypes::Type = "type";
+const std::string TokenTypes::Operator = "operator";
+const std::string TokenTypes::Function = "function";
+const std::string TokenTypes::OpenSquareBracket = "[";
+const std::string TokenTypes::CloseSquareBracket = "]";
+const std::string TokenTypes::Colon = ":";
+const std::string TokenTypes::Star = "*";
+const std::string TokenTypes::PointerAccess = "->";
+const std::string TokenTypes::Negate = "~";
+const std::string TokenTypes::Plus = "+";
+const std::string TokenTypes::Increment = "++";
+const std::string TokenTypes::Decrement = "--";
+const std::string TokenTypes::Minus = "-";
+const std::string TokenTypes::LT = "<";
+const std::string TokenTypes::LTE = "<=";
+const std::string TokenTypes::GT = ">";
+const std::string TokenTypes::GTE = ">=";
+const std::string TokenTypes::Or = "|";
+const std::string TokenTypes::And = "&";
+const std::string TokenTypes::Xor = "^";
+const std::string TokenTypes::RightShiftAssign = ">>=";
+const std::string TokenTypes::LeftShiftAssign = "<<=";
+const std::string TokenTypes::MinusAssign = "-=";
+const std::string TokenTypes::PlusAssign = "+=";
+const std::string TokenTypes::AndAssign = "&=";
+const std::string TokenTypes::OrAssign = "|=";
+const std::string TokenTypes::MulAssign = "*=";
+const std::string TokenTypes::Modulo = "%";
+const std::string TokenTypes::ModAssign = "%=";
+const std::string TokenTypes::Divide = "/";
+const std::string TokenTypes::DivAssign = "/=";
+const std::string TokenTypes::XorAssign = "^=";
+const std::string TokenTypes::Ellipsis = "...";
+const std::string TokenTypes::Lambda = "=>";
+const std::string TokenTypes::Template = "template";
+const std::string TokenTypes::Concept = "concept";
+const std::string TokenTypes::ConceptMap = "concept_map";
+const std::string TokenTypes::Public = "public";
+const std::string TokenTypes::Private = "private";
+const std::string TokenTypes::Protected = "protected";
+const std::string TokenTypes::Dynamic = "dynamic";
+const std::string TokenTypes::Decltype = "decltype";
+const std::string TokenTypes::True = "true";
+const std::string TokenTypes::False = "false";
+const std::string TokenTypes::Typeid = "typeid";
+const std::string TokenTypes::DynamicCast = "dynamic_cast";
+const std::string TokenTypes::Try = "try";
+const std::string TokenTypes::Catch = "catch";
+const std::string TokenTypes::Throw = "throw";
+const std::string TokenTypes::QuestionMark = "?";
+const std::string TokenTypes::Abstract = "abstract";
+const std::string TokenTypes::Delete = "delete";
+const std::string TokenTypes::Default = "default";
+
+std::string Lexer::to_string(Lexer::Position p) {
+    return *p.name + ":" + std::to_string(p.line) + ":" + std::to_string(p.column);
+}
+std::string Lexer::to_string(Lexer::Range r) {
+    return to_string(r.begin) + "-" + std::to_string(r.end.line) + ":" + std::to_string(r.end.column);
+}
+std::string Lexer::operator+(std::string s, Lexer::Range r) {
+    return s + to_string(r);
+}
+std::string Lexer::operator+(Lexer::Range r, std::string s) {
+    return to_string(r) + s;
+}

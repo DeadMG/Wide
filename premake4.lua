@@ -12,17 +12,7 @@ if not os.is("Windows") then
     newoption {
         trigger = "llvm-conf",
         value = "configuration",
-        description = "The configuration used to build LLVM."
-    }
-    newoption {
-        trigger = "boost-lib",
-        value = "library name",
-        description = "The name of the Boost library."
-    }
-    newoption {
-        trigger = "llvm-from-package",
-        value = "boolean",
-        description = "If LLVM was built from source"
+        description = "The configuration used to build LLVM, e.g. \"Release+Debug+Asserts\""
     }
     newoption {
         trigger = "llvm-build",
@@ -56,20 +46,16 @@ function AddClangDependencies(plat, conf)
         "tools/clang/lib",
         path.join(llvmbuild, "include")
     }
-    if not _OPTIONS["llvm-from-package"] then
-        for k, v in pairs(llvmincludes) do
-            includedirs({ path.join(_OPTIONS["llvm-path"], v) })
+    for k, v in pairs(llvmincludes) do
+        includedirs({ path.join(_OPTIONS["llvm-path"], v) })
+    end
+    if os.is("windows") then
+        if plat == 'x64' then
+            llvmbuild = path.join(llvmbuild, 'x64')
         end
-        if os.is("windows") then
-            if plat == 'x64' then
-                llvmbuild = path.join(llvmbuild, 'x64')
-            end
-            libdirs({ path.join(_OPTIONS["llvm-path"], llvmbuild, "lib", llvmconf) })
-        else
-            libdirs({ path.join(_OPTIONS["llvm-path"], llvmbuild, llvmconf, "lib") })
-        end
+        libdirs({ path.join(_OPTIONS["llvm-path"], llvmbuild, "lib", llvmconf) })
     else
-        includedirs({ _OPTIONS["llvm-path"] })
+        libdirs({ path.join(_OPTIONS["llvm-path"], llvmbuild, llvmconf, "lib") })
     end
     local clanglibs = { 
         "clangFrontend",

@@ -37,12 +37,12 @@ namespace Wide {
             Wide::Util::optional<clang::QualType> GetClangType(ClangTU& TU) override final;
             llvm::Type* GetLLVMType(llvm::Module* module) override final;
 
-            OverloadSet* CreateADLOverloadSet(Lexer::TokenType name, Lexer::Access access) override final;
+            OverloadSet* CreateADLOverloadSet(Lexer::TokenType name, Parse::Access access) override final;
             std::size_t size() override final;
             std::size_t alignment() override final;
             bool IsSourceATarget(Type* first, Type* second, Type* context) override final;
-            OverloadSet* CreateConstructorOverloadSet(Lexer::Access access) override final;
-            OverloadSet* CreateOperatorOverloadSet(Lexer::TokenType what, Lexer::Access access) override final;
+            OverloadSet* CreateConstructorOverloadSet(Parse::Access access) override final;
+            OverloadSet* CreateOperatorOverloadSet(Lexer::TokenType what, Parse::Access access) override final;
             std::string explain() override final;
         };
     }

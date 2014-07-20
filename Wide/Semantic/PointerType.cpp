@@ -39,8 +39,8 @@ PointerType::PointerType(Type* point, Analyzer& a)
     pointee = point;
 }
 
-OverloadSet* PointerType::CreateConstructorOverloadSet(Lexer::Access access) {
-    if (access != Lexer::Access::Public) return GetConstructorOverloadSet(Lexer::Access::Public);
+OverloadSet* PointerType::CreateConstructorOverloadSet(Parse::Access access) {
+    if (access != Parse::Access::Public) return GetConstructorOverloadSet(Parse::Access::Public);
     struct PointerComparableResolvable : OverloadResolvable, Callable {
         PointerComparableResolvable(PointerType* s)
         : self(s) {}
@@ -61,7 +61,7 @@ OverloadSet* PointerType::CreateConstructorOverloadSet(Lexer::Access access) {
         }
         Callable* GetCallableForResolution(std::vector<Type*>, Analyzer& a) override final { return this; }
     };
-    auto usual = PrimitiveType::CreateConstructorOverloadSet(Lexer::Access::Public);
+    auto usual = PrimitiveType::CreateConstructorOverloadSet(Parse::Access::Public);
     NullConstructor = MakeResolvable([this](std::vector<std::shared_ptr<Expression>> args, Context c) {
         return CreatePrimOp(std::move(args[0]), std::move(args[1]), analyzer.GetLvalueType(this), [this](llvm::Value* lhs, llvm::Value* rhs, CodegenContext& con) {
             con->CreateStore(llvm::Constant::getNullValue(GetLLVMType(con)), lhs);
@@ -91,9 +91,9 @@ bool PointerType::IsSourceATarget(Type* source, Type* target, Type* context) {
     return sourceptr->pointee->IsDerivedFrom(targetptr->pointee) == InheritanceRelationship::UnambiguouslyDerived;
 }
 
-OverloadSet* PointerType::CreateOperatorOverloadSet(Lexer::TokenType what, Lexer::Access access) {
-    if (access != Lexer::Access::Public)
-        return AccessMember(what, Lexer::Access::Public);
+OverloadSet* PointerType::CreateOperatorOverloadSet(Lexer::TokenType what, Parse::Access access) {
+    if (access != Parse::Access::Public)
+        return AccessMember(what, Parse::Access::Public);
     if (what == &Lexer::TokenTypes::Star) {
         DereferenceOperator = MakeResolvable([this](std::vector<std::shared_ptr<Expression>> args, Context c) {
             return CreatePrimUnOp(std::move(args[0]), analyzer.GetLvalueType(pointee), [](llvm::Value* val, CodegenContext& con) {

@@ -78,15 +78,15 @@ namespace Wide {
             Type* GetConstantContext() override;
             
             OverloadSet* CreateNondefaultConstructorOverloadSet();
-            OverloadSet* CreateOperatorOverloadSet(Lexer::TokenType type, Lexer::Access access) override;
-            OverloadSet* CreateConstructorOverloadSet(Lexer::Access access) override; 
+            OverloadSet* CreateOperatorOverloadSet(Lexer::TokenType type, Parse::Access access) override;
+            OverloadSet* CreateConstructorOverloadSet(Parse::Access access) override; 
             std::function<void(CodegenContext&)> BuildDestructorCall(std::shared_ptr<Expression> self, Context c, bool devirtualize) override;
             std::shared_ptr<Expression> GetVirtualPointer(std::shared_ptr<Expression> self) override final;
 
-            bool IsCopyConstructible(Lexer::Access access) override;
-            bool IsMoveConstructible(Lexer::Access access) override;
-            bool IsCopyAssignable(Lexer::Access access) override;
-            bool IsMoveAssignable(Lexer::Access access) override;
+            bool IsCopyConstructible(Parse::Access access) override;
+            bool IsMoveConstructible(Parse::Access access) override;
+            bool IsCopyAssignable(Parse::Access access) override;
+            bool IsMoveAssignable(Parse::Access access) override;
             bool IsEmpty() override final;
             bool IsTriviallyDestructible() override;
             bool IsTriviallyCopyConstructible() override;

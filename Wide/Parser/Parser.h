@@ -41,11 +41,11 @@ namespace Wide {
             std::function<void(Lexer::Range, OutliningType)> outlining;
 
             // All the valid productions in the global module.
-            std::unordered_map<Lexer::TokenType, std::function<void(Parser&, Module*, Lexer::Access, Lexer::Token& token)>> GlobalModuleTokens;
+            std::unordered_map<Lexer::TokenType, std::function<void(Parser&, Module*, Parse::Access, Lexer::Token& token)>> GlobalModuleTokens;
             // All the valid productions in global module with attributes.
-            std::unordered_map<Lexer::TokenType, std::function<void(Parser&, Module*, Lexer::Access, Lexer::Token& token, std::vector<Attribute> attributes)>> GlobalModuleAttributeTokens;
+            std::unordered_map<Lexer::TokenType, std::function<void(Parser&, Module*, Parse::Access, Lexer::Token& token, std::vector<Attribute> attributes)>> GlobalModuleAttributeTokens;
             // All the productions valid in non-global modules only.
-            std::unordered_map<Lexer::TokenType, std::function<Lexer::Access(Parser&, Module*, Lexer::Access, Lexer::Token& token)>> ModuleTokens;
+            std::unordered_map<Lexer::TokenType, std::function<Parse::Access(Parser&, Module*, Parse::Access, Lexer::Token& token)>> ModuleTokens;
             
             // All user-defined overloadable operators that can be overloaded as free functions.
             std::unordered_set<Lexer::TokenType> ModuleOverloadableOperators;
@@ -73,11 +73,11 @@ namespace Wide {
             std::unordered_map<Lexer::TokenType, std::function<Statement*(Parser& p, Lexer::Token& tok)>> Statements;
 
             // Type 
-            std::unordered_map<Lexer::TokenType, std::function<Lexer::Access(Parser&, Type*, Lexer::Access, Lexer::Token&)>> TypeTokens;
+            std::unordered_map<Lexer::TokenType, std::function<Parse::Access(Parser&, Type*, Parse::Access, Lexer::Token&)>> TypeTokens;
             // Type attribute
-            std::unordered_map<Lexer::TokenType, std::function<Lexer::Access(Parser&, Type*, Lexer::Access, Lexer::Token&, std::vector<Attribute>)>> TypeAttributeTokens;
+            std::unordered_map<Lexer::TokenType, std::function<Parse::Access(Parser&, Type*, Parse::Access, Lexer::Token&, std::vector<Attribute>)>> TypeAttributeTokens;
             // Dynamic members
-            std::unordered_map<Lexer::TokenType, std::function<DynamicFunction*(Parser&, Type*, Lexer::Access, Lexer::Token&, std::vector<Attribute>)>> DynamicMemberFunctions;
+            std::unordered_map<Lexer::TokenType, std::function<DynamicFunction*(Parser&, Type*, Parse::Access, Lexer::Token&, std::vector<Attribute>)>> DynamicMemberFunctions;
 
             Parser(std::function<Wide::Util::optional<Lexer::Token>()> l);
 
@@ -101,14 +101,14 @@ namespace Wide {
             void ParseGlobalModuleLevelDeclaration(Module* m);
             void ParseModuleContents(Module* m, Lexer::Range where);
 
-            void AddTypeToModule(Module* m, std::string name, Type* t, Lexer::Access specifier);
-            void AddFunctionToModule(Module* m, std::string name, Function* f, Lexer::Access specifier);
-            void AddUsingToModule(Module* m, std::string name, Using* f, Lexer::Access specifier);
-            void AddTemplateTypeToModule(Module* m, std::string name, std::vector<FunctionArgument>, Type* t, Lexer::Access specifier);
-            Module* CreateModule(std::string name, Module* in, Lexer::Range where, Lexer::Access access);
+            void AddTypeToModule(Module* m, std::string name, Type* t, Parse::Access specifier);
+            void AddFunctionToModule(Module* m, std::string name, Function* f, Parse::Access specifier);
+            void AddUsingToModule(Module* m, std::string name, Using* f, Parse::Access specifier);
+            void AddTemplateTypeToModule(Module* m, std::string name, std::vector<FunctionArgument>, Type* t, Parse::Access specifier);
+            Module* CreateModule(std::string name, Module* in, Lexer::Range where, Parse::Access access);
 
-            Using* CreateUsing(std::string val, Lexer::Range loc, Expression* expr, Module* p, Lexer::Access a); 
-            Lexer::Access ParseModuleLevelDeclaration(Module* m, Lexer::Access a);
+            Using* CreateUsing(std::string val, Lexer::Range loc, Expression* expr, Module* p, Parse::Access a); 
+            Parse::Access ParseModuleLevelDeclaration(Module* m, Parse::Access a);
             std::vector<Variable*> ParseLambdaCaptures();
             Expression* ParsePrimaryExpression();
             std::vector<Expression*> ParseFunctionArguments();
@@ -122,7 +122,7 @@ namespace Wide {
             Function* ParseFunction(const Lexer::Token& first, std::vector<Attribute> attrs);
             Destructor* ParseDestructor(const Lexer::Token& first, std::vector<Attribute> attrs);
             
-            Module* ParseQualifiedName(Lexer::Token& first, Module* m, Lexer::Access a, Parse::Error err);
+            Module* ParseQualifiedName(Lexer::Token& first, Module* m, Parse::Access a, Parse::Error err);
             void ParseTypeBody(Type* ty);
             std::vector<Expression*> ParseTypeBases();
             Type* ParseTypeDeclaration(Module* m, Lexer::Range loc, Lexer::Token& ident, std::vector<Attribute>& attrs);

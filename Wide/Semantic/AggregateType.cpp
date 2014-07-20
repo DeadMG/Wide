@@ -191,16 +191,16 @@ std::size_t AggregateType::alignment() {
     return GetLayout().align;
 }
 
-bool AggregateType::IsMoveAssignable(Lexer::Access access) {
+bool AggregateType::IsMoveAssignable(Parse::Access access) {
     return GetLayout().moveassignable;
 }
-bool AggregateType::IsMoveConstructible(Lexer::Access access) {
+bool AggregateType::IsMoveConstructible(Parse::Access access) {
     return GetLayout().moveconstructible;
 }
-bool AggregateType::IsCopyAssignable(Lexer::Access access) {
+bool AggregateType::IsCopyAssignable(Parse::Access access) {
     return GetLayout().copyassignable;
 }
-bool AggregateType::IsCopyConstructible(Lexer::Access access) {
+bool AggregateType::IsCopyConstructible(Parse::Access access) {
     return GetLayout().copyconstructible;
 }
 std::shared_ptr<Expression> AggregateType::GetVirtualPointer(std::shared_ptr<Expression> self) {
@@ -362,11 +362,11 @@ std::function<void(CodegenContext&)> AggregateType::BuildDestructorCall(std::sha
     };
 }
 
-OverloadSet* AggregateType::CreateOperatorOverloadSet(Lexer::TokenType type, Lexer::Access access) {
+OverloadSet* AggregateType::CreateOperatorOverloadSet(Lexer::TokenType type, Parse::Access access) {
     if (type != &Lexer::TokenTypes::Assignment)
         return analyzer.GetOverloadSet();
-    if (access != Lexer::Access::Public)
-        return AccessMember(type, Lexer::Access::Public);
+    if (access != Parse::Access::Public)
+        return AccessMember(type, Parse::Access::Public);
 
     // Similar principle to constructor
     std::function<Type*(Type*)> modify;
@@ -501,9 +501,9 @@ OverloadSet* AggregateType::CreateNondefaultConstructorOverloadSet() {
     }
     return analyzer.GetOverloadSet(set);
 }
-OverloadSet* AggregateType::CreateConstructorOverloadSet(Lexer::Access access) {
+OverloadSet* AggregateType::CreateConstructorOverloadSet(Parse::Access access) {
     // Use create instead of get because get will return the more derived class's constructors and that is not what we want.
-    if (access != Lexer::Access::Public) return AggregateType::CreateConstructorOverloadSet(Lexer::Access::Public);
+    if (access != Parse::Access::Public) return AggregateType::CreateConstructorOverloadSet(Parse::Access::Public);
     std::unordered_set<OverloadResolvable*> set;
     // Then default.
     auto is_default_constructible = [this] {

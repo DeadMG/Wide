@@ -158,19 +158,19 @@ bool operator==(const Wide::Parse::Module* m, const TestModule& rhs) {
     auto result = true;
 
     for(auto decl : m->named_decls) {
-        if (auto mod = boost::get<std::pair<Wide::Lexer::Access, Wide::Parse::Module*>>(&decl.second)) {
+        if (auto mod = boost::get<std::pair<Wide::Parse::Access, Wide::Parse::Module*>>(&decl.second)) {
             if(rhs.modules.find(decl.first) == rhs.modules.end())
                 return false;
             result = result && mod->second == *rhs.modules.at(decl.first);
         }
-        if (auto overset = boost::get<std::unordered_map<Wide::Lexer::Access, std::unordered_set<Wide::Parse::Function*>>>(&decl.second)) {
+        if (auto overset = boost::get<std::unordered_map<Wide::Parse::Access, std::unordered_set<Wide::Parse::Function*>>>(&decl.second)) {
             if (rhs.overloadsets.find(decl.first) == rhs.overloadsets.end())
                 return false;
-            result = result && overset->at(Wide::Lexer::Access::Public) == *rhs.overloadsets.at(decl.first);
+            result = result && overset->at(Wide::Parse::Access::Public) == *rhs.overloadsets.at(decl.first);
         }
     }
     for(auto&& mod : rhs.modules)
-        if (m->named_decls.find(mod.first) == m->named_decls.end() || !boost::get<std::pair<Wide::Lexer::Access, Wide::Parse::Module*>>(&m->named_decls.at(mod.first)))
+        if (m->named_decls.find(mod.first) == m->named_decls.end() || !boost::get<std::pair<Wide::Parse::Access, Wide::Parse::Module*>>(&m->named_decls.at(mod.first)))
             return false;
     
     return result;

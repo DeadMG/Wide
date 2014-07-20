@@ -12,7 +12,7 @@ void Combiner::CombinedModule::AddModuleToSelf(Module* mod) {
     destructor_decls.insert(mod->destructor_decls.begin(), mod->destructor_decls.end());
     for (auto decl : mod->named_decls) {
         // If we have a module, then union the respective combined module and that module.
-        if (auto mod = boost::get<std::pair<Lexer::Access, Module*>>(&decl.second)) {
+        if (auto mod = boost::get<std::pair<Parse::Access, Module*>>(&decl.second)) {
             if (combined_modules.find(decl.first) == combined_modules.end()) {
                 combined_modules[decl.first] = Wide::Memory::MakeUnique<CombinedModule>();
                 if (named_decls.find(decl.first) == named_decls.end())
@@ -27,14 +27,14 @@ void Combiner::CombinedModule::AddModuleToSelf(Module* mod) {
             }
 
             // Union function and template overload sets.
-            if (auto theiroverset = boost::get<std::unordered_map<Lexer::Access, std::unordered_set<Function*>>>(&decl.second)) {
-                if (auto ouroverset = boost::get<std::unordered_map<Lexer::Access, std::unordered_set<Function*>>>(&named_decls[decl.first])) {
+            if (auto theiroverset = boost::get<std::unordered_map<Parse::Access, std::unordered_set<Function*>>>(&decl.second)) {
+                if (auto ouroverset = boost::get<std::unordered_map<Parse::Access, std::unordered_set<Function*>>>(&named_decls[decl.first])) {
                     for (auto&& access : *theiroverset)
                         (*ouroverset)[access.first].insert(access.second.begin(), access.second.end()); 
                 }
             }
-            if (auto theiroverset = boost::get<std::unordered_map<Lexer::Access, std::unordered_set<TemplateType*>>>(&decl.second)) {
-                if (auto ouroverset = boost::get<std::unordered_map<Lexer::Access, std::unordered_set<TemplateType*>>>(&named_decls[decl.first])) {
+            if (auto theiroverset = boost::get<std::unordered_map<Parse::Access, std::unordered_set<TemplateType*>>>(&decl.second)) {
+                if (auto ouroverset = boost::get<std::unordered_map<Parse::Access, std::unordered_set<TemplateType*>>>(&named_decls[decl.first])) {
                     for (auto&& access : *theiroverset)
                         (*ouroverset)[access.first].insert(access.second.begin(), access.second.end());
                 }
@@ -50,19 +50,19 @@ void Combiner::CombinedModule::RemoveModuleFromSelf(Module* mod) {
         destructor_decls.erase(decl);
 
     for (auto decl : mod->named_decls) {
-        if (auto othermod = boost::get<std::pair<Lexer::Access, Module*>>(&decl.second)) {
+        if (auto othermod = boost::get<std::pair<Parse::Access, Module*>>(&decl.second)) {
             auto&& combmod = combined_modules[decl.first].get();
             combmod->RemoveModuleFromSelf(othermod->second);
             if (combmod->constructor_decls.empty() && combmod->destructor_decls.empty() && combmod->named_decls.empty()) {
                 // It's empty- time to kill it.
-                if (boost::get<std::pair<Lexer::Access, Module*>>(&decl.second))
+                if (boost::get<std::pair<Parse::Access, Module*>>(&decl.second))
                     named_decls.erase(decl.first);
                 combined_modules.erase(decl.first);
             }
         }
 
-        if (auto theiroverset = boost::get<std::unordered_map<Lexer::Access, std::unordered_set<Function*>>>(&decl.second)) {
-            if (auto ouroverset = boost::get<std::unordered_map<Lexer::Access, std::unordered_set<Function*>>>(&named_decls[decl.first])) {
+        if (auto theiroverset = boost::get<std::unordered_map<Parse::Access, std::unordered_set<Function*>>>(&decl.second)) {
+            if (auto ouroverset = boost::get<std::unordered_map<Parse::Access, std::unordered_set<Function*>>>(&named_decls[decl.first])) {
                 for (auto&& access : *theiroverset) {
                     for (auto&& func : access.second) {
                         (*ouroverset)[access.first].erase(func);
@@ -74,8 +74,8 @@ void Combiner::CombinedModule::RemoveModuleFromSelf(Module* mod) {
                     named_decls.erase(decl.first);
             }
         }
-        if (auto theiroverset = boost::get<std::unordered_map<Lexer::Access, std::unordered_set<TemplateType*>>>(&decl.second)) {
-            if (auto ouroverset = boost::get<std::unordered_map<Lexer::Access, std::unordered_set<TemplateType*>>>(&named_decls[decl.first])) {
+        if (auto theiroverset = boost::get<std::unordered_map<Parse::Access, std::unordered_set<TemplateType*>>>(&decl.second)) {
+            if (auto ouroverset = boost::get<std::unordered_map<Parse::Access, std::unordered_set<TemplateType*>>>(&named_decls[decl.first])) {
                 for (auto&& access : *theiroverset) {
                     for (auto&& func : access.second) {
                         (*ouroverset)[access.first].erase(func);
@@ -88,12 +88,12 @@ void Combiner::CombinedModule::RemoveModuleFromSelf(Module* mod) {
             }
         }
 
-        if (auto theirusing = boost::get<std::pair<Lexer::Access, Using*>>(&decl.second))
-            if (auto ourusing = boost::get<std::pair<Lexer::Access, Using*>>(&named_decls[decl.first]))
+        if (auto theirusing = boost::get<std::pair<Parse::Access, Using*>>(&decl.second))
+            if (auto ourusing = boost::get<std::pair<Parse::Access, Using*>>(&named_decls[decl.first]))
                 named_decls.erase(decl.first);
 
-        if (auto theirtype = boost::get<std::pair<Lexer::Access, Type*>>(&decl.second))
-            if (auto ourtype = boost::get<std::pair<Lexer::Access, Type*>>(&named_decls[decl.first]))
+        if (auto theirtype = boost::get<std::pair<Parse::Access, Type*>>(&decl.second))
+            if (auto ourtype = boost::get<std::pair<Parse::Access, Type*>>(&named_decls[decl.first]))
                 named_decls.erase(decl.first);
     }
 }

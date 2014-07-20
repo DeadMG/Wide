@@ -371,8 +371,8 @@ OverloadSet::OverloadSet(std::unordered_set<clang::NamedDecl*> clangdecls, Clang
         if(dynamic_cast<ClangType*>(context->Decay()))
             nonstatic = context;
 }
-OverloadSet* OverloadSet::CreateConstructorOverloadSet(Lexer::Access access) {
-    if (access != Lexer::Access::Public) return GetConstructorOverloadSet(Lexer::Access::Public);
+OverloadSet* OverloadSet::CreateConstructorOverloadSet(Parse::Access access) {
+    if (access != Parse::Access::Public) return GetConstructorOverloadSet(Parse::Access::Public);
     if (nonstatic) {
         std::unordered_set<OverloadResolvable*> constructors;
         ReferenceConstructor = MakeResolvable([this](std::vector<std::shared_ptr<Expression>> args, Context c) {

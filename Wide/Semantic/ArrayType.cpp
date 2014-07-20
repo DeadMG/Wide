@@ -69,11 +69,11 @@ std::size_t ArrayType::alignment() {
 llvm::Type* ArrayType::GetLLVMType(llvm::Module* module) {
     return llvm::ArrayType::get(t->GetLLVMType(module), count);
 }
-OverloadSet* ArrayType::CreateOperatorOverloadSet(Lexer::TokenType what, Lexer::Access access) {
+OverloadSet* ArrayType::CreateOperatorOverloadSet(Lexer::TokenType what, Parse::Access access) {
     if (what != &Lexer::TokenTypes::OpenSquareBracket)
         return AggregateType::CreateOperatorOverloadSet(what, access);
-    if (access != Lexer::Access::Public)
-        return AccessMember(what, Lexer::Access::Public);
+    if (access != Parse::Access::Public)
+        return AccessMember(what, Parse::Access::Public);
 
     struct IndexOperatorResolvable : OverloadResolvable, Callable {
         IndexOperatorResolvable(ArrayType* el) : array(el) {}
@@ -120,6 +120,6 @@ OverloadSet* ArrayType::CreateOperatorOverloadSet(Lexer::TokenType what, Lexer::
     return analyzer.GetOverloadSet(IndexOperator.get());
 }
 
-OverloadSet* ArrayType::CreateConstructorOverloadSet(Lexer::Access access) {
+OverloadSet* ArrayType::CreateConstructorOverloadSet(Parse::Access access) {
     return analyzer.GetOverloadSet(AggregateType::CreateConstructorOverloadSet(access), TupleInitializable::CreateConstructorOverloadSet(access));
 }

@@ -104,22 +104,22 @@ Parser::Parser(std::function<Wide::Util::optional<Lexer::Token>()> l)
         };
     }
 
-    ModuleTokens[&Lexer::TokenTypes::Private] = [](Parser& p, Module* m, Lexer::Access a, Lexer::Token& token) {
+    ModuleTokens[&Lexer::TokenTypes::Private] = [](Parser& p, Module* m, Parse::Access a, Lexer::Token& token) {
         p.Check(Error::AccessSpecifierNoColon, &Lexer::TokenTypes::Colon);
-        return Lexer::Access::Private;
+        return Parse::Access::Private;
     };
 
-    ModuleTokens[&Lexer::TokenTypes::Public] = [](Parser& p, Module* m, Lexer::Access a, Lexer::Token& token) {
+    ModuleTokens[&Lexer::TokenTypes::Public] = [](Parser& p, Module* m, Parse::Access a, Lexer::Token& token) {
         p.Check(Error::AccessSpecifierNoColon, &Lexer::TokenTypes::Colon);
-        return Lexer::Access::Public;
+        return Parse::Access::Public;
     };
 
-    ModuleTokens[&Lexer::TokenTypes::Protected] = [](Parser& p, Module* m, Lexer::Access a, Lexer::Token& token) {
+    ModuleTokens[&Lexer::TokenTypes::Protected] = [](Parser& p, Module* m, Parse::Access a, Lexer::Token& token) {
         throw ParserError(token.GetLocation(), Error::ProtectedModuleScope);
         return a; // Quiet error
     };    
 
-    GlobalModuleTokens[&Lexer::TokenTypes::Module] = [](Parser& p, Module* m, Lexer::Access a, Lexer::Token& module) {
+    GlobalModuleTokens[&Lexer::TokenTypes::Module] = [](Parser& p, Module* m, Parse::Access a, Lexer::Token& module) {
         auto ident = p.Check(Error::ModuleNoIdentifier, &Lexer::TokenTypes::Identifier);
         auto maybedot = p.lex(Parse::Error::ModuleNoOpeningBrace);
         if (maybedot.GetType() == &Lexer::TokenTypes::Dot)
@@ -131,7 +131,7 @@ Parser::Parser(std::function<Wide::Util::optional<Lexer::Token>()> l)
         p.ParseModuleContents(mod, curly.GetLocation());
     };
 
-    GlobalModuleTokens[&Lexer::TokenTypes::Template] = [](Parser& p, Module* m, Lexer::Access a, Lexer::Token& templat) {
+    GlobalModuleTokens[&Lexer::TokenTypes::Template] = [](Parser& p, Module* m, Parse::Access a, Lexer::Token& templat) {
         p.Check(Error::TemplateNoArguments, &Lexer::TokenTypes::OpenBracket);
         auto args = p.ParseFunctionDefinitionArguments();
         auto attrs = std::vector<Attribute>();
@@ -147,7 +147,7 @@ Parser::Parser(std::function<Wide::Util::optional<Lexer::Token>()> l)
         p.AddTemplateTypeToModule(m, ident.GetValue(), args, ty, a);
     };
 
-    GlobalModuleTokens[&Lexer::TokenTypes::Using] = [](Parser& p, Module* m, Lexer::Access a, Lexer::Token& token) {
+    GlobalModuleTokens[&Lexer::TokenTypes::Using] = [](Parser& p, Module* m, Parse::Access a, Lexer::Token& token) {
         auto useloc = p.lex.GetLastPosition();
         auto t = p.Check(Error::ModuleScopeUsingNoIdentifier, &Lexer::TokenTypes::Identifier);
         auto var = p.Check(Error::ModuleScopeUsingNoVarCreate, [&](Lexer::Token& curr) {
@@ -165,7 +165,7 @@ Parser::Parser(std::function<Wide::Util::optional<Lexer::Token>()> l)
         p.AddUsingToModule(m, t.GetValue(), use, a);
     };
 
-    GlobalModuleAttributeTokens[&Lexer::TokenTypes::OpenSquareBracket] = [](Parser& p, Module* m, Lexer::Access a, Lexer::Token& token, std::vector<Attribute> attributes) {
+    GlobalModuleAttributeTokens[&Lexer::TokenTypes::OpenSquareBracket] = [](Parser& p, Module* m, Parse::Access a, Lexer::Token& token, std::vector<Attribute> attributes) {
         // Another attribute, just add it to the list.
         attributes.push_back(p.ParseAttribute(token));
         auto next = p.lex(Error::AttributeNoEnd);
@@ -174,7 +174,7 @@ Parser::Parser(std::function<Wide::Util::optional<Lexer::Token>()> l)
         return p.GlobalModuleAttributeTokens[next.GetType()](p, m, a, next, attributes);
     };
 
-    GlobalModuleAttributeTokens[&Lexer::TokenTypes::Identifier] = [](Parser& p, Module* m, Lexer::Access a, Lexer::Token& ident, std::vector<Attribute> attributes) {
+    GlobalModuleAttributeTokens[&Lexer::TokenTypes::Identifier] = [](Parser& p, Module* m, Parse::Access a, Lexer::Token& ident, std::vector<Attribute> attributes) {
         auto maybedot = p.lex(Parse::Error::ModuleNoOpeningBrace);
         if (maybedot.GetType() == &Lexer::TokenTypes::Dot)
             m = p.ParseQualifiedName(ident, m, a, Parse::Error::ModuleNoOpeningBrace);
@@ -185,7 +185,7 @@ Parser::Parser(std::function<Wide::Util::optional<Lexer::Token>()> l)
         p.AddFunctionToModule(m, ident.GetValue(), func, a);
     };
 
-    GlobalModuleAttributeTokens[&Lexer::TokenTypes::Type] = [](Parser& p, Module* m, Lexer::Access a, Lexer::Token& typ, std::vector<Attribute> attributes) {
+    GlobalModuleAttributeTokens[&Lexer::TokenTypes::Type] = [](Parser& p, Module* m, Parse::Access a, Lexer::Token& typ, std::vector<Attribute> attributes) {
         // Could be exported constructor.
         auto next = p.lex(Error::ModuleScopeTypeNoIdentifier);
         if (next.GetType() == &Lexer::TokenTypes::OpenBracket) {
@@ -198,7 +198,7 @@ Parser::Parser(std::function<Wide::Util::optional<Lexer::Token>()> l)
         p.AddTypeToModule(m, next.GetValue(), ty, a);
     };
 
-    GlobalModuleAttributeTokens[&Lexer::TokenTypes::Operator] = [](Parser& p, Module* m, Lexer::Access a, Lexer::Token& token, std::vector<Attribute> attributes) {
+    GlobalModuleAttributeTokens[&Lexer::TokenTypes::Operator] = [](Parser& p, Module* m, Parse::Access a, Lexer::Token& token, std::vector<Attribute> attributes) {
         auto op = p.lex(Error::NoOperatorFound);
         if (p.ModuleOverloadableOperators.find(op.GetType()) == p.ModuleOverloadableOperators.end())
             throw p.BadToken(op, Error::NonOverloadableOperator);
@@ -207,7 +207,7 @@ Parser::Parser(std::function<Wide::Util::optional<Lexer::Token>()> l)
         p.AddFunctionToModule(m, token.GetValue() + op.GetValue(), func, a);
     };
 
-    GlobalModuleAttributeTokens[&Lexer::TokenTypes::Negate] = [](Parser& p, Module* m, Lexer::Access a, Lexer::Token& token, std::vector<Attribute> attributes) {
+    GlobalModuleAttributeTokens[&Lexer::TokenTypes::Negate] = [](Parser& p, Module* m, Parse::Access a, Lexer::Token& token, std::vector<Attribute> attributes) {
         auto des = p.ParseDestructor(token, attributes);
         m->destructor_decls.insert(des);
     };
@@ -575,19 +575,19 @@ Parser::Parser(std::function<Wide::Util::optional<Lexer::Token>()> l)
         return p.arena.Allocate<TryCatch>(compound, catches, t.GetLocation() + next.GetLocation());
     };
     
-    TypeTokens[&Lexer::TokenTypes::Public] = [](Parser& p, Type* t, Lexer::Access access, Lexer::Token& tok) {
+    TypeTokens[&Lexer::TokenTypes::Public] = [](Parser& p, Type* t, Parse::Access access, Lexer::Token& tok) {
         p.Check(Error::AccessSpecifierNoColon, &Lexer::TokenTypes::Colon);
-        return Lexer::Access::Public;
+        return Parse::Access::Public;
     };
-    TypeTokens[&Lexer::TokenTypes::Private] = [](Parser& p, Type* t, Lexer::Access access, Lexer::Token& tok) {
+    TypeTokens[&Lexer::TokenTypes::Private] = [](Parser& p, Type* t, Parse::Access access, Lexer::Token& tok) {
         p.Check(Error::AccessSpecifierNoColon, &Lexer::TokenTypes::Colon);
-        return Lexer::Access::Private;
+        return Parse::Access::Private;
     };
-    TypeTokens[&Lexer::TokenTypes::Protected] = [](Parser& p, Type* t, Lexer::Access access, Lexer::Token& tok) {
+    TypeTokens[&Lexer::TokenTypes::Protected] = [](Parser& p, Type* t, Parse::Access access, Lexer::Token& tok) {
         p.Check(Error::AccessSpecifierNoColon, &Lexer::TokenTypes::Colon);
-        return Lexer::Access::Protected;
+        return Parse::Access::Protected;
     };
-    TypeAttributeTokens[&Lexer::TokenTypes::OpenSquareBracket] = [](Parser& p, Type* t, Lexer::Access access, Lexer::Token& tok, std::vector<Attribute> attributes) {
+    TypeAttributeTokens[&Lexer::TokenTypes::OpenSquareBracket] = [](Parser& p, Type* t, Parse::Access access, Lexer::Token& tok, std::vector<Attribute> attributes) {
         attributes.push_back(p.ParseAttribute(tok));
         auto next = p.lex(Error::AttributeNoEnd);
         if (p.TypeAttributeTokens.find(next.GetType()) == p.TypeAttributeTokens.end())
@@ -595,7 +595,7 @@ Parser::Parser(std::function<Wide::Util::optional<Lexer::Token>()> l)
         return p.TypeAttributeTokens[next.GetType()](p, t, access, next, attributes);
     };
 
-    TypeAttributeTokens[&Lexer::TokenTypes::Dynamic] = [](Parser& p, Type* t, Lexer::Access access, Lexer::Token& tok, std::vector<Attribute> attributes) {
+    TypeAttributeTokens[&Lexer::TokenTypes::Dynamic] = [](Parser& p, Type* t, Parse::Access access, Lexer::Token& tok, std::vector<Attribute> attributes) {
         auto intro = p.lex(Error::TypeScopeExpectedIdentifierAfterDynamic);
         if (p.DynamicMemberFunctions.find(intro.GetType()) != p.DynamicMemberFunctions.end()) {
             auto func = p.DynamicMemberFunctions[intro.GetType()](p, t, access, intro, attributes);
@@ -606,7 +606,7 @@ Parser::Parser(std::function<Wide::Util::optional<Lexer::Token>()> l)
         return access;
     };
 
-    TypeAttributeTokens[&Lexer::TokenTypes::Identifier] = [](Parser& p, Type* t, Lexer::Access access, Lexer::Token& tok, std::vector<Attribute> attributes) {
+    TypeAttributeTokens[&Lexer::TokenTypes::Identifier] = [](Parser& p, Type* t, Parse::Access access, Lexer::Token& tok, std::vector<Attribute> attributes) {
         auto next = p.lex(Error::TypeScopeExpectedMemberAfterIdentifier);
         if (next.GetType() == &Lexer::TokenTypes::VarCreate) {
             auto init = p.ParseExpression();
@@ -620,27 +620,27 @@ Parser::Parser(std::function<Wide::Util::optional<Lexer::Token>()> l)
         return access;
     };
     
-    TypeAttributeTokens[&Lexer::TokenTypes::Type] = [](Parser& p, Type* t, Lexer::Access access, Lexer::Token& tok, std::vector<Attribute> attributes) {
+    TypeAttributeTokens[&Lexer::TokenTypes::Type] = [](Parser& p, Type* t, Parse::Access access, Lexer::Token& tok, std::vector<Attribute> attributes) {
         p.Check(Error::ConstructorNoOpenBracket, &Lexer::TokenTypes::OpenBracket);
         auto con = p.ParseConstructor(tok, attributes);
         t->constructor_decls[access].insert(con);
         return access;
     };
 
-    DynamicMemberFunctions[&Lexer::TokenTypes::Identifier] = [](Parser& p, Type* t, Lexer::Access a, Lexer::Token& tok, std::vector<Attribute> attrs) {
+    DynamicMemberFunctions[&Lexer::TokenTypes::Identifier] = [](Parser& p, Type* t, Parse::Access a, Lexer::Token& tok, std::vector<Attribute> attrs) {
         p.Check(Error::TypeScopeExpectedIdentifierAfterDynamic, &Lexer::TokenTypes::OpenBracket);
         auto func = p.ParseFunction(tok, attrs);
         t->functions[tok.GetValue()][a].insert(func);
         return func;
     };
 
-    DynamicMemberFunctions[&Lexer::TokenTypes::Negate] = [](Parser& p, Type* t, Lexer::Access a, Lexer::Token& tok, std::vector<Attribute> attrs) {
+    DynamicMemberFunctions[&Lexer::TokenTypes::Negate] = [](Parser& p, Type* t, Parse::Access a, Lexer::Token& tok, std::vector<Attribute> attrs) {
         auto des = p.ParseDestructor(tok, attrs);
         t->destructor_decl = des;
         return des;
     };
 
-    DynamicMemberFunctions[&Lexer::TokenTypes::Operator] = [](Parser& p, Type* t, Lexer::Access a, Lexer::Token& tok, std::vector<Attribute> attrs) -> Function* {
+    DynamicMemberFunctions[&Lexer::TokenTypes::Operator] = [](Parser& p, Type* t, Parse::Access a, Lexer::Token& tok, std::vector<Attribute> attrs) -> Function* {
         auto make_op = [&](std::string name) {
             p.Check(Error::TypeScopeOperatorNoOpenBracket, &Lexer::TokenTypes::OpenBracket);
             auto func = p.ParseFunction(tok, attrs);
@@ -662,7 +662,7 @@ Parser::Parser(std::function<Wide::Util::optional<Lexer::Token>()> l)
     };
 }
 
-Module* Parser::ParseQualifiedName(Lexer::Token& first, Module* m, Lexer::Access a, Parse::Error err) {
+Module* Parser::ParseQualifiedName(Lexer::Token& first, Module* m, Parse::Access a, Parse::Error err) {
     // We have already seen identifier . to enter this method.
     m = CreateModule(first.GetValue(), m, first.GetLocation(), a);
     while (true) {
@@ -707,9 +707,9 @@ void Parser::ParseGlobalModuleLevelDeclaration(Module* m) {
     // Can only get here if ParseGlobalModuleContents found a token, so we know we have at least one.
     auto t = *lex();
     if (GlobalModuleTokens.find(t.GetType()) != GlobalModuleTokens.end())
-        return GlobalModuleTokens[t.GetType()](*this, m, Lexer::Access::Public, t);
+        return GlobalModuleTokens[t.GetType()](*this, m, Parse::Access::Public, t);
     if (GlobalModuleAttributeTokens.find(t.GetType()) != GlobalModuleAttributeTokens.end())
-        return GlobalModuleAttributeTokens[t.GetType()](*this, m, Lexer::Access::Public, t, std::vector<Attribute>());
+        return GlobalModuleAttributeTokens[t.GetType()](*this, m, Parse::Access::Public, t, std::vector<Attribute>());
     throw ParserError(t.GetLocation(), Error::UnrecognizedTokenModuleScope);
 }
 
@@ -722,7 +722,7 @@ void Parser::ParseGlobalModuleContents(Module* m) {
     }
 }
 void Parser::ParseModuleContents(Module* m, Lexer::Range first) {
-    auto access = Lexer::Access::Public;
+    auto access = Parse::Access::Public;
     while (true) {
         auto t = lex(Error::ModuleRequiresTerminatingCurly);
         if (t.GetType() == &Lexer::TokenTypes::CloseCurlyBracket) {
@@ -733,7 +733,7 @@ void Parser::ParseModuleContents(Module* m, Lexer::Range first) {
         access = ParseModuleLevelDeclaration(m, access);
     }
 }
-Lexer::Access Parser::ParseModuleLevelDeclaration(Module* m, Lexer::Access a) {
+Parse::Access Parser::ParseModuleLevelDeclaration(Module* m, Parse::Access a) {
     auto t = lex(Error::ModuleRequiresTerminatingCurly);
     if (GlobalModuleTokens.find(t.GetType()) != GlobalModuleTokens.end()) {
         GlobalModuleTokens[t.GetType()](*this, m, a, t);
@@ -921,7 +921,7 @@ Type* Parser::ParseTypeDeclaration(Module* m, Lexer::Range loc, Lexer::Token& id
 void Parser::ParseTypeBody(Type* ty) {
     auto loc = lex.GetLastPosition();
     auto t = lex(Error::TypeExpectedBracketAfterIdentifier);
-    auto access = Lexer::Access::Public;
+    auto access = Parse::Access::Public;
     while (t.GetType() != &Lexer::TokenTypes::CloseCurlyBracket) {
         if (TypeTokens.find(t.GetType()) != TypeTokens.end())
             access = TypeTokens[t.GetType()](*this, ty, access, t);
@@ -955,8 +955,13 @@ Function* Parser::ParseFunction(const Lexer::Token& first, std::vector<Attribute
 }
 Constructor* Parser::ParseConstructor(const Lexer::Token& first, std::vector<Attribute> attrs) {
     auto args = ParseFunctionDefinitionArguments();
-    // Gotta be : or {
-    auto colon_or_open = Check(Error::FunctionNoCurlyToIntroduceBody, [](Lexer::Token& tok) { return tok.GetType() == &Lexer::TokenTypes::OpenCurlyBracket || tok.GetType() == &Lexer::TokenTypes::Colon; });
+    // Gotta be : or { or default
+    auto colon_or_open = Check(Error::FunctionNoCurlyToIntroduceBody, [](Lexer::Token& tok) { return tok.GetType() == &Lexer::TokenTypes::OpenCurlyBracket || tok.GetType() == &Lexer::TokenTypes::Colon || tok.GetType() == &Lexer::TokenTypes::Default; });
+    if (colon_or_open.GetType() == &Lexer::TokenTypes::Default) {
+        auto con = arena.Allocate<Constructor>(std::vector<Statement*>(), first.GetLocation() + colon_or_open.GetLocation(), std::move(args), std::vector<VariableInitializer>(), attrs);
+        con->defaulted = true;
+        return con;
+    }
     std::vector<VariableInitializer> initializers;
     while (colon_or_open.GetType() == &Lexer::TokenTypes::Colon) {
         auto initialized = ParseExpression();
@@ -994,35 +999,35 @@ Destructor* Parser::ParseDestructor(const Lexer::Token& first, std::vector<Attri
     return arena.Allocate<Destructor>(std::move(body), first.GetLocation() + t.GetLocation(), attrs, false);
 }
 
-void Parser::AddTypeToModule(Module* m, std::string name, Type* t, Lexer::Access specifier) {
+void Parser::AddTypeToModule(Module* m, std::string name, Type* t, Parse::Access specifier) {
     if (m->named_decls.find(name) != m->named_decls.end())
         throw ParserError(t->location, Error::TypeidNoCloseBracket);
     m->named_decls[name] = std::make_pair(specifier, t);
 }
-void Parser::AddUsingToModule(Module* m, std::string name, Using* u, Lexer::Access specifier) {
+void Parser::AddUsingToModule(Module* m, std::string name, Using* u, Parse::Access specifier) {
     if (m->named_decls.find(name) != m->named_decls.end())
         throw ParserError(u->location, Error::TypeidNoCloseBracket);
     m->named_decls[name] = std::make_pair(specifier, u);
 }
-void Parser::AddFunctionToModule(Module* m, std::string name, Function* f, Lexer::Access specifier) {
+void Parser::AddFunctionToModule(Module* m, std::string name, Function* f, Parse::Access specifier) {
     if (m->named_decls.find(name) == m->named_decls.end())
-        m->named_decls[name] = std::unordered_map<Lexer::Access, std::unordered_set<Function*>>();
-    auto overset = boost::get<std::unordered_map<Lexer::Access, std::unordered_set<Function*>>>(&m->named_decls[name]);
+        m->named_decls[name] = std::unordered_map<Parse::Access, std::unordered_set<Function*>>();
+    auto overset = boost::get<std::unordered_map<Parse::Access, std::unordered_set<Function*>>>(&m->named_decls[name]);
     if (!overset)
         throw ParserError(f->where, Error::TypeExpectedBracketAfterIdentifier);
     (*overset)[specifier].insert(f);
 }
-void Parser::AddTemplateTypeToModule(Module* m, std::string name, std::vector<FunctionArgument> args, Type* t, Lexer::Access specifier) {
+void Parser::AddTemplateTypeToModule(Module* m, std::string name, std::vector<FunctionArgument> args, Type* t, Parse::Access specifier) {
     if (m->named_decls.find(name) == m->named_decls.end())
-        m->named_decls[name] = std::unordered_map<Lexer::Access, std::unordered_set<TemplateType*>>();
-    auto overset = boost::get<std::unordered_map<Lexer::Access, std::unordered_set<TemplateType*>>>(&m->named_decls[name]);
+        m->named_decls[name] = std::unordered_map<Parse::Access, std::unordered_set<TemplateType*>>();
+    auto overset = boost::get<std::unordered_map<Parse::Access, std::unordered_set<TemplateType*>>>(&m->named_decls[name]);
     if (!overset)
         throw ParserError(t->location, Error::TypeExpectedBracketAfterIdentifier);
     (*overset)[specifier].insert(arena.Allocate<TemplateType>(t, args));
 }
-Module* Parser::CreateModule(std::string name, Module* m, Lexer::Range where, Lexer::Access access) {
+Module* Parser::CreateModule(std::string name, Module* m, Lexer::Range where, Parse::Access access) {
     if (m->named_decls.find(name) != m->named_decls.end()) {
-        auto mod = boost::get<std::pair<Lexer::Access, Module*>>(&m->named_decls[name]);
+        auto mod = boost::get<std::pair<Parse::Access, Module*>>(&m->named_decls[name]);
         if (!mod)
             throw ParserError(where, Error::TypeExpectedBracketAfterIdentifier);
         mod->second->locations.push_back(where);

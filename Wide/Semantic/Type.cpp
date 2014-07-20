@@ -23,7 +23,7 @@ using namespace Semantic;
 #include <clang/AST/AST.h>
 #pragma warning(pop)
 
-OverloadSet* Type::CreateADLOverloadSet(Lexer::TokenType what, Lexer::Access access) {
+OverloadSet* Type::CreateADLOverloadSet(Lexer::TokenType what, Parse::Access access) {
     if (IsReference())
         return Decay()->CreateADLOverloadSet(what, access);
     auto context = GetContext();
@@ -32,7 +32,7 @@ OverloadSet* Type::CreateADLOverloadSet(Lexer::TokenType what, Lexer::Access acc
     return GetContext()->AccessMember(what, access);
 }
 
-OverloadSet* Type::CreateOperatorOverloadSet(Lexer::TokenType type, Lexer::Access access) {
+OverloadSet* Type::CreateOperatorOverloadSet(Lexer::TokenType type, Parse::Access access) {
     if (IsReference())
         return Decay()->AccessMember(type, access);
     return analyzer.GetOverloadSet();
@@ -72,7 +72,7 @@ Wide::Util::optional<clang::QualType> Type::GetClangType(ClangTU& TU) {
 
 // I doubt that converting a T* to bool is super-duper slow.
 #pragma warning(disable : 4800)
-bool Type::IsMoveConstructible(Lexer::Access access) {
+bool Type::IsMoveConstructible(Parse::Access access) {
     auto set = GetConstructorOverloadSet(access);
     std::vector<Type*> arguments;
     arguments.push_back(analyzer.GetLvalueType(this));
@@ -80,7 +80,7 @@ bool Type::IsMoveConstructible(Lexer::Access access) {
     return set->Resolve(std::move(arguments), this);
 }
 
-bool Type::IsCopyConstructible(Lexer::Access access) {
+bool Type::IsCopyConstructible(Parse::Access access) {
     // A Clang struct with a deleted copy constructor can be both noncomplex and non-copyable at the same time.
     auto set = GetConstructorOverloadSet(access);
     std::vector<Type*> arguments;
@@ -89,7 +89,7 @@ bool Type::IsCopyConstructible(Lexer::Access access) {
     return set->Resolve(std::move(arguments), this);
 }
 
-bool Type::IsMoveAssignable(Lexer::Access access) {
+bool Type::IsMoveAssignable(Parse::Access access) {
     auto set = AccessMember(&Lexer::TokenTypes::Assignment, access);
     std::vector<Type*> arguments;
     arguments.push_back(analyzer.GetLvalueType(this));
@@ -97,7 +97,7 @@ bool Type::IsMoveAssignable(Lexer::Access access) {
     return set->Resolve(std::move(arguments), this);
 }
 
-bool Type::IsCopyAssignable(Lexer::Access access) {
+bool Type::IsCopyAssignable(Parse::Access access) {
     auto set = AccessMember(&Lexer::TokenTypes::Assignment, access);
     std::vector<Type*> arguments;
     arguments.push_back(analyzer.GetLvalueType(this));
@@ -214,13 +214,13 @@ std::function<void(CodegenContext&)> Type::BuildDestructorCall(std::shared_ptr<E
     return [](CodegenContext&) {};
 }
 
-OverloadSet* Type::GetConstructorOverloadSet(Lexer::Access access) {
+OverloadSet* Type::GetConstructorOverloadSet(Parse::Access access) {
     if (ConstructorOverloadSets.find(access) == ConstructorOverloadSets.end())
         ConstructorOverloadSets[access] = CreateConstructorOverloadSet(access);
     return ConstructorOverloadSets[access];
 }
 
-OverloadSet* Type::PerformADL(Lexer::TokenType what, Lexer::Access access) {
+OverloadSet* Type::PerformADL(Lexer::TokenType what, Parse::Access access) {
     if (IsReference())
         return Decay()->PerformADL(what, access);
     if (ADLResults.find(access) != ADLResults.end())
@@ -229,7 +229,7 @@ OverloadSet* Type::PerformADL(Lexer::TokenType what, Lexer::Access access) {
     return ADLResults[access][what] = CreateADLOverloadSet(what, access);
 }
 
-OverloadSet* Type::AccessMember(Lexer::TokenType type, Lexer::Access access) {
+OverloadSet* Type::AccessMember(Lexer::TokenType type, Parse::Access access) {
     if (OperatorOverloadSets.find(access) != OperatorOverloadSets.end())
         if (OperatorOverloadSets[access].find(type) != OperatorOverloadSets[access].end())
             return OperatorOverloadSets[access][type];
@@ -530,8 +530,8 @@ std::shared_ptr<Expression> Type::BuildBinaryExpression(std::shared_ptr<Expressi
     return nullptr;
 }
 
-OverloadSet* PrimitiveType::CreateConstructorOverloadSet(Lexer::Access access) {
-    if (access != Lexer::Access::Public) return GetConstructorOverloadSet(Lexer::Access::Public);
+OverloadSet* PrimitiveType::CreateConstructorOverloadSet(Parse::Access access) {
+    if (access != Parse::Access::Public) return GetConstructorOverloadSet(Parse::Access::Public);
     auto construct_from_ref = [](std::vector<std::shared_ptr<Expression>> args, Context c) {
         return Wide::Memory::MakeUnique<ImplicitStoreExpr>(std::move(args[0]), BuildValue(std::move(args[1])));
     };
@@ -543,7 +543,7 @@ OverloadSet* PrimitiveType::CreateConstructorOverloadSet(Lexer::Access access) {
     return analyzer.GetOverloadSet(callables);
 }
 
-OverloadSet* PrimitiveType::CreateOperatorOverloadSet(Lexer::TokenType what, Lexer::Access access) {
+OverloadSet* PrimitiveType::CreateOperatorOverloadSet(Lexer::TokenType what, Parse::Access access) {
     if (what != &Lexer::TokenTypes::Assignment)
         return Type::CreateOperatorOverloadSet(what, access);
     
@@ -570,8 +570,8 @@ Type* MetaType::GetConstantContext() {
     return this;
 }
 
-OverloadSet* MetaType::CreateConstructorOverloadSet(Lexer::Access access) {
-    if (access != Lexer::Access::Public) return GetConstructorOverloadSet(Lexer::Access::Public);
+OverloadSet* MetaType::CreateConstructorOverloadSet(Parse::Access access) {
+    if (access != Parse::Access::Public) return GetConstructorOverloadSet(Parse::Access::Public);
     DefaultConstructor = MakeResolvable([](std::vector<std::shared_ptr<Expression>> args, Context c) {
         return std::move(args[0]);
     }, { analyzer.GetLvalueType(this) });
@@ -633,8 +633,8 @@ std::unique_ptr<OverloadResolvable> Semantic::MakeResolvable(std::function<std::
     return Wide::Memory::MakeUnique<Resolvable>(types, std::move(f));
 }
 
-OverloadSet* TupleInitializable::CreateConstructorOverloadSet(Lexer::Access access) {
-    if (access != Lexer::Access::Public) return TupleInitializable::CreateConstructorOverloadSet(Lexer::Access::Public);
+OverloadSet* TupleInitializable::CreateConstructorOverloadSet(Parse::Access access) {
+    if (access != Parse::Access::Public) return TupleInitializable::CreateConstructorOverloadSet(Parse::Access::Public);
     struct TupleConstructorType : public OverloadResolvable, Callable {
         TupleConstructorType(TupleInitializable* p) : self(p) {}
         TupleInitializable* self;

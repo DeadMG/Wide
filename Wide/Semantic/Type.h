@@ -1,6 +1,6 @@
 #pragma once
 
-#include <Wide/Lexer/Token.h>
+#include <Wide/Parser/AST.h>
 #include <Wide/Util/Ranges/Optional.h>
 #include <Wide/Semantic/SemanticError.h>
 #include <Wide/Semantic/Hashers.h>
@@ -189,9 +189,9 @@ namespace Wide {
             };
 
         private:
-            std::unordered_map<Lexer::Access, OverloadSet*> ConstructorOverloadSets;
-            std::unordered_map<Lexer::Access, std::unordered_map<Lexer::TokenType, OverloadSet*>> OperatorOverloadSets;
-            std::unordered_map<Lexer::Access, std::unordered_map<Lexer::TokenType, OverloadSet*>> ADLResults;
+            std::unordered_map<Parse::Access, OverloadSet*> ConstructorOverloadSets;
+            std::unordered_map<Parse::Access, std::unordered_map<Lexer::TokenType, OverloadSet*>> OperatorOverloadSets;
+            std::unordered_map<Parse::Access, std::unordered_map<Lexer::TokenType, OverloadSet*>> ADLResults;
             std::unordered_map<std::vector<std::pair<Type*, unsigned>>, std::shared_ptr<Expression>, VectorTypeHasher> ComputedVTables;
             Wide::Util::optional<VTableLayout> VtableLayout;
             Wide::Util::optional<VTableLayout> PrimaryVtableLayout;
@@ -203,9 +203,9 @@ namespace Wide {
         protected:
             llvm::Function* DestructorFunction = nullptr;
             virtual llvm::Function* CreateDestructorFunction(llvm::Module* module);
-            virtual OverloadSet* CreateOperatorOverloadSet(Lexer::TokenType what, Lexer::Access access);
-            virtual OverloadSet* CreateADLOverloadSet(Lexer::TokenType name, Lexer::Access access);
-            virtual OverloadSet* CreateConstructorOverloadSet(Lexer::Access access) = 0;
+            virtual OverloadSet* CreateOperatorOverloadSet(Lexer::TokenType what, Parse::Access access);
+            virtual OverloadSet* CreateADLOverloadSet(Lexer::TokenType name, Parse::Access access);
+            virtual OverloadSet* CreateConstructorOverloadSet(Parse::Access access) = 0;
         public:
             virtual std::shared_ptr<Expression> VirtualEntryFor(VTableLayout::VirtualFunctionEntry entry, unsigned offset) { assert(false); throw std::runtime_error("ICE"); }
             Type(Analyzer& a) : analyzer(a) {}
@@ -226,10 +226,10 @@ namespace Wide {
             virtual bool IsTriviallyDestructible();
             virtual bool IsTriviallyCopyConstructible();
             virtual Wide::Util::optional<clang::QualType> GetClangType(ClangTU& TU);
-            virtual bool IsMoveConstructible(Lexer::Access access);
-            virtual bool IsCopyConstructible(Lexer::Access access);
-            virtual bool IsMoveAssignable(Lexer::Access access);
-            virtual bool IsCopyAssignable(Lexer::Access access);
+            virtual bool IsMoveConstructible(Parse::Access access);
+            virtual bool IsCopyConstructible(Parse::Access access);
+            virtual bool IsMoveAssignable(Parse::Access access);
+            virtual bool IsCopyAssignable(Parse::Access access);
             virtual Type* GetConstantContext();
             virtual bool IsEmpty();
             virtual Type* GetVirtualPointerType();
@@ -258,9 +258,9 @@ namespace Wide {
             InheritanceRelationship IsDerivedFrom(Type* other);
             VTableLayout GetVtableLayout();
             VTableLayout GetPrimaryVTable();
-            OverloadSet* GetConstructorOverloadSet(Lexer::Access access);
-            OverloadSet* PerformADL(Lexer::TokenType what, Lexer::Access access);
-            OverloadSet* AccessMember(Lexer::TokenType type, Lexer::Access access);
+            OverloadSet* GetConstructorOverloadSet(Parse::Access access);
+            OverloadSet* PerformADL(Lexer::TokenType what, Parse::Access access);
+            OverloadSet* AccessMember(Lexer::TokenType type, Parse::Access access);
             bool InheritsFromAtOffsetZero(Type* other);
 
             static std::shared_ptr<Expression> BuildBooleanConversion(std::shared_ptr<Expression>, Context);
@@ -292,7 +292,7 @@ namespace Wide {
         private:
             std::unique_ptr<OverloadResolvable> TupleConstructor;
         public:
-            OverloadSet* CreateConstructorOverloadSet(Lexer::Access access);
+            OverloadSet* CreateConstructorOverloadSet(Parse::Access access);
             virtual Type* GetSelfAsType() = 0;
             virtual Wide::Util::optional<std::vector<Type*>> GetTypesForTuple() = 0;
             virtual std::shared_ptr<Expression> PrimitiveAccessMember(std::shared_ptr<Expression> self, unsigned num) = 0;
@@ -333,8 +333,8 @@ namespace Wide {
         protected:
             PrimitiveType(Analyzer& a) : Type(a) {}
         public:
-            OverloadSet* CreateConstructorOverloadSet(Lexer::Access access) override;
-            OverloadSet* CreateOperatorOverloadSet(Lexer::TokenType what, Lexer::Access access) override;
+            OverloadSet* CreateConstructorOverloadSet(Parse::Access access) override;
+            OverloadSet* CreateOperatorOverloadSet(Lexer::TokenType what, Parse::Access access) override;
         };
         class MetaType : public PrimitiveType {
             std::unique_ptr<OverloadResolvable> DefaultConstructor;
@@ -347,7 +347,7 @@ namespace Wide {
             std::size_t size() override;
             std::size_t alignment() override;
             Type* GetConstantContext() override;
-            OverloadSet* CreateConstructorOverloadSet(Lexer::Access access) override final;
+            OverloadSet* CreateConstructorOverloadSet(Parse::Access access) override final;
         };
         
         llvm::Constant* GetGlobalString(std::string string, llvm::Module* m);

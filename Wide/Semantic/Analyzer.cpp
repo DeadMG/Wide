@@ -1095,15 +1095,15 @@ OverloadResolvable* Analyzer::GetCallableForFunction(const Parse::FunctionBase* 
     return FunctionCallables.at(f).get();
 }
 
-Lexer::Access Semantic::GetAccessSpecifier(Type* from, Type* to) {
+Parse::Access Semantic::GetAccessSpecifier(Type* from, Type* to) {
     auto source = from->Decay();
     auto target = to->Decay();
-    if (source == target) return Lexer::Access::Private;
+    if (source == target) return Parse::Access::Private;
     if (source->IsDerivedFrom(target) == Type::InheritanceRelationship::UnambiguouslyDerived)
-        return Lexer::Access::Protected;
+        return Parse::Access::Protected;
     if (auto func = dynamic_cast<Function*>(from)) {
         if (auto clangty = dynamic_cast<ClangType*>(to)) {
-            Lexer::Access max = GetAccessSpecifier(func->GetContext(), target);
+            Parse::Access max = GetAccessSpecifier(func->GetContext(), target);
             for (auto clangcontext : func->GetClangContexts())
                 max = std::max(max, GetAccessSpecifier(clangcontext, target));
             return max;
@@ -1112,7 +1112,7 @@ Lexer::Access Semantic::GetAccessSpecifier(Type* from, Type* to) {
     if (auto context = source->GetContext())
         return GetAccessSpecifier(context, target);
 
-    return Lexer::Access::Public;
+    return Parse::Access::Public;
 }
 
 void ProcessFunction(const Parse::AttributeFunctionBase* f, Analyzer& a, Module* m, std::string name) {
@@ -1146,7 +1146,7 @@ void AnalyzeExportedFunctionsInModule(Analyzer& a, Module* m) {
     ProcessOverloadSet(mod->constructor_decls, a, m, "type");
     ProcessOverloadSet(mod->destructor_decls, a, m, "~type");
     for (auto&& decl : mod->named_decls) {
-        if (auto overset = boost::get<std::unordered_map<Lexer::Access, std::unordered_set<Parse::Function*>>>(&decl.second)) {
+        if (auto overset = boost::get<std::unordered_map<Parse::Access, std::unordered_set<Parse::Function*>>>(&decl.second)) {
             for (auto access : (*overset))
                 ProcessOverloadSet(access.second, a, m, decl.first);
         }

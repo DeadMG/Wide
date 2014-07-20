@@ -115,15 +115,15 @@ struct PointerComparableResolvable : OverloadResolvable, Callable {
     }
     Callable* GetCallableForResolution(std::vector<Type*>, Analyzer& a) override final { return this; }
 };
-OverloadSet* RvalueType::CreateConstructorOverloadSet(Lexer::Access access) {
-    if (access != Lexer::Access::Public) return GetConstructorOverloadSet(Lexer::Access::Public);
+OverloadSet* RvalueType::CreateConstructorOverloadSet(Parse::Access access) {
+    if (access != Parse::Access::Public) return GetConstructorOverloadSet(Parse::Access::Public);
     RvalueConvertible = Wide::Memory::MakeUnique<rvalueconvertible>(this);
     std::unordered_set<OverloadResolvable*> set;
     set.insert(RvalueConvertible.get());
     return analyzer.GetOverloadSet(set);
 }
-OverloadSet* LvalueType::CreateConstructorOverloadSet(Lexer::Access access) {
-    if (access != Lexer::Access::Public) return GetConstructorOverloadSet(Lexer::Access::Public);
+OverloadSet* LvalueType::CreateConstructorOverloadSet(Parse::Access access) {
+    if (access != Parse::Access::Public) return GetConstructorOverloadSet(Parse::Access::Public);
 
     DerivedConstructor = Wide::Memory::MakeUnique<PointerComparableResolvable>(this);
 

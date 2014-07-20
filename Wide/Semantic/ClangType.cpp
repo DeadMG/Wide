@@ -39,10 +39,10 @@ namespace std {
         }
     };
 }
-const std::unordered_map<clang::AccessSpecifier, Lexer::Access> AccessMapping = {
-    { clang::AccessSpecifier::AS_public, Lexer::Access::Public },
-    { clang::AccessSpecifier::AS_private, Lexer::Access::Private },
-    { clang::AccessSpecifier::AS_protected, Lexer::Access::Protected },
+const std::unordered_map<clang::AccessSpecifier, Parse::Access> AccessMapping = {
+    { clang::AccessSpecifier::AS_public, Parse::Access::Public },
+    { clang::AccessSpecifier::AS_private, Parse::Access::Private },
+    { clang::AccessSpecifier::AS_protected, Parse::Access::Protected },
 };
 
 std::shared_ptr<Expression> GetOverloadSet(clang::NamedDecl* d, ClangTU* from, std::shared_ptr<Expression> self, Context c, Analyzer& a) {
@@ -51,7 +51,7 @@ std::shared_ptr<Expression> GetOverloadSet(clang::NamedDecl* d, ClangTU* from, s
         decls.insert(d);
     return a.GetOverloadSet(std::move(decls), from, self->GetType())->BuildValueConstruction({ self }, c);
 }
-OverloadSet* GetOverloadSet(clang::LookupResult& lr, ClangTU* from, Type* self, Lexer::Access access, Analyzer& a) {
+OverloadSet* GetOverloadSet(clang::LookupResult& lr, ClangTU* from, Type* self, Parse::Access access, Analyzer& a) {
     std::unordered_set<clang::NamedDecl*> decls;
     for (auto decl : lr) {
         if (access < AccessMapping.at(decl->getAccess()))
@@ -170,8 +170,8 @@ namespace std {
     };
 }
 
-OverloadSet* ClangType::CreateADLOverloadSet(Lexer::TokenType what, Lexer::Access access) {
-    if (access != Lexer::Access::Public) return CreateADLOverloadSet(what, access);
+OverloadSet* ClangType::CreateADLOverloadSet(Lexer::TokenType what, Parse::Access access) {
+    if (access != Parse::Access::Public) return CreateADLOverloadSet(what, access);
     clang::ADLResult res;
     clang::OpaqueValueExpr lhsexpr(clang::SourceLocation(), type.getNonLValueExprType(from->GetASTContext()), Semantic::GetKindOfType(this));
     std::vector<clang::Expr*> exprs;
@@ -182,7 +182,7 @@ OverloadSet* ClangType::CreateADLOverloadSet(Lexer::TokenType what, Lexer::Acces
     return analyzer.GetOverloadSet(std::move(decls), from, GetContext());
 }
 
-OverloadSet* ClangType::CreateOperatorOverloadSet(Lexer::TokenType name, Lexer::Access access) {
+OverloadSet* ClangType::CreateOperatorOverloadSet(Lexer::TokenType name, Parse::Access access) {
     if (!ProcessedAssignmentOperators && name == &Lexer::TokenTypes::Assignment) {
         ProcessedAssignmentOperators = true;
         auto recdecl = type->getAsCXXRecordDecl();
@@ -238,7 +238,7 @@ OverloadSet* ClangType::CreateOperatorOverloadSet(Lexer::TokenType name, Lexer::
     return analyzer.GetOverloadSet(std::move(decls), from, this);
 }
 
-OverloadSet* ClangType::CreateConstructorOverloadSet(Lexer::Access access) {
+OverloadSet* ClangType::CreateConstructorOverloadSet(Parse::Access access) {
     if (!ProcessedConstructors) {
         auto recdecl = type->getAsCXXRecordDecl();
         ProcessImplicitSpecialMember(
@@ -266,7 +266,7 @@ OverloadSet* ClangType::CreateConstructorOverloadSet(Lexer::Access access) {
     for (auto con : cons)
         if (AccessMapping.at(con->getAccess()) <= access)
             decls.insert(con);
-    auto tupcon = GetTypesForTuple() ? TupleInitializable::CreateConstructorOverloadSet(Lexer::Access::Public) : analyzer.GetOverloadSet();
+    auto tupcon = GetTypesForTuple() ? TupleInitializable::CreateConstructorOverloadSet(Parse::Access::Public) : analyzer.GetOverloadSet();
     return analyzer.GetOverloadSet(analyzer.GetOverloadSet(decls, from, analyzer.GetLvalueType(this)), tupcon);
 }
 

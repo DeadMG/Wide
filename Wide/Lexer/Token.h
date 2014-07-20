@@ -91,11 +91,6 @@ namespace Wide {
             extern const std::string Delete;
             extern const std::string Default;
         };
-        enum Access {
-            Public,
-            Protected,
-            Private,
-        };
         struct Position {
             Position(std::shared_ptr<std::string> where)
                 : line(1), column(1), offset(0), name(std::move(where)) {}
@@ -161,11 +156,4 @@ namespace Wide {
             return "operator" + *op;
         }
     }
-}
-namespace std {
-    template<> struct hash<Wide::Lexer::Access> {
-        std::size_t operator()(Wide::Lexer::Access ty) const {
-            return std::hash<int>()((int)ty);
-        }
-    };
 }

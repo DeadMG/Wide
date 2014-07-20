@@ -21,7 +21,7 @@ namespace Wide {
             using Type::AccessMember;
 
             std::shared_ptr<Expression> AccessMember(std::shared_ptr<Expression> val, std::string name, Context c) override final;
-            OverloadSet* CreateOperatorOverloadSet(Wide::Lexer::TokenType, Lexer::Access access) override final;
+            OverloadSet* CreateOperatorOverloadSet(Wide::Lexer::TokenType, Parse::Access access) override final;
             const Parse::Module* GetASTModule() { return m; }
             std::string explain() override final;
         };

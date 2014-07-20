@@ -14,12 +14,12 @@ namespace Wide {
             using Type::BuildInplaceConstruction;
 
             PointerType(Type* point, Analyzer& a); 
-            OverloadSet* CreateOperatorOverloadSet(Lexer::TokenType what, Lexer::Access access) override final;
+            OverloadSet* CreateOperatorOverloadSet(Lexer::TokenType what, Parse::Access access) override final;
             Wide::Util::optional<clang::QualType> GetClangType(ClangTU& TU) override final;
             llvm::Type* GetLLVMType(llvm::Module* module) override final;
             std::size_t size() override final;
             std::size_t alignment() override final;
-            OverloadSet* CreateConstructorOverloadSet(Lexer::Access access) override final;
+            OverloadSet* CreateConstructorOverloadSet(Parse::Access access) override final;
             bool IsSourceATarget(Type* first, Type* second, Type* context) override final;
             std::string explain() override final;
             Type* GetPointee() { return pointee; }

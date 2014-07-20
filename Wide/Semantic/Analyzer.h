@@ -1,6 +1,5 @@
 #pragma once
 
-#include <Wide/Lexer/Token.h>
 #include <Wide/Util/Memory/MemoryArena.h>
 #include <Wide/Semantic/Util.h>
 #include <Wide/Semantic/Type.h>
@@ -188,7 +187,7 @@ namespace Wide {
         };
         bool IsRvalueType(Type* t);
         bool IsLvalueType(Type* t);
-        Lexer::Access GetAccessSpecifier(Type* from, Type* to);
+        Parse::Access GetAccessSpecifier(Type* from, Type* to);
         void AnalyzeExportedFunctions(Analyzer& a);
         bool IsMultiTyped(const Parse::FunctionArgument& f);
         bool IsMultiTyped(const Parse::FunctionBase* f);

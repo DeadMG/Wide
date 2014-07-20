@@ -18,10 +18,10 @@ Module::Module(const Parse::Module* p, Module* higher, Analyzer& a)
 void Module::AddSpecialMember(std::string name, std::shared_ptr<Expression> t){
     SpecialMembers.insert(std::make_pair(std::move(name), std::move(t)));
 }
-OverloadSet* Module::CreateOperatorOverloadSet(Wide::Lexer::TokenType ty, Lexer::Access access) {
+OverloadSet* Module::CreateOperatorOverloadSet(Wide::Lexer::TokenType ty, Parse::Access access) {
     auto name = "operator" + *ty;
     if (m->named_decls.find(name) != m->named_decls.end()) {
-        auto overset = boost::get<std::unordered_map<Lexer::Access, std::unordered_set<Parse::Function*>>>(m->named_decls.at(name));
+        auto overset = boost::get<std::unordered_map<Parse::Access, std::unordered_set<Parse::Function*>>>(m->named_decls.at(name));
         std::unordered_set<OverloadResolvable*> resolvable;
         for (auto set : overset) {
             for (auto func : set.second) {
@@ -38,12 +38,12 @@ OverloadSet* Module::CreateOperatorOverloadSet(Wide::Lexer::TokenType ty, Lexer:
 std::shared_ptr<Expression> Module::AccessMember(std::shared_ptr<Expression> val, std::string name, Context c)  {
     auto access = GetAccessSpecifier(c.from, this);
     if (m->named_decls.find(name) != m->named_decls.end()) {
-        if (auto mod = boost::get<std::pair<Lexer::Access, Parse::Module*>>(&m->named_decls.at(name))) {
+        if (auto mod = boost::get<std::pair<Parse::Access, Parse::Module*>>(&m->named_decls.at(name))) {
             if (mod->first > access)
                 return nullptr;
             return BuildChain(std::move(val), analyzer.GetWideModule(mod->second, this)->BuildValueConstruction({}, c));
         }
-        if (auto usedecl = boost::get<std::pair<Lexer::Access, Parse::Using*>>(&m->named_decls.at(name))) {
+        if (auto usedecl = boost::get<std::pair<Parse::Access, Parse::Using*>>(&m->named_decls.at(name))) {
             if (usedecl->first > access)
                 return nullptr;
             auto expr = analyzer.AnalyzeCachedExpression(this, usedecl->second->expr);
@@ -51,12 +51,12 @@ std::shared_ptr<Expression> Module::AccessMember(std::shared_ptr<Expression> val
                 return BuildChain(std::move(val), constant->BuildValueConstruction({}, c));
             throw BadUsingTarget(expr->GetType()->Decay(), usedecl->second->expr->location);
         }
-        if (auto tydecl = boost::get<std::pair<Lexer::Access, Parse::Type*>>(&m->named_decls.at(name))) {
+        if (auto tydecl = boost::get<std::pair<Parse::Access, Parse::Type*>>(&m->named_decls.at(name))) {
             if (tydecl->first > access)
                 return nullptr;
             return BuildChain(std::move(val), analyzer.GetConstructorType(analyzer.GetUDT(tydecl->second, this, name))->BuildValueConstruction({}, c));
         }
-        if (auto overdecl = boost::get<std::unordered_map<Lexer::Access, std::unordered_set<Parse::Function*>>>(&m->named_decls.at(name))) {
+        if (auto overdecl = boost::get<std::unordered_map<Parse::Access, std::unordered_set<Parse::Function*>>>(&m->named_decls.at(name))) {
             std::unordered_set<OverloadResolvable*> resolvable;
             for (auto map : *overdecl) {
                 if (map.first > access)
@@ -67,7 +67,7 @@ std::shared_ptr<Expression> Module::AccessMember(std::shared_ptr<Expression> val
             if (resolvable.empty()) return nullptr;
             return BuildChain(std::move(val), analyzer.GetOverloadSet(resolvable)->BuildValueConstruction({}, c));
         }
-        if (auto overdecl = boost::get<std::unordered_map<Lexer::Access, std::unordered_set<Parse::TemplateType*>>>(&m->named_decls.at(name))) {
+        if (auto overdecl = boost::get<std::unordered_map<Parse::Access, std::unordered_set<Parse::TemplateType*>>>(&m->named_decls.at(name))) {
             std::unordered_set<OverloadResolvable*> resolvable;
             for (auto map : *overdecl) {
                 if (map.first > access)
@@ -87,7 +87,7 @@ std::string Module::explain() {
     if (!context) return "";
     std::string name;
     for (auto decl : context->GetASTModule()->named_decls) {
-        if (auto mod = boost::get<std::pair<Lexer::Access, Parse::Module*>>(&decl.second))
+        if (auto mod = boost::get<std::pair<Parse::Access, Parse::Module*>>(&decl.second))
             name = decl.first;
     }
     if (context == analyzer.GetGlobalModule())

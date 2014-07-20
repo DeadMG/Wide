@@ -291,13 +291,13 @@ Wide::Util::optional<clang::QualType> UserDefinedType::GetClangType(ClangTU& TU)
         ));
     }
     recdecl->setBases(basespecs.data(), basespecs.size());
-    auto Access = [](Lexer::Access access) {
+    auto Access = [](Parse::Access access) {
         switch (access) {
-        case Lexer::Access::Private:
+        case Parse::Access::Private:
             return clang::AccessSpecifier::AS_private;
-        case Lexer::Access::Public:
+        case Parse::Access::Public:
             return clang::AccessSpecifier::AS_public;
-        case Lexer::Access::Protected:
+        case Parse::Access::Protected:
             return clang::AccessSpecifier::AS_protected;
         default:
             throw std::runtime_error("Wat- new access specifier?");
@@ -415,7 +415,7 @@ Wide::Util::optional<clang::QualType> UserDefinedType::GetClangType(ClangTU& TU)
         for (auto access : overset.second) {
             for (auto func : access.second) {
                 if (IsMultiTyped(func)) continue;
-                if (access.first == Lexer::Access::Private) continue;
+                if (access.first == Parse::Access::Private) continue;
                 auto types = GetArgsForFunc(func);
                 auto mfunc = analyzer.GetWideFunction(func, this, types, overset.first);
                 mfunc->ComputeBody();
@@ -472,51 +472,60 @@ bool UserDefinedType::HasMember(std::string name) {
 bool UserDefinedType::UserDefinedComplex() {
     if (UDCCache)
         return *UDCCache;
-    // We are user-defined complex if the user specified any of the following:
+    // We are user-defined complex if the user specified any of the following as non-defaulted:
     // Copy/move constructor, copy/move assignment operator, destructor.
-    std::unordered_set<OverloadResolvable*> resolvables;
-    for (auto access : type->constructor_decls)
-        for (auto func : access.second)
-            resolvables.insert(analyzer.GetCallableForFunction(func, analyzer.GetLvalueType(this), "type"));
-    auto conoverset = analyzer.GetOverloadSet(resolvables);
-    auto assignmentset = analyzer.GetOverloadSet();
-    if (type->functions.find("operator=") != type->functions.end()) {
-        for (auto access : type->functions.at("operator="))
-            for (auto func : access.second)
-                resolvables.insert(analyzer.GetCallableForFunction(func, analyzer.GetLvalueType(this), "type"));
-        assignmentset = analyzer.GetOverloadSet(resolvables);
+    auto cache = [this](bool b) {
+        *UDCCache = b;
+        return b;
+    };
+    if (type->destructor_decl && !type->destructor_decl->defaulted)
+        return cache(true);
+
+    for (auto conset : type->constructor_decls) {
+        for (auto con : conset.second) {
+            if (con->defaulted) continue;
+            if (con->args.size() == 0 || con->args.size() > 2) continue;
+            ConstructorType* conty = nullptr;
+            unsigned paramnum = 0;
+            if (con->args.size() == 2) {
+                if (con->args[0].name != "this") continue;
+                paramnum = 1;
+            }
+            if (!con->args[paramnum].type) throw std::runtime_error("fuck");
+            auto conobj = analyzer.AnalyzeExpression(GetContext(), con->args[paramnum].type);
+            conty = dynamic_cast<ConstructorType*>(conobj->GetType()->Decay());
+            if (!conty) throw std::runtime_error("Fuck");
+            if (conty->GetConstructedType() != analyzer.GetLvalueType(this) && conty->GetConstructedType() != analyzer.GetRvalueType(this)) continue;
+            return cache(true);
+        }
     }
 
-    bool IsUserDefinedComplex = false;
-    if (!type->constructor_decls.empty()) {
-        std::vector<Type*> copytypes;
-        copytypes.push_back(analyzer.GetLvalueType(this));
-        copytypes.push_back(copytypes.front());
-        IsUserDefinedComplex = IsUserDefinedComplex || conoverset->Resolve(copytypes, this);
-
-        std::vector<Type*> movetypes;
-        movetypes.push_back(analyzer.GetLvalueType(this));
-        movetypes.push_back(analyzer.GetRvalueType(this));
-        IsUserDefinedComplex = IsUserDefinedComplex || conoverset->Resolve(movetypes, this);
+    if (type->functions.find("operator=") != type->functions.end())  {
+        auto set = type->functions.at("operator=");
+        for (auto op_access_pair : set) {
+            auto ops = op_access_pair.second;
+            for (auto op : ops) {
+                if (op->defaulted) continue;
+                if (op->args.size() == 0 || op->args.size() > 2) continue;
+                ConstructorType* conty = nullptr;
+                unsigned paramnum = 0;
+                if (op->args.size() == 2) {
+                    if (op->args[0].name != "this") continue;
+                    paramnum = 1;
+                }
+                if (!op->args[paramnum].type) throw std::runtime_error("fuck");
+                auto conobj = analyzer.AnalyzeExpression(GetContext(), op->args[paramnum].type);
+                conty = dynamic_cast<ConstructorType*>(conobj->GetType()->Decay());
+                if (!conty) throw std::runtime_error("Fuck");
+                if (conty->GetConstructedType() != analyzer.GetLvalueType(this) && conty->GetConstructedType() != analyzer.GetRvalueType(this)) continue;
+                return cache(true);
+            }
+        }
     }
-    if (type->functions.find("operator=") != type->functions.end()) {
-        std::vector<Type*> copytypes;
-        copytypes.push_back(analyzer.GetLvalueType(this));
-        copytypes.push_back(copytypes.front());
-        IsUserDefinedComplex = IsUserDefinedComplex || assignmentset->Resolve(copytypes, this);
-
-        std::vector<Type*> movetypes;
-        movetypes.push_back(analyzer.GetLvalueType(this));
-        movetypes.push_back(analyzer.GetRvalueType(this));
-        IsUserDefinedComplex = IsUserDefinedComplex || assignmentset->Resolve(movetypes, this);
-    }
-    if (type->destructor_decl)
-        IsUserDefinedComplex = true;
-    UDCCache = IsUserDefinedComplex;
-    return *UDCCache;
+    return cache(false);
 }
 
-OverloadSet* UserDefinedType::CreateConstructorOverloadSet(Lexer::Access access) {
+OverloadSet* UserDefinedType::CreateConstructorOverloadSet(Parse::Access access) {
     auto user_defined = [&, this] {
         if (type->constructor_decls.empty())
             return analyzer.GetOverloadSet();
@@ -524,7 +533,7 @@ OverloadSet* UserDefinedType::CreateConstructorOverloadSet(Lexer::Access access)
         for (auto f : type->constructor_decls) {
             if (f.first <= access)
                 for (auto func : f.second)
-                    resolvables.insert(analyzer.GetCallableForFunction(func, analyzer.GetLvalueType(this), "type"));
+                    resolvables.insert(analyzer.GetCallableForFunction(func, this, "type"));
         }
         return analyzer.GetOverloadSet(resolvables, GetContext());
     };
@@ -538,7 +547,7 @@ OverloadSet* UserDefinedType::CreateConstructorOverloadSet(Lexer::Access access)
     std::vector<Type*> types;
     types.push_back(analyzer.GetLvalueType(this));
     if (auto default_constructor = user_defined_constructors->Resolve(types, this))
-        return analyzer.GetOverloadSet(user_defined_constructors, CreateNondefaultConstructorOverloadSet());
+        return analyzer.GetOverloadSet(user_defined_constructors, AggregateType::CreateNondefaultConstructorOverloadSet());
 
     if (GetMemberData().HasNSDMI) {
         bool shouldgenerate = true;
@@ -609,7 +618,7 @@ OverloadSet* UserDefinedType::CreateConstructorOverloadSet(Lexer::Access access)
     return analyzer.GetOverloadSet(user_defined_constructors, AggregateType::CreateConstructorOverloadSet(access));
 }
 
-OverloadSet* UserDefinedType::CreateOperatorOverloadSet(Lexer::TokenType name, Lexer::Access access) {
+OverloadSet* UserDefinedType::CreateOperatorOverloadSet(Lexer::TokenType name, Parse::Access access) {
     auto funcname = "operator" + *name;
     if (*name == "(")
         funcname += ")";
@@ -662,22 +671,22 @@ std::function<void(CodegenContext&)> UserDefinedType::BuildDestructorCall(std::s
 // Gotta override these to respect our user-defined functions
 // else aggregatetype will just assume them.
 // Could just return Type:: all the time but AggregateType will be faster.
-bool UserDefinedType::IsCopyConstructible(Lexer::Access access) {
+bool UserDefinedType::IsCopyConstructible(Parse::Access access) {
     if (!type->constructor_decls.empty())
         return Type::IsCopyConstructible(access);
     return AggregateType::IsCopyConstructible(access);
 }
-bool UserDefinedType::IsMoveConstructible(Lexer::Access access) {
+bool UserDefinedType::IsMoveConstructible(Parse::Access access) {
     if (!type->constructor_decls.empty())
         return Type::IsMoveConstructible(access);
     return AggregateType::IsMoveConstructible(access);
 }
-bool UserDefinedType::IsCopyAssignable(Lexer::Access access) {
+bool UserDefinedType::IsCopyAssignable(Parse::Access access) {
     if (type->functions.find("operator=") != type->functions.end())
         return Type::IsCopyAssignable(access);
     return AggregateType::IsCopyAssignable(access);
 }
-bool UserDefinedType::IsMoveAssignable(Lexer::Access access) {
+bool UserDefinedType::IsMoveAssignable(Parse::Access access) {
     if (type->functions.find("operator=") != type->functions.end())
         return Type::IsMoveAssignable(access);
     return AggregateType::IsMoveAssignable(access);

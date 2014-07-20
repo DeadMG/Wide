@@ -40,7 +40,7 @@ Fix runtime_errors.
 Refactor error handling away from exceptions.
 Fix C++ conversion of UDT member operators.
 Fix C++ conversion of overload sets.
-Fix automatically-generated aggregate operators to be function calls if complex.
+Fix automatically-generated aggregate operators to be function calls.
 Add tests for warnings, and add more warnings.
 More tests.
 

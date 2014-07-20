@@ -10,14 +10,14 @@ using namespace Semantic;
 
 void GetUnusedFunctionsInModule(std::vector<std::tuple<Lexer::Range, std::string>>& current, Wide::Semantic::Module* root, Analyzer& a, std::string content) {
     for (auto&& decl : root->GetASTModule()->named_decls) {
-        if (auto overset = boost::get<std::unordered_map<Lexer::Access, std::unordered_set<Parse::Function*>>>(&decl.second)) {
+        if (auto overset = boost::get<std::unordered_map<Parse::Access, std::unordered_set<Parse::Function*>>>(&decl.second)) {
             for (auto&& set : *overset) {
                 for (auto func : set.second)
                     if (a.GetFunctions().find(func) == a.GetFunctions().end())
                         current.push_back(std::make_tuple(func->where, GetFunctionName(func, a, content + "." + decl.first, root)));
             }            
         }
-        if (auto mod = boost::get<std::pair<Lexer::Access, Parse::Module*>>(&decl.second)) {
+        if (auto mod = boost::get<std::pair<Parse::Access, Parse::Module*>>(&decl.second)) {
             GetUnusedFunctionsInModule(current, a.GetWideModule(mod->second, root), a, content + "." + decl.first);
         }
         auto ProcessType = [&](Parse::Type* ty) {
@@ -34,10 +34,10 @@ void GetUnusedFunctionsInModule(std::vector<std::tuple<Lexer::Range, std::string
                 if (a.GetFunctions().find(ty->destructor_decl) == a.GetFunctions().end())
                     current.push_back(std::make_tuple(ty->destructor_decl->where, GetFunctionName(ty->destructor_decl, a, content + ".~type", root)));
         };
-        if (auto udt = boost::get<std::pair<Lexer::Access, Parse::Type*>>(&decl.second)) {
+        if (auto udt = boost::get<std::pair<Parse::Access, Parse::Type*>>(&decl.second)) {
             ProcessType(udt->second);
         }
-        if (auto overset = boost::get<std::unordered_map<Lexer::Access, std::unordered_set<Parse::TemplateType*>>>(&decl.second)) {
+        if (auto overset = boost::get<std::unordered_map<Parse::Access, std::unordered_set<Parse::TemplateType*>>>(&decl.second)) {
             for (auto&& funcs : (*overset))
                 for (auto tempty : funcs.second)
                     ProcessType(tempty->t);

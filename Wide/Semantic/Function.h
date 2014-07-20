@@ -29,6 +29,7 @@ namespace Wide {
             std::string source_name;
             std::string name;
             std::vector<std::function<std::string(llvm::Module*)>> trampoline;
+            std::vector<std::shared_ptr<Expression>> parameters;
 
             // You can only be exported as constructors of one, or nonstatic member of one, class.
             Wide::Util::optional<Semantic::ConstructorContext*> ConstructorContext;

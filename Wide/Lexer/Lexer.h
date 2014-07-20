@@ -13,19 +13,17 @@ namespace Wide {
         class Invocation {
             Position current_position;
             std::deque<std::pair<char, Position>> putback;
+            std::function<Wide::Util::optional<char>()> r;
 
             std::string escape(std::string val);
-
             Wide::Util::optional<char> get();
-
             Wide::Util::optional<Lexer::Token> ParseCComments(Position start);
         public:
-            enum Failure {
+            enum class Failure {
                 UnterminatedStringLiteral,
                 UnlexableCharacter,
                 UnterminatedComment
             };
-            std::function<Wide::Util::optional<char>()> r;
             std::function<Wide::Util::optional<Token>(Position, Failure, Invocation*)> OnError;
             std::function<void(Range)> OnComment;
 
@@ -37,7 +35,7 @@ namespace Wide {
             std::unordered_set<Lexer::TokenType> KeywordTypes;
             int tabsize;
 
-            Invocation(std::function<Wide::Util::optional<char>()> range, std::shared_ptr<std::string> name);
+            Invocation(std::function<Wide::Util::optional<char>()> range, Position name);
 
             Wide::Util::optional<Lexer::Token> operator()();
         };

@@ -48,8 +48,8 @@ llvm::Type* IntegralType::GetLLVMType(llvm::Module* module) {
     return llvm::IntegerType::get(module->getContext(), bits);
 }
 
-OverloadSet* IntegralType::CreateConstructorOverloadSet(Lexer::Access access) {
-    if (access != Lexer::Access::Public) return GetConstructorOverloadSet(Lexer::Access::Public);
+OverloadSet* IntegralType::CreateConstructorOverloadSet(Parse::Access access) {
+    if (access != Parse::Access::Public) return GetConstructorOverloadSet(Parse::Access::Public);
     struct integral_constructor : public OverloadResolvable, Callable {
         integral_constructor(IntegralType* self)
             : integral(self) {}
@@ -107,8 +107,8 @@ std::size_t IntegralType::alignment() {
     return analyzer.GetDataLayout().getABIIntegerTypeAlignment(bits);
 }
 
-OverloadSet* IntegralType::CreateADLOverloadSet(Lexer::TokenType name, Lexer::Access access) {
-    if (access != Lexer::Access::Public) return CreateADLOverloadSet(name, Lexer::Access::Public);
+OverloadSet* IntegralType::CreateADLOverloadSet(Lexer::TokenType name, Parse::Access access) {
+    if (access != Parse::Access::Public) return CreateADLOverloadSet(name, Parse::Access::Public);
     auto CreateAssOp = [this](std::function<llvm::Value*(llvm::Value*, llvm::Value*, CodegenContext& con)> func) {
         return MakeResolvable([this, func](std::vector<std::shared_ptr<Expression>> args, Context c) {
             return CreatePrimAssOp(std::move(args[0]), std::move(args[1]), func);
@@ -274,9 +274,9 @@ bool IntegralType::IsSourceATarget(Type* source, Type* target, Type* context) {
 
     return false;
 }
-OverloadSet* IntegralType::CreateOperatorOverloadSet(Lexer::TokenType what, Lexer::Access access) {
-    if (access != Lexer::Access::Public)
-        return AccessMember(what, Lexer::Access::Public);
+OverloadSet* IntegralType::CreateOperatorOverloadSet(Lexer::TokenType what, Parse::Access access) {
+    if (access != Parse::Access::Public)
+        return AccessMember(what, Parse::Access::Public);
     if (what == &Lexer::TokenTypes::Increment) {
         Increment = MakeResolvable([this](std::vector<std::shared_ptr<Expression>> args, Context c) {
             return CreatePrimUnOp(std::move(args[0]), analyzer.GetLvalueType(this), [this](llvm::Value* self, CodegenContext& con) {
