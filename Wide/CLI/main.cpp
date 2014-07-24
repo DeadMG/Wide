@@ -155,8 +155,9 @@ int main(int argc, char** argv)
             auto overset = dynamic_cast<Wide::Semantic::OverloadSet*>(main->GetType()->Decay());
             auto f = overset->Resolve({}, c.from);
             auto func = dynamic_cast<Wide::Semantic::Function*>(f);
-            func->AddExportName(std::string("main"));
             func->ComputeBody();
+            auto llvmfunc = llvm::Function::Create(llvm::FunctionType::get(llvm::IntegerType::get(con, 32), {}, false), llvm::GlobalValue::LinkageTypes::ExternalLinkage, "main", mod.get());
+            func->AddExportName([llvmfunc](llvm::Module* mod) { return llvmfunc; });
             a.GenerateCode(mod.get());
             if (llvm::verifyModule(*mod, llvm::VerifierFailureAction::PrintMessageAction))
                 throw std::runtime_error("Internal compiler error: An LLVM module failed verification.");
