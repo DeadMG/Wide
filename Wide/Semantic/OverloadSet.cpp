@@ -68,7 +68,12 @@ struct cppcallable : public Callable {
             CPPSelf(clang::FunctionDecl* func, ClangTU* from, Type* fty, std::shared_ptr<Expression> arg)
             : func(func), from(from), fty(fty), self(arg) 
             {
-                mangle = from->MangleName(func);
+                if (auto con = llvm::dyn_cast<clang::CXXConstructorDecl>(func))
+                    fun = from->GetObject(con, clang::CXXCtorType::Ctor_Complete);
+                else if (auto des = llvm::dyn_cast<clang::CXXDestructorDecl>(func))
+                    fun = from->GetObject(des, clang::CXXDtorType::Dtor_Complete);
+                else
+                    fun = from->GetObject(func);
                 if (auto meth = llvm::dyn_cast<clang::CXXMethodDecl>(func)) {
                     if (meth->isVirtual()) {
                         auto selfty = self->GetType();
@@ -84,7 +89,7 @@ struct cppcallable : public Callable {
             Type* fty;
             std::shared_ptr<Expression> self;
             std::shared_ptr<Expression> vtable;
-            std::function<std::string(llvm::Module*)> mangle;
+            std::function<llvm::Function*(llvm::Module*)> fun;
 
             Type* GetType() override final {
                 return fty;
@@ -92,16 +97,17 @@ struct cppcallable : public Callable {
             llvm::Value* ComputeValue(CodegenContext& con) override final {
                 if (vtable)
                     return con->CreateBitCast(con->CreateLoad(con->CreateConstGEP1_32(con->CreateLoad(vtable->GetValue(con)), from->GetVirtualFunctionOffset(llvm::dyn_cast<clang::CXXMethodDecl>(func), con))), fty->GetLLVMType(con));
-                auto llvmfunc = con.module->getFunction(mangle(con));
+                auto llvmfunc = fun(con);
                 // Clang often generates functions with the wrong signature.
                 // But supplies attributes for a function with the right signature.
                 // This is super bad when the right signature has more arguments, as the verifier rejects the declaration.                
                 if (llvmfunc->getType() != fty->GetLLVMType(con)) {
                     if (std::distance(llvmfunc->use_begin(), llvmfunc->use_end()) == 0 && llvmfunc->getBasicBlockList().empty() && llvmfunc->getLinkage() == llvm::GlobalValue::ExternalLinkage) {
                         // Clang has no uses of this decl. Just erase the declaration and create our own.
+                        auto mangledname = llvmfunc->getName();
                         llvmfunc->removeFromParent();
                         auto functy = llvm::dyn_cast<llvm::FunctionType>(llvm::dyn_cast<llvm::PointerType>(fty->GetLLVMType(con))->getElementType());
-                        llvmfunc = llvm::Function::Create(functy, llvm::GlobalValue::LinkageTypes::ExternalLinkage, mangle(con), con.module);
+                        llvmfunc = llvm::Function::Create(functy, llvm::GlobalValue::LinkageTypes::ExternalLinkage, mangledname, con.module);
                         return llvmfunc;
                     }
                     return con->CreateBitCast(llvmfunc, fty->GetLLVMType(con));

@@ -1,5 +1,5 @@
 type movable {
-    type(arg := this.rvalue) {}
+    type(arg := movable.rvalue) {}
     type() {}
 }
 f(x := movable) {

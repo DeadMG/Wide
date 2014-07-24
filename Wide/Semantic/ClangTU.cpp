@@ -10,6 +10,7 @@
 #include <vector>
 #include <unordered_map>
 #include <unordered_set>
+#include <set>
 
 #pragma warning(push, 0)
 #include <llvm/IR/Module.h>
@@ -81,7 +82,11 @@ public:
 
 class ClangTU::Impl {
 public:    
-    std::unordered_set<clang::NamedDecl*> addrs;
+    std::set<std::pair<clang::CXXDestructorDecl*, clang::CXXDtorType>> destructors;
+    std::set<std::pair<clang::CXXConstructorDecl*, clang::CXXCtorType>> constructors;
+    std::set<clang::VarDecl*> globals;
+    std::set<clang::FunctionDecl*> functions;
+
     std::unordered_set<const clang::FileEntry*> files;
     const Options::Clang* Options;
     clang::FileManager FileManager;
@@ -248,24 +253,14 @@ void ClangTU::GenerateCodeAndLinkModule(llvm::Module* module, llvm::DataLayout& 
     impl->sema.ActOnEndOfTranslationUnit();
     impl->CreateCodegen(*module, layout);
     // Cause all the side effects. Fuck you, Clang.
-    for (auto&& decl : impl->addrs) {
-        if (auto vardecl = llvm::dyn_cast<clang::VarDecl>(decl)) {
-            impl->GetCodegenModule(module).GetAddrOfGlobal(vardecl);
-        }
-        if (auto condecl = llvm::dyn_cast<clang::CXXConstructorDecl>(decl)) {
-            auto gd = clang::GlobalDecl(condecl, clang::CXXCtorType::Ctor_Complete);
-            impl->GetCodegenModule(module).GetAddrOfGlobal(gd);
-            continue;
-        }
-        if (auto condecl = llvm::dyn_cast<clang::CXXDestructorDecl>(decl)) {
-            auto gd = clang::GlobalDecl(condecl, clang::CXXDtorType::Dtor_Complete);
-            impl->GetCodegenModule(module).GetAddrOfGlobal(gd);
-            continue;
-        }
-        if (auto funcdecl = llvm::dyn_cast<clang::FunctionDecl>(decl)) {
-            impl->GetCodegenModule(module).GetAddrOfGlobal(funcdecl);
-        }
-    }
+    for (auto x : impl->destructors)
+        impl->GetCodegenModule(module).GetAddrOfCXXDestructor(x.first, x.second);
+    for (auto x : impl->constructors)
+        impl->GetCodegenModule(module).GetAddrOfCXXConstructor(x.first, x.second);
+    for (auto x : impl->functions)
+        impl->GetCodegenModule(module).GetAddrOfFunction(x);
+    for (auto x : impl->globals)
+        impl->GetCodegenModule(module).GetAddrOfGlobal(x);
     for (auto field : impl->FieldNumbers)
         impl->GetCodegenModule(module).getTypes().getCGRecordLayout(field->getParent()).getLLVMFieldNo(field);
     for (auto&& pair : impl->BaseNumbers) {
@@ -334,29 +329,7 @@ bool ClangTU::IsComplexType(clang::CXXRecordDecl* decl, llvm::Module* module) {
     return indirect;
 }
 
-std::function<std::string(llvm::Module*)> ClangTU::MangleName(clang::CXXDestructorDecl* D, clang::CXXDtorType d) {
-    if (auto funcdecl = llvm::dyn_cast<clang::CXXMethodDecl>(D)) {
-        if (funcdecl->getType()->getAs<clang::FunctionProtoType>()->getExtProtoInfo().ExceptionSpecType == clang::ExceptionSpecificationType::EST_Unevaluated) {
-            GetSema().EvaluateImplicitExceptionSpec(clang::SourceLocation(), funcdecl);
-        }
-    }
-    if (D->hasAttrs()) {
-        D->addAttr(new (impl->astcon) clang::UsedAttr(clang::SourceLocation(), impl->astcon));
-    }
-    else {
-        clang::AttrVec v;
-        v.push_back(new (impl->astcon) clang::UsedAttr(clang::SourceLocation(), impl->astcon));
-        D->setAttrs(v);
-    }
-    impl->sema.MarkAnyDeclReferenced(clang::SourceLocation(), D, true);
-    impl->addrs.insert(D);
-    return [this, D, d](llvm::Module* module) {
-        clang::GlobalDecl gd(D, d);
-        return impl->GetCodegenModule(module).getMangledName(gd);
-    };
-}
-
-std::function<std::string(llvm::Module*)> ClangTU::MangleName(clang::NamedDecl* D) {
+void ClangTU::MarkDecl(clang::NamedDecl* D) {
     if (auto funcdecl = llvm::dyn_cast<clang::CXXMethodDecl>(D)) {
         if (funcdecl->getType()->getAs<clang::FunctionProtoType>()->getExtProtoInfo().ExceptionSpecType == clang::ExceptionSpecificationType::EST_Unevaluated) {
             GetSema().EvaluateImplicitExceptionSpec(clang::SourceLocation(), funcdecl);
@@ -370,37 +343,56 @@ std::function<std::string(llvm::Module*)> ClangTU::MangleName(clang::NamedDecl* 
         D->setAttrs(v);
     }
     impl->sema.MarkAnyDeclReferenced(clang::SourceLocation(), D, true);
+}
+std::function<llvm::Function*(llvm::Module*)> ClangTU::GetObject(clang::CXXDestructorDecl* D, clang::CXXDtorType d) {
+    MarkDecl(D);
+    impl->destructors.insert(std::make_pair(D, d));
+    return [this, D, d](llvm::Module* module) {
+        auto val = impl->GetCodegenModule(module).GetAddrOfCXXDestructor(D, d);
+        assert(val);
+        auto func = llvm::dyn_cast<llvm::Function>(val);
+        assert(func);
+        return func;
+    };
+}
+std::function<llvm::Function*(llvm::Module*)> ClangTU::GetObject(clang::CXXConstructorDecl* D, clang::CXXCtorType d) {
+    MarkDecl(D);
+    impl->constructors.insert(std::make_pair(D, d));
+    return [this, D, d](llvm::Module* module) {
+        auto val = impl->GetCodegenModule(module).GetAddrOfCXXConstructor(D, d);
+        assert(val);
+        auto func = llvm::dyn_cast<llvm::Function>(val);
+        assert(func);
+        return func;
+    };
+}
+std::function<llvm::GlobalVariable*(llvm::Module*)> ClangTU::GetObject(clang::VarDecl* D) {
+    MarkDecl(D);
+    impl->globals.insert(D);
+    return [this, D](llvm::Module* module) {
+        auto val = impl->GetCodegenModule(module).GetAddrOfGlobalVar(D);
+        assert(val);
+        auto func = llvm::dyn_cast<llvm::GlobalVariable>(val);
+        assert(func);
+        return func;
+    };
+}
+std::function<llvm::Function*(llvm::Module*)> ClangTU::GetObject(clang::FunctionDecl *D) {
+    assert(!llvm::dyn_cast<clang::CXXConstructorDecl>(D));
+    assert(!llvm::dyn_cast<clang::CXXDestructorDecl>(D));
 
-    if (auto desdecl = llvm::dyn_cast<clang::CXXDestructorDecl>(D)) {
-        impl->addrs.insert(desdecl);
-        return [this, desdecl](llvm::Module* module) { 
-            clang::GlobalDecl gd(desdecl, clang::CXXDtorType::Dtor_Complete);
-            return impl->GetCodegenModule(module).getMangledName(gd); 
-        };
-    }
-    if (auto condecl = llvm::dyn_cast<clang::CXXConstructorDecl>(D)) {
-        // Gotta consider virtual tables and RTTI descriptors.
-        impl->addrs.insert(condecl);
-        return [this, condecl](llvm::Module* module) {
-            auto gd = clang::GlobalDecl(condecl, clang::CXXCtorType::Ctor_Complete);
-            return impl->GetCodegenModule(module).getMangledName(gd);
-        };
-    }
-    if (auto vardecl = llvm::dyn_cast<clang::VarDecl>(D)) {
-        impl->addrs.insert(vardecl);
-        return [this, vardecl](llvm::Module* module) {
-            auto gd = clang::GlobalDecl(vardecl);
-            return impl->GetCodegenModule(module).getMangledName(gd);
-        };
-    }
-    if (auto funcdecl = llvm::dyn_cast<clang::FunctionDecl>(D)) {
-        impl->addrs.insert(funcdecl);
-        return [this, funcdecl](llvm::Module* module) {
-            auto gd = clang::GlobalDecl(funcdecl);
-            return impl->GetCodegenModule(module).getMangledName(gd);
-        };
-    }
-    assert(false);
+    MarkDecl(D);
+    impl->functions.insert(D);
+    return [this, D](llvm::Module* module) -> llvm::Function* {
+        auto val = impl->GetCodegenModule(module).GetAddrOfFunction(D);
+        assert(val);
+        auto func = llvm::dyn_cast<llvm::Function>(val);
+        if (func) return func;
+        if (func = llvm::dyn_cast<llvm::Function>(val->getOperand(0)))
+            return func;
+        assert(false && "Failed to get LLVM function back out from Clang.");
+        return nullptr;// Shut up compiler.
+    };
 }
 
 clang::ASTContext& ClangTU::GetASTContext() {

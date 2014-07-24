@@ -136,7 +136,6 @@ void Jit(Wide::Options::Clang& copts, std::string file) {
                 ee->addGlobalMapping(&global, addr);
         }
     };
-    std::string name;
     static const auto loc = Wide::Lexer::Range(std::make_shared<std::string>("Test harness internal"));
     llvm::LLVMContext con;
     auto module = Wide::Util::CreateModuleForTriple(copts.TargetOptions.Triple, con);
@@ -144,6 +143,7 @@ void Jit(Wide::Options::Clang& copts, std::string file) {
     std::vector<std::string> files(stdlib.begin(), stdlib.end());
     files.push_back(file);
     copts.HeaderSearchOptions->AddPath("../WideLibrary", clang::frontend::IncludeDirGroup::System, false, false);
+    llvm::Function* main = nullptr;
     Wide::Driver::Compile(copts, [&](Wide::Semantic::Analyzer& a, const Wide::Parse::Module* root) {
         Wide::Semantic::AnalyzeExportedFunctions(a);
         auto m = a.GetGlobalModule()->AccessMember(a.GetGlobalModule()->BuildValueConstruction({}, { a.GetGlobalModule(), loc }), "Main", { a.GetGlobalModule(), loc });
@@ -155,11 +155,11 @@ void Jit(Wide::Options::Clang& copts, std::string file) {
         auto f = dynamic_cast<Wide::Semantic::Function*>(func->Resolve({}, a.GetGlobalModule()));
         if (!f)
             throw std::runtime_error("Could not resolve Main to a function.");
-        name = f->GetName();
         f->ComputeBody();
         if (f->GetSignature()->GetReturnType() != a.GetBooleanType())
             throw std::runtime_error("Main did not return bool.");
         a.GenerateCode(module.get());
+        main = f->EmitCode(module.get());
         if (llvm::verifyModule(*module, llvm::VerifierFailureAction::PrintMessageAction))
             throw std::runtime_error("An LLVM module failed verification.");
     }, files);
@@ -184,8 +184,7 @@ void Jit(Wide::Options::Clang& copts, std::string file) {
 #ifdef _MSC_VER
     ee->runStaticConstructorsDestructors(false);
 #endif
-    auto f = ee->FindFunctionNamed(name.c_str());
-    auto result = ee->runFunction(f, std::vector<llvm::GenericValue>());
+    auto result = ee->runFunction(main, std::vector<llvm::GenericValue>());
 #ifdef _MSC_VER
     ee->runStaticConstructorsDestructors(true);
 #endif
@@ -259,7 +258,7 @@ void Compile(const Wide::Options::Clang& copts, std::string file) {
         auto tramp = llvm::Function::Create(llvm::FunctionType::get(llvm::Type::getVoidTy(con), types, false), llvm::GlobalValue::LinkageTypes::ExternalLinkage, "tramp", module.get());
         auto bb = llvm::BasicBlock::Create(con, "entry", tramp);
         auto builder = llvm::IRBuilder<>(bb);
-        auto call = builder.CreateCall(module->getFunction(failfunc->GetName()));
+        auto call = builder.CreateCall(failfunc->EmitCode(module.get()));
         auto current = tramp->arg_begin();
         builder.CreateStore(builder.CreateExtractValue(call, { boost::get<Wide::Semantic::LLVMFieldIndex>(tupty->GetLocation(1)).index }), current++);
         builder.CreateStore(builder.CreateExtractValue(call, { boost::get<Wide::Semantic::LLVMFieldIndex>(tupty->GetLocation(2)).index }), current++);

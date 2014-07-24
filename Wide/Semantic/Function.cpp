@@ -651,10 +651,6 @@ Function::Function(std::vector<Type*> args, const Parse::FunctionBase* astfun, A
             if (auto name = dynamic_cast<const Parse::Identifier*>(attr.initialized)) {
                 if (name->val == "export") {
                     auto expr = analyzer.AnalyzeExpression(GetContext(), attr.initializer);
-                    if (auto str = dynamic_cast<StringType*>(expr->GetType()->Decay())) {
-                        trampoline.push_back([str](llvm::Module* module) { return str->GetValue(); });
-                        continue;
-                    }
                     auto overset = dynamic_cast<OverloadSet*>(expr->GetType()->Decay());
                     if (!overset)
                         throw NotAType(expr->GetType()->Decay(), attr.initializer->location);
@@ -662,7 +658,12 @@ Function::Function(std::vector<Type*> args, const Parse::FunctionBase* astfun, A
                     if (!tuanddecl.second) throw NotAType(expr->GetType()->Decay(), attr.initializer->location);
                     auto tu = tuanddecl.first;
                     auto decl = tuanddecl.second;
-                    trampoline.push_back(tu->MangleName(decl));
+                    if (auto des = llvm::dyn_cast<clang::CXXDestructorDecl>(decl))
+                        trampoline.push_back(tu->GetObject(des, clang::CXXDtorType::Dtor_Complete));
+                    else if (auto con = llvm::dyn_cast<clang::CXXConstructorDecl>(decl))
+                        trampoline.push_back(tu->GetObject(con, clang::CXXCtorType::Ctor_Complete));
+                    else
+                        trampoline.push_back(tu->GetObject(decl));
                     if (auto meth = llvm::dyn_cast<clang::CXXMethodDecl>(decl)) {
                         ClangContexts.insert(analyzer.GetClangType(*tu, tu->GetASTContext().getRecordType(meth->getParent())));
                         if (!meth->isStatic()) {
@@ -948,9 +949,9 @@ void Function::ComputeReturnType() {
         ReturnType = *ExplicitReturnType;
 }
 
-void Function::EmitCode(llvm::Module* module) {
+llvm::Function* Function::EmitCode(llvm::Module* module) {
     if (llvmfunc)
-        return;
+        return llvmfunc;
     auto sig = GetSignature();
     auto llvmsig = sig->GetLLVMType(module);
     llvmfunc = llvm::Function::Create(llvm::dyn_cast<llvm::FunctionType>(llvmsig->getElementType()), llvm::GlobalValue::LinkageTypes::InternalLinkage, name, module);
@@ -984,7 +985,7 @@ void Function::EmitCode(llvm::Module* module) {
         throw std::runtime_error("Internal Compiler Error: An LLVM function failed verification.");
 
     // Keep track - we may be asked to export to the same name multiple times.
-    std::unordered_set<std::string> names;
+    std::unordered_set<llvm::Function*> names;
     for (auto exportnam : trampoline) {
         auto exportname = exportnam(module);
         if (names.find(exportname) != names.end())
@@ -1001,12 +1002,14 @@ void Function::EmitCode(llvm::Module* module) {
         llvm::Type* trampret;
         llvm::Function* tramp = nullptr;
         std::vector<llvm::Value*> args;
-        if (tramp = module->getFunction(exportname)) {
+        if (tramp = exportname) {
             // Someone- almost guaranteed Clang- already generated a function with this name.
             // First handle bitcast WTFery
             // Sometimes Clang generates functions with totally the wrong type, then bitcasts them on every use.
             // So just change the function decl to match the bitcast type.
+            auto name = std::string(exportname->getName());
             llvm::Type* CastType = nullptr;
+            tramp->removeDeadConstantUsers();
             for (auto use_it = tramp->use_begin(); use_it != tramp->use_end(); ++use_it) {
                 auto use = *use_it;
                 if (auto cast = llvm::dyn_cast<llvm::CastInst>(use)) {
@@ -1038,7 +1041,7 @@ void Function::EmitCode(llvm::Module* module) {
                 tramp->setName("__fucking__clang__type_hacks");
                 auto badf = tramp;
                 auto t = llvm::dyn_cast<llvm::FunctionType>(llvm::dyn_cast<llvm::PointerType>(CastType)->getElementType());
-                tramp = llvm::Function::Create(t, llvm::GlobalValue::LinkageTypes::ExternalLinkage, exportname, module);
+                tramp = llvm::Function::Create(t, llvm::GlobalValue::LinkageTypes::ExternalLinkage, name, module);
                 // Update all Clang's uses
                 for (auto use_it = badf->use_begin(); use_it != badf->use_end(); ++use_it) {
                     auto use = *use_it;
@@ -1095,9 +1098,9 @@ void Function::EmitCode(llvm::Module* module) {
         } else {
             trampret = ourret;
             auto fty = llvmfunc->getFunctionType();
-            if (exportname == "main")
+            if (exportname->getName() == "main")
                 fty = llvm::FunctionType::get(llvm::IntegerType::getInt32Ty(module->getContext()), false);
-            tramp = llvm::Function::Create(fty, llvm::GlobalValue::ExternalLinkage, exportname, module);
+            tramp = llvm::Function::Create(fty, llvm::GlobalValue::ExternalLinkage, exportname->getName(), module);
             llvm::BasicBlock* bb = llvm::BasicBlock::Create(module->getContext(), "entry", tramp);
             llvm::IRBuilder<> irbuilder(&tramp->getEntryBlock());
             for (auto it = tramp->arg_begin(); it != tramp->arg_end(); ++it)
@@ -1109,7 +1112,7 @@ void Function::EmitCode(llvm::Module* module) {
         // May be ABI mismatch between ourselves and llvmfunc.
         // Consider that we may have to truncate the result, and we may have to add ret 0 for main.
         if (ReturnType == analyzer.GetVoidType()) {
-            if (exportname == "main") {
+            if (exportname->getName() == "main") {
                 irbuilder.CreateCall(llvmfunc, args);
                 irbuilder.CreateRet(irbuilder.getInt32(0));
             } else {
@@ -1125,6 +1128,7 @@ void Function::EmitCode(llvm::Module* module) {
         if (llvm::verifyFunction(*tramp, llvm::VerifierFailureAction::PrintMessageAction))
             throw std::runtime_error("Internal Compiler Error: An LLVM function failed verification.");
     }
+    return llvmfunc;
 }
 
 std::shared_ptr<Expression> Function::BuildCall(std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c) {
@@ -1171,9 +1175,6 @@ std::shared_ptr<Expression> Function::BuildCall(std::shared_ptr<Expression> val,
 
 std::shared_ptr<Expression> Function::LookupLocal(std::string name) {
     return current_scope->LookupLocal(name);
-}
-std::string Function::GetName() {
-    return name;
 }
 FunctionType* Function::GetSignature() {
     if (s == State::NotYetAnalyzed)

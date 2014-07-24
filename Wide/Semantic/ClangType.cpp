@@ -134,9 +134,9 @@ std::shared_ptr<Expression> ClangType::AccessMember(std::shared_ptr<Expression> 
         if (auto ty = llvm::dyn_cast<clang::TypeDecl>(lr.getFoundDecl()))
             return analyzer.GetConstructorType(analyzer.GetClangType(*from, from->GetASTContext().getTypeDeclType(ty)))->BuildValueConstruction({}, c);
         if (auto vardecl = llvm::dyn_cast<clang::VarDecl>(lr.getFoundDecl())) {    
-            auto mangle = from->MangleName(vardecl);
-            return CreatePrimUnOp(std::move(val), analyzer.GetLvalueType(analyzer.GetClangType(*from, vardecl->getType())), [mangle](llvm::Value* self, CodegenContext& con) {
-                return con.module->getGlobalVariable(mangle(con));
+            auto var = from->GetObject(vardecl);
+            return CreatePrimUnOp(std::move(val), analyzer.GetLvalueType(analyzer.GetClangType(*from, vardecl->getType())), [var](llvm::Value* self, CodegenContext& con) {
+                return var(con);
             });
         }
         if (auto tempdecl = llvm::dyn_cast<clang::ClassTemplateDecl>(lr.getFoundDecl()))
@@ -293,10 +293,10 @@ std::function<void(CodegenContext&)> ClangType::BuildDestructorCall(std::shared_
             call->GetValue(con);
         };
     }
-    auto name = from->MangleName(des, clang::CXXDtorType::Dtor_Complete);
+    auto obj = from->GetObject(des, clang::CXXDtorType::Dtor_Complete);
     return [=](CodegenContext& con) {
         auto val = self->GetValue(con);
-        con->CreateCall(con.module->getFunction(name(con)), { val });
+        con->CreateCall(obj(con), { val });
     };
 }
 
@@ -485,18 +485,18 @@ Type::VTableLayout ClangType::ComputePrimaryVTableLayout() {
 std::shared_ptr<Expression> ClangType::VirtualEntryFor(VTableLayout::VirtualFunctionEntry entry, unsigned offset) {
     // ITANIUM ABI SPECIFIC
     struct VTableThunk : Expression {
-        VTableThunk(std::function<std::string(llvm::Module*)> f, unsigned off, FunctionType* sig)
-        : mangle(f), offset(off), signature(sig)
+        VTableThunk(std::function<llvm::Function*(llvm::Module*)> f, unsigned off, FunctionType* sig)
+        : func(f), offset(off), signature(sig)
         {}
         FunctionType* signature;
         unsigned offset;
-        std::function<std::string(llvm::Module*)> mangle;
+        std::function<llvm::Function*(llvm::Module*)> func;
         Type* GetType() override final {
             return signature;
         }
         llvm::Value* ComputeValue(CodegenContext& con) override final {
             if (offset == 0)
-                return con.module->getFunction(mangle(con));
+                return func(con);
             auto this_index = (std::size_t)signature->GetReturnType()->IsComplexType();
             std::stringstream strstr;
             strstr << "__" << this << offset;
@@ -505,7 +505,7 @@ std::shared_ptr<Expression> ClangType::VirtualEntryFor(VTableLayout::VirtualFunc
             llvm::IRBuilder<> irbuilder(bb);
             auto self = std::next(thunk->arg_begin(), signature->GetReturnType()->IsComplexType());
             auto offset_self = irbuilder.CreateConstGEP1_32(irbuilder.CreatePointerCast(self, llvm::IntegerType::getInt8PtrTy(con->getContext())), -offset);
-            auto cast_self = irbuilder.CreatePointerCast(offset_self, std::next(con.module->getFunction(mangle(con))->arg_begin(), this_index)->getType());
+            auto cast_self = irbuilder.CreatePointerCast(offset_self, std::next(func(con)->arg_begin(), this_index)->getType());
             std::vector<llvm::Value*> args;
             for (std::size_t i = 0; i < thunk->arg_size(); ++i) {
                 if (i == this_index)
@@ -513,7 +513,7 @@ std::shared_ptr<Expression> ClangType::VirtualEntryFor(VTableLayout::VirtualFunc
                 else
                     args.push_back(std::next(thunk->arg_begin(), i));
             }
-            auto call = irbuilder.CreateCall(con.module->getFunction(mangle(con)), args);
+            auto call = irbuilder.CreateCall(func(con), args);
             if (call->getType() == llvm::Type::getVoidTy(con))
                 irbuilder.CreateRetVoid();
             else
@@ -523,10 +523,10 @@ std::shared_ptr<Expression> ClangType::VirtualEntryFor(VTableLayout::VirtualFunc
     };
     if (auto mem = boost::get<VTableLayout::SpecialMember>(&entry.function)) {
         if (*mem == VTableLayout::SpecialMember::Destructor) {
-            return Wide::Memory::MakeUnique<VTableThunk>(from->MangleName(type->getAsCXXRecordDecl()->getDestructor()), offset, analyzer.GetFunctionType(analyzer.GetVoidType(), { analyzer.GetLvalueType(this) }, false));
+            return Wide::Memory::MakeUnique<VTableThunk>(from->GetObject(type->getAsCXXRecordDecl()->getDestructor(), clang::CXXDtorType::Dtor_Complete), offset, analyzer.GetFunctionType(analyzer.GetVoidType(), { analyzer.GetLvalueType(this) }, false));
         }
         if (*mem == VTableLayout::SpecialMember::ItaniumABIDeletingDestructor) {
-            return Wide::Memory::MakeUnique<VTableThunk>(from->MangleName(type->getAsCXXRecordDecl()->getDestructor(), clang::CXXDtorType::Dtor_Deleting), offset, analyzer.GetFunctionType(analyzer.GetVoidType(), { analyzer.GetLvalueType(this) }, false));
+            return Wide::Memory::MakeUnique<VTableThunk>(from->GetObject(type->getAsCXXRecordDecl()->getDestructor(), clang::CXXDtorType::Dtor_Deleting), offset, analyzer.GetFunctionType(analyzer.GetVoidType(), { analyzer.GetLvalueType(this) }, false));
         }
         return nullptr;
     }
@@ -554,7 +554,7 @@ std::shared_ptr<Expression> ClangType::VirtualEntryFor(VTableLayout::VirtualFunc
         if (args != f_args)
             continue;
         auto fty = analyzer.GetFunctionType(analyzer.GetClangType(*from, func->getResultType()), f_args, func->isVariadic());
-        return Wide::Memory::MakeUnique<VTableThunk>(from->MangleName(func), offset, fty);
+        return Wide::Memory::MakeUnique<VTableThunk>(from->GetObject(func), offset, fty);
     }
     return nullptr;
 }

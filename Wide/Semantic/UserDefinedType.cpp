@@ -381,7 +381,7 @@ Wide::Util::optional<clang::QualType> UserDefinedType::GetClangType(ClangTU& TU)
         recdecl->addDecl(des);
         auto widedes = analyzer.GetWideFunction(type->destructor_decl, this, { analyzer.GetLvalueType(this) }, "~type");
         widedes->ComputeBody();
-        widedes->AddExportName(TU.MangleName(des));
+        widedes->AddExportName(TU.GetObject(des, clang::CXXDtorType::Dtor_Complete));
     }
     for (auto access : type->constructor_decls) {
         for (auto func : access.second) {
@@ -408,7 +408,7 @@ Wide::Util::optional<clang::QualType> UserDefinedType::GetClangType(ClangTU& TU)
             con->setAccess(Access(access.first));
             con->setParams(GetParmVarDecls(*args, TU, recdecl));
             recdecl->addDecl(con);
-            mfunc->AddExportName(TU.MangleName(con));
+            mfunc->AddExportName(TU.GetObject(con, clang::CXXCtorType::Ctor_Complete));
         }
     }
     for (auto overset : type->functions) {
@@ -453,7 +453,7 @@ Wide::Util::optional<clang::QualType> UserDefinedType::GetClangType(ClangTU& TU)
                 meth->setVirtualAsWritten(func->dynamic);
                 meth->setParams(GetParmVarDecls(args, TU, recdecl));
                 recdecl->addDecl(meth);
-                mfunc->AddExportName(TU.MangleName(meth));                
+                mfunc->AddExportName(TU.GetObject(meth));                
             }
         }
     }
@@ -492,7 +492,7 @@ bool UserDefinedType::UserDefinedComplex() {
                 paramnum = 1;
             }
             if (!con->args[paramnum].type) throw std::runtime_error("fuck");
-            auto conobj = analyzer.AnalyzeExpression(GetContext(), con->args[paramnum].type);
+            auto conobj = analyzer.AnalyzeExpression(this, con->args[paramnum].type);
             conty = dynamic_cast<ConstructorType*>(conobj->GetType()->Decay());
             if (!conty) throw std::runtime_error("Fuck");
             if (conty->GetConstructedType() != analyzer.GetLvalueType(this) && conty->GetConstructedType() != analyzer.GetRvalueType(this)) continue;
@@ -514,7 +514,7 @@ bool UserDefinedType::UserDefinedComplex() {
                     paramnum = 1;
                 }
                 if (!op->args[paramnum].type) throw std::runtime_error("fuck");
-                auto conobj = analyzer.AnalyzeExpression(GetContext(), op->args[paramnum].type);
+                auto conobj = analyzer.AnalyzeExpression(this, op->args[paramnum].type);
                 conty = dynamic_cast<ConstructorType*>(conobj->GetType()->Decay());
                 if (!conty) throw std::runtime_error("Fuck");
                 if (conty->GetConstructedType() != analyzer.GetLvalueType(this) && conty->GetConstructedType() != analyzer.GetRvalueType(this)) continue;
@@ -660,9 +660,7 @@ std::function<void(CodegenContext&)> UserDefinedType::BuildDestructorCall(std::s
                 call->GetValue(c);
             };
         return [=](CodegenContext& c) {
-            auto name = callable->GetName();
-            callable->EmitCode(c.module);
-            c->CreateCall(c.module->getFunction(name), self->GetValue(c));
+            c->CreateCall(callable->EmitCode(c.module), self->GetValue(c));
         };
     }
     return AggregateType::BuildDestructorCall(self, c, true);
@@ -717,8 +715,7 @@ Type::VTableLayout UserDefinedType::ComputePrimaryVTableLayout() {
 llvm::Function* UserDefinedType::CreateDestructorFunction(llvm::Module* module) {
     if (!type->destructor_decl) return AggregateType::CreateDestructorFunction(module);
     auto desfunc = analyzer.GetWideFunction(type->destructor_decl, analyzer.GetLvalueType(this), { analyzer.GetLvalueType(this) }, "~type");
-    desfunc->EmitCode(module);
-    return module->getFunction(desfunc->GetName());
+    return desfunc->EmitCode(module);
 }
 
 std::shared_ptr<Expression> UserDefinedType::VirtualEntryFor(VTableLayout::VirtualFunctionEntry entry, unsigned offset) {
@@ -733,7 +730,7 @@ std::shared_ptr<Expression> UserDefinedType::VirtualEntryFor(VTableLayout::Virtu
         llvm::Value* ComputeValue(CodegenContext& con) override final {
             widefunc->EmitCode(con);
             if (offset == 0)
-                return con.module->getFunction(widefunc->GetName());
+                return widefunc->EmitCode(con);
             auto this_index = (std::size_t)widefunc->GetSignature()->GetReturnType()->IsComplexType();
             std::stringstream strstr;
             strstr << "__" << this << offset;
@@ -742,7 +739,7 @@ std::shared_ptr<Expression> UserDefinedType::VirtualEntryFor(VTableLayout::Virtu
             llvm::IRBuilder<> irbuilder(bb);
             auto self = std::next(thunk->arg_begin(), widefunc->GetSignature()->GetReturnType()->IsComplexType());
             auto offset_self = irbuilder.CreateConstGEP1_32(irbuilder.CreatePointerCast(self, llvm::IntegerType::getInt8PtrTy(con.module->getContext())), -offset);
-            auto cast_self = irbuilder.CreatePointerCast(offset_self, std::next(con.module->getFunction(widefunc->GetName())->arg_begin(), this_index)->getType());
+            auto cast_self = irbuilder.CreatePointerCast(offset_self, std::next(widefunc->EmitCode(con)->arg_begin(), this_index)->getType());
             std::vector<llvm::Value*> args;
             for (std::size_t i = 0; i < thunk->arg_size(); ++i) {
                 if (i == this_index)
@@ -750,7 +747,7 @@ std::shared_ptr<Expression> UserDefinedType::VirtualEntryFor(VTableLayout::Virtu
                 else
                     args.push_back(std::next(thunk->arg_begin(), i));
             }
-            auto call = irbuilder.CreateCall(con.module->getFunction(widefunc->GetName()), args);
+            auto call = irbuilder.CreateCall(widefunc->EmitCode(con), args);
             if (call->getType() == llvm::Type::getVoidTy(con.module->getContext()))
                 irbuilder.CreateRetVoid();
             else

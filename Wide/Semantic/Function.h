@@ -28,7 +28,7 @@ namespace Wide {
             Type* context;
             std::string source_name;
             std::string name;
-            std::vector<std::function<std::string(llvm::Module*)>> trampoline;
+            std::vector<std::function<llvm::Function*(llvm::Module*)>> trampoline;
             std::vector<std::shared_ptr<Expression>> parameters;
 
             // You can only be exported as constructors of one, or nonstatic member of one, class.
@@ -214,21 +214,19 @@ namespace Wide {
         public:
 
             void ComputeBody();
-            void EmitCode(llvm::Module* module);
+            llvm::Function* EmitCode(llvm::Module* module);
             Function(std::vector<Type*> args, const Parse::FunctionBase* astfun, Analyzer& a, Type* container, std::string name);
 
             Wide::Util::optional<clang::QualType> GetClangType(ClangTU& where) override final;
      
             std::shared_ptr<Expression> BuildCall(std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c) override final;
-            std::string GetName();
             Type* GetContext() override final { return context; }
             Type* GetNonstaticMemberContext() { if (NonstaticMemberContext) return *NonstaticMemberContext; return nullptr; }
 
             FunctionType* GetSignature();
             std::shared_ptr<Expression> LookupLocal(std::string name);
             Type* GetConstantContext() override final;
-            void AddExportName(std::string name) {trampoline.push_back([name](llvm::Module*) { return name; }); }
-            void AddExportName(std::function<std::string(llvm::Module*)> mod) { trampoline.push_back(mod); }
+            void AddExportName(std::function<llvm::Function*(llvm::Module*)> mod) { trampoline.push_back(mod); }
             std::string explain() override final;
             std::string GetSourceName() { return source_name; }
             ~Function();

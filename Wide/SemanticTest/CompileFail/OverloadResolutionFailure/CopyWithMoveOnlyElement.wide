@@ -1,7 +1,7 @@
 ExpectedFailure() { return { "OverloadResolutionFailure", 8, 13, 8, 16 }; }
 type t {
     type() {}
-    type(r := this.rvalue) {}
+    type(r := t.rvalue) {}
 }
 Main() {
     var := { t(), t() };

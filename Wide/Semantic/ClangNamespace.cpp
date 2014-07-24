@@ -41,11 +41,9 @@ std::shared_ptr<Expression> ClangNamespace::AccessMember(std::shared_ptr<Express
             return BuildChain(std::move(t), analyzer.GetOverloadSet(std::move(decls), from, GetContext())->BuildValueConstruction({}, { this, c.where }));
         }
         if (auto vardecl = llvm::dyn_cast<clang::VarDecl>(result)) {
-            auto mangle = from->MangleName(vardecl);
-            return CreatePrimUnOp(std::move(t), analyzer.GetLvalueType(analyzer.GetClangType(*from, vardecl->getType())), [mangle](llvm::Value*, CodegenContext& con) {
-                auto value = con.module->getGlobalVariable(mangle(con), true);
-                assert(value);
-                return value;
+            auto object = from->GetObject(vardecl);
+            return CreatePrimUnOp(std::move(t), analyzer.GetLvalueType(analyzer.GetClangType(*from, vardecl->getType())), [object](llvm::Value*, CodegenContext& con) {
+                return object(con);
             });
         }
         if (auto namedecl = llvm::dyn_cast<clang::NamespaceDecl>(result)) {

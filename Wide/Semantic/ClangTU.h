@@ -37,6 +37,8 @@ namespace clang {
     class CXXMethodDecl;
     class FunctionDecl;
     class CXXDestructorDecl;
+    class CXXConstructorDecl;
+    class VarDecl;
 }
 
 namespace Wide {
@@ -45,7 +47,7 @@ namespace Wide {
         class ClangTU {
             class Impl;
             std::unordered_set<clang::FunctionDecl*> visited;
-           
+            void MarkDecl(clang::NamedDecl* decl);
             Analyzer& a;
         public:
             std::unique_ptr<Impl> impl;
@@ -67,8 +69,14 @@ namespace Wide {
             void AddFile(std::string filename, Lexer::Range where);
             clang::Expr* ParseMacro(std::string macro, Lexer::Range where);
 
-            std::function<std::string(llvm::Module*)> MangleName(clang::NamedDecl* D);
-            std::function<std::string(llvm::Module*)> MangleName(clang::CXXDestructorDecl*, clang::CXXDtorType);
+            std::function<llvm::Function*(llvm::Module*)> GetObject(clang::CXXDestructorDecl*, clang::CXXDtorType);
+            std::function<llvm::Function*(llvm::Module*)> GetObject(clang::CXXConstructorDecl*, clang::CXXCtorType);
+            std::function<llvm::Function*(llvm::Module*)> GetObject(clang::CXXConstructorDecl*) = delete;
+            std::function<llvm::Function*(llvm::Module*)> GetObject(clang::CXXDestructorDecl*) = delete;
+
+            std::function<llvm::GlobalVariable*(llvm::Module*)> GetObject(clang::VarDecl*);
+            std::function<llvm::Function*(llvm::Module*)> GetObject(clang::FunctionDecl*);
+
             bool IsComplexType(clang::CXXRecordDecl* decl, llvm::Module* module);
             std::function<unsigned(llvm::Module*)> GetFieldNumber(clang::FieldDecl*);
             std::function<unsigned(llvm::Module*)> GetBaseNumber(const clang::CXXRecordDecl* self, const clang::CXXRecordDecl* base);
