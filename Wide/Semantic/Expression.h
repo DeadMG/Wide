@@ -102,6 +102,14 @@ namespace Wide {
             Expression* GetImplementation() override final;
         };
 
+        struct DestructorCall : Expression {
+            DestructorCall(std::function<void(CodegenContext&)> destructor, Analyzer& a);
+            std::function<void(CodegenContext&)> destructor;
+            Analyzer* a;
+            Type* GetType() override final;
+            llvm::Value* ComputeValue(CodegenContext& con) override final;
+        };
+
         std::shared_ptr<Expression> CreatePrimUnOp(std::shared_ptr<Expression> self, Type* ret, std::function<llvm::Value*(llvm::Value*, CodegenContext&)>);
         std::shared_ptr<Expression> CreatePrimOp(std::shared_ptr<Expression> lhs, std::shared_ptr<Expression> rhs, std::function<llvm::Value*(llvm::Value*, llvm::Value*, CodegenContext&)>);
         std::shared_ptr<Expression> CreatePrimAssOp(std::shared_ptr<Expression> lhs, std::shared_ptr<Expression> rhs, std::function<llvm::Value*(llvm::Value*, llvm::Value*, CodegenContext&)>);

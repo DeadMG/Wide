@@ -1,0 +1,18 @@
+type t {
+    type(arg := t.lvalue) default
+    type(arg := t.rvalue) default
+    operator=(arg := t.lvalue) default
+    operator=(arg := t.rvalue) default
+    ~type() default
+    local := bool;
+}
+Main() {
+    local := t({true});
+    var1 := local;
+    var2 := move(local);
+    var3 := t({false});
+    var3 = local;
+    var4 := t({false});
+    var4 = move(local);
+    return local.local & var1.local & var2.local & var3.local & var4.local;
+}

@@ -1,6 +1,8 @@
 type t {
+    local := bool;
     ~type() default
 }
 Main() {
-    return t.trivially_destructible;
+    local := t({true});
+    return local.local;
 }

@@ -733,19 +733,6 @@ Analyzer::Analyzer(const Options::Clang& opts, const Parse::Module* GlobalModule
     AddExpressionHandler<Parse::DestructorAccess>([](Analyzer& a, Type* lookup, const Parse::DestructorAccess* des) -> std::shared_ptr<Expression> {
         auto object = a.AnalyzeExpression(lookup, des->expr);
         auto ty = object->GetType();
-        struct DestructorCall : Expression {
-            DestructorCall(std::function<void(CodegenContext&)> destructor, Analyzer& a)
-            : destructor(destructor), a(&a) {}
-            std::function<void(CodegenContext&)> destructor;
-            Analyzer* a;
-            Type* GetType() override final {
-                return a->GetVoidType();
-            }
-            llvm::Value* ComputeValue(CodegenContext& con) override final {
-                destructor(con);
-                return nullptr;
-            }
-        };
         return std::make_shared<DestructorCall>(ty->Decay()->BuildDestructorCall(std::move(object), { lookup, des->location }, false), a);
     });
 }

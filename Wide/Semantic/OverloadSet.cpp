@@ -389,7 +389,7 @@ OverloadSet* OverloadSet::CreateConstructorOverloadSet(Parse::Access access) {
         }, { analyzer.GetLvalueType(this), nonstatic });
         constructors.insert(ReferenceConstructor.get());
 
-        return analyzer.GetOverloadSet(AggregateType::CreateNondefaultConstructorOverloadSet(), analyzer.GetOverloadSet(constructors));
+        return analyzer.GetOverloadSet(AggregateType::CreateConstructorOverloadSet({ false, true, true }), analyzer.GetOverloadSet(constructors));
     }
         
     return AggregateType::CreateConstructorOverloadSet(access);

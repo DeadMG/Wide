@@ -756,19 +756,17 @@ void Function::ComputeBody() {
                     }
                 } else if (Args[1] == analyzer.GetLvalueType(GetContext())) {
                     // Copy constructor- copy all.
+                    unsigned i = 0;
                     for (auto&& x : members) {                        
-                        auto member = make_member(analyzer.GetLvalueType(x.t), x.num.offset, LookupLocal("this"));
-                        auto arg = make_member(analyzer.GetLvalueType(x.t), x.num.offset, parameters[1]);
-                        auto param = x.t->IsReference() ? std::make_shared<ImplicitLoadExpr>(arg) : arg;
-                        root_scope->active.push_back(x.t->BuildInplaceConstruction(member, { param }, { this, con->where }));
+                        auto member_ref = make_member(analyzer.GetLvalueType(x.t), x.num.offset, LookupLocal("this"));
+                        root_scope->active.push_back(x.t->BuildInplaceConstruction(member_ref, { member->PrimitiveAccessMember(parameters[1], i++) }, { this, con->where }));
                     }
                 } else if (Args[1] == analyzer.GetRvalueType(GetContext())) {
                     // move constructor- move all.
+                    unsigned i = 0;
                     for (auto&& x : members) {
-                        auto member = make_member(analyzer.GetLvalueType(x.t), x.num.offset, LookupLocal("this"));
-                        auto arg = make_member(analyzer.GetRvalueType(x.t), x.num.offset, std::make_shared<RvalueCast>(parameters[1]));
-                        auto param = x.t->IsReference() ? std::make_shared<ImplicitLoadExpr>(arg) : arg;
-                        root_scope->active.push_back(x.t->BuildInplaceConstruction(member, { param }, { this, con->where }));
+                        auto member_ref = make_member(analyzer.GetLvalueType(x.t), x.num.offset, LookupLocal("this"));
+                        root_scope->active.push_back(x.t->BuildInplaceConstruction(member_ref, { member->PrimitiveAccessMember(std::make_shared<RvalueCast>(parameters[1]), i++) }, { this, con->where }));
                     }
                 } else
                     throw std::runtime_error("Fuck.");
@@ -858,6 +856,30 @@ void Function::ComputeBody() {
             }
             // set the vptrs if necessary
             root_scope->active.push_back(Type::SetVirtualPointers(LookupLocal("this")));
+        }
+
+        // Check for defaulted operator=
+        if (auto func = dynamic_cast<const Parse::Function*>(fun)) {
+            if (func->defaulted) {
+                auto member = dynamic_cast<Semantic::ConstructorContext*>(GetContext());
+                auto members = member->GetConstructionMembers();
+                if (Args.size() != 2)
+                    throw std::runtime_error("Bad defaulted function.");
+                if (Args[1] == analyzer.GetLvalueType(GetContext())) {
+                    // Copy constructor- copy all.
+                    unsigned i = 0;
+                    for (auto&& x : members) {
+                        root_scope->active.push_back(Type::BuildBinaryExpression(member->PrimitiveAccessMember(LookupLocal("this"), i), member->PrimitiveAccessMember(parameters[1], i), &Lexer::TokenTypes::Assignment, { this, fun->where }));
+                    }
+                } else if (Args[1] == analyzer.GetRvalueType(GetContext())) {
+                    // move constructor- move all.
+                    unsigned i = 0;
+                    for (auto&& x : members) {
+                        root_scope->active.push_back(Type::BuildBinaryExpression(member->PrimitiveAccessMember(LookupLocal("this"), i), member->PrimitiveAccessMember(std::make_shared<RvalueCast>(parameters[1]), i), &Lexer::TokenTypes::Assignment, { this, fun->where }));
+                    }
+                } else
+                    throw std::runtime_error("Bad defaulted function.");
+            }
         }
 
         // Now the body.
@@ -955,31 +977,22 @@ llvm::Function* Function::EmitCode(llvm::Module* module) {
     auto sig = GetSignature();
     auto llvmsig = sig->GetLLVMType(module);
     llvmfunc = llvm::Function::Create(llvm::dyn_cast<llvm::FunctionType>(llvmsig->getElementType()), llvm::GlobalValue::LinkageTypes::InternalLinkage, name, module);
+    CodegenContext::EmitFunctionBody(llvmfunc, [this](CodegenContext& c) {
+        for (auto des : param_destructors)
+            if (des)
+                c.AddDestructor(des);
+        for (auto&& stmt : root_scope->active)
+            if (!c.IsTerminated(c->GetInsertBlock()))
+                stmt->GenerateCode(c);
 
-    llvm::BasicBlock* allocas = llvm::BasicBlock::Create(module->getContext(), "allocas", llvmfunc);
-    llvm::BasicBlock* geps = llvm::BasicBlock::Create(module->getContext(), "geps", llvmfunc);
-    llvm::BasicBlock* entry = llvm::BasicBlock::Create(module->getContext(), "entry", llvmfunc);
-    llvm::IRBuilder<> allocs(allocas);
-    allocs.SetInsertPoint(allocs.CreateBr(geps));
-    llvm::IRBuilder<> gep(geps);
-    gep.SetInsertPoint(gep.CreateBr(entry));
-    llvm::IRBuilder<> irbuilder(entry);
-    CodegenContext c(module, allocs, gep, irbuilder);
-    for (auto des : param_destructors)
-        if (des)
-            c.AddDestructor(des);
-    for (auto&& stmt : root_scope->active)
-        if (!c.IsTerminated(c->GetInsertBlock()))
-            stmt->GenerateCode(c);
-
-    if (!c.IsTerminated(irbuilder.GetInsertBlock())) {
-        if (ReturnType == analyzer.GetVoidType()) {
-            c.DestroyAll(false);
-            irbuilder.CreateRetVoid();
+        if (!c.IsTerminated(c->GetInsertBlock())) {
+            if (ReturnType == analyzer.GetVoidType()) {
+                c.DestroyAll(false);
+                c->CreateRetVoid();
+            } else
+                c->CreateUnreachable();
         }
-        else
-            irbuilder.CreateUnreachable();
-    }
+    });
 
     if (llvm::verifyFunction(*llvmfunc, llvm::VerifierFailureAction::PrintMessageAction))
         throw std::runtime_error("Internal Compiler Error: An LLVM function failed verification.");

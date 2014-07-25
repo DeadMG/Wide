@@ -892,30 +892,23 @@ llvm::Function* Type::CreateDestructorFunction(llvm::Module* module) {
     std::stringstream str;
     str << "__" << this << "destructor";
     DestructorFunction = llvm::Function::Create(fty, llvm::GlobalValue::LinkageTypes::InternalLinkage, str.str(), module);
-    llvm::BasicBlock* allocas = llvm::BasicBlock::Create(module->getContext(), "allocas", DestructorFunction);
-    llvm::BasicBlock* geps = llvm::BasicBlock::Create(module->getContext(), "geps", DestructorFunction);
-    llvm::BasicBlock* entry = llvm::BasicBlock::Create(module->getContext(), "entry", DestructorFunction);
-    llvm::IRBuilder<> alloca_builder(allocas);
-    alloca_builder.SetInsertPoint(alloca_builder.CreateBr(geps));
-    llvm::IRBuilder<> gep_builder(geps);
-    gep_builder.SetInsertPoint(gep_builder.CreateBr(entry));
-    llvm::IRBuilder<> ir_builder(entry);
-    CodegenContext c(module, alloca_builder, gep_builder, ir_builder);
-    struct DestructorExpression : Expression {
-        DestructorExpression(Type* self, llvm::Value* val)
-            : self(self), val(val) {}
-        llvm::Value* val;
-        Type* self;
-        Type* GetType() override final {
-            return self->analyzer.GetLvalueType(self);
-        }
-        llvm::Value* ComputeValue(CodegenContext& con) override final {
-            return con->CreateBitCast(val, GetType()->GetLLVMType(con));
-        }
-    };
-    auto obj = std::make_shared<DestructorExpression>(this, DestructorFunction->arg_begin());
-    BuildDestructorCall(obj, { this, Lexer::Range(nullptr) }, true)(c);
-    c->CreateRetVoid();
+    CodegenContext::EmitFunctionBody(DestructorFunction, [this](CodegenContext& c) {;
+        struct DestructorExpression : Expression {
+            DestructorExpression(Type* self, llvm::Value* val)
+                : self(self), val(val) {}
+            llvm::Value* val;
+            Type* self;
+            Type* GetType() override final {
+                return self->analyzer.GetLvalueType(self);
+            }
+            llvm::Value* ComputeValue(CodegenContext& con) override final {
+                return con->CreateBitCast(val, GetType()->GetLLVMType(con));
+            }
+        };
+        auto obj = std::make_shared<DestructorExpression>(this, DestructorFunction->arg_begin());
+        BuildDestructorCall(obj, { this, Lexer::Range(nullptr) }, true)(c);
+        c->CreateRetVoid();
+    });
     return DestructorFunction;
 }
 

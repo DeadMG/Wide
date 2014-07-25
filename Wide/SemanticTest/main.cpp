@@ -64,17 +64,17 @@ int main(int argc, char** argv) {
     unsigned total_succeeded = 0;
     std::unordered_set<std::string> failed;
 #pragma warning(disable : 4800)
-    for(auto mode : modes) {
-        auto result = TestDirectory(mode.first, mode.first, argv[0], input.count("break"), failed);
-        total_succeeded += result.passes;
-        total_failed += result.fails;    
-    }
-    std::cout << "Total succeeded: " << total_succeeded << " failed: " << total_failed << "\n";
-    if (!failed.empty())
-        for(auto fail : failed)
-            std::cout << "Failed: " << fail << "\n";
-    //Jit(clangopts, "JITSuccess/CPPInterop/ExportDestructor.wide");
-    //Compile(clangopts, "CompileFail/OverloadResolutionFailure/CopyWithMoveOnlyElement.wide");
+    //for(auto mode : modes) {
+    //    auto result = TestDirectory(mode.first, mode.first, argv[0], input.count("break"), failed);
+    //    total_succeeded += result.passes;
+    //    total_failed += result.fails;    
+    //}
+    //std::cout << "Total succeeded: " << total_succeeded << " failed: " << total_failed << "\n";
+    //if (!failed.empty())
+    //    for(auto fail : failed)
+    //        std::cout << "Failed: " << fail << "\n";
+    Jit(clangopts, "JITSuccess/UserDefined/DefaultedAllSpecialMembers.wide");
+    //Compile(clangopts, "CompileFail/AddressOfNonLvalue/FunctionReturnComplexValue.wide");
     if (input.count("break"))
         Wide::Util::DebugBreak();
     return total_failed != 0;

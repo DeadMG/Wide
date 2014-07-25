@@ -938,7 +938,12 @@ void Parser::ParseTypeBody(Type* ty) {
 Function* Parser::ParseFunction(const Lexer::Token& first, std::vector<Attribute> attrs) {
     auto args = ParseFunctionDefinitionArguments();
     // Gotta be := or {
-    auto ret_or_open = Check(Error::FunctionNoCurlyToIntroduceBody, [](Lexer::Token& tok) { return tok.GetType() == &Lexer::TokenTypes::OpenCurlyBracket || tok.GetType() == &Lexer::TokenTypes::VarCreate; });
+    auto ret_or_open = Check(Error::FunctionNoCurlyToIntroduceBody, [](Lexer::Token& tok) { return tok.GetType() == &Lexer::TokenTypes::OpenCurlyBracket || tok.GetType() == &Lexer::TokenTypes::VarCreate || tok.GetType() == &Lexer::TokenTypes::Default; });
+    if (ret_or_open.GetType() == &Lexer::TokenTypes::Default) {
+        auto func = arena.Allocate<Function>(std::vector<Statement*>(), first.GetLocation() + ret_or_open.GetLocation(), std::move(args), nullptr, attrs);
+        func->defaulted = true;
+        return func;
+    }
     Expression* explicit_return = nullptr;
     if (ret_or_open.GetType() == &Lexer::TokenTypes::VarCreate) {
         explicit_return = ParseExpression();

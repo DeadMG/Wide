@@ -23,14 +23,12 @@ namespace Wide {
         class UserDefinedType : public AggregateType, public TupleInitializable, public MemberFunctionContext, public ConstructorContext {
 
             std::vector<Type*> GetMembers() { return GetMemberData().members; }
+            std::vector<std::shared_ptr<Expression>> GetDefaultInitializerForMember(unsigned);
 
             const Parse::Type* type;
             std::string source_name;
             Type* context;
-
-            Wide::Util::optional<bool> UDCCache;
-            bool UserDefinedComplex();
-                        
+                                    
             struct BaseData {
                 BaseData(UserDefinedType* self);
                 BaseData(BaseData&& other);
@@ -72,6 +70,22 @@ namespace Wide {
             MemberData& GetMemberData() {
                 if (!Members) Members = MemberData(this);
                 return *Members;
+            }
+
+            struct DefaultData {
+                DefaultData(UserDefinedType* self);
+                DefaultData(DefaultData&&);
+
+                OverloadSet* SimpleConstructors;
+                OverloadSet* SimpleAssOps;
+                AggregateAssignmentOperators AggregateOps;
+                AggregateConstructors AggregateCons;
+                bool IsComplex;
+            };
+            Wide::Util::optional<DefaultData> Defaults;
+            DefaultData& GetDefaultData() {
+                if (!Defaults) Defaults = DefaultData(this);
+                return *Defaults;
             }
 
             std::unique_ptr<OverloadResolvable> DefaultConstructor;

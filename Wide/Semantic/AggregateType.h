@@ -6,10 +6,15 @@ namespace Wide {
     namespace Semantic {
         class AggregateType : public Type {
             virtual std::vector<Type*> GetMembers() = 0;
+            virtual std::vector<std::shared_ptr<Expression>> GetDefaultInitializerForMember(unsigned) { return {}; }
             virtual bool HasDeclaredDynamicFunctions() { return false; }
             virtual Wide::Util::optional<unsigned> SizeOverride() { return Wide::Util::none; }
             virtual Wide::Util::optional<unsigned> AlignOverride() { return Wide::Util::none; }
+            void EmitConstructor(CodegenContext& con, std::vector<std::shared_ptr<Expression>> inits);
+            void EmitAssignmentOperator(CodegenContext& con, std::vector<std::shared_ptr<Expression>> exprs);
+            OverloadSet* MaybeCreateSet(Wide::Util::optional<std::unique_ptr<OverloadResolvable>>&, std::function<bool(Type*, unsigned)> should, std::function<std::unique_ptr<OverloadResolvable>()> create);
 
+            struct AggregateFunction;
             struct Layout {
                 struct CodeGen {
                     CodeGen(AggregateType* self, Layout& lay, llvm::Module* module);
@@ -47,13 +52,36 @@ namespace Wide {
                     return *codegen;
                 }
             };
-            OverloadSet* Constructors = nullptr;
-            OverloadSet* NonDefaultConstructors = nullptr;
-            std::unique_ptr<OverloadResolvable> CopyAssignmentOperator;
-            std::unique_ptr<OverloadResolvable> MoveAssignmentOperator;
-            std::unique_ptr<OverloadResolvable> CopyConstructor;
-            std::unique_ptr<OverloadResolvable> MoveConstructor;
-            std::unique_ptr<OverloadResolvable> DefaultConstructor;
+            std::shared_ptr<Expression> GetConstructorSelf(llvm::Function*& func);
+            std::shared_ptr<Expression> GetMemberFromThis(std::shared_ptr<Expression> self, unsigned offset, Type* result);
+            std::vector<std::shared_ptr<Expression>> GetConstructorInitializers(std::shared_ptr<Expression> self, Context c, std::function<std::vector<std::shared_ptr<Expression>>(unsigned)> initializers);
+            std::vector<std::shared_ptr<Expression>> GetAssignmentOpExpressions(std::shared_ptr<Expression> self, Context c, std::function<std::shared_ptr<Expression>(unsigned)> initializers);
+
+            llvm::Function* CopyAssignmentFunction = nullptr;
+            Wide::Util::optional<std::vector<std::shared_ptr<Expression>>> CopyAssignmentExpressions;
+            Wide::Util::optional<std::unique_ptr<OverloadResolvable>> CopyAssignmentOperator;
+            OverloadSet* GetCopyAssignmentOperator();
+
+            llvm::Function* MoveAssignmentFunction = nullptr;
+            Wide::Util::optional<std::vector<std::shared_ptr<Expression>>> MoveAssignmentExpressions;
+            Wide::Util::optional<std::unique_ptr<OverloadResolvable>> MoveAssignmentOperator;
+            OverloadSet* GetMoveAssignmentOperator();
+
+            llvm::Function* CopyConstructorFunction = nullptr;
+            Wide::Util::optional<std::vector<std::shared_ptr<Expression>>> CopyConstructorInitializers;
+            Wide::Util::optional<std::unique_ptr<OverloadResolvable>> CopyConstructor;
+            OverloadSet* GetCopyConstructor();
+
+            llvm::Function* MoveConstructorFunction = nullptr;
+            Wide::Util::optional<std::vector<std::shared_ptr<Expression>>> MoveConstructorInitializers;
+            Wide::Util::optional<std::unique_ptr<OverloadResolvable>> MoveConstructor;
+            OverloadSet* GetMoveConstructor();
+
+            llvm::Function* DefaultConstructorFunction = nullptr;
+            Wide::Util::optional<std::vector<std::shared_ptr<Expression>>> DefaultConstructorInitializers;
+            Wide::Util::optional<std::unique_ptr<OverloadResolvable>> DefaultConstructor;
+            OverloadSet* GetDefaultConstructor();
+
             std::vector<std::function<void(CodegenContext&)>> destructors;
             Wide::Util::optional<Layout> layout;
             Layout& GetLayout() {
@@ -62,6 +90,17 @@ namespace Wide {
             }
         protected:
             llvm::Function* CreateDestructorFunction(llvm::Module* module) override;
+            struct AggregateConstructors {
+                bool default_constructor;
+                bool copy_constructor;
+                bool move_constructor;
+            };
+            struct AggregateAssignmentOperators {
+                bool move_operator;
+                bool copy_operator;
+            };
+            OverloadSet* CreateAssignmentOperatorOverloadSet(AggregateAssignmentOperators which);
+            OverloadSet* CreateConstructorOverloadSet(AggregateConstructors which);
         public:
             AggregateType(Analyzer& a);
 
@@ -76,8 +115,7 @@ namespace Wide {
             std::size_t alignment() override;
             llvm::Type* GetLLVMType(llvm::Module* module) override;
             Type* GetConstantContext() override;
-            
-            OverloadSet* CreateNondefaultConstructorOverloadSet();
+
             OverloadSet* CreateOperatorOverloadSet(Lexer::TokenType type, Parse::Access access) override;
             OverloadSet* CreateConstructorOverloadSet(Parse::Access access) override; 
             std::function<void(CodegenContext&)> BuildDestructorCall(std::shared_ptr<Expression> self, Context c, bool devirtualize) override;

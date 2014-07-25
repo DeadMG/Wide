@@ -83,11 +83,6 @@ namespace Wide {
         struct Expression;
         struct CodegenContext {
             CodegenContext(const CodegenContext&) = default;
-            CodegenContext(llvm::Module* mod, llvm::IRBuilder<>& alloc_builder, llvm::IRBuilder<>& gep_builder, llvm::IRBuilder<>& ir_builder)
-                : module(mod), alloca_builder(&alloc_builder), gep_builder(&gep_builder), insert_builder(&ir_builder) 
-            {
-                gep_map = std::make_shared<std::unordered_map<llvm::AllocaInst*, std::unordered_map<unsigned, llvm::Value*>>>();
-            }
             struct EHScope {
                 CodegenContext* context;
                 llvm::BasicBlock* target;
@@ -126,6 +121,7 @@ namespace Wide {
             // Mostly used for e.g. member variables.
             Wide::Util::optional<EHScope> EHHandler;
         private:
+            CodegenContext(llvm::Module* mod, llvm::IRBuilder<>& alloc_builder, llvm::IRBuilder<>& gep_builder, llvm::IRBuilder<>& ir_builder);
             std::list<std::pair<std::function<void(CodegenContext&)>, bool>> Destructors;
             llvm::IRBuilder<>* alloca_builder;
             llvm::IRBuilder<>* insert_builder;
@@ -137,6 +133,7 @@ namespace Wide {
             std::list<std::pair<std::function<void(CodegenContext&)>, bool>>::iterator AddExceptionOnlyDestructor(std::function<void(CodegenContext&)>);
             void EraseDestructor(std::list<std::pair<std::function<void(CodegenContext&)>, bool>>::iterator it);
             void AddDestructors(std::list<std::pair<std::function<void(CodegenContext&)>, bool>>);
+            static void EmitFunctionBody(llvm::Function* func, std::function<void(CodegenContext&)> body);
         };
 
         struct Statement : public Node {
@@ -323,6 +320,7 @@ namespace Wide {
                 Lexer::Range location;
             };
             virtual std::vector<member> GetConstructionMembers() = 0;
+            virtual std::shared_ptr<Expression> PrimitiveAccessMember(std::shared_ptr<Expression> self, unsigned num) = 0;
         };
 
         class PrimitiveType : public Type {

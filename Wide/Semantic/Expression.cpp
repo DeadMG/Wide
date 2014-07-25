@@ -362,3 +362,29 @@ llvm::Value* CodegenContext::CreateStructGEP(llvm::Value* v, unsigned num) {
     }
     return insert_builder->CreateStructGEP(v, num);
 }
+void CodegenContext::EmitFunctionBody(llvm::Function* func, std::function<void(CodegenContext&)> body) {
+    llvm::BasicBlock* allocas = llvm::BasicBlock::Create(func->getParent()->getContext(), "allocas", func);
+    llvm::BasicBlock* geps = llvm::BasicBlock::Create(func->getParent()->getContext(), "geps", func);
+    llvm::BasicBlock* entries = llvm::BasicBlock::Create(func->getParent()->getContext(), "entry", func);
+    llvm::IRBuilder<> allocabuilder(allocas);
+    allocabuilder.SetInsertPoint(allocabuilder.CreateBr(geps));
+    llvm::IRBuilder<> gepbuilder(geps);
+    gepbuilder.SetInsertPoint(gepbuilder.CreateBr(entries));
+    llvm::IRBuilder<> insertbuilder(entries);
+    CodegenContext newcon(func->getParent(), allocabuilder, gepbuilder, insertbuilder);
+    body(newcon);
+}
+CodegenContext::CodegenContext(llvm::Module* mod, llvm::IRBuilder<>& alloc_builder, llvm::IRBuilder<>& gep_builder, llvm::IRBuilder<>& ir_builder)
+    : module(mod), alloca_builder(&alloc_builder), gep_builder(&gep_builder), insert_builder(&ir_builder)
+{
+    gep_map = std::make_shared<std::unordered_map<llvm::AllocaInst*, std::unordered_map<unsigned, llvm::Value*>>>();
+}
+DestructorCall::DestructorCall(std::function<void(CodegenContext&)> destructor, Analyzer& a)
+    : destructor(destructor), a(&a) {}
+Type* DestructorCall::GetType()  {
+    return a->GetVoidType();
+}
+llvm::Value* DestructorCall::ComputeValue(CodegenContext& con) {
+    destructor(con);
+    return nullptr;
+}
