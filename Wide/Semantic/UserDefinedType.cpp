@@ -928,3 +928,12 @@ UserDefinedType::DefaultData::DefaultData(DefaultData&& other)
     , AggregateOps(other.AggregateOps)
     , AggregateCons(other.AggregateCons)
     , IsComplex(other.IsComplex) {}
+
+UserDefinedType::DefaultData& UserDefinedType::DefaultData::operator=(DefaultData&& other) {
+    SimpleConstructors = other.SimpleConstructors;
+    SimpleAssOps = other.SimpleAssOps; 
+    AggregateOps = other.AggregateOps;
+    AggregateCons = other.AggregateCons;
+    IsComplex = other.IsComplex;
+    return *this;
+}

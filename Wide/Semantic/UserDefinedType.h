@@ -75,6 +75,7 @@ namespace Wide {
             struct DefaultData {
                 DefaultData(UserDefinedType* self);
                 DefaultData(DefaultData&&);
+                DefaultData& operator=(DefaultData&&);
 
                 OverloadSet* SimpleConstructors;
                 OverloadSet* SimpleAssOps;
