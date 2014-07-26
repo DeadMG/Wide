@@ -67,22 +67,22 @@ int main(int argc, char** argv) {
     for(auto mode : modes) {
         TestDirectory(mode.first, mode.first, argv[0], input.count("break"), files);
     }
-//    Wide::Concurrency::UnorderedSet<std::string> failed;
-//#ifndef TEAMCITY
-//    Wide::Concurrency::ParallelForEach(files.begin(), files.end(), 
-//#else
-//    std::for_each(files.begin(), files.end(), 
-//#endif
-//        [&failed](std::pair<const std::string, std::function<bool()>>& ref) {
-//            if (ref.second())
-//                failed.insert(ref.first); 
-//        }
-//    );
-//    std::cout << "\n\nTotal succeeded: " << files.size() - failed.size() << " failed: " << failed.size() << "\n";
-//    if (failed.size() > 0)
-//        for(auto fail : failed)
-//            std::cout << "Failed: " << fail << "\n";
-    Jit(clangopts, "JITSuccess/CPPInterop/StaticStdcallMemberFromInstance.wide");
+    Wide::Concurrency::UnorderedSet<std::string> failed;
+#ifndef TEAMCITY
+    Wide::Concurrency::ParallelForEach(files.begin(), files.end(), 
+#else
+    std::for_each(files.begin(), files.end(), 
+#endif
+        [&failed](std::pair<const std::string, std::function<bool()>>& ref) {
+            if (ref.second())
+                failed.insert(ref.first); 
+        }
+    );
+    std::cout << "\n\nTotal succeeded: " << files.size() - failed.size() << " failed: " << failed.size() << "\n";
+    if (failed.size() > 0)
+        for(auto fail : failed)
+            std::cout << "Failed: " << fail << "\n";
+    //Jit(clangopts, "JITSuccess/CPPInterop/StaticStdcallMemberFromInstance.wide");
     //Compile(clangopts, "CompileFail/AddressOfNonLvalue/FunctionReturnComplexValue.wide");
     if (input.count("break"))
         Wide::Util::DebugBreak();
