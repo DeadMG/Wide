@@ -72,7 +72,7 @@ int main(int argc, char** argv) {
         if (ref.second())
             failed.insert(ref.first); 
     });
-    std::cout << "Total succeeded: " << files.size() - failed.size() << " failed: " << failed.size() << "\n";
+    std::cout << "\n\nTotal succeeded: " << files.size() - failed.size() << " failed: " << failed.size() << "\n";
     if (failed.size() > 0)
         for(auto fail : failed)
             std::cout << "Failed: " << fail << "\n";

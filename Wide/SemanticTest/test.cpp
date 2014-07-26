@@ -36,7 +36,7 @@ void TestDirectory(std::string path, std::string mode, std::string program, bool
         const char* args[] = { program.c_str(), arguments.c_str(), modearg.c_str(), nullptr };
         std::string err = "";
         bool failed = false;
-        auto timeout = debugbreak ? 0 : 1;
+        auto timeout = debugbreak ? 0 : 10;
         auto ret = llvm::sys::ExecuteAndWait(
             args[0],
             args,
