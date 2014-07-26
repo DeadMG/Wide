@@ -938,16 +938,26 @@ void Parser::ParseTypeBody(Type* ty) {
 Function* Parser::ParseFunction(const Lexer::Token& first, std::vector<Attribute> attrs) {
     auto args = ParseFunctionDefinitionArguments();
     // Gotta be := or {
-    auto ret_or_open = Check(Error::FunctionNoCurlyToIntroduceBody, [](Lexer::Token& tok) { return tok.GetType() == &Lexer::TokenTypes::OpenCurlyBracket || tok.GetType() == &Lexer::TokenTypes::VarCreate || tok.GetType() == &Lexer::TokenTypes::Default; });
-    if (ret_or_open.GetType() == &Lexer::TokenTypes::Default) {
-        auto func = arena.Allocate<Function>(std::vector<Statement*>(), first.GetLocation() + ret_or_open.GetLocation(), std::move(args), nullptr, attrs);
+    auto next = Check(Error::FunctionNoCurlyToIntroduceBody, [](Lexer::Token& tok) { return
+        tok.GetType() == &Lexer::TokenTypes::OpenCurlyBracket ||
+        tok.GetType() == &Lexer::TokenTypes::VarCreate ||
+        tok.GetType() == &Lexer::TokenTypes::Default ||
+        tok.GetType() == &Lexer::TokenTypes::Delete;
+    });
+    if (next.GetType() == &Lexer::TokenTypes::Default) {
+        auto func = arena.Allocate<Function>(std::vector<Statement*>(), first.GetLocation() + next.GetLocation(), std::move(args), nullptr, attrs);
         func->defaulted = true;
         return func;
     }
     Expression* explicit_return = nullptr;
-    if (ret_or_open.GetType() == &Lexer::TokenTypes::VarCreate) {
+    if (next.GetType() == &Lexer::TokenTypes::VarCreate) {
         explicit_return = ParseExpression();
-        ret_or_open = Check(Error::FunctionNoCurlyToIntroduceBody, &Lexer::TokenTypes::OpenCurlyBracket);
+        next = Check(Error::FunctionNoCurlyToIntroduceBody, &Lexer::TokenTypes::OpenCurlyBracket);
+    }
+    if (next.GetType() == &Lexer::TokenTypes::Delete) {
+        auto func = arena.Allocate<Function>(std::vector<Statement*>(), first.GetLocation() + next.GetLocation(), std::move(args), explicit_return, attrs);
+        func->deleted = true;
+        return func;
     }
     std::vector<Statement*> statements;
     auto t = lex(Error::FunctionNoClosingCurly);
@@ -961,10 +971,20 @@ Function* Parser::ParseFunction(const Lexer::Token& first, std::vector<Attribute
 Constructor* Parser::ParseConstructor(const Lexer::Token& first, std::vector<Attribute> attrs) {
     auto args = ParseFunctionDefinitionArguments();
     // Gotta be : or { or default
-    auto colon_or_open = Check(Error::FunctionNoCurlyToIntroduceBody, [](Lexer::Token& tok) { return tok.GetType() == &Lexer::TokenTypes::OpenCurlyBracket || tok.GetType() == &Lexer::TokenTypes::Colon || tok.GetType() == &Lexer::TokenTypes::Default; });
+    auto colon_or_open = Check(Error::FunctionNoCurlyToIntroduceBody, [](Lexer::Token& tok) { return
+        tok.GetType() == &Lexer::TokenTypes::OpenCurlyBracket ||
+        tok.GetType() == &Lexer::TokenTypes::Colon ||
+        tok.GetType() == &Lexer::TokenTypes::Default ||
+        tok.GetType() == &Lexer::TokenTypes::Delete;
+    });
     if (colon_or_open.GetType() == &Lexer::TokenTypes::Default) {
         auto con = arena.Allocate<Constructor>(std::vector<Statement*>(), first.GetLocation() + colon_or_open.GetLocation(), std::move(args), std::vector<VariableInitializer>(), attrs);
         con->defaulted = true;
+        return con;
+    }
+    if (colon_or_open.GetType() == &Lexer::TokenTypes::Delete) {
+        auto con = arena.Allocate<Constructor>(std::vector<Statement*>(), first.GetLocation() + colon_or_open.GetLocation(), std::move(args), std::vector<VariableInitializer>(), attrs);
+        con->deleted = true;
         return con;
     }
     std::vector<VariableInitializer> initializers;

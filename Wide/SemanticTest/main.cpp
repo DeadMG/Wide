@@ -5,6 +5,8 @@
 #include <unordered_map>
 #include <string>
 #include <functional>
+#include <Wide/Util/Concurrency/ConcurrentUnorderedSet.h>
+#include <Wide/Util/Concurrency/ParallelForEach.h>
 
 #pragma warning(push, 0)
 #include <llvm/Support/Host.h>
@@ -60,22 +62,23 @@ int main(int argc, char** argv) {
             return modes[input["mode"].as<std::string>()]();
         return 1;
     }
-    unsigned total_failed = 0;
-    unsigned total_succeeded = 0;
-    std::unordered_set<std::string> failed;
+    std::unordered_map<std::string, std::function<bool()>> files;
 #pragma warning(disable : 4800)
-    //for(auto mode : modes) {
-    //    auto result = TestDirectory(mode.first, mode.first, argv[0], input.count("break"), failed);
-    //    total_succeeded += result.passes;
-    //    total_failed += result.fails;    
-    //}
-    //std::cout << "Total succeeded: " << total_succeeded << " failed: " << total_failed << "\n";
-    //if (!failed.empty())
-    //    for(auto fail : failed)
-    //        std::cout << "Failed: " << fail << "\n";
-    Jit(clangopts, "JITSuccess/UserDefined/DefaultedAllSpecialMembers.wide");
+    for(auto mode : modes) {
+        TestDirectory(mode.first, mode.first, argv[0], input.count("break"), files);
+    }
+    Wide::Concurrency::UnorderedSet<std::string> failed;
+    Wide::Concurrency::ParallelForEach(files.begin(), files.end(), [&failed](std::pair<const std::string, std::function<bool()>>& ref) {
+        if (ref.second())
+            failed.insert(ref.first); 
+    });
+    std::cout << "Total succeeded: " << files.size() - failed.size() << " failed: " << failed.size() << "\n";
+    if (failed.size() > 0)
+        for(auto fail : failed)
+            std::cout << "Failed: " << fail << "\n";
+    //Jit(clangopts, "JITSuccess/UserDefined/DeletedCopyNotCopyable.wide");
     //Compile(clangopts, "CompileFail/AddressOfNonLvalue/FunctionReturnComplexValue.wide");
     if (input.count("break"))
         Wide::Util::DebugBreak();
-    return total_failed != 0;
+    return failed.size() != 0;
 }

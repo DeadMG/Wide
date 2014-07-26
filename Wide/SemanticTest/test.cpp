@@ -27,10 +27,10 @@
 #include <llvm/Analysis/Verifier.h>
 #pragma warning(pop)
 
-results TestDirectory(std::string path, std::string mode, std::string program, bool debugbreak, std::unordered_set<std::string>& failedset) {
+void TestDirectory(std::string path, std::string mode, std::string program, bool debugbreak, std::unordered_map<std::string, std::function<bool()>>& failedset) {
     unsigned tests_failed = 0;
     unsigned tests_succeeded = 0;
-    auto run_test_process = [&](std::string file) {
+    auto run_test_process = [mode, program, debugbreak](std::string file) {
         auto modearg = "--mode=" + mode;
         std::string arguments = "--input=" + file;
         const char* args[] = { program.c_str(), arguments.c_str(), modearg.c_str(), nullptr };
@@ -48,12 +48,7 @@ results TestDirectory(std::string path, std::string mode, std::string program, b
             &failed
         );
 
-        if (failed || ret) {
-            tests_failed++;
-            failedset.insert(file);
-        } else {
-            tests_succeeded++;
-        }
+        return failed || ret;
     };
 
     auto end = llvm::sys::fs::directory_iterator();
@@ -62,8 +57,7 @@ results TestDirectory(std::string path, std::string mode, std::string program, b
     fuck_error_codes = llvm::sys::fs::is_directory(path, out);
     if (!out || fuck_error_codes) {
         std::cout << "Skipping " << path << " as a directory by this name did not exist.\n";
-        results r = { 0, 0 };
-        return r;
+        return;
     }
     auto begin = llvm::sys::fs::directory_iterator(path, fuck_error_codes);
     std::set<std::string> entries;
@@ -76,18 +70,12 @@ results TestDirectory(std::string path, std::string mode, std::string program, b
         llvm::sys::fs::is_regular_file(file, isfile);
         if (isfile) {
             if (llvm::sys::path::extension(file) == ".wide")
-                run_test_process(file);
+                failedset[file] = [run_test_process, file] { return run_test_process(file); };
         }
         llvm::sys::fs::is_directory(file, isfile);
-        if (isfile) {
-            auto result = TestDirectory(file, mode, program, debugbreak, failedset);
-            tests_succeeded += result.passes;
-            tests_failed += result.fails;
-        }
+        if (isfile)
+            TestDirectory(file, mode, program, debugbreak, failedset);        
     }
-    std::cout << path << " succeeded: " << tests_succeeded << " failed: " << tests_failed << "\n";
-    results r = { tests_succeeded, tests_failed };
-    return r;
 }
 
 template<typename F> auto GenerateCode(llvm::Module* mod, F f) -> decltype(f(nullptr)) {

@@ -2,7 +2,7 @@
 
 #include <ppl.h>
 #include <exception>
-#include <vector>
+#include <Wide/Util/Concurrency/ConcurrentVector.h>
 
 namespace Wide {
     namespace Concurrency {

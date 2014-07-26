@@ -70,6 +70,7 @@ UserDefinedType::VTableData::VTableData(UserDefinedType* self) {
             for (auto func : pair.second) {
                 // The function has to be not explicitly marked dynamic *and* not dynamic by any base class.
                 if (IsMultiTyped(func)) continue;
+                if (func->deleted) continue;
 
                 std::vector<Type*> arguments;
                 if (func->args.size() == 0 || func->args.front().name != "this")
@@ -388,8 +389,6 @@ Wide::Util::optional<clang::QualType> UserDefinedType::GetClangType(ClangTU& TU)
             auto types = GetArgsForFunc(func);
             auto ty = clang::CanQualType::CreateUnsafe(TU.GetASTContext().getRecordType(recdecl));
             clang::FunctionProtoType::ExtProtoInfo ext_proto_info;
-            auto mfunc = analyzer.GetWideFunction(func, this, types, "type");
-            mfunc->ComputeBody();
             auto args = GetClangTypesForArgs(types, TU);
             if (!args) continue;
             auto fty = TU.GetASTContext().getFunctionType(*analyzer.GetVoidType()->GetClangType(TU), *args, ext_proto_info);
@@ -408,17 +407,21 @@ Wide::Util::optional<clang::QualType> UserDefinedType::GetClangType(ClangTU& TU)
             con->setAccess(Access(access.first));
             con->setParams(GetParmVarDecls(*args, TU, recdecl));
             recdecl->addDecl(con);
-            mfunc->AddExportName(TU.GetObject(con, clang::CXXCtorType::Ctor_Complete));
+            if (!func->deleted) {
+                auto mfunc = analyzer.GetWideFunction(func, this, types, "type");
+                mfunc->ComputeBody();
+                mfunc->AddExportName(TU.GetObject(con, clang::CXXCtorType::Ctor_Complete));
+            } else
+                con->setDeletedAsWritten(true);
         }
     }
+    // TODO: Explicitly default all members we implicitly generated.
     for (auto overset : type->functions) {
         for (auto access : overset.second) {
             for (auto func : access.second) {
                 if (IsMultiTyped(func)) continue;
                 if (access.first == Parse::Access::Private) continue;
                 auto types = GetArgsForFunc(func);
-                auto mfunc = analyzer.GetWideFunction(func, this, types, overset.first);
-                mfunc->ComputeBody();
                 std::vector<clang::QualType> args;
                 for (auto&& ty : types)  {
                     // Skip "this"
@@ -427,7 +430,19 @@ Wide::Util::optional<clang::QualType> UserDefinedType::GetClangType(ClangTU& TU)
                         args.push_back(*clangty);
                 }
                 if (args.size() != types.size()) continue;
-                auto ret = mfunc->GetSignature()->GetReturnType()->GetClangType(TU);
+                auto get_return_type = [&] {
+                    if (!func->deleted) {
+                        auto mfunc = analyzer.GetWideFunction(func, this, types, overset.first);
+                        return mfunc->GetSignature()->GetReturnType()->GetClangType(TU);
+                    }
+                    if (func->explicit_return) {
+                        auto con = analyzer.AnalyzeExpression(this, func->explicit_return);
+                        auto conty = dynamic_cast<ConstructorType*>(con->GetType()->Decay());
+                        return conty->GetConstructedType()->GetClangType(TU);
+                    }
+                    return analyzer.GetVoidType()->GetClangType(TU);
+                };
+                auto ret = get_return_type();
                 if (!ret) continue;
                 clang::FunctionProtoType::ExtProtoInfo ext_proto_info;
                 if (func->args.front().name == "this") {
@@ -453,7 +468,13 @@ Wide::Util::optional<clang::QualType> UserDefinedType::GetClangType(ClangTU& TU)
                 meth->setVirtualAsWritten(func->dynamic);
                 meth->setParams(GetParmVarDecls(args, TU, recdecl));
                 recdecl->addDecl(meth);
-                mfunc->AddExportName(TU.GetObject(meth));                
+                if (func->deleted)
+                    meth->setDeletedAsWritten(true);
+                else {
+                    auto mfunc = analyzer.GetWideFunction(func, this, types, overset.first);
+                    mfunc->ComputeBody();
+                    mfunc->AddExportName(TU.GetObject(meth));
+                }
             }
         }
     }
@@ -736,6 +757,7 @@ std::shared_ptr<Expression> UserDefinedType::VirtualEntryFor(VTableLayout::Virtu
 
     for (auto access : type->functions.at(name)) {
         for (auto func : access.second) {
+            if (func->deleted) continue;
             std::vector<Type*> f_args;
             if (func->args.size() == 0 || func->args.front().name != "this")
                 f_args.push_back(analyzer.GetLvalueType(this));

@@ -1075,6 +1075,12 @@ OverloadResolvable* Analyzer::GetCallableForFunction(const Parse::FunctionBase* 
         }
 
         Callable* GetCallableForResolution(std::vector<Type*> types, Analyzer& a) override final {
+            if (auto function = dynamic_cast<const Parse::Function*>(func))
+                if (function->deleted)
+                    return nullptr;
+            if (auto con = dynamic_cast<const Parse::Constructor*>(func))
+                if (con->deleted)
+                    return nullptr;
             return a.GetWideFunction(func, context, std::move(types), name);
         }
     };
@@ -1110,6 +1116,12 @@ void ProcessFunction(const Parse::AttributeFunctionBase* f, Analyzer& a, Module*
                 exported = true;
     }
     if (!exported) return;
+    if (auto func = dynamic_cast<const Parse::Function*>(f))
+        if (func->deleted)
+            return;
+    if (auto con = dynamic_cast<const Parse::Constructor*>(f))
+        if (con->defaulted)
+            return;
     std::vector<Type*> types;
     for (auto arg : f->args) {
         if (!arg.type) return;
