@@ -5,7 +5,7 @@
 
 namespace Wide {
     namespace Concurrency {
-        template<typename T, typename H = std::hash<T>, typename E = std::equal_to<T>> class UnorderedMap {
+        template<typename T, typename H = std::hash<T>, typename E = std::equal_to<T>> class UnorderedSet {
             std::mutex m;
             std::unordered_set<T, H, E> umap;
         public:
