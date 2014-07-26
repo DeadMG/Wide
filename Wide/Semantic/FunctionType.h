@@ -13,9 +13,10 @@ namespace Wide {
             Type* ReturnType;
             std::vector<Type*> Args;
             bool variadic;
+            llvm::CallingConv::ID convention;
         public:
-            FunctionType(Type* ret, std::vector<Type*> args, Analyzer& a, bool variadic)
-                : ReturnType(ret), Args(std::move(args)), PrimitiveType(a), variadic(variadic) {}
+            FunctionType(Type* ret, std::vector<Type*> args, Analyzer& a, bool variadic, llvm::CallingConv::ID callingconvention)
+                : ReturnType(ret), Args(std::move(args)), PrimitiveType(a), variadic(variadic), convention(callingconvention) {}
         
             llvm::PointerType* GetLLVMType(llvm::Module* module) override final;
 

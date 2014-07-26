@@ -42,7 +42,7 @@ namespace clang {
 }
 
 namespace Wide {
-    namespace Semantic {        
+    namespace Semantic {
         class Analyzer;
         class ClangTU {
             class Impl;

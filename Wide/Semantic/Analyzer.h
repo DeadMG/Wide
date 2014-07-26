@@ -85,7 +85,7 @@ namespace Wide {
             std::unordered_map<clang::QualType, Type*, ClangTypeHasher> GeneratedClangTypes;
             std::unordered_map<clang::QualType, std::unique_ptr<ClangType>, ClangTypeHasher> ClangTypes;
             std::unordered_map<clang::DeclContext*, std::unique_ptr<ClangNamespace>> ClangNamespaces;
-            std::unordered_map<Type*, std::unordered_map<std::vector<Type*>, std::unordered_map<bool, std::unique_ptr<FunctionType>>, VectorTypeHasher>> FunctionTypes;
+            std::unordered_map<Type*, std::unordered_map<std::vector<Type*>, std::unordered_map<bool, std::map<llvm::CallingConv::ID, std::unique_ptr<FunctionType>>>, VectorTypeHasher>> FunctionTypes;
             std::unordered_map<const Parse::FunctionBase*, std::unordered_map<std::vector<Type*>, std::unique_ptr<Function>, VectorTypeHasher>> WideFunctions;
             std::unordered_map<const Parse::TemplateType*, std::unordered_map<std::vector<Type*>, std::unique_ptr<TemplateType>, VectorTypeHasher>> WideTemplateInstantiations;
             std::unordered_map<Type*, std::unique_ptr<LvalueType>> LvalueTypes;
@@ -140,7 +140,8 @@ namespace Wide {
             // Not to return a ClangType instance.
             Type* GetClangType(ClangTU& from, clang::QualType t);
             ClangNamespace* GetClangNamespace(ClangTU& from, clang::DeclContext* dc);
-            FunctionType* GetFunctionType(Type* ret, const std::vector<Type*>& t, bool variadic);
+            FunctionType* GetFunctionType(Type* ret, const std::vector<Type*>& t, bool variadic, llvm::CallingConv::ID);
+            FunctionType* GetFunctionType(Type* ret, const std::vector<Type*>& t, bool variadic, clang::CallingConv);
             Module* GetWideModule(const Parse::Module* m, Module* higher);
             Function* GetWideFunction(const Parse::FunctionBase* p, Type* context, const std::vector<Type*>&, std::string name);
             LvalueType* GetLvalueType(Type* t);

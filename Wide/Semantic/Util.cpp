@@ -191,3 +191,6 @@ std::shared_ptr<Expression> Semantic::InterpretExpression(clang::Expr* expr, Cla
 std::shared_ptr<Expression> Semantic::InterpretExpression(clang::Expr* expr, ClangTU& tu, Context c, Analyzer& a) {
     return InterpretExpression(expr, tu, c, a, std::unordered_map<clang::Expr*, std::shared_ptr<Expression>>());
 }
+clang::CallingConv Semantic::GetCallingConvention(clang::FunctionDecl* decl) {
+    return decl->getType()->getAs<clang::FunctionProtoType>()->getCallConv();
+}

@@ -1195,7 +1195,7 @@ FunctionType* Function::GetSignature() {
     if (s == State::AnalyzeInProgress)
         assert(false && "Attempted to call GetSignature whilst a function was still being analyzed.");
     assert(ReturnType);
-    return analyzer.GetFunctionType(ReturnType, Args, false);
+    return analyzer.GetFunctionType(ReturnType, Args, false, llvm::CallingConv::C);
 }
 
 Type* Function::GetConstantContext() {

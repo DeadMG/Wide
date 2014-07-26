@@ -784,7 +784,7 @@ std::shared_ptr<Expression> UserDefinedType::VirtualEntryFor(VTableLayout::Virtu
 Type* UserDefinedType::GetVirtualPointerType() {
     if (GetBaseData().PrimaryBase)
         return GetBaseData().PrimaryBase->GetVirtualPointerType();
-    return analyzer.GetFunctionType(analyzer.GetIntegralType(32, false), {}, false);
+    return analyzer.GetFunctionType(analyzer.GetIntegralType(32, false), {}, false, llvm::CallingConv::C);
 }
 
 std::vector<std::pair<Type*, unsigned>> UserDefinedType::GetBasesAndOffsets() {

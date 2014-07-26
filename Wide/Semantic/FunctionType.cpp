@@ -49,8 +49,8 @@ Wide::Util::optional<clang::QualType> FunctionType::GetClangType(ClangTU& from) 
 
 std::shared_ptr<Expression> FunctionType::BuildCall(std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c) {
     struct Call : Expression {
-        Call(Analyzer& an, std::shared_ptr<Expression> self, std::vector<std::shared_ptr<Expression>> args, Context c)
-        : a(an), args(std::move(args)), val(std::move(self)), c(c)
+        Call(Analyzer& an, std::shared_ptr<Expression> self, std::vector<std::shared_ptr<Expression>> args, Context c, llvm::CallingConv::ID conv)
+        : a(an), args(std::move(args)), val(std::move(self)), c(c), convention(conv)
         {
             if (GetType()->IsComplexType()) {
                 Ret = Wide::Memory::MakeUnique<ImplicitTemporaryExpr>(GetType(), c);
@@ -66,6 +66,7 @@ std::shared_ptr<Expression> FunctionType::BuildCall(std::shared_ptr<Expression> 
         std::shared_ptr<Expression> val;
         std::shared_ptr<Expression> Ret;
         std::function<void(CodegenContext&)> Destructor;
+        llvm::CallingConv::ID convention;
         Context c;
         
         Type* GetType() override final {
@@ -104,10 +105,14 @@ std::shared_ptr<Expression> FunctionType::BuildCall(std::shared_ptr<Expression> 
                 llvm::BasicBlock* continueblock = llvm::BasicBlock::Create(con, "continue", con->GetInsertBlock()->getParent());
                 // If we have a try/catch block, let the catch block figure out what to do.
                 // Else, kill everything in the scope and resume.
-                call = con->CreateInvoke(llvmfunc, continueblock, con.CreateLandingpadForEH(), llvmargs);
+                auto invokeinst = con->CreateInvoke(llvmfunc, continueblock, con.CreateLandingpadForEH(), llvmargs);
                 con->SetInsertPoint(continueblock);
+                invokeinst->setCallingConv(convention);
+                call = invokeinst;
             } else {
-                call = con->CreateCall(llvmfunc, llvmargs);
+                auto callinst = con->CreateCall(llvmfunc, llvmargs);
+                callinst->setCallingConv(convention);
+                call = callinst;
             }
             if (Ret) {
                 if (Destructor)
@@ -117,7 +122,7 @@ std::shared_ptr<Expression> FunctionType::BuildCall(std::shared_ptr<Expression> 
             return call;
         }
     };
-    return Wide::Memory::MakeUnique<Call>(analyzer, std::move(val), std::move(args), c);
+    return Wide::Memory::MakeUnique<Call>(analyzer, std::move(val), std::move(args), c, convention);
 }
 std::string FunctionType::explain() {
     auto begin = ReturnType->explain() + "(*)(";

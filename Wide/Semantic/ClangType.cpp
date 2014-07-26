@@ -404,7 +404,8 @@ std::shared_ptr<Expression> ClangType::GetVirtualPointer(std::shared_ptr<Express
 }
 
 Type* ClangType::GetVirtualPointerType() {
-    return analyzer.GetFunctionType(analyzer.GetIntegralType(32, true), {}, true);
+    // The calling convention here is kinda suspect, but we always cast, so...
+    return analyzer.GetFunctionType(analyzer.GetIntegralType(32, true), {}, true, llvm::CallingConv::C);
 }
 
 Type::VTableLayout ClangType::ComputePrimaryVTableLayout() {
@@ -522,11 +523,12 @@ std::shared_ptr<Expression> ClangType::VirtualEntryFor(VTableLayout::VirtualFunc
         }
     };
     if (auto mem = boost::get<VTableLayout::SpecialMember>(&entry.function)) {
+        auto conv = GetCallingConvention(type->getAsCXXRecordDecl()->getDestructor());
         if (*mem == VTableLayout::SpecialMember::Destructor) {
-            return Wide::Memory::MakeUnique<VTableThunk>(from->GetObject(type->getAsCXXRecordDecl()->getDestructor(), clang::CXXDtorType::Dtor_Complete), offset, analyzer.GetFunctionType(analyzer.GetVoidType(), { analyzer.GetLvalueType(this) }, false));
+            return Wide::Memory::MakeUnique<VTableThunk>(from->GetObject(type->getAsCXXRecordDecl()->getDestructor(), clang::CXXDtorType::Dtor_Complete), offset, analyzer.GetFunctionType(analyzer.GetVoidType(), { analyzer.GetLvalueType(this) }, false, conv));
         }
         if (*mem == VTableLayout::SpecialMember::ItaniumABIDeletingDestructor) {
-            return Wide::Memory::MakeUnique<VTableThunk>(from->GetObject(type->getAsCXXRecordDecl()->getDestructor(), clang::CXXDtorType::Dtor_Deleting), offset, analyzer.GetFunctionType(analyzer.GetVoidType(), { analyzer.GetLvalueType(this) }, false));
+            return Wide::Memory::MakeUnique<VTableThunk>(from->GetObject(type->getAsCXXRecordDecl()->getDestructor(), clang::CXXDtorType::Dtor_Deleting), offset, analyzer.GetFunctionType(analyzer.GetVoidType(), { analyzer.GetLvalueType(this) }, false, conv));
         }
         return nullptr;
     }
@@ -553,7 +555,7 @@ std::shared_ptr<Expression> ClangType::VirtualEntryFor(VTableLayout::VirtualFunc
             f_args.push_back(analyzer.GetClangType(*from, (*arg_it)->getType()));
         if (args != f_args)
             continue;
-        auto fty = analyzer.GetFunctionType(analyzer.GetClangType(*from, func->getResultType()), f_args, func->isVariadic());
+        auto fty = analyzer.GetFunctionType(analyzer.GetClangType(*from, func->getResultType()), f_args, func->isVariadic(), GetCallingConvention(func));
         return Wide::Memory::MakeUnique<VTableThunk>(from->GetObject(func), offset, fty);
     }
     return nullptr;

@@ -8,6 +8,7 @@
 namespace clang {
     class QualType;
     class Expr;
+    class FunctionDecl;
 }
 
 #pragma warning(push, 0)
@@ -24,5 +25,6 @@ namespace Wide {
         const std::unordered_map<Lexer::TokenType, std::pair<clang::OverloadedOperatorKind, clang::BinaryOperatorKind>>& GetTokenMappings();
         std::shared_ptr<Expression> InterpretExpression(clang::Expr* p, ClangTU& from, Context c, Analyzer& a);
         std::shared_ptr<Expression> InterpretExpression(clang::Expr* p, ClangTU& from, Context c, Analyzer& a, std::unordered_map<clang::Expr*, std::shared_ptr<Expression>> exprmap);
+        clang::CallingConv GetCallingConvention(clang::FunctionDecl* decl);
     }
 }

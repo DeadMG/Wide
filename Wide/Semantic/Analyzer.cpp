@@ -763,6 +763,24 @@ void Analyzer::GenerateCode(llvm::Module* module) {
         for (auto&& signature : set.second)
             signature.second->EmitCode(module);
 }
+FunctionType* Analyzer::GetFunctionType(Type* ret, const std::vector<Type*>& t, bool variadic, clang::CallingConv conv) {
+    std::map<clang::CallingConv, llvm::CallingConv::ID> convconverter = {
+            { clang::CallingConv::CC_C, llvm::CallingConv::C },
+            { clang::CallingConv::CC_X86StdCall, llvm::CallingConv::X86_StdCall },
+            { clang::CallingConv::CC_X86FastCall, llvm::CallingConv::X86_FastCall },
+            { clang::CallingConv::CC_X86ThisCall, llvm::CallingConv::X86_ThisCall },
+            //{ clang::CallingConv::CC_X86Pascal, },
+            { clang::CallingConv::CC_X86_64Win64, llvm::CallingConv::X86_64_Win64 },
+            { clang::CallingConv::CC_X86_64SysV, llvm::CallingConv::X86_64_SysV },
+            { clang::CallingConv::CC_AAPCS, llvm::CallingConv::ARM_AAPCS },
+            { clang::CallingConv::CC_AAPCS_VFP, llvm::CallingConv::ARM_AAPCS_VFP },
+            //{ clang::CallingConv::CC_PnaclCall, },
+            { clang::CallingConv::CC_IntelOclBicc, llvm::CallingConv::Intel_OCL_BI },
+    };
+    if (convconverter.find(conv) == convconverter.end())
+        throw std::runtime_error("Attempt to convert a Clang type, but the calling convention was not supported.");
+    return GetFunctionType(ret, t, variadic, convconverter[conv]);
+}
 
 Type* Analyzer::GetClangType(ClangTU& from, clang::QualType t) {
     t = t.getCanonicalType();
@@ -791,7 +809,7 @@ Type* Analyzer::GetClangType(ClangTU& from, clang::QualType t) {
         std::vector<Type*> args;
         for (auto ty : funty->getArgTypes())
             args.push_back(GetClangType(from, ty));
-        return GetFunctionType(GetClangType(from, funty->getResultType()), args, funty->isVariadic());
+        return GetFunctionType(GetClangType(from, funty->getResultType()), args, funty->isVariadic(), funty->getCallConv() );
     }
     if (t->isMemberDataPointerType()) {
         auto memptrty = llvm::cast<const clang::MemberPointerType>(t.getTypePtr());
@@ -825,12 +843,13 @@ ClangNamespace* Analyzer::GetClangNamespace(ClangTU& tu, clang::DeclContext* con
     return ClangNamespaces[con].get();
 }
 
-FunctionType* Analyzer::GetFunctionType(Type* ret, const std::vector<Type*>& t, bool variadic) {
+FunctionType* Analyzer::GetFunctionType(Type* ret, const std::vector<Type*>& t, bool variadic, llvm::CallingConv::ID conv) {
     if (FunctionTypes.find(ret) == FunctionTypes.end()
      || FunctionTypes[ret].find(t) == FunctionTypes[ret].end()
-     || FunctionTypes[ret][t].find(variadic) == FunctionTypes[ret][t].end())
-        FunctionTypes[ret][t][variadic] = Wide::Memory::MakeUnique<FunctionType>(ret, t, *this, variadic);
-    return FunctionTypes[ret][t][variadic].get();
+     || FunctionTypes[ret][t].find(variadic) == FunctionTypes[ret][t].end()
+     || FunctionTypes[ret][t][variadic].find(conv) == FunctionTypes[ret][t][variadic].end())
+        FunctionTypes[ret][t][variadic][conv] = Wide::Memory::MakeUnique<FunctionType>(ret, t, *this, variadic, conv);
+    return FunctionTypes[ret][t][variadic][conv].get();
 }
 
 Function* Analyzer::GetWideFunction(const Parse::FunctionBase* p, Type* context, const std::vector<Type*>& types, std::string name) {

@@ -105,9 +105,11 @@ struct cppcallable : public Callable {
                     if (std::distance(llvmfunc->use_begin(), llvmfunc->use_end()) == 0 && llvmfunc->getBasicBlockList().empty() && llvmfunc->getLinkage() == llvm::GlobalValue::ExternalLinkage) {
                         // Clang has no uses of this decl. Just erase the declaration and create our own.
                         auto mangledname = llvmfunc->getName();
+                        auto cconv = llvmfunc->getCallingConv();
                         llvmfunc->removeFromParent();
                         auto functy = llvm::dyn_cast<llvm::FunctionType>(llvm::dyn_cast<llvm::PointerType>(fty->GetLLVMType(con))->getElementType());
                         llvmfunc = llvm::Function::Create(functy, llvm::GlobalValue::LinkageTypes::ExternalLinkage, mangledname, con.module);
+                        llvmfunc->setCallingConv(cconv);
                         return llvmfunc;
                     }
                     return con->CreateBitCast(llvmfunc, fty->GetLLVMType(con));
@@ -119,11 +121,15 @@ struct cppcallable : public Callable {
         for (auto x : types)
             local.push_back(x.first);
         auto&& analyzer = source->analyzer;
-        auto fty = analyzer.GetFunctionType(analyzer.GetClangType(*from, fun->getResultType()), local, fun->isVariadic());
+        auto fty = analyzer.GetFunctionType(analyzer.GetClangType(*from, fun->getResultType()), local, fun->isVariadic(), GetCallingConvention(fun));
         auto self = args.size() > 0 ? args[0] : nullptr;
         return fty->BuildCall(Wide::Memory::MakeUnique<CPPSelf>(fun, from, fty, self), std::move(args), { source, c.where });
     }
     std::vector<std::shared_ptr<Expression>> AdjustArguments(std::vector<std::shared_ptr<Expression>> args, Context c) override final {
+        // Clang may resolve a static function. Drop "this" if it did.
+        if (auto meth = llvm::dyn_cast<clang::CXXMethodDecl>(fun))
+            if (meth->isStatic())
+                args.erase(args.begin());
         // Clang may ask us to call an overload that doesn't have the right number of arguments
         // because it has a default argument.
         // types includes this when Clang doesn't include it, so subtract 1 for that.
@@ -331,10 +337,12 @@ Callable* OverloadSet::Resolve(std::vector<Type*> f_args, Type* source) {
         p->source = source;
         // The function may be expecting a base type.
         if (auto meth = llvm::dyn_cast<clang::CXXMethodDecl>(p->fun)) {
-            if (IsLvalueType(f_args[0]))
-                p->types.push_back(std::make_pair(analyzer.GetLvalueType(analyzer.GetClangType(*from, from->GetASTContext().getRecordType(meth->getParent()))), false));
-            else
-                p->types.push_back(std::make_pair(analyzer.GetRvalueType(analyzer.GetClangType(*from, from->GetASTContext().getRecordType(meth->getParent()))), false));
+            if (!meth->isStatic()) {
+                if (IsLvalueType(f_args[0]))
+                    p->types.push_back(std::make_pair(analyzer.GetLvalueType(analyzer.GetClangType(*from, from->GetASTContext().getRecordType(meth->getParent()))), false));
+                else
+                    p->types.push_back(std::make_pair(analyzer.GetRvalueType(analyzer.GetClangType(*from, from->GetASTContext().getRecordType(meth->getParent()))), false));
+            }
         }
         for (unsigned i = 0; i < fun->getNumParams(); ++i) {
             auto argty = fun->getParamDecl(i)->getType();            
