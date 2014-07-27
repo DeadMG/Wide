@@ -239,7 +239,7 @@ namespace Wide {
             virtual bool IsSourceATarget(Type* source, Type* target, Type* context) { return false; }
 
             virtual std::shared_ptr<Expression> GetVirtualPointer(std::shared_ptr<Expression> self);
-            virtual std::shared_ptr<Expression> AccessStaticMember(std::string name);
+            virtual std::shared_ptr<Expression> AccessStaticMember(std::string name, Context c);
             virtual std::shared_ptr<Expression> AccessMember(std::shared_ptr<Expression> t, std::string name, Context c);
             virtual std::shared_ptr<Expression> BuildMetaCall(std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args);
             virtual std::shared_ptr<Expression> BuildCall(std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c);

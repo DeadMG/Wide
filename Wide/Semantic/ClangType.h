@@ -58,7 +58,8 @@ namespace Wide {
             OverloadSet* CreateConstructorOverloadSet(Parse::Access) override final;
             Wide::Util::optional<std::vector<Type*>> GetTypesForTuple() override final;
             std::shared_ptr<Expression> PrimitiveAccessMember(std::shared_ptr<Expression> self, unsigned num) override final;
-            std::string explain() override final;
+            std::string explain() override final; 
+            std::shared_ptr<Expression> AccessStaticMember(std::string name, Context c) override final;
         };
     }
 }

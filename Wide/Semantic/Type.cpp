@@ -167,9 +167,7 @@ std::shared_ptr<Expression> Type::GetVirtualPointer(std::shared_ptr<Expression> 
     throw std::runtime_error("ICE"); 
 }
 
-std::shared_ptr<Expression> Type::AccessStaticMember(std::string name) {
-    if (IsReference())
-        return Decay()->AccessStaticMember(name);
+std::shared_ptr<Expression> Type::AccessStaticMember(std::string name, Context c) {
     return nullptr;
 }
 

@@ -1,5 +1,5 @@
 using test := cpp("JITSuccess/CPPInterop/ExportFunctionImplicitLookup.h").test;
-[export := test().f]
+[export := test.members.f]
 f(this := test.lvalue) {
     return val;
 }

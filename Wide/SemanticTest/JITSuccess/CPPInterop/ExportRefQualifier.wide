@@ -1,9 +1,9 @@
 using test := cpp("JITSuccess/CPPInterop/ExportRefQualifier.h").test;
 
-[export := test().f.resolve(test.lvalue)]
+[export := test.members.f.resolve(test.lvalue)]
 f(this := test.lvalue) { return true; }
 
-[export := test().f.resolve(test.rvalue)]
+[export := test.members.f.resolve(test.rvalue)]
 f(this := test.rvalue) { return false; }
 
 Main() {

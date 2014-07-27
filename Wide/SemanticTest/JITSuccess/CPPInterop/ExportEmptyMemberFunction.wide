@@ -1,6 +1,6 @@
 using header := cpp("JITSuccess/CPPInterop/ExportEmptyMemberFunction.h");
 
-[export := header.test().f]
+[export := header.test.members.f]
 f(self := header.test.pointer) {
     return true;
 }

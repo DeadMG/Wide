@@ -26,6 +26,7 @@ namespace Wide {
             std::size_t alignment() override final;
             Type* GetReturnType() { return ReturnType; }
             std::vector<Type*> GetArguments() { return Args; }
+            llvm::CallingConv::ID GetCallingConvention() { return convention; }
             std::string explain() override final;
         };
     }

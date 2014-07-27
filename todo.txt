@@ -16,7 +16,6 @@ Analyzer:
 Add unsafe pointer indexing.
 Add library is-a.
 Add inheriting constructors.
-Add defaulted members and deleted functions.
 Add abstract functions, override/final/new.
 Add static reflection.
 Change ADL to look up in base class.
@@ -27,20 +26,19 @@ Add C++ handling of in-class initializers.
 Add all primitive operators and types.
 Add metafunctions.
 Add ability for C++ to call into Wide public global functions without having to declare it.
+Add explicit template arguments.
 Add the ability for Wide to expose Wide generic functions as C++ templates
 Consider parameterised destructors.
-Add the ability to add token types, parsing paths, statement types, etc.
+Add the ability to add statement types, etc.
 Add access to instance member overload sets.
 Add dynamic operator overloads.
 Add ability to inherit from primitives.
 Add short-circuiting for &= and |=.
 Add warnings and errors.
-Add override and final.
 Fix runtime_errors.
 Refactor error handling away from exceptions.
 Fix C++ conversion of UDT member operators.
 Fix C++ conversion of overload sets.
-Fix automatically-generated aggregate operators to be function calls.
 Add tests for warnings, and add more warnings.
 More tests.
 

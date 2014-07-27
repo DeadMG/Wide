@@ -49,6 +49,7 @@ std::shared_ptr<Expression> GetOverloadSet(clang::NamedDecl* d, ClangTU* from, s
     std::unordered_set<clang::NamedDecl*> decls;
     if (d)
         decls.insert(d);
+    auto ty = self->GetType();
     return a.GetOverloadSet(std::move(decls), from, self->GetType())->BuildValueConstruction({ self }, c);
 }
 OverloadSet* GetOverloadSet(clang::LookupResult& lr, ClangTU* from, Type* self, Parse::Access access, Analyzer& a) {
@@ -106,9 +107,6 @@ Wide::Util::optional<clang::QualType> ClangType::GetClangType(ClangTU& tu) {
 
 std::shared_ptr<Expression> ClangType::AccessMember(std::shared_ptr<Expression> val, std::string name, Context c) {
     auto access = GetAccessSpecifier(c.from, this);
-
-    if (!val->GetType()->IsReference())
-        val = BuildRvalueConstruction({ val }, c);
 
     clang::LookupResult lr(
         from->GetSema(), 
@@ -350,10 +348,11 @@ std::shared_ptr<Expression> ClangType::PrimitiveAccessMember(std::shared_ptr<Exp
         std::size_t numbases = type->getAsCXXRecordDecl()->bases_end() - type->getAsCXXRecordDecl()->bases_begin();
         if (num < numbases && resty->getAsCXXRecordDecl()->isEmpty())
             return con->CreatePointerCast(self, result_type->GetLLVMType(con));
-        if (source_type->IsReference())
+        if (source_type->IsReference()) {
             if (root_type->IsReference())
                 return con->CreateLoad(con.CreateStructGEP(self, fieldnum(con)));
             return con.CreateStructGEP(self, fieldnum(con));
+        }
         return con->CreateExtractValue(self, fieldnum(con));
     });
 }
@@ -631,4 +630,44 @@ bool ClangType::IsTriviallyDestructible() {
 }
 bool ClangType::IsTriviallyCopyConstructible() {
     return !type->getAsCXXRecordDecl() || type->getAsCXXRecordDecl()->hasTrivialCopyConstructor();
+}
+std::shared_ptr<Expression> ClangType::AccessStaticMember(std::string name, Context c) {
+    auto access = GetAccessSpecifier(c.from, this);
+    
+    clang::LookupResult lr(
+        from->GetSema(),
+        clang::DeclarationNameInfo(clang::DeclarationName(from->GetIdentifierInfo(name)), clang::SourceLocation()),
+        clang::Sema::LookupNameKind::LookupOrdinaryName);
+    lr.suppressDiagnostics();
+
+    if (!from->GetSema().LookupQualifiedName(lr, type.getCanonicalType()->getAs<clang::TagType>()->getDecl()))
+        return nullptr;
+    if (lr.isAmbiguous())
+        throw ClangLookupAmbiguous(name, this, c.where);
+    if (lr.isSingleResult()) {
+        auto declaccess = AccessMapping.at(lr.getFoundDecl()->getAccess());
+        if (access < declaccess)
+            return Type::AccessStaticMember(name, c);
+
+        if (auto field = llvm::dyn_cast<clang::FieldDecl>(lr.getFoundDecl())) {
+            // TODO: Make PTM here.
+            return nullptr;
+        }
+        if (auto fun = llvm::dyn_cast<clang::CXXMethodDecl>(lr.getFoundDecl())) {
+            return analyzer.GetOverloadSet({ fun }, from, nullptr)->BuildValueConstruction({}, c);
+        }
+        if (auto ty = llvm::dyn_cast<clang::TypeDecl>(lr.getFoundDecl()))
+            return analyzer.GetConstructorType(analyzer.GetClangType(*from, from->GetASTContext().getTypeDeclType(ty)))->BuildValueConstruction({}, c);
+        if (auto vardecl = llvm::dyn_cast<clang::VarDecl>(lr.getFoundDecl())) {
+            auto var = from->GetObject(vardecl);
+            return CreatePrimGlobal(analyzer.GetLvalueType(analyzer.GetClangType(*from, vardecl->getType())), [var](CodegenContext& con) {
+                return var(con);
+            });
+        }
+        if (auto tempdecl = llvm::dyn_cast<clang::ClassTemplateDecl>(lr.getFoundDecl()))
+            return analyzer.GetClangTemplateClass(*from, tempdecl)->BuildValueConstruction({}, c);
+        throw ClangUnknownDecl(name, this, c.where);
+    }
+    std::unordered_set<clang::NamedDecl*> decls(lr.begin(), lr.end());
+    return analyzer.GetOverloadSet(decls, from, nullptr)->BuildValueConstruction({}, c);
 }

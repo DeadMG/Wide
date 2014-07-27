@@ -216,8 +216,6 @@ std::vector<UserDefinedType::member> UserDefinedType::GetConstructionMembers() {
 }
 
 std::shared_ptr<Expression> UserDefinedType::AccessMember(std::shared_ptr<Expression> self, std::string name, Context c) {
-    //if (!self->GetType()->IsReference())
-    //    self = BuildRvalueConstruction(Expressions(std::move(self)), { this, c.where });
     auto spec = GetAccessSpecifier(c.from, this);
     if (GetMemberData().member_indices.find(name) != GetMemberData().member_indices.end()) {
         auto member = type->variables[GetMemberData().member_indices[name]];
@@ -229,7 +227,7 @@ std::shared_ptr<Expression> UserDefinedType::AccessMember(std::shared_ptr<Expres
         for (auto access : type->functions.at(name)) {
             if (spec >= access.first)
                 for (auto func : access.second)
-                    resolvables.insert(analyzer.GetCallableForFunction(func, self->GetType(), name));
+                    resolvables.insert(analyzer.GetCallableForFunction(func, this, name));
         }
         auto selfty = self->GetType();
         if (!resolvables.empty())
@@ -958,4 +956,48 @@ UserDefinedType::DefaultData& UserDefinedType::DefaultData::operator=(DefaultDat
     AggregateCons = other.AggregateCons;
     IsComplex = other.IsComplex;
     return *this;
+}
+std::shared_ptr<Expression> UserDefinedType::AccessStaticMember(std::string name, Context c) {
+    auto spec = GetAccessSpecifier(c.from, this);
+    if (GetMemberData().member_indices.find(name) != GetMemberData().member_indices.end()) {
+        return nullptr;
+    }
+    if (type->functions.find(name) != type->functions.end()) {
+        std::unordered_set<OverloadResolvable*> resolvables;
+        for (auto access : type->functions.at(name)) {
+            if (spec >= access.first)
+                for (auto func : access.second)
+                    resolvables.insert(analyzer.GetCallableForFunction(func, this, name));
+        }
+        if (!resolvables.empty())
+            return analyzer.GetOverloadSet(resolvables, nullptr)->BuildValueConstruction({}, c);
+    }
+    // Any of our bases have this member?
+    Type* BaseType = nullptr;
+    OverloadSet* BaseOverloadSet = nullptr;
+    for (auto base : GetBaseData().bases) {
+        if (auto member = base->AccessStaticMember(name, c)) {
+            // If there's nothing there, we win.
+            // If we're an OS and the existing is an OS, we win by unifying.
+            // Else we lose.
+            auto otheros = dynamic_cast<OverloadSet*>(member->GetType()->Decay());
+            if (!BaseType) {
+                if (otheros) {
+                    if (BaseOverloadSet)
+                        BaseOverloadSet = analyzer.GetOverloadSet(BaseOverloadSet, otheros);
+                    else
+                        BaseOverloadSet = otheros;
+                    continue;
+                }
+                BaseType = base;
+                continue;
+            }
+            throw AmbiguousLookup(name, base, BaseType, c.where);
+        }
+    }
+    if (BaseOverloadSet)
+        return BaseOverloadSet->BuildValueConstruction({}, c);
+    if (!BaseType)
+        return nullptr;
+    return BaseType->AccessStaticMember(name, c);
 }

@@ -30,6 +30,20 @@ namespace {
 
         std::string explain() override final { return t->explain() + ".array"; }
     };
+    struct Member : public MetaType {
+        ConstructorType* t;
+        Member(ConstructorType* con, Analyzer& a)
+            : t(con), MetaType(a) {}
+
+        std::string explain() override final { return t->explain() + ".members"; }
+
+        std::shared_ptr<Expression> AccessMember(std::shared_ptr<Expression> self, std::string name, Context c) override final {
+            auto member = t->GetConstructedType()->AccessStaticMember(name, c);
+            if (!member)
+                throw std::runtime_error("Attempted to access nonexistent member.");
+            return BuildChain(self, member);
+        }
+    };
 }
 
 std::shared_ptr<Expression> ConstructorType::BuildCall(std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c) {
@@ -83,6 +97,10 @@ std::shared_ptr<Expression> ConstructorType::AccessMember(std::shared_ptr<Expres
         return BuildChain(std::move(self), Wide::Memory::MakeUnique<Boolean>(t->IsMoveAssignable(GetAccessSpecifier(c.from, t)), analyzer));
     if (name == "empty")
         return BuildChain(std::move(self), Wide::Memory::MakeUnique<Boolean>(t->IsEmpty(), analyzer));
+    if (name == "members") {
+        if (!members) members = Wide::Memory::MakeUnique<Member>(this, analyzer);
+        return BuildChain(std::move(self), members->BuildValueConstruction({}, { this, c.where }));
+    }
     return nullptr;
 }
 

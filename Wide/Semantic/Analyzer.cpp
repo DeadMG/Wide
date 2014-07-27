@@ -911,7 +911,9 @@ OverloadSet* Analyzer::GetOverloadSet(OverloadResolvable* c) {
     set.insert(c);
     return GetOverloadSet(set);
 }
-OverloadSet* Analyzer::GetOverloadSet(std::unordered_set<OverloadResolvable*> set, Type* nonstatic) {
+OverloadSet* Analyzer::GetOverloadSet(std::unordered_set<OverloadResolvable*> set, Type* nonstatic) {    
+    if (nonstatic && !nonstatic->IsReference())
+        nonstatic = GetRvalueType(nonstatic);
     if (callable_overload_sets.find(set) != callable_overload_sets.end())
         if (callable_overload_sets[set].find(nonstatic) != callable_overload_sets[set].end())
             return callable_overload_sets[set][nonstatic].get();
@@ -968,6 +970,8 @@ bool Semantic::IsRvalueType(Type* t) {
 }
 #pragma warning(default : 4800)
 OverloadSet* Analyzer::GetOverloadSet(OverloadSet* f, OverloadSet* s, Type* context) {
+    if (context && !context->IsReference())
+        context = GetRvalueType(context);
     if (CombinedOverloadSets[f].find(s) != CombinedOverloadSets[f].end())
         return CombinedOverloadSets[f][s].get();
     if (CombinedOverloadSets[s].find(f) != CombinedOverloadSets[s].end())
@@ -984,6 +988,8 @@ Module* Analyzer::GetGlobalModule() {
     return global;
 }
 OverloadSet* Analyzer::GetOverloadSet(std::unordered_set<clang::NamedDecl*> decls, ClangTU* from, Type* context) {
+    if (context && !context->IsReference())
+        context = GetRvalueType(context);
     if (clang_overload_sets.find(decls) == clang_overload_sets.end()
      || clang_overload_sets[decls].find(context) == clang_overload_sets[decls].end()) {
         clang_overload_sets[decls][context] = Wide::Memory::MakeUnique<OverloadSet>(decls, from, context, *this);

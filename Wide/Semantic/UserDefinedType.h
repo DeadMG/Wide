@@ -127,6 +127,7 @@ namespace Wide {
             std::vector<Type*> GetBases() override final;
             Wide::Util::optional<std::vector<Type*>> GetTypesForTuple() override final;
             std::shared_ptr<Expression> PrimitiveAccessMember(std::shared_ptr<Expression> self, unsigned num) override final;
+            std::shared_ptr<Expression> AccessStaticMember(std::string name, Context c) override final;
             std::string explain() override final;
             Wide::Util::optional<unsigned> GetVirtualFunctionIndex(const Parse::DynamicFunction* func);
         };

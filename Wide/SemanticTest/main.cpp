@@ -62,6 +62,8 @@ int main(int argc, char** argv) {
             return modes[input["mode"].as<std::string>()]();
         return 1;
     }
+    //Jit(clangopts, "JITSuccess/CPPInterop/DerivedMultipleInheritance.wide");
+    //Compile(clangopts, "CompileFail/AddressOfNonLvalue/FunctionReturnComplexValue.wide");
     std::unordered_map<std::string, std::function<bool()>> files;
 #pragma warning(disable : 4800)
     for(auto mode : modes) {
@@ -82,9 +84,7 @@ int main(int argc, char** argv) {
     if (failed.size() > 0)
         for(auto fail : failed)
             std::cout << "Failed: " << fail << "\n";
-    //Jit(clangopts, "JITSuccess/CPPInterop/StaticStdcallMemberFromInstance.wide");
-    //Compile(clangopts, "CompileFail/AddressOfNonLvalue/FunctionReturnComplexValue.wide");
     if (input.count("break"))
         Wide::Util::DebugBreak();
-    //return failed.size() != 0;
+    return failed.size() != 0;
 }
