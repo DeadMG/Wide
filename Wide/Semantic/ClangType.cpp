@@ -138,7 +138,7 @@ std::shared_ptr<Expression> ClangType::AccessMember(std::shared_ptr<Expression> 
             });
         }
         if (auto tempdecl = llvm::dyn_cast<clang::ClassTemplateDecl>(lr.getFoundDecl()))
-            return analyzer.GetClangTemplateClass(*from, tempdecl)->BuildValueConstruction({}, c);
+            return BuildChain(val, analyzer.GetClangTemplateClass(*from, tempdecl)->BuildValueConstruction({}, c));
         throw ClangUnknownDecl(name, this, c.where);
     }    
     auto set = GetOverloadSet(lr, from, val->GetType(), access, analyzer);
