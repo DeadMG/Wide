@@ -649,55 +649,57 @@ Function::Function(std::vector<Type*> args, const Parse::FunctionBase* astfun, A
     if (auto fun = dynamic_cast<const Parse::AttributeFunctionBase*>(astfun)) {
         for (auto attr : fun->attributes) {
             if (auto name = dynamic_cast<const Parse::Identifier*>(attr.initialized)) {
-                if (name->val == "export") {
-                    auto expr = analyzer.AnalyzeExpression(GetContext(), attr.initializer);
-                    auto overset = dynamic_cast<OverloadSet*>(expr->GetType()->Decay());
-                    if (!overset)
-                        throw NotAType(expr->GetType()->Decay(), attr.initializer->location);
-                    auto tuanddecl = overset->GetSingleFunction();
-                    if (!tuanddecl.second) throw NotAType(expr->GetType()->Decay(), attr.initializer->location);
-                    auto tu = tuanddecl.first;
-                    auto decl = tuanddecl.second;
-                    if (auto des = llvm::dyn_cast<clang::CXXDestructorDecl>(decl))
-                        trampoline.push_back(tu->GetObject(des, clang::CXXDtorType::Dtor_Complete));
-                    else if (auto con = llvm::dyn_cast<clang::CXXConstructorDecl>(decl))
-                        trampoline.push_back(tu->GetObject(con, clang::CXXCtorType::Ctor_Complete));
-                    else
-                        trampoline.push_back(tu->GetObject(decl));
-                    if (auto meth = llvm::dyn_cast<clang::CXXMethodDecl>(decl)) {
-                        ClangContexts.insert(analyzer.GetClangType(*tu, tu->GetASTContext().getRecordType(meth->getParent())));
-                        if (!meth->isStatic()) {
-                            auto clangty = dynamic_cast<ClangType*>(analyzer.GetClangType(*tu, tu->GetASTContext().getRecordType(meth->getParent())));
-                            auto thisty = analyzer.GetLvalueType(clangty);
-                            // Add "this".
-                            if (auto des = dynamic_cast<const Parse::Destructor*>(fun)) {
-                                Args.push_back(analyzer.GetLvalueType(clangty));
-                                param_destructors.resize(1);
-                                ConstructorContext = clangty;
-                            }
-                            auto param = std::make_shared<Parameter>(this, 0, Lexer::Range(nullptr));
-                            root_scope->named_variables.insert(std::make_pair("this", std::make_pair(param, Lexer::Range(nullptr))));
-                            root_scope->active.push_back(param);
-                            parameters.insert(parameters.begin(), param);
-                            param->OnNodeChanged(nullptr, Change::Contents);
-                            if (auto con = llvm::dyn_cast<clang::CXXConstructorDecl>(meth)) {
-                                // Error if we have a constructor context and it's not the same one.
-                                // Error if we have a nonstatic member context.
-                                // Error if we have any other clang contexts, since constructors cannot be random static members.
-                                if (NonstaticMemberContext) throw std::runtime_error("fuck");
-                                if (ConstructorContext && *ConstructorContext != clangty) throw std::runtime_error("fuck");
-                                if (ClangContexts.size() >= 2) throw std::runtime_error("fuck");
-                                ConstructorContext = clangty;
+                if (auto string = boost::get<std::string>(&name->val)) {
+                    if (*string == "export") {
+                        auto expr = analyzer.AnalyzeExpression(GetContext(), attr.initializer);
+                        auto overset = dynamic_cast<OverloadSet*>(expr->GetType()->Decay());
+                        if (!overset)
+                            throw NotAType(expr->GetType()->Decay(), attr.initializer->location);
+                        auto tuanddecl = overset->GetSingleFunction();
+                        if (!tuanddecl.second) throw NotAType(expr->GetType()->Decay(), attr.initializer->location);
+                        auto tu = tuanddecl.first;
+                        auto decl = tuanddecl.second;
+                        if (auto des = llvm::dyn_cast<clang::CXXDestructorDecl>(decl))
+                            trampoline.push_back(tu->GetObject(des, clang::CXXDtorType::Dtor_Complete));
+                        else if (auto con = llvm::dyn_cast<clang::CXXConstructorDecl>(decl))
+                            trampoline.push_back(tu->GetObject(con, clang::CXXCtorType::Ctor_Complete));
+                        else
+                            trampoline.push_back(tu->GetObject(decl));
+                        if (auto meth = llvm::dyn_cast<clang::CXXMethodDecl>(decl)) {
+                            ClangContexts.insert(analyzer.GetClangType(*tu, tu->GetASTContext().getRecordType(meth->getParent())));
+                            if (!meth->isStatic()) {
+                                auto clangty = dynamic_cast<ClangType*>(analyzer.GetClangType(*tu, tu->GetASTContext().getRecordType(meth->getParent())));
+                                auto thisty = analyzer.GetLvalueType(clangty);
+                                // Add "this".
+                                if (auto des = dynamic_cast<const Parse::Destructor*>(fun)) {
+                                    Args.push_back(analyzer.GetLvalueType(clangty));
+                                    param_destructors.resize(1);
+                                    ConstructorContext = clangty;
+                                } 
+                                auto param = std::make_shared<Parameter>(this, 0, Lexer::Range(nullptr));
+                                root_scope->named_variables.insert(std::make_pair("this", std::make_pair(param, Lexer::Range(nullptr))));
+                                root_scope->active.push_back(param);
+                                parameters.insert(parameters.begin(), param);
+                                param->OnNodeChanged(nullptr, Change::Contents);
+                                if (auto con = llvm::dyn_cast<clang::CXXConstructorDecl>(meth)) {
+                                    // Error if we have a constructor context and it's not the same one.
+                                    // Error if we have a nonstatic member context.
+                                    // Error if we have any other clang contexts, since constructors cannot be random static members.
+                                    if (NonstaticMemberContext) throw std::runtime_error("fuck");
+                                    if (ConstructorContext && *ConstructorContext != clangty) throw std::runtime_error("fuck");
+                                    if (ClangContexts.size() >= 2) throw std::runtime_error("fuck");
+                                    ConstructorContext = clangty;
+                                    continue;
+                                }
+                                // Error if we have a constructor context.
+                                // Error if we have a nonstatic member context and it's not this one.
+                                if (!dynamic_cast<const Parse::Destructor*>(fun))
+                                    if (ConstructorContext)
+                                        throw std::runtime_error("fuck");
+                                if (NonstaticMemberContext && *NonstaticMemberContext != clangty) throw std::runtime_error("fuck");
+                                NonstaticMemberContext = clangty;
                                 continue;
                             }
-                            // Error if we have a constructor context.
-                            // Error if we have a nonstatic member context and it's not this one.
-                            if (!dynamic_cast<const Parse::Destructor*>(fun))
-                                if (ConstructorContext) 
-                                    throw std::runtime_error("fuck");
-                            if (NonstaticMemberContext && *NonstaticMemberContext != clangty) throw std::runtime_error("fuck");
-                            NonstaticMemberContext = clangty;
-                            continue;
                         }
                     }
                 }
@@ -778,8 +780,9 @@ void Function::ComputeBody() {
                             // Match if it's a name and the one we were looking for.
                             auto ident = dynamic_cast<const Parse::Identifier*>(init.initialized);
                             if (x.name && ident) {
-                                if (ident->val == *x.name)
-                                    return &init;
+                                if (auto string = boost::get<std::string>(&ident->val))
+                                    if (*string == *x.name)
+                                        return &init;
                             } else {
                                 // Match if it's a type and the one we were looking for.
                                 auto ty = analyzer.AnalyzeExpression(this, init.initialized);
@@ -1186,8 +1189,10 @@ std::shared_ptr<Expression> Function::BuildCall(std::shared_ptr<Expression> val,
     return GetSignature()->BuildCall(Wide::Memory::MakeUnique<Self>(this, self, std::move(val)), std::move(args), c);
 }
 
-std::shared_ptr<Expression> Function::LookupLocal(std::string name) {
-    return current_scope->LookupLocal(name);
+std::shared_ptr<Expression> Function::LookupLocal(Parse::Name name) {
+    if (auto string = boost::get<std::string>(&name))
+        return current_scope->LookupLocal(*string);
+    return nullptr;
 }
 FunctionType* Function::GetSignature() {
     if (s == State::NotYetAnalyzed)
@@ -1195,7 +1200,7 @@ FunctionType* Function::GetSignature() {
     if (s == State::AnalyzeInProgress)
         assert(false && "Attempted to call GetSignature whilst a function was still being analyzed.");
     assert(ReturnType);
-    return analyzer.GetFunctionType(ReturnType, Args, false, llvm::CallingConv::C);
+    return analyzer.GetFunctionType(ReturnType, Args, false);
 }
 
 Type* Function::GetConstantContext() {

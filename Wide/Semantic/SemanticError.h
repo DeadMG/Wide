@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Wide/Lexer/Token.h>
+#include <Wide/Parser/AST.h>
 #include <string>
 #include <vector>
 #include <stdexcept>
@@ -28,13 +29,13 @@ namespace Wide {
         };
         class NoMember : public Error {
             Type* which;
-            std::string member;
+            Parse::Name member;
             Type* context;
         public:
-            NoMember(Type* what, Type* con, std::string name, Lexer::Range where);
+            NoMember(Type* what, Type* con, Parse::Name name, Lexer::Range where);
             Type* GetType() { return which; }
             Type* GetContext() { return context; }
-            std::string GetMember() { return member; }
+            Parse::Name GetMember() { return member; }
         };
 
         class NotAType : public Error {
@@ -187,12 +188,12 @@ namespace Wide {
         };
 
         class NoMemberToInitialize : public Error {
-            std::string name;
+            Parse::Name name;
             Type* which;
         public:
-            NoMemberToInitialize(Type* what, std::string name, Lexer::Range where);
+            NoMemberToInitialize(Type* what, Parse::Name name, Lexer::Range where);
             Type* GetType() { return which; }
-            std::string GetName() { return name; }
+            Parse::Name GetName() { return name; }
         };
 
         class ReturnTypeMismatch : public Error {

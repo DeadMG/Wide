@@ -73,3 +73,14 @@ std::string ClangNamespace::explain() {
     auto names = llvm::dyn_cast<clang::NamespaceDecl>(con);
     return GetContext()->explain() + "." + names->getName().str();
 }
+OverloadSet* ClangNamespace::CreateOperatorOverloadSet(Parse::OperatorName what, Parse::Access access) {
+    clang::LookupResult lr(
+        from->GetSema(),
+        clang::DeclarationNameInfo(from->GetASTContext().DeclarationNames.getCXXOperatorName(GetTokenMappings().at(what).first), clang::SourceLocation()),
+        clang::Sema::LookupNameKind::LookupOrdinaryName);
+    if (!from->GetSema().LookupQualifiedName(lr, con))
+        return nullptr;
+    std::unordered_set<clang::NamedDecl*> decls;
+    decls.insert(lr.begin(), lr.end());
+    return analyzer.GetOverloadSet(std::move(decls), from, GetContext());
+}

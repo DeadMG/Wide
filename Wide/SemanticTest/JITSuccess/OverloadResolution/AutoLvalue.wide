@@ -1,8 +1,0 @@
-f(arg := auto.decay.lvalue) { return true; }
-f(arg := auto.decay.rvalue) { return false; }
-Main() {
-    t := type {}();
-    x := 5;
-    var := f;
-    return f(t) & f(x) & f(var);
-}

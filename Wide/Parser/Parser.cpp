@@ -39,41 +39,43 @@ Parser::Parser(std::function<Wide::Util::optional<Lexer::Token>()> l)
     warning = [](Lexer::Range r, Parse::Warning w) {};
     outlining = [](Lexer::Range r, Parse::OutliningType out) {};
 
-    ModuleOverloadableOperators = {
-        &Lexer::TokenTypes::LeftShift,
-        &Lexer::TokenTypes::RightShift,
-        &Lexer::TokenTypes::EqCmp,
-        &Lexer::TokenTypes::NotEqCmp,
-        &Lexer::TokenTypes::Star,
-        &Lexer::TokenTypes::Negate,
-        &Lexer::TokenTypes::Plus,
-        &Lexer::TokenTypes::Increment,
-        &Lexer::TokenTypes::Decrement,
-        &Lexer::TokenTypes::Minus,
-        &Lexer::TokenTypes::LT,
-        &Lexer::TokenTypes::LTE,
-        &Lexer::TokenTypes::GT,
-        &Lexer::TokenTypes::GTE,
-        &Lexer::TokenTypes::Or,
-        &Lexer::TokenTypes::And,
-        &Lexer::TokenTypes::Xor,
-        &Lexer::TokenTypes::Divide,
-        &Lexer::TokenTypes::Modulo,
+    ModuleOverloadableOperators = std::initializer_list<std::vector<Wide::Lexer::TokenType>> {
+       { { &Lexer::TokenTypes::LeftShift  } },
+       { { &Lexer::TokenTypes::RightShift  } },
+       { { &Lexer::TokenTypes::EqCmp  } },
+       { { &Lexer::TokenTypes::NotEqCmp  } },
+       { { &Lexer::TokenTypes::Star  } },
+       { { &Lexer::TokenTypes::Negate  } },
+       { { &Lexer::TokenTypes::Plus  } },
+       { { &Lexer::TokenTypes::Increment  } },
+       { { &Lexer::TokenTypes::Decrement  } },
+       { { &Lexer::TokenTypes::Minus  } },
+       { { &Lexer::TokenTypes::LT  } },
+       { { &Lexer::TokenTypes::LTE  } },
+       { { &Lexer::TokenTypes::GT  } },
+       { { &Lexer::TokenTypes::GTE  } },
+       { { &Lexer::TokenTypes::Or  } },
+       { { &Lexer::TokenTypes::And  } },
+       { { &Lexer::TokenTypes::Xor  } },
+       { { &Lexer::TokenTypes::Divide  } },
+       { { &Lexer::TokenTypes::Modulo  } },
     };
 
-    MemberOverloadableOperators = {
-        &Lexer::TokenTypes::LeftShiftAssign,
-        &Lexer::TokenTypes::RightShiftAssign,
-        &Lexer::TokenTypes::MulAssign,
-        &Lexer::TokenTypes::PlusAssign,
-        &Lexer::TokenTypes::MinusAssign,
-        &Lexer::TokenTypes::OrAssign,
-        &Lexer::TokenTypes::AndAssign,
-        &Lexer::TokenTypes::XorAssign,
-        &Lexer::TokenTypes::DivAssign,
-        &Lexer::TokenTypes::ModAssign,
-        &Lexer::TokenTypes::Assignment,
-        &Lexer::TokenTypes::QuestionMark,
+    MemberOverloadableOperators = std::initializer_list<std::vector<Wide::Lexer::TokenType>> {
+        { &Lexer::TokenTypes::LeftShiftAssign },
+        { &Lexer::TokenTypes::RightShiftAssign },
+        { &Lexer::TokenTypes::MulAssign },
+        { &Lexer::TokenTypes::PlusAssign },
+        { &Lexer::TokenTypes::MinusAssign },
+        { &Lexer::TokenTypes::OrAssign },
+        { &Lexer::TokenTypes::AndAssign },
+        { &Lexer::TokenTypes::XorAssign },
+        { &Lexer::TokenTypes::DivAssign },
+        { &Lexer::TokenTypes::ModAssign },
+        { &Lexer::TokenTypes::Assignment },
+        { &Lexer::TokenTypes::QuestionMark },
+        { &Lexer::TokenTypes::OpenBracket, &Lexer::TokenTypes::CloseBracket },
+        { &Lexer::TokenTypes::OpenSquareBracket, &Lexer::TokenTypes::CloseSquareBracket },
     };
 
     ExpressionPrecedences = {
@@ -86,10 +88,7 @@ Parser::Parser(std::function<Wide::Util::optional<Lexer::Token>()> l)
         { &Lexer::TokenTypes::Plus, &Lexer::TokenTypes::Minus },
         { &Lexer::TokenTypes::Star, &Lexer::TokenTypes::Divide, &Lexer::TokenTypes::Modulo },
     };
-
-    MemberDoubleOverloadableOperators[&Lexer::TokenTypes::OpenBracket] = &Lexer::TokenTypes::CloseBracket;
-    MemberDoubleOverloadableOperators[&Lexer::TokenTypes::OpenSquareBracket] = &Lexer::TokenTypes::CloseSquareBracket;
-
+    
     for (auto ty : { &Lexer::TokenTypes::LeftShiftAssign, &Lexer::TokenTypes::RightShiftAssign, &Lexer::TokenTypes::MulAssign, &Lexer::TokenTypes::PlusAssign, &Lexer::TokenTypes::MinusAssign, 
         &Lexer::TokenTypes::OrAssign, &Lexer::TokenTypes::AndAssign, &Lexer::TokenTypes::XorAssign, &Lexer::TokenTypes::DivAssign, &Lexer::TokenTypes::ModAssign, &Lexer::TokenTypes::Assignment }) {
         AssignmentOperators[ty] = [ty](Parser& p, Expression* lhs) {
@@ -126,6 +125,7 @@ Parser::Parser(std::function<Wide::Util::optional<Lexer::Token>()> l)
             m = p.ParseQualifiedName(ident, m, a, Parse::Error::ModuleNoOpeningBrace);
         else
             p.lex(maybedot);
+        if (ident.GetType() == &Lexer::TokenTypes::Operator) throw p.BadToken(ident, Parse::Error::QualifiedNameNoIdentifier);
         auto curly = p.Check(Error::ModuleNoOpeningBrace, &Lexer::TokenTypes::OpenCurlyBracket);
         auto mod = p.CreateModule(ident.GetValue(), m, module.GetLocation() + curly.GetLocation(), a);
         p.ParseModuleContents(mod, curly.GetLocation());
@@ -180,9 +180,16 @@ Parser::Parser(std::function<Wide::Util::optional<Lexer::Token>()> l)
             m = p.ParseQualifiedName(ident, m, a, Parse::Error::ModuleNoOpeningBrace);
         else
             p.lex(maybedot);
-        auto t = p.Check(Error::ModuleScopeFunctionNoOpenBracket, &Lexer::TokenTypes::OpenBracket);
+        if (ident.GetType() == &Lexer::TokenTypes::Identifier) {
+            auto t = p.Check(Error::ModuleScopeFunctionNoOpenBracket, &Lexer::TokenTypes::OpenBracket);
+            auto func = p.ParseFunction(ident, attributes);
+            p.AddFunctionToModule(m, ident.GetValue(), func, a);
+            return;
+        }
+        auto name = p.ParseOperatorName(p.ModuleOverloadableOperators);
+        p.Check(Error::ModuleScopeFunctionNoOpenBracket, &Lexer::TokenTypes::OpenBracket);
         auto func = p.ParseFunction(ident, attributes);
-        p.AddFunctionToModule(m, ident.GetValue(), func, a);
+        m->OperatorOverloads[name][a].insert(func);
     };
 
     GlobalModuleAttributeTokens[&Lexer::TokenTypes::Type] = [](Parser& p, Module* m, Parse::Access a, Lexer::Token& typ, std::vector<Attribute> attributes) {
@@ -198,13 +205,11 @@ Parser::Parser(std::function<Wide::Util::optional<Lexer::Token>()> l)
         p.AddTypeToModule(m, next.GetValue(), ty, a);
     };
 
-    GlobalModuleAttributeTokens[&Lexer::TokenTypes::Operator] = [](Parser& p, Module* m, Parse::Access a, Lexer::Token& token, std::vector<Attribute> attributes) {
-        auto op = p.lex(Error::NoOperatorFound);
-        if (p.ModuleOverloadableOperators.find(op.GetType()) == p.ModuleOverloadableOperators.end())
-            throw p.BadToken(op, Error::NonOverloadableOperator);
-        p.Check(Error::ModuleScopeOperatorNoOpenBracket, &Lexer::TokenTypes::OpenBracket);
-        auto func = p.ParseFunction(token, attributes);
-        p.AddFunctionToModule(m, token.GetValue() + op.GetValue(), func, a);
+    GlobalModuleAttributeTokens[&Lexer::TokenTypes::Operator] = [](Parser& p, Module* m, Parse::Access a, Lexer::Token& tok, std::vector<Attribute> attrs) {
+        auto name = p.ParseOperatorName(p.ModuleOverloadableOperators);
+        p.Check(Error::ModuleScopeFunctionNoOpenBracket, &Lexer::TokenTypes::OpenBracket);
+        auto func = p.ParseFunction(tok, attrs);
+        m->OperatorOverloads[name][a].insert(func);
     };
 
     GlobalModuleAttributeTokens[&Lexer::TokenTypes::Negate] = [](Parser& p, Module* m, Parse::Access a, Lexer::Token& token, std::vector<Attribute> attributes) {
@@ -222,6 +227,8 @@ Parser::Parser(std::function<Wide::Util::optional<Lexer::Token>()> l)
         auto t = p.lex(Error::MemberAccessNoIdentifierOrDestructor);
         if (t.GetType() == &Lexer::TokenTypes::Identifier)
             return p.arena.Allocate<MemberAccess>(t.GetValue(), e, e->location + t.GetLocation(), t.GetLocation());
+        if (t.GetType() == &Lexer::TokenTypes::Operator)
+            return p.arena.Allocate<MemberAccess>(p.ParseOperatorName(p.GetAllOperators()), e, e->location + t.GetLocation(), t.GetLocation());
         if (t.GetType() == &Lexer::TokenTypes::Negate) {
             auto typ = p.Check(Error::MemberAccessNoTypeAfterNegate, &Lexer::TokenTypes::Type);
             auto open = p.Check(Error::DestructorNoOpenBracket, &Lexer::TokenTypes::OpenBracket);
@@ -236,6 +243,8 @@ Parser::Parser(std::function<Wide::Util::optional<Lexer::Token>()> l)
         auto t = p.lex(Error::PointerAccessNoIdentifierOrDestructor);
         if (t.GetType() == &Lexer::TokenTypes::Identifier)
             return p.arena.Allocate<PointerMemberAccess>(t.GetValue(), e, e->location + t.GetLocation(), t.GetLocation());
+        if (t.GetType() == &Lexer::TokenTypes::Operator)
+            return p.arena.Allocate<MemberAccess>(p.ParseOperatorName(p.GetAllOperators()), e, e->location + t.GetLocation(), t.GetLocation());
         if (t.GetType() == &Lexer::TokenTypes::Negate) {
             auto typ = p.Check(Error::PointerAccessNoTypeAfterNegate, &Lexer::TokenTypes::Type);
             return p.arena.Allocate<PointerDestructorAccess>(e, e->location + typ.GetLocation());
@@ -303,6 +312,10 @@ Parser::Parser(std::function<Wide::Util::optional<Lexer::Token>()> l)
 
     PrimaryExpressions[&Lexer::TokenTypes::False] = [](Parser& p, Lexer::Token& t) {
         return p.arena.Allocate<False>(t.GetLocation());
+    };
+
+    PrimaryExpressions[&Lexer::TokenTypes::Operator] = [](Parser& p, Lexer::Token& t) {
+        return p.arena.Allocate<Identifier>(p.ParseOperatorName(p.GetAllOperators()), t.GetLocation() + p.lex.GetLastPosition());
     };
 
     PrimaryExpressions[&Lexer::TokenTypes::Decltype] = [](Parser& p, Lexer::Token& t) {
@@ -641,34 +654,66 @@ Parser::Parser(std::function<Wide::Util::optional<Lexer::Token>()> l)
     };
 
     DynamicMemberFunctions[&Lexer::TokenTypes::Operator] = [](Parser& p, Type* t, Parse::Access a, Lexer::Token& tok, std::vector<Attribute> attrs) -> Function* {
-        auto make_op = [&](std::string name) {
-            p.Check(Error::TypeScopeOperatorNoOpenBracket, &Lexer::TokenTypes::OpenBracket);
-            auto func = p.ParseFunction(tok, attrs);
-            t->functions["operator" + name][a].insert(func);
-            return func;
-        };
-        auto op = p.lex(Error::TypeScopeOperatorNoOpenBracket);
-        if (p.ModuleOverloadableOperators.find(op.GetType()) != p.ModuleOverloadableOperators.end())
-            return make_op(*op.GetType());
-        if (p.MemberOverloadableOperators.find(op.GetType()) != p.MemberOverloadableOperators.end())
-            return make_op(*op.GetType());
-        if (p.MemberDoubleOverloadableOperators.find(op.GetType()) != p.MemberDoubleOverloadableOperators.end()) {
-            auto next = p.lex(Error::TypeScopeOperatorNoOpenBracket);
-            if (next.GetType() == p.MemberDoubleOverloadableOperators[op.GetType()])
-                return make_op(*op.GetType() + *next.GetType());
-        }
-        throw p.BadToken(op, Error::NonOverloadableOperator);
-        return nullptr;
+        auto valid_ops = p.ModuleOverloadableOperators;
+        valid_ops.insert(p.MemberOverloadableOperators.begin(), p.MemberOverloadableOperators.end());
+        auto name = p.ParseOperatorName(valid_ops);
+        p.Check(Error::ModuleScopeFunctionNoOpenBracket, &Lexer::TokenTypes::OpenBracket);
+        auto func = p.ParseFunction(tok, attrs);
+        t->functions[name][a].insert(func);
+        return func;
     };
 }
+OperatorName Parser::ParseOperatorName(std::unordered_set<OperatorName> valid_ops, OperatorName current, OperatorName valid) {
+    if (valid_ops.empty())
+        return valid;
+    auto op = lex(Error::TypeScopeOperatorNoOpenBracket);
+    current.push_back(op.GetType());
+    auto remaining = GetRemainingValidOperators(valid_ops, current);
+    if (remaining.empty()) {
+        lex(op);
+        return valid;
+    }
+    auto result = ParseOperatorName(remaining, current, valid);
+    if (result == valid) // They did not need our token, so put it back.
+        lex(op);
+    return valid;
+}
+OperatorName Parser::ParseOperatorName(std::unordered_set<OperatorName> valid_ops, OperatorName current) {
+    auto op = lex(Error::TypeScopeOperatorNoOpenBracket);
+    current.push_back(op.GetType());
+    auto remaining = GetRemainingValidOperators(valid_ops, current);
+    if (valid_ops.find(current) != valid_ops.end())
+        return ParseOperatorName(remaining, current, current);
+    if (remaining.empty())
+        throw BadToken(op, Error::NonOverloadableOperator);
+    return ParseOperatorName(remaining, current);
+}
+OperatorName Parser::ParseOperatorName(std::unordered_set<OperatorName> valid_ops) {
+    return ParseOperatorName(valid_ops, OperatorName());
+}
 
+std::unordered_set<OperatorName> Parser::GetRemainingValidOperators(std::unordered_set<OperatorName> valid, OperatorName current) {
+    std::unordered_set<OperatorName> result;
+    for (auto op : valid) {
+        if (op.size() > current.size())
+            if (std::equal(op.begin(), op.begin() + current.size(), current.begin()))
+                result.insert(op);
+    }
+    return result;
+}
+std::unordered_set<OperatorName> Parser::GetAllOperators() {
+    auto valid = ModuleOverloadableOperators;
+    valid.insert(MemberOverloadableOperators.begin(), MemberOverloadableOperators.end());
+    return valid;
+}
 Module* Parser::ParseQualifiedName(Lexer::Token& first, Module* m, Parse::Access a, Parse::Error err) {
     // We have already seen identifier . to enter this method.
     m = CreateModule(first.GetValue(), m, first.GetLocation(), a);
     while (true) {
-        auto ident = Check(Error::QualifiedNameNoIdentifier, &Lexer::TokenTypes::Identifier);
-        // If there's a dot keep going- else terminate.
-        // Don't act on the final identifier because we don't know what it signifies.
+        auto ident = Check(Error::QualifiedNameNoIdentifier, [](const Lexer::Token& t) { return t.GetType() == &Lexer::TokenTypes::Identifier || t.GetType() == &Lexer::TokenTypes::Operator; });
+        if (ident.GetType() == &Lexer::TokenTypes::Operator) return m;
+        // If there's a dot, and it was not operator, keep going- else terminate.
+        // Don't act on the final identifier or operator.
         auto dot = lex(err);
         if (dot.GetType() != &Lexer::TokenTypes::Dot) {
             lex(dot);

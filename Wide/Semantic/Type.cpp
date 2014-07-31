@@ -23,7 +23,7 @@ using namespace Semantic;
 #include <clang/AST/AST.h>
 #pragma warning(pop)
 
-OverloadSet* Type::CreateADLOverloadSet(Lexer::TokenType what, Parse::Access access) {
+OverloadSet* Type::CreateADLOverloadSet(Parse::OperatorName what, Parse::Access access) {
     if (IsReference())
         return Decay()->CreateADLOverloadSet(what, access);
     auto context = GetContext();
@@ -32,10 +32,29 @@ OverloadSet* Type::CreateADLOverloadSet(Lexer::TokenType what, Parse::Access acc
     return GetContext()->AccessMember(what, access);
 }
 
-OverloadSet* Type::CreateOperatorOverloadSet(Lexer::TokenType type, Parse::Access access) {
+OverloadSet* Type::CreateOperatorOverloadSet(Parse::OperatorName type, Parse::Access access) {
     if (IsReference())
         return Decay()->AccessMember(type, access);
     return analyzer.GetOverloadSet();
+}
+
+bool Type::HasVirtualDestructor() {
+    for (auto base : GetBases())
+        if (base->HasVirtualDestructor())
+            return true;
+    return false;
+}
+
+bool Type::IsAbstract() {
+    return false;
+}
+
+std::unordered_map<std::string, std::unordered_set<std::shared_ptr<Expression>>> Type::GetVirtualFunctions() {
+    return {};
+}
+
+bool Type::IsFinal() { 
+    return true; 
 }
 
 bool Type::IsReference(Type* to) { 
@@ -90,7 +109,7 @@ bool Type::IsCopyConstructible(Parse::Access access) {
 }
 
 bool Type::IsMoveAssignable(Parse::Access access) {
-    auto set = AccessMember(&Lexer::TokenTypes::Assignment, access);
+    auto set = AccessMember({ &Lexer::TokenTypes::Assignment }, access);
     std::vector<Type*> arguments;
     arguments.push_back(analyzer.GetLvalueType(this));
     arguments.push_back(analyzer.GetRvalueType(this));
@@ -98,7 +117,7 @@ bool Type::IsMoveAssignable(Parse::Access access) {
 }
 
 bool Type::IsCopyAssignable(Parse::Access access) {
-    auto set = AccessMember(&Lexer::TokenTypes::Assignment, access);
+    auto set = AccessMember({ &Lexer::TokenTypes::Assignment }, access);
     std::vector<Type*> arguments;
     arguments.push_back(analyzer.GetLvalueType(this));
     arguments.push_back(analyzer.GetLvalueType(this));
@@ -176,6 +195,19 @@ std::shared_ptr<Expression> Type::AccessMember(std::shared_ptr<Expression> t, st
         return Decay()->AccessMember(std::move(t), name, c);
     return nullptr;
 }
+std::shared_ptr<Expression> Type::AccessMember(std::shared_ptr<Expression> t, Parse::Name name, Context c) {
+    if (IsReference())
+        return Decay()->AccessMember(std::move(t), name, c);
+    if (auto string = boost::get<std::string>(&name))
+        return AccessMember(t, *string, c);
+    auto ty = t->GetType();
+    return analyzer.GetOverloadSet(AccessMember(boost::get<Parse::OperatorName>(name), GetAccessSpecifier(c.from, this)), analyzer.GetOverloadSet(), ty)->BuildValueConstruction({t}, c);    
+}
+std::shared_ptr<Expression> Type::AccessStaticMember(Parse::Name name, Context c) {
+    if (auto string = boost::get<std::string>(&name))
+        return AccessStaticMember(*string, c);
+    return analyzer.GetOverloadSet(AccessMember(boost::get<Parse::OperatorName>(name), GetAccessSpecifier(c.from, this)), analyzer.GetOverloadSet())->BuildValueConstruction({}, c);
+}
 
 std::shared_ptr<Expression> Type::BuildMetaCall(std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args) {
     if (IsReference())
@@ -186,7 +218,7 @@ std::shared_ptr<Expression> Type::BuildMetaCall(std::shared_ptr<Expression> val,
 std::shared_ptr<Expression> Type::BuildCall(std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c) {
     if (IsReference())
         return Decay()->BuildCall(std::move(val), std::move(args), c);
-    auto set = val->GetType()->AccessMember(&Lexer::TokenTypes::OpenBracket, GetAccessSpecifier(c.from, this));
+    auto set = val->GetType()->AccessMember({ &Lexer::TokenTypes::OpenBracket, &Lexer::TokenTypes::CloseBracket }, GetAccessSpecifier(c.from, this));
     args.insert(args.begin(), std::move(val));
     std::vector<Type*> types;
     for (auto&& arg : args)
@@ -197,7 +229,7 @@ std::shared_ptr<Expression> Type::BuildCall(std::shared_ptr<Expression> val, std
 }
 
 std::shared_ptr<Expression> Type::BuildBooleanConversion(std::shared_ptr<Expression> val, Context c) {
-    auto set = val->GetType()->Decay()->AccessMember(&Lexer::TokenTypes::QuestionMark, GetAccessSpecifier(c.from, val->GetType()));
+    auto set = val->GetType()->Decay()->AccessMember({ &Lexer::TokenTypes::QuestionMark }, GetAccessSpecifier(c.from, val->GetType()));
     std::vector<std::shared_ptr<Expression>> args;
     args.push_back(std::move(val));
     std::vector<Type*> types;
@@ -218,7 +250,7 @@ OverloadSet* Type::GetConstructorOverloadSet(Parse::Access access) {
     return ConstructorOverloadSets[access];
 }
 
-OverloadSet* Type::PerformADL(Lexer::TokenType what, Parse::Access access) {
+OverloadSet* Type::PerformADL(Parse::OperatorName what, Parse::Access access) {
     if (IsReference())
         return Decay()->PerformADL(what, access);
     if (ADLResults.find(access) != ADLResults.end())
@@ -227,7 +259,7 @@ OverloadSet* Type::PerformADL(Lexer::TokenType what, Parse::Access access) {
     return ADLResults[access][what] = CreateADLOverloadSet(what, access);
 }
 
-OverloadSet* Type::AccessMember(Lexer::TokenType type, Parse::Access access) {
+OverloadSet* Type::AccessMember(Parse::OperatorName type, Parse::Access access) {
     if (OperatorOverloadSets.find(access) != OperatorOverloadSets.end())
         if (OperatorOverloadSets[access].find(type) != OperatorOverloadSets[access].end())
             return OperatorOverloadSets[access][type];
@@ -477,7 +509,7 @@ bool Type::InheritsFromAtOffsetZero(Type* other) {
 
 std::shared_ptr<Expression> Type::BuildUnaryExpression(std::shared_ptr<Expression> self, Lexer::TokenType type, Context c) {
     auto selfty = self->GetType()->Decay();
-    auto opset = selfty->AccessMember(type, GetAccessSpecifier(c.from, selfty));
+    auto opset = selfty->AccessMember({ type }, GetAccessSpecifier(c.from, selfty));
     auto callable = opset->Resolve({ self->GetType() }, c.from);
     if (!callable) {
         if (type == &Lexer::TokenTypes::Negate) {
@@ -493,9 +525,9 @@ std::shared_ptr<Expression> Type::BuildBinaryExpression(std::shared_ptr<Expressi
     auto&& analyzer = lhs->GetType()->analyzer;
     auto lhsaccess = GetAccessSpecifier(c.from, lhs->GetType());
     auto rhsaccess = GetAccessSpecifier(c.from, rhs->GetType());
-    auto lhsadl = lhs->GetType()->PerformADL(type, lhsaccess);
-    auto rhsadl = rhs->GetType()->PerformADL(type, rhsaccess);
-    auto lhsmember = lhs->GetType()->AccessMember(type, lhsaccess);
+    auto lhsadl = lhs->GetType()->PerformADL({ type }, lhsaccess);
+    auto rhsadl = rhs->GetType()->PerformADL({ type }, rhsaccess);
+    auto lhsmember = lhs->GetType()->AccessMember({ type }, lhsaccess);
     auto finalset = analyzer.GetOverloadSet(lhsadl, analyzer.GetOverloadSet(rhsadl, lhsmember));
     std::vector<Type*> arguments;
     arguments.push_back(lhs->GetType());
@@ -541,8 +573,8 @@ OverloadSet* PrimitiveType::CreateConstructorOverloadSet(Parse::Access access) {
     return analyzer.GetOverloadSet(callables);
 }
 
-OverloadSet* PrimitiveType::CreateOperatorOverloadSet(Lexer::TokenType what, Parse::Access access) {
-    if (what != &Lexer::TokenTypes::Assignment)
+OverloadSet* PrimitiveType::CreateOperatorOverloadSet(Parse::OperatorName what, Parse::Access access) {
+    if (what != Parse::OperatorName({ &Lexer::TokenTypes::Assignment }))
         return Type::CreateOperatorOverloadSet(what, access);
     
     AssignmentOperator = MakeResolvable([](std::vector<std::shared_ptr<Expression>> args, Context c) {
@@ -911,7 +943,7 @@ llvm::Function* Type::CreateDestructorFunction(llvm::Module* module) {
 }
 
 std::shared_ptr<Expression> Type::BuildIndex(std::shared_ptr<Expression> val, std::shared_ptr<Expression> arg, Context c) {
-    auto set = val->GetType()->AccessMember(&Lexer::TokenTypes::OpenSquareBracket, GetAccessSpecifier(c.from, val->GetType()));
+    auto set = val->GetType()->AccessMember({ &Lexer::TokenTypes::OpenSquareBracket, &Lexer::TokenTypes::CloseSquareBracket }, GetAccessSpecifier(c.from, val->GetType()));
     std::vector<std::shared_ptr<Expression>> args;
     args.push_back(std::move(val));
     args.push_back(std::move(arg));

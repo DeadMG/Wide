@@ -42,7 +42,7 @@ namespace Wide {
             ClangType(ClangTU* src, clang::QualType t, Analyzer& a);
             llvm::Type* GetLLVMType(llvm::Module* m) override final;            
             Wide::Util::optional<clang::QualType> GetClangType(ClangTU& tu) override final;
-            std::shared_ptr<Expression> AccessMember(std::shared_ptr<Expression> t, std::string name, Context c) override final;        
+            std::shared_ptr<Expression> AccessMember(std::shared_ptr<Expression> t, std::string name, Context c) override final;
             std::function<void(CodegenContext&)> BuildDestructorCall(std::shared_ptr<Expression> self, Context c, bool devirtualize) override final;
             Type* GetConstantContext() override final; 
 
@@ -53,13 +53,14 @@ namespace Wide {
             std::size_t size() override final;
             std::size_t alignment() override final;
             Type* GetContext() override final;
-            OverloadSet* CreateADLOverloadSet(Lexer::TokenType what, Parse::Access access) override final;
-            OverloadSet* CreateOperatorOverloadSet(Lexer::TokenType name, Parse::Access access) override final;
+            OverloadSet* CreateADLOverloadSet(Parse::OperatorName what, Parse::Access access) override final;
+            OverloadSet* CreateOperatorOverloadSet(Parse::OperatorName name, Parse::Access access) override final;
             OverloadSet* CreateConstructorOverloadSet(Parse::Access) override final;
             Wide::Util::optional<std::vector<Type*>> GetTypesForTuple() override final;
             std::shared_ptr<Expression> PrimitiveAccessMember(std::shared_ptr<Expression> self, unsigned num) override final;
             std::string explain() override final; 
             std::shared_ptr<Expression> AccessStaticMember(std::string name, Context c) override final;
+            bool IsFinal() override final;
         };
     }
 }

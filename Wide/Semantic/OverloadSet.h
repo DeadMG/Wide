@@ -49,6 +49,7 @@ namespace Wide {
             }
 
             std::string explain() override final;
+            bool IsNonstatic() { return nonstatic; }
 
             void IssueResolutionError(std::vector<Type*> types, Context c);
             std::pair<ClangTU*, clang::FunctionDecl*> GetSingleFunction();

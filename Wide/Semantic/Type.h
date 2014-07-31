@@ -173,7 +173,7 @@ namespace Wide {
                     RTTIPointer
                 };
                 struct VirtualFunction {
-                    std::string name;
+                    Parse::Name name;
                     std::vector<Type*> args;
                     Type* ret;
                 };
@@ -187,8 +187,8 @@ namespace Wide {
 
         private:
             std::unordered_map<Parse::Access, OverloadSet*> ConstructorOverloadSets;
-            std::unordered_map<Parse::Access, std::unordered_map<Lexer::TokenType, OverloadSet*>> OperatorOverloadSets;
-            std::unordered_map<Parse::Access, std::unordered_map<Lexer::TokenType, OverloadSet*>> ADLResults;
+            std::unordered_map<Parse::Access, std::unordered_map<Parse::OperatorName, OverloadSet*>> OperatorOverloadSets;
+            std::unordered_map<Parse::Access, std::unordered_map<Parse::OperatorName, OverloadSet*>> ADLResults;
             std::unordered_map<std::vector<std::pair<Type*, unsigned>>, std::shared_ptr<Expression>, VectorTypeHasher> ComputedVTables;
             Wide::Util::optional<VTableLayout> VtableLayout;
             Wide::Util::optional<VTableLayout> PrimaryVtableLayout;
@@ -200,8 +200,8 @@ namespace Wide {
         protected:
             llvm::Function* DestructorFunction = nullptr;
             virtual llvm::Function* CreateDestructorFunction(llvm::Module* module);
-            virtual OverloadSet* CreateOperatorOverloadSet(Lexer::TokenType what, Parse::Access access);
-            virtual OverloadSet* CreateADLOverloadSet(Lexer::TokenType name, Parse::Access access);
+            virtual OverloadSet* CreateOperatorOverloadSet(Parse::OperatorName what, Parse::Access access);
+            virtual OverloadSet* CreateADLOverloadSet(Parse::OperatorName name, Parse::Access access);
             virtual OverloadSet* CreateConstructorOverloadSet(Parse::Access access) = 0;
         public:
             virtual std::shared_ptr<Expression> VirtualEntryFor(VTableLayout::VirtualFunctionEntry entry, unsigned offset) { assert(false); throw std::runtime_error("ICE"); }
@@ -215,6 +215,8 @@ namespace Wide {
             virtual llvm::Type* GetLLVMType(llvm::Module* module) = 0;
             virtual llvm::Constant* GetRTTI(llvm::Module* module);
 
+            virtual bool IsFinal();
+            virtual bool IsAbstract();
             virtual bool IsReference(Type* to);
             virtual bool IsReference();
             virtual Type* Decay();
@@ -233,14 +235,16 @@ namespace Wide {
             virtual std::vector<Type*> GetBases();
             virtual Type* GetPrimaryBase();
             virtual std::unordered_map<unsigned, std::unordered_set<Type*>> GetEmptyLayout();
+            virtual std::unordered_map<std::string, std::unordered_set<std::shared_ptr<Expression>>> GetVirtualFunctions();
+            virtual bool HasVirtualDestructor();
             virtual VTableLayout ComputePrimaryVTableLayout();
             virtual std::vector<std::pair<Type*, unsigned>> GetBasesAndOffsets();
             // Do not ever call from public API, it is for derived types and implementation details only.
             virtual bool IsSourceATarget(Type* source, Type* target, Type* context) { return false; }
+            virtual std::shared_ptr<Expression> AccessMember(std::shared_ptr<Expression> t, std::string name, Context c);
+            virtual std::shared_ptr<Expression> AccessStaticMember(std::string name, Context c);
 
             virtual std::shared_ptr<Expression> GetVirtualPointer(std::shared_ptr<Expression> self);
-            virtual std::shared_ptr<Expression> AccessStaticMember(std::string name, Context c);
-            virtual std::shared_ptr<Expression> AccessMember(std::shared_ptr<Expression> t, std::string name, Context c);
             virtual std::shared_ptr<Expression> BuildMetaCall(std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args);
             virtual std::shared_ptr<Expression> BuildCall(std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c);
             virtual std::function<void(CodegenContext&)> BuildDestructorCall(std::shared_ptr<Expression> self, Context c, bool devirtualize);
@@ -256,8 +260,10 @@ namespace Wide {
             VTableLayout GetVtableLayout();
             VTableLayout GetPrimaryVTable();
             OverloadSet* GetConstructorOverloadSet(Parse::Access access);
-            OverloadSet* PerformADL(Lexer::TokenType what, Parse::Access access);
-            OverloadSet* AccessMember(Lexer::TokenType type, Parse::Access access);
+            OverloadSet* PerformADL(Parse::OperatorName what, Parse::Access access);
+            OverloadSet* AccessMember(Parse::OperatorName type, Parse::Access access);
+            std::shared_ptr<Expression> AccessMember(std::shared_ptr<Expression> t, Parse::Name name, Context c);
+            std::shared_ptr<Expression> AccessStaticMember(Parse::Name name, Context c);
             bool InheritsFromAtOffsetZero(Type* other);
 
             static std::shared_ptr<Expression> BuildBooleanConversion(std::shared_ptr<Expression>, Context);
@@ -332,7 +338,7 @@ namespace Wide {
             PrimitiveType(Analyzer& a) : Type(a) {}
         public:
             OverloadSet* CreateConstructorOverloadSet(Parse::Access access) override;
-            OverloadSet* CreateOperatorOverloadSet(Lexer::TokenType what, Parse::Access access) override;
+            OverloadSet* CreateOperatorOverloadSet(Parse::OperatorName what, Parse::Access access) override;
         };
         class MetaType : public PrimitiveType {
             std::unique_ptr<OverloadResolvable> DefaultConstructor;
@@ -345,7 +351,8 @@ namespace Wide {
             std::size_t size() override;
             std::size_t alignment() override;
             Type* GetConstantContext() override;
-            OverloadSet* CreateConstructorOverloadSet(Parse::Access access) override final;
+            OverloadSet* CreateConstructorOverloadSet(Parse::Access access) override final; 
+            using Type::AccessMember;
         };
         
         llvm::Constant* GetGlobalString(std::string string, llvm::Module* m);

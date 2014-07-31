@@ -19,7 +19,7 @@ namespace Wide {
             llvm::Type* GetLLVMType(llvm::Module* module) override final;
             Wide::Util::optional<clang::QualType> GetClangType(ClangTU&) override final;
             
-            OverloadSet* CreateOperatorOverloadSet(Lexer::TokenType name, Parse::Access access) override final;
+            OverloadSet* CreateOperatorOverloadSet(Parse::OperatorName name, Parse::Access access) override final;
             std::size_t size() override final;
             std::size_t alignment() override final;
             std::string explain() override final;

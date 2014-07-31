@@ -1,0 +1,6 @@
+Main() {
+    local := false;
+    ass := local.operator=;
+    ass(true);
+    return local;
+}

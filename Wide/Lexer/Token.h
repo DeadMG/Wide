@@ -55,7 +55,9 @@ namespace Wide {
             extern const std::string GT;
             extern const std::string GTE;
             extern const std::string Or;
+            extern const std::string DoubleOr;
             extern const std::string And;
+            extern const std::string DoubleAnd;
             extern const std::string Xor;
             extern const std::string RightShiftAssign;
             extern const std::string LeftShiftAssign;

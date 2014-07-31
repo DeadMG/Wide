@@ -41,6 +41,13 @@ void Combiner::CombinedModule::AddModuleToSelf(Module* mod) {
             }
         }
     }
+    for (auto name : mod->OperatorOverloads) {
+        for (auto access : name.second) {
+            for (auto op : access.second) {
+                OperatorOverloads[name.first][access.first].insert(op);
+            }
+        }
+    }
 }
 
 void Combiner::CombinedModule::RemoveModuleFromSelf(Module* mod) {
@@ -95,6 +102,17 @@ void Combiner::CombinedModule::RemoveModuleFromSelf(Module* mod) {
         if (auto theirtype = boost::get<std::pair<Parse::Access, Type*>>(&decl.second))
             if (auto ourtype = boost::get<std::pair<Parse::Access, Type*>>(&named_decls[decl.first]))
                 named_decls.erase(decl.first);
+    }
+    for (auto name : mod->OperatorOverloads) {
+        for (auto access : name.second) {
+            for (auto op : access.second) {
+                OperatorOverloads[name.first][access.first].erase(op);
+                if (OperatorOverloads[name.first][access.first].empty())
+                    OperatorOverloads[name.first].erase(access.first);
+                if (OperatorOverloads[name.first].empty())
+                    OperatorOverloads.erase(name.first);
+            }
+        }
     }
 }
 void Combiner::Add(Module* mod) {

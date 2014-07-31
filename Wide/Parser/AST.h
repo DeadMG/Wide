@@ -9,6 +9,7 @@
 #include <memory>
 #include <Wide/Lexer/Token.h>
 #include <boost/variant.hpp>
+#include <boost/functional/hash.hpp>
 
 namespace Wide {
     namespace Parse {
@@ -28,7 +29,33 @@ namespace std {
 }
 namespace Wide {
     namespace Parse {
-        struct Statement { 
+        typedef std::vector<Wide::Lexer::TokenType> OperatorName;
+        typedef boost::variant<std::string, OperatorName> Name;
+        template<typename T> using OverloadSet = std::unordered_map<Parse::Access, std::unordered_set<T*>>;
+    }
+}
+namespace boost {
+    template<> struct hash<Wide::Parse::OperatorName>{
+        std::size_t operator()(const Wide::Parse::OperatorName& ty) const {
+            return boost::hash_range(ty.begin(), ty.end());
+        }
+    };
+}
+namespace std {
+    template<> struct hash<Wide::Parse::OperatorName>{
+        std::size_t operator()(const Wide::Parse::OperatorName& ty) const {
+            return boost::hash_range(ty.begin(), ty.end());
+        }
+    };
+    template<> struct hash<Wide::Parse::Name> {
+        std::size_t operator()(Wide::Parse::Name ty) const {
+            return boost::hash_value(ty);
+        }
+    };
+}
+namespace Wide {
+    namespace Parse {
+        struct Statement {
             Statement(Lexer::Range r)
                 : location(r) {}
             virtual ~Statement() {}
@@ -41,14 +68,14 @@ namespace Wide {
         };
         struct Attribute {
             Attribute(Expression* begin, Expression* end, Lexer::Range where)
-            : where(where), initialized(begin), initializer(end) {}
+                : where(where), initialized(begin), initializer(end) {}
             Lexer::Range where;
             Expression* initializer;
             Expression* initialized;
         };
         struct Throw : Statement {
             Throw(Lexer::Range where, Expression* e)
-            : Statement(where), expr(e) {}
+                : Statement(where), expr(e) {}
             Throw(Lexer::Range where)
                 : Statement(where), expr() {}
             Expression* expr;
@@ -65,26 +92,27 @@ namespace Wide {
         struct Constructor;
         struct Module {
             Module() {}
-            
-            std::unordered_map<std::string, 
+            std::unordered_map<
+                std::string,
                 boost::variant<
                     std::pair<Parse::Access, Module*>,
                     std::pair<Parse::Access, Type*>,
                     std::pair<Parse::Access, Using*>,
-                    std::unordered_map<Parse::Access, std::unordered_set<Function*>>, 
-                    std::unordered_map<Parse::Access, std::unordered_set<TemplateType*>>
+                    OverloadSet<Function>,
+                    OverloadSet<TemplateType>
                 >
             > named_decls;
+            std::unordered_map<OperatorName, OverloadSet<Function>> OperatorOverloads;
 
             std::unordered_set<Constructor*> constructor_decls;
             std::unordered_set<Destructor*> destructor_decls;
             std::vector<Lexer::Range> locations;
             virtual ~Module() {}
         };
-       
+
         struct MemberVariable {
             MemberVariable(std::string nam, Expression* expr, Parse::Access access, Lexer::Range loc, std::vector<Attribute> attributes)
-            : name(std::move(nam)), initializer(expr), where(loc), access(access), attributes(std::move(attributes)) {}
+                : name(std::move(nam)), initializer(expr), where(loc), access(access), attributes(std::move(attributes)) {}
             std::string name;
             Lexer::Range where;
             Parse::Access access;
@@ -95,17 +123,17 @@ namespace Wide {
         struct Type : Expression {
             Type(std::vector<Expression*> base, Lexer::Range loc, std::vector<Attribute> attributes) : Expression(loc), bases(base), attributes(attributes), destructor_decl(nullptr) {}
             std::vector<MemberVariable> variables;
-            std::unordered_map<std::string, std::unordered_map<Parse::Access, std::unordered_set<Function*>>> functions;
-            std::unordered_map<Parse::Access, std::unordered_set<Constructor*>> constructor_decls;
+            std::unordered_map<Name, OverloadSet<Function>> functions;
+            OverloadSet<Constructor> constructor_decls;
             Destructor* destructor_decl;
 
             std::vector<Expression*> bases;
             std::vector<Attribute> attributes;
         };
         struct Identifier : Expression {
-            Identifier(std::string nam, Lexer::Range loc)
+            Identifier(Name nam, Lexer::Range loc)
                 : Expression(loc), val(std::move(nam)) {}
-            std::string val;
+            Name val;
         };
         struct String : Expression {
             String(std::string str, Lexer::Range r)
@@ -113,9 +141,9 @@ namespace Wide {
             std::string val;
         };
         struct MemberAccess : Expression {
-            MemberAccess(std::string nam, Expression* e, Lexer::Range r, Lexer::Range mem)
+            MemberAccess(Name nam, Expression* e, Lexer::Range r, Lexer::Range mem)
                 : Expression(r), mem(std::move(nam)), expr(e), memloc(mem) {}
-            std::string mem;
+            Name mem;
             Expression* expr;
             Lexer::Range memloc;
         };
@@ -177,6 +205,8 @@ namespace Wide {
             DynamicFunction(std::vector<Statement*> b, std::vector<FunctionArgument> args, Lexer::Range loc, std::vector<Attribute> attributes)
             : AttributeFunctionBase(std::move(b), loc, args, std::move(attributes)) {}
             bool dynamic = false;
+            bool override_ = true;
+            bool final_ = true;
         };
         struct Function : DynamicFunction {
             Function(std::vector<Statement*> b, Lexer::Range loc, std::vector<FunctionArgument> ar, Expression* explicit_ret, std::vector<Attribute> attributes)
@@ -286,9 +316,9 @@ namespace Wide {
         };
         struct PointerMemberAccess : public Expression {
             Lexer::Range memloc;
-            std::string member;
+            Name member;
             Expression* ex;
-            PointerMemberAccess(std::string name, Expression* expr, Lexer::Range loc, Lexer::Range mem)
+            PointerMemberAccess(Name name, Expression* expr, Lexer::Range loc, Lexer::Range mem)
                 : Expression(loc), member(std::move(name)), memloc(mem), ex(expr) {}
         };
         struct PointerDestructorAccess : public Expression {

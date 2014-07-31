@@ -9,13 +9,13 @@
 using namespace Wide;
 using namespace Semantic;
 
-std::vector<Type*> GetTypesFrom(std::vector<std::pair<std::string, Type*>>& vec) {
+std::vector<Type*> GetTypesFrom(std::vector<std::pair<Parse::Name, Type*>>& vec) {
     std::vector<Type*> out;
     for (auto cap : vec)
         out.push_back(cap.second);
     return out;
 }
-LambdaType::LambdaType(std::vector<std::pair<std::string, Type*>> capturetypes, const Parse::Lambda* l, Type* con, Analyzer& a)
+LambdaType::LambdaType(std::vector<std::pair<Parse::Name, Type*>> capturetypes, const Parse::Lambda* l, Type* con, Analyzer& a)
 : contents(GetTypesFrom(capturetypes)), lam(l), AggregateType(a), context(con)
 {
     std::size_t i = 0;
@@ -73,7 +73,7 @@ std::shared_ptr<Expression> LambdaType::BuildLambdaFromCaptures(std::vector<std:
     return Wide::Memory::MakeUnique<LambdaConstruction>(self, std::move(initializers), BuildDestructorCall(self, c, true));
 }
 
-std::shared_ptr<Expression> LambdaType::LookupCapture(std::shared_ptr<Expression> self, std::string name) {
+std::shared_ptr<Expression> LambdaType::LookupCapture(std::shared_ptr<Expression> self, Parse::Name name) {
     if (names.find(name) != names.end())
         return PrimitiveAccessMember(std::move(self), names[name]);
     return nullptr;

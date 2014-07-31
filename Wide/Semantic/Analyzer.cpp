@@ -43,7 +43,9 @@
 #include <clang/AST/AST.h>
 #include <llvm/Target/TargetOptions.h>
 #include <llvm/Target/TargetMachine.h>
+#include <clang/Basic/LangOptions.h>
 #include <llvm/Support/TargetRegistry.h>
+#include <clang/Basic/TargetOptions.h>
 #pragma warning(pop)
 
 using namespace Wide;
@@ -64,13 +66,15 @@ namespace {
 // After definition of type
 Analyzer::~Analyzer() {}
 
-Analyzer::Analyzer(const Options::Clang& opts, const Parse::Module* GlobalModule)
+Analyzer::Analyzer(const Options::Clang& opts, const Parse::Module* GlobalModule, ABI& abi)
 : clangopts(&opts)
+, abi(abi)
 , QuickInfo([](Lexer::Range, Type*) {})
 , ParameterHighlight([](Lexer::Range){})
 , layout(::GetDataLayout(opts.TargetOptions.Triple))
 {
-    
+    assert(opts.LanguageOptions.CXXExceptions);
+    assert(opts.LanguageOptions.RTTI);
     struct PointerCastType : OverloadResolvable, Callable {
         Util::optional<std::vector<Type*>> MatchParameter(std::vector<Type*> types, Analyzer& a, Type* source) override final {
             if (types.size() != 2) return Util::none;
@@ -333,7 +337,7 @@ Analyzer::Analyzer(const Options::Clang& opts, const Parse::Module* GlobalModule
                 OnNodeChanged(lookup);
             }
             Analyzer& a;
-            std::string val;
+            Parse::Name val;
             Lexer::Range location;
             Type* lookup;
             std::shared_ptr<Expression> result;
@@ -433,7 +437,7 @@ Analyzer::Analyzer(const Options::Clang& opts, const Parse::Module* GlobalModule
         auto std_namespace = global_namespace->AccessMember(global_namespace->BuildValueConstruction({}, { lookup, rtti->location }), "std", { lookup, rtti->location });
         assert(std_namespace && "<typeinfo> didn't have std namespace?");
         auto std_namespace_ty = std_namespace->GetType();
-        auto clangty = std_namespace_ty->AccessMember(std::move(std_namespace), "type_info", { lookup, rtti->location });
+        auto clangty = std_namespace_ty->AccessMember(std::move(std_namespace), std::string("type_info"), { lookup, rtti->location });
         assert(clangty && "<typeinfo> didn't have std::type_info?");
         auto conty = dynamic_cast<ConstructorType*>(clangty->GetType()->Decay());
         assert(conty && "<typeinfo>'s std::type_info wasn't a type?");
@@ -490,13 +494,13 @@ Analyzer::Analyzer(const Options::Clang& opts, const Parse::Module* GlobalModule
     });
     
     AddExpressionHandler<Parse::Lambda>([](Analyzer& a, Type* lookup, const Parse::Lambda* lam) {
-        std::vector<std::unordered_set<std::string>> lambda_locals;
+        std::vector<std::unordered_set<Parse::Name>> lambda_locals;
 
         // Only implicit captures.
-        std::unordered_set<std::string> captures;
+        std::unordered_set<Parse::Name> captures;
         struct LambdaVisitor : Parse::Visitor<LambdaVisitor> {
-            std::vector<std::unordered_set<std::string>>* lambda_locals;
-            std::unordered_set<std::string>* captures;
+            std::vector<std::unordered_set<Parse::Name>>* lambda_locals;
+            std::unordered_set<Parse::Name>* captures;
             void VisitVariableStatement(const Parse::Variable* v) {
                 for (auto&& name : v->name)
                     lambda_locals->back().insert(name.name);
@@ -578,7 +582,7 @@ Analyzer::Analyzer(const Options::Clang& opts, const Parse::Module* GlobalModule
         for (auto&& name : arg->name)
             captures.erase(name.name);
 
-        std::vector<std::pair<std::string, std::shared_ptr<Expression>>> cap_expressions;
+        std::vector<std::pair<Parse::Name, std::shared_ptr<Expression>>> cap_expressions;
         for (auto&& arg : lam->Captures) {
             cap_expressions.push_back(std::make_pair(arg->name.front().name, a.AnalyzeExpression(lookup, arg->initializer)));
         }
@@ -586,7 +590,7 @@ Analyzer::Analyzer(const Options::Clang& opts, const Parse::Module* GlobalModule
             Parse::Identifier ident(name, lam->location);
             cap_expressions.push_back(std::make_pair(name, a.AnalyzeExpression(lookup, &ident)));
         }
-        std::vector<std::pair<std::string, Type*>> types;
+        std::vector<std::pair<Parse::Name, Type*>> types;
         std::vector<std::shared_ptr<Expression>> expressions;
         for (auto&& cap : cap_expressions) {
             if (!lam->defaultref)
@@ -1055,31 +1059,7 @@ OverloadResolvable* Analyzer::GetCallableForFunction(const Parse::FunctionBase* 
                         return a.GetConstructorType(argument->Decay());
                     }
 
-                    struct OverloadSetLookupContext : public MetaType {
-                        OverloadSetLookupContext(Analyzer& a) : MetaType(a) {}
-                        Type* context;
-                        Type* member;
-                        Type* argument;
-                        std::shared_ptr<Expression> AccessMember(std::shared_ptr<Expression> t, std::string name, Context c) override final {
-                            if (name == "this") {
-                                if (member)
-                                    return analyzer.GetConstructorType(member->Decay())->BuildValueConstruction({}, c);
-                            }
-                            if (name == "auto")
-                                return analyzer.GetConstructorType(argument->Decay())->BuildValueConstruction({}, c);
-                            return nullptr;
-                        }
-                        Type* GetContext() override final {
-                            return context;
-                        }
-                        std::string explain() override final { return context->explain(); }
-                    };
-
-                    OverloadSetLookupContext lc(a);
-                    lc.argument = argument;
-                    lc.context = context;
-                    lc.member = dynamic_cast<UserDefinedType*>(context->Decay());
-                    auto p_type = a.AnalyzeExpression(&lc, func->args[num].type)->GetType()->Decay();
+                    auto p_type = a.AnalyzeExpression(context, func->args[num].type)->GetType()->Decay();
                     auto con_type = dynamic_cast<ConstructorType*>(p_type);
                     if (!con_type)
                         throw Wide::Semantic::NotAType(p_type, func->args[num].type->location);
@@ -1137,8 +1117,9 @@ void ProcessFunction(const Parse::AttributeFunctionBase* f, Analyzer& a, Module*
     bool exported = false;
     for (auto attr : f->attributes) {
         if (auto ident = dynamic_cast<const Parse::Identifier*>(attr.initialized))
-            if (ident->val == "export")
-                exported = true;
+            if (auto str = boost::get<std::string>(&ident->val))
+                if (*str == "export")
+                    exported = true;
     }
     if (!exported) return;
     if (auto func = dynamic_cast<const Parse::Function*>(f))
@@ -1263,23 +1244,14 @@ Type* Analyzer::GetTypeForString(std::string str) {
         LiteralStringTypes[str] = Wide::Memory::MakeUnique<StringType>(str, *this);
     return LiteralStringTypes[str].get();
 }
-LambdaType* Analyzer::GetLambdaType(const Parse::Lambda* lam, std::vector<std::pair<std::string, Type*>> types, Type* context) {
+LambdaType* Analyzer::GetLambdaType(const Parse::Lambda* lam, std::vector<std::pair<Parse::Name, Type*>> types, Type* context) {
     if (LambdaTypes.find(lam) == LambdaTypes.end()
      || LambdaTypes[lam].find(types) == LambdaTypes[lam].end())
         LambdaTypes[lam][types] = Wide::Memory::MakeUnique<LambdaType>(types, lam, context, *this);
     return LambdaTypes[lam][types].get();
 }
 bool Semantic::IsMultiTyped(const Parse::FunctionArgument& f) {
-    if (!f.type) return true;
-    struct Visitor : public Parse::Visitor<Visitor> {
-        bool auto_found = false;
-        void VisitIdentifier(const Parse::Identifier* i) {
-            auto_found = auto_found || i->val == "auto";
-        }
-    };
-    Visitor v;
-    v.VisitExpression(f.type);
-    return v.auto_found;
+    return !f.type;
 }
 bool Semantic::IsMultiTyped(const Parse::FunctionBase* f) {
     bool ret = false;
@@ -1330,4 +1302,18 @@ MemberFunctionPointer* Analyzer::GetMemberFunctionPointer(Type* source, Function
      || MemberFunctionPointers[source].find(dest) == MemberFunctionPointers[source].end())
         MemberFunctionPointers[source][dest] = Wide::Memory::MakeUnique<MemberFunctionPointer>(*this, source, dest);
     return MemberFunctionPointers[source][dest].get();
+}
+FunctionType* Analyzer::GetFunctionType(Type* ret, const std::vector<Type*>& t, bool variadic) {
+    return GetFunctionType(ret, t, variadic, abi.GetDefaultCallingConvention());
+}
+std::string Semantic::GetOperatorName(Parse::OperatorName name) {
+    std::string result = "operator";
+    for (auto op : name)
+        result += *op;
+    return result;
+}
+std::string Semantic::GetNameAsString(Parse::Name name) {
+    if (auto string = boost::get<std::string>(&name))
+        return *string;
+    return GetOperatorName(boost::get<Parse::OperatorName>(name));
 }

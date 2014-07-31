@@ -5,8 +5,8 @@
 using namespace Wide;
 using namespace Semantic;
 
-NoMember::NoMember(Type* what, Type* con, std::string name, Lexer::Range where)
-: Error(where, "Could not access member \"" + name + "\" of " + what->explain() + " from " + con->explain() + "."), which(what), context(con), member(name) {}
+NoMember::NoMember(Type* what, Type* con, Parse::Name name, Lexer::Range where)
+: Error(where, "Could not access member \"" + GetNameAsString(name) + "\" of " + what->explain() + " from " + con->explain() + "."), which(what), context(con), member(name) {}
 
 NotAType::NotAType(Type* what, Lexer::Range loc)
 : Error(loc, "Found expression of type " + what->explain() + " instead of a type."), real_type(what) {}
@@ -65,8 +65,8 @@ AddressOfNonLvalue::AddressOfNonLvalue(Type* obj, Lexer::Range where)
 NoMetaCall::NoMetaCall(Type* what, Lexer::Range where)
 : Error(where, "The type " + what->explain() + " has no meta call operator."), which(what) {}
 
-NoMemberToInitialize::NoMemberToInitialize(Type* what, std::string name, Lexer::Range where)
-: Error(where, "The type " + what->explain() + " did not contain a member \"" + name + "\" to initialize."), which(what), name(name) {}
+NoMemberToInitialize::NoMemberToInitialize(Type* what, Parse::Name name, Lexer::Range where)
+: Error(where, "The type " + what->explain() + " did not contain a member \"" + GetNameAsString(name) + "\" to initialize."), which(what), name(name) {}
 
 ReturnTypeMismatch::ReturnTypeMismatch(Type* new_r, Type* old_r, Lexer::Range where)
 : Error(where, "The function had a return type of " + old_r->explain() + " but tried to return " + new_r->explain() + "."), new_ret_type(new_r), existing_ret_type(old_r) {}

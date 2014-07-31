@@ -246,8 +246,8 @@ const std::unordered_map<char, std::unordered_map<char, Lexer::TokenType>> Lexer
     { '>', { { '=', &TokenTypes::GTE }, { '>', &TokenTypes::RightShift } } },
     { '<', { { '<', &TokenTypes::LeftShift }, { '=', &TokenTypes::LTE } } },
     { '=', { { '=', &TokenTypes::EqCmp }, { '>', &TokenTypes::Lambda } } },
-    { '&', { { '=', &TokenTypes::AndAssign } } },
-    { '|', { { '=', &TokenTypes::OrAssign } } },
+    { '&', { { '=', &TokenTypes::AndAssign }, { '&', &TokenTypes::DoubleAnd } } },
+    { '|', { { '=', &TokenTypes::OrAssign }, { '|', &TokenTypes::DoubleOr } } },
     { '*', { { '=', &TokenTypes::MulAssign } } },
     { '%', { { '=', &TokenTypes::ModAssign } } },
     { '~', { { '=', &TokenTypes::NotEqCmp } } },
@@ -353,7 +353,9 @@ const std::string TokenTypes::LTE = "<=";
 const std::string TokenTypes::GT = ">";
 const std::string TokenTypes::GTE = ">=";
 const std::string TokenTypes::Or = "|";
+const std::string TokenTypes::DoubleOr = "||";
 const std::string TokenTypes::And = "&";
+const std::string TokenTypes::DoubleAnd = "&&";
 const std::string TokenTypes::Xor = "^";
 const std::string TokenTypes::RightShiftAssign = ">>=";
 const std::string TokenTypes::LeftShiftAssign = "<<=";

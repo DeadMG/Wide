@@ -1,0 +1,8 @@
+using header := cpp.literal("struct T {}; bool operator==(T, T); bool f() { return T() == T(); }");
+[export := header.operator==]
+f(arg1 := header.T, arg2 := header.T) {
+    return true;
+}
+Main() {
+    return header.f();
+}

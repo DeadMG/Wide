@@ -11,6 +11,7 @@
 #include <unordered_map>
 #include <vector>
 #include <typeindex>
+#include <Wide/Semantic/ABI.h>
 
 #pragma warning(push, 0)
 #include <clang/AST/Type.h>
@@ -103,7 +104,7 @@ namespace Wide {
             std::unordered_map<const Parse::TemplateType*, std::unique_ptr<OverloadResolvable>> TemplateTypeCallables;
             std::unordered_map<std::vector<Type*>, std::unique_ptr<TupleType>, VectorTypeHasher> tupletypes;
             std::unordered_map<std::string, std::unique_ptr<StringType>> LiteralStringTypes;
-            std::unordered_map<const Parse::Lambda*, std::unordered_map<std::vector<std::pair<std::string, Type*>>, std::unique_ptr<LambdaType>, VectorTypeHasher>> LambdaTypes;
+            std::unordered_map<const Parse::Lambda*, std::unordered_map<std::vector<std::pair<Parse::Name, Type*>>, std::unique_ptr<LambdaType>, VectorTypeHasher>> LambdaTypes;
             std::unordered_map<Type*, std::unordered_map<unsigned, std::unique_ptr<ArrayType>>> ArrayTypes;
             std::unordered_map<Type*, std::unordered_map<Type*, std::unique_ptr<MemberDataPointer>>> MemberDataPointers;
             std::unordered_map<Type*, std::unordered_map<FunctionType*, std::unique_ptr<MemberFunctionPointer>>> MemberFunctionPointers;
@@ -120,8 +121,11 @@ namespace Wide {
 
             llvm::DataLayout layout;
             std::unordered_map<const Parse::Expression*, std::shared_ptr<Expression>> ExpressionCache;
+            ABI& abi;
         public:
             auto GetFunctions() -> const decltype(WideFunctions)& { return WideFunctions; }
+
+            ABI& GetABI() { return abi; }
 
             std::function<void(Lexer::Range where, Type* t)> QuickInfo;
             std::function<void(Lexer::Range where)> ParameterHighlight;
@@ -140,6 +144,7 @@ namespace Wide {
             // Not to return a ClangType instance.
             Type* GetClangType(ClangTU& from, clang::QualType t);
             ClangNamespace* GetClangNamespace(ClangTU& from, clang::DeclContext* dc);
+            FunctionType* GetFunctionType(Type* ret, const std::vector<Type*>& t, bool variadic);
             FunctionType* GetFunctionType(Type* ret, const std::vector<Type*>& t, bool variadic, llvm::CallingConv::ID);
             FunctionType* GetFunctionType(Type* ret, const std::vector<Type*>& t, bool variadic, clang::CallingConv);
             Module* GetWideModule(const Parse::Module* m, Module* higher);
@@ -162,7 +167,7 @@ namespace Wide {
             OverloadResolvable* GetCallableForFunction(const Parse::FunctionBase* f, Type* context, std::string name);
             OverloadResolvable* GetCallableForTemplateType(const Parse::TemplateType* t, Type* context);
             TemplateType* GetTemplateType(const Parse::TemplateType* t, Type* context, std::vector<Type*> arguments, std::string name);
-            LambdaType* GetLambdaType(const Parse::Lambda* funcbase, std::vector<std::pair<std::string, Type*>> types, Type* context);
+            LambdaType* GetLambdaType(const Parse::Lambda* funcbase, std::vector<std::pair<Parse::Name, Type*>> types, Type* context);
             ArrayType* GetArrayType(Type* t, unsigned num);
             MemberDataPointer* GetMemberDataPointer(Type* source, Type* dest);
             MemberFunctionPointer* GetMemberFunctionPointer(Type* source, FunctionType* dest);
@@ -176,11 +181,10 @@ namespace Wide {
             std::shared_ptr<Expression> AnalyzeCachedExpression(Type* lookup, const Parse::Expression* e);
             std::shared_ptr<Expression> AnalyzeExpression(Type* lookup, const Parse::Expression* e);
 
-            Analyzer(const Options::Clang&, const Parse::Module*);
+            Analyzer(const Options::Clang&, const Parse::Module*, ABI& abi);
 
             ClangTU* LoadCPPHeader(std::string file, Lexer::Range where);
             ClangTU* AggregateCPPHeader(std::string file, Lexer::Range where);
-            
             ~Analyzer();
 
             void GenerateCode(llvm::Module* module);
@@ -193,5 +197,7 @@ namespace Wide {
         bool IsMultiTyped(const Parse::FunctionArgument& f);
         bool IsMultiTyped(const Parse::FunctionBase* f);
         Type* InferTypeFromExpression(Expression* e, bool local);
+        std::string GetOperatorName(Parse::OperatorName name);
+        std::string GetNameAsString(Parse::Name name);
     }
 }

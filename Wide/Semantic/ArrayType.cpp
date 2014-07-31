@@ -69,8 +69,8 @@ std::size_t ArrayType::alignment() {
 llvm::Type* ArrayType::GetLLVMType(llvm::Module* module) {
     return llvm::ArrayType::get(t->GetLLVMType(module), count);
 }
-OverloadSet* ArrayType::CreateOperatorOverloadSet(Lexer::TokenType what, Parse::Access access) {
-    if (what != &Lexer::TokenTypes::OpenSquareBracket)
+OverloadSet* ArrayType::CreateOperatorOverloadSet(Parse::OperatorName what, Parse::Access access) {
+    if (what != Parse::OperatorName({ &Lexer::TokenTypes::OpenSquareBracket, &Lexer::TokenTypes::CloseSquareBracket }))
         return AggregateType::CreateOperatorOverloadSet(what, access);
     if (access != Parse::Access::Public)
         return AccessMember(what, Parse::Access::Public);

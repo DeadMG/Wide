@@ -224,7 +224,7 @@ namespace Wide {
             Type* GetNonstaticMemberContext() { if (NonstaticMemberContext) return *NonstaticMemberContext; return nullptr; }
 
             FunctionType* GetSignature();
-            std::shared_ptr<Expression> LookupLocal(std::string name);
+            std::shared_ptr<Expression> LookupLocal(Parse::Name name);
             Type* GetConstantContext() override final;
             void AddExportName(std::function<llvm::Function*(llvm::Module*)> mod) { trampoline.push_back(mod); }
             std::string explain() override final;

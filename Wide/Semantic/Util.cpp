@@ -36,40 +36,40 @@ std::size_t ClangTypeHasher::operator()(clang::QualType t) const {
     return llvm::DenseMapInfo<clang::QualType>::getHashValue(t);
 }   
 
-const std::unordered_map<Lexer::TokenType, std::pair<clang::OverloadedOperatorKind, clang::BinaryOperatorKind>>& Semantic::GetTokenMappings() {
-    static const std::unordered_map<Lexer::TokenType, std::pair<clang::OverloadedOperatorKind, clang::BinaryOperatorKind>> BinaryTokenMapping = []()
-        -> std::unordered_map<Lexer::TokenType, std::pair<clang::OverloadedOperatorKind, clang::BinaryOperatorKind>>
+const std::unordered_map<Parse::OperatorName, std::pair<clang::OverloadedOperatorKind, Wide::Util::optional<clang::BinaryOperatorKind>>>& Semantic::GetTokenMappings() {
+    static const std::unordered_map<Parse::OperatorName, std::pair<clang::OverloadedOperatorKind, Wide::Util::optional<clang::BinaryOperatorKind>>> BinaryTokenMapping = []()
+        -> std::unordered_map<Parse::OperatorName, std::pair<clang::OverloadedOperatorKind, Wide::Util::optional<clang::BinaryOperatorKind>>>
     {
-        std::unordered_map<Lexer::TokenType, std::pair<clang::OverloadedOperatorKind, clang::BinaryOperatorKind>> ret;
-        ret[&Lexer::TokenTypes::NotEqCmp] = std::make_pair(clang::OverloadedOperatorKind::OO_ExclaimEqual, clang::BinaryOperatorKind::BO_NE);
-        ret[&Lexer::TokenTypes::EqCmp] = std::make_pair(clang::OverloadedOperatorKind::OO_EqualEqual, clang::BinaryOperatorKind::BO_EQ);
-        ret[&Lexer::TokenTypes::LT] = std::make_pair(clang::OverloadedOperatorKind::OO_Less, clang::BinaryOperatorKind::BO_LT);
-        ret[&Lexer::TokenTypes::GT] = std::make_pair(clang::OverloadedOperatorKind::OO_Greater, clang::BinaryOperatorKind::BO_GT);
-        ret[&Lexer::TokenTypes::LTE] = std::make_pair(clang::OverloadedOperatorKind::OO_LessEqual, clang::BinaryOperatorKind::BO_LE);
-        ret[&Lexer::TokenTypes::GTE] = std::make_pair(clang::OverloadedOperatorKind::OO_GreaterEqual, clang::BinaryOperatorKind::BO_GE);
-        ret[&Lexer::TokenTypes::Assignment] = std::make_pair(clang::OverloadedOperatorKind::OO_Equal, clang::BinaryOperatorKind::BO_Assign);
-        ret[&Lexer::TokenTypes::LeftShift] = std::make_pair(clang::OverloadedOperatorKind::OO_LessLess, clang::BinaryOperatorKind::BO_Shl);
-        ret[&Lexer::TokenTypes::LeftShiftAssign] = std::make_pair(clang::OverloadedOperatorKind::OO_LessLessEqual, clang::BinaryOperatorKind::BO_ShlAssign);
-        ret[&Lexer::TokenTypes::RightShift] = std::make_pair(clang::OverloadedOperatorKind::OO_GreaterGreater, clang::BinaryOperatorKind::BO_Shr);
-        ret[&Lexer::TokenTypes::RightShiftAssign] = std::make_pair(clang::OverloadedOperatorKind::OO_GreaterGreaterEqual, clang::BinaryOperatorKind::BO_ShrAssign);
-        ret[&Lexer::TokenTypes::Plus] = std::make_pair(clang::OverloadedOperatorKind::OO_Plus, clang::BinaryOperatorKind::BO_Add);
-        ret[&Lexer::TokenTypes::PlusAssign] = std::make_pair(clang::OverloadedOperatorKind::OO_PlusEqual, clang::BinaryOperatorKind::BO_AddAssign);
-        ret[&Lexer::TokenTypes::Minus] = std::make_pair(clang::OverloadedOperatorKind::OO_Minus, clang::BinaryOperatorKind::BO_Sub);
-        ret[&Lexer::TokenTypes::MinusAssign] = std::make_pair(clang::OverloadedOperatorKind::OO_MinusEqual, clang::BinaryOperatorKind::BO_SubAssign);
-        ret[&Lexer::TokenTypes::Divide] = std::make_pair(clang::OverloadedOperatorKind::OO_Slash, clang::BinaryOperatorKind::BO_Div);
-        ret[&Lexer::TokenTypes::DivAssign] = std::make_pair(clang::OverloadedOperatorKind::OO_SlashEqual, clang::BinaryOperatorKind::BO_DivAssign);
-        ret[&Lexer::TokenTypes::Modulo] = std::make_pair(clang::OverloadedOperatorKind::OO_Percent, clang::BinaryOperatorKind::BO_Rem);
-        ret[&Lexer::TokenTypes::ModAssign] = std::make_pair(clang::OverloadedOperatorKind::OO_PercentEqual, clang::BinaryOperatorKind::BO_RemAssign);
-        ret[&Lexer::TokenTypes::Star] = std::make_pair(clang::OverloadedOperatorKind::OO_Star, clang::BinaryOperatorKind::BO_Mul);
-        ret[&Lexer::TokenTypes::MulAssign] = std::make_pair(clang::OverloadedOperatorKind::OO_StarEqual, clang::BinaryOperatorKind::BO_MulAssign);
-        ret[&Lexer::TokenTypes::Xor] = std::make_pair(clang::OverloadedOperatorKind::OO_Caret, clang::BinaryOperatorKind::BO_Xor);
-        ret[&Lexer::TokenTypes::XorAssign] = std::make_pair(clang::OverloadedOperatorKind::OO_CaretEqual, clang::BinaryOperatorKind::BO_XorAssign);
-        ret[&Lexer::TokenTypes::Or] = std::make_pair(clang::OverloadedOperatorKind::OO_Pipe, clang::BinaryOperatorKind::BO_Or);
-        ret[&Lexer::TokenTypes::OrAssign] = std::make_pair(clang::OverloadedOperatorKind::OO_PipeEqual, clang::BinaryOperatorKind::BO_OrAssign);
-        ret[&Lexer::TokenTypes::And] = std::make_pair(clang::OverloadedOperatorKind::OO_Amp, clang::BinaryOperatorKind::BO_And);
-        ret[&Lexer::TokenTypes::AndAssign] = std::make_pair(clang::OverloadedOperatorKind::OO_AmpEqual, clang::BinaryOperatorKind::BO_AndAssign);
-        ret[&Lexer::TokenTypes::OpenBracket] = std::make_pair(clang::OverloadedOperatorKind::OO_Call, clang::BinaryOperatorKind::BO_Add);
-        ret[&Lexer::TokenTypes::OpenSquareBracket] = std::make_pair(clang::OverloadedOperatorKind::OO_Subscript, clang::BinaryOperatorKind::BO_Sub);
+        std::unordered_map<Parse::OperatorName, std::pair<clang::OverloadedOperatorKind, Wide::Util::optional<clang::BinaryOperatorKind>>> ret;
+        ret[{ &Lexer::TokenTypes::NotEqCmp }] = std::make_pair(clang::OverloadedOperatorKind::OO_ExclaimEqual, clang::BinaryOperatorKind::BO_NE);
+        ret[{ &Lexer::TokenTypes::EqCmp }] = std::make_pair(clang::OverloadedOperatorKind::OO_EqualEqual, clang::BinaryOperatorKind::BO_EQ);
+        ret[{ &Lexer::TokenTypes::LT }] = std::make_pair(clang::OverloadedOperatorKind::OO_Less, clang::BinaryOperatorKind::BO_LT);
+        ret[{ &Lexer::TokenTypes::GT }] = std::make_pair(clang::OverloadedOperatorKind::OO_Greater, clang::BinaryOperatorKind::BO_GT);
+        ret[{ &Lexer::TokenTypes::LTE }] = std::make_pair(clang::OverloadedOperatorKind::OO_LessEqual, clang::BinaryOperatorKind::BO_LE);
+        ret[{ &Lexer::TokenTypes::GTE }] = std::make_pair(clang::OverloadedOperatorKind::OO_GreaterEqual, clang::BinaryOperatorKind::BO_GE);
+        ret[{ &Lexer::TokenTypes::Assignment }] = std::make_pair(clang::OverloadedOperatorKind::OO_Equal, clang::BinaryOperatorKind::BO_Assign);
+        ret[{ &Lexer::TokenTypes::LeftShift }] = std::make_pair(clang::OverloadedOperatorKind::OO_LessLess, clang::BinaryOperatorKind::BO_Shl);
+        ret[{ &Lexer::TokenTypes::LeftShiftAssign }] = std::make_pair(clang::OverloadedOperatorKind::OO_LessLessEqual, clang::BinaryOperatorKind::BO_ShlAssign);
+        ret[{ &Lexer::TokenTypes::RightShift }] = std::make_pair(clang::OverloadedOperatorKind::OO_GreaterGreater, clang::BinaryOperatorKind::BO_Shr);
+        ret[{ &Lexer::TokenTypes::RightShiftAssign }] = std::make_pair(clang::OverloadedOperatorKind::OO_GreaterGreaterEqual, clang::BinaryOperatorKind::BO_ShrAssign);
+        ret[{ &Lexer::TokenTypes::Plus }] = std::make_pair(clang::OverloadedOperatorKind::OO_Plus, clang::BinaryOperatorKind::BO_Add);
+        ret[{ &Lexer::TokenTypes::PlusAssign }] = std::make_pair(clang::OverloadedOperatorKind::OO_PlusEqual, clang::BinaryOperatorKind::BO_AddAssign);
+        ret[{ &Lexer::TokenTypes::Minus }] = std::make_pair(clang::OverloadedOperatorKind::OO_Minus, clang::BinaryOperatorKind::BO_Sub);
+        ret[{ &Lexer::TokenTypes::MinusAssign }] = std::make_pair(clang::OverloadedOperatorKind::OO_MinusEqual, clang::BinaryOperatorKind::BO_SubAssign);
+        ret[{ &Lexer::TokenTypes::Divide }] = std::make_pair(clang::OverloadedOperatorKind::OO_Slash, clang::BinaryOperatorKind::BO_Div);
+        ret[{ &Lexer::TokenTypes::DivAssign }] = std::make_pair(clang::OverloadedOperatorKind::OO_SlashEqual, clang::BinaryOperatorKind::BO_DivAssign);
+        ret[{ &Lexer::TokenTypes::Modulo }] = std::make_pair(clang::OverloadedOperatorKind::OO_Percent, clang::BinaryOperatorKind::BO_Rem);
+        ret[{ &Lexer::TokenTypes::ModAssign }] = std::make_pair(clang::OverloadedOperatorKind::OO_PercentEqual, clang::BinaryOperatorKind::BO_RemAssign);
+        ret[{ &Lexer::TokenTypes::Star }] = std::make_pair(clang::OverloadedOperatorKind::OO_Star, clang::BinaryOperatorKind::BO_Mul);
+        ret[{ &Lexer::TokenTypes::MulAssign }] = std::make_pair(clang::OverloadedOperatorKind::OO_StarEqual, clang::BinaryOperatorKind::BO_MulAssign);
+        ret[{ &Lexer::TokenTypes::Xor }] = std::make_pair(clang::OverloadedOperatorKind::OO_Caret, clang::BinaryOperatorKind::BO_Xor);
+        ret[{ &Lexer::TokenTypes::XorAssign }] = std::make_pair(clang::OverloadedOperatorKind::OO_CaretEqual, clang::BinaryOperatorKind::BO_XorAssign);
+        ret[{ &Lexer::TokenTypes::Or }] = std::make_pair(clang::OverloadedOperatorKind::OO_Pipe, clang::BinaryOperatorKind::BO_Or);
+        ret[{ &Lexer::TokenTypes::OrAssign }] = std::make_pair(clang::OverloadedOperatorKind::OO_PipeEqual, clang::BinaryOperatorKind::BO_OrAssign);
+        ret[{ &Lexer::TokenTypes::And }] = std::make_pair(clang::OverloadedOperatorKind::OO_Amp, clang::BinaryOperatorKind::BO_And);
+        ret[{ &Lexer::TokenTypes::AndAssign }] = std::make_pair(clang::OverloadedOperatorKind::OO_AmpEqual, clang::BinaryOperatorKind::BO_AndAssign);
+        ret[{ &Lexer::TokenTypes::OpenBracket, &Lexer::TokenTypes::CloseBracket }] = std::make_pair(clang::OverloadedOperatorKind::OO_Call, Wide::Util::none);
+        ret[{ &Lexer::TokenTypes::OpenSquareBracket, &Lexer::TokenTypes::CloseSquareBracket }] = std::make_pair(clang::OverloadedOperatorKind::OO_Subscript, Wide::Util::none);
         return ret;
     }();
     return BinaryTokenMapping;
@@ -90,8 +90,8 @@ std::shared_ptr<Expression> Semantic::InterpretExpression(clang::Expr* expr, Cla
         auto rhs = InterpretExpression(binop->getRHS(), tu, c, a, exprmap);
         auto code = binop->getOpcode();
         for (auto pair : GetTokenMappings()) {
-            if (pair.second.second == code) {
-                return Type::BuildBinaryExpression(std::move(lhs), std::move(rhs), pair.first, c);
+            if (*pair.second.second == code) {
+                return Type::BuildBinaryExpression(std::move(lhs), std::move(rhs), pair.first.front(), c);
             }
         }
         std::string str;

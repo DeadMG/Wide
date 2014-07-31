@@ -48,11 +48,9 @@ namespace Wide {
             std::unordered_map<Lexer::TokenType, std::function<Parse::Access(Parser&, Module*, Parse::Access, Lexer::Token& token)>> ModuleTokens;
             
             // All user-defined overloadable operators that can be overloaded as free functions.
-            std::unordered_set<Lexer::TokenType> ModuleOverloadableOperators;
+            std::unordered_set<OperatorName> ModuleOverloadableOperators;
             // All user-defined overloadable operators that can only be overloaded as members.
-            std::unordered_set<Lexer::TokenType> MemberOverloadableOperators;
-            // All user-defined overloadable operators that can only be overloaded as members and comprise two tokens.
-            std::unordered_map<Lexer::TokenType, Lexer::TokenType> MemberDoubleOverloadableOperators;
+            std::unordered_set<OperatorName> MemberOverloadableOperators;
 
             // Assignment operators and their behaviour
             std::unordered_map<Lexer::TokenType, std::function<Expression*(Parser&, Expression*)>> AssignmentOperators;
@@ -81,9 +79,19 @@ namespace Wide {
 
             Parser(std::function<Wide::Util::optional<Lexer::Token>()> l);
 
+            // Parse a valid operator.
+            OperatorName ParseOperatorName(std::unordered_set<OperatorName> valid);
+            // Parse an operator given a partially-parsed list of tokens.
+            OperatorName ParseOperatorName(std::unordered_set<OperatorName> valid_ops, OperatorName);
+            // Parse an operator given that we have already found a valid match.
+            OperatorName ParseOperatorName(std::unordered_set<OperatorName> valid_ops, OperatorName, OperatorName);
+            // Get possible remaining matches.
+            std::unordered_set<OperatorName> GetRemainingValidOperators(std::unordered_set<OperatorName>, OperatorName);
+
             ParserError BadToken(const Lexer::Token& first, Parse::Error err);
             Expression* ParseSubAssignmentExpression(unsigned slot);
             Expression* ParseSubAssignmentExpression(unsigned slot, Expression* Unary);
+            std::unordered_set<OperatorName> GetAllOperators();
 
             Lexer::Token Check(Parse::Error error, Lexer::TokenType tokty);
             template<typename F> Lexer::Token Check(Parse::Error error, F&& f) {

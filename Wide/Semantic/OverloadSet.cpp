@@ -374,8 +374,7 @@ OverloadSet::OverloadSet(OverloadSet* s, OverloadSet* other, Analyzer& a, Type* 
             nonstatic = s->nonstatic;
         }
     } else {
-        if (dynamic_cast<MemberFunctionContext*>(context->Decay()))
-            nonstatic = context;
+        nonstatic = context;
     }
 }
 OverloadSet::OverloadSet(std::unordered_set<clang::NamedDecl*> clangdecls, ClangTU* tu, Type* context, Analyzer& a)

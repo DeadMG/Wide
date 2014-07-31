@@ -80,7 +80,7 @@ std::shared_ptr<Expression> FunctionType::BuildCall(std::shared_ptr<Expression> 
                 llvmargs.push_back(Ret->GetValue(con));
             std::vector<std::list<std::pair<std::function<void(CodegenContext&)>, bool>>::iterator> elided_arg_destructors;
             for (auto&& arg : args) {
-                // Handle elision here- if it's passed by value and given by value we don't copy or move.
+                // Handle elision here- if it's passed by value and taken by value we don't copy or move.
                 // This means that the CALLEE is responsible for destructing it.
                 // Unless there's an exception in evaluation of a later argument in which case we need to destruct it.
                 auto argcon = con;
@@ -139,4 +139,7 @@ std::size_t FunctionType::size() {
 }
 std::size_t FunctionType::alignment() {
     return analyzer.GetDataLayout().getPointerABIAlignment();
+}
+bool FunctionType::IsCompatible(FunctionType* first, FunctionType* second) {
+    return false;
 }

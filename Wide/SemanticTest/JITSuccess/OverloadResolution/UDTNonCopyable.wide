@@ -2,13 +2,6 @@ type movable {
     type(arg := movable.rvalue) {}
     type() {}
 }
-f(x := movable) {
-    return false;
-}
-f(x := auto.lvalue) {
-    return true;
-}
 Main() {
-    var := movable();
-    return f(var);
+    return ~movable.copy_constructible;
 }

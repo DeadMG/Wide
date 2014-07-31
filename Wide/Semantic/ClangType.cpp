@@ -168,7 +168,7 @@ namespace std {
     };
 }
 
-OverloadSet* ClangType::CreateADLOverloadSet(Lexer::TokenType what, Parse::Access access) {
+OverloadSet* ClangType::CreateADLOverloadSet(Parse::OperatorName what, Parse::Access access) {
     if (access != Parse::Access::Public) return CreateADLOverloadSet(what, access);
     clang::ADLResult res;
     clang::OpaqueValueExpr lhsexpr(clang::SourceLocation(), type.getNonLValueExprType(from->GetASTContext()), Semantic::GetKindOfType(this));
@@ -180,7 +180,9 @@ OverloadSet* ClangType::CreateADLOverloadSet(Lexer::TokenType what, Parse::Acces
     return analyzer.GetOverloadSet(std::move(decls), from, GetContext());
 }
 
-OverloadSet* ClangType::CreateOperatorOverloadSet(Lexer::TokenType name, Parse::Access access) {
+OverloadSet* ClangType::CreateOperatorOverloadSet(Parse::OperatorName opname, Parse::Access access) {
+    if (opname.size() == 0) return Type::CreateOperatorOverloadSet(opname, access);
+    auto name = opname.front();
     if (!ProcessedAssignmentOperators && name == &Lexer::TokenTypes::Assignment) {
         ProcessedAssignmentOperators = true;
         auto recdecl = type->getAsCXXRecordDecl();
@@ -218,7 +220,7 @@ OverloadSet* ClangType::CreateOperatorOverloadSet(Lexer::TokenType name, Parse::
             *boollvalue ? analyzer.GetOverloadSet(boolrvalue->get()) : analyzer.GetOverloadSet()
         );
     }
-    auto opkind = GetTokenMappings().at(name).first;
+    auto opkind = GetTokenMappings().at(opname).first;
     clang::LookupResult lr(
         from->GetSema(), 
         from->GetASTContext().DeclarationNames.getCXXOperatorName(opkind), 
@@ -404,7 +406,7 @@ std::shared_ptr<Expression> ClangType::GetVirtualPointer(std::shared_ptr<Express
 
 Type* ClangType::GetVirtualPointerType() {
     // The calling convention here is kinda suspect, but we always cast, so...
-    return analyzer.GetFunctionType(analyzer.GetIntegralType(32, true), {}, true, llvm::CallingConv::C);
+    return analyzer.GetFunctionType(analyzer.GetIntegralType(32, true), {}, true);
 }
 
 Type::VTableLayout ClangType::ComputePrimaryVTableLayout() {
@@ -541,9 +543,19 @@ std::shared_ptr<Expression> ClangType::VirtualEntryFor(VTableLayout::VirtualFunc
         args[0] = analyzer.GetLvalueType(this);
     else
         args[0] = analyzer.GetRvalueType(this);
-    for (auto methit = type->getAsCXXRecordDecl()->method_begin(); methit != type->getAsCXXRecordDecl()->method_end(); ++methit) {
+    for (auto methit = type->getAsCXXRecordDecl()->method_begin(); methit != type->getAsCXXRecordDecl()->method_end(); ++methit) {        
         auto func = *methit;
-        if (func->getName() != name)
+        auto is_match = [func, name] {
+            if (func->isOverloadedOperator()) {
+                if (auto op = boost::get<Parse::OperatorName>(&name))
+                    if (func->getOverloadedOperator() == GetTokenMappings().at(*op).first)
+                        return true;
+            } else if (auto string = boost::get<std::string>(&name))
+                if (func->getName() == *string)
+                    return true;
+            return false;
+        };
+        if (!is_match())
             continue;
         std::vector<Type*> f_args;
         if (methit->getRefQualifier() == clang::RefQualifierKind::RQ_RValue)
@@ -670,4 +682,7 @@ std::shared_ptr<Expression> ClangType::AccessStaticMember(std::string name, Cont
     }
     std::unordered_set<clang::NamedDecl*> decls(lr.begin(), lr.end());
     return analyzer.GetOverloadSet(decls, from, nullptr)->BuildValueConstruction({}, c);
+}
+bool ClangType::IsFinal() {
+    return !type->getAsCXXRecordDecl() || type->getAsCXXRecordDecl()->hasAttr<clang::FinalAttr>();
 }

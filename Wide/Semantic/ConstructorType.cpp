@@ -43,6 +43,9 @@ namespace {
                 throw std::runtime_error("Attempted to access nonexistent member.");
             return BuildChain(self, member);
         }
+        OverloadSet* CreateOperatorOverloadSet(Parse::OperatorName what, Parse::Access access) {
+            return t->GetConstructedType()->AccessMember(what, access);
+        }
     };
 }
 

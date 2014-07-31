@@ -116,7 +116,7 @@ namespace Wide {
             llvm::Type* GetLLVMType(llvm::Module* module) override;
             Type* GetConstantContext() override;
 
-            OverloadSet* CreateOperatorOverloadSet(Lexer::TokenType type, Parse::Access access) override;
+            OverloadSet* CreateOperatorOverloadSet(Parse::OperatorName type, Parse::Access access) override;
             OverloadSet* CreateConstructorOverloadSet(Parse::Access access) override; 
             std::function<void(CodegenContext&)> BuildDestructorCall(std::shared_ptr<Expression> self, Context c, bool devirtualize) override;
             std::shared_ptr<Expression> GetVirtualPointer(std::shared_ptr<Expression> self) override final;

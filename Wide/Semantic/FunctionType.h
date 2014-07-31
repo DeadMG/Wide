@@ -28,6 +28,7 @@ namespace Wide {
             std::vector<Type*> GetArguments() { return Args; }
             llvm::CallingConv::ID GetCallingConvention() { return convention; }
             std::string explain() override final;
+            static bool IsCompatible(FunctionType* first, FunctionType* second);
         };
     }
 }

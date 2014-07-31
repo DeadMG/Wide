@@ -32,10 +32,12 @@ std::size_t Bool::alignment() {
     return analyzer.GetDataLayout().getABIIntegerTypeAlignment(8);
 }
 
-OverloadSet* Bool::CreateOperatorOverloadSet(Lexer::TokenType name, Parse::Access access) {
+OverloadSet* Bool::CreateOperatorOverloadSet(Parse::OperatorName opname, Parse::Access access) {
     if (access != Parse::Access::Public)
-        return AccessMember(name, Parse::Access::Public);
-
+        return AccessMember(opname, Parse::Access::Public);
+    if (opname.size() != 1)
+        return AccessMember(opname, Parse::Access::Public);
+    auto name = opname.front();
     if (name == &Lexer::TokenTypes::QuestionMark) {
         BooleanConversion = MakeResolvable([](std::vector<std::shared_ptr<Expression>> args, Context c) {
             return args[0];
@@ -173,7 +175,7 @@ OverloadSet* Bool::CreateOperatorOverloadSet(Lexer::TokenType name, Parse::Acces
         }, { this });
         return analyzer.GetOverloadSet(NegOperator.get());
     }
-    return PrimitiveType::CreateOperatorOverloadSet(name, access);
+    return PrimitiveType::CreateOperatorOverloadSet(opname, access);
 }
 
 std::string Bool::explain() {

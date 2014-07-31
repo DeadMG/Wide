@@ -107,8 +107,10 @@ std::size_t IntegralType::alignment() {
     return analyzer.GetDataLayout().getABIIntegerTypeAlignment(bits);
 }
 
-OverloadSet* IntegralType::CreateADLOverloadSet(Lexer::TokenType name, Parse::Access access) {
-    if (access != Parse::Access::Public) return CreateADLOverloadSet(name, Parse::Access::Public);
+OverloadSet* IntegralType::CreateADLOverloadSet(Parse::OperatorName opname, Parse::Access access) {
+    if (access != Parse::Access::Public) return CreateADLOverloadSet(opname, Parse::Access::Public);
+    if (opname.size() != 1) return CreateADLOverloadSet(opname, Parse::Access::Public);
+    auto name = opname.front();
     auto CreateAssOp = [this](std::function<llvm::Value*(llvm::Value*, llvm::Value*, CodegenContext& con)> func) {
         return MakeResolvable([this, func](std::vector<std::shared_ptr<Expression>> args, Context c) {
             return CreatePrimAssOp(std::move(args[0]), std::move(args[1]), func);
@@ -255,7 +257,7 @@ OverloadSet* IntegralType::CreateADLOverloadSet(Lexer::TokenType name, Parse::Ac
         }, { analyzer.GetLvalueType(this) });
         return analyzer.GetOverloadSet(Increment.get());
     }
-    return PrimitiveType::CreateADLOverloadSet(name, access);
+    return PrimitiveType::CreateADLOverloadSet(opname, access);
 }
 bool IntegralType::IsSourceATarget(Type* source, Type* target, Type* context) {
     // If the target is an lvalue type, we fail
@@ -274,9 +276,10 @@ bool IntegralType::IsSourceATarget(Type* source, Type* target, Type* context) {
 
     return false;
 }
-OverloadSet* IntegralType::CreateOperatorOverloadSet(Lexer::TokenType what, Parse::Access access) {
-    if (access != Parse::Access::Public)
-        return AccessMember(what, Parse::Access::Public);
+OverloadSet* IntegralType::CreateOperatorOverloadSet(Parse::OperatorName name, Parse::Access access) {
+    if (access != Parse::Access::Public) return AccessMember(name, Parse::Access::Public);
+    if (name.size() != 1) return AccessMember(name, Parse::Access::Public);
+    auto what = name.front();
     if (what == &Lexer::TokenTypes::Increment) {
         Increment = MakeResolvable([this](std::vector<std::shared_ptr<Expression>> args, Context c) {
             return CreatePrimUnOp(std::move(args[0]), analyzer.GetLvalueType(this), [this](llvm::Value* self, CodegenContext& con) {
@@ -286,7 +289,7 @@ OverloadSet* IntegralType::CreateOperatorOverloadSet(Lexer::TokenType what, Pars
         }, { analyzer.GetLvalueType(this) });
         return analyzer.GetOverloadSet(Increment.get());
     }
-    return PrimitiveType::CreateOperatorOverloadSet(what, access);
+    return PrimitiveType::CreateOperatorOverloadSet(name, access);
 }
 std::string IntegralType::explain() {
     auto name = "int" + std::to_string(bits);

@@ -25,7 +25,7 @@ void GetUnusedFunctionsInModule(std::vector<std::tuple<Lexer::Range, std::string
                 for (auto&& access : funcs.second)
                     for (auto&& func : access.second)
                         if (a.GetFunctions().find(func) == a.GetFunctions().end())
-                            current.push_back(std::make_tuple(func->where, GetFunctionName(func, a, content + "." + funcs.first, root)));
+                            current.push_back(std::make_tuple(func->where, GetFunctionName(func, a, content + "." + GetNameAsString(funcs.first), root)));
             for (auto func : ty->constructor_decls)
                 for (auto con : func.second)
                     if (a.GetFunctions().find(con) == a.GetFunctions().end())

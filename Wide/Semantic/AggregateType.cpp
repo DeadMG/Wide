@@ -355,8 +355,8 @@ std::shared_ptr<Expression> AggregateType::PrimitiveAccessMember(std::shared_ptr
 }
 AggregateType::AggregateType(Analyzer& a) : Type(a) {}
 
-OverloadSet* AggregateType::CreateOperatorOverloadSet(Lexer::TokenType type, Parse::Access access) {
-    if (type != &Lexer::TokenTypes::Assignment)
+OverloadSet* AggregateType::CreateOperatorOverloadSet(Parse::OperatorName type, Parse::Access access) {
+    if (type != Parse::OperatorName{ &Lexer::TokenTypes::Assignment })
         return analyzer.GetOverloadSet();
     if (access != Parse::Access::Public)
         return AccessMember(type, Parse::Access::Public);
@@ -398,7 +398,7 @@ OverloadSet* AggregateType::GetCopyAssignmentOperator() {
                     });
                 }
         
-                auto functy = analyzer.GetFunctionType(analyzer.GetLvalueType(this), { analyzer.GetLvalueType(this), analyzer.GetLvalueType(this) }, false, llvm::CallingConv::C);
+                auto functy = analyzer.GetFunctionType(analyzer.GetLvalueType(this), { analyzer.GetLvalueType(this), analyzer.GetLvalueType(this) }, false);
                 return functy->BuildCall(std::make_shared<AggregateFunction>(CopyAssignmentFunction, functy, [this](CodegenContext& con) { EmitAssignmentOperator(con, *CopyAssignmentExpressions); }), { args[0], args[1] }, c);
             }, { analyzer.GetLvalueType(this), analyzer.GetLvalueType(this) });
         }
@@ -421,7 +421,7 @@ OverloadSet* AggregateType::GetMoveAssignmentOperator() {
                     });
                 }
             
-                auto functy = analyzer.GetFunctionType(analyzer.GetLvalueType(this), { analyzer.GetLvalueType(this), analyzer.GetRvalueType(this) }, false, llvm::CallingConv::C);
+                auto functy = analyzer.GetFunctionType(analyzer.GetLvalueType(this), { analyzer.GetLvalueType(this), analyzer.GetRvalueType(this) }, false);
                 return functy->BuildCall(std::make_shared<AggregateFunction>(MoveAssignmentFunction, functy, [this](CodegenContext& con) { EmitAssignmentOperator(con, *MoveAssignmentExpressions); }), { args[0], args[1] }, c);
             }, { analyzer.GetLvalueType(this), analyzer.GetRvalueType(this) });            
         }
@@ -444,7 +444,7 @@ OverloadSet* AggregateType::GetMoveConstructor() {
                     });
                 }
             
-                auto functy = analyzer.GetFunctionType(analyzer.GetVoidType(), { analyzer.GetLvalueType(this), analyzer.GetRvalueType(this) }, false, llvm::CallingConv::C);
+                auto functy = analyzer.GetFunctionType(analyzer.GetVoidType(), { analyzer.GetLvalueType(this), analyzer.GetRvalueType(this) }, false);
                 return functy->BuildCall(std::make_shared<AggregateFunction>(MoveConstructorFunction, functy, [this](CodegenContext& con) { EmitConstructor(con, *MoveConstructorInitializers); }), { args[0], args[1] }, c);
             }, { analyzer.GetLvalueType(this), analyzer.GetRvalueType(this) });
         }
@@ -467,7 +467,7 @@ OverloadSet* AggregateType::GetCopyConstructor() {
                     });
                 }
         
-                auto functy = analyzer.GetFunctionType(analyzer.GetVoidType(), { analyzer.GetLvalueType(this), analyzer.GetLvalueType(this) }, false, llvm::CallingConv::C);
+                auto functy = analyzer.GetFunctionType(analyzer.GetVoidType(), { analyzer.GetLvalueType(this), analyzer.GetLvalueType(this) }, false);
                 return functy->BuildCall(std::make_shared<AggregateFunction>(CopyConstructorFunction, functy, [this](CodegenContext& con) { EmitConstructor(con, *CopyConstructorInitializers); }), { args[0], args[1] }, c);
             }, { analyzer.GetLvalueType(this), analyzer.GetLvalueType(this) });
         }
@@ -591,7 +591,7 @@ OverloadSet* AggregateType::GetDefaultConstructor() {
                 return GetDefaultInitializerForMember(i - GetBases().size());
             });
 
-            auto functy = analyzer.GetFunctionType(analyzer.GetVoidType(), { analyzer.GetLvalueType(this) }, false, llvm::CallingConv::C);
+            auto functy = analyzer.GetFunctionType(analyzer.GetVoidType(), { analyzer.GetLvalueType(this) }, false);
             return functy->BuildCall(std::make_shared<AggregateFunction>(DefaultConstructorFunction, functy, [this](CodegenContext& con) { EmitConstructor(con, *DefaultConstructorInitializers); }), { args[0] }, c);
         }, { analyzer.GetLvalueType(this) });
     };

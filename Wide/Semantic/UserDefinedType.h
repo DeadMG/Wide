@@ -108,13 +108,13 @@ namespace Wide {
             llvm::Constant* GetRTTI(llvm::Module* module) override final;
             UserDefinedType(const Parse::Type* t, Analyzer& a, Type* context, std::string);
             Type* GetContext() override final { return context; }
-            bool HasMember(std::string name);            
+            bool HasMember(Parse::Name name);
             Wide::Util::optional<clang::QualType> GetClangType(ClangTU& TU) override final;
             std::shared_ptr<Expression> AccessMember(std::shared_ptr<Expression> t, std::string name, Context) override final;
             using Type::AccessMember;
             std::function<void(CodegenContext&)> BuildDestructorCall(std::shared_ptr<Expression> self, Context c, bool devirtualize) override final;
             OverloadSet* CreateConstructorOverloadSet(Parse::Access access) override final;
-            OverloadSet* CreateOperatorOverloadSet(Lexer::TokenType member, Parse::Access access) override final;
+            OverloadSet* CreateOperatorOverloadSet(Parse::OperatorName member, Parse::Access access) override final;
             Type* GetConstantContext() override final;
 
             bool IsCopyConstructible(Parse::Access access) override final;
@@ -130,6 +130,7 @@ namespace Wide {
             std::shared_ptr<Expression> AccessStaticMember(std::string name, Context c) override final;
             std::string explain() override final;
             Wide::Util::optional<unsigned> GetVirtualFunctionIndex(const Parse::DynamicFunction* func);
+            bool IsFinal() override final { return false; }
         };
     }
 }

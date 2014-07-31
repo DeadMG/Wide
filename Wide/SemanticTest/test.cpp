@@ -134,7 +134,7 @@ void Jit(Wide::Options::Clang& copts, std::string file) {
     llvm::Function* main = nullptr;
     Wide::Driver::Compile(copts, [&](Wide::Semantic::Analyzer& a, const Wide::Parse::Module* root) {
         Wide::Semantic::AnalyzeExportedFunctions(a);
-        auto m = a.GetGlobalModule()->AccessMember(a.GetGlobalModule()->BuildValueConstruction({}, { a.GetGlobalModule(), loc }), "Main", { a.GetGlobalModule(), loc });
+        auto m = a.GetGlobalModule()->AccessMember(a.GetGlobalModule()->BuildValueConstruction({}, { a.GetGlobalModule(), loc }), std::string("Main"), { a.GetGlobalModule(), loc });
         if (!m)
             throw std::runtime_error("No Main() found for test!");
         auto func = dynamic_cast<Wide::Semantic::OverloadSet*>(m->GetType()->Decay());
@@ -222,7 +222,7 @@ void Compile(const Wide::Options::Clang& copts, std::string file) {
     auto module = Wide::Util::CreateModuleForTriple(copts.TargetOptions.Triple, con);
     Wide::Driver::Compile(copts, [&](Wide::Semantic::Analyzer& a, const Wide::Parse::Module* root) {
         auto global = a.GetGlobalModule()->BuildValueConstruction({}, { a.GetGlobalModule(), loc });
-        auto failure = global->GetType()->AccessMember(global, "ExpectedFailure", { a.GetGlobalModule(), loc });
+        auto failure = global->GetType()->AccessMember(global, std::string("ExpectedFailure"), { a.GetGlobalModule(), loc });
         if (!failure)
             throw std::runtime_error("Did not find a function indicating what failure was to be expected.");
         auto failureos = dynamic_cast<Wide::Semantic::OverloadSet*>(failure->GetType()->Decay());
@@ -264,7 +264,7 @@ void Compile(const Wide::Options::Clang& copts, std::string file) {
             fptr(&beginline, &begincolumn, &endline, &endcolumn);
         });
 
-        auto m = global->GetType()->AccessMember(global, "Main", { a.GetGlobalModule(), loc });
+        auto m = global->GetType()->AccessMember(global, std::string("Main"), { a.GetGlobalModule(), loc });
         if (!m)
             throw std::runtime_error("No Main() found for test!");
         auto func = dynamic_cast<Wide::Semantic::OverloadSet*>(m->GetType()->Decay());

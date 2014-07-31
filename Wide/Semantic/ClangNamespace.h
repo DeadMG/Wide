@@ -18,6 +18,7 @@ namespace Wide {
                 : con(p), from(f), MetaType(a) {}
         
             std::shared_ptr<Expression> AccessMember(std::shared_ptr<Expression> t, std::string name, Context c) override final;
+            OverloadSet* CreateOperatorOverloadSet(Parse::OperatorName what, Parse::Access access) override final;
             Type* GetContext() override final;
             ClangTU* GetTU() { return from; }
             std::string explain() override final;

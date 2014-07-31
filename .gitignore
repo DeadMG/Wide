@@ -188,3 +188,5 @@ FakesAssemblies/
 *.vcxproj.filters.user
 [Bb]in
 [Dd]ebug*/
+/cloc-1.58.exe
+/premake4.exe

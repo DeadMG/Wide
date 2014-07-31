@@ -19,7 +19,7 @@ namespace Wide {
             std::size_t alignment() override final;
             std::string explain() override final;
             Wide::Util::optional<clang::QualType> GetClangType(ClangTU& TU) override final;
-            OverloadSet* CreateOperatorOverloadSet(Lexer::TokenType what, Parse::Access access) override final;
+            OverloadSet* CreateOperatorOverloadSet(Parse::OperatorName what, Parse::Access access) override final;
         };
     }
 }
