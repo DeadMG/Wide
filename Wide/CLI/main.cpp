@@ -149,7 +149,7 @@ int main(int argc, char** argv)
             static const Wide::Lexer::Range location = std::make_shared<std::string>("Analyzer entry point");
             Wide::Semantic::Context c(a.GetGlobalModule(), location);
             auto global = a.GetGlobalModule()->BuildValueConstruction({}, c);
-            auto main = global->GetType()->AccessMember(std::move(global), "Main", c);
+            auto main = global->GetType()->AccessMember(std::move(global), std::string("Main"), c);
             if (!main)
                 return;
             auto overset = dynamic_cast<Wide::Semantic::OverloadSet*>(main->GetType()->Decay());
