@@ -78,27 +78,9 @@ std::shared_ptr<Expression> FunctionType::BuildCall(std::shared_ptr<Expression> 
             std::vector<llvm::Value*> llvmargs;
             if (GetType()->IsComplexType())
                 llvmargs.push_back(Ret->GetValue(con));
-            std::vector<std::list<std::pair<std::function<void(CodegenContext&)>, bool>>::iterator> elided_arg_destructors;
-            for (auto&& arg : args) {
-                // Handle elision here- if it's passed by value and taken by value we don't copy or move.
-                // This means that the CALLEE is responsible for destructing it.
-                // Unless there's an exception in evaluation of a later argument in which case we need to destruct it.
-                auto argcon = con;
-                llvmargs.push_back(arg->GetValue(argcon));
-                auto destructors = con.GetAddedDestructors(argcon);
-                if (arg->GetType()->IsTriviallyDestructible()) {
-                    con.AddDestructors(destructors);
-                    continue;
-                }
-                // The constructed object should be the last in the list.
-                auto des = destructors.back().first;
-                destructors.pop_back();
-                con.AddDestructors(destructors);
-                elided_arg_destructors.push_back(con.AddExceptionOnlyDestructor(des));
-            }
-            // If we got here without throwing, callee's problem- don't destruct.
-            for (auto des : elided_arg_destructors)
-                con.EraseDestructor(des);
+            // The CALLER calls the destructor, NOT the CALLEE. So let this just destroy them naturally.
+            for (auto&& arg : args)
+                llvmargs.push_back(arg->GetValue(con));
             llvm::Value* call;
             // We need to invoke if we're not destructing, and we have something to destroy OR a catch block we may need to jump to.
             if (!con.destructing && (con.HasDestructors() || con.EHHandler)) {

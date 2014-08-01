@@ -204,7 +204,6 @@ namespace Wide {
             struct RethrowStatement : public Statement {
                 void GenerateCode(CodegenContext& con);
             };
-            std::vector<std::function<void(CodegenContext&)>> param_destructors;
         private:
             std::unordered_set<ReturnStatement*> returns;
         public:

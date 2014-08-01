@@ -580,10 +580,6 @@ void Function::Parameter::OnNodeChanged(Node* n, Change what) {
     auto new_ty = get_new_ty();
     if (new_ty != cur_ty) {
         cur_ty = new_ty;
-        if (!self->Args[num]->IsTriviallyDestructible())
-            self->param_destructors[num] = self->Args[num]->BuildDestructorCall(shared_from_this(), { self, where }, true);
-        else
-            self->param_destructors[num] = std::function<void(CodegenContext&)>();
         OnChange();
     }
 }
@@ -613,7 +609,6 @@ Function::Function(std::vector<Type*> args, const Parse::FunctionBase* astfun, A
 , root_scope(nullptr)
 , source_name(src_name) {
     // Only match the non-concrete arguments.
-    param_destructors.resize(args.size());
     root_scope = Wide::Memory::MakeUnique<Scope>(nullptr);
     current_scope = root_scope.get();
     unsigned num = 0;
@@ -673,7 +668,6 @@ Function::Function(std::vector<Type*> args, const Parse::FunctionBase* astfun, A
                                 // Add "this".
                                 if (auto des = dynamic_cast<const Parse::Destructor*>(fun)) {
                                     Args.push_back(analyzer.GetLvalueType(clangty));
-                                    param_destructors.resize(1);
                                     ConstructorContext = clangty;
                                 } 
                                 auto param = std::make_shared<Parameter>(this, 0, Lexer::Range(nullptr));
@@ -981,9 +975,6 @@ llvm::Function* Function::EmitCode(llvm::Module* module) {
     auto llvmsig = sig->GetLLVMType(module);
     llvmfunc = llvm::Function::Create(llvm::dyn_cast<llvm::FunctionType>(llvmsig->getElementType()), llvm::GlobalValue::LinkageTypes::InternalLinkage, name, module);
     CodegenContext::EmitFunctionBody(llvmfunc, [this](CodegenContext& c) {
-        for (auto des : param_destructors)
-            if (des)
-                c.AddDestructor(des);
         for (auto&& stmt : root_scope->active)
             if (!c.IsTerminated(c->GetInsertBlock()))
                 stmt->GenerateCode(c);
