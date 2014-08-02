@@ -69,16 +69,7 @@ UserDefinedType::VTableData::VTableData(UserDefinedType* self) {
                 if (IsMultiTyped(func)) continue;
                 if (func->deleted) continue;
 
-                std::vector<Type*> arguments;
-                if (func->args.size() == 0 || func->args.front().name != "this")
-                    arguments.push_back(self->analyzer.GetLvalueType(self));
-                for (auto arg : func->args) {
-                    auto ty = self->analyzer.AnalyzeCachedExpression(self->context, arg.type)->GetType()->Decay();
-                    auto con_type = dynamic_cast<ConstructorType*>(ty);
-                    if (!con_type)
-                        throw Wide::Semantic::NotAType(ty, arg.location);
-                    arguments.push_back(con_type->GetConstructedType());
-                }
+                std::vector<Type*> arguments = self->analyzer.GetFunctionParameters(func, self);
 
                 for (auto base : all_bases) {
                     auto base_layout = base->GetPrimaryVTable();
@@ -318,17 +309,7 @@ Wide::Util::optional<clang::QualType> UserDefinedType::GetClangType(ClangTU& TU)
         recdecl->addDecl(var);
     }
     auto GetArgsForFunc = [this](const Wide::Parse::FunctionBase* func) {
-        std::vector<Type*> types;
-        if (func->args.size() == 0 || func->args.front().name != "this")
-            types.push_back(analyzer.GetLvalueType(this));
-        for (auto arg : func->args) {
-            auto expr = analyzer.AnalyzeCachedExpression(GetContext(), arg.type);
-            if (auto ty = dynamic_cast<ConstructorType*>(expr->GetType()->Decay()))
-                types.push_back(ty->GetConstructedType());
-            else
-                assert(false);
-        }
-        return types;
+        return analyzer.GetFunctionParameters(func, this);
     };
     auto GetClangTypesForArgs = [this](std::vector<Type*> types, ClangTU& TU) -> Wide::Util::optional<std::vector<clang::QualType>> {
         std::vector<clang::QualType> args;
@@ -513,29 +494,16 @@ UserDefinedType::DefaultData::DefaultData(UserDefinedType* self) {
 
     for (auto conset : self->type->constructor_decls) {
         for (auto con : conset.second) {
-            if (con->args.size() == 0) {
+            if (IsMultiTyped(con)) continue;
+            auto params = self->analyzer.GetFunctionParameters(con, self);
+            if (params.size() == 1) {
                 AggregateCons.default_constructor = false;
                 continue;
             }
-            if (con->args.size() == 1 && con->args[0].name == "this") {
-                AggregateCons.default_constructor = false;
-                continue;
-            }
-            if (con->args.size() > 2) continue;
-            ConstructorType* conty = nullptr;
-            unsigned paramnum = 0;
-            if (con->args.size() == 2) {
-                if (con->args[0].name != "this") continue;
-                paramnum = 1;
-            }
-            if (!con->args[paramnum].type) throw std::runtime_error("fuck");
-            auto conobj = self->analyzer.AnalyzeExpression(self, con->args[paramnum].type);
-            conty = dynamic_cast<ConstructorType*>(conobj->GetType()->Decay());
-            if (!conty) throw std::runtime_error("Fuck");
-            if (conty->GetConstructedType() == self->analyzer.GetLvalueType(self)) {
+            if (params[1] == self->analyzer.GetLvalueType(self)) {
                 IsComplex = IsComplex || !con->defaulted;
                 AggregateCons.copy_constructor = false;
-            } else if (conty->GetConstructedType() == self->analyzer.GetRvalueType(self)) {
+            } else if (params[1] == self->analyzer.GetRvalueType(self)) {
                 IsComplex = IsComplex || !con->defaulted;
                 AggregateCons.move_constructor = false;
             }            
@@ -548,21 +516,13 @@ UserDefinedType::DefaultData::DefaultData(UserDefinedType* self) {
         for (auto op_access_pair : set) {
             auto ops = op_access_pair.second;
             for (auto op : ops) {
-                if (op->args.size() == 0 || op->args.size() > 2) continue;
-                ConstructorType* conty = nullptr;
-                unsigned paramnum = 0;
-                if (op->args.size() == 2) {
-                    if (op->args[0].name != "this") continue;
-                    paramnum = 1;
-                }
-                if (!op->args[paramnum].type) throw std::runtime_error("fuck");
-                auto conobj = self->analyzer.AnalyzeExpression(self, op->args[paramnum].type);
-                conty = dynamic_cast<ConstructorType*>(conobj->GetType()->Decay());
-                if (!conty) throw std::runtime_error("Fuck");
-                if (conty->GetConstructedType() == self->analyzer.GetLvalueType(self)) {
+                if (IsMultiTyped(op)) continue;
+                auto params = self->analyzer.GetFunctionParameters(op, self);
+                if (params.size() > 2) continue; //???
+                if (params[1] == self->analyzer.GetLvalueType(self)) {
                     IsComplex = IsComplex || !op->defaulted;
                     AggregateOps.copy_operator = false;
-                } else if (conty->GetConstructedType() == self->analyzer.GetRvalueType(self)) {
+                } else if (params[1] == self->analyzer.GetRvalueType(self)) {
                     IsComplex = IsComplex || !op->defaulted;
                     AggregateOps.move_operator = false;
                 }
@@ -759,16 +719,9 @@ std::shared_ptr<Expression> UserDefinedType::VirtualEntryFor(VTableLayout::Virtu
     for (auto access : type->functions.at(name)) {
         for (auto func : access.second) {
             if (func->deleted) continue;
-            std::vector<Type*> f_args;
-            if (func->args.size() == 0 || func->args.front().name != "this")
-                f_args.push_back(analyzer.GetLvalueType(this));
-            for (auto arg : func->args) {
-                auto ty = analyzer.AnalyzeCachedExpression(GetContext(), arg.type)->GetType()->Decay();
-                auto con_type = dynamic_cast<ConstructorType*>(ty);
-                if (!con_type)
-                    throw Wide::Semantic::NotAType(ty, arg.location);
-                f_args.push_back(con_type->GetConstructedType());
-            }
+            if (IsMultiTyped(func)) continue;
+            
+            std::vector<Type*> f_args = analyzer.GetFunctionParameters(func, this);
             if (args != f_args)
                 continue;
             auto widefunc = analyzer.GetWideFunction(func, this, f_args, GetNameAsString(name));
