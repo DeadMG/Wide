@@ -301,7 +301,7 @@ Analyzer::Analyzer(const Options::Clang& opts, const Parse::Module* GlobalModule
                     }
                     if (auto member = fun->GetNonstaticMemberContext()) {
                         auto self = fun->LookupLocal("this");
-                        auto result = self->GetType()->AccessMember(std::move(self), val, { self->GetType(), location });
+                        auto result = self->GetType()->AccessMember(self, val, { self->GetType(), location });
                         if (result)
                             return std::move(result);
                         if (member == context->GetContext())
@@ -313,7 +313,7 @@ Analyzer::Analyzer(const Options::Clang& opts, const Parse::Module* GlobalModule
                 if (auto mod = dynamic_cast<Module*>(context)) {
                     // Module lookups shouldn't present any unknown types. They should only present constant contexts.
                     auto local_mod_instance = mod->BuildValueConstruction({}, Context{ context, location });
-                    auto result = local_mod_instance->GetType()->AccessMember(std::move(local_mod_instance), val, { lookup, location });
+                    auto result = local_mod_instance->GetType()->AccessMember(local_mod_instance, val, { lookup, location });
                     if (!result) return LookupIdentifier(mod->GetContext());
                     if (!dynamic_cast<OverloadSet*>(result->GetType()))
                         return result;
@@ -422,7 +422,7 @@ Analyzer::Analyzer(const Options::Clang& opts, const Parse::Module* GlobalModule
 
     AddExpressionHandler<Parse::PointerMemberAccess>([](Analyzer& a, Type* lookup, const Parse::PointerMemberAccess* paccess) {
         auto subobj = Type::BuildUnaryExpression(a.AnalyzeExpression(lookup, paccess->ex), &Lexer::TokenTypes::Star, { lookup, paccess->location });
-        return subobj->GetType()->AccessMember(std::move(subobj), paccess->member, { lookup, paccess->location });
+        return subobj->GetType()->AccessMember(subobj, paccess->member, { lookup, paccess->location });
     });
 
     AddExpressionHandler<Parse::Decltype>([](Analyzer& a, Type* lookup, const Parse::Decltype* declty) {
@@ -1033,43 +1033,58 @@ OverloadResolvable* Analyzer::GetCallableForFunction(const Parse::FunctionBase* 
 
             std::vector<Type*> result;
             if (HasImplicitThis()) {
+                Type* modified = nullptr;
                 if (IsLvalueType(types[0])) {
-                    if (Type::IsFirstASecond(types[0], a.GetLvalueType(context), source)) {
-                        result.push_back(a.GetLvalueType(context));
-                    } else
-                        return Util::none;
+                    modified = a.GetLvalueType(context);
+                } else if (IsRvalueType(types[0])) {
+                    modified = a.GetRvalueType(context);
                 } else {
-                    if (Type::IsFirstASecond(types[0], a.GetRvalueType(context), source)) {
-                        result.push_back(a.GetRvalueType(context));
-                    } else
-                        return Util::none;
+                    modified = context;
                 }
+                if (Type::IsFirstASecond(types[0], modified, source)) {
+                    result.push_back(modified);
+                } else
+                    return Util::none;
+            
                 types.erase(types.begin());
             }
 
+            // If we have a this, verify that it's correct- lvalue, rvalue, or value.
             unsigned num = 0;
-            for (auto argument : types) {
-                auto context = this->context;
-                auto get_con_type = [&]() -> ConstructorType* {
-                    if (lookups.find(num) != lookups.end())
-                        return lookups[num];
-
-                    if (!func->args[num].type) {
-                        a.ParameterHighlight(func->args[num].location);
-                        return a.GetConstructorType(argument->Decay());
-                    }
-
-                    auto p_type = a.AnalyzeExpression(context, func->args[num].type)->GetType()->Decay();
-                    auto con_type = dynamic_cast<ConstructorType*>(p_type);
-                    if (!con_type)
-                        throw Wide::Semantic::NotAType(p_type, func->args[num].type->location);
-                    a.QuickInfo(func->args[num].location, con_type->GetConstructedType());
+            // Do not remove, else VS will ICE.
+            auto context = this->context;
+            auto get_con_type = [&](Type* argument) -> ConstructorType* {
+                if (lookups.find(num) != lookups.end())
+                    return lookups[num];
+                
+                if (!func->args[num].type) {
                     a.ParameterHighlight(func->args[num].location);
-                    if (!IsMultiTyped(func->args[num]))
-                        lookups[num] = con_type;
-                    return con_type;
-                };
-                auto parameter_type = get_con_type();
+                    return a.GetConstructorType(argument->Decay());
+                }
+                
+                auto ty_expr = func->args[num].type;
+                auto expr = a.AnalyzeExpression(context, ty_expr);
+                auto p_type = expr->GetType()->Decay();
+                auto con_type = dynamic_cast<ConstructorType*>(p_type);
+                if (!con_type)
+                    throw Wide::Semantic::NotAType(p_type, func->args[num].type->location);
+                if (func->args.size() > 0) {
+                    if (func->args[num].name == "this") {
+                        if (num == 0) {
+                            if (!dynamic_cast<MemberFunctionContext*>(context) || context != con_type->GetConstructedType()->Decay())
+                                throw std::runtime_error("Bad explicit this argument.");
+                        } else
+                            throw std::runtime_error("Bad explicit this argument.");
+                    }
+                }
+                a.QuickInfo(func->args[num].location, con_type->GetConstructedType());
+                a.ParameterHighlight(func->args[num].location);
+                if (!IsMultiTyped(func->args[num]))
+                    lookups[num] = con_type;
+                return con_type;
+            };
+            for (auto argument : types) {   
+                auto parameter_type = get_con_type(argument);
                 ++num;
                 if (Type::IsFirstASecond(argument, parameter_type->GetConstructedType(), source))
                     result.push_back(parameter_type->GetConstructedType());

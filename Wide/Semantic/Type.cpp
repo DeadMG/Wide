@@ -617,11 +617,12 @@ std::vector<std::shared_ptr<Expression>> Semantic::AdjustArgumentsForTypes(std::
         Wide::Util::DebugBreak();
     std::vector<std::shared_ptr<Expression>> out;
     for (std::size_t i = 0; i < types.size(); ++i) {
-        if (args[i]->GetType() == types[i]) {
+        auto argty = args[i]->GetType();
+        if (argty == types[i]) {
             out.push_back(std::move(args[i]));
             continue;
         }
-        if (!Type::IsFirstASecond(args[i]->GetType(), types[i], c.from))
+        if (!Type::IsFirstASecond(argty, types[i], c.from))
             Wide::Util::DebugBreak();
         out.push_back(types[i]->BuildValueConstruction({ std::move(args[i]) }, c));
     }

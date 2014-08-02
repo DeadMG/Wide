@@ -614,7 +614,7 @@ Function::Function(std::vector<Type*> args, const Parse::FunctionBase* astfun, A
     unsigned num = 0;
     // We might still be a member function if we're exported as one later.
     if (mem && (dynamic_cast<MemberFunctionContext*>(mem->Decay()))) {
-        Args.push_back(args[0] == args[0]->Decay() ? a.GetLvalueType(args[0]) : args[0]);
+        Args.push_back(args[0]);
         NonstaticMemberContext = args[0];
         if (auto con = dynamic_cast<Semantic::ConstructorContext*>(args[0]->Decay()))
             ConstructorContext = con;

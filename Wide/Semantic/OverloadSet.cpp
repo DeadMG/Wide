@@ -227,36 +227,59 @@ Callable* OverloadSet::Resolve(std::vector<Type*> f_args, Type* source) {
             call.push_back(std::make_pair(funcobj, std::move(*matched_types)));
         }
     }
-    // returns true if lhs is more specialized than rhs
-    auto is_more_specialized = [&](
-        const std::pair<OverloadResolvable*, std::vector<Type*>>& lhs,
-        const std::pair<OverloadResolvable*, std::vector<Type*>>& rhs
-    ) {
-        // If, for some argument, it is the equivalent argument, and
-        // the equivalent argument is not that argument, and
-        // there is no other argument for which the reverse is true
-        // it is more specialized.
-        auto is_argument_more_specialized = [&](Type* lhs, Type* rhs) {
-            if (Type::IsFirstASecond(lhs, rhs, source))
-                if (!Type::IsFirstASecond(rhs, lhs, source))
-                    return true;
-            return false;
-        };
-        bool is_more_specialized = false;
-        bool is_less_specialized = false;
-        for (std::size_t i = 0; i < f_args.size(); ++i) {
-            is_more_specialized = is_more_specialized || is_argument_more_specialized(lhs.second[i], rhs.second[i]);
-            is_less_specialized = is_less_specialized || is_argument_more_specialized(rhs.second[i], lhs.second[i]);
-        }
-        return is_more_specialized && !is_less_specialized;
-    };
+    // Try is-a match first.
     if (call.size() > 1) {
+        // returns true if lhs is more specialized than rhs
+        auto is_more_specialized = [&](
+            const std::pair<OverloadResolvable*, std::vector<Type*>>& lhs,
+            const std::pair<OverloadResolvable*, std::vector<Type*>>& rhs
+        ) {
+            // If, for some argument, it is the equivalent argument, and
+            // the equivalent argument is not that argument, and
+            // there is no other argument for which the reverse is true
+            // it is more specialized.
+            auto is_argument_more_specialized = [&](Type* lhs, Type* rhs) {
+                if (Type::IsFirstASecond(lhs, rhs, source))
+                    if (!Type::IsFirstASecond(rhs, lhs, source))
+                        return true;
+                return false;
+            };
+            bool is_more_specialized = false;
+            bool is_less_specialized = false;
+            for (std::size_t i = 0; i < f_args.size(); ++i) {
+                is_more_specialized = is_more_specialized || is_argument_more_specialized(lhs.second[i], rhs.second[i]);
+                is_less_specialized = is_less_specialized || is_argument_more_specialized(rhs.second[i], lhs.second[i]);
+            }
+            return is_more_specialized && !is_less_specialized;
+        };
         std::sort(call.begin(), call.end(), is_more_specialized);
         if (is_more_specialized(call[0], call[1]))
             call.erase(call.begin() + 1, call.end());
-        // Fuck. Maybe Clang will produce a result?
     }
-    
+    if (call.size() > 1) {
+        // Try an exact match specialization.
+        auto is_more_specialized = [&](
+            const std::pair<OverloadResolvable*, std::vector<Type*>>& lhs,
+            const std::pair<OverloadResolvable*, std::vector<Type*>>& rhs
+        ) {
+            // If, for some argument, it is an EXACT match, and
+            // the equivalent argument is not an EXACT match, and
+            // there is no other argument for which the reverse is true
+            // it is more specialized.
+            bool is_more_specialized = false;
+            bool is_less_specialized = false;
+            for (std::size_t i = 0; i < f_args.size(); ++i) {
+                is_more_specialized = is_more_specialized || (lhs.second[i] == f_args[i] && rhs.second[i] != f_args[i]);
+                is_less_specialized = is_less_specialized || (rhs.second[i] == f_args[i] && lhs.second[i] != f_args[i]);
+            }
+            return is_more_specialized && !is_less_specialized;
+        };
+
+        std::sort(call.begin(), call.end(), is_more_specialized);
+        if (is_more_specialized(call[0], call[1]))
+            call.erase(call.begin() + 1, call.end());
+        // Fuck, maybe we'll get lucky w.r.t Clang.
+    }    
 
     auto get_wide_or_result = [&]() -> Callable* {
         if (call.size() == 1)
