@@ -45,9 +45,7 @@ namespace Wide {
             std::shared_ptr<Expression> CallFunction(std::vector<std::shared_ptr<Expression>> args, Context c) override final { 
                 return BuildCall(BuildValueConstruction({}, c), std::move(args), c);
             }
-            std::vector<std::shared_ptr<Expression>> AdjustArguments(std::vector<std::shared_ptr<Expression>> args, Context c) override final {
-                return AdjustArgumentsForTypes(std::move(args), Args, c);
-            }
+            std::vector<std::shared_ptr<Expression>> AdjustArguments(std::vector<std::shared_ptr<Expression>> args, Context c) override final;
         public:
             // Public for analysis.
             struct Scope;
@@ -214,7 +212,7 @@ namespace Wide {
 
             void ComputeBody();
             llvm::Function* EmitCode(llvm::Module* module);
-            Function(std::vector<Type*> args, const Parse::FunctionBase* astfun, Analyzer& a, Type* container, std::string name);
+            Function(std::vector<Type*> args, const Parse::FunctionBase* astfun, Analyzer& a, Type* container, std::string name, Type* nonstatic_context);
 
             Wide::Util::optional<clang::QualType> GetClangType(ClangTU& where) override final;
      

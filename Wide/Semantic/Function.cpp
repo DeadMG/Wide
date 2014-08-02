@@ -600,7 +600,7 @@ llvm::Value* Function::Parameter::ComputeValue(CodegenContext& con) {
     return alloc;
 }
 
-Function::Function(std::vector<Type*> args, const Parse::FunctionBase* astfun, Analyzer& a, Type* mem, std::string src_name)
+Function::Function(std::vector<Type*> args, const Parse::FunctionBase* astfun, Analyzer& a, Type* mem, std::string src_name, Type* nonstatic_context)
 : MetaType(a)
 , ReturnType(nullptr)
 , fun(astfun)
@@ -608,24 +608,23 @@ Function::Function(std::vector<Type*> args, const Parse::FunctionBase* astfun, A
 , s(State::NotYetAnalyzed)
 , root_scope(nullptr)
 , source_name(src_name) {
+    assert(mem);
     // Only match the non-concrete arguments.
     root_scope = Wide::Memory::MakeUnique<Scope>(nullptr);
     current_scope = root_scope.get();
     unsigned num = 0;
+    Args = args;
     // We might still be a member function if we're exported as one later.
-    if (mem && (dynamic_cast<MemberFunctionContext*>(mem->Decay()))) {
-        Args.push_back(args[0]);
-        NonstaticMemberContext = args[0];
-        if (auto con = dynamic_cast<Semantic::ConstructorContext*>(args[0]->Decay()))
+    if (nonstatic_context) {
+        NonstaticMemberContext = nonstatic_context;
+        if (auto con = dynamic_cast<Semantic::ConstructorContext*>(nonstatic_context))
             ConstructorContext = con;
-        args.erase(args.begin());
         auto param = std::make_shared<Parameter>(this, num++, Lexer::Range(nullptr));
         root_scope->named_variables.insert(std::make_pair("this", std::make_pair(param, Lexer::Range(nullptr))));
         root_scope->active.push_back(param);
         parameters.push_back(param);
         param->OnNodeChanged(nullptr, Change::Contents);
     }
-    Args.insert(Args.end(), args.begin(), args.end());
     for(auto&& arg : astfun->args) {
         if (arg.name == "this")
             continue;
@@ -640,7 +639,7 @@ Function::Function(std::vector<Type*> args, const Parse::FunctionBase* astfun, A
     strstr << "__" << std::hex << this;
     name = strstr.str();
 
-    // Deal with the attributes first, if any
+    // Deal with the exports first, if any
     if (auto fun = dynamic_cast<const Parse::AttributeFunctionBase*>(astfun)) {
         for (auto attr : fun->attributes) {
             if (auto name = dynamic_cast<const Parse::Identifier*>(attr.initialized)) {
@@ -660,41 +659,6 @@ Function::Function(std::vector<Type*> args, const Parse::FunctionBase* astfun, A
                             trampoline.push_back(tu->GetObject(con, clang::CXXCtorType::Ctor_Complete));
                         else
                             trampoline.push_back(tu->GetObject(decl));
-                        if (auto meth = llvm::dyn_cast<clang::CXXMethodDecl>(decl)) {
-                            ClangContexts.insert(analyzer.GetClangType(*tu, tu->GetASTContext().getRecordType(meth->getParent())));
-                            if (!meth->isStatic()) {
-                                auto clangty = dynamic_cast<ClangType*>(analyzer.GetClangType(*tu, tu->GetASTContext().getRecordType(meth->getParent())));
-                                auto thisty = analyzer.GetLvalueType(clangty);
-                                // Add "this".
-                                if (auto des = dynamic_cast<const Parse::Destructor*>(fun)) {
-                                    Args.push_back(analyzer.GetLvalueType(clangty));
-                                    ConstructorContext = clangty;
-                                } 
-                                auto param = std::make_shared<Parameter>(this, 0, Lexer::Range(nullptr));
-                                root_scope->named_variables.insert(std::make_pair("this", std::make_pair(param, Lexer::Range(nullptr))));
-                                root_scope->active.push_back(param);
-                                parameters.insert(parameters.begin(), param);
-                                param->OnNodeChanged(nullptr, Change::Contents);
-                                if (auto con = llvm::dyn_cast<clang::CXXConstructorDecl>(meth)) {
-                                    // Error if we have a constructor context and it's not the same one.
-                                    // Error if we have a nonstatic member context.
-                                    // Error if we have any other clang contexts, since constructors cannot be random static members.
-                                    if (NonstaticMemberContext) throw std::runtime_error("fuck");
-                                    if (ConstructorContext && *ConstructorContext != clangty) throw std::runtime_error("fuck");
-                                    if (ClangContexts.size() >= 2) throw std::runtime_error("fuck");
-                                    ConstructorContext = clangty;
-                                    continue;
-                                }
-                                // Error if we have a constructor context.
-                                // Error if we have a nonstatic member context and it's not this one.
-                                if (!dynamic_cast<const Parse::Destructor*>(fun))
-                                    if (ConstructorContext)
-                                        throw std::runtime_error("fuck");
-                                if (NonstaticMemberContext && *NonstaticMemberContext != clangty) throw std::runtime_error("fuck");
-                                NonstaticMemberContext = clangty;
-                                continue;
-                            }
-                        }
                     }
                 }
             }
@@ -1305,4 +1269,19 @@ void Function::RethrowStatement::GenerateCode(CodegenContext& con) {
         con->CreateInvoke(con.GetCXARethrow(), con.GetUnreachableBlock(), con.CreateLandingpadForEH());
     else
         con->CreateCall(con.GetCXARethrow());
+}
+std::vector<std::shared_ptr<Expression>> Function::AdjustArguments(std::vector<std::shared_ptr<Expression>> args, Context c) {
+    // May need to perform conversion on "this" that isn't handled by the usual machinery.
+    // But check first, because e.g. Derived& to Base& is fine.
+    if (analyzer.HasImplicitThis(fun, context) && !Type::IsFirstASecond(args[0]->GetType(), Args[0], context)) {
+        auto argty = args[0]->GetType();
+        // If T&&, cast.
+        // Else, build a T&& from the U then cast that. Use this instead of BuildRvalueConstruction because we may need to preserve derived semantics.
+        if (argty == analyzer.GetRvalueType(GetNonstaticMemberContext())) {
+            args[0] = std::make_shared<LvalueCast>(args[0]);
+        } else if (argty != analyzer.GetLvalueType(GetNonstaticMemberContext())) {
+            args[0] = std::make_shared<LvalueCast>(analyzer.GetRvalueType(GetNonstaticMemberContext())->BuildValueConstruction({ args[0] }, c));
+        }
+    }
+    return AdjustArgumentsForTypes(std::move(args), Args, c);
 }

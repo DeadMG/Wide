@@ -1,9 +1,8 @@
 using header := cpp("JITSuccess/CPPInterop/ExportMemberFunction.h");
 
 [export := header.test.members.f]
-f(self := header.test.pointer) {
-    if (self)
-        self->var = true;
+f() {
+    var = true;
 }
 Main() {
     var := header.test();

@@ -1,10 +1,10 @@
 using test := cpp("JITSuccess/CPPInterop/ExportRefQualifier.h").test;
 
 [export := test.members.f.resolve(test.lvalue)]
-f(this := test.lvalue) { return true; }
+f() { return true; }
 
 [export := test.members.f.resolve(test.rvalue)]
-f(this := test.rvalue) { return false; }
+f() { return false; }
 
 Main() {
     var := test();

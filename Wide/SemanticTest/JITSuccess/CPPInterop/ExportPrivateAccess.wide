@@ -1,9 +1,9 @@
 using header := cpp("JITSuccess/CPPInterop/ExportPrivateAccess.h");
 
 [export := header.test.members.f]
-func(arg := header.test.lvalue)
+func()
 {
-    return arg.val;
+    return val;
 }
 
 Main() {

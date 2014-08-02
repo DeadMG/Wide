@@ -624,7 +624,7 @@ std::function<void(CodegenContext&)> UserDefinedType::BuildDestructorCall(std::s
     if (type->destructor_decl) {
         assert(self->GetType()->IsReference(this));
         std::unordered_set<OverloadResolvable*> resolvables;
-        resolvables.insert(analyzer.GetCallableForFunction(type->destructor_decl, self->GetType(), "~type"));
+        resolvables.insert(analyzer.GetCallableForFunction(type->destructor_decl, this, "~type"));
         auto desset = analyzer.GetOverloadSet(resolvables, self->GetType());
         auto callable = dynamic_cast<Wide::Semantic::Function*>(desset->Resolve({ self->GetType() }, c.from));
         auto call = callable->Call({ self }, { this, c.where });
@@ -687,7 +687,7 @@ Type::VTableLayout UserDefinedType::ComputePrimaryVTableLayout() {
 }
 llvm::Function* UserDefinedType::CreateDestructorFunction(llvm::Module* module) {
     if (!type->destructor_decl) return AggregateType::CreateDestructorFunction(module);
-    auto desfunc = analyzer.GetWideFunction(type->destructor_decl, analyzer.GetLvalueType(this), { analyzer.GetLvalueType(this) }, "~type");
+    auto desfunc = analyzer.GetWideFunction(type->destructor_decl, this, { analyzer.GetLvalueType(this) }, "~type");
     return desfunc->EmitCode(module);
 }
 
@@ -731,9 +731,9 @@ std::shared_ptr<Expression> UserDefinedType::VirtualEntryFor(VTableLayout::Virtu
     };
     if (auto special = boost::get<VTableLayout::SpecialMember>(&entry.function)) {
         if (*special == VTableLayout::SpecialMember::Destructor)
-            return Wide::Memory::MakeUnique<VTableThunk>(analyzer.GetWideFunction(type->destructor_decl, analyzer.GetLvalueType(this), { analyzer.GetLvalueType(this) }, "~type"), offset);
+            return Wide::Memory::MakeUnique<VTableThunk>(analyzer.GetWideFunction(type->destructor_decl, this, { analyzer.GetLvalueType(this) }, "~type"), offset);
         if (*special == VTableLayout::SpecialMember::ItaniumABIDeletingDestructor)
-            return Wide::Memory::MakeUnique<VTableThunk>(analyzer.GetWideFunction(type->destructor_decl, analyzer.GetLvalueType(this), { analyzer.GetLvalueType(this) }, "~type"), offset);
+            return Wide::Memory::MakeUnique<VTableThunk>(analyzer.GetWideFunction(type->destructor_decl, this, { analyzer.GetLvalueType(this) }, "~type"), offset);
     }
     auto vfunc = boost::get<VTableLayout::VirtualFunction>(entry.function);
     auto name = vfunc.name;
@@ -937,7 +937,7 @@ bool UserDefinedType::IsTriviallyCopyConstructible() {
         std::unordered_set<OverloadResolvable*> resolvables;
         for (auto f : type->constructor_decls) {
             for (auto func : f.second)
-                resolvables.insert(analyzer.GetCallableForFunction(func, analyzer.GetLvalueType(this), "type"));
+                resolvables.insert(analyzer.GetCallableForFunction(func, this, "type"));
         }
         return analyzer.GetOverloadSet(resolvables, analyzer.GetLvalueType(this));
     };

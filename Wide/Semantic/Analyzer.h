@@ -189,6 +189,10 @@ namespace Wide {
 
             void GenerateCode(llvm::Module* module);
             ClangTU* GetAggregateTU();
+
+            std::vector<Type*> GetFunctionParameters(const Parse::FunctionBase* p, Type* context);
+            bool HasImplicitThis(const Parse::FunctionBase* p, Type* context);
+            Type* GetNonstaticContext(const Parse::FunctionBase* p, Type* context);
         };
         bool IsRvalueType(Type* t);
         bool IsLvalueType(Type* t);

@@ -857,9 +857,10 @@ FunctionType* Analyzer::GetFunctionType(Type* ret, const std::vector<Type*>& t, 
 }
 
 Function* Analyzer::GetWideFunction(const Parse::FunctionBase* p, Type* context, const std::vector<Type*>& types, std::string name) {
+    assert(!context->IsReference());
     if (WideFunctions.find(p) == WideFunctions.end()
-     || WideFunctions[p].find(types) == WideFunctions[p].end())
-        WideFunctions[p][types] = Wide::Memory::MakeUnique<Function>(types, p, *this, context, name);
+        || WideFunctions[p].find(types) == WideFunctions[p].end())
+        WideFunctions[p][types] = Wide::Memory::MakeUnique<Function>(types, p, *this, context, name, GetNonstaticContext(p, context));
     return WideFunctions[p][types].get();
 }
 
@@ -1000,94 +1001,111 @@ OverloadSet* Analyzer::GetOverloadSet(std::unordered_set<clang::NamedDecl*> decl
     }
     return clang_overload_sets[decls][context].get();
 }
+std::vector<Type*> Analyzer::GetFunctionParameters(const Parse::FunctionBase* func, Type* context) {
+    std::vector<Type*> out;
+    if (HasImplicitThis(func, context))
+        out.push_back(GetLvalueType(GetNonstaticContext(func, context)));
+    for (auto&& arg : func->args) {
+        if (!arg.type) {
+            ParameterHighlight(arg.location);
+            out.push_back(nullptr);
+            continue;
+        }      
+
+        auto ty_expr = arg.type;
+        auto expr = AnalyzeExpression(context, ty_expr);
+        auto p_type = expr->GetType()->Decay();
+        auto con_type = dynamic_cast<ConstructorType*>(p_type);
+        if (!con_type)
+            throw Wide::Semantic::NotAType(p_type, arg.type->location);
+        if (arg.name == "this") {
+            if (&arg == &func->args[0]) {
+                if (!GetNonstaticContext(func, context) || GetNonstaticContext(func, context) != con_type->GetConstructedType()->Decay())
+                    throw std::runtime_error("Bad explicit this argument.");
+            } else
+                throw std::runtime_error("Bad explicit this argument.");
+        }
+        QuickInfo(arg.location, con_type->GetConstructedType());
+        ParameterHighlight(arg.location);
+        out.push_back(con_type->GetConstructedType());
+    }
+    return out;
+}
+bool Analyzer::HasImplicitThis(const Parse::FunctionBase* func, Type* context) {
+    // If we are a member without an explicit this, then we have an implicit this.
+    if (!GetNonstaticContext(func, context))
+        return false;
+    if (func->args.size() > 0) {
+        if (func->args[0].name == "this") {
+            return false;
+        }
+    }
+    return true;
+}
+Type* Analyzer::GetNonstaticContext(const Parse::FunctionBase* p, Type* context) {
+    if (dynamic_cast<MemberFunctionContext*>(context))
+        return context;
+    // May be exported.
+    if (auto astfun = dynamic_cast<const Parse::AttributeFunctionBase*>(p)) {
+        for (auto attr : astfun->attributes) {
+            if (auto name = dynamic_cast<const Parse::Identifier*>(attr.initialized)) {
+                if (auto string = boost::get<std::string>(&name->val)) {
+                    if (*string == "export") {
+                        auto expr = context->analyzer.AnalyzeExpression(context, attr.initializer);
+                        auto overset = dynamic_cast<OverloadSet*>(expr->GetType()->Decay());
+                        if (!overset)
+                            throw NotAType(expr->GetType()->Decay(), attr.initializer->location);
+                        auto tuanddecl = overset->GetSingleFunction();
+                        if (!tuanddecl.second) throw NotAType(expr->GetType()->Decay(), attr.initializer->location);
+                        auto tu = tuanddecl.first;
+                        auto decl = tuanddecl.second;
+                        if (auto meth = llvm::dyn_cast<clang::CXXMethodDecl>(decl)) {
+                            return context->analyzer.GetClangType(*tu, tu->GetASTContext().getRecordType(meth->getParent()));
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return nullptr;
+}
 OverloadResolvable* Analyzer::GetCallableForFunction(const Parse::FunctionBase* f, Type* context, std::string name) {
     if (FunctionCallables.find(f) != FunctionCallables.end())
         return FunctionCallables.at(f).get();
 
     struct FunctionCallable : public OverloadResolvable {
         FunctionCallable(const Parse::FunctionBase* f, Type* con, std::string str)
-        : func(f), context(con), name(str) {}
+        : func(f), context(con), name(str) 
+        {}
+
         const Parse::FunctionBase* func;
         Type* context;
         std::string name;
-
-        bool HasImplicitThis() {
-            // If we are a member without an explicit this, then we have an implicit this.
-            if (!dynamic_cast<UserDefinedType*>(context->Decay()) && !dynamic_cast<LambdaType*>(context->Decay()))
-                return false;
-            if (func->args.size() > 0) {
-                if (func->args[0].name == "this") {
-                    return false;
-                }
-            }
-            return true;
-        }
-
-        std::unordered_map<unsigned, ConstructorType*> lookups;
-
+        
         Util::optional<std::vector<Type*>> MatchParameter(std::vector<Type*> types, Analyzer& a, Type* source) override final {
-            if (types.size() != func->args.size() + HasImplicitThis()) return Util::none;
             // If we are a member and we have an explicit this then treat the first normally.
             // Else if we are a member, blindly accept whatever is given for argument 0 as long as it's the member type.
             // Else, treat the first argument normally.
-
+            auto parameters = a.GetFunctionParameters(func, context);
+            if (types.size() != parameters.size()) return Util::none;
             std::vector<Type*> result;
-            if (HasImplicitThis()) {
-                Type* modified = nullptr;
-                if (IsLvalueType(types[0])) {
-                    modified = a.GetLvalueType(context);
-                } else if (IsRvalueType(types[0])) {
-                    modified = a.GetRvalueType(context);
-                } else {
-                    modified = context;
-                }
-                if (Type::IsFirstASecond(types[0], modified, source)) {
-                    result.push_back(modified);
-                } else
-                    return Util::none;
-            
-                types.erase(types.begin());
-            }
-
-            // If we have a this, verify that it's correct- lvalue, rvalue, or value.
-            unsigned num = 0;
-            // Do not remove, else VS will ICE.
-            auto context = this->context;
-            auto get_con_type = [&](Type* argument) -> ConstructorType* {
-                if (lookups.find(num) != lookups.end())
-                    return lookups[num];
-                
-                if (!func->args[num].type) {
-                    a.ParameterHighlight(func->args[num].location);
-                    return a.GetConstructorType(argument->Decay());
-                }
-                
-                auto ty_expr = func->args[num].type;
-                auto expr = a.AnalyzeExpression(context, ty_expr);
-                auto p_type = expr->GetType()->Decay();
-                auto con_type = dynamic_cast<ConstructorType*>(p_type);
-                if (!con_type)
-                    throw Wide::Semantic::NotAType(p_type, func->args[num].type->location);
-                if (func->args.size() > 0) {
-                    if (func->args[num].name == "this") {
-                        if (num == 0) {
-                            if (!dynamic_cast<MemberFunctionContext*>(context) || context != con_type->GetConstructedType()->Decay())
-                                throw std::runtime_error("Bad explicit this argument.");
-                        } else
-                            throw std::runtime_error("Bad explicit this argument.");
+            for (unsigned i = 0; i < types.size(); ++i) {
+                if (a.HasImplicitThis(func, context) && i == 0) {
+                    // First, if no conversion is necessary.
+                    if (Type::IsFirstASecond(types[i], parameters[i], source)) {
+                        result.push_back(parameters[i]);
+                        continue;
                     }
+                    // If the parameter is-a nonstatic-context&&, then we're good. Let Function::AdjustArguments handle the adjustment, if necessary.
+                    if (Type::IsFirstASecond(types[i], a.GetRvalueType(a.GetNonstaticContext(func, context)), source)) {
+                        result.push_back(parameters[i]);
+                        continue;
+                    }
+                    return Util::none;
                 }
-                a.QuickInfo(func->args[num].location, con_type->GetConstructedType());
-                a.ParameterHighlight(func->args[num].location);
-                if (!IsMultiTyped(func->args[num]))
-                    lookups[num] = con_type;
-                return con_type;
-            };
-            for (auto argument : types) {   
-                auto parameter_type = get_con_type(argument);
-                ++num;
-                if (Type::IsFirstASecond(argument, parameter_type->GetConstructedType(), source))
-                    result.push_back(parameter_type->GetConstructedType());
+                auto parameter = parameters[i] ? parameters[i] : types[i]->Decay();
+                if (Type::IsFirstASecond(types[i], parameter, source))
+                    result.push_back(parameter);
                 else
                     return Util::none;
             }
@@ -1129,6 +1147,7 @@ Parse::Access Semantic::GetAccessSpecifier(Type* from, Type* to) {
 }
 
 void ProcessFunction(const Parse::AttributeFunctionBase* f, Analyzer& a, Module* m, std::string name) {
+    if (IsMultiTyped(f)) return;
     bool exported = false;
     for (auto attr : f->attributes) {
         if (auto ident = dynamic_cast<const Parse::Identifier*>(attr.initialized))
@@ -1143,15 +1162,7 @@ void ProcessFunction(const Parse::AttributeFunctionBase* f, Analyzer& a, Module*
     if (auto con = dynamic_cast<const Parse::Constructor*>(f))
         if (con->defaulted)
             return;
-    std::vector<Type*> types;
-    for (auto arg : f->args) {
-        if (!arg.type) return;
-        auto expr = a.AnalyzeCachedExpression(m, arg.type);
-        if (auto ty = dynamic_cast<ConstructorType*>(expr->GetType()->Decay()))
-            types.push_back(ty->GetConstructedType());
-        else
-            return;
-    }
+    std::vector<Type*> types = a.GetFunctionParameters(f, m);
     auto func = a.GetWideFunction(f, m, types, name);
     func->ComputeBody();
 }
@@ -1165,6 +1176,11 @@ void AnalyzeExportedFunctionsInModule(Analyzer& a, Module* m) {
     auto mod = m->GetASTModule();
     ProcessOverloadSet(mod->constructor_decls, a, m, "type");
     ProcessOverloadSet(mod->destructor_decls, a, m, "~type");
+    for (auto name : mod->OperatorOverloads) {
+        for (auto access : name.second) {
+            ProcessOverloadSet(access.second, a, m, GetNameAsString(name.first));
+        }
+    }
     for (auto&& decl : mod->named_decls) {
         if (auto overset = boost::get<std::unordered_map<Parse::Access, std::unordered_set<Parse::Function*>>>(&decl.second)) {
             for (auto access : (*overset))
