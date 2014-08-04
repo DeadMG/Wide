@@ -412,16 +412,13 @@ Type* ClangType::GetVirtualPointerType() {
 Type::VTableLayout ClangType::ComputePrimaryVTableLayout() {
     // ITANIUM ABI SPECIFIC
     auto CreateVFuncFromMethod = [&](clang::CXXMethodDecl* methit) {
-        VTableLayout::VirtualFunction vfunc;
-        vfunc.name = methit->getName();
-        vfunc.ret = analyzer.GetClangType(*from, methit->getResultType());
-        if (methit->getRefQualifier() == clang::RefQualifierKind::RQ_RValue)
-            vfunc.args.push_back(analyzer.GetRvalueType(this));
-        else
-            vfunc.args.push_back(analyzer.GetLvalueType(this));
-        for (auto paramit = methit->param_begin(); paramit != methit->param_end(); ++paramit) {
-            vfunc.args.push_back(analyzer.GetClangType(*from, (*paramit)->getType()));
-        }
+        VTableLayout::VirtualFunctionEntry vfunc;
+        vfunc.type = GetFunctionType(methit, *from, analyzer);
+        vfunc.func = VTableLayout::VirtualFunction{
+            methit->getName(),
+            methit->hasAttr<clang::FinalAttr>(),
+            methit->isPure()
+        };
         return vfunc;
     };
     auto&& layout = from->GetASTContext().getASTRecordLayout(type->getAsCXXRecordDecl());
@@ -451,8 +448,7 @@ Type::VTableLayout ClangType::ComputePrimaryVTableLayout() {
             };
             if (!add_extra_slot()) continue;
             VTableLayout::VirtualFunctionEntry entry;
-            entry.abstract = methit->isPure();
-            entry.function = CreateVFuncFromMethod(*methit);
+            entry = CreateVFuncFromMethod(*methit);
             pbaselayout.layout.push_back(entry);
         }
         return pbaselayout;
@@ -460,89 +456,42 @@ Type::VTableLayout ClangType::ComputePrimaryVTableLayout() {
     VTableLayout out;
     out.offset = 2;
     VTableLayout::VirtualFunctionEntry offset;
-    offset.abstract = false;
-    offset.function = VTableLayout::SpecialMember::OffsetToTop;
+    offset.type = nullptr;
+    offset.func = VTableLayout::SpecialMember::OffsetToTop;
     out.layout.push_back(offset);
     VTableLayout::VirtualFunctionEntry RTTI;
-    RTTI.abstract = false;
-    RTTI.function = VTableLayout::SpecialMember::RTTIPointer;
+    RTTI.type = nullptr;
+    RTTI.func = VTableLayout::SpecialMember::RTTIPointer;
     out.layout.push_back(RTTI);
     for (auto methit = type->getAsCXXRecordDecl()->method_begin(); methit != type->getAsCXXRecordDecl()->method_end(); ++methit) {
         if (methit->isVirtual()) {
-            VTableLayout::VirtualFunctionEntry entry;
-            entry.abstract = methit->isPure();
             if (auto des = llvm::dyn_cast<clang::CXXDestructorDecl>(*methit)) {
-                entry.function = VTableLayout::SpecialMember::Destructor;
-                out.layout.push_back(entry);
-                entry.function = VTableLayout::SpecialMember::ItaniumABIDeletingDestructor;
+                out.layout.push_back(VTableLayout::VirtualFunctionEntry{ VTableLayout::SpecialMember::Destructor , GetFunctionType(des, *from, analyzer) });
+                out.layout.push_back(VTableLayout::VirtualFunctionEntry{ VTableLayout::SpecialMember::ItaniumABIDeletingDestructor, GetFunctionType(des, *from, analyzer) });
             }
             else
-                entry.function = CreateVFuncFromMethod(*methit);
-            out.layout.push_back(entry);
+                out.layout.push_back(CreateVFuncFromMethod(*methit));
         }
     }
     return out;
 }
 
-std::shared_ptr<Expression> ClangType::VirtualEntryFor(VTableLayout::VirtualFunctionEntry entry, unsigned offset) {
+std::pair<FunctionType*, std::function<llvm::Function*(llvm::Module*)>> ClangType::VirtualEntryFor(VTableLayout::VirtualFunctionEntry entry) {
     // ITANIUM ABI SPECIFIC
-    struct VTableThunk : Expression {
-        VTableThunk(std::function<llvm::Function*(llvm::Module*)> f, unsigned off, FunctionType* sig)
-        : func(f), offset(off), signature(sig)
-        {}
-        FunctionType* signature;
-        unsigned offset;
-        std::function<llvm::Function*(llvm::Module*)> func;
-        Type* GetType() override final {
-            return signature;
-        }
-        llvm::Value* ComputeValue(CodegenContext& con) override final {
-            if (offset == 0)
-                return func(con);
-            auto this_index = (std::size_t)signature->GetReturnType()->IsComplexType();
-            std::stringstream strstr;
-            strstr << "__" << this << offset;
-            auto thunk = llvm::Function::Create(llvm::dyn_cast<llvm::FunctionType>(signature->GetLLVMType(con)->getElementType()), llvm::GlobalValue::LinkageTypes::InternalLinkage, strstr.str(), con);
-            llvm::BasicBlock* bb = llvm::BasicBlock::Create(con, "entry", thunk);
-            llvm::IRBuilder<> irbuilder(bb);
-            auto self = std::next(thunk->arg_begin(), signature->GetReturnType()->IsComplexType());
-            auto offset_self = irbuilder.CreateConstGEP1_32(irbuilder.CreatePointerCast(self, llvm::IntegerType::getInt8PtrTy(con->getContext())), -offset);
-            auto cast_self = irbuilder.CreatePointerCast(offset_self, std::next(func(con)->arg_begin(), this_index)->getType());
-            std::vector<llvm::Value*> args;
-            for (std::size_t i = 0; i < thunk->arg_size(); ++i) {
-                if (i == this_index)
-                    args.push_back(cast_self);
-                else
-                    args.push_back(std::next(thunk->arg_begin(), i));
-            }
-            auto call = irbuilder.CreateCall(func(con), args);
-            if (call->getType() == llvm::Type::getVoidTy(con))
-                irbuilder.CreateRetVoid();
-            else
-                irbuilder.CreateRet(call);
-            return thunk;
-        }
-    };
-    if (auto mem = boost::get<VTableLayout::SpecialMember>(&entry.function)) {
+    if (auto mem = boost::get<VTableLayout::SpecialMember>(&entry.func)) {
         auto conv = GetCallingConvention(type->getAsCXXRecordDecl()->getDestructor());
         if (*mem == VTableLayout::SpecialMember::Destructor) {
-            return Wide::Memory::MakeUnique<VTableThunk>(from->GetObject(type->getAsCXXRecordDecl()->getDestructor(), clang::CXXDtorType::Dtor_Complete), offset, analyzer.GetFunctionType(analyzer.GetVoidType(), { analyzer.GetLvalueType(this) }, false, conv));
+            return{ analyzer.GetFunctionType(analyzer.GetVoidType(), { analyzer.GetLvalueType(this) }, false, conv), from->GetObject(type->getAsCXXRecordDecl()->getDestructor(), clang::CXXDtorType::Dtor_Complete) };
         }
         if (*mem == VTableLayout::SpecialMember::ItaniumABIDeletingDestructor) {
-            return Wide::Memory::MakeUnique<VTableThunk>(from->GetObject(type->getAsCXXRecordDecl()->getDestructor(), clang::CXXDtorType::Dtor_Deleting), offset, analyzer.GetFunctionType(analyzer.GetVoidType(), { analyzer.GetLvalueType(this) }, false, conv));
+            return{ analyzer.GetFunctionType(analyzer.GetVoidType(), { analyzer.GetLvalueType(this) }, false, conv), from->GetObject(type->getAsCXXRecordDecl()->getDestructor(), clang::CXXDtorType::Dtor_Deleting) };
         }
-        return nullptr;
+        return {};
     }
     // args includes this, which will have a different type here.
     // Pretend that it really has our type.
-    auto func = boost::get<VTableLayout::VirtualFunction>(entry.function);
-    auto args = func.args;
+    auto func = boost::get<VTableLayout::VirtualFunction>(entry.func);
     auto name = func.name;
-    auto ret = func.ret;
-    if (IsLvalueType(args[0]))
-        args[0] = analyzer.GetLvalueType(this);
-    else
-        args[0] = analyzer.GetRvalueType(this);
     for (auto methit = type->getAsCXXRecordDecl()->method_begin(); methit != type->getAsCXXRecordDecl()->method_end(); ++methit) {        
         auto func = *methit;
         auto is_match = [func, name] {
@@ -557,19 +506,12 @@ std::shared_ptr<Expression> ClangType::VirtualEntryFor(VTableLayout::VirtualFunc
         };
         if (!is_match())
             continue;
-        std::vector<Type*> f_args;
-        if (methit->getRefQualifier() == clang::RefQualifierKind::RQ_RValue)
-            f_args.push_back(analyzer.GetRvalueType(this));
-        else
-            f_args.push_back(analyzer.GetLvalueType(this));
-        for (auto arg_it = func->param_begin(); arg_it != func->param_end(); ++arg_it)
-            f_args.push_back(analyzer.GetClangType(*from, (*arg_it)->getType()));
-        if (args != f_args)
+        auto functy = GetFunctionType(func, *from, analyzer);
+        if (!FunctionType::CanThunkFromFirstToSecond(entry.type, functy, this))
             continue;
-        auto fty = analyzer.GetFunctionType(analyzer.GetClangType(*from, func->getResultType()), f_args, func->isVariadic(), GetCallingConvention(func));
-        return Wide::Memory::MakeUnique<VTableThunk>(from->GetObject(func), offset, fty);
+        return { functy, from->GetObject(func) };
     }
-    return nullptr;
+    return {};
 }
 bool ClangType::IsEmpty() {
     return type->getAsCXXRecordDecl()->isEmpty();
