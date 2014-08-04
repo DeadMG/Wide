@@ -28,10 +28,7 @@ namespace Wide {
             std::vector<Type*> GetArguments() { return Args; }
             llvm::CallingConv::ID GetCallingConvention() { return convention; }
             std::string explain() override final;
-            // RHS is most derived type.
-            static bool CanThunkFromFirstToSecond(FunctionType* lhs, FunctionType* rhs, Type* context);
-            static std::function<llvm::Function*(llvm::Module*)> CreateThunk(std::function<llvm::Function*(llvm::Module*)> from, FunctionType* source, FunctionType* dest, Type* context);
-            static std::function<void(llvm::Module*)> CreateThunk(std::function<llvm::Function*(llvm::Module*)> from, std::function<llvm::Function*(llvm::Module*)> to, FunctionType* source, FunctionType* dest, Type* context);
+            static bool IsCompatible(FunctionType* first, FunctionType* second);
         };
     }
 }

@@ -194,18 +194,3 @@ std::shared_ptr<Expression> Semantic::InterpretExpression(clang::Expr* expr, Cla
 clang::CallingConv Semantic::GetCallingConvention(clang::FunctionDecl* decl) {
     return decl->getType()->getAs<clang::FunctionProtoType>()->getCallConv();
 }
-FunctionType* Semantic::GetFunctionType(clang::FunctionDecl* decl, ClangTU& from, Analyzer& a) {
-    auto ret = a.GetClangType(from, decl->getResultType());
-    std::vector<Type*> args;
-    if (auto meth = llvm::dyn_cast<clang::CXXMethodDecl>(decl)) {
-        auto refqual = meth->getType()->getAs<clang::FunctionProtoType>()->getExtProtoInfo().RefQualifier;
-        if (refqual == clang::RefQualifierKind::RQ_RValue)
-            args.push_back(a.GetRvalueType(a.GetClangType(from, from.GetASTContext().getRecordType(meth->getParent()))));
-        else
-            args.push_back(a.GetLvalueType(a.GetClangType(from, from.GetASTContext().getRecordType(meth->getParent()))));
-    }
-    for (auto param = decl->param_begin(); param != decl->param_end(); ++param) {
-        args.push_back(a.GetClangType(from, (*param)->getType()));
-    }
-    return a.GetFunctionType(ret, args, decl->isVariadic(), GetCallingConvention(decl));
-}

@@ -34,9 +34,6 @@
 using namespace Wide;
 using namespace Semantic;
 
-void Function::AddExportName(std::function<llvm::Function*(llvm::Module*)> target, FunctionType* src) {
-    trampoline.push_back(FunctionType::CreateThunk(target, [this](llvm::Module* mod) { return EmitCode(mod); }, src, GetSignature()));
-}
 Function::LocalVariable::LocalVariable(std::shared_ptr<Expression> ex, Function* self, Lexer::Range where, Lexer::Range init_where)
 : init_expr(std::move(ex)), self(self), where(where), init_where(init_where)
 {
@@ -656,13 +653,12 @@ Function::Function(std::vector<Type*> args, const Parse::FunctionBase* astfun, A
                         if (!tuanddecl.second) throw NotAType(expr->GetType()->Decay(), attr.initializer->location);
                         auto tu = tuanddecl.first;
                         auto decl = tuanddecl.second;
-                        auto self = [this](llvm::Module* mod) { return EmitCode(mod); };
                         if (auto des = llvm::dyn_cast<clang::CXXDestructorDecl>(decl))
-                            trampoline.push_back(FunctionType::CreateThunk(tu->GetObject(des, clang::CXXDtorType::Dtor_Complete), self, GetFunctionType(des, *tu, analyzer), GetSignature()));
+                            trampoline.push_back(tu->GetObject(des, clang::CXXDtorType::Dtor_Complete));
                         else if (auto con = llvm::dyn_cast<clang::CXXConstructorDecl>(decl))
-                            trampoline.push_back(FunctionType::CreateThunk(tu->GetObject(con, clang::CXXCtorType::Ctor_Complete), self, GetFunctionType(des, *tu, analyzer), GetSignature()));
+                            trampoline.push_back(tu->GetObject(con, clang::CXXCtorType::Ctor_Complete));
                         else
-                            trampoline.push_back(FunctionType::CreateThunk(tu->GetObject(decl), self, GetFunctionType(des, *tu, analyzer), GetSignature()));
+                            trampoline.push_back(tu->GetObject(decl));
                     }
                 }
             }
@@ -959,8 +955,150 @@ llvm::Function* Function::EmitCode(llvm::Module* module) {
     if (llvm::verifyFunction(*llvmfunc, llvm::VerifierFailureAction::PrintMessageAction))
         throw std::runtime_error("Internal Compiler Error: An LLVM function failed verification.");
 
-    for (auto exportnam : trampoline)
-        exportnam(module);
+    // Keep track - we may be asked to export to the same name multiple times.
+    std::unordered_set<llvm::Function*> names;
+    for (auto exportnam : trampoline) {
+        auto exportname = exportnam(module);
+        if (names.find(exportname) != names.end())
+            continue;
+        names.insert(exportname);
+        // oh yay.
+        // Gotta handle ABI mismatch.
+
+        // Check Clang's uses of this function - if it bitcasts them all we're good.
+
+        auto ourret = llvmfunc->getFunctionType()->getReturnType();
+        auto int8ty = llvm::IntegerType::getInt8Ty(module->getContext());
+        auto int1ty = llvm::IntegerType::getInt1Ty(module->getContext());
+        llvm::Type* trampret;
+        llvm::Function* tramp = nullptr;
+        std::vector<llvm::Value*> args;
+        if (tramp = exportname) {
+            // Someone- almost guaranteed Clang- already generated a function with this name.
+            // First handle bitcast WTFery
+            // Sometimes Clang generates functions with totally the wrong type, then bitcasts them on every use.
+            // So just change the function decl to match the bitcast type.
+            auto name = std::string(exportname->getName());
+            llvm::Type* CastType = nullptr;
+            tramp->removeDeadConstantUsers();
+            for (auto use_it = tramp->use_begin(); use_it != tramp->use_end(); ++use_it) {
+                auto use = *use_it;
+                if (auto cast = llvm::dyn_cast<llvm::CastInst>(use)) {
+                    if (CastType) {
+                        if (CastType != cast->getDestTy()) {
+                            throw std::runtime_error("Found a function of the same name in the module but it had the wrong LLVM type.");
+                        }
+                    } else {
+                        if (auto ptrty = llvm::dyn_cast<llvm::PointerType>(cast->getDestTy()))
+                            if (auto functy = llvm::dyn_cast<llvm::FunctionType>(ptrty->getElementType()))
+                                CastType = cast->getDestTy();
+                    }
+                }
+                if (auto constant = llvm::dyn_cast<llvm::ConstantExpr>(use)) {
+                    if (CastType) {
+                        if (CastType != constant->getType()) {
+                            throw std::runtime_error("Found a function of the same name in the module but it had the wrong LLVM type.");
+                        }
+                    } else {
+                        if (auto ptrty = llvm::dyn_cast<llvm::PointerType>(constant->getType()))
+                            if (auto functy = llvm::dyn_cast<llvm::FunctionType>(ptrty->getElementType()))
+                                CastType = constant->getType();
+                    }
+                }
+            }
+            // There are no uses that are invalid.
+            if (CastType || std::distance(tramp->use_begin(), tramp->use_end()) == 0) {
+                if (!CastType) CastType = llvmfunc->getType();
+                tramp->setName("__fucking__clang__type_hacks");
+                auto badf = tramp;
+                auto t = llvm::dyn_cast<llvm::FunctionType>(llvm::dyn_cast<llvm::PointerType>(CastType)->getElementType());
+                tramp = llvm::Function::Create(t, llvm::GlobalValue::LinkageTypes::ExternalLinkage, name, module);
+                // Update all Clang's uses
+                for (auto use_it = badf->use_begin(); use_it != badf->use_end(); ++use_it) {
+                    auto use = *use_it;
+                    if (auto cast = llvm::dyn_cast<llvm::CastInst>(use))
+                        cast->replaceAllUsesWith(tramp);
+                    if (auto constant = llvm::dyn_cast<llvm::ConstantExpr>(use))
+                        constant->replaceAllUsesWith(tramp);
+                }
+                badf->removeFromParent();
+            }
+
+            trampret = tramp->getFunctionType()->getReturnType();
+            llvm::BasicBlock* bb = llvm::BasicBlock::Create(module->getContext(), "entry", tramp);
+            llvm::IRBuilder<> irbuilder(&tramp->getEntryBlock());
+            if (tramp->getFunctionType() != llvmfunc->getFunctionType()) {
+                // Clang's idea of the LLVM representation of this function disagrees with our own.
+                // First, check the arguments.
+                auto fty = tramp->getFunctionType();
+                auto ty = llvmfunc->getFunctionType();
+                auto arg_begin = tramp->getArgumentList().begin();
+                for (std::size_t i = 0; i < ty->getNumParams(); ++i) {
+                    // If this particular type is a match, then go for it.
+                    if (ty->getParamType(i) == arg_begin->getType()) {
+                        args.push_back(arg_begin);
+                        ++arg_begin;
+                        continue;
+                    }
+                    
+                    // If it's i1 and we expected i8, just zext it.
+                    if (ty->getParamType(i) == int8ty && arg_begin->getType() == int1ty) {
+                        args.push_back(irbuilder.CreateZExt(arg_begin, int8ty));
+                        ++arg_begin;
+                        continue;
+                    }
+
+                    // Clang elides 0-sized arguments by value.
+                    // Check our actual semantic argument for this, not the LLVM type, as Clang codegens them to have a size of 1.
+                    if (Args[i]->IsEmpty()) {
+                        args.push_back(llvm::Constant::getNullValue(ty->getParamType(i)));
+                        continue;
+                    }
+
+                    throw std::runtime_error("Internal Compiler Error: An LLVM function failed verification.");
+                }
+                if (ourret != trampret) {
+                    if (ourret != llvm::IntegerType::getInt8Ty(module->getContext()) || trampret != llvm::IntegerType::getInt1Ty(module->getContext()))
+                        throw std::runtime_error("Internal Compiler Error: An LLVM function failed verification.");
+                }
+            } else {
+                // This ever happens?
+                for (auto it = tramp->arg_begin(); it != tramp->arg_end(); ++it)
+                    args.push_back(&*it);
+            }
+        } else {
+            trampret = ourret;
+            auto fty = llvmfunc->getFunctionType();
+            if (exportname->getName() == "main")
+                fty = llvm::FunctionType::get(llvm::IntegerType::getInt32Ty(module->getContext()), false);
+            tramp = llvm::Function::Create(fty, llvm::GlobalValue::ExternalLinkage, exportname->getName(), module);
+            llvm::BasicBlock* bb = llvm::BasicBlock::Create(module->getContext(), "entry", tramp);
+            llvm::IRBuilder<> irbuilder(&tramp->getEntryBlock());
+            for (auto it = tramp->arg_begin(); it != tramp->arg_end(); ++it)
+                args.push_back(&*it);
+        }
+
+        llvm::IRBuilder<> irbuilder(&tramp->getEntryBlock());
+
+        // May be ABI mismatch between ourselves and llvmfunc.
+        // Consider that we may have to truncate the result, and we may have to add ret 0 for main.
+        if (ReturnType == analyzer.GetVoidType()) {
+            if (exportname->getName() == "main") {
+                irbuilder.CreateCall(llvmfunc, args);
+                irbuilder.CreateRet(irbuilder.getInt32(0));
+            } else {
+                irbuilder.CreateCall(llvmfunc, args);
+                irbuilder.CreateRetVoid();
+            }
+        } else {
+            auto call = (llvm::Value*)irbuilder.CreateCall(llvmfunc, args);
+            if (ourret == int8ty && trampret == int1ty)
+                call = irbuilder.CreateTrunc(call, int1ty);
+            irbuilder.CreateRet(call);
+        }
+        if (llvm::verifyFunction(*tramp, llvm::VerifierFailureAction::PrintMessageAction))
+            throw std::runtime_error("Internal Compiler Error: An LLVM function failed verification.");
+    }
     return llvmfunc;
 }
 

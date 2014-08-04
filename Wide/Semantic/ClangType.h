@@ -32,7 +32,7 @@ namespace Wide {
             std::vector<std::pair<Type*, unsigned>> GetBasesAndOffsets() override final;
             Type* GetVirtualPointerType() override final;
             VTableLayout ComputePrimaryVTableLayout() override final;
-            std::pair<FunctionType*, std::function<llvm::Function*(llvm::Module*)>> VirtualEntryFor(VTableLayout::VirtualFunctionEntry) override final;
+            std::shared_ptr<Expression> VirtualEntryFor(VTableLayout::VirtualFunctionEntry, unsigned offset) override final;
             std::vector<member> GetConstructionMembers() override final;
         public:
             // Used for type.destructor access.

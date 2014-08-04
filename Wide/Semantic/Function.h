@@ -28,12 +28,13 @@ namespace Wide {
             Type* context;
             std::string source_name;
             std::string name;
-            std::vector<std::function<void(llvm::Module*)>> trampoline;
+            std::vector<std::function<llvm::Function*(llvm::Module*)>> trampoline;
             std::vector<std::shared_ptr<Expression>> parameters;
 
             // You can only be exported as constructors of one, or nonstatic member of one, class.
             Wide::Util::optional<Semantic::ConstructorContext*> ConstructorContext;
             Wide::Util::optional<Type*> NonstaticMemberContext;
+            std::unordered_set<Type*> ClangContexts;
             enum class State {
                 NotYetAnalyzed,
                 AnalyzeInProgress,
@@ -222,11 +223,12 @@ namespace Wide {
             FunctionType* GetSignature();
             std::shared_ptr<Expression> LookupLocal(Parse::Name name);
             Type* GetConstantContext() override final;
+            void AddExportName(std::function<llvm::Function*(llvm::Module*)> mod) { trampoline.push_back(mod); }
             std::string explain() override final;
             std::string GetSourceName() { return source_name; }
             ~Function();
-            std::shared_ptr<Expression> GetStaticSelf();
-            void AddExportName(std::function<llvm::Function*(llvm::Module*)> mod, FunctionType* dest);
+
+            const std::unordered_set<Type*>& GetClangContexts() { return ClangContexts; }
         };
     }
 }

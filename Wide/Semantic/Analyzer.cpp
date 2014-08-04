@@ -36,7 +36,6 @@
 #include <iostream>
 #include <unordered_set>
 #include <fstream>
-#include <boost/uuid/uuid_io.hpp>
 
 #pragma warning(push, 0)
 #include <clang/AST/Type.h>
@@ -466,7 +465,7 @@ Analyzer::Analyzer(const Options::Clang& opts, const Parse::Module* GlobalModule
                 if (!vtable.layout.empty()) {
                     expr = ty->GetVirtualPointer(std::move(expr));
                     for (unsigned int i = 0; i < vtable.layout.size(); ++i) {
-                        if (auto spec = boost::get<Type::VTableLayout::SpecialMember>(&vtable.layout[i].func)) {
+                        if (auto spec = boost::get<Type::VTableLayout::SpecialMember>(&vtable.layout[i].function)) {
                             if (*spec == Type::VTableLayout::SpecialMember::RTTIPointer) {
                                 rtti_offset = i - vtable.offset;
                                 break;
@@ -626,7 +625,7 @@ Analyzer::Analyzer(const Options::Clang& opts, const Parse::Module* GlobalModule
                 throw std::runtime_error("dynamic_casted to void* a non-polymorphic type.");
             }
             for (unsigned int i = 0; i < layout.layout.size(); ++i) {
-                if (auto spec = boost::get<Type::VTableLayout::SpecialMember>(&layout.layout[i].func)) {
+                if (auto spec = boost::get<Type::VTableLayout::SpecialMember>(&layout.layout[i].function)) {
                     if (*spec == Type::VTableLayout::SpecialMember::OffsetToTop) {
                         auto offset = i - layout.offset;
                         auto vtable = baseptrty->GetPointee()->GetVirtualPointer(object);
@@ -857,10 +856,6 @@ FunctionType* Analyzer::GetFunctionType(Type* ret, const std::vector<Type*>& t, 
     return FunctionTypes[ret][t][variadic][conv].get();
 }
 
-Function* Analyzer::GetWideFunction(const Parse::FunctionBase* p, Type* context, std::string name) {
-    assert(!IsMultiTyped(p));
-    return GetWideFunction(p, context, GetFunctionParameters(p, context), name);
-}
 Function* Analyzer::GetWideFunction(const Parse::FunctionBase* p, Type* context, const std::vector<Type*>& types, std::string name) {
     assert(!context->IsReference());
     if (WideFunctions.find(p) == WideFunctions.end()
@@ -1138,8 +1133,11 @@ Parse::Access Semantic::GetAccessSpecifier(Type* from, Type* to) {
     if (source->IsDerivedFrom(target) == Type::InheritanceRelationship::UnambiguouslyDerived)
         return Parse::Access::Protected;
     if (auto func = dynamic_cast<Function*>(from)) {
-        if (func->GetNonstaticMemberContext()) {
-            return std::max(GetAccessSpecifier(func->GetContext(), target), GetAccessSpecifier(func->GetNonstaticMemberContext(), target));
+        if (auto clangty = dynamic_cast<ClangType*>(to)) {
+            Parse::Access max = GetAccessSpecifier(func->GetContext(), target);
+            for (auto clangcontext : func->GetClangContexts())
+                max = std::max(max, GetAccessSpecifier(clangcontext, target));
+            return max;
         }
     }
     if (auto context = source->GetContext())
@@ -1349,7 +1347,4 @@ std::string Semantic::GetNameAsString(Parse::Name name) {
     if (auto string = boost::get<std::string>(&name))
         return *string;
     return GetOperatorName(boost::get<Parse::OperatorName>(name));
-}
-std::string Analyzer::GetUniqueFunctionName() {
-    return boost::uuids::to_string(uuid_generator());
 }

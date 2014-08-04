@@ -12,7 +12,6 @@
 #include <vector>
 #include <typeindex>
 #include <Wide/Semantic/ABI.h>
-#include <boost/uuid/random_generator.hpp>
 
 #pragma warning(push, 0)
 #include <clang/AST/Type.h>
@@ -81,7 +80,7 @@ namespace Wide {
         class Analyzer {
             std::unique_ptr<ClangTU> AggregateTU;
             Module* global;
-            boost::uuids::random_generator uuid_generator;
+
             std::unordered_map<std::unordered_set<OverloadResolvable*>, std::unordered_map<Type*, std::unique_ptr<OverloadSet>>, SetTypeHasher> callable_overload_sets;
             std::unordered_map<std::string, ClangTU> headers;
             std::unordered_map<clang::QualType, Type*, ClangTypeHasher> GeneratedClangTypes;
@@ -150,7 +149,6 @@ namespace Wide {
             FunctionType* GetFunctionType(Type* ret, const std::vector<Type*>& t, bool variadic, clang::CallingConv);
             Module* GetWideModule(const Parse::Module* m, Module* higher);
             Function* GetWideFunction(const Parse::FunctionBase* p, Type* context, const std::vector<Type*>&, std::string name);
-            Function* GetWideFunction(const Parse::FunctionBase* p, Type* context, std::string name);
             LvalueType* GetLvalueType(Type* t);
             Type* GetRvalueType(Type* t);
             ConstructorType* GetConstructorType(Type* t);
@@ -195,8 +193,6 @@ namespace Wide {
             std::vector<Type*> GetFunctionParameters(const Parse::FunctionBase* p, Type* context);
             bool HasImplicitThis(const Parse::FunctionBase* p, Type* context);
             Type* GetNonstaticContext(const Parse::FunctionBase* p, Type* context);
-
-            std::string GetUniqueFunctionName();
         };
         bool IsRvalueType(Type* t);
         bool IsLvalueType(Type* t);
