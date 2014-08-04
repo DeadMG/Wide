@@ -11,6 +11,7 @@
 #include <Wide/Semantic/OverloadSet.h>
 #include <Wide/Util/DebugUtilities.h>
 #include <Wide/Semantic/Expression.h>
+#include <Wide/Semantic/FunctionType.h>
 #include <Wide/Semantic/IntegralType.h>
 #include <sstream>
 
@@ -47,10 +48,6 @@ bool Type::HasVirtualDestructor() {
 
 bool Type::IsAbstract() {
     return false;
-}
-
-std::unordered_map<std::string, std::unordered_set<std::shared_ptr<Expression>>> Type::GetVirtualFunctions() {
-    return {};
 }
 
 bool Type::IsFinal() { 
@@ -135,6 +132,17 @@ bool Type::IsFirstASecond(Type* source, Type* target, Type* context) {
 
 Type* Type::GetConstantContext() {
     return nullptr;
+}
+unsigned Type::GetOffsetToBase(Type* base) {
+    assert(IsDerivedFrom(base) == InheritanceRelationship::UnambiguouslyDerived);
+    for (auto pair : GetBasesAndOffsets()) {
+        if (pair.first == base)
+            return pair.second;
+        if (pair.first->IsDerivedFrom(base) == InheritanceRelationship::UnambiguouslyDerived)
+            return pair.second + pair.first->GetOffsetToBase(base);
+    }
+    assert(false && "WTF.");
+    return 0;
 }
 
 bool Type::IsEmpty() {
@@ -744,14 +752,11 @@ OverloadSet* TupleInitializable::CreateConstructorOverloadSet(Parse::Access acce
 
 std::shared_ptr<Expression> Type::CreateVTable(std::vector<std::pair<Type*, unsigned>> path) {
     std::vector<std::shared_ptr<Expression>> entries;
-    unsigned offset_total = 0;
-    for (auto base : path)
-        offset_total += base.second;
     for (auto func : GetVtableLayout().layout) {
-        if (auto mem = boost::get<VTableLayout::SpecialMember>(&func.function)) {
+        if (auto mem = boost::get<VTableLayout::SpecialMember>(&func.func)) {
             if (*mem == VTableLayout::SpecialMember::OffsetToTop) {
                 auto size = analyzer.GetDataLayout().getPointerSizeInBits();
-                entries.push_back(Wide::Memory::MakeUnique<Integer>(llvm::APInt(size, (uint64_t)-offset_total, true), analyzer));
+                entries.push_back(Wide::Memory::MakeUnique<Integer>(llvm::APInt(size, (uint64_t)-path.front().first->GetOffsetToBase(this), true), analyzer));
                 continue;
             }
             if (*mem == VTableLayout::SpecialMember::RTTIPointer) {
@@ -771,24 +776,32 @@ std::shared_ptr<Expression> Type::CreateVTable(std::vector<std::pair<Type*, unsi
             }
         }
         bool found = false;
-        auto local_copy = offset_total;
+        struct Thunk : Expression {
+            Thunk(std::function<llvm::Function*(llvm::Module*)> f, Type* dest_type)
+                : func(f), dest_type(dest_type) {}
+            std::function<llvm::Function*(llvm::Module*)> func;
+            Type* dest_type;
+            Type* GetType() override final { return dest_type; }
+            llvm::Value* ComputeValue(CodegenContext& con) override final {
+                return func(con);
+            }
+        };
         for (auto more_derived : path) {
-            auto expr = more_derived.first->VirtualEntryFor(func, local_copy);
-            if (expr) {
-                entries.push_back(std::move(expr));
+            auto expr = more_derived.first->VirtualEntryFor(func);
+            if (expr.first) {
+                entries.push_back(std::make_shared<Thunk>(FunctionType::CreateThunk(expr.second, expr.first, func.type), func.type));
                 found = true;
                 break;
             }
-            local_copy -= more_derived.second;
         }
-        if (func.abstract && !found) {
+        if (boost::get<VTableLayout::VirtualFunction>(&func.func) && boost::get<VTableLayout::VirtualFunction>(func.func).abstract) {
             // It's possible we didn't find a more derived impl because we're abstract
             // and we're creating our own constructor vtable here.
             // Just use a null pointer instead of the Itanium ABI function for now.
-            entries.push_back(nullptr);
-        }
-        // Should have found base class impl!
-        assert(found);
+            if (!found)
+                entries.push_back(nullptr);
+        } else
+            assert(found);
     }
     struct VTable : Expression {
         VTable(Type* self, std::vector<std::shared_ptr<Expression>> funcs, unsigned offset)

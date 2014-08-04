@@ -31,11 +31,23 @@
 using namespace Wide;
 using namespace Semantic;
 
-void AddAllBases(std::unordered_set<Type*>& all_bases, Type* root) {
-    all_bases.insert(root);
-    for (auto base : root->GetBases()) {
-        all_bases.insert(base);
-        AddAllBases(all_bases, base);
+namespace {
+    bool HasAttribute(const Parse::DynamicFunction* func, std::string arg) {
+        for (auto attr : func->attributes) {
+            if (auto ident = dynamic_cast<const Parse::Identifier*>(attr.initialized)) {
+                if (auto string = boost::get<std::string>(&ident->val)) {
+                    if (*string == arg)
+                        return true;
+                }
+            }
+        }
+        return false;
+    }
+    void AddAllBases(std::unordered_set<Type*>& all_bases, Type* root) {
+        for (auto base : root->GetBases()) {
+            all_bases.insert(base);
+            AddAllBases(all_bases, base);
+        }
     }
 }
 UserDefinedType::BaseData::BaseData(UserDefinedType* self) {
@@ -54,76 +66,58 @@ UserDefinedType::BaseData::BaseData(UserDefinedType* self) {
 
 UserDefinedType::VTableData::VTableData(UserDefinedType* self) {
     // If we have a primary base, our primary vtable starts with theirs.
+    auto&& analyzer = self->analyzer;
     if (self->GetPrimaryBase()) funcs = self->GetPrimaryBase()->GetPrimaryVTable();
+    is_abstract = false;
+    std::unordered_map<const Parse::Function*, unsigned> primary_dynamic_functions;
+    std::unordered_map<const Parse::Function*, Parse::Name> dynamic_functions;
+    bool dynamic_destructor = self->type->destructor_decl ? self->type->destructor_decl->dynamic : false;
     std::unordered_set<Type*> all_bases;
-    for (auto&& base : self->GetBases())
-        AddAllBases(all_bases, base);
-
-    std::unordered_map<const Parse::DynamicFunction*, unsigned> primary_dynamic_functions;
-    std::unordered_map<const Parse::DynamicFunction*, VTableLayout::VirtualFunctionEntry> dynamic_functions;
-    unsigned index = 0;
-    for (auto overset : self->type->functions) {
-        for (auto pair : overset.second) {
-            for (auto func : pair.second) {
-                // The function has to be not explicitly marked dynamic *and* not dynamic by any base class.
-                if (IsMultiTyped(func)) continue;
-                if (func->deleted) continue;
-
-                std::vector<Type*> arguments = self->analyzer.GetFunctionParameters(func, self);
-
-                for (auto base : all_bases) {
-                    auto base_layout = base->GetPrimaryVTable();
-                    for (unsigned i = 0; i < base_layout.layout.size(); ++i) {
-                        if (auto vfunc = boost::get<VTableLayout::VirtualFunction>(&base_layout.layout[i].function)) {
-                            if (!(vfunc->name == overset.first)) continue;
-                            // The this arguments will be different, but they should have the same category of lvalue/rvalue.
-                            if (arguments.size() != vfunc->args.size()) continue;
-                            for (std::size_t argi = 1; argi < arguments.size(); ++argi) {
-                                if (vfunc->args[argi] != arguments[argi])
-                                    continue;
-                            }
-                            // Score- it's inherited.
-                            if (base == self->GetPrimaryBase())
-                                primary_dynamic_functions[func] = i;
-                            else {
-                                auto vfunc = VTableLayout::VirtualFunction{ overset.first, arguments, self->analyzer.GetWideFunction(func, self, arguments, GetNameAsString(overset.first))->GetSignature()->GetReturnType() };
-                                dynamic_functions[func] = { func->abstract, vfunc };
-                            }
-                        }
-                    }
+    AddAllBases(all_bases, self);
+    for (auto base : all_bases) {
+        unsigned i = 0;
+        for (auto func : base->GetPrimaryVTable().layout) {
+            if (auto vfunc = boost::get<VTableLayout::VirtualFunction>(&func.func)) {
+                if (vfunc->final) continue;
+                if (self->type->functions.find(vfunc->name) == self->type->functions.end()) continue;
+                std::unordered_set<const Parse::Function*> matches;
+                auto set = self->type->functions.at(vfunc->name);
+                for (auto access : set)
+                    for (auto function : access.second)                        
+                        if (FunctionType::CanThunkFromFirstToSecond(func.type, analyzer.GetWideFunction(function, self, GetNameAsString(vfunc->name))->GetSignature(), self))
+                            matches.insert(function);
+                if (matches.size() > 1) throw std::runtime_error("Too many valid matches for dynamic function override.");
+                if (matches.empty()) {
+                    if (vfunc->abstract)
+                        is_abstract = true;
+                    continue;
                 }
-                if (func->dynamic){
-                    auto vfunc = VTableLayout::VirtualFunction{ overset.first, arguments, self->analyzer.GetWideFunction(func, self, arguments, GetNameAsString(overset.first))->GetSignature()->GetReturnType() };
-                    dynamic_functions[func] = { func->abstract, vfunc };                    
-                }
+                if (base == self->GetPrimaryBase())
+                    primary_dynamic_functions[*matches.begin()] = i++;
+                else
+                    dynamic_functions[*matches.begin()] = vfunc->name;
+            }
+            if (auto specmem = boost::get<VTableLayout::SpecialMember>(&func.func)) {
+                if (*specmem == VTableLayout::SpecialMember::Destructor)
+                    dynamic_destructor = true;
             }
         }
     }
-    if (self->type->destructor_decl) {
-        for (auto base : all_bases) {
-            for (unsigned i = 0; i < base->GetPrimaryVTable().layout.size(); ++i) {
-                if (auto mem = boost::get<VTableLayout::SpecialMember>(&base->GetPrimaryVTable().layout[i].function)) {
-                    if (*mem == VTableLayout::SpecialMember::Destructor) {
-                        if (base == self->GetPrimaryBase())
-                            primary_dynamic_functions[self->type->destructor_decl] = i;
-                        else
-                            dynamic_functions[self->type->destructor_decl] = { false, VTableLayout::SpecialMember::Destructor };
-                    }
-                }
-            }
-        }
-        if (self->type->destructor_decl->dynamic)
-            dynamic_functions[self->type->destructor_decl] = { false, VTableLayout::SpecialMember::Destructor };
-    }
+    // Add every function declared as dynamic or abstract.
+    for (auto set : self->type->functions)
+        for (auto access : set.second)
+            for (auto func : access.second)
+                if (func->dynamic || func->abstract)
+                    dynamic_functions[func] = set.first;
     // If we don't have a primary base but we do have dynamic functions, first add offset and RTTI
     if (!self->GetPrimaryBase() && !dynamic_functions.empty()) {
         funcs.offset = 2;
         VTableLayout::VirtualFunctionEntry offset;
         VTableLayout::VirtualFunctionEntry rtti;
-        offset.abstract = false;
-        rtti.abstract = false;
-        offset.function = VTableLayout::SpecialMember::OffsetToTop;
-        rtti.function = VTableLayout::SpecialMember::RTTIPointer;
+        offset.func = VTableLayout::SpecialMember::OffsetToTop;
+        offset.type = nullptr;
+        rtti.func = VTableLayout::SpecialMember::RTTIPointer;
+        rtti.type = nullptr;
         funcs.layout.insert(funcs.layout.begin(), rtti);
         funcs.layout.insert(funcs.layout.begin(), offset);
     }
@@ -131,16 +125,24 @@ UserDefinedType::VTableData::VTableData(UserDefinedType* self) {
     // For every dynamic function that is not inherited from the primary base, add a slot.
     // Else, set the slot to the primary base's slot.
     for (auto func : dynamic_functions) {
+        auto fty = analyzer.GetWideFunction(func.first, self, analyzer.GetFunctionParameters(func.first, self), GetNameAsString(func.second))->GetSignature();
+        VTableLayout::VirtualFunction vfunc = {
+            func.second,
+            HasAttribute(func.first, "final"),
+            func.first->abstract
+        };
         if (primary_dynamic_functions.find(func.first) == primary_dynamic_functions.end()) {
             VTableIndices[func.first] = funcs.layout.size() - funcs.offset;
-            funcs.layout.push_back(func.second);
-            // If we are a dynamic destructor then need to add deleting destructor too.
-            if (auto specmem = boost::get<VTableLayout::SpecialMember>(&func.second.function))
-                if (*specmem == VTableLayout::SpecialMember::Destructor)
-                    funcs.layout.push_back(VTableLayout::VirtualFunctionEntry{ false, VTableLayout::SpecialMember::ItaniumABIDeletingDestructor });
+            funcs.layout.push_back({ vfunc, fty });
             continue;
         }
         VTableIndices[func.first] = primary_dynamic_functions[func.first] - funcs.offset;
+        funcs.layout[primary_dynamic_functions[func.first]] = { vfunc, fty };
+    }
+    // If I have a dynamic destructor, that  isn't primary, then add it.
+    if (dynamic_destructor && (!self->GetPrimaryBase() || !self->GetPrimaryBase()->HasVirtualDestructor())) {
+        funcs.layout.push_back({ VTableLayout::SpecialMember::Destructor, nullptr });
+        funcs.layout.push_back({ VTableLayout::SpecialMember::ItaniumABIDeletingDestructor, nullptr });
     }
 }
 UserDefinedType::MemberData::MemberData(UserDefinedType* self) {
@@ -224,7 +226,7 @@ std::shared_ptr<Expression> UserDefinedType::AccessMember(std::shared_ptr<Expres
     // Any of our bases have this member?
     Type* BaseType = nullptr;
     OverloadSet* BaseOverloadSet = nullptr;
-    for (auto base : GetBaseData().bases) {
+    for (auto base : GetBases()) {
         auto baseobj = Type::AccessBase(self, base);
         if (auto member = base->AccessMember(std::move(baseobj), name, c)) {
             // If there's nothing there, we win.
@@ -358,7 +360,7 @@ Wide::Util::optional<clang::QualType> UserDefinedType::GetClangType(ClangTU& TU)
         recdecl->addDecl(des);
         auto widedes = analyzer.GetWideFunction(type->destructor_decl, this, { analyzer.GetLvalueType(this) }, "~type");
         widedes->ComputeBody();
-        widedes->AddExportName(TU.GetObject(des, clang::CXXDtorType::Dtor_Complete));
+        widedes->AddExportName(TU.GetObject(des, clang::CXXDtorType::Dtor_Complete), widedes->GetSignature());
     }
     for (auto access : type->constructor_decls) {
         for (auto func : access.second) {
@@ -386,7 +388,7 @@ Wide::Util::optional<clang::QualType> UserDefinedType::GetClangType(ClangTU& TU)
             if (!func->deleted) {
                 auto mfunc = analyzer.GetWideFunction(func, this, types, "type");
                 mfunc->ComputeBody();
-                mfunc->AddExportName(TU.GetObject(con, clang::CXXCtorType::Ctor_Complete));
+                mfunc->AddExportName(TU.GetObject(con, clang::CXXCtorType::Ctor_Complete), mfunc->GetSignature());
             } else
                 con->setDeletedAsWritten(true);
         }
@@ -456,7 +458,7 @@ Wide::Util::optional<clang::QualType> UserDefinedType::GetClangType(ClangTU& TU)
                 else {
                     auto mfunc = analyzer.GetWideFunction(func, this, types, GetNameAsString(overset.first));
                     mfunc->ComputeBody();
-                    mfunc->AddExportName(TU.GetObject(meth));
+                    mfunc->AddExportName(TU.GetObject(meth), mfunc->GetSignature());
                 }
             }
         }
@@ -489,13 +491,14 @@ UserDefinedType::DefaultData::DefaultData(UserDefinedType* self) {
     AggregateCons.default_constructor = true;
     IsComplex = false;
 
-    if (self->type->destructor_decl && !self->type->destructor_decl->defaulted)
+    if (self->type->destructor_decl && (!self->type->destructor_decl->defaulted || self->type->destructor_decl->dynamic))
         IsComplex = true;
 
     for (auto conset : self->type->constructor_decls) {
         for (auto con : conset.second) {
             if (IsMultiTyped(con)) continue;
             auto params = self->analyzer.GetFunctionParameters(con, self);
+            if (params.size() > 2) continue; //???
             if (params.size() == 1) {
                 AggregateCons.default_constructor = false;
                 continue;
@@ -520,10 +523,10 @@ UserDefinedType::DefaultData::DefaultData(UserDefinedType* self) {
                 auto params = self->analyzer.GetFunctionParameters(op, self);
                 if (params.size() > 2) continue; //???
                 if (params[1] == self->analyzer.GetLvalueType(self)) {
-                    IsComplex = IsComplex || !op->defaulted;
+                    IsComplex = IsComplex || (!op->defaulted || op->dynamic);
                     AggregateOps.copy_operator = false;
                 } else if (params[1] == self->analyzer.GetRvalueType(self)) {
-                    IsComplex = IsComplex || !op->defaulted;
+                    IsComplex = IsComplex || (!op->defaulted || op->dynamic);
                     AggregateOps.move_operator = false;
                 }
             }
@@ -651,88 +654,34 @@ llvm::Function* UserDefinedType::CreateDestructorFunction(llvm::Module* module) 
     return desfunc->EmitCode(module);
 }
 
-std::shared_ptr<Expression> UserDefinedType::VirtualEntryFor(VTableLayout::VirtualFunctionEntry entry, unsigned offset) {
-    struct VTableThunk : Expression {
-        VTableThunk(Function* f, unsigned off)
-        : widefunc(f), offset(off) {}
-        Function* widefunc;
-        unsigned offset;
-        Type* GetType() override final {
-            return widefunc->GetSignature();
-        }
-        llvm::Value* ComputeValue(CodegenContext& con) override final {
-            widefunc->EmitCode(con);
-            if (offset == 0)
-                return widefunc->EmitCode(con);
-            auto this_index = (std::size_t)widefunc->GetSignature()->GetReturnType()->IsComplexType();
-            std::stringstream strstr;
-            strstr << "__" << this << offset;
-            auto thunk = llvm::Function::Create(llvm::dyn_cast<llvm::FunctionType>(widefunc->GetSignature()->GetLLVMType(con)->getElementType()), llvm::GlobalValue::LinkageTypes::InternalLinkage, strstr.str(), con.module);
-            llvm::BasicBlock* bb = llvm::BasicBlock::Create(con.module->getContext(), "entry", thunk);
-            llvm::IRBuilder<> irbuilder(bb);
-            auto self = std::next(thunk->arg_begin(), widefunc->GetSignature()->GetReturnType()->IsComplexType());
-            // Actually safe as LLVM interprets it as signed, even though it's technically unsigned (not sure WTF).
-            auto offset_self = irbuilder.CreateConstGEP1_32(irbuilder.CreatePointerCast(self, llvm::IntegerType::getInt8PtrTy(con.module->getContext())), -offset);
-            auto cast_self = irbuilder.CreatePointerCast(offset_self, std::next(widefunc->EmitCode(con)->arg_begin(), this_index)->getType());
-            std::vector<llvm::Value*> args;
-            for (std::size_t i = 0; i < thunk->arg_size(); ++i) {
-                if (i == this_index)
-                    args.push_back(cast_self);
-                else
-                    args.push_back(std::next(thunk->arg_begin(), i));
-            }
-            auto call = irbuilder.CreateCall(widefunc->EmitCode(con), args);
-            if (call->getType() == llvm::Type::getVoidTy(con.module->getContext()))
-                irbuilder.CreateRetVoid();
-            else
-                irbuilder.CreateRet(call);
-            return thunk;
-        }
-    };
-    if (auto special = boost::get<VTableLayout::SpecialMember>(&entry.function)) {
-        if (*special == VTableLayout::SpecialMember::Destructor)
-            return Wide::Memory::MakeUnique<VTableThunk>(analyzer.GetWideFunction(type->destructor_decl, this, { analyzer.GetLvalueType(this) }, "~type"), offset);
-        if (*special == VTableLayout::SpecialMember::ItaniumABIDeletingDestructor)
-            return Wide::Memory::MakeUnique<VTableThunk>(analyzer.GetWideFunction(type->destructor_decl, this, { analyzer.GetLvalueType(this) }, "~type"), offset);
+std::pair<FunctionType*, std::function<llvm::Function*(llvm::Module*)>> UserDefinedType::VirtualEntryFor(VTableLayout::VirtualFunctionEntry entry) {
+    if (auto special = boost::get<VTableLayout::SpecialMember>(&entry.func)) {
+        if (type->destructor_decl)
+            analyzer.GetWideFunction(type->destructor_decl, this, "~type")->ComputeBody();
+        return { analyzer.GetFunctionType(analyzer.GetVoidType(), { analyzer.GetLvalueType(this) }, false), [this](llvm::Module* mod) { return GetDestructorFunction(mod); } };
     }
-    auto vfunc = boost::get<VTableLayout::VirtualFunction>(entry.function);
+    auto vfunc = boost::get<VTableLayout::VirtualFunction>(entry.func);
     auto name = vfunc.name;
-    auto args = vfunc.args;
-    auto ret = vfunc.ret;
     if (type->functions.find(name) == type->functions.end()) {
         // Could have been inherited from our primary base, if we have one.
         if (GetPrimaryBase()) {
-            VTableLayout::VirtualFunctionEntry basentry;
-            basentry.abstract = false;
-            basentry.function = vfunc;
-            return GetPrimaryBase()->VirtualEntryFor(basentry, offset);
+            return GetPrimaryBase()->VirtualEntryFor(entry);
         }
-        return nullptr;
+        return {};
     }
-    // args includes this, which will have a different type here.
-    // Pretend that it really has our type.
-    if (IsLvalueType(args[0]))
-        args[0] = analyzer.GetLvalueType(this);
-    else
-        args[0] = analyzer.GetRvalueType(this);
-
     for (auto access : type->functions.at(name)) {
         for (auto func : access.second) {
             if (func->deleted) continue;
             if (IsMultiTyped(func)) continue;
-            
-            std::vector<Type*> f_args = analyzer.GetFunctionParameters(func, this);
-            if (args != f_args)
-                continue;
-            auto widefunc = analyzer.GetWideFunction(func, this, f_args, GetNameAsString(name));
-            widefunc->ComputeBody();
-            if (widefunc->GetSignature()->GetReturnType() != ret)
-                throw std::runtime_error("fuck");
 
-            return Wide::Memory::MakeUnique<VTableThunk>(widefunc, offset);
+            auto widefunc = analyzer.GetWideFunction(func, this, GetNameAsString(name));
+            if (!FunctionType::CanThunkFromFirstToSecond(entry.type, widefunc->GetSignature(), this))
+                continue;
+            widefunc->ComputeBody();
+            return { widefunc->GetSignature(), [widefunc](llvm::Module* module) { return widefunc->EmitCode(module); } };
         }
     }
-    return nullptr;
+    return {};
 }
 
 Type* UserDefinedType::GetVirtualPointerType() {

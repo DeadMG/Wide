@@ -205,8 +205,6 @@ namespace Wide {
             DynamicFunction(std::vector<Statement*> b, std::vector<FunctionArgument> args, Lexer::Range loc, std::vector<Attribute> attributes)
             : AttributeFunctionBase(std::move(b), loc, args, std::move(attributes)) {}
             bool dynamic = false;
-            bool override_ = true;
-            bool final_ = true;
         };
         struct Function : DynamicFunction {
             Function(std::vector<Statement*> b, Lexer::Range loc, std::vector<FunctionArgument> ar, Expression* explicit_ret, std::vector<Attribute> attributes)

@@ -28,7 +28,7 @@ namespace Wide {
             const Parse::Type* type;
             std::string source_name;
             Type* context;
-                                    
+            
             struct BaseData {
                 BaseData(UserDefinedType* self);
                 BaseData(BaseData&& other);
@@ -49,6 +49,8 @@ namespace Wide {
                 VTableLayout funcs;
                 // Relative to the first vptr, not the front of the vtable.
                 std::unordered_map<const Parse::DynamicFunction*, unsigned> VTableIndices;
+                bool is_abstract;
+                bool dynamic_destructor;
             };
             Wide::Util::optional<VTableData> Vtable;
             VTableData& GetVtableData() {
@@ -95,7 +97,7 @@ namespace Wide {
             Type* GetSelfAsType() override final { return this; }
             std::unordered_map<ClangTU*, clang::QualType> clangtypes;
             // Virtual function support functions.
-            std::shared_ptr<Expression> VirtualEntryFor(VTableLayout::VirtualFunctionEntry entry, unsigned offset) override final;
+            std::pair<FunctionType*, std::function<llvm::Function*(llvm::Module*)>> VirtualEntryFor(VTableLayout::VirtualFunctionEntry entry) override final;
             VTableLayout ComputePrimaryVTableLayout() override final;
             Type* GetVirtualPointerType() override final;
             std::vector<std::pair<Type*, unsigned>> GetBasesAndOffsets() override final;

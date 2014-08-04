@@ -157,6 +157,7 @@ namespace Wide {
             Lexer::Range where;
         };
         
+        class FunctionType;
         struct Type : public Node {
         public:
             enum class InheritanceRelationship {
@@ -174,12 +175,12 @@ namespace Wide {
                 };
                 struct VirtualFunction {
                     Parse::Name name;
-                    std::vector<Type*> args;
-                    Type* ret;
+                    bool final;
+                    bool abstract;
                 };
                 struct VirtualFunctionEntry {
-                    bool abstract;
-                    boost::variant<SpecialMember, VirtualFunction> function;
+                    boost::variant<SpecialMember, VirtualFunction> func;
+                    FunctionType* type;
                 };
                 unsigned offset;
                 std::vector<VirtualFunctionEntry> layout;
@@ -197,6 +198,7 @@ namespace Wide {
             std::shared_ptr<Expression> CreateVTable(std::vector<std::pair<Type*, unsigned>> path);
             std::shared_ptr<Expression> GetVTablePointer(std::vector<std::pair<Type*, unsigned>> path);
             static std::shared_ptr<Expression> SetVirtualPointers(std::shared_ptr<Expression> self, std::vector<std::pair<Type*, unsigned>> path);
+            virtual VTableLayout ComputePrimaryVTableLayout();
         protected:
             llvm::Function* DestructorFunction = nullptr;
             virtual llvm::Function* CreateDestructorFunction(llvm::Module* module);
@@ -204,7 +206,7 @@ namespace Wide {
             virtual OverloadSet* CreateADLOverloadSet(Parse::OperatorName name, Parse::Access access);
             virtual OverloadSet* CreateConstructorOverloadSet(Parse::Access access) = 0;
         public:
-            virtual std::shared_ptr<Expression> VirtualEntryFor(VTableLayout::VirtualFunctionEntry entry, unsigned offset) { assert(false); throw std::runtime_error("ICE"); }
+            virtual std::pair<FunctionType*, std::function<llvm::Function*(llvm::Module*)>> VirtualEntryFor(VTableLayout::VirtualFunctionEntry entry) { assert(false); throw std::runtime_error("ICE"); }
             Type(Analyzer& a) : analyzer(a) {}
 
             Analyzer& analyzer;
@@ -235,10 +237,9 @@ namespace Wide {
             virtual std::vector<Type*> GetBases();
             virtual Type* GetPrimaryBase();
             virtual std::unordered_map<unsigned, std::unordered_set<Type*>> GetEmptyLayout();
-            virtual std::unordered_map<std::string, std::unordered_set<std::shared_ptr<Expression>>> GetVirtualFunctions();
             virtual bool HasVirtualDestructor();
-            virtual VTableLayout ComputePrimaryVTableLayout();
             virtual std::vector<std::pair<Type*, unsigned>> GetBasesAndOffsets();
+
             // Do not ever call from public API, it is for derived types and implementation details only.
             virtual bool IsSourceATarget(Type* source, Type* target, Type* context) { return false; }
             virtual std::shared_ptr<Expression> AccessMember(std::shared_ptr<Expression> t, std::string name, Context c);
@@ -265,6 +266,7 @@ namespace Wide {
             std::shared_ptr<Expression> AccessMember(std::shared_ptr<Expression> t, Parse::Name name, Context c);
             std::shared_ptr<Expression> AccessStaticMember(Parse::Name name, Context c);
             bool InheritsFromAtOffsetZero(Type* other);
+            unsigned GetOffsetToBase(Type* base);
 
             static std::shared_ptr<Expression> BuildBooleanConversion(std::shared_ptr<Expression>, Context);
             static std::shared_ptr<Expression> AccessBase(std::shared_ptr<Expression> self, Type* other);
