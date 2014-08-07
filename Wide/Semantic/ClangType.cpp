@@ -628,3 +628,6 @@ std::shared_ptr<Expression> ClangType::AccessStaticMember(std::string name, Cont
 bool ClangType::IsFinal() {
     return !type->getAsCXXRecordDecl() || type->getAsCXXRecordDecl()->hasAttr<clang::FinalAttr>();
 }
+bool ClangType::HasVirtualDestructor() {
+    return type->getAsCXXRecordDecl()->getDestructor()->isVirtual();
+}

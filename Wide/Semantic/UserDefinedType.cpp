@@ -111,7 +111,7 @@ UserDefinedType::VTableData::VTableData(UserDefinedType* self) {
                 if (func->dynamic || func->abstract)
                     dynamic_functions[func] = set.first;
     // If we don't have a primary base but we do have dynamic functions, first add offset and RTTI
-    if (!self->GetPrimaryBase() && !dynamic_functions.empty()) {
+    if (!self->GetPrimaryBase() && (!dynamic_functions.empty() || dynamic_destructor)) {
         funcs.offset = 2;
         VTableLayout::VirtualFunctionEntry offset;
         VTableLayout::VirtualFunctionEntry rtti;
@@ -140,11 +140,17 @@ UserDefinedType::VTableData::VTableData(UserDefinedType* self) {
         VTableIndices[func.first] = primary_dynamic_functions[func.first] - funcs.offset;
         funcs.layout[primary_dynamic_functions[func.first]] = { vfunc, fty };
     }
-    // If I have a dynamic destructor, that  isn't primary, then add it.
+    // If I have a dynamic destructor, that isn't primary, then add it.
     if (dynamic_destructor && (!self->GetPrimaryBase() || !self->GetPrimaryBase()->HasVirtualDestructor())) {
-        funcs.layout.push_back({ VTableLayout::SpecialMember::Destructor, nullptr });
-        funcs.layout.push_back({ VTableLayout::SpecialMember::ItaniumABIDeletingDestructor, nullptr });
+        auto functy = analyzer.GetFunctionType(analyzer.GetVoidType(), { analyzer.GetLvalueType(self) }, false);
+        funcs.layout.push_back({ VTableLayout::SpecialMember::Destructor, functy });
+        funcs.layout.push_back({ VTableLayout::SpecialMember::ItaniumABIDeletingDestructor, functy });
+        if (self->type->destructor_decl)
+            VTableIndices[self->type->destructor_decl] = (funcs.layout.size() - funcs.offset) - 2;
     }
+}
+bool UserDefinedType::HasVirtualDestructor(){
+    return GetVtableData().dynamic_destructor;
 }
 UserDefinedType::MemberData::MemberData(UserDefinedType* self) {
     for (auto&& var : self->type->variables) {
@@ -359,11 +365,11 @@ Wide::Util::optional<clang::QualType> UserDefinedType::GetClangType(ClangTU& TU)
             false,
             false
             );
+        if (HasVirtualDestructor())
+            des->setVirtualAsWritten(true);
         recdecl->addDecl(des);
         auto widedes = analyzer.GetWideFunction(type->destructor_decl, this, { analyzer.GetLvalueType(this) }, "~type");
         widedes->ComputeBody();
-        if (HasVirtualDestructor())
-            des->setVirtualAsWritten(true);
         widedes->AddExportName(TU.GetObject(des, clang::CXXDtorType::Dtor_Complete), GetFunctionType(des, TU, analyzer));
     }
     for (auto access : type->constructor_decls) {
@@ -588,14 +594,14 @@ OverloadSet* UserDefinedType::CreateOperatorOverloadSet(Parse::OperatorName name
 }
 
 std::function<void(CodegenContext&)> UserDefinedType::BuildDestructorCall(std::shared_ptr<Expression> self, Context c, bool devirtualize) {
+    assert(self->GetType()->IsReference(this));
     if (type->destructor_decl) {
-        assert(self->GetType()->IsReference(this));
         std::unordered_set<OverloadResolvable*> resolvables;
         resolvables.insert(analyzer.GetCallableForFunction(type->destructor_decl, this, "~type"));
         auto desset = analyzer.GetOverloadSet(resolvables, self->GetType());
         auto callable = dynamic_cast<Wide::Semantic::Function*>(desset->Resolve({ self->GetType() }, c.from));
         auto call = callable->Call({ self }, { this, c.where });
-        if (type->destructor_decl->dynamic && !devirtualize) 
+        if (HasVirtualDestructor() && !devirtualize) 
             return [=](CodegenContext& c) {
                 call->GetValue(c);
             };
@@ -603,7 +609,7 @@ std::function<void(CodegenContext&)> UserDefinedType::BuildDestructorCall(std::s
             c->CreateCall(callable->EmitCode(c.module), self->GetValue(c));
         };
     }
-    return AggregateType::BuildDestructorCall(self, c, true);
+    return AggregateType::BuildDestructorCall(self, c, true);    
 }
 
 // Gotta override these to respect our user-defined functions

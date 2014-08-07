@@ -34,6 +34,7 @@ namespace Wide {
             VTableLayout ComputePrimaryVTableLayout() override final;
             std::pair<FunctionType*, std::function<llvm::Function*(llvm::Module*)>> VirtualEntryFor(VTableLayout::VirtualFunctionEntry) override final;
             std::vector<member> GetConstructionMembers() override final;
+            bool HasVirtualDestructor() override final;
         public:
             // Used for type.destructor access.
             std::function<llvm::Constant*(llvm::Module*)> GetRTTI() override final;

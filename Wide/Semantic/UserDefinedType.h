@@ -106,6 +106,7 @@ namespace Wide {
             Wide::Util::optional<unsigned> SizeOverride() override final;
             Wide::Util::optional<unsigned> AlignOverride() override final; 
             llvm::Function* CreateDestructorFunction(llvm::Module* module) override final;
+            bool HasVirtualDestructor() override final;
         public:
             std::function<llvm::Constant*(llvm::Module*)> GetRTTI() override final;
             UserDefinedType(const Parse::Type* t, Analyzer& a, Type* context, std::string);
