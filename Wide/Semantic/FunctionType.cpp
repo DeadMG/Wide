@@ -316,6 +316,26 @@ std::shared_ptr<Expression> ClangFunctionType::BuildCall(std::shared_ptr<Express
                 slot = clang::CodeGen::ReturnValueSlot(Ret->GetValue(con), false);
             }
             auto result = codegenfunc.EmitCall(clangfuncty->GetCGFunctionInfo(con), llvmfunc, slot, list, nullptr, &call_or_invoke);
+            // We need to invoke if we're not destructing, and we have something to destroy OR a catch block we may need to jump to.
+            if (!con.destructing && (con.HasDestructors() || con.EHHandler)) {
+                llvm::BasicBlock* continueblock = llvm::BasicBlock::Create(con, "continue", con->GetInsertBlock()->getParent());
+                // If we have a try/catch block, let the catch block figure out what to do.
+                // Else, kill everything in the scope and resume.
+                if (auto invokeinst = llvm::dyn_cast<llvm::InvokeInst>(call_or_invoke)) {
+                    invokeinst->setUnwindDest(con.CreateLandingpadForEH());
+                } else {
+                    auto callinst = llvm::cast<llvm::CallInst>(call_or_invoke);
+                    std::vector<llvm::Value*> args;
+                    for (unsigned i = 0; i < callinst->getNumArgOperands(); ++i)
+                        args.push_back(callinst->getArgOperand(i));
+                    invokeinst = con->CreateInvoke(llvmfunc, continueblock, con.CreateLandingpadForEH(), args);
+                    invokeinst->setAttributes(callinst->getAttributes());
+                    call_or_invoke = invokeinst;
+                    callinst->eraseFromParent();
+                }
+                con->SetInsertPoint(continueblock);
+            }
+
             if (!clangfuncty->GetReturnType()->IsTriviallyDestructible())
                 con.AddDestructor(Destructor);
             if (clangfuncty->GetReturnType() == a.GetVoidType())

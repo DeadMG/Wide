@@ -552,7 +552,8 @@ std::shared_ptr<Statement> Function::AnalyzeStatement(const Parse::Statement* s)
             auto con = dynamic_cast<ConstructorType*>(type->GetType());
             if (!con) throw std::runtime_error("Catch parameter type was not a type.");
             auto catch_type = con->GetConstructedType();
-            assert(IsLvalueType(catch_type) || dynamic_cast<PointerType*>(catch_type));
+            if (!IsLvalueType(catch_type) && !dynamic_cast<PointerType*>(catch_type))
+                throw std::runtime_error("Attempted to catch by non-lvalue and nonpointer.");
             auto target_type = IsLvalueType(catch_type)
                 ? catch_type->Decay()
                 : dynamic_cast<PointerType*>(catch_type)->GetPointee();

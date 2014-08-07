@@ -517,7 +517,7 @@ bool ClangType::IsEmpty() {
     return type->getAsCXXRecordDecl()->isEmpty();
 }
 Type* ClangType::GetConstantContext() {
-    if (type->getAsCXXRecordDecl()->isEmpty())
+    if (type->getAsCXXRecordDecl()->isEmpty() && type->getAsCXXRecordDecl()->hasTrivialDefaultConstructor())
         return this;
     return nullptr;
 }
