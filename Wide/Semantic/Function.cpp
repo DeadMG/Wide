@@ -414,7 +414,7 @@ void Function::ThrowStatement::GenerateCode(CodegenContext& con) {
         destructor = llvm::Constant::getNullValue(con.GetInt8PtrTy());
     } else
         destructor = con->CreatePointerCast(ty->GetDestructorFunction(con), con.GetInt8PtrTy());
-    llvm::Value* args[] = { con->CreatePointerCast(value, con.GetInt8PtrTy()), RTTI(con), destructor };
+    llvm::Value* args[] = { con->CreatePointerCast(value, con.GetInt8PtrTy()), con->CreatePointerCast(RTTI(con), con.GetInt8PtrTy()), destructor };
     // Do we have an existing handler to go to? If we do, then first land, then branch directly to it.
     // Else, kill everything and GTFO this function and let the EH routines worry about it.
     if (con.HasDestructors() || con.EHHandler)
@@ -1063,7 +1063,7 @@ void Function::TryStatement::GenerateCode(CodegenContext& con) {
     std::vector<llvm::Constant*> rttis;
     for (auto&& catch_ : catches) {
         if (catch_.t)
-            rttis.push_back(catch_.RTTI(con));
+            rttis.push_back(llvm::cast<llvm::Constant>(con->CreatePointerCast(catch_.RTTI(con), con.GetInt8PtrTy())));
     }
     try_con.EHHandler = CodegenContext::EHScope{ &con, catch_block, phi, rttis};
     try_con->SetInsertPoint(source_block);
@@ -1104,7 +1104,7 @@ void Function::TryStatement::GenerateCode(CodegenContext& con) {
         }
         auto catch_target = llvm::BasicBlock::Create(con, "catch_target", catch_block_con->GetInsertBlock()->getParent());
         auto catch_continue = llvm::BasicBlock::Create(con, "catch_continue", catch_block_con->GetInsertBlock()->getParent());
-        auto target_selector = catch_block_con->CreateCall(for_, { catch_.RTTI(con) });
+        auto target_selector = catch_block_con->CreateCall(for_, { con->CreatePointerCast(catch_.RTTI(con), con.GetInt8PtrTy()) });
         auto result = catch_block_con->CreateICmpEQ(selector, target_selector);
         catch_block_con->CreateCondBr(result, catch_target, catch_continue);
         catch_block_con->SetInsertPoint(catch_target);

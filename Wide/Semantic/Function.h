@@ -179,7 +179,8 @@ namespace Wide {
                 struct Catch {
                     Catch(Type* t, std::vector<std::shared_ptr<Statement>> stmts, std::shared_ptr<CatchParameter> catch_param)
                         : t(t), stmts(std::move(stmts)), catch_param(std::move(catch_param)) {
-                        RTTI = t->GetRTTI();
+                        if (t)
+                            RTTI = t->GetRTTI();
                     }
                     Catch(Catch&& other)
                     : t(other.t)
