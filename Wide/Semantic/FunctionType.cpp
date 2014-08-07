@@ -215,7 +215,7 @@ std::function<void(llvm::Module*)> WideFunctionType::CreateThunk(std::function<l
                     llvm::Value* ComputeValue(CodegenContext& con) override final {
                         auto src = std::next(con->GetInsertBlock()->getParent()->arg_begin(), complexthis);
                         auto cast = con->CreateBitCast(src, con.GetInt8PtrTy());
-                        auto adjusted = con->CreateGEP(cast, llvm::ConstantInt::get(llvm::IntegerType::getInt32Ty(con), offset, true));
+                        auto adjusted = con->CreateGEP(cast, llvm::ConstantInt::get(llvm::IntegerType::getInt32Ty(con), -offset, true));
                         return con->CreateBitCast(adjusted, desttype->GetLLVMType(con));
                     }
                 };
@@ -304,7 +304,11 @@ std::shared_ptr<Expression> ClangFunctionType::BuildCall(std::shared_ptr<Express
                 auto val = arg->GetValue(con); 
                 if (arg->GetType() == a.GetBooleanType())
                     val = con->CreateTrunc(val, llvm::IntegerType::getInt1Ty(con));
-                list.add(clang::CodeGen::RValue::get(val), *arg->GetType()->GetClangType(*clangfuncty->from));
+                auto clangty = *arg->GetType()->GetClangType(*clangfuncty->from);
+                if (arg->GetType()->AlwaysKeepInMemory())
+                    list.add(clang::CodeGen::RValue::getAggregate(val), clangty);
+                else
+                    list.add(clang::CodeGen::RValue::get(val), clangty);
             }
             llvm::Instruction* call_or_invoke;
             clang::CodeGen::ReturnValueSlot slot;

@@ -431,10 +431,7 @@ OverloadSet* AggregateType::GetMoveConstructor() {
     return MaybeCreateSet(MoveConstructor, 
         [this](Type* ty, unsigned i) { return ty->IsMoveConstructible(GetAccessSpecifier(this, ty)); },
         [this] {
-            return MakeResolvable([this](std::vector<std::shared_ptr<Expression>> args, Context c) -> std::shared_ptr < Expression > {
-                if (GetLayout().Offsets.size() == 0)
-                    return BuildChain(std::move(args[0]), std::move(args[1]));
-            
+            return MakeResolvable([this](std::vector<std::shared_ptr<Expression>> args, Context c) -> std::shared_ptr < Expression > {            
                 if (!MoveConstructorInitializers) {
                     auto rhs = CreatePrimGlobal(analyzer.GetLvalueType(this), [this](CodegenContext& con) {
                         return ++MoveConstructorFunction->arg_begin();
@@ -454,10 +451,7 @@ OverloadSet* AggregateType::GetCopyConstructor() {
     return MaybeCreateSet(CopyConstructor,
         [this](Type* ty, unsigned i) { return ty->IsCopyConstructible(GetAccessSpecifier(this, ty)); },
         [this] {
-            return MakeResolvable([this](std::vector<std::shared_ptr<Expression>> args, Context c) -> std::shared_ptr < Expression > {
-                if (GetLayout().Offsets.size() == 0)
-                    return BuildChain(std::move(args[0]), std::move(args[1]));
-        
+            return MakeResolvable([this](std::vector<std::shared_ptr<Expression>> args, Context c) -> std::shared_ptr < Expression > {        
                 if (!CopyConstructorInitializers) {
                     auto rhs = CreatePrimGlobal(analyzer.GetLvalueType(this), [this](CodegenContext& con) {
                         return ++CopyConstructorFunction->arg_begin();
@@ -581,9 +575,6 @@ OverloadSet* AggregateType::GetDefaultConstructor() {
     // If we shouldn't generate, give back an empty set and set the cache for future use.
     auto create = [this] {
         return MakeResolvable([this](std::vector<std::shared_ptr<Expression>> args, Context c) -> std::shared_ptr < Expression > {
-            if (GetLayout().Offsets.size() == 0)
-                return std::move(args[0]);
-
             if (!DefaultConstructorInitializers)
                 DefaultConstructorInitializers = GetConstructorInitializers(GetConstructorSelf(DefaultConstructorFunction), c, [this](unsigned i) -> std::vector < std::shared_ptr<Expression> > {
                 if (i < GetBases().size())
