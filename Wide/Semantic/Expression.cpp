@@ -71,7 +71,7 @@ Type* RvalueCast::GetType() {
 llvm::Value* RvalueCast::ComputeValue(CodegenContext& con) {
     if (IsLvalueType(expr->GetType()))
         return expr->GetValue(con);
-    if (expr->GetType()->IsComplexType())
+    if (expr->GetType()->AlwaysKeepInMemory())
         return expr->GetValue(con);
     assert(!IsRvalueType(expr->GetType()));
     auto tempalloc = con.CreateAlloca(expr->GetType());
@@ -214,7 +214,7 @@ llvm::Value* Expression::GetValue(CodegenContext& con) {
     if (val) return *val; 
     val = ComputeValue(con);
     auto selfty = GetType()->GetLLVMType(con);
-    if (GetType()->IsComplexType()) {
+    if (GetType()->AlwaysKeepInMemory()) {
         auto ptrty = llvm::dyn_cast<llvm::PointerType>((*val)->getType());
         assert(ptrty);
         assert(ptrty->getElementType() == selfty);
@@ -387,4 +387,7 @@ Type* DestructorCall::GetType()  {
 llvm::Value* DestructorCall::ComputeValue(CodegenContext& con) {
     destructor(con);
     return nullptr;
+}
+llvm::Instruction* CodegenContext::GetAllocaInsertPoint() {
+    return alloca_builder->GetInsertPoint();
 }

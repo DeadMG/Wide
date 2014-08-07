@@ -37,6 +37,7 @@
 #include <clang/AST/ASTConsumer.h>
 #include <clang/Basic/AllDiagnostics.h>
 #include <llvm/Support/raw_ostream.h>
+#include <CodeGen/TargetInfo.h>
 #pragma warning(pop)
 
 using namespace Wide;
@@ -464,4 +465,14 @@ unsigned int ClangTU::GetVirtualFunctionOffset(clang::CXXMethodDecl* meth, llvm:
 }
 llvm::Constant* ClangTU::GetItaniumRTTI(clang::QualType rec, llvm::Module* m) {
     return impl->GetCodegenModule(m).GetAddrOfRTTIDescriptor(rec);
+}
+llvm::PointerType* ClangTU::GetFunctionPointerType(const clang::CodeGen::CGFunctionInfo& info, llvm::Module* module) {
+    return llvm::PointerType::get(impl->GetCodegenModule(module).getTypes().GetFunctionType(info), 0);
+}
+const clang::CodeGen::CGFunctionInfo& ClangTU::GetABIForFunction(const clang::FunctionProtoType* proto, clang::CXXRecordDecl* decl, llvm::Module* module) {
+    if (decl) return impl->GetCodegenModule(module).getTypes().arrangeCXXMethodType(decl, proto);
+    return impl->GetCodegenModule(module).getTypes().arrangeFreeFunctionType(GetASTContext().getCanonicalType(GetASTContext().getFunctionType(proto->getResultType(), proto->getArgTypes(), proto->getExtProtoInfo())).getAs<clang::FunctionProtoType>());
+}
+clang::CodeGen::CodeGenModule& ClangTU::GetCodegenModule(llvm::Module* module) {
+    return impl->GetCodegenModule(module);
 }

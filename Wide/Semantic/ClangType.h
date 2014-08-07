@@ -36,7 +36,7 @@ namespace Wide {
             std::vector<member> GetConstructionMembers() override final;
         public:
             // Used for type.destructor access.
-            llvm::Constant* GetRTTI(llvm::Module* module) override final;
+            std::function<llvm::Constant*(llvm::Module*)> GetRTTI() override final;
             OverloadSet* GetDestructorOverloadSet();
             std::shared_ptr<Expression> GetVirtualPointer(std::shared_ptr<Expression>) override final;
             ClangType(ClangTU* src, clang::QualType t, Analyzer& a);

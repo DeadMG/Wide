@@ -64,8 +64,9 @@ std::shared_ptr<Expression> LambdaType::BuildLambdaFromCaptures(std::vector<std:
         llvm::Value* ComputeValue(CodegenContext& con) override final {
             for (auto&& init : inits)
                 init->GetValue(con);
-            if (self->GetType()->IsComplexType())
-                con.AddDestructor(destructor);
+            if (self->GetType()->AlwaysKeepInMemory())
+                if (self->GetType()->IsTriviallyDestructible())
+                    con.AddDestructor(destructor);
             return self->GetValue(con);
         }
     };

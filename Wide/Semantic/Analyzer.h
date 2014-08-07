@@ -11,7 +11,6 @@
 #include <unordered_map>
 #include <vector>
 #include <typeindex>
-#include <Wide/Semantic/ABI.h>
 #include <boost/uuid/random_generator.hpp>
 
 #pragma warning(push, 0)
@@ -32,6 +31,7 @@ namespace clang {
     class DeclContext;
     class ClassTemplateDecl;
     class NamedDecl;
+    class FunctionProtoType;
 }
 
 namespace Wide {
@@ -58,7 +58,7 @@ namespace Wide {
         class ConstructorType;
         class LvalueType;
         class RvalueType;
-        class FunctionType;
+        class WideFunctionType;
         class ClangTemplateClass;
         class OverloadSet;       
         class UserDefinedType;
@@ -71,6 +71,7 @@ namespace Wide {
         struct Result;
         class TupleType;
         class VoidType;
+        class ClangFunctionType;
         class Bool;
         class StringType;
         class ArrayType;
@@ -87,7 +88,7 @@ namespace Wide {
             std::unordered_map<clang::QualType, Type*, ClangTypeHasher> GeneratedClangTypes;
             std::unordered_map<clang::QualType, std::unique_ptr<ClangType>, ClangTypeHasher> ClangTypes;
             std::unordered_map<clang::DeclContext*, std::unique_ptr<ClangNamespace>> ClangNamespaces;
-            std::unordered_map<Type*, std::unordered_map<std::vector<Type*>, std::unordered_map<bool, std::map<llvm::CallingConv::ID, std::unique_ptr<FunctionType>>>, VectorTypeHasher>> FunctionTypes;
+            std::unordered_map<Type*, std::unordered_map<std::vector<Type*>, std::map<llvm::CallingConv::ID, std::unordered_map<bool, std::unique_ptr<WideFunctionType>>>, VectorTypeHasher>> FunctionTypes;
             std::unordered_map<const Parse::FunctionBase*, std::unordered_map<std::vector<Type*>, std::unique_ptr<Function>, VectorTypeHasher>> WideFunctions;
             std::unordered_map<const Parse::TemplateType*, std::unordered_map<std::vector<Type*>, std::unique_ptr<TemplateType>, VectorTypeHasher>> WideTemplateInstantiations;
             std::unordered_map<Type*, std::unique_ptr<LvalueType>> LvalueTypes;
@@ -109,6 +110,8 @@ namespace Wide {
             std::unordered_map<Type*, std::unordered_map<unsigned, std::unique_ptr<ArrayType>>> ArrayTypes;
             std::unordered_map<Type*, std::unordered_map<Type*, std::unique_ptr<MemberDataPointer>>> MemberDataPointers;
             std::unordered_map<Type*, std::unordered_map<FunctionType*, std::unique_ptr<MemberFunctionPointer>>> MemberFunctionPointers;
+            std::unordered_map<const clang::FunctionProtoType*, std::unordered_map<clang::QualType, std::unordered_map<ClangTU*, std::unique_ptr<ClangFunctionType>>, ClangTypeHasher>> ClangMemberFunctionTypes;
+            std::unordered_map<const clang::FunctionProtoType*, std::unordered_map<ClangTU*, std::unique_ptr<ClangFunctionType>>> ClangFunctionTypes;
 
             const Options::Clang* clangopts;
 
@@ -122,12 +125,9 @@ namespace Wide {
 
             llvm::DataLayout layout;
             std::unordered_map<const Parse::Expression*, std::shared_ptr<Expression>> ExpressionCache;
-            ABI& abi;
         public:
             auto GetFunctions() -> const decltype(WideFunctions)& { return WideFunctions; }
-
-            ABI& GetABI() { return abi; }
-
+            
             std::function<void(Lexer::Range where, Type* t)> QuickInfo;
             std::function<void(Lexer::Range where)> ParameterHighlight;
 
@@ -145,9 +145,12 @@ namespace Wide {
             // Not to return a ClangType instance.
             Type* GetClangType(ClangTU& from, clang::QualType t);
             ClangNamespace* GetClangNamespace(ClangTU& from, clang::DeclContext* dc);
-            FunctionType* GetFunctionType(Type* ret, const std::vector<Type*>& t, bool variadic);
-            FunctionType* GetFunctionType(Type* ret, const std::vector<Type*>& t, bool variadic, llvm::CallingConv::ID);
-            FunctionType* GetFunctionType(Type* ret, const std::vector<Type*>& t, bool variadic, clang::CallingConv);
+            WideFunctionType* GetFunctionType(Type* ret, const std::vector<Type*>& t, bool variadic);
+            WideFunctionType* GetFunctionType(Type* ret, const std::vector<Type*>& t, bool variadic, llvm::CallingConv::ID);
+            WideFunctionType* GetFunctionType(Type* ret, const std::vector<Type*>& t, bool variadic, clang::CallingConv);
+            ClangFunctionType* GetFunctionType(const clang::FunctionProtoType*, clang::QualType, ClangTU&);
+            ClangFunctionType* GetFunctionType(const clang::FunctionProtoType*, ClangTU&);
+            ClangFunctionType* GetFunctionType(const clang::FunctionProtoType*, Wide::Util::optional<clang::QualType>, ClangTU&);
             Module* GetWideModule(const Parse::Module* m, Module* higher);
             Function* GetWideFunction(const Parse::FunctionBase* p, Type* context, const std::vector<Type*>&, std::string name);
             Function* GetWideFunction(const Parse::FunctionBase* p, Type* context, std::string name);
@@ -183,7 +186,7 @@ namespace Wide {
             std::shared_ptr<Expression> AnalyzeCachedExpression(Type* lookup, const Parse::Expression* e);
             std::shared_ptr<Expression> AnalyzeExpression(Type* lookup, const Parse::Expression* e);
 
-            Analyzer(const Options::Clang&, const Parse::Module*, ABI& abi);
+            Analyzer(const Options::Clang&, const Parse::Module*);
 
             ClangTU* LoadCPPHeader(std::string file, Lexer::Range where);
             ClangTU* AggregateCPPHeader(std::string file, Lexer::Range where);

@@ -16,7 +16,7 @@ namespace Wide {
         struct TryCatch;
     }
     namespace Semantic {
-        class FunctionType;
+        class WideFunctionType;
         class UserDefinedType;
         class Function : public MetaType, public Callable {
             llvm::Function* llvmfunc = nullptr;
@@ -151,6 +151,7 @@ namespace Wide {
                 struct ExceptionAllocateMemory;
                 Type* ty;
                 std::shared_ptr<Expression> exception;
+                std::function<llvm::Constant*(llvm::Module*)> RTTI;
                 std::shared_ptr<ExceptionAllocateMemory> except_memory;
                 ThrowStatement(std::shared_ptr<Expression> expr, Context c);
                 void GenerateCode(CodegenContext& con);
@@ -177,17 +178,22 @@ namespace Wide {
                 };
                 struct Catch {
                     Catch(Type* t, std::vector<std::shared_ptr<Statement>> stmts, std::shared_ptr<CatchParameter> catch_param)
-                    : t(t), stmts(std::move(stmts)), catch_param(std::move(catch_param)) {}
+                        : t(t), stmts(std::move(stmts)), catch_param(std::move(catch_param)) {
+                        RTTI = t->GetRTTI();
+                    }
                     Catch(Catch&& other)
                     : t(other.t)
                     , stmts(std::move(other.stmts))
-                    , catch_param(std::move(other.catch_param)) {}
+                    , catch_param(std::move(other.catch_param))
+                    , RTTI(std::move(other.RTTI)) {}
                     Catch& operator=(Catch&& other) {
                         t = other.t;
                         stmts = std::move(other.stmts);
                         catch_param = std::move(other.catch_param);
+                        RTTI = std::move(other.RTTI);
                     }
                     Type* t; // Null for catch-all
+                    std::function<llvm::Constant*(llvm::Module*)> RTTI;
                     std::vector<std::shared_ptr<Statement>> stmts;
                     std::shared_ptr<CatchParameter> catch_param;
                 };
@@ -219,7 +225,7 @@ namespace Wide {
             Type* GetContext() override final { return context; }
             Type* GetNonstaticMemberContext() { if (NonstaticMemberContext) return *NonstaticMemberContext; return nullptr; }
 
-            FunctionType* GetSignature();
+            WideFunctionType* GetSignature();
             std::shared_ptr<Expression> LookupLocal(Parse::Name name);
             Type* GetConstantContext() override final;
             std::string explain() override final;

@@ -481,10 +481,10 @@ std::pair<FunctionType*, std::function<llvm::Function*(llvm::Module*)>> ClangTyp
     if (auto mem = boost::get<VTableLayout::SpecialMember>(&entry.func)) {
         auto conv = GetCallingConvention(type->getAsCXXRecordDecl()->getDestructor());
         if (*mem == VTableLayout::SpecialMember::Destructor) {
-            return{ analyzer.GetFunctionType(analyzer.GetVoidType(), { analyzer.GetLvalueType(this) }, false, conv), from->GetObject(type->getAsCXXRecordDecl()->getDestructor(), clang::CXXDtorType::Dtor_Complete) };
+            return{ GetFunctionType(type->getAsCXXRecordDecl()->getDestructor(), *from, analyzer), from->GetObject(type->getAsCXXRecordDecl()->getDestructor(), clang::CXXDtorType::Dtor_Complete) };
         }
         if (*mem == VTableLayout::SpecialMember::ItaniumABIDeletingDestructor) {
-            return{ analyzer.GetFunctionType(analyzer.GetVoidType(), { analyzer.GetLvalueType(this) }, false, conv), from->GetObject(type->getAsCXXRecordDecl()->getDestructor(), clang::CXXDtorType::Dtor_Deleting) };
+            return{ GetFunctionType(type->getAsCXXRecordDecl()->getDestructor(), *from, analyzer), from->GetObject(type->getAsCXXRecordDecl()->getDestructor(), clang::CXXDtorType::Dtor_Deleting) };
         }
         return {};
     }
@@ -507,7 +507,7 @@ std::pair<FunctionType*, std::function<llvm::Function*(llvm::Module*)>> ClangTyp
         if (!is_match())
             continue;
         auto functy = GetFunctionType(func, *from, analyzer);
-        if (!FunctionType::CanThunkFromFirstToSecond(entry.type, functy, this))
+        if (!FunctionType::CanThunkFromFirstToSecond(entry.type, functy, this, true))
             continue;
         return { functy, from->GetObject(func) };
     }
@@ -576,8 +576,8 @@ OverloadSet* ClangType::GetDestructorOverloadSet() {
     std::unordered_set<clang::NamedDecl*> decls = { des };
     return analyzer.GetOverloadSet(decls, from, nullptr);
 }
-llvm::Constant* ClangType::GetRTTI(llvm::Module* module) {
-    return from->GetItaniumRTTI(type, module);
+std::function<llvm::Constant*(llvm::Module*)> ClangType::GetRTTI() {
+    return [this](llvm::Module* module) { return from->GetItaniumRTTI(type, module); };
 }
 bool ClangType::IsTriviallyDestructible() {
     return !type->getAsCXXRecordDecl() || type->getAsCXXRecordDecl()->hasTrivialDestructor();

@@ -156,9 +156,20 @@ int main(int argc, char** argv)
             auto f = overset->Resolve({}, c.from);
             auto func = dynamic_cast<Wide::Semantic::Function*>(f);
             func->ComputeBody();
-            auto llvmfunc = llvm::Function::Create(llvm::FunctionType::get(llvm::IntegerType::get(con, 32), {}, false), llvm::GlobalValue::LinkageTypes::ExternalLinkage, "main", mod.get());
-            func->AddExportName([llvmfunc](llvm::Module* mod) { return llvmfunc; });
             a.GenerateCode(mod.get());
+            // Create main trampoline.
+            auto llvmfunc = llvm::Function::Create(llvm::FunctionType::get(llvm::IntegerType::get(con, 32), {}, false), llvm::GlobalValue::LinkageTypes::ExternalLinkage, "main", mod.get());
+            llvm::BasicBlock* entry = llvm::BasicBlock::Create(llvmfunc->getContext(), "entry", llvmfunc);
+            llvm::IRBuilder<> builder(entry);
+            auto call = builder.CreateCall(llvmfunc);
+            if (call->getType() == llvm::Type::getVoidTy(con))
+                builder.CreateRet(llvm::ConstantInt::get(llvm::Type::getInt32Ty(con), (uint64_t)0, true));
+            else if (call->getType() == llvm::Type::getInt64Ty(con))
+                builder.CreateRet(builder.CreateTrunc(call, llvm::Type::getInt32Ty(con)));
+            else {
+                assert(call->getType() == llvm::Type::getInt32Ty(con));
+                builder.CreateRet(call);
+            }
             if (llvm::verifyModule(*mod, llvm::VerifierFailureAction::PrintMessageAction))
                 throw std::runtime_error("Internal compiler error: An LLVM module failed verification.");
             Wide::Driver::PrintUnusedFunctionsWarning(files, a);

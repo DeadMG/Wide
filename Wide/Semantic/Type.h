@@ -111,6 +111,7 @@ namespace Wide {
             llvm::Function* GetCXARethrow();
             llvm::BasicBlock* CreateLandingpadForEH();
             llvm::PointerType* GetInt8PtrTy();
+            llvm::Instruction* GetAllocaInsertPoint();
 
             llvm::AllocaInst* CreateAlloca(Type* t);
             llvm::Value* CreateStructGEP(llvm::Value* v, unsigned num);
@@ -215,7 +216,7 @@ namespace Wide {
             virtual std::size_t alignment() = 0;
             virtual std::string explain() = 0;
             virtual llvm::Type* GetLLVMType(llvm::Module* module) = 0;
-            virtual llvm::Constant* GetRTTI(llvm::Module* module);
+            virtual std::function<llvm::Constant*(llvm::Module*)> GetRTTI();
 
             virtual bool IsFinal();
             virtual bool IsAbstract();
@@ -223,7 +224,7 @@ namespace Wide {
             virtual bool IsReference();
             virtual Type* Decay();
             virtual Type* GetContext();
-            virtual bool IsComplexType();
+            virtual bool AlwaysKeepInMemory();
             virtual bool IsTriviallyDestructible();
             virtual bool IsTriviallyCopyConstructible();
             virtual Wide::Util::optional<clang::QualType> GetClangType(ClangTU& TU);

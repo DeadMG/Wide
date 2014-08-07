@@ -70,7 +70,7 @@ Type* Type::GetContext() {
     return analyzer.GetGlobalModule();
 }
 
-bool Type::IsComplexType() {
+bool Type::AlwaysKeepInMemory() {
     return !IsTriviallyDestructible() || !IsTriviallyCopyConstructible();
 }
 
@@ -312,7 +312,7 @@ struct ValueConstruction : Expression {
         return self;
     }
     llvm::Value* ComputeValue(CodegenContext& con) override final {
-        if (!self->Decay()->IsComplexType()) {
+        if (!self->AlwaysKeepInMemory()) {
             if (auto implicitstore = dynamic_cast<ImplicitStoreExpr*>(InplaceConstruction.get())) {
                 return implicitstore->val->GetValue(con);
             }
@@ -343,7 +343,7 @@ struct ValueConstruction : Expression {
             }
         }
         InplaceConstruction->GetValue(con);
-        if (self->IsComplexType()) {
+        if (self->AlwaysKeepInMemory()) {
             if (!self->IsTriviallyDestructible())
                 con.AddDestructor(destructor);
             return temporary->GetValue(con);
@@ -421,7 +421,7 @@ Type::InheritanceRelationship Type::IsDerivedFrom(Type* base) {
         if (subresult == InheritanceRelationship::UnambiguouslyDerived) {
             if (result == InheritanceRelationship::NotDerived)
                 result = subresult;
-            if (result == InheritanceRelationship::UnambiguouslyDerived)
+            else if (result == InheritanceRelationship::UnambiguouslyDerived)
                 result = InheritanceRelationship::AmbiguouslyDerived;
         }
     }
@@ -752,20 +752,26 @@ OverloadSet* TupleInitializable::CreateConstructorOverloadSet(Parse::Access acce
 
 std::shared_ptr<Expression> Type::CreateVTable(std::vector<std::pair<Type*, unsigned>> path) {
     std::vector<std::shared_ptr<Expression>> entries;
+    unsigned offset_total = 0;
+    for (auto base : path)
+        offset_total += base.second;
     for (auto func : GetVtableLayout().layout) {
         if (auto mem = boost::get<VTableLayout::SpecialMember>(&func.func)) {
             if (*mem == VTableLayout::SpecialMember::OffsetToTop) {
                 auto size = analyzer.GetDataLayout().getPointerSizeInBits();
-                entries.push_back(Wide::Memory::MakeUnique<Integer>(llvm::APInt(size, (uint64_t)-path.front().first->GetOffsetToBase(this), true), analyzer));
+                if (path.front().first != this)
+                    entries.push_back(Wide::Memory::MakeUnique<Integer>(llvm::APInt(size, (uint64_t)-offset_total, true), analyzer));
+                else
+                    entries.push_back(Wide::Memory::MakeUnique<Integer>(llvm::APInt(size, (uint64_t)0, true), analyzer));
                 continue;
             }
             if (*mem == VTableLayout::SpecialMember::RTTIPointer) {
                 struct RTTIExpr : Expression {
-                    RTTIExpr(Type* ty)
-                    : ty(ty) {}
+                    RTTIExpr(Type* ty) : ty(ty) { rtti = ty->GetRTTI(); }
                     Type* ty;
+                    std::function<llvm::Constant*(llvm::Module*)> rtti;
                     llvm::Value* ComputeValue(CodegenContext& con) override final {
-                        return con->CreateBitCast(ty->GetRTTI(con), con.GetInt8PtrTy());
+                        return con->CreateBitCast(rtti(con), con.GetInt8PtrTy());
                     }
                     Type* GetType() override final {
                         return ty->analyzer.GetPointerType(ty->analyzer.GetIntegralType(8, true));
@@ -776,20 +782,23 @@ std::shared_ptr<Expression> Type::CreateVTable(std::vector<std::pair<Type*, unsi
             }
         }
         bool found = false;
-        struct Thunk : Expression {
-            Thunk(std::function<llvm::Function*(llvm::Module*)> f, Type* dest_type)
-                : func(f), dest_type(dest_type) {}
-            std::function<llvm::Function*(llvm::Module*)> func;
-            Type* dest_type;
-            Type* GetType() override final { return dest_type; }
-            llvm::Value* ComputeValue(CodegenContext& con) override final {
-                return func(con);
-            }
-        };
         for (auto more_derived : path) {
             auto expr = more_derived.first->VirtualEntryFor(func);
+            struct Thunk : Expression {
+                Thunk(std::function<llvm::Function*(llvm::Module*)> f, Type* dest_type)
+                    : func(f), dest_type(dest_type) {}
+                std::function<llvm::Function*(llvm::Module*)> func;
+                Type* dest_type;
+                Type* GetType() override final { return dest_type; }
+                llvm::Value* ComputeValue(CodegenContext& con) override final {
+                    return func(con);
+                }
+            };
             if (expr.first) {
-                entries.push_back(std::make_shared<Thunk>(FunctionType::CreateThunk(expr.second, expr.first, func.type), func.type));
+                if (func.type != expr.first)
+                    entries.push_back(FunctionType::CreateThunk(std::make_shared<Thunk>(expr.second, expr.first), static_cast<WideFunctionType*>(func.type), this));
+                else
+                    entries.push_back(std::make_shared<Thunk>(expr.second, expr.first));
                 found = true;
                 break;
             }
@@ -882,28 +891,29 @@ std::shared_ptr<Expression> Type::SetVirtualPointers(std::shared_ptr<Expression>
     return Wide::Memory::MakeUnique<VTableInitializer>(std::move(self), std::move(BasePointerInitializers));
 }
 
-llvm::Constant* Type::GetRTTI(llvm::Module* module) {
+std::function<llvm::Constant*(llvm::Module*)> Type::GetRTTI() {
     // If we have a Clang type, then use it for compat.
     auto clangty = GetClangType(*analyzer.GetAggregateTU());
     if (clangty) {
-        return analyzer.GetAggregateTU()->GetItaniumRTTI(*clangty, module);
+        return [clangty, this](llvm::Module* module) { return analyzer.GetAggregateTU()->GetItaniumRTTI(*clangty, module); };
     }
-    // Else, nope. Meta types are ... er.
-    // Fundamental types.
-    std::stringstream stream;
-    stream << "struct.__" << this;
-    if (auto existing = module->getGlobalVariable(stream.str())) {
-        return existing;
-    }
-    llvm::Constant *name = GetGlobalString(stream.str(), module);
-    auto vtable_name_of_rtti = "_ZTVN10__cxxabiv123__fundamental_type_infoE";
-    auto vtable = module->getOrInsertGlobal(vtable_name_of_rtti, llvm::Type::getInt8PtrTy(module->getContext()));
-    vtable = llvm::ConstantExpr::getInBoundsGetElementPtr(vtable, llvm::ConstantInt::get(llvm::Type::getInt8Ty(module->getContext()), 2));
-    vtable = llvm::ConstantExpr::getBitCast(vtable, llvm::Type::getInt8PtrTy(module->getContext()));
-    std::vector<llvm::Constant*> inits = { vtable, name };
-    auto ty = llvm::ConstantStruct::getTypeForElements(inits);
-    auto rtti = new llvm::GlobalVariable(*module, ty, true, llvm::GlobalValue::LinkageTypes::LinkOnceODRLinkage, llvm::ConstantStruct::get(ty, inits), stream.str());
-    return rtti;
+    // Else, nope. Everything else we consider to be fundamental.
+    return [this](llvm::Module* module) {
+        std::stringstream stream;
+        stream << "struct.__" << this;
+        if (auto existing = module->getGlobalVariable(stream.str())) {
+            return existing;
+        }
+        llvm::Constant *name = GetGlobalString(stream.str(), module);
+        auto vtable_name_of_rtti = "_ZTVN10__cxxabiv123__fundamental_type_infoE";
+        auto vtable = module->getOrInsertGlobal(vtable_name_of_rtti, llvm::Type::getInt8PtrTy(module->getContext()));
+        vtable = llvm::ConstantExpr::getInBoundsGetElementPtr(vtable, llvm::ConstantInt::get(llvm::Type::getInt8Ty(module->getContext()), 2));
+        vtable = llvm::ConstantExpr::getBitCast(vtable, llvm::Type::getInt8PtrTy(module->getContext()));
+        std::vector<llvm::Constant*> inits = { vtable, name };
+        auto ty = llvm::ConstantStruct::getTypeForElements(inits);
+        auto rtti = new llvm::GlobalVariable(*module, ty, true, llvm::GlobalValue::LinkageTypes::LinkOnceODRLinkage, llvm::ConstantStruct::get(ty, inits), stream.str());
+        return rtti;
+    };
 }
 llvm::Constant* Semantic::GetGlobalString(std::string string, llvm::Module* m) {
     auto strcon = llvm::ConstantDataArray::getString(m->getContext(), string);

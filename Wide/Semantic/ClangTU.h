@@ -39,6 +39,10 @@ namespace clang {
     class CXXDestructorDecl;
     class CXXConstructorDecl;
     class VarDecl;
+    namespace CodeGen {
+        class CodeGenModule;
+        class CGFunctionInfo;
+    }
 }
 
 namespace Wide {
@@ -82,6 +86,14 @@ namespace Wide {
             std::function<unsigned(llvm::Module*)> GetBaseNumber(const clang::CXXRecordDecl* self, const clang::CXXRecordDecl* base);
             llvm::Constant* GetItaniumRTTI(clang::QualType, llvm::Module* m);
             unsigned int GetVirtualFunctionOffset(clang::CXXMethodDecl*, llvm::Module* module);
+
+            llvm::PointerType* GetFunctionPointerType(const clang::CodeGen::CGFunctionInfo&, llvm::Module* module);
+            const clang::CodeGen::CGFunctionInfo& GetABIForFunction(const clang::FunctionProtoType*, clang::CXXRecordDecl*, llvm::Module* module);
+            const clang::CodeGen::CGFunctionInfo& GetABIForFunction(clang::CXXConstructorDecl*, llvm::Module* module) = delete;
+            const clang::CodeGen::CGFunctionInfo& GetABIForFunction(clang::CXXDestructorDecl*, llvm::Module* module) = delete;
+            const clang::CodeGen::CGFunctionInfo& GetABIForFunction(clang::CXXDestructorDecl*, clang::CXXDtorType, llvm::Module* module);
+            const clang::CodeGen::CGFunctionInfo& GetABIForFunction(clang::CXXConstructorDecl*, clang::CXXCtorType, llvm::Module* module);
+            clang::CodeGen::CodeGenModule& GetCodegenModule(llvm::Module* module);
         };
     }
 }

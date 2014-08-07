@@ -26,6 +26,7 @@
 #include <clang/AST/ASTContext.h>
 #include <clang/Sema/Sema.h>
 #include <llvm/IR/DerivedTypes.h>
+#include <CodeGen/CodeGenModule.h>
 #pragma warning(pop)
 
 using namespace Wide;
@@ -84,7 +85,7 @@ UserDefinedType::VTableData::VTableData(UserDefinedType* self) {
                 auto set = self->type->functions.at(vfunc->name);
                 for (auto access : set)
                     for (auto function : access.second)                        
-                        if (FunctionType::CanThunkFromFirstToSecond(func.type, analyzer.GetWideFunction(function, self, GetNameAsString(vfunc->name))->GetSignature(), self))
+                        if (FunctionType::CanThunkFromFirstToSecond(func.type, analyzer.GetWideFunction(function, self, GetNameAsString(vfunc->name))->GetSignature(), self, true))
                             matches.insert(function);
                 if (matches.size() > 1) throw std::runtime_error("Too many valid matches for dynamic function override.");
                 if (matches.empty()) {
@@ -266,6 +267,7 @@ Wide::Util::optional<clang::QualType> UserDefinedType::GetClangType(ClangTU& TU)
 
     auto recdecl = clang::CXXRecordDecl::Create(TU.GetASTContext(), clang::TagDecl::TagKind::TTK_Struct, TU.GetDeclContext(), clang::SourceLocation(), clang::SourceLocation(), TU.GetIdentifierInfo(stream.str()));
     clangtypes[&TU] = TU.GetASTContext().getTypeDeclType(recdecl);
+    analyzer.AddClangType(clangtypes[&TU], this);
     recdecl->startDefinition();
     std::vector<clang::CXXBaseSpecifier*> basespecs;
     for (auto base : GetBases()) {
@@ -360,7 +362,9 @@ Wide::Util::optional<clang::QualType> UserDefinedType::GetClangType(ClangTU& TU)
         recdecl->addDecl(des);
         auto widedes = analyzer.GetWideFunction(type->destructor_decl, this, { analyzer.GetLvalueType(this) }, "~type");
         widedes->ComputeBody();
-        widedes->AddExportName(TU.GetObject(des, clang::CXXDtorType::Dtor_Complete), widedes->GetSignature());
+        if (HasVirtualDestructor())
+            des->setVirtualAsWritten(true);
+        widedes->AddExportName(TU.GetObject(des, clang::CXXDtorType::Dtor_Complete), GetFunctionType(des, TU, analyzer));
     }
     for (auto access : type->constructor_decls) {
         for (auto func : access.second) {
@@ -388,7 +392,7 @@ Wide::Util::optional<clang::QualType> UserDefinedType::GetClangType(ClangTU& TU)
             if (!func->deleted) {
                 auto mfunc = analyzer.GetWideFunction(func, this, types, "type");
                 mfunc->ComputeBody();
-                mfunc->AddExportName(TU.GetObject(con, clang::CXXCtorType::Ctor_Complete), mfunc->GetSignature());
+                mfunc->AddExportName(TU.GetObject(con, clang::CXXCtorType::Ctor_Complete), GetFunctionType(con, TU, analyzer));
             } else
                 con->setDeletedAsWritten(true);
         }
@@ -407,7 +411,6 @@ Wide::Util::optional<clang::QualType> UserDefinedType::GetClangType(ClangTU& TU)
                     if (auto clangty = ty->GetClangType(TU))
                         args.push_back(*clangty);
                 }
-                if (args.size() != types.size()) continue;
                 auto get_return_type = [&] {
                     if (!func->deleted) {
                         auto mfunc = analyzer.GetWideFunction(func, this, types, GetNameAsString(overset.first));
@@ -423,11 +426,13 @@ Wide::Util::optional<clang::QualType> UserDefinedType::GetClangType(ClangTU& TU)
                 auto ret = get_return_type();
                 if (!ret) continue;
                 clang::FunctionProtoType::ExtProtoInfo ext_proto_info;
-                if (func->args.front().name == "this") {
-                    if (types.front() == analyzer.GetLvalueType(this))
-                        ext_proto_info.RefQualifier = clang::RefQualifierKind::RQ_LValue;
-                    else
-                        ext_proto_info.RefQualifier = clang::RefQualifierKind::RQ_RValue;
+                if (!func->args.empty()) {
+                    if (func->args.front().name == "this") {
+                        if (types.front() == analyzer.GetLvalueType(this))
+                            ext_proto_info.RefQualifier = clang::RefQualifierKind::RQ_LValue;
+                        else
+                            ext_proto_info.RefQualifier = clang::RefQualifierKind::RQ_RValue;
+                    }
                 }
                 auto fty = TU.GetASTContext().getFunctionType(*ret, args, ext_proto_info);
                 clang::DeclarationName name;
@@ -458,14 +463,13 @@ Wide::Util::optional<clang::QualType> UserDefinedType::GetClangType(ClangTU& TU)
                 else {
                     auto mfunc = analyzer.GetWideFunction(func, this, types, GetNameAsString(overset.first));
                     mfunc->ComputeBody();
-                    mfunc->AddExportName(TU.GetObject(meth), mfunc->GetSignature());
+                    mfunc->AddExportName(TU.GetObject(meth), GetFunctionType(meth, TU, analyzer));
                 }
             }
         }
     }
     recdecl->completeDefinition();
     TU.GetDeclContext()->addDecl(recdecl);
-    analyzer.AddClangType(clangtypes[&TU], this);
     return clangtypes[&TU];
 }
 
@@ -675,7 +679,7 @@ std::pair<FunctionType*, std::function<llvm::Function*(llvm::Module*)>> UserDefi
             if (IsMultiTyped(func)) continue;
 
             auto widefunc = analyzer.GetWideFunction(func, this, GetNameAsString(name));
-            if (!FunctionType::CanThunkFromFirstToSecond(entry.type, widefunc->GetSignature(), this))
+            if (!FunctionType::CanThunkFromFirstToSecond(entry.type, widefunc->GetSignature(), this, true))
                 continue;
             widefunc->ComputeBody();
             return { widefunc->GetSignature(), [widefunc](llvm::Module* module) { return widefunc->EmitCode(module); } };
@@ -687,7 +691,7 @@ std::pair<FunctionType*, std::function<llvm::Function*(llvm::Module*)>> UserDefi
 Type* UserDefinedType::GetVirtualPointerType() {
     if (GetBaseData().PrimaryBase)
         return GetBaseData().PrimaryBase->GetVirtualPointerType();
-    return analyzer.GetFunctionType(analyzer.GetIntegralType(32, false), {}, false);
+    return analyzer.GetFunctionType(analyzer.GetIntegralType(32, false), {}, true);
 }
 
 std::vector<std::pair<Type*, unsigned>> UserDefinedType::GetBasesAndOffsets() {
@@ -719,54 +723,71 @@ bool UserDefinedType::IsSourceATarget(Type* source, Type* target, Type* context)
     }
     return false;
 }
-llvm::Constant* UserDefinedType::GetRTTI(llvm::Module* module) {
+std::function<llvm::Constant*(llvm::Module*)> UserDefinedType::GetRTTI() {
     // If we have a Clang type, then use it for compat.
-    if (auto clangty = GetClangType(*analyzer.GetAggregateTU())) {
-        return analyzer.GetAggregateTU()->GetItaniumRTTI(*clangty, module);
+    if (GetVtableLayout().layout.empty()) {
+        if (auto clangty = GetClangType(*analyzer.GetAggregateTU())) {
+            return [clangty, this](llvm::Module* module) {
+                return analyzer.GetAggregateTU()->GetItaniumRTTI(*clangty, module);
+            };
+        }
     }
     if (GetBases().size() == 0) {
-        return AggregateType::GetRTTI(module);
-    }
-    std::stringstream stream;
-    stream << "struct.__" << this;
-    if (auto existing = module->getGlobalVariable(stream.str())) {
-        return existing;
+        return AggregateType::GetRTTI();
     }
     if (GetBases().size() == 1) {
+        auto basertti = GetBases()[0]->GetRTTI();
+        return[this, basertti](llvm::Module* module) {
+            std::stringstream stream;
+            stream << "struct.__" << this;
+            if (auto existing = module->getGlobalVariable(stream.str())) {
+                return existing;
+            }
+            auto mangledname = GetGlobalString(stream.str(), module);
+            auto vtable_name_of_rtti = "_ZTVN10__cxxabiv120__si_class_type_infoE";
+            auto vtable = module->getOrInsertGlobal(vtable_name_of_rtti, llvm::Type::getInt8PtrTy(module->getContext()));
+            vtable = llvm::ConstantExpr::getInBoundsGetElementPtr(vtable, llvm::ConstantInt::get(llvm::Type::getInt8Ty(module->getContext()), 2));
+            vtable = llvm::ConstantExpr::getBitCast(vtable, llvm::Type::getInt8PtrTy(module->getContext()));
+            std::vector<llvm::Constant*> inits = { vtable, mangledname, basertti(module) };
+            auto ty = llvm::ConstantStruct::getTypeForElements(inits);
+            auto rtti = new llvm::GlobalVariable(*module, ty, true, llvm::GlobalValue::LinkageTypes::LinkOnceODRLinkage, llvm::ConstantStruct::get(ty, inits), stream.str());
+            return rtti;
+        };
+    }
+    // Multiple bases. Yay.
+    std::vector<std::pair<std::function<llvm::Constant*(llvm::Module*)>, unsigned>> basedata;
+    for (auto base : GetBasesAndOffsets())
+        basedata.push_back({ base.first->GetRTTI(), base.second });
+    return [basedata, this](llvm::Module* module) {
+        std::stringstream stream;
+        stream << "struct.__" << this;
+        if (auto existing = module->getGlobalVariable(stream.str())) {
+            return existing;
+        }
         auto mangledname = GetGlobalString(stream.str(), module);
-        auto vtable_name_of_rtti = "_ZTVN10__cxxabiv120__si_class_type_infoE";
+        auto vtable_name_of_rtti = "_ZTVN10__cxxabiv121__vmi_class_type_infoE";
         auto vtable = module->getOrInsertGlobal(vtable_name_of_rtti, llvm::Type::getInt8PtrTy(module->getContext()));
         vtable = llvm::ConstantExpr::getInBoundsGetElementPtr(vtable, llvm::ConstantInt::get(llvm::Type::getInt8Ty(module->getContext()), 2));
         vtable = llvm::ConstantExpr::getBitCast(vtable, llvm::Type::getInt8PtrTy(module->getContext()));
-        std::vector<llvm::Constant*> inits = { vtable, mangledname, GetBases()[0]->GetRTTI(module) };
+        std::vector<llvm::Constant*> inits = { vtable, mangledname };
+
+        // Add flags.
+        inits.push_back(llvm::ConstantInt::get(llvm::Type::getInt32Ty(module->getContext()), 0));
+
+        // Add base count
+        inits.push_back(llvm::ConstantInt::get(llvm::Type::getInt32Ty(module->getContext()), GetBases().size()));
+
+        // Add one entry for every base.
+        for (auto bases : basedata) {
+            inits.push_back(bases.first(module));
+            unsigned flags = 0x2 | (bases.second << 8);
+            inits.push_back(llvm::ConstantInt::get(llvm::Type::getInt32Ty(module->getContext()), flags));
+        }
+
         auto ty = llvm::ConstantStruct::getTypeForElements(inits);
         auto rtti = new llvm::GlobalVariable(*module, ty, true, llvm::GlobalValue::LinkageTypes::LinkOnceODRLinkage, llvm::ConstantStruct::get(ty, inits), stream.str());
         return rtti;
-    }
-    // Multiple bases. Yay.
-    auto mangledname = GetGlobalString(stream.str(), module);
-    auto vtable_name_of_rtti = "_ZTVN10__cxxabiv121__vmi_class_type_infoE";
-    auto vtable = module->getOrInsertGlobal(vtable_name_of_rtti, llvm::Type::getInt8PtrTy(module->getContext()));
-    vtable = llvm::ConstantExpr::getInBoundsGetElementPtr(vtable, llvm::ConstantInt::get(llvm::Type::getInt8Ty(module->getContext()), 2));
-    vtable = llvm::ConstantExpr::getBitCast(vtable, llvm::Type::getInt8PtrTy(module->getContext()));
-    std::vector<llvm::Constant*> inits = { vtable, mangledname, GetBases()[0]->GetRTTI(module) };
-
-    // Add flags.
-    inits.push_back(llvm::ConstantInt::get(llvm::Type::getInt32Ty(module->getContext()), 0));
-
-    // Add base count
-    inits.push_back(llvm::ConstantInt::get(llvm::Type::getInt32Ty(module->getContext()), GetBases().size()));
-
-    // Add one entry for every base.
-    for (auto bases : GetBasesAndOffsets()) {
-        inits.push_back(bases.first->GetRTTI(module));
-        unsigned flags = 0x2 | (bases.second << 8);
-        inits.push_back(llvm::ConstantInt::get(llvm::Type::getInt32Ty(module->getContext()), flags));
-    }
-
-    auto ty = llvm::ConstantStruct::getTypeForElements(inits);
-    auto rtti = new llvm::GlobalVariable(*module, ty, true, llvm::GlobalValue::LinkageTypes::LinkOnceODRLinkage, llvm::ConstantStruct::get(ty, inits), stream.str());
-    return rtti;
+    };
 }
 bool UserDefinedType::HasDeclaredDynamicFunctions() {
     for (auto overset : type->functions)

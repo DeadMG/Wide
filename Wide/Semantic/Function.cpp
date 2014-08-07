@@ -35,7 +35,7 @@ using namespace Wide;
 using namespace Semantic;
 
 void Function::AddExportName(std::function<llvm::Function*(llvm::Module*)> target, FunctionType* src) {
-    trampoline.push_back(FunctionType::CreateThunk(target, [this](llvm::Module* mod) { return EmitCode(mod); }, src, GetSignature()));
+    trampoline.push_back(src->CreateThunk(target, GetStaticSelf(), this));
 }
 Function::LocalVariable::LocalVariable(std::shared_ptr<Expression> ex, Function* self, Lexer::Range where, Lexer::Range init_where)
 : init_expr(std::move(ex)), self(self), where(where), init_where(init_where)
@@ -100,7 +100,7 @@ void Function::LocalVariable::OnNodeChanged(Node* n, Change what) {
 llvm::Value* Function::LocalVariable::ComputeValue(CodegenContext& con) {
     if (init_expr->GetType() == var_type) {
         // If they return a complex value by value, just steal it, and don't worry about destructors as it will already have handled it.
-        if (init_expr->GetType()->IsComplexType() || var_type->IsReference()) return init_expr->GetValue(con);
+        if (init_expr->GetType()->AlwaysKeepInMemory() || var_type->IsReference()) return init_expr->GetValue(con);
         // If they return a simple by value, then we can just alloca it fine, no destruction needed.
         auto alloc = con.CreateAlloca(var_type);
         con->CreateStore(init_expr->GetValue(con), alloc);
@@ -188,7 +188,7 @@ void Function::ReturnStatement::GenerateCode(CodegenContext& con) {
     }
 
     // If we return a simple type
-    if (!self->ReturnType->IsComplexType()) {
+    if (!self->ReturnType->AlwaysKeepInMemory()) {
         // and we already have an expression of that type
         if (ret_expr->GetType() == self->ReturnType) {
             // then great, just return it directly.
@@ -391,6 +391,7 @@ Function::ThrowStatement::ThrowStatement(std::shared_ptr<Expression> expr, Conte
     // http://mentorembedded.github.io/cxx-abi/abi-eh.html
     // 2.4.2
     ty = expr->GetType()->Decay();
+    RTTI = ty->GetRTTI();
     except_memory = Wide::Memory::MakeUnique<ExceptionAllocateMemory>(ty);
     // There is no longer a guarantee thas, as an argument, except_memory will be in the same CodegenContext
     // and the iterator could be invalidated. Strictly get the value in the original CodegenContext that ThrowStatement::GenerateCode
@@ -413,7 +414,7 @@ void Function::ThrowStatement::GenerateCode(CodegenContext& con) {
         destructor = llvm::Constant::getNullValue(con.GetInt8PtrTy());
     } else
         destructor = con->CreatePointerCast(ty->GetDestructorFunction(con), con.GetInt8PtrTy());
-    llvm::Value* args[] = { con->CreatePointerCast(value, con.GetInt8PtrTy()), ty->GetRTTI(con), destructor };
+    llvm::Value* args[] = { con->CreatePointerCast(value, con.GetInt8PtrTy()), RTTI(con), destructor };
     // Do we have an existing handler to go to? If we do, then first land, then branch directly to it.
     // Else, kill everything and GTFO this function and let the EH routines worry about it.
     if (con.HasDestructors() || con.EHHandler)
@@ -591,11 +592,11 @@ Type* Function::Parameter::GetType() {
 }
 llvm::Value* Function::Parameter::ComputeValue(CodegenContext& con) {
     auto argnum = num;
-    if (self->ReturnType->IsComplexType())
+    if (self->ReturnType->AlwaysKeepInMemory())
         ++argnum;
     auto llvm_argument = std::next(self->llvmfunc->arg_begin(), argnum);
     
-    if (self->Args[num]->IsComplexType() || self->Args[num]->IsReference())
+    if (self->Args[num]->AlwaysKeepInMemory() || self->Args[num]->IsReference())
         return llvm_argument;
 
     auto alloc = con.CreateAlloca(self->Args[num]);
@@ -656,13 +657,15 @@ Function::Function(std::vector<Type*> args, const Parse::FunctionBase* astfun, A
                         if (!tuanddecl.second) throw NotAType(expr->GetType()->Decay(), attr.initializer->location);
                         auto tu = tuanddecl.first;
                         auto decl = tuanddecl.second;
-                        auto self = [this](llvm::Module* mod) { return EmitCode(mod); };
+                        std::function<llvm::Function*(llvm::Module*)> source;
+
                         if (auto des = llvm::dyn_cast<clang::CXXDestructorDecl>(decl))
-                            trampoline.push_back(FunctionType::CreateThunk(tu->GetObject(des, clang::CXXDtorType::Dtor_Complete), self, GetFunctionType(des, *tu, analyzer), GetSignature()));
+                            source = tu->GetObject(des, clang::CXXDtorType::Dtor_Complete);
                         else if (auto con = llvm::dyn_cast<clang::CXXConstructorDecl>(decl))
-                            trampoline.push_back(FunctionType::CreateThunk(tu->GetObject(con, clang::CXXCtorType::Ctor_Complete), self, GetFunctionType(des, *tu, analyzer), GetSignature()));
+                            source = tu->GetObject(con, clang::CXXCtorType::Ctor_Complete);
                         else
-                            trampoline.push_back(FunctionType::CreateThunk(tu->GetObject(decl), self, GetFunctionType(des, *tu, analyzer), GetSignature()));
+                            source = tu->GetObject(decl);
+                        trampoline.push_back(GetFunctionType(decl, *tu, analyzer)->CreateThunk(source, GetStaticSelf(), this));
                     }
                 }
             }
@@ -1011,9 +1014,11 @@ std::shared_ptr<Expression> Function::LookupLocal(Parse::Name name) {
         return current_scope->LookupLocal(*string);
     return nullptr;
 }
-FunctionType* Function::GetSignature() {
+WideFunctionType* Function::GetSignature() {
     if (s == State::NotYetAnalyzed)
         ComputeBody();
+    if (ExplicitReturnType)
+        return analyzer.GetFunctionType(ReturnType, Args, false);
     if (s == State::AnalyzeInProgress)
         assert(false && "Attempted to call GetSignature whilst a function was still being analyzed.");
     assert(ReturnType);
@@ -1058,7 +1063,7 @@ void Function::TryStatement::GenerateCode(CodegenContext& con) {
     std::vector<llvm::Constant*> rttis;
     for (auto&& catch_ : catches) {
         if (catch_.t)
-            rttis.push_back(catch_.t->GetRTTI(con));
+            rttis.push_back(catch_.RTTI(con));
     }
     try_con.EHHandler = CodegenContext::EHScope{ &con, catch_block, phi, rttis};
     try_con->SetInsertPoint(source_block);
@@ -1099,7 +1104,7 @@ void Function::TryStatement::GenerateCode(CodegenContext& con) {
         }
         auto catch_target = llvm::BasicBlock::Create(con, "catch_target", catch_block_con->GetInsertBlock()->getParent());
         auto catch_continue = llvm::BasicBlock::Create(con, "catch_continue", catch_block_con->GetInsertBlock()->getParent());
-        auto target_selector = catch_block_con->CreateCall(for_, { catch_.t->GetRTTI(con) });
+        auto target_selector = catch_block_con->CreateCall(for_, { catch_.RTTI(con) });
         auto result = catch_block_con->CreateICmpEQ(selector, target_selector);
         catch_block_con->CreateCondBr(result, catch_target, catch_continue);
         catch_block_con->SetInsertPoint(catch_target);
@@ -1146,4 +1151,13 @@ std::vector<std::shared_ptr<Expression>> Function::AdjustArguments(std::vector<s
         }
     }
     return AdjustArgumentsForTypes(std::move(args), Args, c);
+}
+std::shared_ptr<Expression> Function::GetStaticSelf() {
+    struct Self : Expression {
+        Self(Function* f) : f(f) {}
+        Function* f;
+        Type* GetType() override final { return f->GetSignature(); }
+        llvm::Value* ComputeValue(CodegenContext& con) override final { return f->EmitCode(con); }
+    };
+    return std::make_shared<Self>(this);
 }

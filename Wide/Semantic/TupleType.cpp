@@ -23,7 +23,7 @@ std::shared_ptr<Expression> TupleType::ConstructFromLiteral(std::vector<std::sha
     // Else try to avoid making an allocation.
     std::vector<std::shared_ptr<Expression>> initializers;
     auto self = std::make_shared<ImplicitTemporaryExpr>(this, c);
-    if (IsComplexType()) {
+    if (AlwaysKeepInMemory()) {
         for (std::size_t i = 0; i < exprs.size(); ++i) {
             initializers.push_back(GetMembers()[i]->BuildInplaceConstruction(PrimitiveAccessMember(self, i), { std::move(exprs[i]) }, c));
         }
@@ -49,7 +49,7 @@ std::shared_ptr<Expression> TupleType::ConstructFromLiteral(std::vector<std::sha
             return self->GetType()->Decay();
         }
         llvm::Value* ComputeValue(CodegenContext& con) override final {
-            if (GetType()->IsComplexType()) {
+            if (GetType()->AlwaysKeepInMemory()) {
                 for (auto&& init : inits)
                     init->GetValue(con);
                 if (destructor)

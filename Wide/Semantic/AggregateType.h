@@ -104,7 +104,7 @@ namespace Wide {
         public:
             AggregateType(Analyzer& a);
 
-            llvm::Constant* GetRTTI(llvm::Module* module) override;
+            std::function<llvm::Constant*(llvm::Module*)> GetRTTI() override;
             unsigned GetOffset(unsigned num) { return GetLayout().Offsets[num].ByteOffset; }
 
             MemberLocation GetLocation(unsigned i);

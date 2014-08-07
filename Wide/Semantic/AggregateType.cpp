@@ -345,7 +345,7 @@ std::shared_ptr<Expression> AggregateType::PrimitiveAccessMember(std::shared_ptr
             }
             auto fieldindex = *offsets[num].FieldIndex;
             auto obj = src->getType()->isPointerTy() ? con.CreateStructGEP(src, fieldindex) : con->CreateExtractValue(src, { fieldindex });
-            if ((source->GetType()->IsReference() && offsets[num].ty->IsReference()) || (source->GetType()->IsComplexType() && !offsets[num].ty->IsComplexType()))
+            if ((source->GetType()->IsReference() && offsets[num].ty->IsReference()) || (source->GetType()->AlwaysKeepInMemory() && !offsets[num].ty->AlwaysKeepInMemory()))
                 return con->CreateLoad(obj);
             return obj;
         }
@@ -623,28 +623,34 @@ bool AggregateType::HasMemberOfType(Type* t) {
     }
     return false;
 }
-llvm::Constant* AggregateType::GetRTTI(llvm::Module* module) {
+std::function<llvm::Constant*(llvm::Module*)> AggregateType::GetRTTI() {
     // NOPE
     // If we have a Clang type, then use it for compat.
     auto clangty = GetClangType(*analyzer.GetAggregateTU());
-    if (clangty) {
-        return analyzer.GetAggregateTU()->GetItaniumRTTI(*clangty, module);
+    if (GetVtableLayout().layout.empty()) {
+        if (auto clangty = GetClangType(*analyzer.GetAggregateTU())) {
+            return [clangty, this](llvm::Module* module) {
+                return analyzer.GetAggregateTU()->GetItaniumRTTI(*clangty, module);
+            };
+        }
     }
     // Else, nope. Aggregate types are user-defined types with no bases by default.
-    std::stringstream stream;
-    stream << "struct.__" << this;
-    if (auto existing = module->getGlobalVariable(stream.str())) {
-        return existing;
-    }
-    auto mangledname = GetGlobalString(stream.str(), module);
-    auto vtable_name_of_rtti = "_ZTVN10__cxxabiv117__class_type_infoE";
-    auto vtable = module->getOrInsertGlobal(vtable_name_of_rtti, llvm::Type::getInt8PtrTy(module->getContext()));
-    vtable = llvm::ConstantExpr::getInBoundsGetElementPtr(vtable, llvm::ConstantInt::get(llvm::Type::getInt8Ty(module->getContext()), 2));
-    vtable = llvm::ConstantExpr::getBitCast(vtable, llvm::Type::getInt8PtrTy(module->getContext()));
-    std::vector<llvm::Constant*> inits = { vtable, mangledname };
-    auto ty = llvm::ConstantStruct::getTypeForElements(inits);
-    auto rtti = new llvm::GlobalVariable(*module, ty, true, llvm::GlobalValue::LinkageTypes::LinkOnceODRLinkage, llvm::ConstantStruct::get(ty, inits), stream.str());
-    return rtti;
+    return [this](llvm::Module* module) {
+        std::stringstream stream;
+        stream << "struct.__" << this;
+        if (auto existing = module->getGlobalVariable(stream.str())) {
+            return existing;
+        }
+        auto mangledname = GetGlobalString(stream.str(), module);
+        auto vtable_name_of_rtti = "_ZTVN10__cxxabiv117__class_type_infoE";
+        auto vtable = module->getOrInsertGlobal(vtable_name_of_rtti, llvm::Type::getInt8PtrTy(module->getContext()));
+        vtable = llvm::ConstantExpr::getInBoundsGetElementPtr(vtable, llvm::ConstantInt::get(llvm::Type::getInt8Ty(module->getContext()), 2));
+        vtable = llvm::ConstantExpr::getBitCast(vtable, llvm::Type::getInt8PtrTy(module->getContext()));
+        std::vector<llvm::Constant*> inits = { vtable, mangledname };
+        auto ty = llvm::ConstantStruct::getTypeForElements(inits);
+        auto rtti = new llvm::GlobalVariable(*module, ty, true, llvm::GlobalValue::LinkageTypes::LinkOnceODRLinkage, llvm::ConstantStruct::get(ty, inits), stream.str());
+        return rtti;
+    };
 }
 
 MemberLocation AggregateType::GetLocation(unsigned i) {

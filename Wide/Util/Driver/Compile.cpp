@@ -9,7 +9,6 @@
 #include <Wide/Util/Ranges/IStreamRange.h>
 #include <mutex>
 #include <atomic>
-#include <Wide/Semantic/Itanium.h>
 #include <sstream>
 #include <fstream>
 #include <memory>
@@ -82,8 +81,7 @@ void Wide::Driver::Compile(const Wide::Options::Clang& copts, std::function<void
         combiner.Add(&x->GlobalModule);
 
     if (excepts.empty()) {
-        Wide::Semantic::Itanium abi;
-        Wide::Semantic::Analyzer a(copts, combiner.GetGlobalModule(), abi);
+        Wide::Semantic::Analyzer a(copts, combiner.GetGlobalModule());
         func(a, combiner.GetGlobalModule());
     } else {
         std::string err = "Compilation failed with errors:\n";

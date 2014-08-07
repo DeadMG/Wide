@@ -107,7 +107,7 @@ namespace Wide {
             Wide::Util::optional<unsigned> AlignOverride() override final; 
             llvm::Function* CreateDestructorFunction(llvm::Module* module) override final;
         public:
-            llvm::Constant* GetRTTI(llvm::Module* module) override final;
+            std::function<llvm::Constant*(llvm::Module*)> GetRTTI() override final;
             UserDefinedType(const Parse::Type* t, Analyzer& a, Type* context, std::string);
             Type* GetContext() override final { return context; }
             bool HasMember(Parse::Name name);

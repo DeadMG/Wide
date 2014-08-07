@@ -42,7 +42,7 @@ std::shared_ptr<Expression> ArrayType::PrimitiveAccessMember(std::shared_ptr<Exp
 
         llvm::Value* ComputeValue(CodegenContext& con) override final {
             auto val = self->GetValue(con);
-            if (!elem_ty->IsComplexType()) {
+            if (!elem_ty->AlwaysKeepInMemory()) {
                 if (val->getType()->isPointerTy())
                     return con.CreateStructGEP(val, num);
                 return con->CreateExtractValue(val, num);
