@@ -23,7 +23,7 @@ LambdaType::LambdaType(std::vector<std::pair<Parse::Name, Type*>> capturetypes, 
         names[pair.first] = i++;
 }
 
-std::shared_ptr<Expression> LambdaType::BuildCall(std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c) {
+std::shared_ptr<Expression> LambdaType::ConstructCall(std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c) {
     args.insert(args.begin(), std::move(val));
     std::vector<Type*> types;
     for (auto&& arg : args)

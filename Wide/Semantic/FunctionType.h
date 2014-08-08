@@ -23,7 +23,7 @@ namespace Wide {
             FunctionType(Analyzer& a) : PrimitiveType(a) {}
         
             virtual llvm::PointerType* GetLLVMType(llvm::Module* module) override = 0;
-            virtual std::shared_ptr<Expression> BuildCall(std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c) override = 0;
+            virtual std::shared_ptr<Expression> ConstructCall(std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c) override = 0;
             virtual Type* GetReturnType() = 0;
             virtual std::vector<Type*> GetArguments() = 0;           
 
@@ -43,7 +43,7 @@ namespace Wide {
             WideFunctionType(Type* ret, std::vector<Type*> args, Analyzer& a, llvm::CallingConv::ID callingconvention, bool variadic)
                 : ReturnType(ret), Args(std::move(args)), FunctionType(a), convention(callingconvention), variadic(variadic) {}
             llvm::PointerType* GetLLVMType(llvm::Module* module) override final;
-            std::shared_ptr<Expression> BuildCall(std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c) override final;
+            std::shared_ptr<Expression> ConstructCall(std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c) override final;
             Type* GetReturnType() override final;
             std::vector<Type*> GetArguments() override final;
             Wide::Util::optional<clang::QualType> GetClangType(ClangTU& from) override final;
@@ -63,7 +63,7 @@ namespace Wide {
             Type* GetReturnType() override final;
             std::vector<Type*> GetArguments() override final;
             std::shared_ptr<Expression> CreateThunkFrom(std::shared_ptr<Expression> self, Type* context) override final;
-            std::shared_ptr<Expression> BuildCall(std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c) override final;
+            std::shared_ptr<Expression> ConstructCall(std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c) override final;
             std::function<void(llvm::Module*)> CreateThunk(std::function<llvm::Function*(llvm::Module*)> src, std::shared_ptr<Expression> dest, clang::FunctionDecl* decl, Type* context);
        };
     }

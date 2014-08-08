@@ -720,21 +720,21 @@ void Function::ComputeBody() {
                         std::vector<std::shared_ptr<Expression>> inits;
                         if (x.InClassInitializer)
                             inits = { x.InClassInitializer(LookupLocal("this")) };
-                        root_scope->active.push_back(x.t->BuildInplaceConstruction(member, inits, { this, con->where }));
+                        root_scope->active.push_back(Type::BuildInplaceConstruction(member, inits, { this, con->where }));
                     }
                 } else if (Args[1] == analyzer.GetLvalueType(GetContext())) {
                     // Copy constructor- copy all.
                     unsigned i = 0;
                     for (auto&& x : members) {                        
                         auto member_ref = make_member(analyzer.GetLvalueType(x.t), x.num.offset, LookupLocal("this"));
-                        root_scope->active.push_back(x.t->BuildInplaceConstruction(member_ref, { member->PrimitiveAccessMember(parameters[1], i++) }, { this, con->where }));
+                        root_scope->active.push_back(Type::BuildInplaceConstruction(member_ref, { member->PrimitiveAccessMember(parameters[1], i++) }, { this, con->where }));
                     }
                 } else if (Args[1] == analyzer.GetRvalueType(GetContext())) {
                     // move constructor- move all.
                     unsigned i = 0;
                     for (auto&& x : members) {
                         auto member_ref = make_member(analyzer.GetLvalueType(x.t), x.num.offset, LookupLocal("this"));
-                        root_scope->active.push_back(x.t->BuildInplaceConstruction(member_ref, { member->PrimitiveAccessMember(std::make_shared<RvalueCast>(parameters[1]), i++) }, { this, con->where }));
+                        root_scope->active.push_back(Type::BuildInplaceConstruction(member_ref, { member->PrimitiveAccessMember(std::make_shared<RvalueCast>(parameters[1]), i++) }, { this, con->where }));
                     }
                 } else
                     throw std::runtime_error("Fuck.");
@@ -968,7 +968,7 @@ llvm::Function* Function::EmitCode(llvm::Module* module) {
     return llvmfunc;
 }
 
-std::shared_ptr<Expression> Function::BuildCall(std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c) {
+std::shared_ptr<Expression> Function::ConstructCall(std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c) {
     if (s == State::NotYetAnalyzed)
         ComputeBody();
     struct Self : public Expression {
@@ -980,7 +980,7 @@ std::shared_ptr<Expression> Function::BuildCall(std::shared_ptr<Expression> val,
                 udt = dynamic_cast<UserDefinedType*>(expr->GetType()->Decay());
                 if (!udt) 
                     return;
-                obj = udt->GetVirtualPointer(expr);
+                obj = Type::GetVirtualPointer(expr);
             }
         }
         UserDefinedType* udt;
@@ -1007,7 +1007,7 @@ std::shared_ptr<Expression> Function::BuildCall(std::shared_ptr<Expression> val,
     };
     auto self = !args.empty() ? args[0] : nullptr;
    
-    return GetSignature()->BuildCall(Wide::Memory::MakeUnique<Self>(this, self, std::move(val)), std::move(args), c);
+    return Type::BuildCall(Wide::Memory::MakeUnique<Self>(this, self, std::move(val)), std::move(args), c);
 }
 
 std::shared_ptr<Expression> Function::LookupLocal(Parse::Name name) {

@@ -39,12 +39,12 @@ namespace Wide {
             // Used for type.destructor access.
             std::function<llvm::Constant*(llvm::Module*)> GetRTTI() override final;
             OverloadSet* GetDestructorOverloadSet();
-            std::shared_ptr<Expression> GetVirtualPointer(std::shared_ptr<Expression>) override final;
+            std::shared_ptr<Expression> AccessVirtualPointer(std::shared_ptr<Expression>) override final;
             ClangType(ClangTU* src, clang::QualType t, Analyzer& a);
             llvm::Type* GetLLVMType(llvm::Module* m) override final;            
             Wide::Util::optional<clang::QualType> GetClangType(ClangTU& tu) override final;
-            std::shared_ptr<Expression> AccessMember(std::shared_ptr<Expression> t, std::string name, Context c) override final;
-            std::function<void(CodegenContext&)> BuildDestructorCall(std::shared_ptr<Expression> self, Context c, bool devirtualize) override final;
+            std::shared_ptr<Expression> AccessNamedMember(std::shared_ptr<Expression> t, std::string name, Context c) override final;
+            std::function<void(CodegenContext&)> BuildDestruction(std::shared_ptr<Expression> self, Context c, bool devirtualize) override final;
             Type* GetConstantContext() override final; 
 
             bool IsSourceATarget(Type* first, Type* second, Type* context) override final;

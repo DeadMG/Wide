@@ -200,7 +200,11 @@ namespace Wide {
             std::shared_ptr<Expression> GetVTablePointer(std::vector<std::pair<Type*, unsigned>> path);
             static std::shared_ptr<Expression> SetVirtualPointers(std::shared_ptr<Expression> self, std::vector<std::pair<Type*, unsigned>> path);
             virtual VTableLayout ComputePrimaryVTableLayout();
+            virtual std::shared_ptr<Expression> ConstructCall(std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c);
+            virtual std::shared_ptr<Expression> AccessVirtualPointer(std::shared_ptr<Expression> self);
         protected:
+            virtual std::function<void(CodegenContext&)> BuildDestruction(std::shared_ptr<Expression> self, Context c, bool devirtualize);
+            virtual std::shared_ptr<Expression> AccessNamedMember(std::shared_ptr<Expression> t, std::string name, Context c);
             llvm::Function* DestructorFunction = nullptr;
             virtual llvm::Function* CreateDestructorFunction(llvm::Module* module);
             virtual OverloadSet* CreateOperatorOverloadSet(Parse::OperatorName what, Parse::Access access);
@@ -243,13 +247,7 @@ namespace Wide {
 
             // Do not ever call from public API, it is for derived types and implementation details only.
             virtual bool IsSourceATarget(Type* source, Type* target, Type* context) { return false; }
-            virtual std::shared_ptr<Expression> AccessMember(std::shared_ptr<Expression> t, std::string name, Context c);
             virtual std::shared_ptr<Expression> AccessStaticMember(std::string name, Context c);
-
-            virtual std::shared_ptr<Expression> GetVirtualPointer(std::shared_ptr<Expression> self);
-            virtual std::shared_ptr<Expression> BuildMetaCall(std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args);
-            virtual std::shared_ptr<Expression> BuildCall(std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c);
-            virtual std::function<void(CodegenContext&)> BuildDestructorCall(std::shared_ptr<Expression> self, Context c, bool devirtualize);
 
             std::shared_ptr<Expression> BuildValueConstruction(std::vector<std::shared_ptr<Expression>> args, Context c);
             std::shared_ptr<Expression> BuildRvalueConstruction(std::vector<std::shared_ptr<Expression>> exprs, Context c);
@@ -264,11 +262,14 @@ namespace Wide {
             OverloadSet* GetConstructorOverloadSet(Parse::Access access);
             OverloadSet* PerformADL(Parse::OperatorName what, Parse::Access access);
             OverloadSet* AccessMember(Parse::OperatorName type, Parse::Access access);
-            std::shared_ptr<Expression> AccessMember(std::shared_ptr<Expression> t, Parse::Name name, Context c);
             std::shared_ptr<Expression> AccessStaticMember(Parse::Name name, Context c);
             bool InheritsFromAtOffsetZero(Type* other);
             unsigned GetOffsetToBase(Type* base);
 
+            std::function<void(CodegenContext&)> BuildDestructorCall(std::shared_ptr<Expression> self, Context c, bool devirtualize);
+            static std::shared_ptr<Expression> GetVirtualPointer(std::shared_ptr<Expression> self);
+            static std::shared_ptr<Expression> BuildCall(std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c);
+            static std::shared_ptr<Expression> AccessMember(std::shared_ptr<Expression> t, Parse::Name name, Context c);
             static std::shared_ptr<Expression> BuildBooleanConversion(std::shared_ptr<Expression>, Context);
             static std::shared_ptr<Expression> AccessBase(std::shared_ptr<Expression> self, Type* other);
             static std::shared_ptr<Expression> BuildInplaceConstruction(std::shared_ptr<Expression> self, std::vector<std::shared_ptr<Expression>> exprs, Context c);

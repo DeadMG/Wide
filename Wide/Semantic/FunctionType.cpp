@@ -75,7 +75,7 @@ llvm::PointerType* WideFunctionType::GetLLVMType(llvm::Module* module) {
     return llvm::FunctionType::get(ret, args, variadic)->getPointerTo();
 }
 
-std::shared_ptr<Expression> WideFunctionType::BuildCall(std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c) {
+std::shared_ptr<Expression> WideFunctionType::ConstructCall(std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c) {
     struct Call : Expression {
         Call(Analyzer& an, std::shared_ptr<Expression> self, std::vector<std::shared_ptr<Expression>> args, Context c, llvm::CallingConv::ID conv)
             : a(an), args(std::move(args)), val(std::move(self)), convention(conv)
@@ -230,10 +230,10 @@ std::function<void(llvm::Module*)> WideFunctionType::CreateThunk(std::function<l
         }
         conversion_exprs.push_back(destty->GetArguments()[i]->BuildValueConstruction({ std::make_shared<arg>(GetArguments()[i], i + GetReturnType()->AlwaysKeepInMemory()) }, c));
     }
-    auto call = destty->BuildCall(dest, conversion_exprs, c);
+    auto call = Type::BuildCall(dest, conversion_exprs, c);
     std::shared_ptr<Expression> ret_expr;
     if (GetReturnType()->AlwaysKeepInMemory()) {
-        ret_expr = GetReturnType()->BuildInplaceConstruction(std::make_shared<arg>(analyzer.GetLvalueType(GetReturnType()), 0), { call }, c);
+        ret_expr = Type::BuildInplaceConstruction(std::make_shared<arg>(analyzer.GetLvalueType(GetReturnType()), 0), { call }, c);
     } else if (GetReturnType() != analyzer.GetVoidType())
         ret_expr = GetReturnType()->BuildValueConstruction({ call }, c);
     else
@@ -275,7 +275,7 @@ std::vector<Type*> ClangFunctionType::GetArguments() {
 }
 
 // Now the thunks.
-std::shared_ptr<Expression> ClangFunctionType::BuildCall(std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c) {
+std::shared_ptr<Expression> ClangFunctionType::ConstructCall(std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c) {
     struct Call : Expression {
         Call(Analyzer& an, std::shared_ptr<Expression> self, std::vector<std::shared_ptr<Expression>> args, Context c)
             : a(an), args(std::move(args)), val(std::move(self))
@@ -409,10 +409,10 @@ std::function<void(llvm::Module*)> ClangFunctionType::CreateThunk(std::function<
         }
         conversion_exprs.push_back(destty->GetArguments()[i]->BuildValueConstruction({ std::make_shared<arg>(GetArguments()[i], i + GetReturnType()->AlwaysKeepInMemory(), args) }, c));
     }
-    auto call = destty->BuildCall(dest, conversion_exprs, c);
+    auto call = Type::BuildCall(dest, conversion_exprs, c);
     std::shared_ptr<Expression> ret_expr;
     if (GetReturnType()->AlwaysKeepInMemory()) {
-        ret_expr = GetReturnType()->BuildInplaceConstruction(std::make_shared<arg>(analyzer.GetLvalueType(GetReturnType()), 0, args), { call }, c);
+        ret_expr = Type::BuildInplaceConstruction(std::make_shared<arg>(analyzer.GetLvalueType(GetReturnType()), 0, args), { call }, c);
     } else if (dynamic_cast<StringType*>(destty->GetReturnType())) {
         struct ImplicitStringDecay : Expression {
             ImplicitStringDecay(std::shared_ptr<Expression> expr)
@@ -446,7 +446,8 @@ std::function<void(llvm::Module*)> ClangFunctionType::CreateThunk(std::function<
                 codegenfunc.CurGD = decl;
             clang::CodeGen::FunctionArgList list;
             if (llvm::dyn_cast<clang::CXXMethodDecl>(decl)) {
-                from->GetCodegenModule(con).getCXXABI().BuildInstanceFunctionParams(codegenfunc, type->getResultType(), list);               
+                auto retty = type->getResultType();
+                from->GetCodegenModule(con).getCXXABI().BuildInstanceFunctionParams(codegenfunc, retty, list);               
             }
             for (auto param = decl->param_begin(); param != decl->param_end(); ++param)
                 list.push_back(*param);

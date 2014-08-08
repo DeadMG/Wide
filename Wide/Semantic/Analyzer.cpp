@@ -193,7 +193,7 @@ Analyzer::Analyzer(const Options::Clang& opts, const Parse::Module* GlobalModule
                 if (what == Change::Destroyed) return;
                 auto currty = GetType();
                 if (object->GetType()) {
-                    access = object->GetType()->AccessMember(object, ast_node->mem, Context{ lookup, ast_node->location });
+                    access = Type::AccessMember(object, ast_node->mem, Context{ lookup, ast_node->location });
                     if (!access)
                         throw NoMember(object->GetType(), lookup, ast_node->mem, ast_node->location);
                 }
@@ -254,8 +254,7 @@ Analyzer::Analyzer(const Options::Clang& opts, const Parse::Module* GlobalModule
                             refargs.push_back(arg);
                     }
                     if (refargs.size() == args.size()) {
-                        auto objty = object->GetType();
-                        call = objty->BuildCall(object, std::move(refargs), Context{ from, where });
+                        call = Type::BuildCall(object, std::move(refargs), Context{ from, where });
                         ListenToNode(call.get());
                     }
                     else
@@ -301,7 +300,7 @@ Analyzer::Analyzer(const Options::Clang& opts, const Parse::Module* GlobalModule
                     }
                     if (auto member = fun->GetNonstaticMemberContext()) {
                         auto self = fun->LookupLocal("this");
-                        auto result = self->GetType()->AccessMember(self, val, { self->GetType(), location });
+                        auto result = Type::AccessMember(self, val, { self->GetType(), location });
                         if (result)
                             return std::move(result);
                         if (member == context->GetContext())
@@ -313,7 +312,7 @@ Analyzer::Analyzer(const Options::Clang& opts, const Parse::Module* GlobalModule
                 if (auto mod = dynamic_cast<Module*>(context)) {
                     // Module lookups shouldn't present any unknown types. They should only present constant contexts.
                     auto local_mod_instance = mod->BuildValueConstruction({}, Context{ context, location });
-                    auto result = local_mod_instance->GetType()->AccessMember(local_mod_instance, val, { lookup, location });
+                    auto result = Type::AccessMember(local_mod_instance, val, { lookup, location });
                     if (!result) return LookupIdentifier(mod->GetContext());
                     if (!dynamic_cast<OverloadSet*>(result->GetType()))
                         return result;
@@ -327,7 +326,7 @@ Analyzer::Analyzer(const Options::Clang& opts, const Parse::Module* GlobalModule
                 if (auto udt = dynamic_cast<UserDefinedType*>(context)) {
                     return LookupIdentifier(context->GetContext());
                 }
-                if (auto result = context->AccessMember(context->BuildValueConstruction({}, { lookup, location }), val, { lookup, location }))
+                if (auto result = Type::AccessMember(context->BuildValueConstruction({}, { lookup, location }), val, { lookup, location }))
                     return result;
                 return LookupIdentifier(context->GetContext());
             }
@@ -422,7 +421,7 @@ Analyzer::Analyzer(const Options::Clang& opts, const Parse::Module* GlobalModule
 
     AddExpressionHandler<Parse::PointerMemberAccess>([](Analyzer& a, Type* lookup, const Parse::PointerMemberAccess* paccess) {
         auto subobj = Type::BuildUnaryExpression(a.AnalyzeExpression(lookup, paccess->ex), &Lexer::TokenTypes::Star, { lookup, paccess->location });
-        return subobj->GetType()->AccessMember(subobj, paccess->member, { lookup, paccess->location });
+        return Type::AccessMember(subobj, paccess->member, { lookup, paccess->location });
     });
 
     AddExpressionHandler<Parse::Decltype>([](Analyzer& a, Type* lookup, const Parse::Decltype* declty) {
@@ -434,10 +433,9 @@ Analyzer::Analyzer(const Options::Clang& opts, const Parse::Module* GlobalModule
         auto expr = a.AnalyzeExpression(lookup, rtti->ex);
         auto tu = expr->GetType()->analyzer.AggregateCPPHeader("typeinfo", rtti->location);
         auto global_namespace = expr->GetType()->analyzer.GetClangNamespace(*tu, tu->GetDeclContext());
-        auto std_namespace = global_namespace->AccessMember(global_namespace->BuildValueConstruction({}, { lookup, rtti->location }), "std", { lookup, rtti->location });
+        auto std_namespace = Type::AccessMember(global_namespace->BuildValueConstruction({}, { lookup, rtti->location }), "std", { lookup, rtti->location });
         assert(std_namespace && "<typeinfo> didn't have std namespace?");
-        auto std_namespace_ty = std_namespace->GetType();
-        auto clangty = std_namespace_ty->AccessMember(std::move(std_namespace), std::string("type_info"), { lookup, rtti->location });
+        auto clangty = Type::AccessMember(std::move(std_namespace), std::string("type_info"), { lookup, rtti->location });
         assert(clangty && "<typeinfo> didn't have std::type_info?");
         auto conty = dynamic_cast<ConstructorType*>(clangty->GetType()->Decay());
         assert(conty && "<typeinfo>'s std::type_info wasn't a type?");
@@ -464,7 +462,7 @@ Analyzer::Analyzer(const Options::Clang& opts, const Parse::Module* GlobalModule
                 ty = expr->GetType()->Decay();
                 vtable = ty->GetVtableLayout();
                 if (!vtable.layout.empty()) {
-                    expr = ty->GetVirtualPointer(std::move(expr));
+                    expr = Type::GetVirtualPointer(std::move(expr));
                     for (unsigned int i = 0; i < vtable.layout.size(); ++i) {
                         if (auto spec = boost::get<Type::VTableLayout::SpecialMember>(&vtable.layout[i].func)) {
                             if (*spec == Type::VTableLayout::SpecialMember::RTTIPointer) {
@@ -632,7 +630,7 @@ Analyzer::Analyzer(const Options::Clang& opts, const Parse::Module* GlobalModule
                 if (auto spec = boost::get<Type::VTableLayout::SpecialMember>(&layout.layout[i].func)) {
                     if (*spec == Type::VTableLayout::SpecialMember::OffsetToTop) {
                         auto offset = i - layout.offset;
-                        auto vtable = baseptrty->GetPointee()->GetVirtualPointer(object);
+                        auto vtable = Type::GetVirtualPointer(object);
                         struct DynamicCastToVoidPointer : Expression {
                             DynamicCastToVoidPointer(unsigned off, std::shared_ptr<Expression> obj, std::shared_ptr<Expression> vtable)
                             : vtable_offset(off), vtable(std::move(vtable)), object(std::move(obj)) {}

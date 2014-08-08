@@ -25,7 +25,7 @@ std::shared_ptr<Expression> TupleType::ConstructFromLiteral(std::vector<std::sha
     auto self = std::make_shared<ImplicitTemporaryExpr>(this, c);
     if (AlwaysKeepInMemory()) {
         for (std::size_t i = 0; i < exprs.size(); ++i) {
-            initializers.push_back(GetMembers()[i]->BuildInplaceConstruction(PrimitiveAccessMember(self, i), { std::move(exprs[i]) }, c));
+            initializers.push_back(Type::BuildInplaceConstruction(PrimitiveAccessMember(self, i), { std::move(exprs[i]) }, c));
         }
     } else {
         for (std::size_t i = 0; i < exprs.size(); ++i) {

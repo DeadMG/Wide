@@ -118,8 +118,8 @@ namespace Wide {
 
             OverloadSet* CreateOperatorOverloadSet(Parse::OperatorName type, Parse::Access access) override;
             OverloadSet* CreateConstructorOverloadSet(Parse::Access access) override; 
-            std::function<void(CodegenContext&)> BuildDestructorCall(std::shared_ptr<Expression> self, Context c, bool devirtualize) override;
-            std::shared_ptr<Expression> GetVirtualPointer(std::shared_ptr<Expression> self) override final;
+            std::function<void(CodegenContext&)> BuildDestruction(std::shared_ptr<Expression> self, Context c, bool devirtualize) override;
+            std::shared_ptr<Expression> AccessVirtualPointer(std::shared_ptr<Expression> self) override final;
 
             bool IsCopyConstructible(Parse::Access access) override;
             bool IsMoveConstructible(Parse::Access access) override;

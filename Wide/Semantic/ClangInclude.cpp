@@ -24,7 +24,7 @@
 using namespace Wide;
 using namespace Semantic;
 
-std::shared_ptr<Expression> ClangIncludeEntity::AccessMember(std::shared_ptr<Expression> t, std::string name, Context c) {
+std::shared_ptr<Expression> ClangIncludeEntity::AccessNamedMember(std::shared_ptr<Expression> t, std::string name, Context c) {
     if (name == "literal") {
         if (LiteralOverloadSet) return BuildChain(std::move(t), LiteralOverloadSet->BuildValueConstruction({}, { this, c.where }));
         struct LiteralIncluder : OverloadResolvable, Callable {
@@ -105,7 +105,7 @@ std::shared_ptr<Expression> ClangIncludeEntity::AccessMember(std::shared_ptr<Exp
     return nullptr;
 }
 
-std::shared_ptr<Expression> ClangIncludeEntity::BuildCall(std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c) {
+std::shared_ptr<Expression> ClangIncludeEntity::ConstructCall(std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c) {
     if (!dynamic_cast<StringType*>(args[0]->GetType()->Decay()))
         throw std::runtime_error("fuck");
     if (args.size() != 1)

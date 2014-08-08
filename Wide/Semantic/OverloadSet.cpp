@@ -33,7 +33,7 @@ template<typename T, typename U> T* debug_cast(U* other) {
     return static_cast<T*>(other);
 }
 
-std::shared_ptr<Expression> OverloadSet::BuildCall(std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c) {
+std::shared_ptr<Expression> OverloadSet::ConstructCall(std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c) {
     std::vector<Type*> targs;
 
     if (nonstatic)
@@ -79,7 +79,7 @@ struct cppcallable : public Callable {
                         auto selfty = self->GetType();
                         if (selfty->IsReference()) {
                             auto clangty = dynamic_cast<ClangType*>(selfty->Decay());
-                            vtable = clangty->GetVirtualPointer(self);
+                            vtable = Type::GetVirtualPointer(self);
                         }
                     }
                 }
@@ -113,7 +113,7 @@ struct cppcallable : public Callable {
         auto&& analyzer = source->analyzer;
         auto fty = GetFunctionType(fun, *from, analyzer);
         auto self = args.size() > 0 ? args[0] : nullptr;
-        return fty->BuildCall(Wide::Memory::MakeUnique<CPPSelf>(fun, from, fty, self), std::move(args), { source, c.where });
+        return Type::BuildCall(Wide::Memory::MakeUnique<CPPSelf>(fun, from, fty, self), std::move(args), { source, c.where });
     }
     std::vector<std::shared_ptr<Expression>> AdjustArguments(std::vector<std::shared_ptr<Expression>> args, Context c) override final {
         // Clang may resolve a static function. Drop "this" if it did.
@@ -414,7 +414,7 @@ OverloadSet* OverloadSet::CreateConstructorOverloadSet(Parse::Access access) {
         
     return AggregateType::CreateConstructorOverloadSet(access);
 }
-std::shared_ptr<Expression> OverloadSet::AccessMember(std::shared_ptr<Expression> t, std::string name, Context c) {
+std::shared_ptr<Expression> OverloadSet::AccessNamedMember(std::shared_ptr<Expression> t, std::string name, Context c) {
     if (name != "resolve")
         return Type::AccessMember(std::move(t), name, c);
     if (ResolveType)
@@ -424,7 +424,7 @@ std::shared_ptr<Expression> OverloadSet::AccessMember(std::shared_ptr<Expression
         ResolveCallable(OverloadSet* f, Analyzer& a)
         : from(f), MetaType(a) {}
         OverloadSet* from;
-        std::shared_ptr<Expression> BuildCall(std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c) override final {
+        std::shared_ptr<Expression> ConstructCall(std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c) override final {
             std::vector<Type*> types;
             for (auto&& arg : args) {
                 auto con = dynamic_cast<ConstructorType*>(arg->GetType()->Decay());

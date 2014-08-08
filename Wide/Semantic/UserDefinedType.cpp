@@ -212,7 +212,7 @@ std::vector<UserDefinedType::member> UserDefinedType::GetConstructionMembers() {
     return out;
 }
 
-std::shared_ptr<Expression> UserDefinedType::AccessMember(std::shared_ptr<Expression> self, std::string name, Context c) {
+std::shared_ptr<Expression> UserDefinedType::AccessNamedMember(std::shared_ptr<Expression> self, std::string name, Context c) {
     auto spec = GetAccessSpecifier(c.from, this);
     if (GetMemberData().member_indices.find(name) != GetMemberData().member_indices.end()) {
         auto member = type->variables[GetMemberData().member_indices[name]];
@@ -235,7 +235,7 @@ std::shared_ptr<Expression> UserDefinedType::AccessMember(std::shared_ptr<Expres
     OverloadSet* BaseOverloadSet = nullptr;
     for (auto base : GetBases()) {
         auto baseobj = Type::AccessBase(self, base);
-        if (auto member = base->AccessMember(std::move(baseobj), name, c)) {
+        if (auto member = Type::AccessMember(std::move(baseobj), name, c)) {
             // If there's nothing there, we win.
             // If we're an OS and the existing is an OS, we win by unifying.
             // Else we lose.
@@ -258,7 +258,7 @@ std::shared_ptr<Expression> UserDefinedType::AccessMember(std::shared_ptr<Expres
         return BaseOverloadSet->BuildValueConstruction({ std::move(self) }, c);
     if (!BaseType)
         return nullptr;
-    return BaseType->AccessMember(Type::AccessBase(std::move(self), BaseType), name, c);
+    return Type::AccessMember(Type::AccessBase(std::move(self), BaseType), name, c);
 }
 
 Wide::Util::optional<clang::QualType> UserDefinedType::GetClangType(ClangTU& TU) {
@@ -593,7 +593,7 @@ OverloadSet* UserDefinedType::CreateOperatorOverloadSet(Parse::OperatorName name
     return AggregateType::CreateOperatorOverloadSet(name, access);
 }
 
-std::function<void(CodegenContext&)> UserDefinedType::BuildDestructorCall(std::shared_ptr<Expression> self, Context c, bool devirtualize) {
+std::function<void(CodegenContext&)> UserDefinedType::BuildDestruction(std::shared_ptr<Expression> self, Context c, bool devirtualize) {
     assert(self->GetType()->IsReference(this));
     if (type->destructor_decl) {
         std::unordered_set<OverloadResolvable*> resolvables;
@@ -609,7 +609,7 @@ std::function<void(CodegenContext&)> UserDefinedType::BuildDestructorCall(std::s
             c->CreateCall(callable->EmitCode(c.module), self->GetValue(c));
         };
     }
-    return AggregateType::BuildDestructorCall(self, c, true);    
+    return AggregateType::BuildDestruction(self, c, true);    
 }
 
 // Gotta override these to respect our user-defined functions

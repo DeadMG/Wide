@@ -17,7 +17,7 @@
 using namespace Wide;
 using namespace Semantic;
 
-std::shared_ptr<Expression> ClangTemplateClass::BuildCall(std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c){
+std::shared_ptr<Expression> ClangTemplateClass::ConstructCall(std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c){
     clang::TemplateArgumentListInfo tl;
     std::vector<Type*> types;
     std::list<clang::IntegerLiteral> literals;

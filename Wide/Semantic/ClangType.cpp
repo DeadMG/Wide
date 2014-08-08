@@ -105,7 +105,7 @@ Wide::Util::optional<clang::QualType> ClangType::GetClangType(ClangTU& tu) {
     return type;
 }
 
-std::shared_ptr<Expression> ClangType::AccessMember(std::shared_ptr<Expression> val, std::string name, Context c) {
+std::shared_ptr<Expression> ClangType::AccessNamedMember(std::shared_ptr<Expression> val, std::string name, Context c) {
     auto access = GetAccessSpecifier(c.from, this);
 
     clang::LookupResult lr(
@@ -121,7 +121,7 @@ std::shared_ptr<Expression> ClangType::AccessMember(std::shared_ptr<Expression> 
     if (lr.isSingleResult()) {
         auto declaccess = AccessMapping.at(lr.getFoundDecl()->getAccess());
         if (access < declaccess)
-            return Type::AccessMember(std::move(val), name, c);
+            return Type::AccessNamedMember(std::move(val), name, c);
 
         if (auto field = llvm::dyn_cast<clang::FieldDecl>(lr.getFoundDecl())) {
             return PrimitiveAccessMember(std::move(val), field->getFieldIndex() + type->getAsCXXRecordDecl()->bases_end() - type->getAsCXXRecordDecl()->bases_begin());
@@ -270,7 +270,7 @@ OverloadSet* ClangType::CreateConstructorOverloadSet(Parse::Access access) {
     return analyzer.GetOverloadSet(analyzer.GetOverloadSet(decls, from, analyzer.GetLvalueType(this)), tupcon);
 }
 
-std::function<void(CodegenContext&)> ClangType::BuildDestructorCall(std::shared_ptr<Expression> self, Context c, bool devirtualize) {
+std::function<void(CodegenContext&)> ClangType::BuildDestruction(std::shared_ptr<Expression> self, Context c, bool devirtualize) {
     if (!ProcessedDestructors) {
         auto recdecl = type->getAsCXXRecordDecl();
         ProcessImplicitSpecialMember(
@@ -283,12 +283,12 @@ std::function<void(CodegenContext&)> ClangType::BuildDestructorCall(std::shared_
     }
     auto des = from->GetSema().LookupDestructor(type->getAsCXXRecordDecl());
     if (des->isTrivial())
-        return Type::BuildDestructorCall(std::move(self), c, true);
+        return Type::BuildDestruction(self, c, devirtualize);
     if (des->isVirtual() && !devirtualize) {
         std::unordered_set<clang::NamedDecl*> decls;
         decls.insert(des);
         auto set = analyzer.GetOverloadSet(decls, from, analyzer.GetLvalueType(this))->BuildValueConstruction({ self }, { this, c.where });
-        auto call = set->GetType()->BuildCall(std::move(set), {}, c);
+        auto call = Type::BuildCall(std::move(set), {}, c);
         return [=](CodegenContext& con) {
             call->GetValue(con);
         };
@@ -398,7 +398,7 @@ std::shared_ptr<Expression> GetVTablePointer(std::shared_ptr<Expression> self, c
     return GetVTablePointer(std::move(self), layout.getPrimaryBase(), a, from, vptrty);
 }
 
-std::shared_ptr<Expression> ClangType::GetVirtualPointer(std::shared_ptr<Expression> self) {
+std::shared_ptr<Expression> ClangType::AccessVirtualPointer(std::shared_ptr<Expression> self) {
     if (!type->getAsCXXRecordDecl()->isPolymorphic()) return nullptr;
     assert(self->GetType()->IsReference());
     return ::GetVTablePointer(std::move(self), type->getAsCXXRecordDecl(), analyzer, from, GetVirtualPointerType());

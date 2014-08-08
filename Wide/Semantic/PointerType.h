@@ -23,6 +23,7 @@ namespace Wide {
             bool IsSourceATarget(Type* first, Type* second, Type* context) override final;
             std::string explain() override final;
             Type* GetPointee() { return pointee; }
+            std::shared_ptr<Expression> AccessVirtualPointer(std::shared_ptr<Expression> self) override final;
         };
     }
 }

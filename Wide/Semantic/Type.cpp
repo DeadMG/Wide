@@ -190,26 +190,23 @@ std::vector<std::pair<Type*, unsigned>> Type::GetBasesAndOffsets() {
 }
 
 std::shared_ptr<Expression> Type::GetVirtualPointer(std::shared_ptr<Expression> self) { 
-    assert(false); 
-    throw std::runtime_error("ICE"); 
+    return self->GetType()->Decay()->AccessVirtualPointer(self);
 }
 
 std::shared_ptr<Expression> Type::AccessStaticMember(std::string name, Context c) {
     return nullptr;
 }
 
-std::shared_ptr<Expression> Type::AccessMember(std::shared_ptr<Expression> t, std::string name, Context c) {
+std::shared_ptr<Expression> Type::AccessNamedMember(std::shared_ptr<Expression> t, std::string name, Context c) {
     if (IsReference())
-        return Decay()->AccessMember(std::move(t), name, c);
+        return Decay()->AccessNamedMember(std::move(t), name, c);
     return nullptr;
 }
 std::shared_ptr<Expression> Type::AccessMember(std::shared_ptr<Expression> t, Parse::Name name, Context c) {
-    if (IsReference())
-        return Decay()->AccessMember(std::move(t), name, c);
-    if (auto string = boost::get<std::string>(&name))
-        return AccessMember(t, *string, c);
     auto ty = t->GetType();
-    return analyzer.GetOverloadSet(AccessMember(boost::get<Parse::OperatorName>(name), GetAccessSpecifier(c.from, this)), analyzer.GetOverloadSet(), ty)->BuildValueConstruction({t}, c);    
+    if (auto string = boost::get<std::string>(&name))
+        return ty->Decay()->AccessNamedMember(t, *string, c);
+    return ty->analyzer.GetOverloadSet(ty->Decay()->AccessMember(boost::get<Parse::OperatorName>(name), GetAccessSpecifier(c.from, ty)), ty->analyzer.GetOverloadSet(), ty)->BuildValueConstruction({t}, c);    
 }
 std::shared_ptr<Expression> Type::AccessStaticMember(Parse::Name name, Context c) {
     if (auto string = boost::get<std::string>(&name))
@@ -217,15 +214,13 @@ std::shared_ptr<Expression> Type::AccessStaticMember(Parse::Name name, Context c
     return analyzer.GetOverloadSet(AccessMember(boost::get<Parse::OperatorName>(name), GetAccessSpecifier(c.from, this)), analyzer.GetOverloadSet())->BuildValueConstruction({}, c);
 }
 
-std::shared_ptr<Expression> Type::BuildMetaCall(std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args) {
-    if (IsReference())
-        return Decay()->BuildMetaCall(std::move(val), std::move(args));
-    throw std::runtime_error("fuck");
-}
-
 std::shared_ptr<Expression> Type::BuildCall(std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c) {
-    if (IsReference())
-        return Decay()->BuildCall(std::move(val), std::move(args), c);
+    auto ty = val->GetType();
+    if (ty->IsReference())
+        ty = ty->Decay();
+    return ty->ConstructCall(val, std::move(args), c);
+}
+std::shared_ptr<Expression> Type::ConstructCall(std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c) {
     auto set = val->GetType()->AccessMember({ &Lexer::TokenTypes::OpenBracket, &Lexer::TokenTypes::CloseBracket }, GetAccessSpecifier(c.from, this));
     args.insert(args.begin(), std::move(val));
     std::vector<Type*> types;
@@ -234,6 +229,13 @@ std::shared_ptr<Expression> Type::BuildCall(std::shared_ptr<Expression> val, std
     auto call = set->Resolve(types, c.from);
     if (!call) set->IssueResolutionError(types, c);
     return call->Call(std::move(args), c);
+}
+std::function<void(CodegenContext&)> Type::BuildDestruction(std::shared_ptr<Expression> self, Context c, bool devirtualize) {
+    return [](CodegenContext&) {};
+}
+std::shared_ptr<Expression> Type::AccessVirtualPointer(std::shared_ptr<Expression> self) {
+    assert(false && "Attempted to access the virtual pointer of a type with no virtual functions.");
+    return nullptr;
 }
 
 std::shared_ptr<Expression> Type::BuildBooleanConversion(std::shared_ptr<Expression> val, Context c) {
@@ -249,7 +251,7 @@ std::shared_ptr<Expression> Type::BuildBooleanConversion(std::shared_ptr<Express
 }
 
 std::function<void(CodegenContext&)> Type::BuildDestructorCall(std::shared_ptr<Expression> self, Context c, bool devirtualize) {
-    return [](CodegenContext&) {};
+    return BuildDestruction(self, c, devirtualize);
 }
 
 OverloadSet* Type::GetConstructorOverloadSet(Parse::Access access) {
@@ -867,7 +869,7 @@ std::shared_ptr<Expression> Type::SetVirtualPointers(std::shared_ptr<Expression>
         path.pop_back();
     }
     // If we actually have a vptr, then set it; else just set the bases.
-    auto vptr = selfty->GetVirtualPointer(self);
+    auto vptr = Type::GetVirtualPointer(self);
     if (vptr) {
         path.push_back(std::make_pair(selfty, 0));
         BasePointerInitializers.push_back(Wide::Memory::MakeUnique<ImplicitStoreExpr>(std::move(vptr), selfty->GetVTablePointer(path)));

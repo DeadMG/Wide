@@ -222,8 +222,8 @@ bool AggregateType::IsCopyAssignable(Parse::Access access) {
 bool AggregateType::IsCopyConstructible(Parse::Access access) {
     return GetLayout().copyconstructible;
 }
-std::shared_ptr<Expression> AggregateType::GetVirtualPointer(std::shared_ptr<Expression> self) {
-    if (GetPrimaryBase()) return GetPrimaryBase()->GetVirtualPointer(Type::AccessBase(std::move(self), GetPrimaryBase()));
+std::shared_ptr<Expression> AggregateType::AccessVirtualPointer(std::shared_ptr<Expression> self) {
+    if (GetPrimaryBase()) return Type::GetVirtualPointer(Type::AccessBase(std::move(self), GetPrimaryBase()));
     if (!HasDeclaredDynamicFunctions()) return nullptr;
     auto vptrty = analyzer.GetPointerType(GetVirtualPointerType());
     assert(self->GetType()->IsReference(this) || dynamic_cast<PointerType*>(self->GetType())->GetPointee() == this);
@@ -376,7 +376,7 @@ llvm::Function* AggregateType::CreateDestructorFunction(llvm::Module* module) {
         throw std::runtime_error("Internal Compiler Error: An LLVM function failed verification.");
     return DestructorFunction;
 }
-std::function<void(CodegenContext&)> AggregateType::BuildDestructorCall(std::shared_ptr<Expression> self, Context c, bool devirtualize) {
+std::function<void(CodegenContext&)> AggregateType::BuildDestruction(std::shared_ptr<Expression> self, Context c, bool devirtualize) {
     return [this, self](CodegenContext& con) {
         con->CreateCall(GetDestructorFunction(con), self->GetValue(con));
     };
@@ -399,7 +399,7 @@ OverloadSet* AggregateType::GetCopyAssignmentOperator() {
                 }
         
                 auto functy = analyzer.GetFunctionType(analyzer.GetLvalueType(this), { analyzer.GetLvalueType(this), analyzer.GetLvalueType(this) }, false);
-                return functy->BuildCall(std::make_shared<AggregateFunction>(CopyAssignmentFunction, functy, [this](CodegenContext& con) { EmitAssignmentOperator(con, *CopyAssignmentExpressions); }), { args[0], args[1] }, c);
+                return Type::BuildCall(std::make_shared<AggregateFunction>(CopyAssignmentFunction, functy, [this](CodegenContext& con) { EmitAssignmentOperator(con, *CopyAssignmentExpressions); }), { args[0], args[1] }, c);
             }, { analyzer.GetLvalueType(this), analyzer.GetLvalueType(this) });
         }
     );
@@ -422,7 +422,7 @@ OverloadSet* AggregateType::GetMoveAssignmentOperator() {
                 }
             
                 auto functy = analyzer.GetFunctionType(analyzer.GetLvalueType(this), { analyzer.GetLvalueType(this), analyzer.GetRvalueType(this) }, false);
-                return functy->BuildCall(std::make_shared<AggregateFunction>(MoveAssignmentFunction, functy, [this](CodegenContext& con) { EmitAssignmentOperator(con, *MoveAssignmentExpressions); }), { args[0], args[1] }, c);
+                return Type::BuildCall(std::make_shared<AggregateFunction>(MoveAssignmentFunction, functy, [this](CodegenContext& con) { EmitAssignmentOperator(con, *MoveAssignmentExpressions); }), { args[0], args[1] }, c);
             }, { analyzer.GetLvalueType(this), analyzer.GetRvalueType(this) });            
         }
     );
@@ -442,7 +442,7 @@ OverloadSet* AggregateType::GetMoveConstructor() {
                 }
             
                 auto functy = analyzer.GetFunctionType(analyzer.GetVoidType(), { analyzer.GetLvalueType(this), analyzer.GetRvalueType(this) }, false);
-                return functy->BuildCall(std::make_shared<AggregateFunction>(MoveConstructorFunction, functy, [this](CodegenContext& con) { EmitConstructor(con, *MoveConstructorInitializers); }), { args[0], args[1] }, c);
+                return Type::BuildCall(std::make_shared<AggregateFunction>(MoveConstructorFunction, functy, [this](CodegenContext& con) { EmitConstructor(con, *MoveConstructorInitializers); }), { args[0], args[1] }, c);
             }, { analyzer.GetLvalueType(this), analyzer.GetRvalueType(this) });
         }
     );
@@ -462,7 +462,7 @@ OverloadSet* AggregateType::GetCopyConstructor() {
                 }
         
                 auto functy = analyzer.GetFunctionType(analyzer.GetVoidType(), { analyzer.GetLvalueType(this), analyzer.GetLvalueType(this) }, false);
-                return functy->BuildCall(std::make_shared<AggregateFunction>(CopyConstructorFunction, functy, [this](CodegenContext& con) { EmitConstructor(con, *CopyConstructorInitializers); }), { args[0], args[1] }, c);
+                return Type::BuildCall(std::make_shared<AggregateFunction>(CopyConstructorFunction, functy, [this](CodegenContext& con) { EmitConstructor(con, *CopyConstructorInitializers); }), { args[0], args[1] }, c);
             }, { analyzer.GetLvalueType(this), analyzer.GetLvalueType(this) });
         }
     );
@@ -583,7 +583,7 @@ OverloadSet* AggregateType::GetDefaultConstructor() {
             });
 
             auto functy = analyzer.GetFunctionType(analyzer.GetVoidType(), { analyzer.GetLvalueType(this) }, false);
-            return functy->BuildCall(std::make_shared<AggregateFunction>(DefaultConstructorFunction, functy, [this](CodegenContext& con) { EmitConstructor(con, *DefaultConstructorInitializers); }), { args[0] }, c);
+            return Type::BuildCall(std::make_shared<AggregateFunction>(DefaultConstructorFunction, functy, [this](CodegenContext& con) { EmitConstructor(con, *DefaultConstructorInitializers); }), { args[0] }, c);
         }, { analyzer.GetLvalueType(this) });
     };
     return MaybeCreateSet(DefaultConstructor, is_default_constructible, create);

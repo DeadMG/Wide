@@ -42,7 +42,7 @@ namespace Wide {
             State s;
             void ComputeReturnType(); 
             std::shared_ptr<Expression> CallFunction(std::vector<std::shared_ptr<Expression>> args, Context c) override final { 
-                return BuildCall(BuildValueConstruction({}, c), std::move(args), c);
+                return Type::BuildCall(BuildValueConstruction({}, c), std::move(args), c);
             }
             std::vector<std::shared_ptr<Expression>> AdjustArguments(std::vector<std::shared_ptr<Expression>> args, Context c) override final;
         public:
@@ -222,7 +222,7 @@ namespace Wide {
 
             Wide::Util::optional<clang::QualType> GetClangType(ClangTU& where) override final;
      
-            std::shared_ptr<Expression> BuildCall(std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c) override final;
+            std::shared_ptr<Expression> ConstructCall(std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c) override final;
             Type* GetContext() override final { return context; }
             Type* GetNonstaticMemberContext() { if (NonstaticMemberContext) return *NonstaticMemberContext; return nullptr; }
 

@@ -10,10 +10,10 @@ struct TemplateType::TemplateTypeLookupContext : MetaType {
     : templatecontext(t), arguments(args), MetaType(a) {}
     Type* templatecontext;
     std::unordered_map<std::string, Type*> arguments;
-    std::shared_ptr<Expression> AccessMember(std::shared_ptr<Expression> self, std::string name, Context c) override final {
+    std::shared_ptr<Expression> AccessNamedMember(std::shared_ptr<Expression> self, std::string name, Context c) override final {
         if (arguments.find(name) != arguments.end())
             return arguments[name]->BuildValueConstruction({}, c);
-        return templatecontext->AccessMember(templatecontext->BuildValueConstruction({}, c), name, c);
+        return Type::AccessMember(templatecontext->BuildValueConstruction({}, c), name, c);
     }
     std::string explain() override final {
         return templatecontext->explain();

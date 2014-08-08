@@ -18,7 +18,7 @@ namespace {
         Array(ConstructorType* con, Analyzer& a)
             : MetaType(a), t(con) {}
 
-        std::shared_ptr<Expression> BuildCall(std::shared_ptr<Expression> self, std::vector<std::shared_ptr<Expression>> args, Context c) override final {
+        std::shared_ptr<Expression> ConstructCall(std::shared_ptr<Expression> self, std::vector<std::shared_ptr<Expression>> args, Context c) override final {
             auto constructed = t->GetConstructedType();
             if (args.size() == 0)
                 throw std::runtime_error("Attempted to make an array without passing a size.");
@@ -37,7 +37,7 @@ namespace {
 
         std::string explain() override final { return t->explain() + ".members"; }
 
-        std::shared_ptr<Expression> AccessMember(std::shared_ptr<Expression> self, std::string name, Context c) override final {
+        std::shared_ptr<Expression> AccessNamedMember(std::shared_ptr<Expression> self, std::string name, Context c) override final {
             auto member = t->GetConstructedType()->AccessStaticMember(name, c);
             if (!member)
                 throw std::runtime_error("Attempted to access nonexistent member.");
@@ -49,11 +49,11 @@ namespace {
     };
 }
 
-std::shared_ptr<Expression> ConstructorType::BuildCall(std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c) {
+std::shared_ptr<Expression> ConstructorType::ConstructCall(std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c) {
     assert(val->GetType()->Decay() == this);
     return Wide::Memory::MakeUnique<ExplicitConstruction>(std::move(val), std::move(args), c, t);
 }
-std::shared_ptr<Expression> ConstructorType::AccessMember(std::shared_ptr<Expression> self, std::string name, Context c) {
+std::shared_ptr<Expression> ConstructorType::AccessNamedMember(std::shared_ptr<Expression> self, std::string name, Context c) {
     assert(self->GetType()->Decay() == this);
     //return t->AccessStaticMember(name, c);
     if (name == "decay")

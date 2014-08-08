@@ -107,7 +107,7 @@ std::shared_ptr<Expression> Semantic::InterpretExpression(clang::Expr* expr, Cla
                 break;
             args.push_back(InterpretExpression(expr, tu, c, a, exprmap));
         }
-        return func->GetType()->BuildCall(std::move(func), std::move(args), c);
+        return Type::BuildCall(std::move(func), std::move(args), c);
     }
     if (auto null = llvm::dyn_cast<clang::CXXNullPtrLiteralExpr>(expr)) {
         return a.GetNullType()->BuildValueConstruction({}, c);
@@ -166,7 +166,7 @@ std::shared_ptr<Expression> Semantic::InterpretExpression(clang::Expr* expr, Cla
         auto decl = mem->getMemberDecl();
         auto name = mem->getMemberNameInfo().getAsString();
         if (auto vardecl = llvm::dyn_cast<clang::VarDecl>(decl)) {
-            return object->GetType()->AccessMember(object, name, c);
+            return Type::AccessMember(object, name, c);
         }
         if (auto convdecl = llvm::dyn_cast<clang::CXXConversionDecl>(decl)) {
             std::unordered_set<clang::NamedDecl*> decls;
@@ -174,7 +174,7 @@ std::shared_ptr<Expression> Semantic::InterpretExpression(clang::Expr* expr, Cla
             return a.GetOverloadSet(decls, &tu, object->GetType())->BuildValueConstruction({ object }, c);
         }
         if (auto funcdecl = llvm::dyn_cast<clang::FunctionDecl>(decl)) {
-            return object->GetType()->AccessMember(object, name, c);
+            return Type::AccessMember(object, name, c);
         }
         // Fuck
     }

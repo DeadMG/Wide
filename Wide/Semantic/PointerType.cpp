@@ -115,3 +115,9 @@ OverloadSet* PointerType::CreateOperatorOverloadSet(Parse::OperatorName name, Pa
 std::string PointerType::explain() {
     return pointee->explain() + ".pointer";
 }
+std::shared_ptr<Expression> PointerType::AccessVirtualPointer(std::shared_ptr<Expression> self) {
+    auto deref = CreatePrimUnOp(std::move(self), analyzer.GetLvalueType(pointee), [](llvm::Value* val, CodegenContext& con) {
+        return val;
+    });
+    return Type::GetVirtualPointer(deref);
+}

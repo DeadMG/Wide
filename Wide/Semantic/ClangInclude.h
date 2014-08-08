@@ -13,8 +13,8 @@ namespace Wide {
             std::unique_ptr<OverloadResolvable> HeaderIncluder;
         public:
             ClangIncludeEntity(Analyzer& a) : MetaType(a) {}
-            std::shared_ptr<Expression> AccessMember(std::shared_ptr<Expression> t, std::string name, Context c) override final;
-            std::shared_ptr<Expression> BuildCall(std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c) override final;
+            std::shared_ptr<Expression> AccessNamedMember(std::shared_ptr<Expression> t, std::string name, Context c) override final;
+            std::shared_ptr<Expression> ConstructCall(std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c) override final;
             std::string explain() override final;
         };
     }
