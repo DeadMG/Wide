@@ -1,11 +1,11 @@
 using cplusplus := cpp("JITSuccess/Examples/ExportedFunctionsMemberSets.h");
 using t := cplusplus.t;
-[export := t().f.resolve(t.lvalue)]
-f(this := t.lvalue) {
+[export := t.members.f.resolve(t.lvalue)]
+f() {
     return "Hello";
 }
-[export := t().f.resolve(t.rvalue)]
-f(this := t.lvalue) {
+[export := t.members.f.resolve(t.rvalue)]
+f() {
     return "World";
 }
 Main() {

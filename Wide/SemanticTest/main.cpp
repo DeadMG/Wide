@@ -62,7 +62,7 @@ int main(int argc, char** argv) {
             return modes[input["mode"].as<std::string>()]();
         return 1;
     }
-//    Jit(clangopts, "JITSuccess/Examples/ExportedFunctions.wide");
+//    Jit(clangopts, "JITSuccess/Examples/ExportedFunctionsMemberSets.wide");
 //    Compile(clangopts, "CompileFail/AddressOfNonLvalue/FunctionReturnComplexValue.wide");
     std::unordered_map<std::string, std::function<bool()>> files;
 #pragma warning(disable : 4800)
@@ -88,15 +88,3 @@ int main(int argc, char** argv) {
         Wide::Util::DebugBreak();
     return failed.size() != 0;
 }
-/*
-Total succeeded: 221 failed: 9
-Failed: JITSuccess\Examples\UDTCPPBase.wide
-Failed: JITSuccess\Examples\ExportedFunctionsMemberSets.wide
-Failed: JITSuccess\Examples\ExportedFunctionsDestructor.wide
-Failed: JITSuccess\UserDefined\DynamicDestructor.wide
-Failed: JITSuccess\CPPInterop\ExportConstructor.wide
-Failed: JITSuccess\CPPInterop\ExportDestructor.wide
-Failed: JITSuccess\CPPInterop\InheritCPPInterface.wide
-Failed: JITSuccess\CPPInterop\ThrowDerivedCatchBase.wide
-Failed: JITSuccess\Examples\TemplateConversionExample.wide
-*/

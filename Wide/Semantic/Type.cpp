@@ -796,7 +796,7 @@ std::shared_ptr<Expression> Type::CreateVTable(std::vector<std::pair<Type*, unsi
             };
             if (expr.first) {
                 if (func.type != expr.first)
-                    entries.push_back(FunctionType::CreateThunk(std::make_shared<Thunk>(expr.second, expr.first), static_cast<WideFunctionType*>(func.type), this));
+                    entries.push_back(func.type->CreateThunkFrom(std::make_shared<Thunk>(expr.second, expr.first), this));
                 else
                     entries.push_back(std::make_shared<Thunk>(expr.second, expr.first));
                 found = true;

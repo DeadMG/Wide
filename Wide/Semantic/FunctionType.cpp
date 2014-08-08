@@ -54,28 +54,6 @@ bool FunctionType::CanThunkFromFirstToSecond(FunctionType* lhs, FunctionType* rh
             return false;
     return true;
 }
-std::shared_ptr<Expression> FunctionType::CreateThunk(std::shared_ptr<Expression> to, WideFunctionType* dest, Type* context) {
-    if (to->GetType() == dest) return to;
-    auto name = dest->analyzer.GetUniqueFunctionName();
-    auto functy = dynamic_cast<FunctionType*>(to->GetType());
-    if (!functy) throw std::runtime_error("Cannot thunk from a non-function-type.");
-    auto func = [name](llvm::Module* mod) { return mod->getFunction(name); };
-    auto emit = dest->CreateThunk(func, to, name, context);
-    struct self : Expression {
-        self(std::function<void(llvm::Module*)> emit, WideFunctionType* dest, std::string name)
-            : emit(emit), dest(dest), name(name) {}
-        std::function<void(llvm::Module*)> emit;
-        WideFunctionType* dest;
-        std::string name;
-        Type* GetType() override final { return dest; }
-        llvm::Value* ComputeValue(CodegenContext& con) override final {
-            auto func = llvm::Function::Create(llvm::cast<llvm::FunctionType>(dest->GetLLVMType(con)->getElementType()), llvm::GlobalValue::LinkageTypes::ExternalLinkage, name, con);
-            emit(con);
-            return func;
-        }
-    };
-    return std::make_shared<self>(emit, dest, name);
-}
 
 // Now WideFunctionType
 llvm::PointerType* WideFunctionType::GetLLVMType(llvm::Module* module) {
@@ -188,7 +166,30 @@ Wide::Util::optional<clang::QualType> WideFunctionType::GetClangType(ClangTU& fr
     protoinfo.ExtInfo = protoinfo.ExtInfo.withCallingConv(convconverter.at(convention));
     return from.GetASTContext().getFunctionType(*retty, types, protoinfo);
 }
-std::function<void(llvm::Module*)> WideFunctionType::CreateThunk(std::function<llvm::Function*(llvm::Module*)> src, std::shared_ptr<Expression> dest, std::string name, Type* context) {
+std::shared_ptr<Expression> WideFunctionType::CreateThunkFrom(std::shared_ptr<Expression> to, Type* context) {
+    auto dest = this;
+    if (to->GetType() == dest) return to;
+    auto name = dest->analyzer.GetUniqueFunctionName();
+    auto functy = dynamic_cast<FunctionType*>(to->GetType());
+    if (!functy) throw std::runtime_error("Cannot thunk from a non-function-type.");
+    auto func = [name](llvm::Module* mod) { return mod->getFunction(name); };
+    auto emit = dest->CreateThunk(func, to, context);
+    struct self : Expression {
+        self(std::function<void(llvm::Module*)> emit, WideFunctionType* dest, std::string name)
+            : emit(emit), dest(dest), name(name) {}
+        std::function<void(llvm::Module*)> emit;
+        WideFunctionType* dest;
+        std::string name;
+        Type* GetType() override final { return dest; }
+        llvm::Value* ComputeValue(CodegenContext& con) override final {
+            auto func = llvm::Function::Create(llvm::cast<llvm::FunctionType>(dest->GetLLVMType(con)->getElementType()), llvm::GlobalValue::LinkageTypes::ExternalLinkage, name, con);
+            emit(con);
+            return func;
+        }
+    };
+    return std::make_shared<self>(emit, dest, name);
+}
+std::function<void(llvm::Module*)> WideFunctionType::CreateThunk(std::function<llvm::Function*(llvm::Module*)> src, std::shared_ptr<Expression> dest, Type* context) {
     std::vector<std::shared_ptr<Expression>> conversion_exprs;
     auto destty = dynamic_cast<WideFunctionType*>(dest->GetType());
     assert(destty);
@@ -437,7 +438,12 @@ std::function<void(llvm::Module*)> ClangFunctionType::CreateThunk(std::function<
             codegenfunc.AllocaInsertPt = con.GetAllocaInsertPoint();
             codegenfunc.Builder.SetInsertPoint(con->GetInsertBlock(), con->GetInsertBlock()->end());
             codegenfunc.CurCodeDecl = decl;
-            codegenfunc.CurGD = decl;
+            if (auto des = llvm::dyn_cast<clang::CXXDestructorDecl>(decl))
+                codegenfunc.CurGD = clang::GlobalDecl(des, clang::CXXDtorType::Dtor_Complete);
+            else if (auto con = llvm::dyn_cast<clang::CXXConstructorDecl>(decl))
+                codegenfunc.CurGD = clang::GlobalDecl(con, clang::CXXCtorType::Ctor_Complete);
+            else
+                codegenfunc.CurGD = decl;
             clang::CodeGen::FunctionArgList list;
             if (llvm::dyn_cast<clang::CXXMethodDecl>(decl)) {
                 from->GetCodegenModule(con).getCXXABI().BuildInstanceFunctionParams(codegenfunc, type->getResultType(), list);               
@@ -465,9 +471,10 @@ std::function<void(llvm::Module*)> ClangFunctionType::CreateThunk(std::function<
         });
     };
 }
-std::function<void(llvm::Module*)> ClangFunctionType::CreateThunk(std::function<llvm::Function*(llvm::Module*)> src, std::shared_ptr<Expression> dest, std::string name, Type* context) {
+std::shared_ptr<Expression> ClangFunctionType::CreateThunkFrom(std::shared_ptr<Expression> dest, Type* context) {
     auto qualty = from->GetASTContext().getFunctionType(type->getResultType(), type->getArgTypes(), type->getExtProtoInfo());
     clang::FunctionDecl* decl;
+    std::string name = analyzer.GetUniqueFunctionName();
     auto GetParmVarDecls = [this](std::vector<clang::QualType> types, ClangTU& TU, clang::DeclContext* recdecl) {
         std::vector<clang::ParmVarDecl*> parms;
         for (auto qualty : types) {
@@ -481,7 +488,7 @@ std::function<void(llvm::Module*)> ClangFunctionType::CreateThunk(std::function<
                 TU.GetASTContext().getTrivialTypeSourceInfo(qualty),
                 clang::VarDecl::StorageClass::SC_None,
                 nullptr
-            ));
+                ));
         }
         return parms;
     };
@@ -498,7 +505,7 @@ std::function<void(llvm::Module*)> ClangFunctionType::CreateThunk(std::function<
             false,
             false,
             clang::SourceLocation()
-        );
+            );
         auto explicitparams = GetParmVarDecls(type->getArgTypes(), *from, recdecl);
         decl->setParams(explicitparams);
     } else {
@@ -512,8 +519,23 @@ std::function<void(llvm::Module*)> ClangFunctionType::CreateThunk(std::function<
             clang::FunctionDecl::StorageClass::SC_Static,
             false,
             false
-        );
+            );
         decl->setParams(GetParmVarDecls(type->getArgTypes(), *from, from->GetDeclContext()));
     }
-    return CreateThunk(src, dest, decl, context);
+    struct self : Expression {
+        self(std::function<void(llvm::Module*)> emit, ClangFunctionType* dest, std::function<llvm::Function*(llvm::Module*)> create)
+            : emit(emit), dest(dest), create(create) {}
+        std::function<void(llvm::Module*)> emit;
+        ClangFunctionType* dest;
+        std::function<llvm::Function*(llvm::Module*)> create;
+        Type* GetType() override final { return dest; }
+        llvm::Value* ComputeValue(CodegenContext& con) override final {
+            auto func = create(con);
+            emit(con);
+            return func;
+        }
+    };
+    auto obj = from->GetObject(decl);
+    auto emit = CreateThunk(from->GetObject(decl), dest, decl, context);
+    return std::make_shared<self>(emit, this, obj);
 }
