@@ -34,8 +34,8 @@
 using namespace Wide;
 using namespace Semantic;
 
-void Function::AddExportName(std::function<llvm::Function*(llvm::Module*)> target, FunctionType* src) {
-    trampoline.push_back(src->CreateThunk(target, GetStaticSelf(), this));
+void Function::AddExportName(std::function<void(llvm::Module*)> func) {
+    trampoline.push_back(func);
 }
 Function::LocalVariable::LocalVariable(std::shared_ptr<Expression> ex, Function* self, Lexer::Range where, Lexer::Range init_where)
 : init_expr(std::move(ex)), self(self), where(where), init_where(init_where)
@@ -666,7 +666,7 @@ Function::Function(std::vector<Type*> args, const Parse::FunctionBase* astfun, A
                             source = tu->GetObject(con, clang::CXXCtorType::Ctor_Complete);
                         else
                             source = tu->GetObject(decl);
-                        trampoline.push_back(GetFunctionType(decl, *tu, analyzer)->CreateThunk(source, GetStaticSelf(), this));
+                        trampoline.push_back(GetFunctionType(decl, *tu, analyzer)->CreateThunk(source, GetStaticSelf(), decl, this));
                     }
                 }
             }

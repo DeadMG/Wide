@@ -370,7 +370,7 @@ Wide::Util::optional<clang::QualType> UserDefinedType::GetClangType(ClangTU& TU)
         recdecl->addDecl(des);
         auto widedes = analyzer.GetWideFunction(type->destructor_decl, this, { analyzer.GetLvalueType(this) }, "~type");
         widedes->ComputeBody();
-        widedes->AddExportName(TU.GetObject(des, clang::CXXDtorType::Dtor_Complete), GetFunctionType(des, TU, analyzer));
+        widedes->AddExportName(GetFunctionType(des, TU, analyzer)->CreateThunk(TU.GetObject(des, clang::CXXDtorType::Dtor_Complete), widedes->GetStaticSelf(), des, this));
     }
     for (auto access : type->constructor_decls) {
         for (auto func : access.second) {
@@ -398,7 +398,7 @@ Wide::Util::optional<clang::QualType> UserDefinedType::GetClangType(ClangTU& TU)
             if (!func->deleted) {
                 auto mfunc = analyzer.GetWideFunction(func, this, types, "type");
                 mfunc->ComputeBody();
-                mfunc->AddExportName(TU.GetObject(con, clang::CXXCtorType::Ctor_Complete), GetFunctionType(con, TU, analyzer));
+                mfunc->AddExportName(GetFunctionType(con, TU, analyzer)->CreateThunk(TU.GetObject(con, clang::CXXCtorType::Ctor_Complete), mfunc->GetStaticSelf(), con, this));
             } else
                 con->setDeletedAsWritten(true);
         }
@@ -469,7 +469,7 @@ Wide::Util::optional<clang::QualType> UserDefinedType::GetClangType(ClangTU& TU)
                 else {
                     auto mfunc = analyzer.GetWideFunction(func, this, types, GetNameAsString(overset.first));
                     mfunc->ComputeBody();
-                    mfunc->AddExportName(TU.GetObject(meth), GetFunctionType(meth, TU, analyzer));
+                    mfunc->AddExportName(GetFunctionType(meth, TU, analyzer)->CreateThunk(TU.GetObject(meth), mfunc->GetStaticSelf(), meth, this));
                 }
             }
         }

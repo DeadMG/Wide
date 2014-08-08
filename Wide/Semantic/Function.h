@@ -233,7 +233,7 @@ namespace Wide {
             std::string GetSourceName() { return source_name; }
             ~Function();
             std::shared_ptr<Expression> GetStaticSelf();
-            void AddExportName(std::function<llvm::Function*(llvm::Module*)> mod, FunctionType* dest);
+            void AddExportName(std::function<void(llvm::Module*)> mod);
         };
     }
 }

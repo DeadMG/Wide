@@ -770,9 +770,9 @@ ClangTU* Analyzer::AggregateCPPHeader(std::string file, Lexer::Range where) {
 
 void Analyzer::GenerateCode(llvm::Module* module) {
     if (AggregateTU)
-        AggregateTU->GenerateCodeAndLinkModule(module, layout);
+        AggregateTU->GenerateCodeAndLinkModule(module, layout, *this);
     for (auto&& tu : headers)
-        tu.second.GenerateCodeAndLinkModule(module, layout);
+        tu.second.GenerateCodeAndLinkModule(module, layout, *this);
 
     for (auto&& set : WideFunctions)
         for (auto&& signature : set.second)
@@ -1015,8 +1015,37 @@ OverloadSet* Analyzer::GetOverloadSet(std::unordered_set<clang::NamedDecl*> decl
 }
 std::vector<Type*> Analyzer::GetFunctionParameters(const Parse::FunctionBase* func, Type* context) {
     std::vector<Type*> out;
-    if (HasImplicitThis(func, context))
-        out.push_back(GetLvalueType(GetNonstaticContext(func, context)));
+    if (HasImplicitThis(func, context)) {
+        // If we're exported as an rvalue-qualified function, we need rvalue.
+        if (auto astfun = dynamic_cast<const Parse::AttributeFunctionBase*>(func)) {
+            for (auto attr : astfun->attributes) {
+                if (auto name = dynamic_cast<const Parse::Identifier*>(attr.initialized)) {
+                    if (auto string = boost::get<std::string>(&name->val)) {
+                        if (*string == "export") {
+                            auto expr = context->analyzer.AnalyzeExpression(context, attr.initializer);
+                            auto overset = dynamic_cast<OverloadSet*>(expr->GetType()->Decay());
+                            if (!overset)
+                                throw NotAType(expr->GetType()->Decay(), attr.initializer->location);
+                            auto tuanddecl = overset->GetSingleFunction();
+                            if (!tuanddecl.second) throw NotAType(expr->GetType()->Decay(), attr.initializer->location);
+                            auto tu = tuanddecl.first;
+                            auto decl = tuanddecl.second;
+                            if (auto meth = llvm::dyn_cast<clang::CXXMethodDecl>(decl)) {
+                                if (!meth->isStatic()) {
+                                    if (meth->getType()->getAs<clang::FunctionProtoType>()->getExtProtoInfo().RefQualifier == clang::RefQualifierKind::RQ_RValue)
+                                        out.push_back(GetRvalueType(GetNonstaticContext(func, context)));
+                                    else
+                                        out.push_back(GetLvalueType(GetNonstaticContext(func, context)));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if (out.empty())
+            out.push_back(GetLvalueType(GetNonstaticContext(func, context)));
+    }
     for (auto&& arg : func->args) {
         if (!arg.type) {
             ParameterHighlight(arg.location);

@@ -56,7 +56,7 @@ namespace Wide {
         public:
             std::unique_ptr<Impl> impl;
             ~ClangTU();
-            void GenerateCodeAndLinkModule(llvm::Module* module, llvm::DataLayout&);
+            void GenerateCodeAndLinkModule(llvm::Module* module, llvm::DataLayout&, Analyzer& a);
             clang::DeclContext* GetDeclContext();
 
             ClangTU(ClangTU&&);

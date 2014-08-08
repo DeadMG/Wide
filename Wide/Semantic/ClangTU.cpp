@@ -4,6 +4,7 @@
 #include <Wide/Semantic/SemanticError.h>
 #include <Wide/Semantic/Analyzer.h>
 #include <Wide/Semantic/ClangType.h>
+#include <Wide/Semantic/FunctionType.h>
 #include <functional>
 #include <string>
 #include <fstream>
@@ -250,7 +251,7 @@ void ClangTU::AddFile(std::string filename, Lexer::Range where) {
 ClangTU::ClangTU(ClangTU&& other)
     : impl(std::move(other.impl)), a(other.a), visited(std::move(other.visited)) {}
 
-void ClangTU::GenerateCodeAndLinkModule(llvm::Module* module, llvm::DataLayout& layout) {
+void ClangTU::GenerateCodeAndLinkModule(llvm::Module* module, llvm::DataLayout& layout, Analyzer& a) {
     impl->sema.ActOnEndOfTranslationUnit();
     impl->CreateCodegen(*module, layout);
     // Cause all the side effects. Fuck you, Clang.
@@ -259,7 +260,7 @@ void ClangTU::GenerateCodeAndLinkModule(llvm::Module* module, llvm::DataLayout& 
     for (auto x : impl->constructors)
         impl->GetCodegenModule(module).GetAddrOfCXXConstructor(x.first, x.second);
     for (auto x : impl->functions)
-        impl->GetCodegenModule(module).GetAddrOfFunction(x);
+        impl->GetCodegenModule(module).GetAddrOfFunction(x, GetFunctionType(x, *this, a)->GetLLVMType(module)->getElementType());
     for (auto x : impl->globals)
         impl->GetCodegenModule(module).GetAddrOfGlobal(x);
     for (auto field : impl->FieldNumbers)
