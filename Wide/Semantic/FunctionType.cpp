@@ -332,14 +332,14 @@ std::shared_ptr<Expression> ClangFunctionType::BuildCall(std::shared_ptr<Express
                     invokeinst = con->CreateInvoke(llvmfunc, continueblock, con.CreateLandingpadForEH(), args);
                     invokeinst->setAttributes(callinst->getAttributes());
                     call_or_invoke = invokeinst;
+                    callinst->replaceAllUsesWith(invokeinst);
                     callinst->eraseFromParent();
                 }
                 con->SetInsertPoint(continueblock);
-            }
-
+            }            
             if (!clangfuncty->GetReturnType()->IsTriviallyDestructible())
                 con.AddDestructor(Destructor);
-            if (clangfuncty->GetReturnType() == a.GetVoidType())
+            if (call_or_invoke->getType() == clangfuncty->GetReturnType()->GetLLVMType(con))
                 return call_or_invoke;
             if (result.isScalar()) {
                 auto val = result.getScalarVal();
