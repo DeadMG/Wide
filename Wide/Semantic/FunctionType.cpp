@@ -3,7 +3,10 @@
 #include <Wide/Semantic/ClangTU.h>
 #include <Wide/Semantic/Expression.h>
 #include <Wide/Semantic/Function.h>
+#include <Wide/Semantic/StringType.h>
 #include <Wide/Semantic/Reference.h>
+#include <Wide/Semantic/PointerType.h>
+#include <Wide/Semantic/IntegralType.h>
 
 #pragma warning(push, 0)
 #include <clang/AST/Type.h>
@@ -409,6 +412,20 @@ std::function<void(llvm::Module*)> ClangFunctionType::CreateThunk(std::function<
     std::shared_ptr<Expression> ret_expr;
     if (GetReturnType()->AlwaysKeepInMemory()) {
         ret_expr = GetReturnType()->BuildInplaceConstruction(std::make_shared<arg>(analyzer.GetLvalueType(GetReturnType()), 0, args), { call }, c);
+    } else if (dynamic_cast<StringType*>(destty->GetReturnType())) {
+        struct ImplicitStringDecay : Expression {
+            ImplicitStringDecay(std::shared_ptr<Expression> expr)
+                : StringExpr(std::move(expr)) {}
+            std::shared_ptr<Expression> StringExpr;
+            llvm::Value* ComputeValue(CodegenContext& con) override final {
+                return StringExpr->GetValue(con);
+            }
+            Type* GetType() override final {
+                auto&& analyzer = StringExpr->GetType()->analyzer;
+                return analyzer.GetPointerType(analyzer.GetIntegralType(8, true));
+            }
+        };
+        ret_expr = std::make_shared<ImplicitStringDecay>(call);
     } else if (GetReturnType() != analyzer.GetVoidType())
         ret_expr = GetReturnType()->BuildValueConstruction({ call }, c);
     else
