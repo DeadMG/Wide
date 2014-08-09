@@ -62,7 +62,7 @@ int main(int argc, char** argv) {
             return modes[input["mode"].as<std::string>()]();
         return 1;
     }
-//    Jit(clangopts, "JITSuccess/CPPInterop/TupleInit.wide");
+//    Jit(clangopts, "JITSuccess/UserDefined/DynamicDestructor.wide");
 //    Compile(clangopts, "CompileFail/NoMember/ClangAccessPrivateMemberVariable.wide");
     std::unordered_map<std::string, std::function<bool()>> files;
 #pragma warning(disable : 4800)
@@ -70,7 +70,8 @@ int main(int argc, char** argv) {
         TestDirectory(mode.first, mode.first, argv[0], input.count("break"), files);
     }
     Wide::Concurrency::UnorderedSet<std::string> failed;
-#ifndef TEAMCITY
+#ifdef _MSC_VER
+    // LLVM's ExecuteAndWait can't handle parallel execution on non-Windows machines.
     Wide::Concurrency::ParallelForEach(files.begin(), files.end(), 
 #else
     std::for_each(files.begin(), files.end(), 

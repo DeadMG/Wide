@@ -188,7 +188,7 @@ AggregateType::Layout::Layout(AggregateType* agg, Wide::Semantic::Analyzer& a)
     }
 
     // Round sizeof(C) up to a non-zero multiple of align(C). If C is a POD, but not a POD for the purpose of layout, set nvsize(C) = sizeof(C). 
-    if (sizec % alignc != 0)
+    if (sizec % alignc != 0 || sizec == 0)
         sizec += alignc - (sizec % alignc);
 
     struct Self : public Expression {

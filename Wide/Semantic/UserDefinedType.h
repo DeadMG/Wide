@@ -44,8 +44,8 @@ namespace Wide {
 
             struct VTableData {
                 VTableData(UserDefinedType* self);
-                VTableData(VTableData&& other);
-                VTableData& operator=(VTableData&& other);
+                VTableData(const VTableData& other) = default;
+                VTableData& operator=(const VTableData& other) = default;
                 VTableLayout funcs;
                 // Relative to the first vptr, not the front of the vtable.
                 std::unordered_map<const Parse::DynamicFunction*, unsigned> VTableIndices;

@@ -475,6 +475,15 @@ Wide::Util::optional<clang::QualType> UserDefinedType::GetClangType(ClangTU& TU)
         }
     }
     recdecl->completeDefinition();
+    auto&& layout = TU.GetASTContext().getASTRecordLayout(recdecl);
+    assert(layout.getDataSize().getQuantity() == size());
+    assert(layout.getAlignment().getQuantity() == alignment());
+    for (auto base : GetBasesAndOffsets()) {
+        assert(layout.getBaseClassOffset((*base.first->GetClangType(TU))->getAsCXXRecordDecl()).getQuantity() == base.second);
+    }    
+    for (int i = 0; i < GetMembers().size(); ++i) {
+        assert((layout.getFieldOffset(i) / 8) == AggregateType::GetOffset(i));
+    }
     TU.GetDeclContext()->addDecl(recdecl);
     return clangtypes[&TU];
 }
@@ -811,15 +820,6 @@ UserDefinedType::BaseData::BaseData(BaseData&& other)
 UserDefinedType::BaseData& UserDefinedType::BaseData::operator=(BaseData&& other) {
     bases = std::move(other.bases);
     PrimaryBase = other.PrimaryBase;
-    return *this;
-}
-UserDefinedType::VTableData::VTableData(VTableData&& other)
-: funcs(std::move(other.funcs))
-, VTableIndices(std::move(other.VTableIndices)) {}
-
-UserDefinedType::VTableData& UserDefinedType::VTableData::operator=(VTableData&& other) {
-    funcs = std::move(other.funcs);
-    VTableIndices = std::move(other.VTableIndices);
     return *this;
 }
 Type* UserDefinedType::GetConstantContext() {

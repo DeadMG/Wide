@@ -987,12 +987,11 @@ bool Semantic::IsRvalueType(Type* t) {
 OverloadSet* Analyzer::GetOverloadSet(OverloadSet* f, OverloadSet* s, Type* context) {
     if (context && !context->IsReference())
         context = GetRvalueType(context);
-    if (CombinedOverloadSets[f].find(s) != CombinedOverloadSets[f].end())
-        return CombinedOverloadSets[f][s].get();
-    if (CombinedOverloadSets[s].find(f) != CombinedOverloadSets[s].end())
-        return CombinedOverloadSets[s][f].get();
-    CombinedOverloadSets[f][s] = Wide::Memory::MakeUnique<OverloadSet>(f, s, *this, context);
-    return CombinedOverloadSets[f][s].get();
+    auto pair = std::make_pair(f, s);
+    if (CombinedOverloadSets.find(pair) == CombinedOverloadSets.end()
+     || CombinedOverloadSets[pair].find(context) == CombinedOverloadSets[pair].end())
+        CombinedOverloadSets[pair][context] = Wide::Memory::MakeUnique<OverloadSet>(f, s, *this, context);      
+    return CombinedOverloadSets[pair][context].get();
 }
 FloatType* Analyzer::GetFloatType(unsigned bits) {
     if (FloatTypes.find(bits) == FloatTypes.end())

@@ -101,7 +101,7 @@ namespace Wide {
             std::unordered_map<const Parse::Module*, std::unique_ptr<Module>> WideModules;
             std::unordered_map<unsigned, std::unordered_map<bool, std::unique_ptr<IntegralType>>> integers;
             std::unordered_map<Type*, std::unique_ptr<PointerType>> Pointers;
-            std::unordered_map<OverloadSet*, std::unordered_map<OverloadSet*, std::unique_ptr<OverloadSet>>> CombinedOverloadSets;
+            std::unordered_map<std::pair<OverloadSet*, OverloadSet*>, std::unordered_map<Type*, std::unique_ptr<OverloadSet>>, PairTypeHasher, PairTypeEquality> CombinedOverloadSets;
             std::unordered_map<const Parse::FunctionBase*, std::unique_ptr<OverloadResolvable>> FunctionCallables;
             std::unordered_map<const Parse::TemplateType*, std::unique_ptr<OverloadResolvable>> TemplateTypeCallables;
             std::unordered_map<std::vector<Type*>, std::unique_ptr<TupleType>, VectorTypeHasher> tupletypes;
