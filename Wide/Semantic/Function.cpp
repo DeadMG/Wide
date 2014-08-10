@@ -666,7 +666,7 @@ Function::Function(std::vector<Type*> args, const Parse::FunctionBase* astfun, A
                             source = tu->GetObject(con, clang::CXXCtorType::Ctor_Complete);
                         else
                             source = tu->GetObject(decl);
-                        trampoline.push_back(GetFunctionType(decl, *tu, analyzer)->CreateThunk(source, GetStaticSelf(), decl, this));
+                        clang_exports.push_back(std::make_tuple(source, GetFunctionType(decl, *tu, analyzer), decl));
                     }
                 }
             }
@@ -889,6 +889,11 @@ void Function::ComputeBody() {
         // Compute the return type.
         ComputeReturnType();
         s = State::AnalyzeCompleted;
+        for (auto pair : clang_exports) {
+            if (!FunctionType::CanThunkFromFirstToSecond(std::get<1>(pair), GetSignature(), this, false))
+                throw std::runtime_error("Tried to export to a function decl, but the signatures were incompatible.");
+            trampoline.push_back(std::get<1>(pair)->CreateThunk(std::get<0>(pair), GetStaticSelf(), std::get<2>(pair), this));
+        }
     }
 }
 
@@ -936,8 +941,9 @@ void Function::ComputeReturnType() {
             return;
         }
         throw std::runtime_error("Fuck");
-    } else
+    } else {
         ReturnType = *ExplicitReturnType;
+    }
 }
 
 llvm::Function* Function::EmitCode(llvm::Module* module) {

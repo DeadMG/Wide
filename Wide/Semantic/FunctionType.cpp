@@ -41,8 +41,6 @@ std::string FunctionType::explain() {
 bool FunctionType::CanThunkFromFirstToSecond(FunctionType* lhs, FunctionType* rhs, Type* context, bool adjust) {
     // RHS is most derived type- that is, we are building a thunk which is of type lhs, and returns a function call of type rhs.
     // Calling convention mismatch totally acceptable here.
-    if (!Type::IsFirstASecond(rhs->GetReturnType(), lhs->GetReturnType(), context))
-        return false;
     // The first argument may be adjusted.
     if (lhs->GetArguments().size() != rhs->GetArguments().size()) return false;
     for (unsigned int i = adjust; i < rhs->GetArguments().size(); ++i)
@@ -52,6 +50,17 @@ bool FunctionType::CanThunkFromFirstToSecond(FunctionType* lhs, FunctionType* rh
     if (adjust)
         if (IsLvalueType(rhs->GetArguments()[0]) != IsLvalueType(lhs->GetArguments()[0]))
             return false;
+    // Silently accept string-to-i8* decay if the lhs is a ClangFunctionType.
+    if (!Type::IsFirstASecond(rhs->GetReturnType(), lhs->GetReturnType(), context)) {
+        if (auto clangfuncty = dynamic_cast<ClangFunctionType*>(lhs)) {
+            if (clangfuncty->GetReturnType() == lhs->analyzer.GetPointerType(lhs->analyzer.GetIntegralType(8, true))) {
+                if (dynamic_cast<StringType*>(rhs->GetReturnType())) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
     return true;
 }
 

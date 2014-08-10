@@ -299,6 +299,10 @@ struct ValueConstruction : Expression {
             single_arg = args[0];
         InplaceConstruction = Type::BuildInplaceConstruction(temporary, std::move(args), c);
         destructor = self->BuildDestructorCall(temporary, c, true);
+        if (auto implicitstore = dynamic_cast<ImplicitStoreExpr*>(InplaceConstruction.get())) {
+            if (implicitstore->mem == temporary)
+                assert(implicitstore->val->GetType() == self);
+        }
     }
     std::shared_ptr<ImplicitTemporaryExpr> temporary;
     std::function<void(CodegenContext&)> destructor;
@@ -316,7 +320,10 @@ struct ValueConstruction : Expression {
     llvm::Value* ComputeValue(CodegenContext& con) override final {
         if (!self->AlwaysKeepInMemory()) {
             if (auto implicitstore = dynamic_cast<ImplicitStoreExpr*>(InplaceConstruction.get())) {
-                return implicitstore->val->GetValue(con);
+                if (implicitstore->mem == temporary) {
+                    assert(implicitstore->val->GetType() == self);
+                    return implicitstore->val->GetValue(con);
+                }
             }
             if (self->GetConstantContext() == self && no_args)
                 return llvm::UndefValue::get(self->GetLLVMType(con));

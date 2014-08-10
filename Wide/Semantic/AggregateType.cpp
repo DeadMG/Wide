@@ -451,7 +451,7 @@ OverloadSet* AggregateType::GetCopyConstructor() {
     return MaybeCreateSet(CopyConstructor,
         [this](Type* ty, unsigned i) { return ty->IsCopyConstructible(GetAccessSpecifier(this, ty)); },
         [this] {
-            return MakeResolvable([this](std::vector<std::shared_ptr<Expression>> args, Context c) -> std::shared_ptr < Expression > {        
+            return MakeResolvable([this](std::vector<std::shared_ptr<Expression>> args, Context c) -> std::shared_ptr<Expression> {        
                 if (!CopyConstructorInitializers) {
                     auto rhs = CreatePrimGlobal(analyzer.GetLvalueType(this), [this](CodegenContext& con) {
                         return ++CopyConstructorFunction->arg_begin();

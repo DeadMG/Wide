@@ -997,11 +997,17 @@ Function* Parser::ParseFunction(const Lexer::Token& first, std::vector<Attribute
     Expression* explicit_return = nullptr;
     if (next.GetType() == &Lexer::TokenTypes::VarCreate) {
         explicit_return = ParseExpression();
-        next = Check(Error::FunctionNoCurlyToIntroduceBody, &Lexer::TokenTypes::OpenCurlyBracket);
+        next = Check(Error::FunctionNoCurlyToIntroduceBody, [](Lexer::Token& tok) { return tok.GetType() == &Lexer::TokenTypes::OpenCurlyBracket || tok.GetType() == &Lexer::TokenTypes::Abstract; });
     }
     if (next.GetType() == &Lexer::TokenTypes::Delete) {
         auto func = arena.Allocate<Function>(std::vector<Statement*>(), first.GetLocation() + next.GetLocation(), std::move(args), explicit_return, attrs);
         func->deleted = true;
+        return func;
+    }
+    if (next.GetType() == &Lexer::TokenTypes::Abstract) {
+        auto func = arena.Allocate<Function>(std::vector<Statement*>(), first.GetLocation() + next.GetLocation(), std::move(args), explicit_return, attrs);
+        func->abstract = true;
+        func->dynamic = true; // abstract implies dynamic.
         return func;
     }
     std::vector<Statement*> statements;

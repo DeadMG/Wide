@@ -429,12 +429,15 @@ clang::SourceLocation ClangTU::GetFileEnd() {
 std::string ClangTU::GetFilename() {
     return impl->filename;
 }
+clang::SourceLocation ClangTU::GetLocationForRange(Lexer::Range r) {
+    auto entry = impl->FileManager.getFile(*r.begin.name);
+    return impl->sm.translateFileLineCol(entry, r.begin.line, r.begin.column);
+}
 clang::Expr* ClangTU::ParseMacro(std::string macro, Lexer::Range where) {
     auto&& pp = GetSema().getPreprocessor();
     auto info = pp.getMacroInfo(GetIdentifierInfo(macro));
     if (!info)
         throw std::runtime_error("No macro found with the name " + macro);
-
     auto&& s = impl->sema;
     auto&& p = impl->p;
     std::vector<clang::Token> tokens;

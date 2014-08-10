@@ -75,7 +75,6 @@ OverloadSet* IntegralType::CreateConstructorOverloadSet(Parse::Access access) {
                 return Wide::Memory::MakeUnique<ImplicitStoreExpr>(std::move(args[0]), CreatePrimUnOp(std::move(args[1]), integral, [this](llvm::Value* rhs, CodegenContext& con) {
                     return con->CreateTrunc(rhs, integral->GetLLVMType(con));
                 }));
-            //    return ConcreteExpression(args[0].t, c->gen->CreateStore(args[0].Expr, c->gen->CreateTruncate(args[1].Expr, integral->GetLLVMType(*c))));
             if (integral->is_signed && inttype->is_signed)
                 return Wide::Memory::MakeUnique<ImplicitStoreExpr>(std::move(args[0]), CreatePrimUnOp(std::move(args[1]), integral, [this](llvm::Value* rhs, CodegenContext& con) {
                     return con->CreateSExt(rhs, integral->GetLLVMType(con));

@@ -476,7 +476,7 @@ Wide::Util::optional<clang::QualType> UserDefinedType::GetClangType(ClangTU& TU)
     }
     recdecl->completeDefinition();
     auto&& layout = TU.GetASTContext().getASTRecordLayout(recdecl);
-    assert(layout.getDataSize().getQuantity() == size());
+    assert(layout.getSize().getQuantity() == size());
     assert(layout.getAlignment().getQuantity() == alignment());
     for (auto base : GetBasesAndOffsets()) {
         assert(layout.getBaseClassOffset((*base.first->GetClangType(TU))->getAsCXXRecordDecl()).getQuantity() == base.second);

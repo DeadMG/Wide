@@ -9,6 +9,9 @@
 namespace llvm {
     class Function;
 }
+namespace clang {
+    class FunctionDecl;
+}
 namespace Wide {
     namespace Parse {
         struct FunctionBase;
@@ -18,6 +21,7 @@ namespace Wide {
     namespace Semantic {
         class WideFunctionType;
         class UserDefinedType;
+        class ClangFunctionType;
         class Function : public MetaType, public Callable {
             llvm::Function* llvmfunc = nullptr;
             std::shared_ptr<Statement> AnalyzeStatement(const Parse::Statement*);
@@ -30,6 +34,7 @@ namespace Wide {
             std::string name;
             std::vector<std::function<void(llvm::Module*)>> trampoline;
             std::vector<std::shared_ptr<Expression>> parameters;
+            std::vector<std::tuple<std::function<llvm::Function*(llvm::Module*)>, ClangFunctionType*, clang::FunctionDecl*>> clang_exports;
 
             // You can only be exported as constructors of one, or nonstatic member of one, class.
             Wide::Util::optional<Semantic::ConstructorContext*> ConstructorContext;

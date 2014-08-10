@@ -288,7 +288,7 @@ Callable* OverloadSet::Resolve(std::vector<Type*> f_args, Type* source) {
         }
         std::list<clang::OpaqueValueExpr> exprs;
         for(auto x : f_args)
-            exprs.push_back(clang::OpaqueValueExpr(clang::SourceLocation(), x->GetClangType(*from)->getNonLValueExprType(from->GetASTContext()), GetKindOfType(x)));
+            exprs.push_back(clang::OpaqueValueExpr(from->GetFileEnd(), x->GetClangType(*from)->getNonLValueExprType(from->GetASTContext()), GetKindOfType(x)));
         std::vector<clang::Expr*> exprptrs;
         for(auto&& x : exprs)
             exprptrs.push_back(&x);

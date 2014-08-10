@@ -94,6 +94,7 @@ namespace Wide {
             const clang::CodeGen::CGFunctionInfo& GetABIForFunction(clang::CXXDestructorDecl*, clang::CXXDtorType, llvm::Module* module);
             const clang::CodeGen::CGFunctionInfo& GetABIForFunction(clang::CXXConstructorDecl*, clang::CXXCtorType, llvm::Module* module);
             clang::CodeGen::CodeGenModule& GetCodegenModule(llvm::Module* module);
+            clang::SourceLocation GetLocationForRange(Lexer::Range r);
         };
     }
 }
