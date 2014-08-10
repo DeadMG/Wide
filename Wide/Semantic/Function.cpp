@@ -722,6 +722,7 @@ void Function::ComputeBody() {
                             inits = { x.InClassInitializer(LookupLocal("this")) };
                         root_scope->active.push_back(Type::BuildInplaceConstruction(member, inits, { this, con->where }));
                     }
+                    root_scope->active.push_back(Type::SetVirtualPointers(LookupLocal("this")));
                 } else if (Args[1] == analyzer.GetLvalueType(GetContext())) {
                     // Copy constructor- copy all.
                     unsigned i = 0;
@@ -729,6 +730,7 @@ void Function::ComputeBody() {
                         auto member_ref = make_member(analyzer.GetLvalueType(x.t), x.num.offset, LookupLocal("this"));
                         root_scope->active.push_back(Type::BuildInplaceConstruction(member_ref, { member->PrimitiveAccessMember(parameters[1], i++) }, { this, con->where }));
                     }
+                    root_scope->active.push_back(Type::SetVirtualPointers(LookupLocal("this")));
                 } else if (Args[1] == analyzer.GetRvalueType(GetContext())) {
                     // move constructor- move all.
                     unsigned i = 0;
@@ -736,95 +738,132 @@ void Function::ComputeBody() {
                         auto member_ref = make_member(analyzer.GetLvalueType(x.t), x.num.offset, LookupLocal("this"));
                         root_scope->active.push_back(Type::BuildInplaceConstruction(member_ref, { member->PrimitiveAccessMember(std::make_shared<RvalueCast>(parameters[1]), i++) }, { this, con->where }));
                     }
+                    root_scope->active.push_back(Type::SetVirtualPointers(LookupLocal("this")));
                 } else
                     throw std::runtime_error("Fuck.");
             } else {
-                std::unordered_set<const Parse::VariableInitializer*> used_initializers;
-                for (auto&& x : members) {
-                    auto has_initializer = [&]() -> const Parse::VariableInitializer*{
-                        for (auto&& init : con->initializers) {
-                            // Match if it's a name and the one we were looking for.
-                            auto ident = dynamic_cast<const Parse::Identifier*>(init.initialized);
-                            if (x.name && ident) {
-                                if (auto string = boost::get<std::string>(&ident->val))
-                                    if (*string == *x.name)
-                                        return &init;
-                            } else {
-                                // Match if it's a type and the one we were looking for.
-                                auto ty = analyzer.AnalyzeExpression(this, init.initialized);
-                                if (auto conty = dynamic_cast<ConstructorType*>(ty->GetType())) {
-                                    if (conty->GetConstructedType() == x.t)
-                                        return &init;
+                // Are we delegating?
+                auto is_delegating = [this, con] {
+                    if (con->initializers.size() != 1)
+                        return false;
+                    if (auto ident = dynamic_cast<const Parse::Identifier*>(con->initializers.front().initialized)) {
+                        if (ident->val == decltype(ident->val)("type")) {
+                            return true;
+                        }
+                    }
+                    return false;
+                };
+                if (is_delegating()) {
+                    Context c{ this, con->initializers.front().where };
+                    auto expr = analyzer.AnalyzeExpression(this, con->initializers.front().initializer);
+                    auto conty = dynamic_cast<Type*>(*ConstructorContext);
+                    auto conoverset = conty->GetConstructorOverloadSet(Parse::Access::Private);
+                    auto callable = conoverset->Resolve({ LookupLocal("this")->GetType(), expr->GetType() }, this);
+                    if (!callable)
+                        throw std::runtime_error("Couldn't resolve delegating constructor call.");
+                    root_scope->active.push_back(callable->Call({ LookupLocal("this"), expr },c));
+                    struct Destructor : Expression {
+                        Destructor(std::function<void(CodegenContext&)> destructor, Type* void_ty)
+                            : destructor(destructor), void_ty(void_ty) {}
+                        std::function<void(CodegenContext&)> destructor;
+                        Type* void_ty;
+                        Type* GetType() override final { return void_ty; }
+                        llvm::Value* ComputeValue(CodegenContext& con) {
+                            con.AddExceptionOnlyDestructor(destructor);
+                            return nullptr;
+                        }
+                    };
+                    if (!conty->IsTriviallyDestructible())
+                        root_scope->active.push_back(std::make_shared<Destructor>(conty->BuildDestructorCall(LookupLocal("this"), c, true), analyzer.GetVoidType()));
+                    // Don't bother setting virtual pointers as the delegated-to constructor already did.
+                } else {
+                    std::unordered_set<const Parse::VariableInitializer*> used_initializers;
+                    for (auto&& x : members) {
+                        auto has_initializer = [&]() -> const Parse::VariableInitializer*{
+                            for (auto&& init : con->initializers) {
+                                // Match if it's a name and the one we were looking for.
+                                auto ident = dynamic_cast<const Parse::Identifier*>(init.initialized);
+                                if (x.name && ident) {
+                                    if (auto string = boost::get<std::string>(&ident->val))
+                                        if (*string == *x.name)
+                                            return &init;
+                                } else {
+                                    // Match if it's a type and the one we were looking for.
+                                    auto ty = analyzer.AnalyzeExpression(this, init.initialized);
+                                    if (auto conty = dynamic_cast<ConstructorType*>(ty->GetType())) {
+                                        if (conty->GetConstructedType() == x.t)
+                                            return &init;
+                                    }
                                 }
                             }
-                        }
-                        return nullptr;
-                    };
-                    auto result = analyzer.GetLvalueType(x.t);
-                    // Gotta get the correct this pointer.
-                    struct MemberConstructionAccess : Expression {
-                        Type* member;
-                        Lexer::Range where;
-                        std::shared_ptr<Expression> Construction;
-                        std::shared_ptr<Expression> memexpr;
-                        std::function<void(CodegenContext&)> destructor;
-                        llvm::Value* ComputeValue(CodegenContext& con) override final {
-                            auto val = Construction->GetValue(con);
-                            if (destructor)
-                                con.AddExceptionOnlyDestructor(destructor);
-                            return val;
-                        }
-                        Type* GetType() override final {
-                            return Construction->GetType();
-                        }
-                        MemberConstructionAccess(Type* mem, Lexer::Range where, std::shared_ptr<Expression> expr, std::shared_ptr<Expression> memexpr)
-                            : member(mem), where(where), Construction(std::move(expr)), memexpr(memexpr)
-                        {
-                            if (!member->IsTriviallyDestructible())
-                                destructor = member->BuildDestructorCall(memexpr, { member, where }, true);
-                        }
-                    };
-                    auto make_member_initializer = [&, this](std::vector<std::shared_ptr<Expression>> init, Lexer::Range where) {
-                        auto member = make_member(analyzer.GetLvalueType(x.t), x.num.offset, LookupLocal("this"));
-                        auto construction = Type::BuildInplaceConstruction(member, std::move(init), { this, where });
-                        return Wide::Memory::MakeUnique<MemberConstructionAccess>(x.t, where, std::move(construction), member);
-                    };
-                    if (auto init = has_initializer()) {
-                        // AccessMember will automatically give us back a T*, but we need the T** here
-                        // if the type of this member is a reference.
-                        used_initializers.insert(init);
-                        if (init->initializer) {
-                            // If it's a tuple, pass each subexpression.
-                            std::vector<std::shared_ptr<Expression>> exprs;
-                            if (auto tup = dynamic_cast<const Parse::Tuple*>(init->initializer)) {
-                                for (auto expr : tup->expressions)
-                                    exprs.push_back(analyzer.AnalyzeExpression(this, expr));
+                            return nullptr;
+                        };
+                        auto result = analyzer.GetLvalueType(x.t);
+                        // Gotta get the correct this pointer.
+                        struct MemberConstructionAccess : Expression {
+                            Type* member;
+                            Lexer::Range where;
+                            std::shared_ptr<Expression> Construction;
+                            std::shared_ptr<Expression> memexpr;
+                            std::function<void(CodegenContext&)> destructor;
+                            llvm::Value* ComputeValue(CodegenContext& con) override final {
+                                auto val = Construction->GetValue(con);
+                                if (destructor)
+                                    con.AddExceptionOnlyDestructor(destructor);
+                                return val;
+                            }
+                            Type* GetType() override final {
+                                return Construction->GetType();
+                            }
+                            MemberConstructionAccess(Type* mem, Lexer::Range where, std::shared_ptr<Expression> expr, std::shared_ptr<Expression> memexpr)
+                                : member(mem), where(where), Construction(std::move(expr)), memexpr(memexpr)
+                            {
+                                if (!member->IsTriviallyDestructible())
+                                    destructor = member->BuildDestructorCall(memexpr, { member, where }, true);
+                            }
+                        };
+                        auto make_member_initializer = [&, this](std::vector<std::shared_ptr<Expression>> init, Lexer::Range where) {
+                            auto member = make_member(analyzer.GetLvalueType(x.t), x.num.offset, LookupLocal("this"));
+                            auto construction = Type::BuildInplaceConstruction(member, std::move(init), { this, where });
+                            return Wide::Memory::MakeUnique<MemberConstructionAccess>(x.t, where, std::move(construction), member);
+                        };
+                        if (auto init = has_initializer()) {
+                            // AccessMember will automatically give us back a T*, but we need the T** here
+                            // if the type of this member is a reference.
+                            used_initializers.insert(init);
+                            if (init->initializer) {
+                                // If it's a tuple, pass each subexpression.
+                                std::vector<std::shared_ptr<Expression>> exprs;
+                                if (auto tup = dynamic_cast<const Parse::Tuple*>(init->initializer)) {
+                                    for (auto expr : tup->expressions)
+                                        exprs.push_back(analyzer.AnalyzeExpression(this, expr));
+                                } else
+                                    exprs.push_back(analyzer.AnalyzeExpression(this, init->initializer));
+                                root_scope->active.push_back(make_member_initializer(std::move(exprs), init->where));
                             } else
-                                exprs.push_back(analyzer.AnalyzeExpression(this, init->initializer));
-                            root_scope->active.push_back(make_member_initializer(std::move(exprs), init->where));
-                        } else
-                            root_scope->active.push_back(make_member_initializer({}, init->where));
-                        continue;
+                                root_scope->active.push_back(make_member_initializer({}, init->where));
+                            continue;
+                        }
+                        // Don't care about if x.t is ref because refs can't be default-constructed anyway.
+                        if (x.InClassInitializer) {
+                            root_scope->active.push_back(make_member_initializer({ x.InClassInitializer(LookupLocal("this")) }, x.location));
+                            continue;
+                        }
+                        root_scope->active.push_back(make_member_initializer({}, fun->where));
                     }
-                    // Don't care about if x.t is ref because refs can't be default-constructed anyway.
-                    if (x.InClassInitializer) {
-                        root_scope->active.push_back(make_member_initializer({ x.InClassInitializer(LookupLocal("this")) }, x.location));
-                        continue;
+                    for (auto&& x : con->initializers) {
+                        if (used_initializers.find(&x) == used_initializers.end()) {
+                            if (auto ident = dynamic_cast<const Parse::Identifier*>(x.initialized))
+                                throw NoMemberToInitialize(context->Decay(), ident->val, x.where);
+                            auto expr = analyzer.AnalyzeExpression(this, x.initializer);
+                            auto conty = dynamic_cast<ConstructorType*>(expr->GetType());
+                            throw NoMemberToInitialize(context->Decay(), conty->GetConstructedType()->explain(), x.where);
+                        }
                     }
-                    root_scope->active.push_back(make_member_initializer({}, fun->where));
-                }
-                for (auto&& x : con->initializers) {
-                    if (used_initializers.find(&x) == used_initializers.end()) {
-                        if (auto ident = dynamic_cast<const Parse::Identifier*>(x.initialized))
-                            throw NoMemberToInitialize(context->Decay(), ident->val, x.where);
-                        auto expr = analyzer.AnalyzeExpression(this, x.initializer);
-                        auto conty = dynamic_cast<ConstructorType*>(expr->GetType());
-                        throw NoMemberToInitialize(context->Decay(), conty->GetConstructedType()->explain(), x.where);
-                    }
+                    root_scope->active.push_back(Type::SetVirtualPointers(LookupLocal("this")));
                 }
             }
             // set the vptrs if necessary
-            root_scope->active.push_back(Type::SetVirtualPointers(LookupLocal("this")));
         }
 
         // Check for defaulted operator=

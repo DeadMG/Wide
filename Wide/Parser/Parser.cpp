@@ -1040,6 +1040,16 @@ Constructor* Parser::ParseConstructor(const Lexer::Token& first, std::vector<Att
     }
     std::vector<VariableInitializer> initializers;
     while (colon_or_open.GetType() == &Lexer::TokenTypes::Colon) {
+        auto next = lex(Error::ConstructorInitializerNoVarCreate);
+        if (next.GetType() == &Lexer::TokenTypes::Type) {
+            // Delegating constructor.
+            Check(Error::ConstructorInitializerNoVarCreate, &Lexer::TokenTypes::VarCreate);
+            auto initializer = ParseExpression();
+            initializers.push_back({ arena.Allocate<Identifier>("type", next.GetLocation()), initializer, next.GetLocation() + initializer->location });
+            colon_or_open = Check(Error::FunctionNoCurlyToIntroduceBody, &Lexer::TokenTypes::OpenCurlyBracket);
+            break;
+        }
+        lex(next);
         auto initialized = ParseExpression();
         Check(Error::ConstructorInitializerNoVarCreate, &Lexer::TokenTypes::VarCreate);
         auto initializer = ParseExpression();

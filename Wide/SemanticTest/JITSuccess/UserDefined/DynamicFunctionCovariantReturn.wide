@@ -1,0 +1,15 @@
+type base {
+    self() := base.lvalue abstract
+    result() := bool abstract
+}
+type derived : base {
+    self() := derived.lvalue { return this; }
+    result() { return true; }
+}
+f(arg := base.lvalue) {
+    return arg.self().result();
+}
+Main() {
+    var := derived();
+    return f(var);
+}
