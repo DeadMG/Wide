@@ -1,6 +1,6 @@
 #include <Wide/Util/Archive.h>
-#include <libarchive/archive.h>
-#include <libarchive/archive_entry.h>
+#include <archive.h>
+#include <archive_entry.h>
 
 using namespace Wide;
 using namespace Util;

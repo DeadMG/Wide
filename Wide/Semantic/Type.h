@@ -73,8 +73,8 @@ namespace Wide {
                 for (auto node : listening_to)
                     node->listeners.erase(this);
                 for (auto node : listeners) {
-                // ENABLE TO DEBUG ACCIDENTALLY DESTROYED EXPRESSIONS
-                //    node->OnNodeChanged(this, Change::Destroyed);
+                    // ENABLE TO DEBUG ACCIDENTALLY DESTROYED EXPRESSIONS
+                    //    node->OnNodeChanged(this, Change::Destroyed);
                     node->listening_to.erase(this);
                 }
             }
@@ -157,12 +157,23 @@ namespace Wide {
             Type* from;
             Lexer::Range where;
         };
-        
+
         class FunctionType;
         enum class OperatorAccess {
             Implicit,
             Explicit
         };
+    }
+}
+namespace std {
+    template<> struct hash<Wide::Semantic::OperatorAccess> {
+        std::size_t operator()(Wide::Semantic::OperatorAccess kind) const {
+            return std::hash<int>()((int)kind);
+        }
+    };
+}
+namespace Wide {
+    namespace Semantic {
         struct Type : public Node {
         public:
             enum class InheritanceRelationship {

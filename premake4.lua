@@ -18,6 +18,10 @@ newoption {
     value = "filepath",
     description = "The path of libarchive on this machine.",
 }
+newoption {
+    trigger = "test",
+    description = "If this option is passed, run the tests as part of building.",
+}
 if not os.is("Windows") then
     newoption {
         trigger = "llvm-conf",
@@ -192,52 +196,69 @@ function AddClangDependencies(plat, conf)
     end
 end
 function AddBoostDependencies(plat, conf)
-    local boostincludes = {
-        ""
-    }
-    for k, v in pairs(boostincludes) do
-        includedirs({ path.join(_OPTIONS["boost-path"], v) })
-    end
-    local boostlib = "stage"
-    if os.is("windows") then
-        if plat == "x64" then
-            boostlib = path.join(boostlib, plat)
+    if _OPTIONS["boost-path"] then
+        local boostincludes = {
+            ""
+        }
+        for k, v in pairs(boostincludes) do
+            includedirs({ path.join(_OPTIONS["boost-path"], v) })
         end
+        local boostlib = "stage"
+        if os.is("windows") then
+            if plat == "x64" then
+                boostlib = path.join(boostlib, plat)
+            end
+        end
+        libdirs({ path.join(_OPTIONS["boost-path"], boostlib, 'lib') })
     end
-    libdirs({ path.join(_OPTIONS["boost-path"], boostlib, 'lib') })
     if not os.is("windows") then
         links { "boost_program_options" }
     end
 end
 function AddLibarchiveDependency(plat, conf)
-    libdirs({ path.join(_OPTIONS["libarchive-path"], "build/libarchive", conf ) })
-    links { "archive_static" }
-    includedirs({ path.join(_OPTIONS["libarchive-path"] ) })
+    if _OPTIONS["libarchive-path"] then
+        includedirs({ path.join(_OPTIONS["libarchive-path"], 'libarchive' ) })
+        libdirs({ path.join(_OPTIONS["libarchive-path"], "build/libarchive", conf ) })
+    end
+    if os.is("windows") then 
+        links { "archive_static" }
+    else
+        links { "archive" }
+    end
 end
 function AddZlibDependency(plat, conf)
-    libdirs({ path.join(_OPTIONS["zlib-path"], "build", conf ) })
-    local suffix = ""
-    if conf == "Debug" then
-        suffix = "d"
+    if _OPTIONS["zlib-path"] then
+        libdirs({ path.join(_OPTIONS["zlib-path"], "build", conf ) })
+        includedirs({ _OPTIONS["zlib-path"] })
+    end 
+    if os.is("windows") then
+        local suffix = ""
+        if conf == "Debug" then
+            suffix = "d"
+        end
+        links { "zlibstatic" .. suffix }
+    else
+        links { "z" }
     end
-    links { "zlibstatic" .. suffix }
-    includedirs({ _OPTIONS["zlib-path"] }) 
 end
 if not _OPTIONS["llvm-path"] then
     print("Error: boost-path was not provided.\n")
     return
 end
-if not _OPTIONS["boost-path"] then
-    print("Error: boost-path was not provided.\n")
-    return
-end
-if not _OPTIONS["libarchive-path"] then
-    print("Error: boost-path was not provided.\n")
-    return
-end
-if not _OPTIONS["libarchive-path"] then
-    print("Error: boost-path was not provided.\n")
-    return
+
+if os.is("windows") then
+    if not _OPTIONS["boost-path"] then
+        print("Error: boost-path was not provided.\n")
+        return
+    end
+    if not _OPTIONS["libarchive-path"] then
+        print("Error: libarchive-path was not provided.\n")
+        return
+    end
+    if not _OPTIONS["zlib-path"] then
+        print("Error: zlib-path was not provided.\n")
+        return
+    end
 end
 
 WideProjects = {
@@ -292,10 +313,12 @@ WideProjects = {
             links { "Util", "Lexer", "Parser" }
         end,
         configure = function(plat, conf)
-            if os.is("windows") then
-                postbuildcommands ({ "$(TargetPath)" })
-            else
-                postbuildcommands ({ "$@" })
+            if _OPTIONS["test"] then
+                if os.is("windows") then
+                    postbuildcommands ({ "$(TargetPath)" })
+                else
+                    postbuildcommands ({ "$@" })
+                end
             end
         end,
     },
@@ -305,10 +328,12 @@ WideProjects = {
             links { "Util", "Lexer" }
         end,
         configure = function(plat, conf)
-            if os.is("windows") then
-                postbuildcommands ({ "$(TargetPath)" })
-            else
-                postbuildcommands ({ "$@" })
+            if _OPTIONS["test"] then
+                if os.is("windows") then
+                    postbuildcommands ({ "$(TargetPath)" })
+                else
+                    postbuildcommands ({ "$@" })
+                end
             end
         end,
     },
@@ -319,10 +344,12 @@ WideProjects = {
             files ({ "Wide/SemanticTest/**.wide" })
         end,
         configure = function(plat, conf)
-            if os.is("windows") then
-                postbuildcommands ({ "$(TargetPath)" })
-            else
-                postbuildcommands ({ "$@" })
+            if _OPTIONS["test"] then
+                if os.is("windows") then
+                    postbuildcommands ({ "$(TargetPath)" })
+                else
+                    postbuildcommands ({ "$@" })
+                end
             end
         end,
     }
