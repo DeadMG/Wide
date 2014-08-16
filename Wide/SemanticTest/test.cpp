@@ -2,7 +2,7 @@
 #include <Wide/Semantic/Analyzer.h>
 #include <Wide/Semantic/OverloadSet.h>
 #include <Wide/Semantic/ClangOptions.h>
-#include <Wide/Util/DebugUtilities.h>
+#include <Wide/Util/DebugBreak.h>
 #include <Wide/Util/Driver/IncludePaths.h>
 #include <Wide/SemanticTest/test.h>
 #include <Wide/Semantic/Expression.h>

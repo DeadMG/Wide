@@ -36,15 +36,17 @@ namespace {
             : t(con), MetaType(a) {}
 
         std::string explain() override final { return t->explain() + ".members"; }
-
+        bool IsLookupContext() { return true; }
         std::shared_ptr<Expression> AccessNamedMember(std::shared_ptr<Expression> self, std::string name, Context c) override final {
             auto member = t->GetConstructedType()->AccessStaticMember(name, c);
             if (!member)
                 throw std::runtime_error("Attempted to access nonexistent member.");
             return BuildChain(self, member);
         }
-        OverloadSet* CreateOperatorOverloadSet(Parse::OperatorName what, Parse::Access access) {
-            return t->GetConstructedType()->AccessMember(what, access);
+        OverloadSet* CreateOperatorOverloadSet(Parse::OperatorName what, Parse::Access access, OperatorAccess kind) {
+            if (kind == OperatorAccess::Implicit)
+                return Type::CreateOperatorOverloadSet(what, access, kind);
+            return t->GetConstructedType()->AccessMember(what, access, OperatorAccess::Explicit);
         }
     };
 }

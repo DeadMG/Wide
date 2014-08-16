@@ -275,20 +275,21 @@ bool IntegralType::IsSourceATarget(Type* source, Type* target, Type* context) {
 
     return false;
 }
-OverloadSet* IntegralType::CreateOperatorOverloadSet(Parse::OperatorName name, Parse::Access access) {
-    if (access != Parse::Access::Public) return AccessMember(name, Parse::Access::Public);
-    if (name.size() != 1) return AccessMember(name, Parse::Access::Public);
-    auto what = name.front();
-    if (what == &Lexer::TokenTypes::Increment) {
-        Increment = MakeResolvable([this](std::vector<std::shared_ptr<Expression>> args, Context c) {
-            return CreatePrimUnOp(std::move(args[0]), analyzer.GetLvalueType(this), [this](llvm::Value* self, CodegenContext& con) {
-                con->CreateStore(con->CreateAdd(con->CreateLoad(self), llvm::ConstantInt::get(GetLLVMType(con), 1, is_signed)), self);
-                return self;
-            });
-        }, { analyzer.GetLvalueType(this) });
-        return analyzer.GetOverloadSet(Increment.get());
+OverloadSet* IntegralType::CreateOperatorOverloadSet(Parse::OperatorName name, Parse::Access access, OperatorAccess kind) {
+    if (access != Parse::Access::Public) return AccessMember(name, Parse::Access::Public, kind);
+    if (name.size() == 1) {
+        auto what = name.front();
+        if (what == &Lexer::TokenTypes::Increment) {
+            Increment = MakeResolvable([this](std::vector<std::shared_ptr<Expression>> args, Context c) {
+                return CreatePrimUnOp(std::move(args[0]), analyzer.GetLvalueType(this), [this](llvm::Value* self, CodegenContext& con) {
+                    con->CreateStore(con->CreateAdd(con->CreateLoad(self), llvm::ConstantInt::get(GetLLVMType(con), 1, is_signed)), self);
+                    return self;
+                });
+            }, { analyzer.GetLvalueType(this) });
+            return analyzer.GetOverloadSet(Increment.get());
+        }
     }
-    return PrimitiveType::CreateOperatorOverloadSet(name, access);
+    return PrimitiveType::CreateOperatorOverloadSet(name, access, kind);
 }
 std::string IntegralType::explain() {
     auto name = "int" + std::to_string(bits);

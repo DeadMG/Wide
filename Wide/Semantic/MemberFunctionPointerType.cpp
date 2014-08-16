@@ -42,9 +42,9 @@ Wide::Util::optional<clang::QualType> MemberFunctionPointer::GetClangType(ClangT
     if (!srcty || !destty) return Util::none;    
     return TU.GetASTContext().getMemberPointerType(*destty, srcty->getTypePtr());
 }
-OverloadSet* MemberFunctionPointer::CreateOperatorOverloadSet(Parse::OperatorName what, Parse::Access access) {
+OverloadSet* MemberFunctionPointer::CreateOperatorOverloadSet(Parse::OperatorName what, Parse::Access access, OperatorAccess kind) {
     if (what.size() != 1 || what.front() != &Lexer::TokenTypes::QuestionMark) return analyzer.GetOverloadSet();
-    if (access != Parse::Access::Public) return AccessMember(what, Parse::Access::Public);
+    if (access != Parse::Access::Public) return AccessMember(what, Parse::Access::Public, kind);
     if (!booltest)
         booltest = MakeResolvable([](std::vector<std::shared_ptr<Expression>> args, Context c) {
             return CreatePrimUnOp(std::move(args[0]), c.from->analyzer.GetBooleanType(), [](llvm::Value* val, CodegenContext& con) {

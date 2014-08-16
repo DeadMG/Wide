@@ -1,5 +1,5 @@
 #include <Wide/Semantic/ClangOptions.h>
-#include <Wide/Util/DebugUtilities.h>
+#include <Wide/Util/DebugBreak.h>
 #include <boost/program_options.hpp>
 #include <Wide/SemanticTest/test.h>
 #include <unordered_map>
@@ -12,6 +12,7 @@
 #include <llvm/Support/Host.h>
 #include <llvm/ADT/Triple.h>
 #pragma warning(pop)
+
 
 int main(int argc, char** argv) {
     Wide::Options::Clang clangopts;
@@ -62,8 +63,8 @@ int main(int argc, char** argv) {
             return modes[input["mode"].as<std::string>()]();
         return 1;
     }
-//    Jit(clangopts, "JITSuccess/UserDefined/SimpleDelegatingConstructors.wide");
-//    Compile(clangopts, "CompileFail/NoMember/ClangAccessPrivateMemberVariable.wide");
+//   Jit(clangopts, "JITSuccess/CPPInterop/ExportMemberOperator.wide");
+//    Compile(clangopts, "CompileFail/OverloadResolutionFailure/ModuleOperator.wide");
     std::unordered_map<std::string, std::function<bool()>> files;
 #pragma warning(disable : 4800)
     for(auto mode : modes) {

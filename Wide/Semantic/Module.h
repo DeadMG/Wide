@@ -18,10 +18,10 @@ namespace Wide {
             Module* GetContext() override final { return context; }
             void AddSpecialMember(std::string name, std::shared_ptr<Expression> t);
 
-            using Type::AccessMember;
 
+            bool IsLookupContext() override final { return true; }
             std::shared_ptr<Expression> AccessNamedMember(std::shared_ptr<Expression> val, std::string name, Context c) override final;
-            OverloadSet* CreateOperatorOverloadSet(Parse::OperatorName, Parse::Access access) override final;
+            OverloadSet* CreateOperatorOverloadSet(Parse::OperatorName, Parse::Access access, OperatorAccess kind) override final;
             const Parse::Module* GetASTModule() { return m; }
             std::string explain() override final;
         };

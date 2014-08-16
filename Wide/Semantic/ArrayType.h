@@ -20,7 +20,7 @@ namespace Wide {
             std::size_t size() override final;
             std::size_t alignment() override final;
             llvm::Type* GetLLVMType(llvm::Module* module) override final; 
-            OverloadSet* CreateOperatorOverloadSet(Parse::OperatorName type, Parse::Access access) override final;
+            OverloadSet* CreateOperatorOverloadSet(Parse::OperatorName type, Parse::Access access, OperatorAccess) override final;
             OverloadSet* CreateConstructorOverloadSet(Parse::Access access) override final;
         };
     }

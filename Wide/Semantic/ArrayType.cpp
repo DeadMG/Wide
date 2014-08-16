@@ -69,11 +69,11 @@ std::size_t ArrayType::alignment() {
 llvm::Type* ArrayType::GetLLVMType(llvm::Module* module) {
     return llvm::ArrayType::get(t->GetLLVMType(module), count);
 }
-OverloadSet* ArrayType::CreateOperatorOverloadSet(Parse::OperatorName what, Parse::Access access) {
+OverloadSet* ArrayType::CreateOperatorOverloadSet(Parse::OperatorName what, Parse::Access access, OperatorAccess kind) {
     if (what != Parse::OperatorName({ &Lexer::TokenTypes::OpenSquareBracket, &Lexer::TokenTypes::CloseSquareBracket }))
-        return AggregateType::CreateOperatorOverloadSet(what, access);
+        return AggregateType::CreateOperatorOverloadSet(what, access, kind);
     if (access != Parse::Access::Public)
-        return AccessMember(what, Parse::Access::Public);
+        return AccessMember(what, Parse::Access::Public, kind);
 
     struct IndexOperatorResolvable : OverloadResolvable, Callable {
         IndexOperatorResolvable(ArrayType* el) : array(el) {}

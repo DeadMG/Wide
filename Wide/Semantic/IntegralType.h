@@ -42,7 +42,7 @@ namespace Wide {
             std::size_t alignment() override final;
             bool IsSourceATarget(Type* first, Type* second, Type* context) override final;
             OverloadSet* CreateConstructorOverloadSet(Parse::Access access) override final;
-            OverloadSet* CreateOperatorOverloadSet(Parse::OperatorName what, Parse::Access access) override final;
+            OverloadSet* CreateOperatorOverloadSet(Parse::OperatorName what, Parse::Access access, OperatorAccess kind) override final;
             std::string explain() override final;
         };
     }

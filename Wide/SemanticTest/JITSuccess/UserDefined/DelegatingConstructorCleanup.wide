@@ -1,0 +1,15 @@
+type t {
+    var := bool.pointer;
+    type(arg := bool.pointer) : var := arg {}
+    type(arg := bool.lvalue) : type := &arg { throw true; }
+    ~type() { *var = true; } 
+}
+Main() {
+    ret := false;
+    try {
+        t(ret);
+    } catch(arg := bool.lvalue) {
+        return ret & arg;
+    }
+    return false;
+}

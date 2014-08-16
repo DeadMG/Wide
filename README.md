@@ -1,1 +1,0 @@
-[Main() {     cpp("<iostream>").std.cout << "Hello, World!"; }](http://coliru.stacked-crooked.com/a/f6d6b33ec188876c)

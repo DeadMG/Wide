@@ -31,7 +31,7 @@ struct AggregateType::AggregateFunction : Expression {
     }
     llvm::Value* ComputeValue(CodegenContext& con) override final {
         if (!func) {
-            func = llvm::Function::Create(llvm::cast<llvm::FunctionType>(functy->GetLLVMType(con)->getElementType()), llvm::GlobalValue::LinkageTypes::ExternalLinkage, "", con);
+            func = llvm::Function::Create(llvm::cast<llvm::FunctionType>(functy->GetLLVMType(con)->getElementType()), llvm::GlobalValue::LinkageTypes::ExternalLinkage, functy->analyzer.GetUniqueFunctionName(), con);
             CodegenContext::EmitFunctionBody(func, emit);
         }
         return func;
@@ -355,17 +355,15 @@ std::shared_ptr<Expression> AggregateType::PrimitiveAccessMember(std::shared_ptr
 }
 AggregateType::AggregateType(Analyzer& a) : Type(a) {}
 
-OverloadSet* AggregateType::CreateOperatorOverloadSet(Parse::OperatorName type, Parse::Access access) {
-    if (type != Parse::OperatorName{ &Lexer::TokenTypes::Assignment })
-        return analyzer.GetOverloadSet();
-    if (access != Parse::Access::Public)
-        return AccessMember(type, Parse::Access::Public);
+OverloadSet* AggregateType::CreateOperatorOverloadSet(Parse::OperatorName type, Parse::Access access, OperatorAccess kind) {
+    if (type != Parse::OperatorName{ &Lexer::TokenTypes::Assignment }) return Type::CreateOperatorOverloadSet(type, access, kind);
+    if (access != Parse::Access::Public) return AccessMember(type, Parse::Access::Public, kind);
     return CreateAssignmentOperatorOverloadSet({ true, true });
 }
 
 llvm::Function* AggregateType::CreateDestructorFunction(llvm::Module* module) {    
     auto functy = llvm::FunctionType::get(llvm::Type::getVoidTy(module->getContext()), { analyzer.GetLvalueType(this)->GetLLVMType(module) }, false);
-    auto DestructorFunction = llvm::Function::Create(functy, llvm::GlobalValue::LinkageTypes::InternalLinkage, "", module);
+    auto DestructorFunction = llvm::Function::Create(functy, llvm::GlobalValue::LinkageTypes::InternalLinkage, analyzer.GetUniqueFunctionName(), module);
     this->DestructorFunction = DestructorFunction;
     CodegenContext::EmitFunctionBody(DestructorFunction, [this](CodegenContext& newcon) {
         for (auto des : destructors)

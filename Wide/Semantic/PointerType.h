@@ -14,7 +14,7 @@ namespace Wide {
             using Type::BuildInplaceConstruction;
 
             PointerType(Type* point, Analyzer& a); 
-            OverloadSet* CreateOperatorOverloadSet(Parse::OperatorName what, Parse::Access access) override final;
+            OverloadSet* CreateOperatorOverloadSet(Parse::OperatorName what, Parse::Access access, OperatorAccess kind) override final;
             Wide::Util::optional<clang::QualType> GetClangType(ClangTU& TU) override final;
             llvm::Type* GetLLVMType(llvm::Module* module) override final;
             std::size_t size() override final;

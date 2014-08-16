@@ -9,7 +9,6 @@
 #include <Wide/Semantic/UserDefinedType.h>
 #include <Wide/Semantic/TupleType.h>
 #include <Wide/Semantic/OverloadSet.h>
-#include <Wide/Util/DebugUtilities.h>
 #include <Wide/Semantic/Expression.h>
 #include <Wide/Semantic/FunctionType.h>
 #include <Wide/Semantic/IntegralType.h>
@@ -30,12 +29,12 @@ OverloadSet* Type::CreateADLOverloadSet(Parse::OperatorName what, Parse::Access 
     auto context = GetContext();
     if (!context)
         return analyzer.GetOverloadSet();
-    return GetContext()->AccessMember(what, access);
+    return GetContext()->AccessMember(what, access, OperatorAccess::Explicit);
 }
 
-OverloadSet* Type::CreateOperatorOverloadSet(Parse::OperatorName type, Parse::Access access) {
+OverloadSet* Type::CreateOperatorOverloadSet(Parse::OperatorName type, Parse::Access access, OperatorAccess implicit) {
     if (IsReference())
-        return Decay()->AccessMember(type, access);
+        return Decay()->AccessMember(type, access, implicit);
     return analyzer.GetOverloadSet();
 }
 
@@ -56,6 +55,12 @@ bool Type::IsFinal() {
 
 bool Type::IsReference(Type* to) { 
     return false; 
+}
+bool Type::IsNonstaticMemberContext() {
+    return false;
+}
+bool Type::IsLookupContext() {
+    return false;
 }
 
 bool Type::IsReference() { 
@@ -106,7 +111,7 @@ bool Type::IsCopyConstructible(Parse::Access access) {
 }
 
 bool Type::IsMoveAssignable(Parse::Access access) {
-    auto set = AccessMember({ &Lexer::TokenTypes::Assignment }, access);
+    auto set = AccessMember({ &Lexer::TokenTypes::Assignment }, access, OperatorAccess::Implicit);
     std::vector<Type*> arguments;
     arguments.push_back(analyzer.GetLvalueType(this));
     arguments.push_back(analyzer.GetRvalueType(this));
@@ -114,7 +119,7 @@ bool Type::IsMoveAssignable(Parse::Access access) {
 }
 
 bool Type::IsCopyAssignable(Parse::Access access) {
-    auto set = AccessMember({ &Lexer::TokenTypes::Assignment }, access);
+    auto set = AccessMember({ &Lexer::TokenTypes::Assignment }, access, OperatorAccess::Implicit);
     std::vector<Type*> arguments;
     arguments.push_back(analyzer.GetLvalueType(this));
     arguments.push_back(analyzer.GetLvalueType(this));
@@ -206,12 +211,15 @@ std::shared_ptr<Expression> Type::AccessMember(std::shared_ptr<Expression> t, Pa
     auto ty = t->GetType();
     if (auto string = boost::get<std::string>(&name))
         return ty->Decay()->AccessNamedMember(t, *string, c);
-    return ty->analyzer.GetOverloadSet(ty->Decay()->AccessMember(boost::get<Parse::OperatorName>(name), GetAccessSpecifier(c.from, ty)), ty->analyzer.GetOverloadSet(), ty)->BuildValueConstruction({t}, c);    
+    auto set = ty->Decay()->AccessMember(boost::get<Parse::OperatorName>(name), GetAccessSpecifier(c.from, ty), OperatorAccess::Explicit);
+    if (ty->Decay()->IsLookupContext())
+        return ty->analyzer.GetOverloadSet(set, ty->analyzer.GetOverloadSet())->BuildValueConstruction({}, c);
+    return ty->analyzer.GetOverloadSet(set, ty->analyzer.GetOverloadSet(), ty)->BuildValueConstruction({t}, c);    
 }
 std::shared_ptr<Expression> Type::AccessStaticMember(Parse::Name name, Context c) {
     if (auto string = boost::get<std::string>(&name))
         return AccessStaticMember(*string, c);
-    return analyzer.GetOverloadSet(AccessMember(boost::get<Parse::OperatorName>(name), GetAccessSpecifier(c.from, this)), analyzer.GetOverloadSet())->BuildValueConstruction({}, c);
+    return analyzer.GetOverloadSet(AccessMember(boost::get<Parse::OperatorName>(name), GetAccessSpecifier(c.from, this), OperatorAccess::Explicit), analyzer.GetOverloadSet())->BuildValueConstruction({}, c);
 }
 
 std::shared_ptr<Expression> Type::BuildCall(std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c) {
@@ -221,7 +229,7 @@ std::shared_ptr<Expression> Type::BuildCall(std::shared_ptr<Expression> val, std
     return ty->ConstructCall(val, std::move(args), c);
 }
 std::shared_ptr<Expression> Type::ConstructCall(std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c) {
-    auto set = val->GetType()->AccessMember({ &Lexer::TokenTypes::OpenBracket, &Lexer::TokenTypes::CloseBracket }, GetAccessSpecifier(c.from, this));
+    auto set = val->GetType()->AccessMember({ &Lexer::TokenTypes::OpenBracket, &Lexer::TokenTypes::CloseBracket }, GetAccessSpecifier(c.from, this), OperatorAccess::Implicit);
     args.insert(args.begin(), std::move(val));
     std::vector<Type*> types;
     for (auto&& arg : args)
@@ -239,7 +247,7 @@ std::shared_ptr<Expression> Type::AccessVirtualPointer(std::shared_ptr<Expressio
 }
 
 std::shared_ptr<Expression> Type::BuildBooleanConversion(std::shared_ptr<Expression> val, Context c) {
-    auto set = val->GetType()->Decay()->AccessMember({ &Lexer::TokenTypes::QuestionMark }, GetAccessSpecifier(c.from, val->GetType()));
+    auto set = val->GetType()->Decay()->AccessMember({ &Lexer::TokenTypes::QuestionMark }, GetAccessSpecifier(c.from, val->GetType()), OperatorAccess::Implicit);
     std::vector<std::shared_ptr<Expression>> args;
     args.push_back(std::move(val));
     std::vector<Type*> types;
@@ -269,11 +277,12 @@ OverloadSet* Type::PerformADL(Parse::OperatorName what, Parse::Access access) {
     return ADLResults[access][what] = CreateADLOverloadSet(what, access);
 }
 
-OverloadSet* Type::AccessMember(Parse::OperatorName type, Parse::Access access) {
-    if (OperatorOverloadSets.find(access) != OperatorOverloadSets.end())
-        if (OperatorOverloadSets[access].find(type) != OperatorOverloadSets[access].end())
-            return OperatorOverloadSets[access][type];
-    return OperatorOverloadSets[access][type] = CreateOperatorOverloadSet(type, access);
+OverloadSet* Type::AccessMember(Parse::OperatorName type, Parse::Access access, OperatorAccess kind) {
+    if (OperatorOverloadSets.find(access) == OperatorOverloadSets.end()
+     || OperatorOverloadSets[access].find(type) == OperatorOverloadSets[access].end()
+     || OperatorOverloadSets[access][type].find(kind) == OperatorOverloadSets[access][type].end())
+        OperatorOverloadSets[access][type][kind] = CreateOperatorOverloadSet(type, access, kind);
+    return OperatorOverloadSets[access][type][kind];
 }
 
 std::shared_ptr<Expression> Type::BuildInplaceConstruction(std::shared_ptr<Expression> self, std::vector<std::shared_ptr<Expression>> exprs, Context c) {
@@ -526,7 +535,7 @@ bool Type::InheritsFromAtOffsetZero(Type* other) {
 
 std::shared_ptr<Expression> Type::BuildUnaryExpression(std::shared_ptr<Expression> self, Lexer::TokenType type, Context c) {
     auto selfty = self->GetType()->Decay();
-    auto opset = selfty->AccessMember({ type }, GetAccessSpecifier(c.from, selfty));
+    auto opset = selfty->AccessMember({ type }, GetAccessSpecifier(c.from, selfty), OperatorAccess::Implicit);
     auto callable = opset->Resolve({ self->GetType() }, c.from);
     if (!callable) {
         if (type == &Lexer::TokenTypes::Negate) {
@@ -544,7 +553,7 @@ std::shared_ptr<Expression> Type::BuildBinaryExpression(std::shared_ptr<Expressi
     auto rhsaccess = GetAccessSpecifier(c.from, rhs->GetType());
     auto lhsadl = lhs->GetType()->PerformADL({ type }, lhsaccess);
     auto rhsadl = rhs->GetType()->PerformADL({ type }, rhsaccess);
-    auto lhsmember = lhs->GetType()->AccessMember({ type }, lhsaccess);
+    auto lhsmember = lhs->GetType()->AccessMember({ type }, lhsaccess, OperatorAccess::Implicit);
     auto finalset = analyzer.GetOverloadSet(lhsadl, analyzer.GetOverloadSet(rhsadl, lhsmember));
     std::vector<Type*> arguments;
     arguments.push_back(lhs->GetType());
@@ -590,9 +599,9 @@ OverloadSet* PrimitiveType::CreateConstructorOverloadSet(Parse::Access access) {
     return analyzer.GetOverloadSet(callables);
 }
 
-OverloadSet* PrimitiveType::CreateOperatorOverloadSet(Parse::OperatorName what, Parse::Access access) {
+OverloadSet* PrimitiveType::CreateOperatorOverloadSet(Parse::OperatorName what, Parse::Access access, OperatorAccess kind) {
     if (what != Parse::OperatorName({ &Lexer::TokenTypes::Assignment }))
-        return Type::CreateOperatorOverloadSet(what, access);
+        return Type::CreateOperatorOverloadSet(what, access, kind);
     
     AssignmentOperator = MakeResolvable([](std::vector<std::shared_ptr<Expression>> args, Context c) {
         return Wide::Memory::MakeUnique<ImplicitStoreExpr>(std::move(args[0]), std::move(args[1]));
@@ -630,8 +639,7 @@ std::shared_ptr<Expression> Callable::Call(std::vector<std::shared_ptr<Expressio
 }
 
 std::vector<std::shared_ptr<Expression>> Semantic::AdjustArgumentsForTypes(std::vector<std::shared_ptr<Expression>> args, std::vector<Type*> types, Context c) {
-    if (args.size() != types.size())
-        Wide::Util::DebugBreak();
+    assert(args.size() == types.size());
     std::vector<std::shared_ptr<Expression>> out;
     for (std::size_t i = 0; i < types.size(); ++i) {
         auto argty = args[i]->GetType();
@@ -639,8 +647,7 @@ std::vector<std::shared_ptr<Expression>> Semantic::AdjustArgumentsForTypes(std::
             out.push_back(std::move(args[i]));
             continue;
         }
-        if (!Type::IsFirstASecond(argty, types[i], c.from))
-            Wide::Util::DebugBreak();
+        assert(Type::IsFirstASecond(argty, types[i], c.from));
         out.push_back(types[i]->BuildValueConstruction({ std::move(args[i]) }, c));
     }
     return out;
@@ -952,9 +959,7 @@ llvm::Function* Type::GetDestructorFunction(llvm::Module* module) {
 }
 llvm::Function* Type::CreateDestructorFunction(llvm::Module* module) {
     auto fty = llvm::FunctionType::get(llvm::Type::getVoidTy(module->getContext()), { llvm::Type::getInt8PtrTy(module->getContext()) }, false);
-    std::stringstream str;
-    str << "__" << this << "destructor";
-    DestructorFunction = llvm::Function::Create(fty, llvm::GlobalValue::LinkageTypes::InternalLinkage, str.str(), module);
+    DestructorFunction = llvm::Function::Create(fty, llvm::GlobalValue::LinkageTypes::InternalLinkage, analyzer.GetUniqueFunctionName(), module);
     CodegenContext::EmitFunctionBody(DestructorFunction, [this](CodegenContext& c) {;
         struct DestructorExpression : Expression {
             DestructorExpression(Type* self, llvm::Value* val)
@@ -976,7 +981,7 @@ llvm::Function* Type::CreateDestructorFunction(llvm::Module* module) {
 }
 
 std::shared_ptr<Expression> Type::BuildIndex(std::shared_ptr<Expression> val, std::shared_ptr<Expression> arg, Context c) {
-    auto set = val->GetType()->AccessMember({ &Lexer::TokenTypes::OpenSquareBracket, &Lexer::TokenTypes::CloseSquareBracket }, GetAccessSpecifier(c.from, val->GetType()));
+    auto set = val->GetType()->AccessMember({ &Lexer::TokenTypes::OpenSquareBracket, &Lexer::TokenTypes::CloseSquareBracket }, GetAccessSpecifier(c.from, val->GetType()), OperatorAccess::Implicit);
     std::vector<std::shared_ptr<Expression>> args;
     args.push_back(std::move(val));
     args.push_back(std::move(arg));

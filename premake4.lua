@@ -8,6 +8,16 @@ newoption {
     value = "filepath",
     description = "The path of Boost on this machine."
 }
+newoption {
+    trigger = "zlib-path",
+    value = "filepath",
+    description = "The path of zlib on this machine."
+}
+newoption {
+    trigger = "libarchive-path",
+    value = "filepath",
+    description = "The path of libarchive on this machine.",
+}
 if not os.is("Windows") then
     newoption {
         trigger = "llvm-conf",
@@ -74,101 +84,101 @@ function AddClangDependencies(plat, conf)
         "clangBasic",
     }
     local libs = {"LLVMLTO",
-"LLVMObjCARCOpts",
-"LLVMLinker",
-"LLVMipo",
-"LLVMVectorize",
-"LLVMBitWriter",
-"LLVMIRReader",
-"LLVMBitReader",
-"LLVMAsmParser",
-"LLVMR600CodeGen",
-"LLVMR600Desc",
-"LLVMR600Info",
-"LLVMR600AsmPrinter",
-"LLVMSystemZDisassembler",
-"LLVMSystemZCodeGen",
-"LLVMSystemZAsmParser",
-"LLVMSystemZDesc",
-"LLVMSystemZInfo",
-"LLVMSystemZAsmPrinter",
-"LLVMHexagonCodeGen",
-"LLVMHexagonAsmPrinter",
-"LLVMHexagonDesc",
-"LLVMHexagonInfo",
-"LLVMNVPTXCodeGen",
-"LLVMNVPTXDesc",
-"LLVMNVPTXInfo",
-"LLVMNVPTXAsmPrinter",
-"LLVMCppBackendCodeGen",
-"LLVMCppBackendInfo",
-"LLVMMSP430CodeGen",
-"LLVMMSP430Desc",
-"LLVMMSP430Info",
-"LLVMMSP430AsmPrinter",
-"LLVMXCoreDisassembler",
-"LLVMXCoreCodeGen",
-"LLVMXCoreDesc",
-"LLVMXCoreInfo",
-"LLVMXCoreAsmPrinter",
-"LLVMMipsDisassembler",
-"LLVMMipsCodeGen",
-"LLVMMipsAsmParser",
-"LLVMMipsDesc",
-"LLVMMipsInfo",
-"LLVMMipsAsmPrinter",
-"LLVMARMDisassembler",
-"LLVMARMCodeGen",
-"LLVMARMAsmParser",
-"LLVMARMDesc",
-"LLVMARMInfo",
-"LLVMARMAsmPrinter",
-"LLVMAArch64Disassembler",
-"LLVMAArch64CodeGen",
-"LLVMAArch64AsmParser",
-"LLVMAArch64Desc",
-"LLVMAArch64Info",
-"LLVMAArch64AsmPrinter",
-"LLVMAArch64Utils",
-"LLVMPowerPCCodeGen",
-"LLVMPowerPCAsmParser",
-"LLVMPowerPCDesc",
-"LLVMPowerPCInfo",
-"LLVMPowerPCAsmPrinter",
-"LLVMSparcCodeGen",
-"LLVMSparcDesc",
-"LLVMSparcInfo",
-"LLVMTableGen",
-"LLVMDebugInfo",
-"LLVMOption",
-"LLVMX86Disassembler",
-"LLVMX86AsmParser",
-"LLVMX86CodeGen",
-"LLVMSelectionDAG",
-"LLVMAsmPrinter",
-"LLVMMCParser",
-"LLVMX86Desc",
-"LLVMX86Info",
-"LLVMX86AsmPrinter",
-"LLVMX86Utils",
-"LLVMJIT",
-"LLVMMCDisassembler",
-"LLVMInstrumentation",
-"LLVMInterpreter",
-"LLVMCodeGen",
-"LLVMScalarOpts",
-"LLVMInstCombine",
-"LLVMTransformUtils",
-"LLVMipa",
-"LLVMAnalysis",
-"LLVMMCJIT",
-"LLVMTarget",
-"LLVMRuntimeDyld",
-"LLVMExecutionEngine",
-"LLVMMC",
-"LLVMObject",
-"LLVMCore",
-"LLVMSupport"
+        "LLVMObjCARCOpts",
+        "LLVMLinker",
+        "LLVMipo",
+        "LLVMVectorize",
+        "LLVMBitWriter",
+        "LLVMIRReader",
+        "LLVMBitReader",
+        "LLVMAsmParser",
+        "LLVMR600CodeGen",
+        "LLVMR600Desc",
+        "LLVMR600Info",
+        "LLVMR600AsmPrinter",
+        "LLVMSystemZDisassembler",
+        "LLVMSystemZCodeGen",
+        "LLVMSystemZAsmParser",
+        "LLVMSystemZDesc",
+        "LLVMSystemZInfo",
+        "LLVMSystemZAsmPrinter",
+        "LLVMHexagonCodeGen",
+        "LLVMHexagonAsmPrinter",
+        "LLVMHexagonDesc",
+        "LLVMHexagonInfo",
+        "LLVMNVPTXCodeGen",
+        "LLVMNVPTXDesc",
+        "LLVMNVPTXInfo",
+        "LLVMNVPTXAsmPrinter",
+        "LLVMCppBackendCodeGen",
+        "LLVMCppBackendInfo",
+        "LLVMMSP430CodeGen",
+        "LLVMMSP430Desc",
+        "LLVMMSP430Info",
+        "LLVMMSP430AsmPrinter",
+        "LLVMXCoreDisassembler",
+        "LLVMXCoreCodeGen",
+        "LLVMXCoreDesc",
+        "LLVMXCoreInfo",
+        "LLVMXCoreAsmPrinter",
+        "LLVMMipsDisassembler",
+        "LLVMMipsCodeGen",
+        "LLVMMipsAsmParser",
+        "LLVMMipsDesc",
+        "LLVMMipsInfo",
+        "LLVMMipsAsmPrinter",
+        "LLVMARMDisassembler",
+        "LLVMARMCodeGen",
+        "LLVMARMAsmParser",
+        "LLVMARMDesc",
+        "LLVMARMInfo",
+        "LLVMARMAsmPrinter",
+        "LLVMAArch64Disassembler",
+        "LLVMAArch64CodeGen",
+        "LLVMAArch64AsmParser",
+        "LLVMAArch64Desc",
+        "LLVMAArch64Info",
+        "LLVMAArch64AsmPrinter",
+        "LLVMAArch64Utils",
+        "LLVMPowerPCCodeGen",
+        "LLVMPowerPCAsmParser",
+        "LLVMPowerPCDesc",
+        "LLVMPowerPCInfo",
+        "LLVMPowerPCAsmPrinter",
+        "LLVMSparcCodeGen",
+        "LLVMSparcDesc",
+        "LLVMSparcInfo",
+        "LLVMTableGen",
+        "LLVMDebugInfo",
+        "LLVMOption",
+        "LLVMX86Disassembler",
+        "LLVMX86AsmParser",
+        "LLVMX86CodeGen",
+        "LLVMSelectionDAG",
+        "LLVMAsmPrinter",
+        "LLVMMCParser",
+        "LLVMX86Desc",
+        "LLVMX86Info",
+        "LLVMX86AsmPrinter",
+        "LLVMX86Utils",
+        "LLVMJIT",
+        "LLVMMCDisassembler",
+        "LLVMInstrumentation",
+        "LLVMInterpreter",
+        "LLVMCodeGen",
+        "LLVMScalarOpts",
+        "LLVMInstCombine",
+        "LLVMTransformUtils",
+        "LLVMipa",
+        "LLVMAnalysis",
+        "LLVMMCJIT",
+        "LLVMTarget",
+        "LLVMRuntimeDyld",
+        "LLVMExecutionEngine",
+        "LLVMMC",
+        "LLVMObject",
+        "LLVMCore",
+        "LLVMSupport"
     }
     for k, v in pairs(clanglibs) do
         links { v }
@@ -199,34 +209,44 @@ function AddBoostDependencies(plat, conf)
         links { "boost_program_options" }
     end
 end
-
-function CheckLLVM(proj)
-    if not _OPTIONS["llvm-path"] then
-        print("Error: llvm-path was not provided, skipping " .. proj .. ".\n")
-        return false
-    end
-    return true
+function AddLibarchiveDependency(plat, conf)
+    libdirs({ path.join(_OPTIONS["libarchive-path"], "build/libarchive", conf ) })
+    links { "archive_static" }
+    includedirs({ path.join(_OPTIONS["libarchive-path"] ) })
 end
-function CheckBoost(proj)
-    if not _OPTIONS["boost-path"] then
-        print("Error: boost-path was not provided, skipping " .. proj .. "\n")
-        return false;
+function AddZlibDependency(plat, conf)
+    libdirs({ path.join(_OPTIONS["zlib-path"], "build", conf ) })
+    local suffix = ""
+    if conf == "Debug" then
+        suffix = "d"
     end
-    return true
+    links { "zlibstatic" .. suffix }
+    includedirs({ _OPTIONS["zlib-path"] }) 
+end
+if not _OPTIONS["llvm-path"] then
+    print("Error: boost-path was not provided.\n")
+    return
+end
+if not _OPTIONS["boost-path"] then
+    print("Error: boost-path was not provided.\n")
+    return
+end
+if not _OPTIONS["libarchive-path"] then
+    print("Error: boost-path was not provided.\n")
+    return
+end
+if not _OPTIONS["libarchive-path"] then
+    print("Error: boost-path was not provided.\n")
+    return
 end
 
 WideProjects = {
     CLI = { 
-        dependencies = function(proj) 
-            return CheckLLVM(proj) and CheckBoost(proj)
-        end, 
         action = function()
             links { "Util", "Lexer", "Parser", "Semantic" }
             kind ("ConsoleApp")
         end,
         configure = function(plat, conf)
-            AddClangDependencies(plat, conf)
-            AddBoostDependencies(plat, conf)
             if os.is("windows") then
                 postbuildcommands ({ "copy /Y \"$(TargetDir)$(TargetName).exe\" \"$(SolutionDir)Deployment/Wide.exe\"" })
             else
@@ -234,34 +254,13 @@ WideProjects = {
             end
         end,
     },
-    Util = {
-        dependencies = function(proj) 
-            return CheckLLVM(proj) and CheckBoost(proj)
-        end, 
-        configure = function(plat, conf)
-            AddClangDependencies(plat, conf)
-            AddBoostDependencies(plat, conf)
-        end
-    },
-    Semantic = { 
-        dependencies = function(proj) 
-            return CheckLLVM(proj) and CheckBoost(proj)
-        end, 
-        configure = function(plat, conf)
-            AddClangDependencies(plat, conf)
-            AddBoostDependencies(plat, conf)
-        end,
+    Util = {},
+    Semantic = {
         action = function()
             links { "Util" }
         end
     },
     Parser = {
-        dependencies = function(proj) 
-            return CheckBoost(proj)
-        end, 
-        configure = function(plat, conf)
-            AddBoostDependencies(plat, conf)
-        end,
         action = function()
             links { "Util" }
         end
@@ -272,13 +271,6 @@ WideProjects = {
         end
     },
     CAPI = {
-        dependencies = function(proj)
-            return CheckLLVM(proj) and CheckBoost(proj)
-        end,
-        configure = function(plat, conf)
-            AddClangDependencies(plat, conf)
-            AddBoostDependencies(plat, conf)
-        end, 
         action = function()
             kind "SharedLib"
             links { "Util", "Lexer", "Parser", "Semantic" }
@@ -299,11 +291,7 @@ WideProjects = {
             kind("ConsoleApp")
             links { "Util", "Lexer", "Parser" }
         end,
-        dependencies = function(proj)
-            return WideProjects.Parser.dependencies(proj)
-        end, 
         configure = function(plat, conf)
-            WideProjects.Parser.configure(plat, conf)
             if os.is("windows") then
                 postbuildcommands ({ "$(TargetPath)" })
             else
@@ -325,17 +313,12 @@ WideProjects = {
         end,
     },
     SemanticTest = {
-        name = "SemanticTest",
         action = function()
             kind("ConsoleApp")
             links { "Util", "Lexer", "Parser", "Semantic" }
             files ({ "Wide/SemanticTest/**.wide" })
         end,
-        dependencies = function(proj)
-            return WideProjects.Semantic.dependencies(proj)
-        end, 
         configure = function(plat, conf)
-            WideProjects.Semantic.configure(plat, conf)
             if os.is("windows") then
                 postbuildcommands ({ "$(TargetPath)" })
             else
@@ -364,24 +347,26 @@ end
 includedirs("./")
 location("Wide")
 for name, proj in pairs(WideProjects) do
-    if (not proj.dependencies) or proj.dependencies(name) then 
-        project(name)
-        location(path.join("Wide", name))
-        if proj.action then proj.action() end
-        files( { path.join("Wide", name) .. "/**.cpp", path.join("Wide", name) .. "/**.h" })
-        for k, plat in pairs(SupportedPlatforms) do
-            for k, conf in pairs(SupportedConfigurations) do
-                configuration { plat, conf }
-                if plat == "x32" then plat = "x86" end
-                if proj.configure then proj.configure(plat, conf) end
-                objdir(path.join("Wide/Obj", name))
-                if conf == "Debug" then 
-                    flags("Symbols")
-                else
-                    flags("Optimize")
-                end
-                targetdir(path.join("Wide/Build", plat, conf))
+    project(name)
+    location(path.join("Wide", name))
+    if proj.action then proj.action() end
+    files( { path.join("Wide", name) .. "/**.cpp", path.join("Wide", name) .. "/**.h" })
+    for k, plat in pairs(SupportedPlatforms) do
+        for k, conf in pairs(SupportedConfigurations) do
+            configuration { plat, conf }
+            AddClangDependencies(plat, conf)
+            AddBoostDependencies(plat, conf)
+            AddLibarchiveDependency(plat, conf)
+            AddZlibDependency(plat, conf)
+            if plat == "x32" then plat = "x86" end
+            if proj.configure then proj.configure(plat, conf) end
+            objdir(path.join("Wide/Obj", name))
+            if conf == "Debug" then 
+                flags("Symbols")
+            else
+                flags("Optimize")
             end
-        end        
+            targetdir(path.join("Wide/Build", plat, conf))
+        end
     end
 end

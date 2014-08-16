@@ -73,7 +73,9 @@ std::string ClangNamespace::explain() {
     auto names = llvm::dyn_cast<clang::NamespaceDecl>(con);
     return GetContext()->explain() + "." + names->getName().str();
 }
-OverloadSet* ClangNamespace::CreateOperatorOverloadSet(Parse::OperatorName what, Parse::Access access) {
+OverloadSet* ClangNamespace::CreateOperatorOverloadSet(Parse::OperatorName what, Parse::Access access, OperatorAccess kind) {
+    if (kind != OperatorAccess::Explicit)
+        return Type::CreateOperatorOverloadSet(what, access, kind);
     clang::LookupResult lr(
         from->GetSema(),
         clang::DeclarationNameInfo(from->GetASTContext().DeclarationNames.getCXXOperatorName(GetTokenMappings().at(what).first), clang::SourceLocation()),

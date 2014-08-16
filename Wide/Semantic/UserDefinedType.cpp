@@ -72,7 +72,7 @@ UserDefinedType::VTableData::VTableData(UserDefinedType* self) {
     is_abstract = false;
     std::unordered_map<const Parse::Function*, unsigned> primary_dynamic_functions;
     std::unordered_map<const Parse::Function*, Parse::Name> dynamic_functions;
-    bool dynamic_destructor = self->type->destructor_decl ? self->type->destructor_decl->dynamic : false;
+    dynamic_destructor = self->type->destructor_decl ? self->type->destructor_decl->dynamic : false;
     std::unordered_set<Type*> all_bases;
     AddAllBases(all_bases, self);
     for (auto base : all_bases) {
@@ -262,6 +262,8 @@ std::shared_ptr<Expression> UserDefinedType::AccessNamedMember(std::shared_ptr<E
 }
 
 Wide::Util::optional<clang::QualType> UserDefinedType::GetClangType(ClangTU& TU) {
+    if (SizeOverride()) return Wide::Util::none;
+    if (AlignOverride()) return Wide::Util::none;
     if (clangtypes.find(&TU) != clangtypes.end())
         return clangtypes[&TU];
     
@@ -445,9 +447,14 @@ Wide::Util::optional<clang::QualType> UserDefinedType::GetClangType(ClangTU& TU)
                 if (auto string = boost::get<std::string>(&overset.first)) {
                     name = TU.GetIdentifierInfo(*string);
                 } else {
-                    auto opkind = GetTokenMappings().at(boost::get<Parse::OperatorName>(overset.first)).first;
-                    name = TU.GetASTContext().DeclarationNames.getCXXOperatorName(opkind);
-                }
+                    auto op = boost::get<Parse::OperatorName>(overset.first);
+                    if (op == Parse::OperatorName{ &Lexer::TokenTypes::QuestionMark }) {
+                        name = TU.GetASTContext().DeclarationNames.getCXXConversionFunctionName(TU.GetASTContext().BoolTy);
+                    } else {
+                        auto opkind = GetTokenMappings().at(boost::get<Parse::OperatorName>(overset.first)).first;
+                        name = TU.GetASTContext().DeclarationNames.getCXXOperatorName(opkind);
+                    }
+                }               
                 auto meth = clang::CXXMethodDecl::Create(
                     TU.GetASTContext(),
                     recdecl,
@@ -463,6 +470,7 @@ Wide::Util::optional<clang::QualType> UserDefinedType::GetClangType(ClangTU& TU)
                 meth->setAccess(Access(access.first));
                 meth->setVirtualAsWritten(func->dynamic);
                 meth->setParams(GetParmVarDecls(args, TU, recdecl));
+                // TODO: Set explicit for bool conversion operators.
                 recdecl->addDecl(meth);
                 if (func->deleted)
                     meth->setDeletedAsWritten(true);
@@ -482,7 +490,7 @@ Wide::Util::optional<clang::QualType> UserDefinedType::GetClangType(ClangTU& TU)
         assert(layout.getBaseClassOffset((*base.first->GetClangType(TU))->getAsCXXRecordDecl()).getQuantity() == base.second);
     }    
     for (int i = 0; i < GetMembers().size(); ++i) {
-        assert((layout.getFieldOffset(i) / 8) == AggregateType::GetOffset(i));
+        assert((layout.getFieldOffset(i) / 8) == AggregateType::GetOffset(i + GetBases().size()));
     }
     TU.GetDeclContext()->addDecl(recdecl);
     return clangtypes[&TU];
@@ -582,7 +590,7 @@ OverloadSet* UserDefinedType::CreateConstructorOverloadSet(Parse::Access access)
     return analyzer.GetOverloadSet(user_defined_constructors, GetDefaultData().SimpleConstructors);
 }
 
-OverloadSet* UserDefinedType::CreateOperatorOverloadSet(Parse::OperatorName name, Parse::Access access) {
+OverloadSet* UserDefinedType::CreateOperatorOverloadSet(Parse::OperatorName name, Parse::Access access, OperatorAccess kind) {
     auto user_defined = [&, this] {
         if (type->functions.find(name) != type->functions.end()) {
             std::unordered_set<OverloadResolvable*> resolvable;
@@ -598,8 +606,8 @@ OverloadSet* UserDefinedType::CreateOperatorOverloadSet(Parse::OperatorName name
     if (name.size() == 1 && name.front() == &Lexer::TokenTypes::Assignment)
         return analyzer.GetOverloadSet(user_defined(), GetDefaultData().SimpleAssOps);
     if (type->functions.find(name) != type->functions.end())
-        return analyzer.GetOverloadSet(user_defined(), AggregateType::CreateOperatorOverloadSet(name, access));
-    return AggregateType::CreateOperatorOverloadSet(name, access);
+        return analyzer.GetOverloadSet(user_defined(), AggregateType::CreateOperatorOverloadSet(name, access, kind));
+    return AggregateType::CreateOperatorOverloadSet(name, access, kind);
 }
 
 std::function<void(CodegenContext&)> UserDefinedType::BuildDestruction(std::shared_ptr<Expression> self, Context c, bool devirtualize) {

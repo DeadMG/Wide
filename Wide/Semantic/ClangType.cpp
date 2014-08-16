@@ -180,8 +180,7 @@ OverloadSet* ClangType::CreateADLOverloadSet(Parse::OperatorName what, Parse::Ac
     return analyzer.GetOverloadSet(std::move(decls), from, GetContext());
 }
 
-OverloadSet* ClangType::CreateOperatorOverloadSet(Parse::OperatorName opname, Parse::Access access) {
-    if (opname.size() == 0) return Type::CreateOperatorOverloadSet(opname, access);
+OverloadSet* ClangType::CreateOperatorOverloadSet(Parse::OperatorName opname, Parse::Access access, OperatorAccess kind) {
     auto name = opname.front();
     if (!ProcessedAssignmentOperators && name == &Lexer::TokenTypes::Assignment) {
         ProcessedAssignmentOperators = true;

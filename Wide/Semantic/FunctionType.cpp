@@ -283,7 +283,6 @@ std::vector<Type*> ClangFunctionType::GetArguments() {
     return out;
 }
 
-// Now the thunks.
 std::shared_ptr<Expression> ClangFunctionType::ConstructCall(std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c) {
     struct Call : Expression {
         Call(Analyzer& an, std::shared_ptr<Expression> self, std::vector<std::shared_ptr<Expression>> args, Context c)
@@ -392,6 +391,7 @@ std::function<void(llvm::Module*)> ClangFunctionType::CreateThunk(std::function<
             return val;
         }
     };
+    
     for (unsigned i = 0; i < GetArguments().size(); ++i) {
         if (i == 0) {
             auto derthis = destty->GetArguments()[0]->Decay();

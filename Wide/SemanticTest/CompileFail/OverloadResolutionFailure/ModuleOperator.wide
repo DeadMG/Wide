@@ -1,0 +1,9 @@
+ExpectedFailure() { return { "OverloadResolutionFailure", 8, 12, 8, 20 }; }
+module x {
+    operator+(t, y) {
+        return y;
+    }
+}
+Main() {
+    return x + true;
+}

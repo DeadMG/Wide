@@ -640,10 +640,6 @@ Function::Function(std::vector<Type*> args, const Parse::FunctionBase* astfun, A
         param->OnNodeChanged(nullptr, Change::Contents);
     }
 
-    std::stringstream strstr;
-    strstr << "__" << std::hex << this;
-    name = strstr.str();
-
     // Deal with the exports first, if any
     if (auto fun = dynamic_cast<const Parse::AttributeFunctionBase*>(astfun)) {
         for (auto attr : fun->attributes) {
@@ -990,7 +986,7 @@ llvm::Function* Function::EmitCode(llvm::Module* module) {
         return llvmfunc;
     auto sig = GetSignature();
     auto llvmsig = sig->GetLLVMType(module);
-    llvmfunc = llvm::Function::Create(llvm::dyn_cast<llvm::FunctionType>(llvmsig->getElementType()), llvm::GlobalValue::LinkageTypes::InternalLinkage, name, module);
+    llvmfunc = llvm::Function::Create(llvm::dyn_cast<llvm::FunctionType>(llvmsig->getElementType()), llvm::GlobalValue::LinkageTypes::InternalLinkage, analyzer.GetUniqueFunctionName(), module);
     CodegenContext::EmitFunctionBody(llvmfunc, [this](CodegenContext& c) {
         for (auto&& stmt : root_scope->active)
             if (!c.IsTerminated(c->GetInsertBlock()))

@@ -18,21 +18,22 @@ Module::Module(const Parse::Module* p, Module* higher, Analyzer& a)
 void Module::AddSpecialMember(std::string name, std::shared_ptr<Expression> t){
     SpecialMembers.insert(std::make_pair(std::move(name), std::move(t)));
 }
-OverloadSet* Module::CreateOperatorOverloadSet(Parse::OperatorName ty, Parse::Access access) {
-    if (m->OperatorOverloads.find(ty) != m->OperatorOverloads.end()) {
-        auto overset = m->OperatorOverloads.at(ty);
-        std::unordered_set<OverloadResolvable*> resolvable;
-        for (auto set : overset) {
-            for (auto func : set.second) {
-                if (set.first > access)
-                    continue;
-                resolvable.insert(analyzer.GetCallableForFunction(func, this, GetOperatorName(ty)));
+OverloadSet* Module::CreateOperatorOverloadSet(Parse::OperatorName ty, Parse::Access access, OperatorAccess kind) {
+    if (kind == OperatorAccess::Explicit) {
+        if (m->OperatorOverloads.find(ty) != m->OperatorOverloads.end()) {
+            auto overset = m->OperatorOverloads.at(ty);
+            std::unordered_set<OverloadResolvable*> resolvable;
+            for (auto set : overset) {
+                for (auto func : set.second) {
+                    if (set.first > access)
+                        continue;
+                    resolvable.insert(analyzer.GetCallableForFunction(func, this, GetOperatorName(ty)));
+                }
             }
+            return analyzer.GetOverloadSet(resolvable);
         }
-        if (resolvable.empty()) return PrimitiveType::CreateOperatorOverloadSet(ty, access);
-        return analyzer.GetOverloadSet(resolvable);
     }
-    return PrimitiveType::CreateOperatorOverloadSet(ty, access);
+    return PrimitiveType::CreateOperatorOverloadSet(ty, access, kind);
 }
 std::shared_ptr<Expression> Module::AccessNamedMember(std::shared_ptr<Expression> val, std::string name, Context c)  {
     auto access = GetAccessSpecifier(c.from, this);

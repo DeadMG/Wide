@@ -36,12 +36,12 @@ namespace Wide {
             std::size_t operator()(clang::QualType t) const;
         };
         struct PairTypeHasher {
-            std::size_t operator()(std::pair<Type*, Type*> types) const {
-                return std::hash<Type*>()(types.first) ^ std::hash<Type*>()(types.second);
+            template<typename T> std::size_t operator()(std::pair<T*, T*> types) const {
+                return std::hash<T*>()(types.first) ^ std::hash<T*>()(types.second);
             }
         };
         struct PairTypeEquality {
-            bool operator()(std::pair<Type*, Type*> lhs, std::pair<Type*, Type*> rhs) const {
+            template<typename T> bool operator()(std::pair<T*, T*> lhs, std::pair<T*, T*> rhs) const {
                 return (lhs.first == rhs.first && lhs.second == rhs.second) || (lhs.first == rhs.second && lhs.second == rhs.first);
             }
         };

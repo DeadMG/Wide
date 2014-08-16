@@ -12,7 +12,6 @@
 #include <Wide/Semantic/ConstructorType.h>
 #include <Wide/Semantic/Reference.h>
 #include <Wide/Semantic/IntegralType.h>
-#include <Wide/Util/DebugUtilities.h>
 #include <Wide/Semantic/Expression.h>
 #include <array>
 #include <sstream>
@@ -274,8 +273,7 @@ Callable* OverloadSet::Resolve(std::vector<Type*> f_args, Type* source) {
     auto get_wide_or_result = [&]() -> Callable* {
         if (call.size() == 1)
             return call.begin()->first->GetCallableForResolution(call.begin()->second, analyzer);
-        if (call.size() > 1)
-            Wide::Util::DebugBreak();
+        assert(call.size() == 0);
         return nullptr;
     };
 

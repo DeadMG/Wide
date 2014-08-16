@@ -16,7 +16,6 @@ Analyzer:
 Add unsafe pointer indexing.
 Add library is-a.
 Add inheriting constructors.
-Add abstract functions, override/final/new.
 Add static reflection.
 Change ADL to look up in base class.
 Consider constraints.
@@ -30,14 +29,12 @@ Add explicit template arguments.
 Add the ability for Wide to expose Wide generic functions as C++ templates
 Consider parameterised destructors.
 Add the ability to add statement types, etc.
-Add access to instance member overload sets.
-Add dynamic operator overloads.
 Add ability to inherit from primitives.
 Add short-circuiting for &= and |=.
 Add warnings and errors.
 Fix runtime_errors.
 Refactor error handling away from exceptions.
-Fix C++ conversion of UDT member operators.
+Fix C++ conversion of ADL.
 Fix C++ conversion of overload sets.
 Add tests for warnings, and add more warnings.
 More tests.
@@ -50,3 +47,8 @@ Add Wide containers and algorithms that require bidi/random access.
 
 Util/Driver:
 Change Compile so that the combiner errors are reported properly.
+
+Low hanging fruit:
+Inheriting constructors.
+Local using statements.
+UDT properties.

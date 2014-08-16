@@ -30,7 +30,7 @@ void Wide::Driver::Compile(const Wide::Options::Clang& copts, std::function<void
         std::stringstream str;
         str << "Error at locations:\n";
         for(auto loc : where)
-            str << "    File: " << *loc.begin.name << ", line: " << loc.begin.line << " column: " << loc.begin.line << "\n";
+            str << "    File: " << *loc.begin.name << ", line: " << loc.begin.line << " column: " << loc.begin.column << "\n";
         str << Wide::Parse::ErrorStrings.at(what);
         excepts.push_back(str.str());
     };

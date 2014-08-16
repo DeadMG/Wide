@@ -20,7 +20,7 @@ namespace Wide {
         class Function;
         class OverloadSet;
         class Module;
-        class UserDefinedType : public AggregateType, public TupleInitializable, public MemberFunctionContext, public ConstructorContext {
+        class UserDefinedType : public AggregateType, public TupleInitializable, public ConstructorContext {
 
             std::vector<Type*> GetMembers() { return GetMemberData().members; }
             std::vector<std::shared_ptr<Expression>> GetDefaultInitializerForMember(unsigned);
@@ -107,6 +107,7 @@ namespace Wide {
             Wide::Util::optional<unsigned> AlignOverride() override final; 
             llvm::Function* CreateDestructorFunction(llvm::Module* module) override final;
             bool HasVirtualDestructor() override final;
+            bool IsNonstaticMemberContext() override final { return true; }
         public:
             std::function<llvm::Constant*(llvm::Module*)> GetRTTI() override final;
             UserDefinedType(const Parse::Type* t, Analyzer& a, Type* context, std::string);
@@ -117,7 +118,7 @@ namespace Wide {
             using Type::AccessMember;
             std::function<void(CodegenContext&)> BuildDestruction(std::shared_ptr<Expression> self, Context c, bool devirtualize) override final;
             OverloadSet* CreateConstructorOverloadSet(Parse::Access access) override final;
-            OverloadSet* CreateOperatorOverloadSet(Parse::OperatorName member, Parse::Access access) override final;
+            OverloadSet* CreateOperatorOverloadSet(Parse::OperatorName member, Parse::Access access, OperatorAccess) override final;
             Type* GetConstantContext() override final;
 
             bool IsCopyConstructible(Parse::Access access) override final;

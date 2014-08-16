@@ -30,7 +30,6 @@
 #include <Wide/Semantic/MemberDataPointerType.h>
 #include <Wide/Semantic/MemberFunctionPointerType.h>
 #include <Wide/Util/Codegen/InitializeLLVM.h>
-#include <Wide/Util/DebugUtilities.h>
 #include <Wide/Semantic/Expression.h>
 #include <sstream>
 #include <iostream>
@@ -1081,7 +1080,7 @@ bool Analyzer::HasImplicitThis(const Parse::FunctionBase* func, Type* context) {
     return true;
 }
 Type* Analyzer::GetNonstaticContext(const Parse::FunctionBase* p, Type* context) {
-    if (dynamic_cast<MemberFunctionContext*>(context))
+    if (context->IsNonstaticMemberContext())
         return context;
     // May be exported.
     if (auto astfun = dynamic_cast<const Parse::AttributeFunctionBase*>(p)) {

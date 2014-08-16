@@ -159,6 +159,10 @@ namespace Wide {
         };
         
         class FunctionType;
+        enum class OperatorAccess {
+            Implicit,
+            Explicit
+        };
         struct Type : public Node {
         public:
             enum class InheritanceRelationship {
@@ -189,7 +193,7 @@ namespace Wide {
 
         private:
             std::unordered_map<Parse::Access, OverloadSet*> ConstructorOverloadSets;
-            std::unordered_map<Parse::Access, std::unordered_map<Parse::OperatorName, OverloadSet*>> OperatorOverloadSets;
+            std::unordered_map<Parse::Access, std::unordered_map<Parse::OperatorName, std::unordered_map<OperatorAccess, OverloadSet*>>> OperatorOverloadSets;
             std::unordered_map<Parse::Access, std::unordered_map<Parse::OperatorName, OverloadSet*>> ADLResults;
             std::unordered_map<std::vector<std::pair<Type*, unsigned>>, std::shared_ptr<Expression>, VectorTypeHasher> ComputedVTables;
             Wide::Util::optional<VTableLayout> VtableLayout;
@@ -207,7 +211,7 @@ namespace Wide {
             virtual std::shared_ptr<Expression> AccessNamedMember(std::shared_ptr<Expression> t, std::string name, Context c);
             llvm::Function* DestructorFunction = nullptr;
             virtual llvm::Function* CreateDestructorFunction(llvm::Module* module);
-            virtual OverloadSet* CreateOperatorOverloadSet(Parse::OperatorName what, Parse::Access access);
+            virtual OverloadSet* CreateOperatorOverloadSet(Parse::OperatorName what, Parse::Access access, OperatorAccess implicit);
             virtual OverloadSet* CreateADLOverloadSet(Parse::OperatorName name, Parse::Access access);
             virtual OverloadSet* CreateConstructorOverloadSet(Parse::Access access) = 0;
         public:
@@ -244,6 +248,8 @@ namespace Wide {
             virtual std::unordered_map<unsigned, std::unordered_set<Type*>> GetEmptyLayout();
             virtual bool HasVirtualDestructor();
             virtual std::vector<std::pair<Type*, unsigned>> GetBasesAndOffsets();
+            virtual bool IsNonstaticMemberContext();
+            virtual bool IsLookupContext();
 
             // Do not ever call from public API, it is for derived types and implementation details only.
             virtual bool IsSourceATarget(Type* source, Type* target, Type* context) { return false; }
@@ -261,7 +267,8 @@ namespace Wide {
             VTableLayout GetPrimaryVTable();
             OverloadSet* GetConstructorOverloadSet(Parse::Access access);
             OverloadSet* PerformADL(Parse::OperatorName what, Parse::Access access);
-            OverloadSet* AccessMember(Parse::OperatorName type, Parse::Access access);
+            
+            OverloadSet* AccessMember(Parse::OperatorName type, Parse::Access access, OperatorAccess implicit);
             std::shared_ptr<Expression> AccessStaticMember(Parse::Name name, Context c);
             bool InheritsFromAtOffsetZero(Type* other);
             unsigned GetOffsetToBase(Type* base);
@@ -309,7 +316,6 @@ namespace Wide {
         struct EmptyBaseOffset { unsigned offset; };
         typedef boost::variant<LLVMFieldIndex, EmptyBaseOffset> MemberLocation;
 
-        struct MemberFunctionContext { virtual ~MemberFunctionContext() {} };
         struct ConstructorContext {
             struct member {
                 member(Lexer::Range where)
@@ -342,7 +348,7 @@ namespace Wide {
             PrimitiveType(Analyzer& a) : Type(a) {}
         public:
             OverloadSet* CreateConstructorOverloadSet(Parse::Access access) override;
-            OverloadSet* CreateOperatorOverloadSet(Parse::OperatorName what, Parse::Access access) override;
+            OverloadSet* CreateOperatorOverloadSet(Parse::OperatorName what, Parse::Access access, OperatorAccess kind) override;
         };
         class MetaType : public PrimitiveType {
             std::unique_ptr<OverloadResolvable> DefaultConstructor;

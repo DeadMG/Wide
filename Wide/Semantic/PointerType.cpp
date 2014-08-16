@@ -91,9 +91,9 @@ bool PointerType::IsSourceATarget(Type* source, Type* target, Type* context) {
     return sourceptr->pointee->IsDerivedFrom(targetptr->pointee) == InheritanceRelationship::UnambiguouslyDerived;
 }
 
-OverloadSet* PointerType::CreateOperatorOverloadSet(Parse::OperatorName name, Parse::Access access) {
-    if (access != Parse::Access::Public) return AccessMember(name, Parse::Access::Public);
-    if (name.size() != 1) return AccessMember(name, Parse::Access::Public);
+OverloadSet* PointerType::CreateOperatorOverloadSet(Parse::OperatorName name, Parse::Access access, OperatorAccess kind) {
+    if (access != Parse::Access::Public) return AccessMember(name, Parse::Access::Public, kind);
+    if (name.size() != 1) return AccessMember(name, Parse::Access::Public, kind);
     auto what = name.front();
     if (what == &Lexer::TokenTypes::Star) {
         DereferenceOperator = MakeResolvable([this](std::vector<std::shared_ptr<Expression>> args, Context c) {
@@ -110,7 +110,7 @@ OverloadSet* PointerType::CreateOperatorOverloadSet(Parse::OperatorName name, Pa
         }, { this });
         return analyzer.GetOverloadSet(BooleanOperator.get());
     }
-    return PrimitiveType::CreateOperatorOverloadSet(name, access);
+    return PrimitiveType::CreateOperatorOverloadSet(name, access, kind);
 }
 std::string PointerType::explain() {
     return pointee->explain() + ".pointer";

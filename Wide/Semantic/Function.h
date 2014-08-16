@@ -31,7 +31,6 @@ namespace Wide {
             const Parse::FunctionBase* fun;
             Type* context;
             std::string source_name;
-            std::string name;
             std::vector<std::function<void(llvm::Module*)>> trampoline;
             std::vector<std::shared_ptr<Expression>> parameters;
             std::vector<std::tuple<std::function<llvm::Function*(llvm::Module*)>, ClangFunctionType*, clang::FunctionDecl*>> clang_exports;

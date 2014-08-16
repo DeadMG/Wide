@@ -7,12 +7,13 @@ namespace Wide {
         struct Lambda;
     }
     namespace Semantic {
-        class LambdaType : public AggregateType, public MemberFunctionContext {
+        class LambdaType : public AggregateType {
             const Parse::Lambda* lam;
             std::unordered_map<Parse::Name, std::size_t> names;
             std::vector<Type*> contents;
             Type* context;
             std::vector<Type*> GetMembers() { return contents; }
+            bool IsNonstaticMemberContext() override final { return true; }
         public:
             Type* GetContext() { return context; }
             LambdaType(std::vector<std::pair<Parse::Name, Type*>> capturetypes, const Parse::Lambda* l, Type* context, Analyzer& a);

@@ -41,6 +41,8 @@ const std::unordered_map<Parse::OperatorName, std::pair<clang::OverloadedOperato
         -> std::unordered_map<Parse::OperatorName, std::pair<clang::OverloadedOperatorKind, Wide::Util::optional<clang::BinaryOperatorKind>>>
     {
         std::unordered_map<Parse::OperatorName, std::pair<clang::OverloadedOperatorKind, Wide::Util::optional<clang::BinaryOperatorKind>>> ret;
+        ret[{ &Lexer::TokenTypes::Increment}] = std::make_pair(clang::OverloadedOperatorKind::OO_PlusPlus, Wide::Util::none);
+        ret[{ &Lexer::TokenTypes::Decrement}] = std::make_pair(clang::OverloadedOperatorKind::OO_MinusMinus, Wide::Util::none);
         ret[{ &Lexer::TokenTypes::NotEqCmp }] = std::make_pair(clang::OverloadedOperatorKind::OO_ExclaimEqual, clang::BinaryOperatorKind::BO_NE);
         ret[{ &Lexer::TokenTypes::EqCmp }] = std::make_pair(clang::OverloadedOperatorKind::OO_EqualEqual, clang::BinaryOperatorKind::BO_EQ);
         ret[{ &Lexer::TokenTypes::LT }] = std::make_pair(clang::OverloadedOperatorKind::OO_Less, clang::BinaryOperatorKind::BO_LT);
