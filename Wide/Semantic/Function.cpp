@@ -649,7 +649,7 @@ Function::Function(std::vector<Type*> args, const Parse::FunctionBase* astfun, A
                         auto expr = analyzer.AnalyzeExpression(GetContext(), attr.initializer);
                         auto overset = dynamic_cast<OverloadSet*>(expr->GetType()->Decay());
                         if (!overset)
-                            throw NotAType(expr->GetType()->Decay(), attr.initializer->location);
+                            continue;
                         auto tuanddecl = overset->GetSingleFunction();
                         if (!tuanddecl.second) throw NotAType(expr->GetType()->Decay(), attr.initializer->location);
                         auto tu = tuanddecl.first;

@@ -593,9 +593,13 @@ OverloadSet* PrimitiveType::CreateConstructorOverloadSet(Parse::Access access) {
     };
     CopyConstructor = MakeResolvable(construct_from_ref, { analyzer.GetLvalueType(this), analyzer.GetLvalueType(this) });
     MoveConstructor = MakeResolvable(construct_from_ref, { analyzer.GetLvalueType(this), analyzer.GetRvalueType(this) });
+    ValueConstructor = MakeResolvable([](std::vector<std::shared_ptr<Expression>> args, Context c) {
+        return Wide::Memory::MakeUnique<ImplicitStoreExpr>(std::move(args[0]), std::move(args[1]));
+    }, { analyzer.GetLvalueType(this), this });
     std::unordered_set<OverloadResolvable*> callables;
     callables.insert(CopyConstructor.get());
     callables.insert(MoveConstructor.get());
+    callables.insert(ValueConstructor.get());
     return analyzer.GetOverloadSet(callables);
 }
 

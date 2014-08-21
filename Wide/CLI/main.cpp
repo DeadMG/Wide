@@ -16,23 +16,48 @@
 #include <unordered_set>
 #include <Wide/Util/Driver/Warnings.h>
 #include <Wide/Util/Driver/StdlibDirectorySearch.h>
+#include <Wide/CLI/Link.h>
+#include <Wide/CLI/Export.h>
 
 #pragma warning(push, 0)
-#include <llvm/PassManager.h>
-#include <llvm/Target/TargetOptions.h>
-#include <llvm/Target/TargetMachine.h>
-#include <llvm/Analysis/Verifier.h>
-#include <llvm/Support/TargetRegistry.h>
-#include <llvm/Support/Host.h>
-#include <llvm/Support/FormattedStream.h>
-#include <llvm/Support/Program.h>
 #include <llvm/Support/FileSystem.h>
-#include <llvm/Support/raw_os_ostream.h>
+#include <llvm/Support/Path.h>
 #pragma warning(pop)
 
 int main(int argc, char** argv)
 {
+    std::unordered_map<std::string, std::pair<std::function<void(boost::program_options::options_description&)>, std::function<void(llvm::LLVMContext&, llvm::Module*, std::vector<std::string>, const Wide::Options::Clang&, const boost::program_options::variables_map&)>>> actions = {
+        {
+            "link", 
+            {
+                [](boost::program_options::options_description& desc) {
+                    Wide::Driver::AddLinkOptions(desc);
+                },
+                [](llvm::LLVMContext& con, llvm::Module* mod, std::vector<std::string> files, const Wide::Options::Clang& opts, const boost::program_options::variables_map& args) {
+                    Wide::Driver::Link(con, mod, files, opts, args);
+                }
+            }
+        },
+        {
+            "export",
+            {
+                [](boost::program_options::options_description& desc) {
+                    Wide::Driver::AddExportOptions(desc);
+                },
+                [](llvm::LLVMContext& con, llvm::Module* mod, std::vector<std::string> files, const Wide::Options::Clang& opts, const boost::program_options::variables_map& args) {
+                    Wide::Driver::Export(con, mod, files, opts, args);
+                }
+            }
+        }
+    };
     boost::program_options::options_description desc;
+    std::string modes = "Sets the compiler mode. The default is link. The possible modes are: ";
+    for (auto&& pair : actions) {
+        pair.second.first(desc);
+        modes += pair.first;
+        if (&pair != &*(--actions.end()))
+            modes += ", ";
+    }
     desc.add_options()
         ("help", "Print all available options")
 #ifdef _MSC_VER
@@ -40,7 +65,6 @@ int main(int argc, char** argv)
 #else
         ("gcc", boost::program_options::value<std::string>(), "The GCC version involved.")
 #endif
-        ("output", boost::program_options::value<std::string>(), "The output file. Defaulted to \"a.o\".")
         ("triple", boost::program_options::value<std::string>(), "The target triple. Defaulted to "
 #ifdef _MSC_VER
         "i686-pc-mingw32.")
@@ -50,7 +74,8 @@ int main(int argc, char** argv)
         ("input", boost::program_options::value<std::vector<std::string>>(), "One input file. May be specified multiple times.")
         ("stdlib", boost::program_options::value<std::string>(), "The Standard library path. Defaulted to \".\\WideLibrary\\\".")
         ("include", boost::program_options::value<std::vector<std::string>>(), "One include path. May be specified multiple times.")
-        ("version", "The build of Wide.")
+        ("mode", boost::program_options::value<std::string>(), modes.c_str())
+        ("version", "Outputs the build of Wide.")
     ;
 
     boost::program_options::positional_options_description positional;
@@ -68,7 +93,7 @@ int main(int argc, char** argv)
 #ifdef TEAMCITY
         std::cout << "TeamCity build " << TEAMCITY << "\n";
 #else
-        std::cout << "Local development build.\n";
+        std::cout << "Local development build, date " __DATE__ " time " __TIMESTAMP__ ".\n";
 #endif
         return 0;
     }
@@ -104,7 +129,6 @@ int main(int argc, char** argv)
         }
     }
 #endif
-    //LLVMOpts.Passes.push_back(Wide::Options::CreateDeadCodeElimination());
 
     std::unordered_set<std::string> files;
     if (input.count("input")) {
@@ -141,55 +165,16 @@ int main(int argc, char** argv)
     final_files.insert(stdfiles.begin(), stdfiles.end());
     ClangOpts.HeaderSearchOptions->AddPath(stdlib, clang::frontend::IncludeDirGroup::System, false, false);
 
+    llvm::LLVMContext con;
+    auto mod = Wide::Util::CreateModuleForTriple(ClangOpts.TargetOptions.Triple, con);
+    auto mode = input.count("mode") ? input["mode"].as<std::string>() : "link";
+    if (actions.find(mode) == actions.end()) {
+        std::cout << "Error: Unrecognized mode " << mode << "\n";
+        return 1;
+    }
+    
     try {
-        llvm::LLVMContext con;
-        auto mod = Wide::Util::CreateModuleForTriple(ClangOpts.TargetOptions.Triple, con);
-        Wide::Driver::Compile(ClangOpts, [&](Wide::Semantic::Analyzer& a, const Wide::Parse::Module* root) {
-            Wide::Semantic::AnalyzeExportedFunctions(a);
-            static const Wide::Lexer::Range location = std::make_shared<std::string>("Analyzer entry point");
-            Wide::Semantic::Context c(a.GetGlobalModule(), location);
-            auto global = a.GetGlobalModule()->BuildValueConstruction({}, c);
-            auto main = Wide::Semantic::Type::AccessMember(std::move(global), std::string("Main"), c);
-            if (!main)
-                return;
-            auto overset = dynamic_cast<Wide::Semantic::OverloadSet*>(main->GetType()->Decay());
-            auto f = overset->Resolve({}, c.from);
-            auto func = dynamic_cast<Wide::Semantic::Function*>(f);
-            func->ComputeBody();
-            a.GenerateCode(mod.get());
-            // Create main trampoline.
-            auto llvmfunc = llvm::Function::Create(llvm::FunctionType::get(llvm::IntegerType::get(con, 32), {}, false), llvm::GlobalValue::LinkageTypes::ExternalLinkage, "main", mod.get());
-            llvm::BasicBlock* entry = llvm::BasicBlock::Create(llvmfunc->getContext(), "entry", llvmfunc);
-            llvm::IRBuilder<> builder(entry);
-            auto call = builder.CreateCall(func->EmitCode(mod.get()));
-            if (call->getType() == llvm::Type::getVoidTy(con))
-                builder.CreateRet(llvm::ConstantInt::get(llvm::Type::getInt32Ty(con), (uint64_t)0, true));
-            else if (call->getType() == llvm::Type::getInt64Ty(con))
-                builder.CreateRet(builder.CreateTrunc(call, llvm::Type::getInt32Ty(con)));
-            else {
-                assert(call->getType() == llvm::Type::getInt32Ty(con));
-                builder.CreateRet(call);
-            }
-            if (llvm::verifyModule(*mod, llvm::VerifierFailureAction::PrintMessageAction))
-                throw std::runtime_error("Internal compiler error: An LLVM module failed verification.");
-            Wide::Driver::PrintUnusedFunctionsWarning(files, a);
-            Wide::Driver::PrintNonvoidFalloffWarning(files, a);
-        }, std::vector<std::string>(final_files.begin(), final_files.end()));
-        std::string mod_ir;
-        llvm::raw_string_ostream stream(mod_ir);
-        mod->print(stream, nullptr);
-        stream.flush();
-        llvm::PassManager pm;
-        std::unique_ptr<llvm::TargetMachine> targetmachine;
-        llvm::TargetOptions targetopts;
-        std::string err;
-        const llvm::Target& target = *llvm::TargetRegistry::lookupTarget(ClangOpts.TargetOptions.Triple, err);
-        targetmachine = std::unique_ptr<llvm::TargetMachine>(target.createTargetMachine(ClangOpts.TargetOptions.Triple, llvm::Triple(ClangOpts.TargetOptions.Triple).getArchName(), "", targetopts));
-        std::ofstream file(ClangOpts.FrontendOptions.OutputFile, std::ios::trunc | std::ios::binary);
-        llvm::raw_os_ostream out(file);
-        llvm::formatted_raw_ostream format_out(out);
-        targetmachine->addPassesToEmitFile(pm, format_out, llvm::TargetMachine::CodeGenFileType::CGFT_ObjectFile);
-        pm.run(*mod);
+        actions.at(mode).second(con, mod.get(), std::vector<std::string>(final_files.begin(), final_files.end()), ClangOpts, input);
     } catch (Wide::Semantic::Error& e) {
         std::cout << "Error at " << to_string(e.location()) << "\n";
         std::cout << e.what() << "\n";

@@ -80,9 +80,11 @@ UserDefinedType::VTableData::VTableData(UserDefinedType* self) {
         for (auto func : base->GetPrimaryVTable().layout) {
             if (auto vfunc = boost::get<VTableLayout::VirtualFunction>(&func.func)) {
                 if (vfunc->final) continue;
-                if (self->type->functions.find(vfunc->name) == self->type->functions.end()) continue;
+                if (self->type->nonvariables.find(vfunc->name) == self->type->nonvariables.end()) continue;
                 std::unordered_set<const Parse::Function*> matches;
-                auto set = self->type->functions.at(vfunc->name);
+                auto&& set_or_using = self->type->nonvariables.at(vfunc->name);
+                if (!boost::get<Parse::OverloadSet<Parse::Function>>(&set_or_using)) continue;
+                auto set = boost::get<Parse::OverloadSet<Parse::Function>>(set_or_using);
                 for (auto access : set)
                     for (auto function : access.second)                        
                         if (FunctionType::CanThunkFromFirstToSecond(func.type, analyzer.GetWideFunction(function, self, GetNameAsString(vfunc->name))->GetSignature(), self, true))
@@ -105,11 +107,12 @@ UserDefinedType::VTableData::VTableData(UserDefinedType* self) {
         }
     }
     // Add every function declared as dynamic or abstract.
-    for (auto set : self->type->functions)
-        for (auto access : set.second)
-            for (auto func : access.second)
-                if (func->dynamic || func->abstract)
-                    dynamic_functions[func] = set.first;
+    for (auto&& nonvar : self->type->nonvariables)
+        if (auto set = boost::get<Parse::OverloadSet<Parse::Function>>(&nonvar.second))
+            for (auto access : (*set))
+                for (auto func : access.second)
+                    if (func->dynamic || func->abstract)
+                        dynamic_functions[func] = nonvar.first;
     // If we don't have a primary base but we do have dynamic functions, first add offset and RTTI
     if (!self->GetPrimaryBase() && (!dynamic_functions.empty() || dynamic_destructor)) {
         funcs.offset = 2;
@@ -219,16 +222,35 @@ std::shared_ptr<Expression> UserDefinedType::AccessNamedMember(std::shared_ptr<E
         if (spec >= member.access)
             return PrimitiveAccessMember(std::move(self), GetMemberData().member_indices[name] + type->bases.size());
     }
-    if (type->functions.find(name) != type->functions.end()) {
-        std::unordered_set<OverloadResolvable*> resolvables;
-        for (auto access : type->functions.at(name)) {
-            if (spec >= access.first)
-                for (auto func : access.second)
-                    resolvables.insert(analyzer.GetCallableForFunction(func, this, GetNameAsString(name)));
+    if (type->nonvariables.find(name) != type->nonvariables.end()) {
+        if (auto set = boost::get<Parse::OverloadSet<Parse::Function>>(&type->nonvariables.at(name))) {
+            std::unordered_set<OverloadResolvable*> resolvables;
+            for (auto access : *set) {
+                if (spec >= access.first)
+                    for (auto func : access.second)
+                        resolvables.insert(analyzer.GetCallableForFunction(func, this, GetNameAsString(name)));
+            }
+            auto selfty = self->GetType();
+            if (!resolvables.empty())
+                return analyzer.GetOverloadSet(resolvables, analyzer.GetRvalueType(selfty))->BuildValueConstruction({ std::move(self) }, c);
+        } else {
+            auto use = boost::get<std::pair<Parse::Access, Parse::Using*>>(type->nonvariables.at(name));
+            if (spec >= use.first) {
+                struct UsingLookup : MetaType {
+                    Type* GetContext() override final { return self->GetType()->Decay()->GetContext(); }
+                    std::shared_ptr<Expression> self;
+                    std::shared_ptr<Expression> AccessNamedMember(std::shared_ptr<Expression>, std::string name, Context c) override final {
+                        if (name == "this")
+                            return self;
+                        return nullptr;
+                    }
+                    std::string explain() override final { return "Analyzer internal member using lookup type."; }
+                    UsingLookup(std::shared_ptr<Expression> self, Analyzer& a) : self(self), MetaType(a) {}
+                };
+                UsingLookup ul(self, analyzer);
+                return BuildChain(self, analyzer.AnalyzeExpression(&ul, use.second->expr));
+            }
         }
-        auto selfty = self->GetType();
-        if (!resolvables.empty())
-            return analyzer.GetOverloadSet(resolvables, analyzer.GetRvalueType(selfty))->BuildValueConstruction({ std::move(self) }, c);
     }
     // Any of our bases have this member?
     Type* BaseType = nullptr;
@@ -406,7 +428,10 @@ Wide::Util::optional<clang::QualType> UserDefinedType::GetClangType(ClangTU& TU)
         }
     }
     // TODO: Explicitly default all members we implicitly generated.
-    for (auto overset : type->functions) {
+    for (auto nonvar : type->nonvariables) {
+        auto maybe_overset = boost::get<Parse::OverloadSet<Parse::Function>>(&nonvar.second);
+        if (!maybe_overset) continue;
+        auto overset = std::make_pair(nonvar.first, *maybe_overset);
         for (auto access : overset.second) {
             for (auto func : access.second) {
                 if (IsMultiTyped(func)) continue;
@@ -541,20 +566,22 @@ UserDefinedType::DefaultData::DefaultData(UserDefinedType* self) {
     }
 
     Parse::Name name(Parse::OperatorName({ &Lexer::TokenTypes::Assignment }));
-    if (self->type->functions.find(name) != self->type->functions.end())  {
-        auto set = self->type->functions.at(name);
-        for (auto op_access_pair : set) {
-            auto ops = op_access_pair.second;
-            for (auto op : ops) {
-                if (IsMultiTyped(op)) continue;
-                auto params = self->analyzer.GetFunctionParameters(op, self);
-                if (params.size() > 2) continue; //???
-                if (params[1] == self->analyzer.GetLvalueType(self)) {
-                    IsComplex = IsComplex || (!op->defaulted || op->dynamic);
-                    AggregateOps.copy_operator = false;
-                } else if (params[1] == self->analyzer.GetRvalueType(self)) {
-                    IsComplex = IsComplex || (!op->defaulted || op->dynamic);
-                    AggregateOps.move_operator = false;
+    if (self->type->nonvariables.find(name) != self->type->nonvariables.end())  {
+        auto nonvar = self->type->nonvariables.at(name);
+        if (auto set = boost::get<Parse::OverloadSet<Parse::Function>>(&nonvar)) {
+            for (auto op_access_pair : *set) {
+                auto ops = op_access_pair.second;
+                for (auto op : ops) {
+                    if (IsMultiTyped(op)) continue;
+                    auto params = self->analyzer.GetFunctionParameters(op, self);
+                    if (params.size() > 2) continue; //???
+                    if (params[1] == self->analyzer.GetLvalueType(self)) {
+                        IsComplex = IsComplex || (!op->defaulted || op->dynamic);
+                        AggregateOps.copy_operator = false;
+                    } else if (params[1] == self->analyzer.GetRvalueType(self)) {
+                        IsComplex = IsComplex || (!op->defaulted || op->dynamic);
+                        AggregateOps.move_operator = false;
+                    }
                 }
             }
         }
@@ -592,20 +619,22 @@ OverloadSet* UserDefinedType::CreateConstructorOverloadSet(Parse::Access access)
 
 OverloadSet* UserDefinedType::CreateOperatorOverloadSet(Parse::OperatorName name, Parse::Access access, OperatorAccess kind) {
     auto user_defined = [&, this] {
-        if (type->functions.find(name) != type->functions.end()) {
-            std::unordered_set<OverloadResolvable*> resolvable;
-            for (auto&& f : type->functions.at(name)) {
-                if (f.first <= access)
-                    for (auto func : f.second)
-                        resolvable.insert(analyzer.GetCallableForFunction(func, this, GetNameAsString(name)));
+        if (type->nonvariables.find(name) != type->nonvariables.end()) {
+            if (auto set = boost::get<Parse::OverloadSet<Parse::Function>>(&type->nonvariables.at(name))) {
+                std::unordered_set<OverloadResolvable*> resolvable;
+                for (auto&& f : *set) {
+                    if (f.first <= access)
+                        for (auto func : f.second)
+                            resolvable.insert(analyzer.GetCallableForFunction(func, this, GetNameAsString(name)));
+                }
+                return analyzer.GetOverloadSet(resolvable);
             }
-            return analyzer.GetOverloadSet(resolvable);
         }
         return analyzer.GetOverloadSet();
     };
     if (name.size() == 1 && name.front() == &Lexer::TokenTypes::Assignment)
         return analyzer.GetOverloadSet(user_defined(), GetDefaultData().SimpleAssOps);
-    if (type->functions.find(name) != type->functions.end())
+    if (type->nonvariables.find(name) != type->nonvariables.end())
         return analyzer.GetOverloadSet(user_defined(), AggregateType::CreateOperatorOverloadSet(name, access, kind));
     return AggregateType::CreateOperatorOverloadSet(name, access, kind);
 }
@@ -643,12 +672,12 @@ bool UserDefinedType::IsMoveConstructible(Parse::Access access) {
     return AggregateType::IsMoveConstructible(access);
 }
 bool UserDefinedType::IsCopyAssignable(Parse::Access access) {
-    if (type->functions.find("operator=") != type->functions.end())
+    if (type->nonvariables.find("operator=") != type->nonvariables.end())
         return Type::IsCopyAssignable(access);
     return AggregateType::IsCopyAssignable(access);
 }
 bool UserDefinedType::IsMoveAssignable(Parse::Access access) {
-    if (type->functions.find("operator=") != type->functions.end())
+    if (type->nonvariables.find("operator=") != type->nonvariables.end())
         return Type::IsMoveAssignable(access);
     return AggregateType::IsMoveAssignable(access);
 }
@@ -689,14 +718,16 @@ std::pair<FunctionType*, std::function<llvm::Function*(llvm::Module*)>> UserDefi
     }
     auto vfunc = boost::get<VTableLayout::VirtualFunction>(entry.func);
     auto name = vfunc.name;
-    if (type->functions.find(name) == type->functions.end()) {
+    if (type->nonvariables.find(name) == type->nonvariables.end()) {
         // Could have been inherited from our primary base, if we have one.
         if (GetPrimaryBase()) {
             return GetPrimaryBase()->VirtualEntryFor(entry);
         }
         return {};
     }
-    for (auto access : type->functions.at(name)) {
+    if (!boost::get<Parse::OverloadSet<Parse::Function>>(&type->nonvariables.at(name))) return {};
+    auto set = boost::get<Parse::OverloadSet<Parse::Function>>(type->nonvariables.at(name));
+    for (auto access : set) {
         for (auto func : access.second) {
             if (func->deleted) continue;
             if (IsMultiTyped(func)) continue;
@@ -813,11 +844,13 @@ std::function<llvm::Constant*(llvm::Module*)> UserDefinedType::GetRTTI() {
     };
 }
 bool UserDefinedType::HasDeclaredDynamicFunctions() {
-    for (auto overset : type->functions)
-        for (auto access : overset.second)
-            for (auto func : access.second)
-                if (func->dynamic)
-                    return true;
+    for (auto nonvar : type->nonvariables)
+        if (auto overset = boost::get<Parse::OverloadSet<Parse::Function>>(&nonvar.second))
+           for (auto access : *overset)
+               for (auto func : access.second)
+                   if (func->dynamic)
+                       return true;
+
     if (type->destructor_decl)
         return type->destructor_decl->dynamic;
     return false;
@@ -906,15 +939,18 @@ std::shared_ptr<Expression> UserDefinedType::AccessStaticMember(std::string name
     if (GetMemberData().member_indices.find(name) != GetMemberData().member_indices.end()) {
         return nullptr;
     }
-    if (type->functions.find(name) != type->functions.end()) {
-        std::unordered_set<OverloadResolvable*> resolvables;
-        for (auto access : type->functions.at(name)) {
-            if (spec >= access.first)
-                for (auto func : access.second)
-                    resolvables.insert(analyzer.GetCallableForFunction(func, this, GetNameAsString(name)));
+    if (type->nonvariables.find(name) != type->nonvariables.end()) {
+        auto nonvar = boost::get<Parse::OverloadSet<Parse::Function>>(&type->nonvariables.at(name));
+        if (nonvar) {
+            std::unordered_set<OverloadResolvable*> resolvables;
+            for (auto access : *nonvar) {
+                if (spec >= access.first)
+                    for (auto func : access.second)
+                        resolvables.insert(analyzer.GetCallableForFunction(func, this, GetNameAsString(name)));
+            }
+            if (!resolvables.empty())
+                return analyzer.GetOverloadSet(resolvables, nullptr)->BuildValueConstruction({}, c);
         }
-        if (!resolvables.empty())
-            return analyzer.GetOverloadSet(resolvables, nullptr)->BuildValueConstruction({}, c);
     }
     // Any of our bases have this member?
     Type* BaseType = nullptr;

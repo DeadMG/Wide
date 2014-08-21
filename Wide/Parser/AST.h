@@ -123,7 +123,7 @@ namespace Wide {
         struct Type : Expression {
             Type(std::vector<Expression*> base, Lexer::Range loc, std::vector<Attribute> attributes) : Expression(loc), bases(base), attributes(attributes), destructor_decl(nullptr) {}
             std::vector<MemberVariable> variables;
-            std::unordered_map<Name, OverloadSet<Function>> functions;
+            std::unordered_map<Name, boost::variant<OverloadSet<Function>, std::pair<Parse::Access, Using*>>> nonvariables;
             OverloadSet<Constructor> constructor_decls;
             Destructor* destructor_decl;
 

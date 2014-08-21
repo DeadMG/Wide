@@ -327,6 +327,10 @@ Analyzer::Analyzer(const Options::Clang& opts, const Parse::Module* GlobalModule
                 }
                 if (auto result = Type::AccessMember(context->BuildValueConstruction({}, { lookup, location }), val, { lookup, location }))
                     return result;
+                if (auto self = Type::AccessMember(context->BuildValueConstruction({}, { lookup, location }), "this", { lookup, location })) {
+                    if (auto result = Type::AccessMember(self, val, { lookup, location }))
+                        return result;
+                }
                 return LookupIdentifier(context->GetContext());
             }
             IdentifierLookup(const Parse::Identifier* id, Analyzer& an, Type* lookup)
@@ -1091,7 +1095,8 @@ Type* Analyzer::GetNonstaticContext(const Parse::FunctionBase* p, Type* context)
                         auto expr = context->analyzer.AnalyzeExpression(context, attr.initializer);
                         auto overset = dynamic_cast<OverloadSet*>(expr->GetType()->Decay());
                         if (!overset)
-                            throw NotAType(expr->GetType()->Decay(), attr.initializer->location);
+                            //throw NotAType(expr->GetType()->Decay(), attr.initializer->location);
+                            continue;
                         auto tuanddecl = overset->GetSingleFunction();
                         if (!tuanddecl.second) throw NotAType(expr->GetType()->Decay(), attr.initializer->location);
                         auto tu = tuanddecl.first;

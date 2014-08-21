@@ -600,6 +600,17 @@ Parser::Parser(std::function<Wide::Util::optional<Lexer::Token>()> l)
         p.Check(Error::AccessSpecifierNoColon, &Lexer::TokenTypes::Colon);
         return Parse::Access::Protected;
     };
+    TypeTokens[&Lexer::TokenTypes::Using] = [](Parser& p, Type* t, Parse::Access access, Lexer::Token& tok) {
+        auto ident = p.Check(Error::ModuleScopeUsingNoIdentifier, &Lexer::TokenTypes::Identifier);
+        p.Check(Error::ModuleScopeUsingNoVarCreate, &Lexer::TokenTypes::VarCreate);
+        auto expr = p.ParseExpression();
+        auto semi = p.Check(Error::ModuleScopeUsingNoSemicolon, &Lexer::TokenTypes::Semicolon);
+        auto use = p.arena.Allocate<Using>(expr, tok.GetLocation() + semi.GetLocation());
+        if (t->nonvariables.find(ident.GetValue()) != t->nonvariables.end())
+            throw p.BadToken(tok, Error::TypeFunctionAlreadyVariable);
+        t->nonvariables[ident.GetValue()] = std::make_pair(access, use);
+        return access;
+    };
     TypeAttributeTokens[&Lexer::TokenTypes::OpenSquareBracket] = [](Parser& p, Type* t, Parse::Access access, Lexer::Token& tok, std::vector<Attribute> attributes) {
         attributes.push_back(p.ParseAttribute(tok));
         auto next = p.lex(Error::AttributeNoEnd);
@@ -627,7 +638,9 @@ Parser::Parser(std::function<Wide::Util::optional<Lexer::Token>()> l)
             t->variables.push_back(MemberVariable(tok.GetValue(), init, access, tok.GetLocation() + semi.GetLocation(), attributes));
         } else if (next.GetType() == &Lexer::TokenTypes::OpenBracket) {
             auto func = p.ParseFunction(tok, attributes);
-            t->functions[tok.GetValue()][access].insert(func);
+            auto overset = boost::get<OverloadSet<Function>>(&t->nonvariables[tok.GetValue()]);
+            if (!overset) throw p.BadToken(tok, Error::TypeFunctionAlreadyVariable);
+            (*overset)[access].insert(func);
         } else
             throw p.BadToken(next, Error::TypeScopeExpectedMemberAfterIdentifier);
         return access;
@@ -643,7 +656,9 @@ Parser::Parser(std::function<Wide::Util::optional<Lexer::Token>()> l)
     DynamicMemberFunctions[&Lexer::TokenTypes::Identifier] = [](Parser& p, Type* t, Parse::Access a, Lexer::Token& tok, std::vector<Attribute> attrs) {
         p.Check(Error::TypeScopeExpectedIdentifierAfterDynamic, &Lexer::TokenTypes::OpenBracket);
         auto func = p.ParseFunction(tok, attrs);
-        t->functions[tok.GetValue()][a].insert(func);
+        auto overset = boost::get<OverloadSet<Function>>(&t->nonvariables[tok.GetValue()]);
+        if (!overset) throw p.BadToken(tok, Error::TypeFunctionAlreadyVariable);
+        (*overset)[a].insert(func);
         return func;
     };
 
@@ -659,7 +674,9 @@ Parser::Parser(std::function<Wide::Util::optional<Lexer::Token>()> l)
         auto name = p.ParseOperatorName(valid_ops);
         p.Check(Error::ModuleScopeFunctionNoOpenBracket, &Lexer::TokenTypes::OpenBracket);
         auto func = p.ParseFunction(tok, attrs);
-        t->functions[name][a].insert(func);
+        auto overset = boost::get<OverloadSet<Function>>(&t->nonvariables[name]);
+        if (!overset) throw p.BadToken(tok, Error::TypeFunctionAlreadyVariable);
+        (*overset)[a].insert(func);
         return func;
     };
 }

@@ -355,9 +355,12 @@ namespace Wide {
             std::unique_ptr<OverloadResolvable> ValueConstructor;
             std::unique_ptr<OverloadResolvable> MoveConstructor;
             std::unique_ptr<OverloadResolvable> AssignmentOperator;
+            
         protected:
             PrimitiveType(Analyzer& a) : Type(a) {}
         public:
+            bool IsMoveConstructible(Parse::Access) override final { return true; }
+            bool IsCopyConstructible(Parse::Access) override final { return true; }
             OverloadSet* CreateConstructorOverloadSet(Parse::Access access) override;
             OverloadSet* CreateOperatorOverloadSet(Parse::OperatorName what, Parse::Access access, OperatorAccess kind) override;
         };

@@ -21,11 +21,12 @@ void GetUnusedFunctionsInModule(std::vector<std::tuple<Lexer::Range, std::string
             GetUnusedFunctionsInModule(current, a.GetWideModule(mod->second, root), a, content + "." + decl.first);
         }
         auto ProcessType = [&](Parse::Type* ty) {
-            for (auto&& funcs : ty->functions)
-                for (auto&& access : funcs.second)
-                    for (auto&& func : access.second)
-                        if (a.GetFunctions().find(func) == a.GetFunctions().end())
-                            current.push_back(std::make_tuple(func->where, GetFunctionName(func, a, content + "." + GetNameAsString(funcs.first), root)));
+            for (auto&& funcs : ty->nonvariables)
+                if (auto overset = boost::get<Parse::OverloadSet<Parse::Function>*>(funcs.second))
+                    for (auto&& access : *overset)
+                        for (auto&& func : access.second)
+                            if (a.GetFunctions().find(func) == a.GetFunctions().end())
+                                current.push_back(std::make_tuple(func->where, GetFunctionName(func, a, content + "." + GetNameAsString(funcs.first), root)));
             for (auto func : ty->constructor_decls)
                 for (auto con : func.second)
                     if (a.GetFunctions().find(con) == a.GetFunctions().end())

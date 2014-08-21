@@ -1,18 +1,19 @@
 #include <Wide/Util/Archive.h>
+#ifdef _MSC_VER
+#define LIBARCHIVE_STATIC
+#endif
 #include <archive.h>
 #include <archive_entry.h>
 
 using namespace Wide;
 using namespace Util;
 
-static const auto libarchive_blocksize = 10240;
-
 Archive Util::ReadFromFile(std::string filepath) {
     Archive a;
     auto read_archive = std::unique_ptr<archive, decltype(&archive_read_free)>(archive_read_new(), archive_read_free);
     archive_read_support_filter_all(read_archive.get());
     archive_read_support_format_all(read_archive.get());
-    auto code = archive_read_open_filename(read_archive.get(), filepath.c_str(), libarchive_blocksize);
+    auto code = archive_read_open_filename(read_archive.get(), filepath.c_str(), 10240);
     if (code != ARCHIVE_OK)
         throw std::runtime_error("Failed to open archive.");
     archive_entry* entry;
@@ -26,15 +27,15 @@ Archive Util::ReadFromFile(std::string filepath) {
         if (val == ARCHIVE_EOF)
             break;
         if (val == ARCHIVE_FATAL)
-            throw std::runtime_error("Failed to read from archive; libarchive was not very specific as to why. Thanks.");
+            throw std::runtime_error("Failed to read from archive: " + std::string(archive_error_string(read_archive.get())));
         a.data[key] = buf;
     }
     return a;
 }
 
 void Util::WriteToFile(Archive a, std::string filepath) {
-    auto write_archive = std::unique_ptr<archive, decltype(&archive_write_free)>(archive_write_disk_new(), archive_write_free);
-    archive_write_add_filter_gzip(write_archive.get());
+    auto write_archive = std::unique_ptr<archive, decltype(&archive_write_free)>(archive_write_new(), archive_write_free);
+    //archive_write_add_filter_gzip(write_archive.get());
     archive_write_set_format_gnutar(write_archive.get());
     archive_write_open_filename(write_archive.get(), filepath.c_str());
 
