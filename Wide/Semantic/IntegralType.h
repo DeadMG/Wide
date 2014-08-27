@@ -35,7 +35,7 @@ namespace Wide {
             IntegralType(unsigned bit, bool sign, Analyzer& a);
             
             Wide::Util::optional<clang::QualType> GetClangType(ClangTU& TU) override final;
-            llvm::Type* GetLLVMType(llvm::Module* module) override final;
+            llvm::IntegerType* GetLLVMType(llvm::Module* module) override final;
 
             OverloadSet* CreateADLOverloadSet(Parse::OperatorName name, Parse::Access access) override final;
             std::size_t size() override final;
@@ -44,6 +44,9 @@ namespace Wide {
             OverloadSet* CreateConstructorOverloadSet(Parse::Access access) override final;
             OverloadSet* CreateOperatorOverloadSet(Parse::OperatorName what, Parse::Access access, OperatorAccess kind) override final;
             std::string explain() override final;
+
+            bool IsSigned();
+            unsigned GetBitness();
         };
     }
 }

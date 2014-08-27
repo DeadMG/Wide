@@ -22,6 +22,7 @@ namespace Wide {
             llvm::Type* GetLLVMType(llvm::Module* module) override final; 
             OverloadSet* CreateOperatorOverloadSet(Parse::OperatorName type, Parse::Access access, OperatorAccess) override final;
             OverloadSet* CreateConstructorOverloadSet(Parse::Access access) override final;
+            bool AlwaysKeepInMemory() override final;
         };
     }
 }

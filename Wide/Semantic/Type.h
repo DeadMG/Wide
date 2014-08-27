@@ -103,18 +103,23 @@ namespace Wide {
             void DestroyTillLastTry();
             bool IsTerminated(llvm::BasicBlock* bb);
 
-            llvm::Function* GetEHPersonality();
             llvm::BasicBlock* GetUnreachableBlock();
             llvm::Type* GetLpadType();
+            llvm::Function* GetEHPersonality();
             llvm::Function* GetCXABeginCatch();
             llvm::Function* GetCXAEndCatch();
             llvm::Function* GetCXARethrow();
-            llvm::BasicBlock* CreateLandingpadForEH();
+            llvm::Function* GetCXAThrow();
+            llvm::Function* GetCXAAllocateException();
+            llvm::Function* GetCXAFreeException();
+            llvm::IntegerType* GetPointerSizedIntegerType();
             llvm::PointerType* GetInt8PtrTy();
             llvm::Instruction* GetAllocaInsertPoint();
 
             llvm::AllocaInst* CreateAlloca(Type* t);
             llvm::Value* CreateStructGEP(llvm::Value* v, unsigned num);
+
+            llvm::BasicBlock* CreateLandingpadForEH();
 
             bool destructing = false;
             bool catching = false;

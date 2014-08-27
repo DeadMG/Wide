@@ -211,6 +211,8 @@ namespace Wide {
         Type* InferTypeFromExpression(Expression* e, bool local);
         std::string GetOperatorName(Parse::OperatorName name);
         std::string GetNameAsString(Parse::Name name);
-        
+        Type* CollapseType(Type* source, Type* member);
+        llvm::Value* CollapseMember(Type* source, std::pair<llvm::Value*, Type*> member, CodegenContext& con);
+        std::function<void(CodegenContext&)> ThrowObject(std::shared_ptr<Expression> expr, Context c);
     }
 }

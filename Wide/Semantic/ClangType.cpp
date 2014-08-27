@@ -319,19 +319,6 @@ Wide::Util::optional<std::vector<Type*>> ClangType::GetTypesForTuple() {
 }
 
 std::shared_ptr<Expression> ClangType::PrimitiveAccessMember(std::shared_ptr<Expression> self, unsigned num) {
-    auto type_convert = [this](Type* source_ty, Type* root_ty) -> Type* {
-        // If it's not a reference, just return the root type.
-        if (!source_ty->IsReference())
-            return root_ty;
-
-        // If the source is an lvalue, the result is an lvalue.
-        if (IsLvalueType(source_ty))
-            return analyzer.GetLvalueType(root_ty->Decay());
-
-        // It's not a value or an lvalue so must be rvalue.
-        return analyzer.GetRvalueType(root_ty);
-    };
-
     clang::QualType resty;
     std::size_t numbases = type->getAsCXXRecordDecl()->bases_end() - type->getAsCXXRecordDecl()->bases_begin();
     if (num >= numbases) {
@@ -341,7 +328,7 @@ std::shared_ptr<Expression> ClangType::PrimitiveAccessMember(std::shared_ptr<Exp
     }
     auto source_type = self->GetType();
     auto root_type = analyzer.GetClangType(*from, resty);
-    auto result_type = type_convert(source_type, root_type);
+    auto result_type = Semantic::CollapseType(source_type, root_type);
     auto fieldnum = num >= numbases 
         ? from->GetFieldNumber(*std::next(type->getAsCXXRecordDecl()->field_begin(), num - numbases))
         : from->GetBaseNumber(type->getAsCXXRecordDecl(), (type->getAsCXXRecordDecl()->bases_begin() + num)->getType()->getAsCXXRecordDecl());
@@ -349,12 +336,8 @@ std::shared_ptr<Expression> ClangType::PrimitiveAccessMember(std::shared_ptr<Exp
         std::size_t numbases = type->getAsCXXRecordDecl()->bases_end() - type->getAsCXXRecordDecl()->bases_begin();
         if (num < numbases && resty->getAsCXXRecordDecl()->isEmpty())
             return con->CreatePointerCast(self, result_type->GetLLVMType(con));
-        if (source_type->IsReference()) {
-            if (root_type->IsReference())
-                return con->CreateLoad(con.CreateStructGEP(self, fieldnum(con)));
-            return con.CreateStructGEP(self, fieldnum(con));
-        }
-        return con->CreateExtractValue(self, fieldnum(con));
+        auto obj = self->getType()->isPointerTy() ? con.CreateStructGEP(self, fieldnum(con)) : con->CreateExtractValue(self, fieldnum(con));
+        return Semantic::CollapseMember(source_type, { obj, root_type }, con);
     });
 }
 

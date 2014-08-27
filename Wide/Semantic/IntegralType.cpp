@@ -44,7 +44,7 @@ Wide::Util::optional<clang::QualType> IntegralType::GetClangType(ClangTU& TU) {
     }
     assert(false && "Integral types only go up to 64bit.");
 }
-llvm::Type* IntegralType::GetLLVMType(llvm::Module* module) {
+llvm::IntegerType* IntegralType::GetLLVMType(llvm::Module* module) {
     return llvm::IntegerType::get(module->getContext(), bits);
 }
 
@@ -294,4 +294,11 @@ OverloadSet* IntegralType::CreateOperatorOverloadSet(Parse::OperatorName name, P
 std::string IntegralType::explain() {
     auto name = "int" + std::to_string(bits);
     return !is_signed ? "u" + name : name;
+}
+
+bool IntegralType::IsSigned() {
+    return is_signed;
+}
+unsigned IntegralType::GetBitness() {
+    return bits;
 }

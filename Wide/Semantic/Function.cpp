@@ -351,76 +351,11 @@ void Function::ContinueStatement::GenerateCode(CodegenContext& con) {
     while_stmt->source_con->DestroyDifference(con, false);
     con->CreateBr(while_stmt->check_bb);
 }
-static const std::string except_alloc = "__cxa_allocate_exception";
-static const std::string free_except = "__cxa_free_exception";
-static const std::string throw_except = "__cxa_throw";
-
-struct Function::ThrowStatement::ExceptionAllocateMemory : Expression {
-    ExceptionAllocateMemory(Type* t)
-    : alloc(t) {
-        auto&& analyzer = t->analyzer;
-        if (t->alignment() > std::max(analyzer.GetDataLayout().getABIIntegerTypeAlignment(64), analyzer.GetDataLayout().getPointerABIAlignment()))
-            throw std::runtime_error("EH runtime does not provide memory of enough alignment to support this exception type.");
-    }
-    Type* alloc;
-    llvm::Value* except_memory;
-    std::list<std::pair<std::function<void(CodegenContext&)>, bool>>::iterator destructor;
-    Type* GetType() override final { return alloc->analyzer.GetLvalueType(alloc); }
-    llvm::Value* ComputeValue(CodegenContext& con) override final {
-        auto size_t_ty = llvm::IntegerType::get(con, alloc->analyzer.GetDataLayout().getPointerSizeInBits());
-        auto allocate_exception = con.module->getFunction(except_alloc);
-        if (!allocate_exception) {
-            llvm::Type* args[] = { size_t_ty };
-            auto fty = llvm::FunctionType::get(llvm::Type::getInt8PtrTy(con), args, false);
-            allocate_exception = llvm::Function::Create(fty, llvm::GlobalValue::LinkageTypes::ExternalLinkage, except_alloc, con.module);
-        }
-        except_memory = con->CreateCall(allocate_exception, { llvm::ConstantInt::get(size_t_ty, alloc->size(), false) });
-        destructor = con.AddDestructor([this](CodegenContext& con) {
-            auto free_exception = con.module->getFunction(free_except);
-            if (!free_exception) {
-                llvm::Type* args[] = { con.GetInt8PtrTy() };
-                auto fty = llvm::FunctionType::get(llvm::Type::getVoidTy(con), args, false);
-                free_exception = llvm::Function::Create(fty, llvm::GlobalValue::LinkageTypes::ExternalLinkage, free_except, con.module);
-            }
-            con->CreateCall(free_exception, { except_memory });
-        });
-        return con->CreatePointerCast(except_memory, GetType()->GetLLVMType(con));
-    }
-};
 Function::ThrowStatement::ThrowStatement(std::shared_ptr<Expression> expr, Context c) {
-    // http://mentorembedded.github.io/cxx-abi/abi-eh.html
-    // 2.4.2
-    ty = expr->GetType()->Decay();
-    RTTI = ty->GetRTTI();
-    except_memory = Wide::Memory::MakeUnique<ExceptionAllocateMemory>(ty);
-    // There is no longer a guarantee thas, as an argument, except_memory will be in the same CodegenContext
-    // and the iterator could be invalidated. Strictly get the value in the original CodegenContext that ThrowStatement::GenerateCode
-    // is called with so that we can erase the destructor later.
-    exception = BuildChain(BuildChain(except_memory, Type::BuildInplaceConstruction(except_memory, { std::move(expr) }, c)), except_memory);
+    throw_func = Semantic::ThrowObject(expr, c);
 }
 void Function::ThrowStatement::GenerateCode(CodegenContext& con) {
-    auto value = exception->GetValue(con);
-    // Throw this shit.
-    auto cxa_throw = con.module->getFunction(throw_except);
-    if (!cxa_throw) {
-        llvm::Type* args[] = { con.GetInt8PtrTy(), con.GetInt8PtrTy(), con.GetInt8PtrTy() };
-        auto fty = llvm::FunctionType::get(llvm::Type::getVoidTy(con), args, false);
-        cxa_throw = llvm::Function::Create(fty, llvm::GlobalValue::LinkageTypes::ExternalLinkage, throw_except, con);
-    }
-    // If we got here then creating the exception value didn't throw. Don't destroy it now.
-    con.EraseDestructor(except_memory->destructor);
-    llvm::Value* destructor;
-    if (ty->IsTriviallyDestructible()) {
-        destructor = llvm::Constant::getNullValue(con.GetInt8PtrTy());
-    } else
-        destructor = con->CreatePointerCast(ty->GetDestructorFunction(con), con.GetInt8PtrTy());
-    llvm::Value* args[] = { con->CreatePointerCast(value, con.GetInt8PtrTy()), con->CreatePointerCast(RTTI(con), con.GetInt8PtrTy()), destructor };
-    // Do we have an existing handler to go to? If we do, then first land, then branch directly to it.
-    // Else, kill everything and GTFO this function and let the EH routines worry about it.
-    if (con.HasDestructors() || con.EHHandler)
-        con->CreateInvoke(cxa_throw, con.GetUnreachableBlock(), con.CreateLandingpadForEH(), args);
-    else
-        con->CreateCall(cxa_throw, args);
+    throw_func(con);
 }
 std::shared_ptr<Statement> Function::AnalyzeStatement(const Parse::Statement* s) {
     if (auto ret = dynamic_cast<const Parse::Return*>(s)) {

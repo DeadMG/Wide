@@ -153,11 +153,7 @@ namespace Wide {
             };
 
             struct ThrowStatement : public Statement {
-                struct ExceptionAllocateMemory;
-                Type* ty;
-                std::shared_ptr<Expression> exception;
-                std::function<llvm::Constant*(llvm::Module*)> RTTI;
-                std::shared_ptr<ExceptionAllocateMemory> except_memory;
+                std::function<void(CodegenContext&)> throw_func;
                 ThrowStatement(std::shared_ptr<Expression> expr, Context c);
                 void GenerateCode(CodegenContext& con);
             };

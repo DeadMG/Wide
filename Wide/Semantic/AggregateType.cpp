@@ -367,16 +367,7 @@ std::shared_ptr<Expression> AggregateType::PrimitiveAccessMember(std::shared_ptr
                 ? self->GetBases()[num]
                 : self->GetMembers()[num - self->GetBases().size()];
 
-            // If it's not a reference, just return the root type.
-            if (!source_ty->IsReference())
-                return root_ty;
-
-            // If the source is an lvalue, the result is an lvalue.
-            if (IsLvalueType(source_ty))
-                return self->analyzer.GetLvalueType(root_ty->Decay());
-
-            // It's not a value or an lvalue so must be rvalue.
-            return self->analyzer.GetRvalueType(root_ty);
+            return Semantic::CollapseType(source->GetType(), root_ty);
         }
         llvm::Value* ComputeValue(CodegenContext& con) override final {
             auto src = source->GetValue(con);
@@ -390,13 +381,11 @@ std::shared_ptr<Expression> AggregateType::PrimitiveAccessMember(std::shared_ptr
                     return con->CreatePointerCast(offset_self, GetType()->GetLLVMType(con));
                 }
                 // Downcasting to an EBCO'd value -> just produce a value.
-                return llvm::Constant::getNullValue(self->GetLayout().Offsets[num].ty->GetLLVMType(con));
+                return llvm::UndefValue::get(self->GetLayout().Offsets[num].ty->GetLLVMType(con));
             }
             auto fieldindex = *offsets[num].FieldIndex;
             auto obj = src->getType()->isPointerTy() ? con.CreateStructGEP(src, fieldindex) : con->CreateExtractValue(src, { fieldindex });
-            if ((source->GetType()->IsReference() && offsets[num].ty->IsReference()) || (source->GetType()->AlwaysKeepInMemory() && !offsets[num].ty->AlwaysKeepInMemory()))
-                return con->CreateLoad(obj);
-            return obj;
+            return Semantic::CollapseMember(source->GetType(), { obj, offsets[num].ty }, con);
         }
     };
     assert(self);

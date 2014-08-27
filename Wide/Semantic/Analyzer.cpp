@@ -837,6 +837,12 @@ Type* Analyzer::GetClangType(ClangTU& from, clang::QualType t) {
         assert(dest);
         return GetMemberFunctionPointer(source, dest);
     }
+    if (t->isConstantArrayType()) {
+        auto arrty = llvm::cast<const clang::ConstantArrayType>(t.getTypePtr());
+        auto elemty = GetClangType(from, arrty->getElementType());
+        auto size = arrty->getSize();
+        return GetArrayType(elemty, size.getLimitedValue());
+    }
     if (GeneratedClangTypes.find(t) != GeneratedClangTypes.end())
         return GeneratedClangTypes[t];
     if (ClangTypes.find(t) == ClangTypes.end())
@@ -1410,4 +1416,70 @@ ClangFunctionType* Analyzer::GetFunctionType(const clang::FunctionProtoType* ptr
 ClangFunctionType* Analyzer::GetFunctionType(const clang::FunctionProtoType* ptr, Wide::Util::optional<clang::QualType> self, ClangTU& tu) {
     if (self) return GetFunctionType(ptr, *self, tu);
     return GetFunctionType(ptr, tu);
+}
+Type* Semantic::CollapseType(Type* source, Type* member) {
+    if (!source->IsReference())
+        return member;
+    if (IsLvalueType(source))
+        return source->analyzer.GetLvalueType(member->Decay());
+
+    // It's not a value or an lvalue so must be rvalue.
+    return source->analyzer.GetRvalueType(member);
+}
+llvm::Value* Semantic::CollapseMember(Type* source, std::pair<llvm::Value*, Type*> member, CodegenContext& con) {
+    if ((source->IsReference() && member.second->IsReference()) || (source->AlwaysKeepInMemory() && !member.second->AlwaysKeepInMemory()))
+        return con->CreateLoad(member.first);
+    return member.first;
+}
+std::function<void(CodegenContext&)> Semantic::ThrowObject(std::shared_ptr<Expression> expr, Context c) {
+    struct ExceptionAllocateMemory : Expression{
+        ExceptionAllocateMemory(Type* t)
+        : alloc(t) {
+            auto&& analyzer = t->analyzer;
+            if (t->alignment() > std::max(analyzer.GetDataLayout().getABIIntegerTypeAlignment(64), analyzer.GetDataLayout().getPointerABIAlignment()))
+                throw std::runtime_error("EH runtime does not provide memory of enough alignment to support this exception type.");
+        }
+        Type* alloc;
+        std::list<std::pair<std::function<void(CodegenContext&)>, bool>>::iterator destructor;
+        Type* GetType() override final { return alloc->analyzer.GetLvalueType(alloc); }
+        llvm::Value* ComputeValue(CodegenContext& con) override final {
+            auto except_memory = con->CreateCall(con.GetCXAAllocateException(), { llvm::ConstantInt::get(con.GetPointerSizedIntegerType(), alloc->size(), false) });
+            destructor = con.AddDestructor([this, except_memory](CodegenContext& con) {
+                auto free_exception = con.GetCXAFreeException();
+                con->CreateCall(free_exception, { except_memory });
+            });
+            return con->CreatePointerCast(except_memory, GetType()->GetLLVMType(con));
+        }
+    };
+    // http://mentorembedded.github.io/cxx-abi/abi-eh.html
+    // 2.4.2
+    auto ty = expr->GetType()->Decay();
+    auto RTTI = ty->GetRTTI();
+    auto except_memory = std::make_shared<ExceptionAllocateMemory>(ty);
+    // There is no longer a guarantee thas, as an argument, except_memory will be in the same CodegenContext
+    // and the iterator could be invalidated. Strictly get the value in the original CodegenContext that ThrowStatement::GenerateCode
+    // is called with so that we can erase the destructor later.
+    auto exception = BuildChain(BuildChain(except_memory, Type::BuildInplaceConstruction(except_memory, { std::move(expr) }, c)), except_memory);
+    return [=](CodegenContext& con) {
+        auto value = exception->GetValue(con);
+        auto cxa_throw = con.GetCXAThrow();
+        // Throw this shit.
+        // If we got here then creating the exception value didn't throw. Don't destroy it now.
+        con.EraseDestructor(except_memory->destructor);
+        llvm::Value* destructor;
+        if (ty->IsTriviallyDestructible()) {
+            destructor = llvm::Constant::getNullValue(con.GetInt8PtrTy());
+        } else
+            destructor = con->CreatePointerCast(ty->GetDestructorFunction(con), con.GetInt8PtrTy());
+        llvm::Value* args[] = { con->CreatePointerCast(value, con.GetInt8PtrTy()), con->CreatePointerCast(RTTI(con), con.GetInt8PtrTy()), destructor };
+        // Do we have an existing handler to go to? If we do, then first land, then branch directly to it.
+        // Else, kill everything and GTFO this function and let the EH routines worry about it.
+        if (con.HasDestructors() || con.EHHandler)
+            con->CreateInvoke(cxa_throw, con.GetUnreachableBlock(), con.CreateLandingpadForEH(), args);
+        else {
+            con->CreateCall(cxa_throw, args);
+            // This is unreachable, but terminate the block so we know to stop code-generating.
+            con->CreateUnreachable();
+        }
+    };
 }

@@ -388,6 +388,41 @@ llvm::Value* DestructorCall::ComputeValue(CodegenContext& con) {
     destructor(con);
     return nullptr;
 }
+
 llvm::Instruction* CodegenContext::GetAllocaInsertPoint() {
     return alloca_builder->GetInsertPoint();
+}
+
+llvm::Function* CodegenContext::GetCXAThrow() {
+    auto cxa_throw = module->getFunction("__cxa_throw");
+    if (!cxa_throw) {
+        llvm::Type* args[] = { GetInt8PtrTy(), GetInt8PtrTy(), GetInt8PtrTy() };
+        auto fty = llvm::FunctionType::get(llvm::Type::getVoidTy(module->getContext()), args, false);
+        cxa_throw = llvm::Function::Create(fty, llvm::GlobalValue::LinkageTypes::ExternalLinkage, "__cxa_throw", module);
+    }
+    return cxa_throw;
+}
+
+llvm::Function* CodegenContext::GetCXAAllocateException() {
+    auto allocate_exception = module->getFunction("__cxa_allocate_exception");
+    if (!allocate_exception) {
+        llvm::Type* args[] = { GetPointerSizedIntegerType() };
+        auto fty = llvm::FunctionType::get(llvm::Type::getInt8PtrTy(module->getContext()), args, false);
+        allocate_exception = llvm::Function::Create(fty, llvm::GlobalValue::LinkageTypes::ExternalLinkage, "__cxa_allocate_exception", module);
+    }
+    return allocate_exception;
+}
+
+llvm::Function* CodegenContext::GetCXAFreeException() {
+    auto free_exception = module->getFunction("__cxa_free_exception");
+    if (!free_exception) {
+        llvm::Type* args[] = { GetInt8PtrTy() };
+        auto fty = llvm::FunctionType::get(llvm::Type::getVoidTy(module->getContext()), args, false);
+        free_exception = llvm::Function::Create(fty, llvm::GlobalValue::LinkageTypes::ExternalLinkage, "__cxa_free_exception", module);
+    }
+    return free_exception;
+}
+
+llvm::IntegerType* CodegenContext::GetPointerSizedIntegerType() {
+    return llvm::IntegerType::get(module->getContext(), llvm::DataLayout(module->getDataLayout()).getPointerSizeInBits());
 }
