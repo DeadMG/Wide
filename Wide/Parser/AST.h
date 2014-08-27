@@ -251,6 +251,9 @@ namespace Wide {
             Return(Expression* e, Lexer::Range r) :  Statement(r), RetExpr(e) {}
             Expression* RetExpr;
         };
+        struct GlobalModuleReference : public Expression {
+            GlobalModuleReference(Lexer::Range where) : Expression(where) {}
+        };
         struct Variable : public Statement {
             struct Name {
                 std::string name;
@@ -397,7 +400,6 @@ namespace Wide {
             struct CombinedModule : public Module {
                 CombinedModule()
                 : Module() {}
-
                 std::unordered_map<std::string, std::unique_ptr<CombinedModule>> combined_modules;
 
                 void AddModuleToSelf(Module* m);

@@ -116,8 +116,7 @@ Parser::Parser(std::function<Wide::Util::optional<Lexer::Token>()> l)
     ModuleTokens[&Lexer::TokenTypes::Protected] = [](Parser& p, Module* m, Parse::Access a, Lexer::Token& token) {
         throw ParserError(token.GetLocation(), Error::ProtectedModuleScope);
         return a; // Quiet error
-    };    
-
+    };
     GlobalModuleTokens[&Lexer::TokenTypes::Module] = [](Parser& p, Module* m, Parse::Access a, Lexer::Token& module) {
         auto ident = p.Check(Error::ModuleNoIdentifier, &Lexer::TokenTypes::Identifier);
         auto maybedot = p.lex(Parse::Error::ModuleNoOpeningBrace);
@@ -172,6 +171,11 @@ Parser::Parser(std::function<Wide::Util::optional<Lexer::Token>()> l)
         if (p.GlobalModuleAttributeTokens.find(next.GetType()) == p.GlobalModuleAttributeTokens.end())
             throw p.BadToken(next, Error::AttributeNoEnd);
         return p.GlobalModuleAttributeTokens[next.GetType()](p, m, a, next, attributes);
+    };
+
+    GlobalModuleAttributeTokens[&Lexer::TokenTypes::Dot] = [](Parser& p, Module* m, Parse::Access a, Lexer::Token& token, std::vector<Attribute> attributes) {
+        auto next = p.Check(Error::QualifiedNameNoIdentifier, &Lexer::TokenTypes::Identifier);
+        return p.GlobalModuleAttributeTokens[&Lexer::TokenTypes::Identifier](p, m, a, next, attributes);
     };
 
     GlobalModuleAttributeTokens[&Lexer::TokenTypes::Identifier] = [](Parser& p, Module* m, Parse::Access a, Lexer::Token& ident, std::vector<Attribute> attributes) {
@@ -406,6 +410,10 @@ Parser::Parser(std::function<Wide::Util::optional<Lexer::Token>()> l)
             tok = p.lex(Error::LambdaNoOpenCurly);
         }
         return p.arena.Allocate<Lambda>(std::move(grp), std::move(args), pos + tok.GetLocation(), defaultref, std::move(caps));
+    };
+
+    PrimaryExpressions[&Lexer::TokenTypes::Dot] = [](Parser& p, Lexer::Token& t) -> Expression* {
+        return p.arena.Allocate<GlobalModuleReference>(t.GetLocation());
     };
 
     PrimaryExpressions[&Lexer::TokenTypes::Type] = [](Parser& p, Lexer::Token& t) -> Expression* {
