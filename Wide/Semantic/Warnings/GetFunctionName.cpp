@@ -9,27 +9,8 @@ std::string Wide::Semantic::GetFunctionName(const Parse::FunctionBase* func, Ana
     for (auto&& arg : func->args) {
         context += arg.name;
         if (arg.type) {
-            struct autotype : public Wide::Semantic::MetaType {
-                autotype(Type* con) : context(con), MetaType(con->analyzer) {}
-                std::unique_ptr<ConstructorType> conty;
-                std::shared_ptr<Expression> AccessNamedMember(std::shared_ptr<Expression> self, std::string name, Context c) override final {
-                    if (name == "auto") {
-                        if (!conty) conty = Wide::Memory::MakeUnique<ConstructorType>(this, analyzer);
-                        return conty->BuildValueConstruction({}, c);
-                    }
-                    return nullptr;
-                }
-                Type* context;
-                Type* GetContext() override final {
-                    return context;
-                }
-                std::string explain() {
-                    return "auto";
-                }
-            };
             try {
-                autotype autoty(root);
-                auto expr = a.AnalyzeExpression(&autoty, arg.type);
+                auto expr = a.AnalyzeExpression(root, arg.type);
                 auto&& conty = dynamic_cast<ConstructorType&>(*expr->GetType()->Decay());
                 context += " := " + conty.GetConstructedType()->explain();
             }

@@ -15,7 +15,7 @@
 
 namespace Wide {
     namespace Util {
-        struct none_t {} none = {};
+        static const struct none_t{} none = {};
 
         template <typename T>
         struct optional {

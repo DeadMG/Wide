@@ -7,6 +7,7 @@
 #include <Wide/Parser/AST.h>
 #include <Wide/Semantic/Analyzer.h>
 #include <Wide/Util/Ranges/IStreamRange.h>
+#include <Wide/Util/Ranges/StringRange.h>
 #include <mutex>
 #include <atomic>
 #include <sstream>
@@ -23,7 +24,11 @@
 #include <llvm/Support/raw_os_ostream.h>
 #pragma warning(pop)
 
-void Wide::Driver::Compile(const Wide::Options::Clang& copts, std::function<void(Wide::Semantic::Analyzer&, const Parse::Module*)> func, const std::vector<std::string>& files) {
+void Wide::Driver::Compile(const Wide::Options::Clang& copts, const std::vector<std::string>& files, std::function<void(Semantic::Analyzer&, const Parse::Module*)> func) {
+    return Wide::Driver::Compile(copts, files, {}, func);
+}
+
+void Wide::Driver::Compile(const Wide::Options::Clang& copts, const std::vector<std::string>& files, const std::vector<std::pair<std::string, std::string>>& sources, std::function<void(Wide::Semantic::Analyzer&, const Parse::Module*)> func) {
     Wide::Concurrency::Vector<std::string> excepts;
     Wide::Concurrency::Vector<std::string> warnings;
     auto parsererrorhandler = [&](std::vector<Wide::Lexer::Range> where, Wide::Parse::Error what) {
@@ -60,6 +65,30 @@ void Wide::Driver::Compile(const Wide::Options::Clang& copts, std::function<void
             excepts.push_back("Internal Compiler Error");
         }
     });
+    auto sourceerrs = Wide::Concurrency::ParallelForEach(sources.begin(), sources.end(), [&](const std::pair<std::string, std::string>& source) {
+        Wide::Lexer::Invocation lex(Wide::Range::StringRange(source.first), std::make_shared<std::string>(source.second));
+        auto parserwarninghandler = [&](Wide::Lexer::Range where, Wide::Parse::Warning what) {
+            std::stringstream str;
+            str << "Warning in file " << source.second << ", line " << where.begin.line << " column " << where.begin.column << ":\n";
+            str << Wide::Parse::WarningStrings.at(what);
+            warnings.push_back(str.str());
+        };
+        try {
+            auto parser = std::make_shared<Wide::Parse::Parser>(lex);
+            parser->ParseGlobalModuleContents(&parser->GlobalModule);
+            builders.push_back(std::move(parser));
+        }
+        catch (Wide::Parse::ParserError& e) {
+            parsererrorhandler(e.where(), e.error());
+        }
+        catch (std::exception& e) {
+            excepts.push_back(e.what());
+        }
+        catch (...) {
+            excepts.push_back("Internal Compiler Error");
+        }
+    });
+    errs.insert(errs.end(), sourceerrs.begin(), sourceerrs.end());
     if (!errs.empty()) {
         if (errs.size() == 1)
             std::rethrow_exception(errs[0]);
