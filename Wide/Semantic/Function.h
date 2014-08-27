@@ -34,6 +34,7 @@ namespace Wide {
             std::vector<std::function<void(llvm::Module*)>> trampoline;
             std::vector<std::shared_ptr<Expression>> parameters;
             std::vector<std::tuple<std::function<llvm::Function*(llvm::Module*)>, ClangFunctionType*, clang::FunctionDecl*>> clang_exports;
+            Wide::Util::optional<std::string> import_name;
 
             // You can only be exported as constructors of one, or nonstatic member of one, class.
             Wide::Util::optional<Semantic::ConstructorContext*> ConstructorContext;

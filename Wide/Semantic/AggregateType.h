@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Wide/Semantic/Type.h>
+#include <boost/optional.hpp>
 
 namespace Wide {
     namespace Semantic {
@@ -13,6 +14,19 @@ namespace Wide {
             void EmitConstructor(CodegenContext& con, std::vector<std::shared_ptr<Expression>> inits);
             void EmitAssignmentOperator(CodegenContext& con, std::vector<std::shared_ptr<Expression>> exprs);
             OverloadSet* MaybeCreateSet(Wide::Util::optional<std::unique_ptr<OverloadResolvable>>&, std::function<bool(Type*, unsigned)> should, std::function<std::unique_ptr<OverloadResolvable>()> create);
+
+            struct Properties {
+                Properties(AggregateType* self);
+                bool triviallycopyconstructible = true;
+                bool triviallydestructible = true;
+                bool copyconstructible;
+                bool copyassignable;
+                bool moveconstructible;
+                bool moveassignable;
+                bool constant;
+            };
+            Wide::Util::optional<Properties> props;
+            Properties& GetProperties();
 
             struct AggregateFunction;
             struct Layout {
@@ -31,20 +45,12 @@ namespace Wide {
                 struct Location {
                     Type* ty;
                     unsigned ByteOffset;
-                    Wide::Util::optional<unsigned> FieldIndex;
+                    boost::optional<unsigned> FieldIndex;
                 };
                 std::vector<Location> Offsets;
 
-                bool triviallycopyconstructible = true;
-                bool triviallydestructible = true;
-                bool copyconstructible;
-                bool copyassignable;
-                bool moveconstructible;
-                bool moveassignable;
-                bool constant;
                 bool hasvptr = false;
                 Type* PrimaryBase = nullptr;
-                unsigned PrimaryBaseNum;
 
                 Wide::Util::optional<CodeGen> codegen;
                 CodeGen& GetCodegen(AggregateType* self, llvm::Module* module) {
@@ -53,7 +59,7 @@ namespace Wide {
                 }
             };
             std::shared_ptr<Expression> GetConstructorSelf(llvm::Function*& func);
-            std::shared_ptr<Expression> GetMemberFromThis(std::shared_ptr<Expression> self, unsigned offset, Type* result);
+            std::shared_ptr<Expression> GetMemberFromThis(std::shared_ptr<Expression> self, std::function<unsigned()> offset, Type* result);
             std::vector<std::shared_ptr<Expression>> GetConstructorInitializers(std::shared_ptr<Expression> self, Context c, std::function<std::vector<std::shared_ptr<Expression>>(unsigned)> initializers);
             std::vector<std::shared_ptr<Expression>> GetAssignmentOpExpressions(std::shared_ptr<Expression> self, Context c, std::function<std::shared_ptr<Expression>(unsigned)> initializers);
 

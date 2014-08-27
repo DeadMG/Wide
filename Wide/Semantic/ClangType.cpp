@@ -132,7 +132,7 @@ std::shared_ptr<Expression> ClangType::AccessNamedMember(std::shared_ptr<Express
         if (auto ty = llvm::dyn_cast<clang::TypeDecl>(lr.getFoundDecl()))
             return analyzer.GetConstructorType(analyzer.GetClangType(*from, from->GetASTContext().getTypeDeclType(ty)))->BuildValueConstruction({}, c);
         if (auto vardecl = llvm::dyn_cast<clang::VarDecl>(lr.getFoundDecl())) {    
-            auto var = from->GetObject(vardecl);
+            auto var = from->GetObject(analyzer, vardecl);
             return CreatePrimUnOp(std::move(val), analyzer.GetLvalueType(analyzer.GetClangType(*from, vardecl->getType())), [var](llvm::Value* self, CodegenContext& con) {
                 return var(con);
             });
@@ -292,7 +292,7 @@ std::function<void(CodegenContext&)> ClangType::BuildDestruction(std::shared_ptr
             call->GetValue(con);
         };
     }
-    auto obj = from->GetObject(des, clang::CXXDtorType::Dtor_Complete);
+    auto obj = from->GetObject(analyzer, des, clang::CXXDtorType::Dtor_Complete);
     return [=](CodegenContext& con) {
         auto val = self->GetValue(con);
         con->CreateCall(obj(con), { val });
@@ -480,10 +480,10 @@ std::pair<FunctionType*, std::function<llvm::Function*(llvm::Module*)>> ClangTyp
     if (auto mem = boost::get<VTableLayout::SpecialMember>(&entry.func)) {
         auto conv = GetCallingConvention(type->getAsCXXRecordDecl()->getDestructor());
         if (*mem == VTableLayout::SpecialMember::Destructor) {
-            return{ GetFunctionType(type->getAsCXXRecordDecl()->getDestructor(), *from, analyzer), from->GetObject(type->getAsCXXRecordDecl()->getDestructor(), clang::CXXDtorType::Dtor_Complete) };
+            return{ GetFunctionType(type->getAsCXXRecordDecl()->getDestructor(), *from, analyzer), from->GetObject(analyzer, type->getAsCXXRecordDecl()->getDestructor(), clang::CXXDtorType::Dtor_Complete) };
         }
         if (*mem == VTableLayout::SpecialMember::ItaniumABIDeletingDestructor) {
-            return{ GetFunctionType(type->getAsCXXRecordDecl()->getDestructor(), *from, analyzer), from->GetObject(type->getAsCXXRecordDecl()->getDestructor(), clang::CXXDtorType::Dtor_Deleting) };
+            return{ GetFunctionType(type->getAsCXXRecordDecl()->getDestructor(), *from, analyzer), from->GetObject(analyzer, type->getAsCXXRecordDecl()->getDestructor(), clang::CXXDtorType::Dtor_Deleting) };
         }
         return {};
     }
@@ -508,7 +508,7 @@ std::pair<FunctionType*, std::function<llvm::Function*(llvm::Module*)>> ClangTyp
         auto functy = GetFunctionType(func, *from, analyzer);
         if (!FunctionType::CanThunkFromFirstToSecond(entry.type, functy, this, true))
             continue;
-        return { functy, from->GetObject(func) };
+        return{ functy, from->GetObject(analyzer, func) };
     }
     return {};
 }
@@ -551,14 +551,15 @@ std::vector<ConstructorContext::member> ClangType::GetConstructionMembers() {
     for (auto baseit = type->getAsCXXRecordDecl()->bases_begin(); baseit != type->getAsCXXRecordDecl()->bases_end(); ++baseit) {
         ConstructorContext::member mem(RangeFromSourceRange(baseit->getSourceRange(), from->GetASTContext().getSourceManager()));
         mem.t = analyzer.GetClangType(*from, baseit->getType());
-        mem.num = EmptyBaseOffset{ layout.getBaseClassOffset(baseit->getType()->getAsCXXRecordDecl()).getQuantity() };
+        mem.num = [this, baseit, &layout]{ return layout.getBaseClassOffset(baseit->getType()->getAsCXXRecordDecl()).getQuantity(); };
         out.push_back(std::move(mem));
     }
     unsigned i = 0;
     for (auto fieldit = type->getAsCXXRecordDecl()->field_begin(); fieldit != type->getAsCXXRecordDecl()->field_end(); ++fieldit) {
         ConstructorContext::member mem(RangeFromSourceRange(fieldit->getSourceRange(), from->GetASTContext().getSourceManager()));
         mem.t = analyzer.GetClangType(*from, fieldit->getType());
-        mem.num = { layout.getFieldOffset(i++) };
+        mem.num = [this, i, &layout]{ return layout.getFieldOffset(i); };
+        ++i;
         mem.name = fieldit->getName();
         if (auto expr = fieldit->getInClassInitializer()) {
             auto style = fieldit->getInClassInitStyle();
@@ -612,7 +613,7 @@ std::shared_ptr<Expression> ClangType::AccessStaticMember(std::string name, Cont
         if (auto ty = llvm::dyn_cast<clang::TypeDecl>(lr.getFoundDecl()))
             return analyzer.GetConstructorType(analyzer.GetClangType(*from, from->GetASTContext().getTypeDeclType(ty)))->BuildValueConstruction({}, c);
         if (auto vardecl = llvm::dyn_cast<clang::VarDecl>(lr.getFoundDecl())) {
-            auto var = from->GetObject(vardecl);
+            auto var = from->GetObject(analyzer, vardecl);
             return CreatePrimGlobal(analyzer.GetLvalueType(analyzer.GetClangType(*from, vardecl->getType())), [var](CodegenContext& con) {
                 return var(con);
             });

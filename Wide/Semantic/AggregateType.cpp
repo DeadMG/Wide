@@ -14,6 +14,9 @@
 #include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/DataLayout.h>
 #include <llvm/Analysis/Verifier.h>
+#include <clang/AST/ASTContext.h>
+#include <clang/AST/AST.h>
+#include <clang/AST/RecordLayout.h>
 #pragma warning(pop)
 
 using namespace Wide;
@@ -37,21 +40,83 @@ struct AggregateType::AggregateFunction : Expression {
         return func;
     }
 };
+AggregateType::Properties& AggregateType::GetProperties() {
+    if (!props) props = Properties(this);
+    return *props;
+}
+AggregateType::Properties::Properties(AggregateType* self)
+    : copyassignable(true)
+    , copyconstructible(true)
+    , moveassignable(true)
+    , moveconstructible(true)
+    , constant(true)
+{
+    auto UpdatePropertiesForMember = [this, self](Type* D) {
+        constant &= D->GetConstantContext() == D;
+        moveconstructible &= D->IsMoveConstructible(GetAccessSpecifier(self, D));
+        copyconstructible &= D->IsCopyConstructible(GetAccessSpecifier(self, D));
+        moveassignable &= D->IsMoveAssignable(GetAccessSpecifier(self, D));
+        copyassignable &= D->IsCopyAssignable(GetAccessSpecifier(self, D));
+        triviallycopyconstructible &= D->IsTriviallyCopyConstructible();
+        triviallydestructible &= D->IsTriviallyDestructible();
+    };
+    for (auto base : self->GetBases())
+        UpdatePropertiesForMember(base);
+    for (auto mem : self->GetMembers())
+        UpdatePropertiesForMember(mem);
+}
 AggregateType::Layout::Layout(AggregateType* agg, Wide::Semantic::Analyzer& a)
 : allocsize(0)
 , align(1)
-, copyassignable(true)
-, copyconstructible(true)
-, moveassignable(true)
-, moveconstructible(true)
-, constant(true)
 {
+    auto bases_size = agg->GetBases().size();
+    auto members_size = agg->GetMembers().size();
+    Offsets.resize(bases_size + members_size);
+
+    if (auto clangty = agg->GetClangType(*a.GetAggregateTU())) {
+        // Convert the Clang record layout format to our own.
+        auto recdecl = (*clangty)->getAsCXXRecordDecl();
+        auto&& TU = *a.GetAggregateTU();
+        auto ty = *clangty;
+        auto&& layout = TU.GetASTContext().getASTRecordLayout(recdecl);
+        hasvptr = layout.hasOwnVFPtr();
+        align = layout.getAlignment().getQuantity();
+        allocsize = layout.getSize().getQuantity();
+        auto bases = agg->GetBases();
+        if (layout.getPrimaryBase())
+            PrimaryBase = a.GetClangType(TU, TU.GetASTContext().getRecordType(layout.getPrimaryBase()));
+        
+        // Offset by 1 for vptr or primary base.
+        for (unsigned basenum = 0; basenum < bases.size(); ++basenum) {
+            auto base = bases[basenum];
+            auto offset = layout.getBaseClassOffset((*base->GetClangType(TU))->getAsCXXRecordDecl()).getQuantity();
+            Offsets[basenum] = { base, offset };
+        }
+        for (unsigned fieldnum = 0; fieldnum < agg->GetMembers().size(); ++fieldnum) {
+            auto aggnum = fieldnum + agg->GetBases().size();
+            Offsets[aggnum] = { agg->GetMembers()[fieldnum], layout.getFieldOffset(fieldnum) / 8 };
+        }
+        struct Self : public Expression {
+            Self(AggregateType* me) : self(me) {}
+            AggregateType* self;
+            Type* GetType() override final { return self->analyzer.GetLvalueType(self); }
+            llvm::Value* ComputeValue(CodegenContext& c) override final { return self->DestructorFunction->arg_begin(); }
+        };
+        auto destructor_self = std::make_shared<Self>(agg);
+        for (int i = Offsets.size() - 1; i >= 0; --i) {
+            auto member = Offsets[i].ty;
+            agg->destructors.push_back(member->BuildDestructorCall(agg->PrimitiveAccessMember(destructor_self, i), { agg, Lexer::Range(std::make_shared<std::string>("AggregateDestructor")) }, true));
+        }
+        return;
+    }
+
     // http://refspecs.linuxbase.org/cxxabi-1.83.html#class-types
     // 2.4.1
     // Initialize variables, including primary base.
     auto& sizec = allocsize;
     auto& alignc = align;
     auto dsizec = 0;
+    unsigned PrimaryBaseNum;
     
     for (unsigned i = 0; i < agg->GetBases().size(); ++i) {
         auto base = agg->GetBases()[i];
@@ -71,29 +136,10 @@ AggregateType::Layout::Layout(AggregateType* agg, Wide::Semantic::Analyzer& a)
         hasvptr = true;
     }
 
-    auto UpdatePropertiesForMember = [this, agg](Type* D) {
-        constant &= D->GetConstantContext() == D;
-        moveconstructible &= D->IsMoveConstructible(GetAccessSpecifier(agg, D));
-        copyconstructible &= D->IsCopyConstructible(GetAccessSpecifier(agg, D));
-        moveassignable &= D->IsMoveAssignable(GetAccessSpecifier(agg, D));
-        copyassignable &= D->IsCopyAssignable(GetAccessSpecifier(agg, D));
-        triviallycopyconstructible &= D->IsTriviallyCopyConstructible();
-        triviallydestructible &= D->IsTriviallyDestructible();
-    };
-
-    auto bases_size = agg->GetBases().size();
-    auto members_size = agg->GetMembers().size();
-    Offsets.resize(bases_size + members_size);
-
-    // If we have a vptr then all fields offset by 1.
-    unsigned fieldnum = hasvptr ? 1 : 0;
-
     // 2.4.2
     // Clause 1 does not apply because we don't support virtual bases.
     // Clause 2 (second argument not required w/o virtual base support
     auto layout_nonemptybase = [&](Type* D, bool base, std::size_t offset, std::size_t num) {
-        UpdatePropertiesForMember(D);
-
         // Start at offset dsize(C), incremented if necessary for alignment to align(D).
         bool AddedPadding = false;
         if (offset % D->alignment() != 0) {
@@ -115,7 +161,6 @@ AggregateType::Layout::Layout(AggregateType* agg, Wide::Semantic::Analyzer& a)
 
         while (!AttemptLayout()) {
             offset += D->alignment();
-            AddedPadding = true;
         }
         // Update the empty map for our new layout.
         auto DEmpties = D->GetEmptyLayout();
@@ -124,9 +169,7 @@ AggregateType::Layout::Layout(AggregateType* agg, Wide::Semantic::Analyzer& a)
                 EmptyTypes[newempty.first + offset].insert(empty);
         }
         // If we inserted any padding, increase the field number to account for the padding array
-        if (AddedPadding)
-            fieldnum++;
-        Offsets[num] = { D, offset, fieldnum++ };
+        Offsets[num] = { D, offset };
         // update sizeof(C) to max (sizeof(C), offset(D)+sizeof(D))
         sizec = std::max(sizec, offset + D->size());
         // update dsize(C) to offset(D)+sizeof(D),
@@ -137,7 +180,6 @@ AggregateType::Layout::Layout(AggregateType* agg, Wide::Semantic::Analyzer& a)
 
     // Clause 3
     auto layout_emptybase = [&](Type* D, std::size_t num) {
-        UpdatePropertiesForMember(D);
         // Its allocation is similar to case (2) above, except that additional candidate offsets are considered before starting at dsize(C). First, attempt to place D at offset zero.
         unsigned offset = 0;
         if (EmptyTypes[offset].find(D) != EmptyTypes[offset].end()) {
@@ -211,16 +253,16 @@ std::size_t AggregateType::alignment() {
 }
 
 bool AggregateType::IsMoveAssignable(Parse::Access access) {
-    return GetLayout().moveassignable;
+    return GetProperties().moveassignable;
 }
 bool AggregateType::IsMoveConstructible(Parse::Access access) {
-    return GetLayout().moveconstructible;
+    return GetProperties().moveconstructible;
 }
 bool AggregateType::IsCopyAssignable(Parse::Access access) {
-    return GetLayout().copyassignable;
+    return GetProperties().copyassignable;
 }
 bool AggregateType::IsCopyConstructible(Parse::Access access) {
-    return GetLayout().copyconstructible;
+    return GetProperties().copyconstructible;
 }
 std::shared_ptr<Expression> AggregateType::AccessVirtualPointer(std::shared_ptr<Expression> self) {
     if (GetPrimaryBase()) return Type::GetVirtualPointer(Type::AccessBase(std::move(self), GetPrimaryBase()));
@@ -253,12 +295,19 @@ AggregateType::Layout::CodeGen::CodeGen(AggregateType* self, Layout& lay, llvm::
     llvmtype = nullptr;
 }
 llvm::Type* AggregateType::Layout::CodeGen::GetLLVMType(AggregateType* self, llvm::Module* module) {
+    if (llvmtype) return llvmtype;
     std::stringstream stream;
     stream << "struct.__" << self;
     auto llvmname = stream.str();
-    if (llvmtype) return llvmtype;
-    if (llvmtype = module->getTypeByName(llvmname))
-        return llvmtype;
+    if (auto structty = module->getTypeByName(llvmname)) {
+        // Hook up the field indices before we go.
+        for (auto&& offset : self->GetLayout().Offsets) {
+            if (!offset.ty->IsEmpty()) {
+                offset.FieldIndex = self->analyzer.GetDataLayout().getStructLayout(structty)->getElementContainingOffset(offset.ByteOffset);
+            }
+        }
+        return llvmtype = structty;
+    }
     auto ty = llvm::StructType::create(module->getContext(), llvmname);
     llvmtype = ty;
     std::vector<llvm::Type*> llvmtypes;
@@ -275,12 +324,12 @@ llvm::Type* AggregateType::Layout::CodeGen::GetLLVMType(AggregateType* self, llv
         curroffset = self->analyzer.GetDataLayout().getPointerSize();
     }
 
-    for (auto llvmmember : self->GetLayout().Offsets) {
-        if (llvmmember.FieldIndex) {
+    for (auto&& llvmmember : self->GetLayout().Offsets) {
+        if (!llvmmember.ty->IsEmpty()) {
             if (curroffset != llvmmember.ByteOffset) {
                 llvmtypes.push_back(llvm::ArrayType::get(llvm::Type::getInt8Ty(module->getContext()), llvmmember.ByteOffset - curroffset));
             }
-            assert(*llvmmember.FieldIndex == llvmtypes.size());
+            llvmmember.FieldIndex = llvmtypes.size();
             llvmtypes.push_back(llvmmember.ty->GetLLVMType(module));
             curroffset = llvmmember.ByteOffset + llvmmember.ty->size();
         }
@@ -473,10 +522,12 @@ OverloadSet* AggregateType::MaybeCreateSet(Wide::Util::optional<std::unique_ptr<
     // Not created yet.
     auto should = [=] {
         unsigned i = 0;
-        for (auto mem : GetLayout().Offsets) {
-            if (!member_should(mem.ty, i++))
+        for (auto mem : GetBases())
+            if (!member_should(mem, i++))
                 return false;
-        }
+        for (auto mem : GetMembers())
+            if (!member_should(mem, i++))
+                return false;
         return true;
     };
     if (!should()) {
@@ -508,54 +559,59 @@ void AggregateType::EmitConstructor(CodegenContext& con, std::vector<std::shared
     con.DestroyAll(false);
     con->CreateRetVoid();
 }
-std::shared_ptr<Expression> AggregateType::GetMemberFromThis(std::shared_ptr<Expression> self, unsigned offset, Type* member) {
+std::shared_ptr<Expression> AggregateType::GetMemberFromThis(std::shared_ptr<Expression> self, std::function<unsigned()> offset, Type* member) {
     auto result = member;
     return CreatePrimUnOp(self, result, [offset, result](llvm::Value* val, CodegenContext& con) {
         auto self = con->CreatePointerCast(val, con.GetInt8PtrTy());
-        self = con->CreateConstGEP1_32(self, offset);
+        self = con->CreateConstGEP1_32(self, offset());
         return con->CreatePointerCast(self, result->GetLLVMType(con));
     });
 }
 std::vector<std::shared_ptr<Expression>> AggregateType::GetAssignmentOpExpressions(std::shared_ptr<Expression> self, Context c, std::function<std::shared_ptr<Expression>(unsigned)> initializers) {
     std::vector<std::shared_ptr<Expression>> exprs;
-    for (std::size_t i = 0; i < GetLayout().Offsets.size(); ++i) {
-        auto type = GetLayout().Offsets[i].ty;
-        auto offset = GetLayout().Offsets[i].ByteOffset;
-        auto lhs = GetMemberFromThis(self, offset, analyzer.GetLvalueType(type));
+    for (std::size_t i = 0; i < GetBases().size(); ++i) {
+        auto lhs = GetMemberFromThis(self, [this, i] { return GetLayout().Offsets[i].ByteOffset; }, analyzer.GetLvalueType(GetBases()[i]));
+        exprs.push_back(Type::BuildBinaryExpression(lhs, initializers(i), &Lexer::TokenTypes::Assignment, c));
+    }
+    for (std::size_t i = 0; i < GetMembers().size(); ++i) {
+        auto lhs = GetMemberFromThis(self, [this, i] { return GetLayout().Offsets[i + GetBases().size()].ByteOffset; }, analyzer.GetLvalueType(GetMembers()[i]));
         exprs.push_back(Type::BuildBinaryExpression(lhs, initializers(i), &Lexer::TokenTypes::Assignment, c));
     }
     return exprs;
 }
 std::vector<std::shared_ptr<Expression>> AggregateType::GetConstructorInitializers(std::shared_ptr<Expression> self, Context c, std::function<std::vector<std::shared_ptr<Expression>>(unsigned)> initializers) {
     std::vector<std::shared_ptr<Expression>> exprs;
-    for (std::size_t i = 0; i < GetLayout().Offsets.size(); ++i) {
-        auto type = GetLayout().Offsets[i].ty;
-        auto offset = GetLayout().Offsets[i].ByteOffset;
-        auto lhs = GetMemberFromThis(self, offset, analyzer.GetLvalueType(type));
+    struct MemberConstructionAccess : Expression {
+        Type* member;
+        Lexer::Range where;
+        std::shared_ptr<Expression> Construction;
+        std::shared_ptr<Expression> memexpr;
+        std::function<void(CodegenContext&)> destructor;
+        llvm::Value* ComputeValue(CodegenContext& con) override final {
+            auto val = Construction->GetValue(con);
+            if (destructor)
+                con.AddExceptionOnlyDestructor(destructor);
+            return val;
+        }
+        Type* GetType() override final {
+            return Construction->GetType();
+        }
+        MemberConstructionAccess(Type* mem, Lexer::Range where, std::shared_ptr<Expression> expr, std::shared_ptr<Expression> memexpr)
+            : member(mem), where(where), Construction(std::move(expr)), memexpr(memexpr)
+        {
+            if (!member->IsTriviallyDestructible())
+                destructor = member->BuildDestructorCall(memexpr, { member, where }, true);
+        }
+    };
+    for (std::size_t i = 0; i < GetBases().size(); ++i) {
+        auto lhs = GetMemberFromThis(self, [this, i] { return GetLayout().Offsets[i].ByteOffset; }, analyzer.GetLvalueType(GetBases()[i]));
         auto init = Type::BuildInplaceConstruction(lhs, initializers(i), c);
-        struct MemberConstructionAccess : Expression {
-            Type* member;
-            Lexer::Range where;
-            std::shared_ptr<Expression> Construction;
-            std::shared_ptr<Expression> memexpr;
-            std::function<void(CodegenContext&)> destructor;
-            llvm::Value* ComputeValue(CodegenContext& con) override final {
-                auto val = Construction->GetValue(con);
-                if (destructor)
-                    con.AddExceptionOnlyDestructor(destructor);
-                return val;
-            }
-            Type* GetType() override final {
-                return Construction->GetType();
-            }
-            MemberConstructionAccess(Type* mem, Lexer::Range where, std::shared_ptr<Expression> expr, std::shared_ptr<Expression> memexpr)
-                : member(mem), where(where), Construction(std::move(expr)), memexpr(memexpr)
-            {
-                if (!member->IsTriviallyDestructible())
-                    destructor = member->BuildDestructorCall(memexpr, { member, where }, true);
-            }
-        };
-        exprs.push_back(std::make_shared<MemberConstructionAccess>(type, c.where, init, lhs));
+        exprs.push_back(std::make_shared<MemberConstructionAccess>(GetBases()[i], c.where, init, lhs));
+    }
+    for (std::size_t i = 0; i < GetMembers().size(); ++i) {
+        auto lhs = GetMemberFromThis(self, [this, i] { return GetLayout().Offsets[i + GetBases().size()].ByteOffset; }, analyzer.GetLvalueType(GetMembers()[i]));
+        auto init = Type::BuildInplaceConstruction(lhs, initializers(i), c);
+        exprs.push_back(std::make_shared<MemberConstructionAccess>(GetMembers()[i], c.where, init, lhs));
     }
     exprs.push_back(Type::SetVirtualPointers(self));
     return exprs;
@@ -643,13 +699,14 @@ std::function<llvm::Constant*(llvm::Module*)> AggregateType::GetRTTI() {
 }
 
 MemberLocation AggregateType::GetLocation(unsigned i) {
+    // Not used until code-gen time.
     if (GetLayout().Offsets[i].FieldIndex)
         return LLVMFieldIndex{ *GetLayout().Offsets[i].FieldIndex };
     return EmptyBaseOffset{ GetLayout().Offsets[i].ByteOffset };
 }
 bool AggregateType::IsTriviallyDestructible() {
-    return GetLayout().triviallydestructible;
+    return GetProperties().triviallydestructible;
 }
 bool AggregateType::IsTriviallyCopyConstructible() {
-    return GetLayout().triviallycopyconstructible;
+    return GetProperties().triviallycopyconstructible;
 }

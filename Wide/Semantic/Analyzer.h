@@ -204,11 +204,13 @@ namespace Wide {
         bool IsRvalueType(Type* t);
         bool IsLvalueType(Type* t);
         Parse::Access GetAccessSpecifier(Type* from, Type* to);
+        void AnalyzeExportedFunctions(Analyzer& a, std::function<void(const Parse::AttributeFunctionBase*, std::string, Module*)> func);
         void AnalyzeExportedFunctions(Analyzer& a);
         bool IsMultiTyped(const Parse::FunctionArgument& f);
         bool IsMultiTyped(const Parse::FunctionBase* f);
         Type* InferTypeFromExpression(Expression* e, bool local);
         std::string GetOperatorName(Parse::OperatorName name);
         std::string GetNameAsString(Parse::Name name);
+        
     }
 }

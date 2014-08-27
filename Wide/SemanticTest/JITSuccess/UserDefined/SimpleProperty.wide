@@ -1,0 +1,6 @@
+type t {
+    using name := true;
+}
+Main() {
+    return t().name;
+}

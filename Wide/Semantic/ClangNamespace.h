@@ -19,7 +19,7 @@ namespace Wide {
         
             std::shared_ptr<Expression> AccessNamedMember(std::shared_ptr<Expression> t, std::string name, Context c) override final;
             OverloadSet* CreateOperatorOverloadSet(Parse::OperatorName what, Parse::Access access, OperatorAccess kind) override final;
-            Type* GetContext() override final;
+            ClangNamespace* GetContext() override final;
             ClangTU* GetTU() { return from; }
             std::string explain() override final;
             bool IsLookupContext() override final { return true; }

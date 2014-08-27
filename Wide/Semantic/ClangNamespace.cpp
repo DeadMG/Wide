@@ -41,7 +41,7 @@ std::shared_ptr<Expression> ClangNamespace::AccessNamedMember(std::shared_ptr<Ex
             return BuildChain(std::move(t), analyzer.GetOverloadSet(std::move(decls), from, GetContext())->BuildValueConstruction({}, { this, c.where }));
         }
         if (auto vardecl = llvm::dyn_cast<clang::VarDecl>(result)) {
-            auto object = from->GetObject(vardecl);
+            auto object = from->GetObject(analyzer, vardecl);
             return CreatePrimUnOp(std::move(t), analyzer.GetLvalueType(analyzer.GetClangType(*from, vardecl->getType())), [object](llvm::Value*, CodegenContext& con) {
                 return object(con);
             });
@@ -62,14 +62,25 @@ std::shared_ptr<Expression> ClangNamespace::AccessNamedMember(std::shared_ptr<Ex
     return BuildChain(std::move(t), analyzer.GetOverloadSet(std::move(decls), from, GetContext())->BuildValueConstruction({}, { this, c.where }));
 }
 
-Type* ClangNamespace::GetContext() {
+ClangNamespace* ClangNamespace::GetContext() {
     if (con == from->GetDeclContext())
         return nullptr;
     return analyzer.GetClangNamespace(*from, con->getParent());
 }
+
 std::string ClangNamespace::explain() {
     if (con == from->GetDeclContext())
-        return "cpp(\"" + from->GetFilename() + "\")";
+        return "";
+    if (GetContext()->con == from->GetDeclContext()) {
+        auto namespac = llvm::dyn_cast<clang::NamespaceDecl>(con);
+        auto sloc = namespac->getLocation();
+        std::string filepath;
+        while (sloc.isValid() && sloc != from->GetFileEnd()) {
+            filepath = from->GetASTContext().getSourceManager().getFilename(sloc);
+            sloc = from->GetASTContext().getSourceManager().getIncludeLoc(from->GetASTContext().getSourceManager().getFileID(sloc));
+        }
+        return "cpp(\"" + filepath + "\")." + namespac->getName().str();
+    }
     auto names = llvm::dyn_cast<clang::NamespaceDecl>(con);
     return GetContext()->explain() + "." + names->getName().str();
 }

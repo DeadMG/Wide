@@ -545,7 +545,7 @@ std::shared_ptr<Expression> ClangFunctionType::CreateThunkFrom(std::shared_ptr<E
             return func;
         }
     };
-    auto obj = from->GetObject(decl);
-    auto emit = CreateThunk(from->GetObject(decl), dest, decl, context);
+    auto obj = from->GetObject(analyzer, decl);
+    auto emit = CreateThunk(obj, dest, decl, context);
     return std::make_shared<self>(emit, this, obj);
 }

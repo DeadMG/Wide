@@ -84,13 +84,13 @@ std::shared_ptr<Expression> Module::AccessNamedMember(std::shared_ptr<Expression
     return nullptr;
 }
 std::string Module::explain() {
-    if (!context) return "";
+    if (!context) return ".";
     std::string name;
     for (auto decl : context->GetASTModule()->named_decls) {
         if (auto mod = boost::get<std::pair<Parse::Access, Parse::Module*>>(&decl.second))
             name = decl.first;
     }
     if (context == analyzer.GetGlobalModule())
-        return name;
+        return "." + name;
     return context->explain() + "." + name;
 }

@@ -1,0 +1,9 @@
+using header := cpp.literal("bool b = false;");
+type t {
+    type() { header.b = true; }
+    name := true;
+    using property := header.b & name;
+}
+Main() {
+    return t().property;
+}

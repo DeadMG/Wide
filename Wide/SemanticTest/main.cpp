@@ -63,8 +63,6 @@ int main(int argc, char** argv) {
             return modes[input["mode"].as<std::string>()]();
         return 1;
     }
-//   Jit(clangopts, "JITSuccess/CPPInterop/ExportMemberOperator.wide");
-//    Compile(clangopts, "CompileFail/OverloadResolutionFailure/ModuleOperator.wide");
     std::unordered_map<std::string, std::function<bool()>> files;
 #pragma warning(disable : 4800)
     for(auto mode : modes) {

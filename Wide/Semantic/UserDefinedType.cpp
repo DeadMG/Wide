@@ -200,14 +200,14 @@ std::vector<UserDefinedType::member> UserDefinedType::GetConstructionMembers() {
     for (unsigned i = 0; i < type->bases.size(); ++i) {
         member m(type->bases[i]->location);
         m.t = GetBases()[i];
-        m.num = { GetOffset(i) };
+        m.num = [this, i] { return GetOffset(i); };
         out.push_back(std::move(m));
     }
     for (unsigned i = 0; i < type->variables.size(); ++i) {
         member m(type->variables[i].where);
         m.t = GetMembers()[i];
         m.name = type->variables[i].name;
-        m.num = { GetOffset(i + type->bases.size()) };
+        m.num = [this, i] { return GetOffset(i + type->bases.size()); };
         if (GetMemberData().NSDMIs[i])
             m.InClassInitializer = [this, i](std::shared_ptr<Expression>) { return analyzer.AnalyzeExpression(context, GetMemberData().NSDMIs[i]); };
         out.push_back(std::move(m));
@@ -394,7 +394,7 @@ Wide::Util::optional<clang::QualType> UserDefinedType::GetClangType(ClangTU& TU)
         recdecl->addDecl(des);
         auto widedes = analyzer.GetWideFunction(type->destructor_decl, this, { analyzer.GetLvalueType(this) }, "~type");
         widedes->ComputeBody();
-        widedes->AddExportName(GetFunctionType(des, TU, analyzer)->CreateThunk(TU.GetObject(des, clang::CXXDtorType::Dtor_Complete), widedes->GetStaticSelf(), des, this));
+        widedes->AddExportName(GetFunctionType(des, TU, analyzer)->CreateThunk(TU.GetObject(analyzer, des, clang::CXXDtorType::Dtor_Complete), widedes->GetStaticSelf(), des, this));
     }
     for (auto access : type->constructor_decls) {
         for (auto func : access.second) {
@@ -422,7 +422,7 @@ Wide::Util::optional<clang::QualType> UserDefinedType::GetClangType(ClangTU& TU)
             if (!func->deleted) {
                 auto mfunc = analyzer.GetWideFunction(func, this, types, "type");
                 mfunc->ComputeBody();
-                mfunc->AddExportName(GetFunctionType(con, TU, analyzer)->CreateThunk(TU.GetObject(con, clang::CXXCtorType::Ctor_Complete), mfunc->GetStaticSelf(), con, this));
+                mfunc->AddExportName(GetFunctionType(con, TU, analyzer)->CreateThunk(TU.GetObject(analyzer, con, clang::CXXCtorType::Ctor_Complete), mfunc->GetStaticSelf(), con, this));
             } else
                 con->setDeletedAsWritten(true);
         }
@@ -502,21 +502,12 @@ Wide::Util::optional<clang::QualType> UserDefinedType::GetClangType(ClangTU& TU)
                 else {
                     auto mfunc = analyzer.GetWideFunction(func, this, types, GetNameAsString(overset.first));
                     mfunc->ComputeBody();
-                    mfunc->AddExportName(GetFunctionType(meth, TU, analyzer)->CreateThunk(TU.GetObject(meth), mfunc->GetStaticSelf(), meth, this));
+                    mfunc->AddExportName(GetFunctionType(meth, TU, analyzer)->CreateThunk(TU.GetObject(analyzer, meth), mfunc->GetStaticSelf(), meth, this));
                 }
             }
         }
     }
     recdecl->completeDefinition();
-    auto&& layout = TU.GetASTContext().getASTRecordLayout(recdecl);
-    assert(layout.getSize().getQuantity() == size());
-    assert(layout.getAlignment().getQuantity() == alignment());
-    for (auto base : GetBasesAndOffsets()) {
-        assert(layout.getBaseClassOffset((*base.first->GetClangType(TU))->getAsCXXRecordDecl()).getQuantity() == base.second);
-    }    
-    for (int i = 0; i < GetMembers().size(); ++i) {
-        assert((layout.getFieldOffset(i) / 8) == AggregateType::GetOffset(i + GetBases().size()));
-    }
     TU.GetDeclContext()->addDecl(recdecl);
     return clangtypes[&TU];
 }

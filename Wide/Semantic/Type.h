@@ -342,7 +342,7 @@ namespace Wide {
                 Type* t;
                 // Not necessarily actually an empty base but ClangType will only give us offsets pre-codegen.
                 // and it could be an empty base so use offsets
-                EmptyBaseOffset num;
+                std::function<unsigned()> num;
                 std::function<std::shared_ptr<Expression>(std::shared_ptr<Expression>)> InClassInitializer;
                 Lexer::Range location;
             };

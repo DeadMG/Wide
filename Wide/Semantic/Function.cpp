@@ -650,6 +650,7 @@ Function::Function(std::vector<Type*> args, const Parse::FunctionBase* astfun, A
                         auto overset = dynamic_cast<OverloadSet*>(expr->GetType()->Decay());
                         if (!overset)
                             continue;
+                            //throw NotAType(expr->GetType()->Decay(), attr.initializer->location);
                         auto tuanddecl = overset->GetSingleFunction();
                         if (!tuanddecl.second) throw NotAType(expr->GetType()->Decay(), attr.initializer->location);
                         auto tu = tuanddecl.first;
@@ -657,12 +658,17 @@ Function::Function(std::vector<Type*> args, const Parse::FunctionBase* astfun, A
                         std::function<llvm::Function*(llvm::Module*)> source;
 
                         if (auto des = llvm::dyn_cast<clang::CXXDestructorDecl>(decl))
-                            source = tu->GetObject(des, clang::CXXDtorType::Dtor_Complete);
+                            source = tu->GetObject(analyzer, des, clang::CXXDtorType::Dtor_Complete);
                         else if (auto con = llvm::dyn_cast<clang::CXXConstructorDecl>(decl))
-                            source = tu->GetObject(con, clang::CXXCtorType::Ctor_Complete);
+                            source = tu->GetObject(analyzer, con, clang::CXXCtorType::Ctor_Complete);
                         else
-                            source = tu->GetObject(decl);
+                            source = tu->GetObject(analyzer, decl);
                         clang_exports.push_back(std::make_tuple(source, GetFunctionType(decl, *tu, analyzer), decl));
+                    }
+                    if (*string == "import_name") {
+                        auto expr = analyzer.AnalyzeExpression(GetContext(), attr.initializer);
+                        auto string = dynamic_cast<StringType*>(expr->GetType()->Decay());
+                        import_name = string->GetValue();
                     }
                 }
             }
@@ -694,15 +700,21 @@ Wide::Util::optional<clang::QualType> Function::GetClangType(ClangTU& where) {
 void Function::ComputeBody() {
     if (s == State::NotYetAnalyzed) {
         s = State::AnalyzeInProgress;
-        // Initializers first, if we are a constructor, then set virtual pointers.
+        // If we're imported, skip everything.
+        if (import_name) {
+            ComputeReturnType(); // Must have explicit return type for now.
+            s = State::AnalyzeCompleted;
+            return;
+        }
+        // Initializers first, if we are a constructor, then set virtual pointers.        
         if (auto con = dynamic_cast<const Parse::Constructor*>(fun)) {
             if (!ConstructorContext) throw std::runtime_error("fuck");
             auto member = *ConstructorContext;
             auto members = member->GetConstructionMembers();
-            auto make_member = [this](Type* result, unsigned offset, std::shared_ptr<Expression> self) {
+            auto make_member = [this](Type* result, std::function<unsigned()> offset, std::shared_ptr<Expression> self) {
                 return CreatePrimUnOp(self, result, [offset, result](llvm::Value* val, CodegenContext& con) -> llvm::Value* {                    
                     auto self = con->CreatePointerCast(val, con.GetInt8PtrTy());
-                    self = con->CreateConstGEP1_32(self, offset);
+                    self = con->CreateConstGEP1_32(self, offset());
                     return con->CreatePointerCast(self, result->GetLLVMType(con));
                 });
             };
@@ -712,7 +724,7 @@ void Function::ComputeBody() {
                 if (Args.size() == 1) {
                     // Default-or-NSDMI all the things.
                     for (auto&& x : members) {
-                        auto member = make_member(analyzer.GetLvalueType(x.t), x.num.offset, LookupLocal("this"));
+                        auto member = make_member(analyzer.GetLvalueType(x.t), x.num, LookupLocal("this"));
                         std::vector<std::shared_ptr<Expression>> inits;
                         if (x.InClassInitializer)
                             inits = { x.InClassInitializer(LookupLocal("this")) };
@@ -723,7 +735,7 @@ void Function::ComputeBody() {
                     // Copy constructor- copy all.
                     unsigned i = 0;
                     for (auto&& x : members) {                        
-                        auto member_ref = make_member(analyzer.GetLvalueType(x.t), x.num.offset, LookupLocal("this"));
+                        auto member_ref = make_member(analyzer.GetLvalueType(x.t), x.num, LookupLocal("this"));
                         root_scope->active.push_back(Type::BuildInplaceConstruction(member_ref, { member->PrimitiveAccessMember(parameters[1], i++) }, { this, con->where }));
                     }
                     root_scope->active.push_back(Type::SetVirtualPointers(LookupLocal("this")));
@@ -731,7 +743,7 @@ void Function::ComputeBody() {
                     // move constructor- move all.
                     unsigned i = 0;
                     for (auto&& x : members) {
-                        auto member_ref = make_member(analyzer.GetLvalueType(x.t), x.num.offset, LookupLocal("this"));
+                        auto member_ref = make_member(analyzer.GetLvalueType(x.t), x.num, LookupLocal("this"));
                         root_scope->active.push_back(Type::BuildInplaceConstruction(member_ref, { member->PrimitiveAccessMember(std::make_shared<RvalueCast>(parameters[1]), i++) }, { this, con->where }));
                     }
                     root_scope->active.push_back(Type::SetVirtualPointers(LookupLocal("this")));
@@ -819,7 +831,7 @@ void Function::ComputeBody() {
                             }
                         };
                         auto make_member_initializer = [&, this](std::vector<std::shared_ptr<Expression>> init, Lexer::Range where) {
-                            auto member = make_member(analyzer.GetLvalueType(x.t), x.num.offset, LookupLocal("this"));
+                            auto member = make_member(analyzer.GetLvalueType(x.t), x.num, LookupLocal("this"));
                             auto construction = Type::BuildInplaceConstruction(member, std::move(init), { this, where });
                             return Wide::Memory::MakeUnique<MemberConstructionAccess>(x.t, where, std::move(construction), member);
                         };
@@ -914,7 +926,7 @@ void Function::ComputeBody() {
                 auto result = analyzer.GetLvalueType(rit->t);
                 auto member = CreatePrimUnOp(LookupLocal("this"), result, [num, result](llvm::Value* val, CodegenContext& con) -> llvm::Value* {
                     auto self = con->CreatePointerCast(val, con.GetInt8PtrTy());
-                    self = con->CreateConstGEP1_32(self, num.offset);
+                    self = con->CreateConstGEP1_32(self, num());
                     return con->CreatePointerCast(self, result->GetLLVMType(con));
                 });
                 root_scope->active.push_back(std::make_shared<DestructorCall>(rit->t->BuildDestructorCall(member, { this, fun->where }, true), analyzer));
@@ -986,7 +998,13 @@ llvm::Function* Function::EmitCode(llvm::Module* module) {
         return llvmfunc;
     auto sig = GetSignature();
     auto llvmsig = sig->GetLLVMType(module);
-    llvmfunc = llvm::Function::Create(llvm::dyn_cast<llvm::FunctionType>(llvmsig->getElementType()), llvm::GlobalValue::LinkageTypes::InternalLinkage, analyzer.GetUniqueFunctionName(), module);
+    if (import_name) {
+        llvmfunc = llvm::Function::Create(llvm::dyn_cast<llvm::FunctionType>(llvmsig->getElementType()), llvm::GlobalValue::LinkageTypes::ExternalLinkage, *import_name, module);
+        for (auto exportnam : trampoline)
+            exportnam(module);
+        return llvmfunc;
+    }
+    llvmfunc = llvm::Function::Create(llvm::dyn_cast<llvm::FunctionType>(llvmsig->getElementType()), llvm::GlobalValue::LinkageTypes::ExternalLinkage, analyzer.GetUniqueFunctionName(), module);
     CodegenContext::EmitFunctionBody(llvmfunc, [this](CodegenContext& c) {
         for (auto&& stmt : root_scope->active)
             if (!c.IsTerminated(c->GetInsertBlock()))

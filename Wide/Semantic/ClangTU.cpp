@@ -346,7 +346,7 @@ void ClangTU::MarkDecl(clang::NamedDecl* D) {
     }
     impl->sema.MarkAnyDeclReferenced(clang::SourceLocation(), D, true);
 }
-std::function<llvm::Function*(llvm::Module*)> ClangTU::GetObject(clang::CXXDestructorDecl* D, clang::CXXDtorType d) {
+std::function<llvm::Function*(llvm::Module*)> ClangTU::GetObject(Analyzer& a, clang::CXXDestructorDecl* D, clang::CXXDtorType d) {
     MarkDecl(D);
     impl->destructors.insert(std::make_pair(D, d));
     return [this, D, d](llvm::Module* module) {
@@ -357,7 +357,7 @@ std::function<llvm::Function*(llvm::Module*)> ClangTU::GetObject(clang::CXXDestr
         return func;
     };
 }
-std::function<llvm::Function*(llvm::Module*)> ClangTU::GetObject(clang::CXXConstructorDecl* D, clang::CXXCtorType d) {
+std::function<llvm::Function*(llvm::Module*)> ClangTU::GetObject(Analyzer& a, clang::CXXConstructorDecl* D, clang::CXXCtorType d) {
     MarkDecl(D);
     impl->constructors.insert(std::make_pair(D, d));
     return [this, D, d](llvm::Module* module) {
@@ -368,7 +368,7 @@ std::function<llvm::Function*(llvm::Module*)> ClangTU::GetObject(clang::CXXConst
         return func;
     };
 }
-std::function<llvm::GlobalVariable*(llvm::Module*)> ClangTU::GetObject(clang::VarDecl* D) {
+std::function<llvm::GlobalVariable*(llvm::Module*)> ClangTU::GetObject(Analyzer& a, clang::VarDecl* D) {
     MarkDecl(D);
     impl->globals.insert(D);
     return [this, D](llvm::Module* module) {
@@ -379,14 +379,14 @@ std::function<llvm::GlobalVariable*(llvm::Module*)> ClangTU::GetObject(clang::Va
         return func;
     };
 }
-std::function<llvm::Function*(llvm::Module*)> ClangTU::GetObject(clang::FunctionDecl *D) {
+std::function<llvm::Function*(llvm::Module*)> ClangTU::GetObject(Analyzer& a, clang::FunctionDecl *D) {
     assert(!llvm::dyn_cast<clang::CXXConstructorDecl>(D));
     assert(!llvm::dyn_cast<clang::CXXDestructorDecl>(D));
 
     MarkDecl(D);
     impl->functions.insert(D);
-    return [this, D](llvm::Module* module) -> llvm::Function* {
-        auto val = impl->GetCodegenModule(module).GetAddrOfFunction(D);
+    return [this, D, &a](llvm::Module* module) -> llvm::Function* {
+        auto val = impl->GetCodegenModule(module).GetAddrOfFunction(D, GetFunctionType(D, *this, a)->GetLLVMType(module)->getElementType());
         assert(val);
         auto func = llvm::dyn_cast<llvm::Function>(val);
         if (func) return func;

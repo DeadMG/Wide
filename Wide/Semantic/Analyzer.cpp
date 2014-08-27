@@ -159,16 +159,8 @@ Analyzer::Analyzer(const Options::Clang& opts, const Parse::Module* GlobalModule
     global->AddSpecialMember("null", GetNullType()->BuildValueConstruction({}, context));
     global->AddSpecialMember("reinterpret_cast", GetOverloadSet(PointerCast.get())->BuildValueConstruction({}, context));
     global->AddSpecialMember("move", GetOverloadSet(Move.get())->BuildValueConstruction({}, context));
-
-    auto str = "";
-    llvm::SmallVector<char, 30> fuck_out_parameters;
-    auto error = llvm::sys::fs::createTemporaryFile("", "", fuck_out_parameters);
-    std::string path(fuck_out_parameters.begin(), fuck_out_parameters.end());
-    std::ofstream file(path, std::ios::out);
-    file << str;
-    file.flush();
-    file.close();
-    AggregateCPPHeader(path, context.where);
+        
+    AggregateCPPHeader("typeinfo", context.where);
     
     AddExpressionHandler<Parse::String>([](Analyzer& a, Type* lookup, const Parse::String* str) {
         return Wide::Memory::MakeUnique<String>(str->val, a);
@@ -750,6 +742,10 @@ Analyzer::Analyzer(const Options::Clang& opts, const Parse::Module* GlobalModule
         auto ty = object->GetType();
         return std::make_shared<DestructorCall>(ty->Decay()->BuildDestructorCall(std::move(object), { lookup, des->location }, false), a);
     });
+
+    AddExpressionHandler<Parse::GlobalModuleReference>([](Analyzer& a, Type* lookup, const Parse::GlobalModuleReference* globmod) -> std::shared_ptr < Expression > {
+        return a.GetGlobalModule()->BuildValueConstruction({}, { lookup, globmod->location });
+    });
 }
 
 ClangTU* Analyzer::LoadCPPHeader(std::string file, Lexer::Range where) {
@@ -770,6 +766,10 @@ ClangTU* Analyzer::AggregateCPPHeader(std::string file, Lexer::Range where) {
 }
 
 void Analyzer::GenerateCode(llvm::Module* module) {
+    // Ensure that all layout conversions are done before codegen
+    for (auto&& udt : UDTs)
+        for (auto&& pair : udt.second)
+            pair.second->size();
     if (AggregateTU)
         AggregateTU->GenerateCodeAndLinkModule(module, layout, *this);
     for (auto&& tu : headers)
@@ -1184,51 +1184,55 @@ Parse::Access Semantic::GetAccessSpecifier(Type* from, Type* to) {
 
     return Parse::Access::Public;
 }
-
-void ProcessFunction(const Parse::AttributeFunctionBase* f, Analyzer& a, Module* m, std::string name) {
-    if (IsMultiTyped(f)) return;
-    bool exported = false;
-    for (auto attr : f->attributes) {
-        if (auto ident = dynamic_cast<const Parse::Identifier*>(attr.initialized))
-            if (auto str = boost::get<std::string>(&ident->val))
-                if (*str == "export")
-                    exported = true;
+namespace {
+    void ProcessFunction(const Parse::AttributeFunctionBase* f, Analyzer& a, Module* m, std::string name, std::function<void(const Parse::AttributeFunctionBase*, std::string, Module*)> callback) {
+        if (IsMultiTyped(f)) return;
+        bool exported = false;
+        for (auto attr : f->attributes) {
+            if (auto ident = dynamic_cast<const Parse::Identifier*>(attr.initialized))
+                if (auto str = boost::get<std::string>(&ident->val))
+                    if (*str == "export")
+                        exported = true;
+        }
+        if (!exported) return;
+        if (auto func = dynamic_cast<const Parse::Function*>(f))
+            if (func->deleted)
+                return;
+        if (auto con = dynamic_cast<const Parse::Constructor*>(f))
+            if (con->defaulted)
+                return;
+        callback(f, name, m);
     }
-    if (!exported) return;
-    if (auto func = dynamic_cast<const Parse::Function*>(f))
-        if (func->deleted)
-            return;
-    if (auto con = dynamic_cast<const Parse::Constructor*>(f))
-        if (con->defaulted)
-            return;
-    std::vector<Type*> types = a.GetFunctionParameters(f, m);
-    auto func = a.GetWideFunction(f, m, types, name);
-    func->ComputeBody();
-}
-template<typename T> void ProcessOverloadSet(std::unordered_set<T*> set, Analyzer& a, Module* m, std::string name) {
-    for (auto func : set) {
-        ProcessFunction(func, a, m, name);
+    template<typename T> void ProcessOverloadSet(std::unordered_set<T*> set, Analyzer& a, Module* m, std::string name, std::function<void(const Parse::AttributeFunctionBase*, std::string, Module*)> callback) {
+        for (auto func : set) {
+            ProcessFunction(func, a, m, name, callback);
+        }
     }
 }
 
-void AnalyzeExportedFunctionsInModule(Analyzer& a, Module* m) {
+void AnalyzeExportedFunctionsInModule(Analyzer& a, Module* m, std::function<void(const Parse::AttributeFunctionBase*, std::string, Module*)> callback) {
     auto mod = m->GetASTModule();
-    ProcessOverloadSet(mod->constructor_decls, a, m, "type");
-    ProcessOverloadSet(mod->destructor_decls, a, m, "~type");
+    ProcessOverloadSet(mod->constructor_decls, a, m, "type", callback);
+    ProcessOverloadSet(mod->destructor_decls, a, m, "~type", callback);
     for (auto name : mod->OperatorOverloads) {
         for (auto access : name.second) {
-            ProcessOverloadSet(access.second, a, m, GetNameAsString(name.first));
+            ProcessOverloadSet(access.second, a, m, GetNameAsString(name.first), callback);
         }
     }
     for (auto&& decl : mod->named_decls) {
         if (auto overset = boost::get<std::unordered_map<Parse::Access, std::unordered_set<Parse::Function*>>>(&decl.second)) {
             for (auto access : (*overset))
-                ProcessOverloadSet(access.second, a, m, decl.first);
+                ProcessOverloadSet(access.second, a, m, decl.first, callback);
         }
     }
 }
+void Semantic::AnalyzeExportedFunctions(Analyzer& a, std::function<void(const Parse::AttributeFunctionBase*, std::string, Module*)> callback) {
+    AnalyzeExportedFunctionsInModule(a, a.GetGlobalModule(), callback);
+}
 void Semantic::AnalyzeExportedFunctions(Analyzer& a) {
-    AnalyzeExportedFunctionsInModule(a, a.GetGlobalModule());
+    AnalyzeExportedFunctions(a, [](const Parse::AttributeFunctionBase* func, std::string name, Module* m) {
+        m->analyzer.GetWideFunction(func, m, name)->ComputeBody();
+    });
 }
 OverloadResolvable* Analyzer::GetCallableForTemplateType(const Parse::TemplateType* t, Type* context) {
     if (TemplateTypeCallables.find(t) != TemplateTypeCallables.end())

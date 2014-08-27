@@ -68,11 +68,11 @@ struct cppcallable : public Callable {
             : func(func), from(from), fty(fty), self(arg) 
             {
                 if (auto con = llvm::dyn_cast<clang::CXXConstructorDecl>(func))
-                    fun = from->GetObject(con, clang::CXXCtorType::Ctor_Complete);
+                    fun = from->GetObject(fty->analyzer, con, clang::CXXCtorType::Ctor_Complete);
                 else if (auto des = llvm::dyn_cast<clang::CXXDestructorDecl>(func))
-                    fun = from->GetObject(des, clang::CXXDtorType::Dtor_Complete);
+                    fun = from->GetObject(fty->analyzer, des, clang::CXXDtorType::Dtor_Complete);
                 else
-                    fun = from->GetObject(func);
+                    fun = from->GetObject(fty->analyzer, func);
                 if (auto meth = llvm::dyn_cast<clang::CXXMethodDecl>(func)) {
                     if (meth->isVirtual()) {
                         auto selfty = self->GetType();

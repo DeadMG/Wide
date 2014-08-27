@@ -132,7 +132,7 @@ void Jit(Wide::Options::Clang& copts, std::string file) {
     files.push_back(file);
     copts.HeaderSearchOptions->AddPath("../WideLibrary", clang::frontend::IncludeDirGroup::System, false, false);
     llvm::Function* main = nullptr;
-    Wide::Driver::Compile(copts, [&](Wide::Semantic::Analyzer& a, const Wide::Parse::Module* root) {
+    Wide::Driver::Compile(copts, files, [&](Wide::Semantic::Analyzer& a, const Wide::Parse::Module* root) {
         Wide::Semantic::AnalyzeExportedFunctions(a);
         auto m = Wide::Semantic::Type::AccessMember(a.GetGlobalModule()->BuildValueConstruction({}, { a.GetGlobalModule(), loc }), std::string("Main"), { a.GetGlobalModule(), loc });
         if (!m)
@@ -150,7 +150,7 @@ void Jit(Wide::Options::Clang& copts, std::string file) {
         main = f->EmitCode(module.get());
         if (llvm::verifyModule(*module, llvm::VerifierFailureAction::PrintMessageAction))
             throw std::runtime_error("An LLVM module failed verification.");
-    }, files);
+    });
     llvm::EngineBuilder b(module.get());
     auto mod = module.get();
     // MCJIT simplifies the code even if you don't ask it to so dump before it's invoked
@@ -215,12 +215,22 @@ const std::unordered_map<std::string, std::function<bool(Wide::Semantic::Error& 
     { "OverloadResolutionFailure", [](Wide::Semantic::Error& err) { return (bool)dynamic_cast<Wide::Semantic::OverloadResolutionFailure*>(&err); } },
 };
 
-void Compile(const Wide::Options::Clang& copts, std::string file) {
+void Compile(Wide::Options::Clang& copts, std::string file) {
+#ifdef _MSC_VER
+    const std::string MinGWInstallPath = "../Deployment/MinGW/";
+    Wide::Driver::AddMinGWIncludePaths(copts, MinGWInstallPath);
+#else
+    Wide::Driver::AddLinuxIncludePaths(copts);
+#endif
     std::string name;
     static const auto loc = Wide::Lexer::Range(std::make_shared<std::string>("Test harness internal"));
     llvm::LLVMContext con;
     auto module = Wide::Util::CreateModuleForTriple(copts.TargetOptions.Triple, con);
-    Wide::Driver::Compile(copts, [&](Wide::Semantic::Analyzer& a, const Wide::Parse::Module* root) {
+    auto stdlib = Wide::Driver::SearchStdlibDirectory("../WideLibrary", copts.TargetOptions.Triple);
+    std::vector<std::string> files(stdlib.begin(), stdlib.end());
+    copts.HeaderSearchOptions->AddPath("../WideLibrary", clang::frontend::IncludeDirGroup::System, false, false);
+    files.push_back(file);
+    Wide::Driver::Compile(copts, files, [&](Wide::Semantic::Analyzer& a, const Wide::Parse::Module* root) {
         auto global = a.GetGlobalModule()->BuildValueConstruction({}, { a.GetGlobalModule(), loc });
         auto failure = Wide::Semantic::Type::AccessMember(global, std::string("ExpectedFailure"), { a.GetGlobalModule(), loc });
         if (!failure)
@@ -290,6 +300,6 @@ void Compile(const Wide::Options::Clang& copts, std::string file) {
             if (err.location().end.column != endcolumn)
                 throw std::runtime_error("Exception location did not match return from ExpectedFailure!" + to_string(err.location()));
         }
-    }, { file });
+    });
 }
 
