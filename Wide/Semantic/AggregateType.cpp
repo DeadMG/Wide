@@ -73,43 +73,6 @@ AggregateType::Layout::Layout(AggregateType* agg, Wide::Semantic::Analyzer& a)
     auto members_size = agg->GetMembers().size();
     Offsets.resize(bases_size + members_size);
 
-    if (auto clangty = agg->GetClangType(*a.GetAggregateTU())) {
-        // Convert the Clang record layout format to our own.
-        auto recdecl = (*clangty)->getAsCXXRecordDecl();
-        auto&& TU = *a.GetAggregateTU();
-        auto ty = *clangty;
-        auto&& layout = TU.GetASTContext().getASTRecordLayout(recdecl);
-        hasvptr = layout.hasOwnVFPtr();
-        align = layout.getAlignment().getQuantity();
-        allocsize = layout.getSize().getQuantity();
-        auto bases = agg->GetBases();
-        if (layout.getPrimaryBase())
-            PrimaryBase = a.GetClangType(TU, TU.GetASTContext().getRecordType(layout.getPrimaryBase()));
-        
-        // Offset by 1 for vptr or primary base.
-        for (unsigned basenum = 0; basenum < bases.size(); ++basenum) {
-            auto base = bases[basenum];
-            auto offset = layout.getBaseClassOffset((*base->GetClangType(TU))->getAsCXXRecordDecl()).getQuantity();
-            Offsets[basenum] = { base, offset };
-        }
-        for (unsigned fieldnum = 0; fieldnum < agg->GetMembers().size(); ++fieldnum) {
-            auto aggnum = fieldnum + agg->GetBases().size();
-            Offsets[aggnum] = { agg->GetMembers()[fieldnum], layout.getFieldOffset(fieldnum) / 8 };
-        }
-        struct Self : public Expression {
-            Self(AggregateType* me) : self(me) {}
-            AggregateType* self;
-            Type* GetType() override final { return self->analyzer.GetLvalueType(self); }
-            llvm::Value* ComputeValue(CodegenContext& c) override final { return self->DestructorFunction->arg_begin(); }
-        };
-        auto destructor_self = std::make_shared<Self>(agg);
-        for (int i = Offsets.size() - 1; i >= 0; --i) {
-            auto member = Offsets[i].ty;
-            agg->destructors.push_back(member->BuildDestructorCall(agg->PrimitiveAccessMember(destructor_self, i), { agg, Lexer::Range(std::make_shared<std::string>("AggregateDestructor")) }, true));
-        }
-        return;
-    }
-
     // http://refspecs.linuxbase.org/cxxabi-1.83.html#class-types
     // 2.4.1
     // Initialize variables, including primary base.

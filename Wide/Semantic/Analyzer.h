@@ -15,6 +15,7 @@
 
 #pragma warning(push, 0)
 #include <clang/AST/Type.h>
+#include <clang/AST/CharUnits.h>
 #include <llvm/IR/DataLayout.h>
 #pragma warning(pop)
 
@@ -79,13 +80,23 @@ namespace Wide {
         class LambdaType;
         class MemberDataPointer;
         class MemberFunctionPointer;
+        struct ClangTypeInfo {
+            Type* ty;
+            std::function<void()> Complete;
+            std::function<void(
+                uint64_t&, 
+                uint64_t&, 
+                llvm::DenseMap<const clang::FieldDecl*, uint64_t>&,
+                llvm::DenseMap<const clang::CXXRecordDecl*, clang::CharUnits>&, 
+                llvm::DenseMap<const clang::CXXRecordDecl*, clang::CharUnits>&
+            )> Layout;
+        };
         class Analyzer {
             std::unique_ptr<ClangTU> AggregateTU;
             Module* global;
             boost::uuids::random_generator uuid_generator;
             std::unordered_map<std::unordered_set<OverloadResolvable*>, std::unordered_map<Type*, std::unique_ptr<OverloadSet>>, SetTypeHasher> callable_overload_sets;
             std::unordered_map<std::string, ClangTU> headers;
-            std::unordered_map<clang::QualType, Type*, ClangTypeHasher> GeneratedClangTypes;
             std::unordered_map<clang::QualType, std::unique_ptr<ClangType>, ClangTypeHasher> ClangTypes;
             std::unordered_map<clang::DeclContext*, std::unique_ptr<ClangNamespace>> ClangNamespaces;
             std::unordered_map<Type*, std::unordered_map<std::vector<Type*>, std::map<llvm::CallingConv::ID, std::unordered_map<bool, std::unique_ptr<WideFunctionType>>>, VectorTypeHasher>> FunctionTypes;
@@ -112,6 +123,7 @@ namespace Wide {
             std::unordered_map<Type*, std::unordered_map<FunctionType*, std::unique_ptr<MemberFunctionPointer>>> MemberFunctionPointers;
             std::unordered_map<const clang::FunctionProtoType*, std::unordered_map<clang::QualType, std::unordered_map<ClangTU*, std::unique_ptr<ClangFunctionType>>, ClangTypeHasher>> ClangMemberFunctionTypes;
             std::unordered_map<const clang::FunctionProtoType*, std::unordered_map<ClangTU*, std::unique_ptr<ClangFunctionType>>> ClangFunctionTypes;
+            std::unordered_map<const clang::CXXRecordDecl*, ClangTypeInfo> GeneratedClangTypes;
 
             const Options::Clang* clangopts;
 
@@ -132,7 +144,8 @@ namespace Wide {
             std::function<void(Lexer::Range where)> ParameterHighlight;
 
             const llvm::DataLayout& GetDataLayout() { return layout; }
-            void AddClangType(clang::QualType t, Type* match);
+            void AddClangType(const clang::CXXRecordDecl* t, ClangTypeInfo match);
+            ClangTypeInfo* MaybeGetClangTypeInfo(const clang::CXXRecordDecl* decl);
             
             Type* GetVoidType();
             Type* GetNullType();

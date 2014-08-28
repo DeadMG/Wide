@@ -1,0 +1,8 @@
+[size := 64]
+[align := 64]
+type t {
+}
+using header := cpp.literal("template<typename T> int size(T t) { return sizeof(T); } template<typename T> int align(T t) { return alignof(T); }");
+Main() {
+    return header.size(t()) == t.size & header.align(t()) == t.alignment;
+}

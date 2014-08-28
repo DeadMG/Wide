@@ -843,15 +843,15 @@ Type* Analyzer::GetClangType(ClangTU& from, clang::QualType t) {
         auto size = arrty->getSize();
         return GetArrayType(elemty, size.getLimitedValue());
     }
-    if (GeneratedClangTypes.find(t) != GeneratedClangTypes.end())
-        return GeneratedClangTypes[t];
+    if (auto recdecl = t->getAsCXXRecordDecl())
+        if (GeneratedClangTypes.find(recdecl) != GeneratedClangTypes.end())
+            return GeneratedClangTypes[recdecl].ty;
     if (ClangTypes.find(t) == ClangTypes.end())
         ClangTypes[t] = Wide::Memory::MakeUnique<ClangType>(&from, t, *this);
     return ClangTypes[t].get();
 }
-void Analyzer::AddClangType(clang::QualType t, Type* match) {
-    if (GeneratedClangTypes.find(t) != GeneratedClangTypes.end())
-        assert(false);
+void Analyzer::AddClangType(const clang::CXXRecordDecl* t, ClangTypeInfo match) {
+    assert(GeneratedClangTypes.find(t) == GeneratedClangTypes.end());
     GeneratedClangTypes[t] = match;
 }
 
@@ -1482,4 +1482,9 @@ std::function<void(CodegenContext&)> Semantic::ThrowObject(std::shared_ptr<Expre
             con->CreateUnreachable();
         }
     };
+}
+ClangTypeInfo* Analyzer::MaybeGetClangTypeInfo(const clang::CXXRecordDecl* decl) {
+    if (GeneratedClangTypes.find(decl) != GeneratedClangTypes.end())
+        return &GeneratedClangTypes[decl];
+    return nullptr;
 }

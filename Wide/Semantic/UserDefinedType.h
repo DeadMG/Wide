@@ -95,7 +95,7 @@ namespace Wide {
             bool HasDeclaredDynamicFunctions() override final;
 
             Type* GetSelfAsType() override final { return this; }
-            std::unordered_map<ClangTU*, clang::QualType> clangtypes;
+            std::unordered_map<ClangTU*, clang::CXXRecordDecl*> clangtypes;
             // Virtual function support functions.
             std::pair<FunctionType*, std::function<llvm::Function*(llvm::Module*)>> VirtualEntryFor(VTableLayout::VirtualFunctionEntry entry) override final;
             VTableLayout ComputePrimaryVTableLayout() override final;

@@ -15,7 +15,6 @@ Change AST to owning.
 Analyzer:
 Add unsafe pointer indexing.
 Add library is-a.
-Add inheriting constructors.
 Add static reflection.
 Change ADL to look up in base class.
 Consider constraints.
@@ -51,4 +50,3 @@ Change Compile so that the combiner errors are reported properly.
 Low hanging fruit:
 Inheriting constructors.
 Local using statements.
-UDT properties.

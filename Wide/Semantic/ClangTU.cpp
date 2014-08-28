@@ -121,8 +121,35 @@ public:
     // Clang has a really annoying habit of changing it's mind about this
     // producing multiple distinct llvm::Type*s for one QualType, so perform
     // our own caching on top.    
-    
-    Impl(std::string file, const Wide::Options::Clang& opts, Lexer::Range where)        
+
+    struct WideASTSource : clang::ExternalASTSource, llvm::RefCountedBase<WideASTSource> {
+        WideASTSource(Analyzer& a) : a(a) {}
+        Analyzer& a;
+        void CompleteType(clang::TagDecl* tag) override final {
+            if (auto cxxrec = llvm::dyn_cast<clang::CXXRecordDecl>(tag))
+                if (auto matchinfo = a.MaybeGetClangTypeInfo(cxxrec))
+                    matchinfo->Complete();
+        }
+        bool layoutRecordType(
+            const clang::RecordDecl* rec,
+            uint64_t& size,
+            uint64_t& alignment,
+            llvm::DenseMap<const clang::FieldDecl*, uint64_t>& fields,
+            llvm::DenseMap<const clang::CXXRecordDecl*, clang::CharUnits>& bases,
+            llvm::DenseMap<const clang::CXXRecordDecl*, clang::CharUnits>& vbases
+       ) override final {
+            if (auto cxxrec = llvm::dyn_cast<clang::CXXRecordDecl>(rec)) {
+                if (auto matchinfo = a.MaybeGetClangTypeInfo(cxxrec)) {
+                    matchinfo->Layout(size, alignment, fields, bases, vbases);
+                    return true;
+                }
+                
+            }
+            return false;
+        }
+    };
+
+    Impl(std::string file, const Wide::Options::Clang& opts, Lexer::Range where, Analyzer& a)        
         : Options(&opts)
         , FileManager(opts.FileSearchOptions)
         , engine(opts.DiagnosticIDs, opts.DiagnosticOptions.getPtr(), &DiagnosticConsumer, false)
@@ -137,6 +164,9 @@ public:
         , filename(std::move(file))   
         , p(preproc, sema, false)
     {
+        llvm::OwningPtr<clang::ExternalASTSource> wastsource(new WideASTSource(a));
+        astcon.setExternalSource(wastsource);
+       
         preproc.enableIncrementalProcessing(true);
         std::string err;
         clang::InitializePreprocessor(preproc, *Options->PreprocessorOptions, *Options->HeaderSearchOptions, Options->FrontendOptions);
@@ -160,16 +190,12 @@ public:
         preproc.EnterMainSourceFile();
         p.Initialize();
         auto Consumer = &sema.getASTConsumer();
-        auto External = sema.getASTContext().getExternalSource();
-        if (External)
-            External->StartTranslationUnit(Consumer);
         clang::Parser::DeclGroupPtrTy ADecl;
         do {
             if (ADecl && !Consumer->HandleTopLevelDecl(ADecl.get()))
                 return;
         } while (!p.ParseTopLevelDecl(ADecl));
-        for (auto I = sema.WeakTopLevelDecls().begin(),
-            E = sema.WeakTopLevelDecls().end(); I != E; ++I)
+        for (auto I = sema.WeakTopLevelDecls().begin(), E = sema.WeakTopLevelDecls().end(); I != E; ++I)
             Consumer->HandleTopLevelDecl(clang::DeclGroupRef(*I));
 
         Consumer->HandleTranslationUnit(sema.getASTContext());
@@ -209,16 +235,12 @@ public:
         preproc.EnterSourceFile(fileid, preproc.GetCurDirLookup(), sm.getLocForEndOfFile(sm.getMainFileID()));
        
         auto Consumer = &sema.getASTConsumer();
-        auto External = sema.getASTContext().getExternalSource();
-        if (External)
-            External->StartTranslationUnit(Consumer);
         clang::Parser::DeclGroupPtrTy ADecl;
         do {
             if (ADecl && !Consumer->HandleTopLevelDecl(ADecl.get()))
                 return;
         } while (!p.ParseTopLevelDecl(ADecl));
-        for (auto I = sema.WeakTopLevelDecls().begin(),
-            E = sema.WeakTopLevelDecls().end(); I != E; ++I)
+        for (auto I = sema.WeakTopLevelDecls().begin(), E = sema.WeakTopLevelDecls().end(); I != E; ++I)
             Consumer->HandleTopLevelDecl(clang::DeclGroupRef(*I));
 
         Consumer->HandleTranslationUnit(sema.getASTContext());
@@ -241,7 +263,7 @@ std::string ClangTU::PopLastDiagnostic() {
 }
 
 ClangTU::ClangTU(std::string file, const Wide::Options::Clang& ccs, Lexer::Range where, Analyzer& an)
-: impl(Wide::Memory::MakeUnique<Impl>(file, ccs, where)), a(an)
+: impl(Wide::Memory::MakeUnique<Impl>(file, ccs, where, an)), a(an)
 {
 }
 void ClangTU::AddFile(std::string filename, Lexer::Range where) {
