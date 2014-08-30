@@ -66,6 +66,14 @@ namespace Wide {
             Expression(Lexer::Range r)
                 : Statement(r) {}
         };
+        struct Import {
+            Import(Expression* from, std::vector<Parse::Name> names, Import* previous, std::vector<Parse::Name> hidden)
+                : from(from), names(names), previous(previous), hidden(hidden) {}
+            Expression* from;
+            std::vector<Parse::Name> names;
+            Import* previous; 
+            std::vector<Parse::Name> hidden;
+        };
         struct Attribute {
             Attribute(Expression* begin, Expression* end, Lexer::Range where)
                 : where(where), initialized(begin), initializer(end) {}
@@ -131,8 +139,9 @@ namespace Wide {
             std::vector<Attribute> attributes;
         };
         struct Identifier : Expression {
-            Identifier(Name nam, Lexer::Range loc)
-                : Expression(loc), val(std::move(nam)) {}
+            Identifier(Name nam, Import* imp, Lexer::Range loc)
+                : Expression(loc), imp(imp), val(std::move(nam)) {}
+            Import* imp;
             Name val;
         };
         struct String : Expression {

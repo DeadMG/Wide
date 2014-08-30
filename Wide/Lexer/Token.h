@@ -92,6 +92,9 @@ namespace Wide {
             extern const std::string Abstract;
             extern const std::string Delete;
             extern const std::string Default;
+            extern const std::string Import;
+            extern const std::string From;
+            extern const std::string Hiding;
         };
         struct Position {
             Position(std::shared_ptr<std::string> where)

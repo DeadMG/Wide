@@ -300,6 +300,9 @@ const std::unordered_map<std::string, Lexer::TokenType> Lexer::default_keywords 
     { "delete", &TokenTypes::Delete },
     { "abstract", &TokenTypes::Abstract },
     { "default", &TokenTypes::Default },
+    { "import", &TokenTypes::Import },
+    { "from", &TokenTypes::From },
+    { "hiding", &TokenTypes::Hiding },
 };
 
 const std::unordered_set<Lexer::TokenType> Lexer::default_keyword_types = [] {
@@ -390,6 +393,9 @@ const std::string TokenTypes::QuestionMark = "?";
 const std::string TokenTypes::Abstract = "abstract";
 const std::string TokenTypes::Delete = "delete";
 const std::string TokenTypes::Default = "default";
+const std::string TokenTypes::Import = "import";
+const std::string TokenTypes::From = "from";
+const std::string TokenTypes::Hiding = "hiding";
 
 std::string Lexer::to_string(Lexer::Position p) {
     return *p.name + ":" + std::to_string(p.line) + ":" + std::to_string(p.column);

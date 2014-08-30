@@ -1,0 +1,10 @@
+import x;
+type base {}
+type derived : base {}
+module x {
+    f(var := derived) { return true; }
+}
+f(var := base) { return false; }
+Main() {
+    return f(derived());
+}

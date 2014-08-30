@@ -309,11 +309,9 @@ Wide::Util::optional<clang::QualType> UserDefinedType::GetClangType(ClangTU& TU)
     ) {
         size = this->size() * 8;
         alignment = this->alignment() * 8;
-        assert(alignment != 0);
-        assert(size != 0);
-        unsigned i = 0;
-        for (auto base : GetBases()) {
-            auto recdecl = (*base->GetClangType(TU))->getAsCXXRecordDecl();
+        
+        for (unsigned i = 0; i < GetBases().size(); ++i) {
+            auto recdecl = (*GetBases()[i]->GetClangType(TU))->getAsCXXRecordDecl();
             bases[recdecl] = clang::CharUnits::fromQuantity(GetOffset(i));
         }
         for (auto mem : GetMemberData().member_indices) {
@@ -330,19 +328,6 @@ Wide::Util::optional<clang::QualType> UserDefinedType::GetClangType(ClangTU& TU)
         }
     };
     info.Complete = [this, recdecl, &TU] {
-        std::vector<clang::CXXBaseSpecifier*> basespecs;
-        for (auto base : GetBases()) {
-            if (!base->GetClangType(TU)) return;
-            basespecs.push_back(new clang::CXXBaseSpecifier(
-                clang::SourceRange(),
-                false,
-                false,
-                clang::AccessSpecifier::AS_public,
-                TU.GetASTContext().getTrivialTypeSourceInfo(*base->GetClangType(TU)),
-                clang::SourceLocation()
-            ));
-        }
-
         auto Access = [](Parse::Access access) {
             switch (access) {
             case Parse::Access::Private:
@@ -355,27 +340,7 @@ Wide::Util::optional<clang::QualType> UserDefinedType::GetClangType(ClangTU& TU)
                 throw std::runtime_error("Wat- new access specifier?");
             }
         };
-
-        std::vector<clang::FieldDecl*> fields;
-        for (std::size_t i = 0; i < type->variables.size(); ++i) {
-            auto memberty = GetMembers()[i]->GetClangType(TU);
-            if (!memberty) return;
-            auto var = clang::FieldDecl::Create(
-                TU.GetASTContext(),
-                recdecl,
-                clang::SourceLocation(),
-                clang::SourceLocation(),
-                TU.GetIdentifierInfo(type->variables[i].name),
-                *memberty,
-                nullptr,
-                nullptr,
-                false,
-                clang::InClassInitStyle::ICIS_NoInit
-                );
-            var->setAccess(Access(type->variables[i].access));
-            fields.push_back(var);
-        }
-
+        
         auto GetArgsForFunc = [this](const Wide::Parse::FunctionBase* func) {
             return analyzer.GetFunctionParameters(func, this);
         };
@@ -410,6 +375,39 @@ Wide::Util::optional<clang::QualType> UserDefinedType::GetClangType(ClangTU& TU)
             }
             return parms;
         };
+
+        std::vector<clang::CXXBaseSpecifier*> basespecs;
+        for (auto base : GetBases()) {
+            if (!base->GetClangType(TU)) return;
+            basespecs.push_back(new clang::CXXBaseSpecifier(
+                clang::SourceRange(),
+                false,
+                false,
+                clang::AccessSpecifier::AS_public,
+                TU.GetASTContext().getTrivialTypeSourceInfo(*base->GetClangType(TU)),
+                clang::SourceLocation()
+            ));
+        }
+
+        std::vector<clang::FieldDecl*> fields;
+        for (std::size_t i = 0; i < type->variables.size(); ++i) {
+            auto memberty = GetMembers()[i]->GetClangType(TU);
+            if (!memberty) return;
+            auto var = clang::FieldDecl::Create(
+                TU.GetASTContext(),
+                recdecl,
+                clang::SourceLocation(),
+                clang::SourceLocation(),
+                TU.GetIdentifierInfo(type->variables[i].name),
+                *memberty,
+                nullptr,
+                nullptr,
+                false,
+                clang::InClassInitStyle::ICIS_NoInit
+                );
+            var->setAccess(Access(type->variables[i].access));
+            fields.push_back(var);
+        }
 
         clang::CXXDestructorDecl* des = nullptr;
         if (type->destructor_decl) {

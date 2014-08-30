@@ -117,10 +117,7 @@ public:
     }
     clang::CodeGen::CodeGenModule& GetCodegenModule(llvm::Module* module) {
         return *codegenmod;
-    }
-    // Clang has a really annoying habit of changing it's mind about this
-    // producing multiple distinct llvm::Type*s for one QualType, so perform
-    // our own caching on top.    
+    } 
 
     struct WideASTSource : clang::ExternalASTSource, llvm::RefCountedBase<WideASTSource> {
         WideASTSource(Analyzer& a) : a(a) {}
@@ -142,8 +139,7 @@ public:
                 if (auto matchinfo = a.MaybeGetClangTypeInfo(cxxrec)) {
                     matchinfo->Layout(size, alignment, fields, bases, vbases);
                     return true;
-                }
-                
+                }                
             }
             return false;
         }

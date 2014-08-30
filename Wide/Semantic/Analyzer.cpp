@@ -159,9 +159,7 @@ Analyzer::Analyzer(const Options::Clang& opts, const Parse::Module* GlobalModule
     global->AddSpecialMember("null", GetNullType()->BuildValueConstruction({}, context));
     global->AddSpecialMember("reinterpret_cast", GetOverloadSet(PointerCast.get())->BuildValueConstruction({}, context));
     global->AddSpecialMember("move", GetOverloadSet(Move.get())->BuildValueConstruction({}, context));
-        
-    AggregateCPPHeader("typeinfo", context.where);
-    
+            
     AddExpressionHandler<Parse::String>([](Analyzer& a, Type* lookup, const Parse::String* str) {
         return Wide::Memory::MakeUnique<String>(str->val, a);
     });
@@ -276,6 +274,71 @@ Analyzer::Analyzer(const Options::Clang& opts, const Parse::Module* GlobalModule
 
     AddExpressionHandler<Parse::Identifier>([](Analyzer& a, Type* lookup, const Parse::Identifier* ident) -> std::shared_ptr<Expression> {
         struct IdentifierLookup : public Expression {
+            std::shared_ptr<Expression> LookupFromImport(Parse::Import* imp) {
+                auto propagate = [this, imp]() -> std::shared_ptr<Expression> {
+                    if (imp->previous)
+                        return LookupFromImport(imp->previous);
+                    else
+                        return nullptr;
+                };
+                if (std::find(imp->hidden.begin(), imp->hidden.end(), val) != imp->hidden.end())
+                    return propagate();
+                if (imp->names.size() != 0)
+                    if (std::find(imp->names.begin(), imp->names.end(), val) == imp->names.end())
+                        return propagate();
+                auto con = a.AnalyzeCachedExpression(a.GetGlobalModule(), imp->from);
+                if (auto result = Type::AccessMember(con, val, { lookup, location })) {
+                    auto subresult = propagate();
+                    if (!subresult) return result;
+                    auto over1 = dynamic_cast<OverloadSet*>(result->GetType());
+                    auto over2 = dynamic_cast<OverloadSet*>(subresult->GetType());
+                    if (over1 && over2)
+                        return a.GetOverloadSet(over1, over2)->BuildValueConstruction({}, { lookup, location });
+                    throw std::runtime_error("Ambiguous lookup of name " + Semantic::GetNameAsString(val));
+                }
+                return propagate();                
+            }
+            std::shared_ptr<Expression> LookupContext(Type* context) {
+                if (!context) return nullptr;
+                context = context->Decay();
+                if (auto mod = dynamic_cast<Module*>(context)) {
+                    // Module lookups shouldn't present any unknown types. They should only present constant contexts.
+                    auto local_mod_instance = mod->BuildValueConstruction({}, Context{ context, location });
+                    auto result = Type::AccessMember(local_mod_instance, val, { lookup, location });
+                    if (!result) return LookupContext(mod->GetContext());
+                    if (!dynamic_cast<OverloadSet*>(result->GetType()))
+                        return result;
+                    auto lookup2 = LookupContext(mod->GetContext());
+                    if (!lookup2)
+                        return result;
+                    if (!dynamic_cast<OverloadSet*>(lookup2->GetType()))
+                        return result;
+                    return a.GetOverloadSet(dynamic_cast<OverloadSet*>(result->GetType()), dynamic_cast<OverloadSet*>(lookup2->GetType()))->BuildValueConstruction({}, Context{ context, location });
+                }
+                if (auto udt = dynamic_cast<UserDefinedType*>(context)) {
+                    return LookupContext(context->GetContext());
+                }
+                if (auto result = Type::AccessMember(context->BuildValueConstruction({}, { lookup, location }), val, { lookup, location }))
+                    return result;
+                if (auto self = Type::AccessMember(context->BuildValueConstruction({}, { lookup, location }), "this", { lookup, location })) {
+                    if (auto result = Type::AccessMember(self, val, { lookup, location }))
+                        return result;
+                }
+                return LookupContext(context->GetContext());
+            }
+            std::shared_ptr<Expression> LookupIdentifierFromContext(Type* context) {
+                if (!context) return nullptr;
+                context = context->Decay();
+                auto result = LookupContext(context);
+                auto result2 = imports ? LookupFromImport(imports) : nullptr;
+                if (!result) return result2;
+                if (!result2) return result;
+                auto over1 = dynamic_cast<OverloadSet*>(result->GetType());
+                auto over2 = dynamic_cast<OverloadSet*>(result2->GetType());
+                if (over1 && over2)
+                    return a.GetOverloadSet(over1, over2)->BuildValueConstruction({}, { lookup, location });
+                throw std::runtime_error("Ambiguous lookup of name " + Semantic::GetNameAsString(val));                
+            }
             std::shared_ptr<Expression> LookupIdentifier(Type* context) {
                 if (!context) return nullptr;
                 context = context->Decay();
@@ -287,7 +350,7 @@ Analyzer::Analyzer(const Options::Clang& opts, const Parse::Module* GlobalModule
                         auto result = lam->LookupCapture(std::move(self), val);
                         if (result)
                             return std::move(result);
-                        return LookupIdentifier(context->GetContext()->GetContext());
+                        return LookupIdentifierFromContext(context->GetContext()->GetContext());
                     }
                     if (auto member = fun->GetNonstaticMemberContext()) {
                         auto self = fun->LookupLocal("this");
@@ -295,38 +358,14 @@ Analyzer::Analyzer(const Options::Clang& opts, const Parse::Module* GlobalModule
                         if (result)
                             return std::move(result);
                         if (member == context->GetContext())
-                            return LookupIdentifier(context->GetContext()->GetContext());
-                        return LookupIdentifier(context->GetContext());
+                            return LookupIdentifierFromContext(context->GetContext()->GetContext());
+                        return LookupIdentifierFromContext(context->GetContext());
                     }
-                    return LookupIdentifier(context->GetContext());
                 }
-                if (auto mod = dynamic_cast<Module*>(context)) {
-                    // Module lookups shouldn't present any unknown types. They should only present constant contexts.
-                    auto local_mod_instance = mod->BuildValueConstruction({}, Context{ context, location });
-                    auto result = Type::AccessMember(local_mod_instance, val, { lookup, location });
-                    if (!result) return LookupIdentifier(mod->GetContext());
-                    if (!dynamic_cast<OverloadSet*>(result->GetType()))
-                        return result;
-                    auto lookup2 = LookupIdentifier(mod->GetContext());
-                    if (!lookup2)
-                        return result;
-                    if (!dynamic_cast<OverloadSet*>(lookup2->GetType()))
-                        return result;
-                    return a.GetOverloadSet(dynamic_cast<OverloadSet*>(result->GetType()), dynamic_cast<OverloadSet*>(lookup2->GetType()))->BuildValueConstruction({}, Context{ context, location });
-                }
-                if (auto udt = dynamic_cast<UserDefinedType*>(context)) {
-                    return LookupIdentifier(context->GetContext());
-                }
-                if (auto result = Type::AccessMember(context->BuildValueConstruction({}, { lookup, location }), val, { lookup, location }))
-                    return result;
-                if (auto self = Type::AccessMember(context->BuildValueConstruction({}, { lookup, location }), "this", { lookup, location })) {
-                    if (auto result = Type::AccessMember(self, val, { lookup, location }))
-                        return result;
-                }
-                return LookupIdentifier(context->GetContext());
+                return LookupIdentifierFromContext(context);
             }
             IdentifierLookup(const Parse::Identifier* id, Analyzer& an, Type* lookup)
-                : a(an), location(id->location), val(id->val), lookup(lookup)
+                : a(an), location(id->location), val(id->val), lookup(lookup), imports(id->imp)
             {
                 OnNodeChanged(lookup);
             }
@@ -334,6 +373,7 @@ Analyzer::Analyzer(const Options::Clang& opts, const Parse::Module* GlobalModule
             Parse::Name val;
             Lexer::Range location;
             Type* lookup;
+            Parse::Import* imports;
             std::shared_ptr<Expression> result;
             void OnNodeChanged(Node* n) {
                 auto ty = GetType();
@@ -365,7 +405,7 @@ Analyzer::Analyzer(const Options::Clang& opts, const Parse::Module* GlobalModule
     });
 
     AddExpressionHandler<Parse::This>([](Analyzer& a, Type* lookup, const Parse::This* thi) {
-        Parse::Identifier i("this", thi->location);
+        Parse::Identifier i("this", nullptr, thi->location);
         return a.AnalyzeExpression(lookup, &i);
     });
 
@@ -584,7 +624,7 @@ Analyzer::Analyzer(const Options::Clang& opts, const Parse::Module* GlobalModule
             cap_expressions.push_back(std::make_pair(arg->name.front().name, a.AnalyzeExpression(lookup, arg->initializer)));
         }
         for (auto&& name : captures) {
-            Parse::Identifier ident(name, lam->location);
+            Parse::Identifier ident(name, nullptr, lam->location);
             cap_expressions.push_back(std::make_pair(name, a.AnalyzeExpression(lookup, &ident)));
         }
         std::vector<std::pair<Parse::Name, Type*>> types;
@@ -1362,6 +1402,8 @@ std::shared_ptr<Expression> Analyzer::AnalyzeCachedExpression(Type* lookup, cons
     return ExpressionCache[e];
 }
 ClangTU* Analyzer::GetAggregateTU() {
+    if (!AggregateTU)
+        AggregateCPPHeader("typeinfo", Lexer::Range(std::make_shared<std::string>("Analyzer internal include.")));
     return AggregateTU.get();
 }
 
