@@ -172,12 +172,21 @@ UserDefinedType::MemberData::MemberData(UserDefinedType* self) {
                 throw RecursiveMember(self, var.initializer->location);
         }
     }
+    for (auto pair : self->type->imports) {
+        auto expr = self->analyzer.AnalyzeExpression(self->context, pair.first);
+        auto conty = dynamic_cast<ConstructorType*>(expr->GetType()->Decay());
+        if (!conty) throw std::runtime_error("Bad import type name.");
+        auto basety = conty->GetConstructedType();
+        for (auto name : pair.second)
+            BaseImports[name].insert(basety);
+    }
 }
 UserDefinedType::MemberData::MemberData(MemberData&& other)
 : members(std::move(other.members))
 , NSDMIs(std::move(other.NSDMIs))
 , HasNSDMI(other.HasNSDMI)
-, member_indices(std::move(other.member_indices)) {}
+, member_indices(std::move(other.member_indices))
+, BaseImports(std::move(other.BaseImports)) {}
 
 UserDefinedType::MemberData& UserDefinedType::MemberData::operator=(MemberData&& other) {
     members = std::move(other.members);
@@ -230,9 +239,22 @@ std::shared_ptr<Expression> UserDefinedType::AccessNamedMember(std::shared_ptr<E
                     for (auto func : access.second)
                         resolvables.insert(analyzer.GetCallableForFunction(func, this, GetNameAsString(name)));
             }
-            auto selfty = self->GetType();
-            if (!resolvables.empty())
-                return analyzer.GetOverloadSet(resolvables, analyzer.GetRvalueType(selfty))->BuildValueConstruction({ std::move(self) }, c);
+            // Check for imports.
+            OverloadSet* imports = analyzer.GetOverloadSet();
+            if (GetMemberData().BaseImports.find(name) != GetMemberData().BaseImports.end()) {
+                for (auto base : GetMemberData().BaseImports.at(name)) {
+                    if (IsDerivedFrom(base) != InheritanceRelationship::UnambiguouslyDerived)
+                        throw std::runtime_error("Tried to import from a non-base.");
+                    auto baseobj = Type::AccessBase(self, base);
+                    auto member = Type::AccessMember(baseobj, name, c);
+                    if (!member) continue;
+                    auto os = dynamic_cast<OverloadSet*>(member->GetType()->Decay());
+                    if (!os) throw std::runtime_error("Type import from base marked a non-overload-set.");
+                    imports = analyzer.GetOverloadSet(imports, os);
+                }
+            }
+            if (!resolvables.empty() || imports != analyzer.GetOverloadSet())
+                return analyzer.GetOverloadSet(imports, analyzer.GetOverloadSet(resolvables), analyzer.GetRvalueType(self->GetType()))->BuildValueConstruction({ self }, c);
         } else {
             auto use = boost::get<std::pair<Parse::Access, Parse::Using*>>(type->nonvariables.at(name));
             if (spec >= use.first) {
@@ -662,23 +684,38 @@ OverloadSet* UserDefinedType::CreateConstructorOverloadSet(Parse::Access access)
 
 OverloadSet* UserDefinedType::CreateOperatorOverloadSet(Parse::OperatorName name, Parse::Access access, OperatorAccess kind) {
     auto user_defined = [&, this] {
+        OverloadSet* imports = analyzer.GetOverloadSet();
+        //if (name != Parse::OperatorName{ &Lexer::TokenTypes::Assignment }) {
+            if (GetMemberData().BaseImports.find(name) != GetMemberData().BaseImports.end()) {
+                for (auto base : GetMemberData().BaseImports.at(name)) {
+                    if (IsDerivedFrom(base) != InheritanceRelationship::UnambiguouslyDerived)
+                        throw std::runtime_error("Tried to import from a non-base.");
+                    imports = analyzer.GetOverloadSet(imports, base->AccessMember(name, access, kind));
+                }
+            }
+        //}
+       std::unordered_set<OverloadResolvable*> resolvable;
         if (type->nonvariables.find(name) != type->nonvariables.end()) {
             if (auto set = boost::get<Parse::OverloadSet<Parse::Function>>(&type->nonvariables.at(name))) {
-                std::unordered_set<OverloadResolvable*> resolvable;
                 for (auto&& f : *set) {
                     if (f.first <= access)
                         for (auto func : f.second)
                             resolvable.insert(analyzer.GetCallableForFunction(func, this, GetNameAsString(name)));
                 }
-                return analyzer.GetOverloadSet(resolvable);
             }
         }
-        return analyzer.GetOverloadSet();
+        return analyzer.GetOverloadSet(imports, analyzer.GetOverloadSet(resolvable));
     };
     if (name.size() == 1 && name.front() == &Lexer::TokenTypes::Assignment)
         return analyzer.GetOverloadSet(user_defined(), GetDefaultData().SimpleAssOps);
     if (type->nonvariables.find(name) != type->nonvariables.end())
         return analyzer.GetOverloadSet(user_defined(), AggregateType::CreateOperatorOverloadSet(name, access, kind));
+    // Search base classes.
+    OverloadSet* BaseOverloadSet = analyzer.GetOverloadSet();
+    for (auto base : GetBases())
+        BaseOverloadSet = analyzer.GetOverloadSet(BaseOverloadSet, base->AccessMember(name, access, kind));
+    if (BaseOverloadSet != analyzer.GetOverloadSet())
+        return BaseOverloadSet;
     return AggregateType::CreateOperatorOverloadSet(name, access, kind);
 }
 

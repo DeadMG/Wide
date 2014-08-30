@@ -660,6 +660,27 @@ Parser::Parser(std::function<Wide::Util::optional<Lexer::Token>()> l)
         t->nonvariables[ident.GetValue()] = std::make_pair(access, use);
         return access;
     };
+
+    TypeTokens[&Lexer::TokenTypes::From] = [](Parser& p, Type* t, Parse::Access access, Parse::Import* imp, Lexer::Token& tok) {
+        auto expr = p.ParseExpression(imp);
+        p.Check(Error::ModuleScopeUsingNoIdentifier, &Lexer::TokenTypes::Import);
+        std::vector<Parse::Name> names;
+        while (true) {
+            Parse::Name name;
+            auto lead = p.Check(Error::FunctionArgumentNoIdentifierOrThis, { &Lexer::TokenTypes::Identifier, &Lexer::TokenTypes::Operator });
+            if (lead.GetType() == &Lexer::TokenTypes::Operator)
+                name = p.ParseOperatorName(p.GetAllOperators());
+            else
+                name = lead.GetValue();
+            names.push_back(name);
+            auto next = p.Check(Error::ModuleScopeUsingNoSemicolon, { &Lexer::TokenTypes::Comma, &Lexer::TokenTypes::Semicolon });
+            if (next.GetType() == &Lexer::TokenTypes::Semicolon) {
+                t->imports.push_back(std::make_pair(expr, names));
+                return access;
+            }
+        }
+    };
+
     TypeAttributeTokens[&Lexer::TokenTypes::OpenSquareBracket] = [](Parser& p, Type* t, Parse::Access access, Parse::Import* imp, Lexer::Token& tok, std::vector<Attribute> attributes) {
         attributes.push_back(p.ParseAttribute(tok, imp));
         auto next = p.lex(Error::AttributeNoEnd);

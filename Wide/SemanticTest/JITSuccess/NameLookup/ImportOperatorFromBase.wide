@@ -1,0 +1,10 @@
+type base {
+    operator+(var := derived) { return true; }
+}
+type derived : base {
+    from base import operator+;
+    operator+(var := base) { return false; }
+}
+Main() {
+    return derived() + derived();
+}

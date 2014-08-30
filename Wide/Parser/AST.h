@@ -134,6 +134,7 @@ namespace Wide {
             std::unordered_map<Name, boost::variant<OverloadSet<Function>, std::pair<Parse::Access, Using*>>> nonvariables;
             OverloadSet<Constructor> constructor_decls;
             Destructor* destructor_decl;
+            std::vector<std::pair<Expression*, std::vector<Name>>> imports;
 
             std::vector<Expression*> bases;
             std::vector<Attribute> attributes;

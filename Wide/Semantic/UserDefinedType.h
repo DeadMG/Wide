@@ -67,6 +67,7 @@ namespace Wide {
                 std::vector<const Parse::Expression*> NSDMIs;
                 bool HasNSDMI = false;
                 std::vector<Type*> members;
+                std::unordered_map<Parse::Name, std::unordered_set<Type*>> BaseImports;
             };
             Wide::Util::optional<MemberData> Members;
             MemberData& GetMemberData() {

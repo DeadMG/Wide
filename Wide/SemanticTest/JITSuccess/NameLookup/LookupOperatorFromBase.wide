@@ -1,0 +1,7 @@
+type base {
+    operator+(var := int64) { return true; }
+}
+type derived : base {}
+Main() {
+    return derived() + 1;
+}
