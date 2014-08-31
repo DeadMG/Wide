@@ -60,7 +60,7 @@ struct rvalueconvertible : OverloadResolvable, Callable {
     rvalueconvertible(RvalueType* s)
     : self(s) {}
     RvalueType* self;
-    Callable* GetCallableForResolution(std::vector<Type*>, Analyzer& a) override final { return this; }
+    Callable* GetCallableForResolution(std::vector<Type*>, Type*, Analyzer& a) override final { return this; }
     std::vector<std::shared_ptr<Expression>> AdjustArguments(std::vector<std::shared_ptr<Expression>> args, Context c) override final { return args; }
     Util::optional<std::vector<Type*>> MatchParameter(std::vector<Type*> types, Analyzer& a, Type* source) override final {
         if (types.size() != 2) return Util::none;
@@ -113,7 +113,7 @@ struct PointerComparableResolvable : OverloadResolvable, Callable {
         auto udt = ty->Decay();
         return Wide::Memory::MakeUnique<ImplicitStoreExpr>(std::move(args[0]), Type::AccessBase(std::move(args[1]), self->Decay()));
     }
-    Callable* GetCallableForResolution(std::vector<Type*>, Analyzer& a) override final { return this; }
+    Callable* GetCallableForResolution(std::vector<Type*>, Type*, Analyzer& a) override final { return this; }
 };
 OverloadSet* RvalueType::CreateConstructorOverloadSet(Parse::Access access) {
     if (access != Parse::Access::Public) return GetConstructorOverloadSet(Parse::Access::Public);

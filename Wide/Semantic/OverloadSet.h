@@ -40,12 +40,8 @@ namespace Wide {
             std::shared_ptr<Expression> AccessNamedMember(std::shared_ptr<Expression> t, std::string name, Context c) override final;
             OverloadSet* CreateConstructorOverloadSet(Parse::Access access) override final;
             std::shared_ptr<Expression> ConstructCall(std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c) override final;
-            Callable* Resolve(std::vector<Type*> types, Type* source);
-            Callable* ResolveMember(std::vector<Type*> types,  Type* source) {
-                if (nonstatic)
-                    types.insert(types.begin(), nonstatic);
-                return Resolve(types, source);
-            }
+            Callable* Resolve(std::vector<Type*> types, Type* source); 
+            std::pair<Callable*, std::vector<Type*>> ResolveWithArguments(std::vector<Type*> types, Type* source);
 
             std::string explain() override final;
             bool IsNonstatic() { return nonstatic; }

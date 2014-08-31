@@ -1,0 +1,13 @@
+type base {
+    type(arg := bool.lvalue) {
+        arg = true;
+    }
+}
+type derived : base {
+    from base import type;
+}
+Main() {
+    result := false;
+    derived(result);
+    return result;
+}

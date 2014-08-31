@@ -306,13 +306,12 @@ namespace Wide {
         struct Callable {
         public:
             std::shared_ptr<Expression> Call(std::vector<std::shared_ptr<Expression>> args, Context c);
-        private:
             virtual std::shared_ptr<Expression> CallFunction(std::vector<std::shared_ptr<Expression>> args, Context c) = 0;
             virtual std::vector<std::shared_ptr<Expression>> AdjustArguments(std::vector<std::shared_ptr<Expression>> args, Context c) = 0;
         };
         struct OverloadResolvable {
             virtual Wide::Util::optional<std::vector<Type*>> MatchParameter(std::vector<Type*>, Analyzer& a, Type* source) = 0;
-            virtual Callable* GetCallableForResolution(std::vector<Type*>, Analyzer& a) = 0;
+            virtual Callable* GetCallableForResolution(std::vector<Type*>, Type*, Analyzer& a) = 0;
         };
 
         std::vector<std::shared_ptr<Expression>> AdjustArgumentsForTypes(std::vector<std::shared_ptr<Expression>> args, std::vector<Type*> types, Context c);

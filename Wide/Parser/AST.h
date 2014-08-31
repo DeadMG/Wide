@@ -134,7 +134,7 @@ namespace Wide {
             std::unordered_map<Name, boost::variant<OverloadSet<Function>, std::pair<Parse::Access, Using*>>> nonvariables;
             OverloadSet<Constructor> constructor_decls;
             Destructor* destructor_decl;
-            std::vector<std::pair<Expression*, std::vector<Name>>> imports;
+            std::vector<std::tuple<Expression*, std::vector<Name>, bool>> imports;
 
             std::vector<Expression*> bases;
             std::vector<Attribute> attributes;
@@ -402,8 +402,6 @@ namespace Wide {
             Tuple(std::vector<Expression*> exprs, Lexer::Range where)
                 : expressions(std::move(exprs)), Expression(where) {}
         };
-        enum class Error : int;
-
         struct Combiner {
             std::unordered_set<Module*> modules;
 

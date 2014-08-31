@@ -83,7 +83,7 @@ Analyzer::Analyzer(const Options::Clang& opts, const Parse::Module* GlobalModule
             if (!dynamic_cast<PointerType*>(types[1]->Decay())) return Util::none;
             return types;
         }
-        Callable* GetCallableForResolution(std::vector<Type*>, Analyzer& a) override final { return this; }
+        Callable* GetCallableForResolution(std::vector<Type*>, Type*, Analyzer& a) override final { return this; }
         std::shared_ptr<Expression> CallFunction(std::vector<std::shared_ptr<Expression>> args, Context c) override final {
             struct PointerCast : Expression {
                 PointerCast(Type* t, std::shared_ptr<Expression> type, std::shared_ptr<Expression> arg)
@@ -113,7 +113,7 @@ Analyzer::Analyzer(const Options::Clang& opts, const Parse::Module* GlobalModule
             if (types.size() == 1) return types; 
             return Util::none; 
         }
-        Callable* GetCallableForResolution(std::vector<Type*>, Analyzer& a) override final { 
+        Callable* GetCallableForResolution(std::vector<Type*>, Type*, Analyzer& a) override final {
             return this; 
         }
         std::vector<std::shared_ptr<Expression>> AdjustArguments(std::vector<std::shared_ptr<Expression>> args, Context c) override final {
@@ -1200,7 +1200,7 @@ OverloadResolvable* Analyzer::GetCallableForFunction(const Parse::FunctionBase* 
             return result;
         }
 
-        Callable* GetCallableForResolution(std::vector<Type*> types, Analyzer& a) override final {
+        Callable* GetCallableForResolution(std::vector<Type*> types, Type*, Analyzer& a) override final {
             if (auto function = dynamic_cast<const Parse::Function*>(func))
                 if (function->deleted)
                     return nullptr;
@@ -1327,7 +1327,7 @@ OverloadResolvable* Analyzer::GetCallableForTemplateType(const Parse::TemplateTy
             }
             return valid;
         }
-        Callable* GetCallableForResolution(std::vector<Type*> types, Analyzer& a) override final { 
+        Callable* GetCallableForResolution(std::vector<Type*> types, Type*, Analyzer& a) override final {
             if (Callables.find(types) != Callables.end())
                 return Callables[types].get();
             Callables[types] = Wide::Memory::MakeUnique<TemplateTypeCallable>(context, templatetype, types);

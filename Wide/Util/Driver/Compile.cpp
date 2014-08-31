@@ -31,14 +31,6 @@ void Wide::Driver::Compile(const Wide::Options::Clang& copts, const std::vector<
 void Wide::Driver::Compile(const Wide::Options::Clang& copts, const std::vector<std::string>& files, const std::vector<std::pair<std::string, std::string>>& sources, std::function<void(Wide::Semantic::Analyzer&, const Parse::Module*)> func) {
     Wide::Concurrency::Vector<std::string> excepts;
     Wide::Concurrency::Vector<std::string> warnings;
-    auto parsererrorhandler = [&](std::vector<Wide::Lexer::Range> where, Wide::Parse::Error what) {
-        std::stringstream str;
-        str << "Error at locations:\n";
-        for(auto loc : where)
-            str << "    File: " << *loc.begin.name << ", line: " << loc.begin.line << " column: " << loc.begin.column << "\n";
-        str << Wide::Parse::ErrorStrings.at(what);
-        excepts.push_back(str.str());
-    };
     Wide::Parse::Combiner combiner;
     Wide::Concurrency::Vector<std::shared_ptr<Wide::Parse::Parser>> builders;
     auto errs = Wide::Concurrency::ParallelForEach(files.begin(), files.end(), [&](const std::string& filename) {
@@ -47,18 +39,12 @@ void Wide::Driver::Compile(const Wide::Options::Clang& copts, const std::vector<
             throw std::runtime_error("Could not open input file " + filename + "\n");
         std::noskipws(inputfile);
         Wide::Lexer::Invocation lex(Wide::Range::IStreamRange(inputfile), std::make_shared<std::string>(filename));
-        auto parserwarninghandler = [&](Wide::Lexer::Range where, Wide::Parse::Warning what) {
-            std::stringstream str;
-            str << "Warning in file " << filename << ", line " << where.begin.line << " column " << where.begin.column << ":\n";
-            str << Wide::Parse::WarningStrings.at(what);
-            warnings.push_back(str.str());
-        };
         try {
             auto parser = std::make_shared<Wide::Parse::Parser>(lex);
             parser->ParseGlobalModuleContents(&parser->GlobalModule);
             builders.push_back(std::move(parser));
-        } catch(Wide::Parse::ParserError& e) {
-            parsererrorhandler(e.where(), e.error());
+        } catch(Wide::Parse::Error& e) {
+            excepts.push_back(e.what());
         } catch(std::exception& e) {
             excepts.push_back(e.what());
         } catch(...) {
@@ -67,19 +53,13 @@ void Wide::Driver::Compile(const Wide::Options::Clang& copts, const std::vector<
     });
     auto sourceerrs = Wide::Concurrency::ParallelForEach(sources.begin(), sources.end(), [&](const std::pair<std::string, std::string>& source) {
         Wide::Lexer::Invocation lex(Wide::Range::StringRange(source.first), std::make_shared<std::string>(source.second));
-        auto parserwarninghandler = [&](Wide::Lexer::Range where, Wide::Parse::Warning what) {
-            std::stringstream str;
-            str << "Warning in file " << source.second << ", line " << where.begin.line << " column " << where.begin.column << ":\n";
-            str << Wide::Parse::WarningStrings.at(what);
-            warnings.push_back(str.str());
-        };
         try {
             auto parser = std::make_shared<Wide::Parse::Parser>(lex);
             parser->ParseGlobalModuleContents(&parser->GlobalModule);
             builders.push_back(std::move(parser));
         }
-        catch (Wide::Parse::ParserError& e) {
-            parsererrorhandler(e.where(), e.error());
+        catch (Wide::Parse::Error& e) {
+            excepts.push_back(e.what());
         }
         catch (std::exception& e) {
             excepts.push_back(e.what());

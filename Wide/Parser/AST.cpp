@@ -1,5 +1,4 @@
 #include <Wide/Parser/AST.h>
-#include <Wide/Parser/ParserError.h>
 #include <Wide/Util/Memory/MakeUnique.h>
 #include <functional>
 #include <cassert>

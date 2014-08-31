@@ -27,6 +27,7 @@
 #include <clang/Sema/Sema.h>
 #include <llvm/IR/DerivedTypes.h>
 #include <clang/Sema/Lookup.h>
+#include <llvm/Analysis/Verifier.h>
 #pragma warning(pop)
 
 using namespace Wide;
@@ -172,21 +173,24 @@ UserDefinedType::MemberData::MemberData(UserDefinedType* self) {
                 throw RecursiveMember(self, var.initializer->location);
         }
     }
-    for (auto pair : self->type->imports) {
-        auto expr = self->analyzer.AnalyzeExpression(self->context, pair.first);
+    for (auto tuple : self->type->imports) {
+        auto expr = self->analyzer.AnalyzeExpression(self->context, std::get<0>(tuple));
         auto conty = dynamic_cast<ConstructorType*>(expr->GetType()->Decay());
         if (!conty) throw std::runtime_error("Bad import type name.");
         auto basety = conty->GetConstructedType();
-        for (auto name : pair.second)
+        for (auto name : std::get<1>(tuple))
             BaseImports[name].insert(basety);
+        if (std::get<2>(tuple))
+            imported_constructors[basety] = nullptr;
     }
 }
 UserDefinedType::MemberData::MemberData(MemberData&& other)
-: members(std::move(other.members))
-, NSDMIs(std::move(other.NSDMIs))
-, HasNSDMI(other.HasNSDMI)
-, member_indices(std::move(other.member_indices))
-, BaseImports(std::move(other.BaseImports)) {}
+    : members(std::move(other.members))
+    , NSDMIs(std::move(other.NSDMIs))
+    , HasNSDMI(other.HasNSDMI)
+    , member_indices(std::move(other.member_indices))
+    , BaseImports(std::move(other.BaseImports))
+    , imported_constructors(std::move(other.imported_constructors)) {}
 
 UserDefinedType::MemberData& UserDefinedType::MemberData::operator=(MemberData&& other) {
     members = std::move(other.members);
@@ -666,6 +670,146 @@ UserDefinedType::DefaultData::DefaultData(UserDefinedType* self) {
     }
 }
 
+struct Wide::Semantic::UserDefinedType::ImportConstructorCallable : Callable {
+    // Don't need to do that much ABI handling here fortunately.
+    ImportConstructorCallable(Callable* target, UserDefinedType* self, Type* base, std::vector<Type*> args)
+        : base_callable(target), self(self), target_base(base), arguments(args), thunk_function(nullptr) {}
+    std::vector<std::shared_ptr<Expression>> AdjustArguments(std::vector<std::shared_ptr<Expression>> args, Context c) override final {
+        auto adjusted = base_callable->AdjustArguments(args, c);
+        adjusted[0] = Wide::Semantic::AdjustArgumentsForTypes({ args[0] }, { self->analyzer.GetLvalueType(self) }, c)[0];
+        return adjusted;
+    }
+    std::shared_ptr<Expression> CallFunction(std::vector<std::shared_ptr<Expression>> args, Context c) {
+        struct ImportConstructor : Expression {
+            ImportConstructor(ImportConstructorCallable* parent) : parent(parent) {}
+            ImportConstructorCallable* parent;
+            Type* GetType() override final { 
+                return parent->GetFunctionType();
+            }
+            llvm::Value* ComputeValue(CodegenContext& con) override final {
+                parent->EmitCode(con);
+                return parent->thunk_function;
+            }
+        };
+        CreateInitializers(c);
+        return Type::BuildCall(std::make_shared<ImportConstructor>(this), args, c);
+    }
+    void CreateInitializers(Context c) {
+        if (initializers) return;        
+        struct Argument : Expression {
+            Argument(ImportConstructorCallable* parent, unsigned num) : parent(parent), num(num) {}
+            ImportConstructorCallable* parent;
+            unsigned num;
+            Type* GetType() override final {
+                return parent->arguments[num];
+            }
+            llvm::Value* ComputeValue(CodegenContext& c) override final {
+                return std::next(parent->thunk_function->arg_begin(), num);
+            }
+        };
+        struct MemberConstructionAccess : Expression {
+            Type* member;
+            Lexer::Range where;
+            std::shared_ptr<Expression> Construction;
+            std::shared_ptr<Expression> memexpr;
+            std::function<void(CodegenContext&)> destructor;
+            llvm::Value* ComputeValue(CodegenContext& con) override final {
+                auto val = Construction->GetValue(con);
+                if (destructor)
+                    con.AddExceptionOnlyDestructor(destructor);
+                return val;
+            }
+            Type* GetType() override final {
+                return Construction->GetType();
+            }
+            MemberConstructionAccess(Type* mem, Lexer::Range where, std::shared_ptr<Expression> expr, std::shared_ptr<Expression> memexpr)
+                : member(mem), where(where), Construction(std::move(expr)), memexpr(memexpr)
+            {
+                if (!member->IsTriviallyDestructible())
+                    destructor = member->BuildDestructorCall(memexpr, { member, where }, true);
+            }
+        };
+        auto GetMemberFromThis = [](std::shared_ptr<Expression> self, std::function<unsigned()> offset, Type* member) {
+            return CreatePrimUnOp(self, member, [offset, member](llvm::Value* val, CodegenContext& con) {
+                auto self = con->CreatePointerCast(val, con.GetInt8PtrTy());
+                self = con->CreateConstGEP1_32(self, offset());
+                return con->CreatePointerCast(self, member->GetLLVMType(con));
+            });
+        };
+        auto this_ = std::make_shared<Argument>(this, 0);
+        std::vector<std::shared_ptr<Expression>> inits;
+        unsigned i = 0;
+        for (auto base : self->GetBases()) {
+            if (base == target_base) {
+                std::vector<std::shared_ptr<Expression>> args;
+                args.push_back(Type::AccessBase(this_, base));
+                for (auto i = 1; i < arguments.size(); ++i)
+                    args.push_back(std::make_shared<Argument>(this, i));
+                inits.push_back(base_callable->CallFunction(args, c));
+                continue;
+            }
+            auto init = base->BuildInplaceConstruction(Type::AccessBase(this_, base), {}, c);
+            inits.push_back(std::make_shared<MemberConstructionAccess>(base, c.where, init, Type::AccessBase(this_, base)));
+        }
+        for (auto member : self->GetMembers()) {
+            auto lhs = GetMemberFromThis(this_, [this, i] { return self->GetOffset(i); }, member->analyzer.GetLvalueType(member));
+            auto init = member->BuildInplaceConstruction(lhs, self->GetDefaultInitializerForMember(i++), c);
+            inits.push_back(std::make_shared<MemberConstructionAccess>(member, c.where, init, lhs));
+        }
+        inits.push_back(Type::SetVirtualPointers(this_));
+        initializers = inits;
+    }
+    void EmitCode(llvm::Module* module) {
+        if (thunk_function) return;
+        thunk_function = llvm::Function::Create(llvm::cast<llvm::FunctionType>(GetFunctionType()->GetLLVMType(module)->getElementType()), llvm::GlobalValue::LinkageTypes::ExternalLinkage, self->analyzer.GetUniqueFunctionName(), module);
+        Wide::Semantic::CodegenContext::EmitFunctionBody(thunk_function, [this](Wide::Semantic::CodegenContext& con) {
+            assert(initializers);
+            for (auto init : *initializers)
+                init->GetValue(con);
+            con->CreateRetVoid();
+        });
+        if (llvm::verifyFunction(*thunk_function, llvm::VerifierFailureAction::PrintMessageAction))
+            throw std::runtime_error("Internal Compiler Error: An LLVM function failed verification.");
+    }
+    WideFunctionType* GetFunctionType() {
+        auto&& a = self->analyzer;
+        return a.GetFunctionType(a.GetVoidType(), arguments, false);
+    }
+    Wide::Util::optional<std::vector<std::shared_ptr<Expression>>> initializers;
+    Callable* base_callable;
+    llvm::Function* thunk_function;
+    UserDefinedType* self;
+    Type* target_base;
+    std::vector<Type*> arguments;
+};
+struct Wide::Semantic::UserDefinedType::ImportConstructorResolvable : OverloadResolvable {
+    ImportConstructorResolvable(Type* base, OverloadSet* set, UserDefinedType* self)
+        : base(base), imported_set(set), self(self) {}
+    Type* base;
+    OverloadSet* imported_set;
+    UserDefinedType* self;
+    std::unordered_map<std::vector<Type*>, std::unique_ptr<ImportConstructorCallable>, Wide::Semantic::VectorTypeHasher> ImportedConstructorThunks;
+    Wide::Util::optional<std::vector<Type*>> MatchParameter(std::vector<Type*> args, Analyzer& a, Type* source) override final {
+        // Adjust the first argument back up because we need a real self ref.
+        if (args.size() == 2)
+            if (args[1]->Decay()->IsDerivedFrom(base) == Type::InheritanceRelationship::UnambiguouslyDerived || args[1]->Decay() == base)
+                return Wide::Util::none;
+        auto import = imported_set->ResolveWithArguments(args, source);
+        if (import.first) {
+            import.second[0] = self->analyzer.GetLvalueType(self);
+            return import.second;
+        }
+        return Wide::Util::none;
+    }
+    Callable* GetCallableForResolution(std::vector<Type*> args, Type* source, Analyzer& a) override final {
+        auto import = imported_set->ResolveWithArguments(args, source);
+        import.second[0] = self->analyzer.GetLvalueType(self);
+        if (ImportedConstructorThunks.find(args) == ImportedConstructorThunks.end())
+            ImportedConstructorThunks[args] = Wide::Memory::MakeUnique<ImportConstructorCallable>(import.first, self, base, import.second);
+        return ImportedConstructorThunks.at(args).get();
+    }
+};
+
 OverloadSet* UserDefinedType::CreateConstructorOverloadSet(Parse::Access access) {
     auto user_defined = [&, this] {
         if (type->constructor_decls.empty())
@@ -679,22 +823,56 @@ OverloadSet* UserDefinedType::CreateConstructorOverloadSet(Parse::Access access)
         return analyzer.GetOverloadSet(resolvables, GetContext());
     };
     auto user_defined_constructors = user_defined();
-    return analyzer.GetOverloadSet(user_defined_constructors, GetDefaultData().SimpleConstructors);
+    if (access == Parse::Access::Private)
+        access = Parse::Access::Protected;
+    OverloadSet* Imported = analyzer.GetOverloadSet();
+    for (auto& pair : GetMemberData().imported_constructors) {
+        if (!pair.second) {
+            pair.second = Wide::Memory::MakeUnique<ImportConstructorResolvable>(pair.first, pair.first->GetConstructorOverloadSet(access), this);
+        }
+        Imported = analyzer.GetOverloadSet(Imported, analyzer.GetOverloadSet(pair.second.get()));
+    }
+    return analyzer.GetOverloadSet(Imported, analyzer.GetOverloadSet(user_defined_constructors, GetDefaultData().SimpleConstructors));
+}
+
+namespace {
+    struct ImportAssignmentResolvable : OverloadResolvable {
+        ImportAssignmentResolvable(Type* base, OverloadSet* set)
+            : base(base), imported_set(set) {}
+        Type* base;
+        OverloadSet* imported_set;
+        Wide::Util::optional<std::vector<Type*>> MatchParameter(std::vector<Type*> args, Analyzer& a, Type* source) override final {
+            if (args.size() == 2)
+                if (args[1]->Decay()->IsDerivedFrom(base) == Type::InheritanceRelationship::UnambiguouslyDerived || args[1]->Decay() == base)
+                    return Wide::Util::none;
+            if (imported_set->ResolveWithArguments(args, source).first)
+                return imported_set->ResolveWithArguments(args, source).second;
+            return Wide::Util::none;
+        }
+        Callable* GetCallableForResolution(std::vector<Type*> args, Type* source, Analyzer& a) override final {
+            return imported_set->Resolve(args, source);
+        }
+    };
 }
 
 OverloadSet* UserDefinedType::CreateOperatorOverloadSet(Parse::OperatorName name, Parse::Access access, OperatorAccess kind) {
     auto user_defined = [&, this] {
         OverloadSet* imports = analyzer.GetOverloadSet();
-        //if (name != Parse::OperatorName{ &Lexer::TokenTypes::Assignment }) {
-            if (GetMemberData().BaseImports.find(name) != GetMemberData().BaseImports.end()) {
-                for (auto base : GetMemberData().BaseImports.at(name)) {
-                    if (IsDerivedFrom(base) != InheritanceRelationship::UnambiguouslyDerived)
-                        throw std::runtime_error("Tried to import from a non-base.");
-                    imports = analyzer.GetOverloadSet(imports, base->AccessMember(name, access, kind));
-                }
+        if (GetMemberData().BaseImports.find(name) != GetMemberData().BaseImports.end()) {
+            for (auto base : GetMemberData().BaseImports.at(name)) {
+                if (IsDerivedFrom(base) != InheritanceRelationship::UnambiguouslyDerived)
+                    throw std::runtime_error("Tried to import from a non-base.");
+                auto base_set = base->AccessMember(name, access == Parse::Access::Private ? Parse::Access::Protected : access, kind);
+                if (name == Parse::OperatorName{ &Lexer::TokenTypes::Assignment }) {
+                    if (AssignmentOperatorImportResolvables.find(base) == AssignmentOperatorImportResolvables.end()) {
+                        AssignmentOperatorImportResolvables[base] = Wide::Memory::MakeUnique<ImportAssignmentResolvable>(base, base_set);
+                    }
+                    imports = analyzer.GetOverloadSet(imports, analyzer.GetOverloadSet(AssignmentOperatorImportResolvables[base].get()));
+                } else
+                    imports = analyzer.GetOverloadSet(base_set, imports);
             }
-        //}
-       std::unordered_set<OverloadResolvable*> resolvable;
+        }
+        std::unordered_set<OverloadResolvable*> resolvable;
         if (type->nonvariables.find(name) != type->nonvariables.end()) {
             if (auto set = boost::get<Parse::OverloadSet<Parse::Function>>(&type->nonvariables.at(name))) {
                 for (auto&& f : *set) {

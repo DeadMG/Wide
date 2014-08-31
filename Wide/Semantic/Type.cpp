@@ -673,7 +673,7 @@ struct Resolvable : OverloadResolvable, Callable {
         }
         return types;
     }
-    Callable* GetCallableForResolution(std::vector<Type*> tys, Analyzer& a) override final {
+    Callable* GetCallableForResolution(std::vector<Type*> tys, Type*, Analyzer& a) override final {
         assert(types == tys);
         return this;
     }
@@ -697,7 +697,7 @@ OverloadSet* TupleInitializable::CreateConstructorOverloadSet(Parse::Access acce
     struct TupleConstructorType : public OverloadResolvable, Callable {
         TupleConstructorType(TupleInitializable* p) : self(p) {}
         TupleInitializable* self;
-        Callable* GetCallableForResolution(std::vector<Type*>, Analyzer& a) { return this; }
+        Callable* GetCallableForResolution(std::vector<Type*>, Type* source, Analyzer& a) override final { return this; }
         Util::optional<std::vector<Type*>> MatchParameter(std::vector<Type*> args, Analyzer& a, Type* source) override final {
             if (args.size() != 2) return Util::none;
             if (args[0] != a.GetLvalueType(self->GetSelfAsType())) return Util::none;

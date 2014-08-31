@@ -33,7 +33,7 @@ std::shared_ptr<Expression> ClangIncludeEntity::AccessNamedMember(std::shared_pt
                 if (!dynamic_cast<StringType*>(types[0]->Decay())) return Util::none;
                 return types;
             }
-            Callable* GetCallableForResolution(std::vector<Type*>, Analyzer& a) override final { return this; }
+            Callable* GetCallableForResolution(std::vector<Type*>, Type*, Analyzer& a) override final { return this; }
             std::vector<std::shared_ptr<Expression>> AdjustArguments(std::vector<std::shared_ptr<Expression>> args, Context c) override final { return args; }
             std::shared_ptr<Expression> CallFunction(std::vector<std::shared_ptr<Expression>> args, Context c) override final {
                 auto str = dynamic_cast<StringType*>(args[0]->GetType()->Decay());
@@ -62,7 +62,7 @@ std::shared_ptr<Expression> ClangIncludeEntity::AccessNamedMember(std::shared_pt
                 if (!dynamic_cast<StringType*>(types[1]->Decay())) return Util::none;
                 return types;
             }
-            Callable* GetCallableForResolution(std::vector<Type*>, Analyzer& a) override final { return this; }
+            Callable* GetCallableForResolution(std::vector<Type*>, Type*, Analyzer& a) override final { return this; }
             std::vector<std::shared_ptr<Expression>> AdjustArguments(std::vector<std::shared_ptr<Expression>> args, Context c) override final { return args; }
             std::shared_ptr<Expression> CallFunction(std::vector<std::shared_ptr<Expression>> args, Context c) override final{
                 auto gnamespace = dynamic_cast<ClangNamespace*>(args[0]->GetType()->Decay());
@@ -85,7 +85,7 @@ std::shared_ptr<Expression> ClangIncludeEntity::AccessNamedMember(std::shared_pt
                 if (!dynamic_cast<StringType*>(types[0]->Decay())) return Util::none;
                 return types;
             }
-            Callable* GetCallableForResolution(std::vector<Type*>, Analyzer& a) override final { return this; }
+            Callable* GetCallableForResolution(std::vector<Type*>, Type*, Analyzer& a) override final { return this; }
             std::vector<std::shared_ptr<Expression>> AdjustArguments(std::vector<std::shared_ptr<Expression>> args, Context c) override final { return args; }
             std::shared_ptr<Expression> CallFunction(std::vector<std::shared_ptr<Expression>> args, Context c) override final {
                 auto str = dynamic_cast<StringType*>(args[0]->GetType()->Decay());

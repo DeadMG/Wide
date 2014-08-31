@@ -59,7 +59,7 @@ OverloadSet* PointerType::CreateConstructorOverloadSet(Parse::Access access) {
             auto udt = dynamic_cast<PointerType*>(other->GetType())->pointee;
             return Wide::Memory::MakeUnique<ImplicitStoreExpr>(std::move(args[0]), Type::AccessBase(std::move(other), self->pointee));
         }
-        Callable* GetCallableForResolution(std::vector<Type*>, Analyzer& a) override final { return this; }
+        Callable* GetCallableForResolution(std::vector<Type*>, Type*, Analyzer& a) override final { return this; }
     };
     auto usual = PrimitiveType::CreateConstructorOverloadSet(Parse::Access::Public);
     NullConstructor = MakeResolvable([this](std::vector<std::shared_ptr<Expression>> args, Context c) {

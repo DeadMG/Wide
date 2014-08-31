@@ -204,11 +204,10 @@ struct cppcallable : public Callable {
     }
 };
 
-Callable* OverloadSet::Resolve(std::vector<Type*> f_args, Type* source) {
+std::pair<Callable*, std::vector<Type*>> OverloadSet::ResolveWithArguments(std::vector<Type*> f_args, Type* source) {
     // Terrible hack but need to get this to work right now
-
     std::vector<std::pair<OverloadResolvable*, std::vector<Type*>>> call;
-    for(auto funcobj : callables) {
+    for (auto funcobj : callables) {
         auto matched_types = funcobj->MatchParameter(f_args, analyzer, source);
         if (matched_types) {
             auto&& vec = *matched_types;
@@ -237,7 +236,7 @@ Callable* OverloadSet::Resolve(std::vector<Type*> f_args, Type* source) {
 
         std::sort(call.begin(), call.end(), is_more_specialized);
         if (is_more_specialized(call[0], call[1]))
-            call.erase(call.begin() + 1, call.end());        
+            call.erase(call.begin() + 1, call.end());
     }
     // Try is-a match now.
     if (call.size() > 1) {
@@ -245,7 +244,7 @@ Callable* OverloadSet::Resolve(std::vector<Type*> f_args, Type* source) {
         auto is_more_specialized = [&](
             const std::pair<OverloadResolvable*, std::vector<Type*>>& lhs,
             const std::pair<OverloadResolvable*, std::vector<Type*>>& rhs
-        ) {
+            ) {
             // If, for some argument, it is the equivalent argument, and
             // the equivalent argument is not that argument, and
             // there is no other argument for which the reverse is true
@@ -269,11 +268,11 @@ Callable* OverloadSet::Resolve(std::vector<Type*> f_args, Type* source) {
             call.erase(call.begin() + 1, call.end());
     }
 
-    auto get_wide_or_result = [&]() -> Callable* {
+    auto get_wide_or_result = [&]() -> std::pair<Callable*, std::vector<Type*>> {
         if (call.size() == 1)
-            return call.begin()->first->GetCallableForResolution(call.begin()->second, analyzer);
+            return std::make_pair(call.begin()->first->GetCallableForResolution(call.begin()->second, source, analyzer), call.begin()->second);
         assert(call.size() == 0);
-        return nullptr;
+        return std::make_pair(nullptr, std::vector<Type*>());
     };
 
     std::vector<clang::QualType> clangtypes;
@@ -284,10 +283,10 @@ Callable* OverloadSet::Resolve(std::vector<Type*> f_args, Type* source) {
             clangtypes.push_back(*ty);
         }
         std::list<clang::OpaqueValueExpr> exprs;
-        for(auto x : f_args)
+        for (auto x : f_args)
             exprs.push_back(clang::OpaqueValueExpr(from->GetFileEnd(), x->GetClangType(*from)->getNonLValueExprType(from->GetASTContext()), GetKindOfType(x)));
         std::vector<clang::Expr*> exprptrs;
-        for(auto&& x : exprs)
+        for (auto&& x : exprs)
             exprptrs.push_back(&x);
         clang::OverloadCandidateSet s((clang::SourceLocation()));
         clang::UnresolvedSet<8> us;
@@ -319,7 +318,7 @@ Callable* OverloadSet::Resolve(std::vector<Type*> f_args, Type* source) {
                     else
                         from->GetSema().AddOverloadCandidate(llvm::cast<clang::FunctionDecl>(decl), d, exprptrs, s, false, false, true);
                     continue;
-                } 
+                }
                 if (auto meth = llvm::dyn_cast<clang::CXXMethodDecl>(decl) || funtempl && llvm::dyn_cast<clang::CXXMethodDecl>(funtempl->getTemplatedDecl())) {
                     clang::DeclAccessPair d;
                     d.setDecl(decl);
@@ -338,7 +337,7 @@ Callable* OverloadSet::Resolve(std::vector<Type*> f_args, Type* source) {
             return get_wide_or_result();
         }
         auto wide_result = get_wide_or_result();
-        if (wide_result)
+        if (wide_result.first)
             throw std::runtime_error("Attempted to resolve an overload set, but both Wide and C++ provided viable results.");
         auto fun = best->Function;
         auto p = new cppcallable();
@@ -355,13 +354,19 @@ Callable* OverloadSet::Resolve(std::vector<Type*> f_args, Type* source) {
             }
         }
         for (unsigned i = 0; i < fun->getNumParams(); ++i) {
-            auto argty = fun->getParamDecl(i)->getType();            
+            auto argty = fun->getParamDecl(i)->getType();
             auto arg_is_const_ref = argty->isReferenceType() && (argty->getPointeeType().isConstQualified() || argty->getPointeeType().isLocalConstQualified());
             p->types.push_back(std::make_pair(analyzer.GetClangType(*from, argty), arg_is_const_ref));
         }
-        return p;
+        std::vector<Type*> types;
+        for (auto pair : p->types)
+            types.push_back(pair.first);
+        return std::make_pair(p, types);
     }
     return get_wide_or_result();
+}
+Callable* OverloadSet::Resolve(std::vector<Type*> f_args, Type* source) {
+    return ResolveWithArguments(f_args, source).first;
 }
 
 OverloadSet::OverloadSet(OverloadSet* s, OverloadSet* other, Analyzer& a, Type* context)

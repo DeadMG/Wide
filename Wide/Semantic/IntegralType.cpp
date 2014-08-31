@@ -65,7 +65,7 @@ OverloadSet* IntegralType::CreateConstructorOverloadSet(Parse::Access access) {
             if (integral->bits == intty->bits) return types;
             return Util::none;
         }
-        Callable* GetCallableForResolution(std::vector<Type*> types, Analyzer& a) override final { return this; }
+        Callable* GetCallableForResolution(std::vector<Type*> types, Type*, Analyzer& a) override final { return this; }
         std::shared_ptr<Expression> CallFunction(std::vector<std::shared_ptr<Expression>> args, Context c) override final {
             args[1] = BuildValue(std::move(args[1]));
             if (args[1]->GetType() == integral)

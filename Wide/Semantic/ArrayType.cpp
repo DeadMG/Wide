@@ -79,7 +79,7 @@ OverloadSet* ArrayType::CreateOperatorOverloadSet(Parse::OperatorName what, Pars
     struct IndexOperatorResolvable : OverloadResolvable, Callable {
         IndexOperatorResolvable(ArrayType* el) : array(el) {}
         ArrayType* array;
-        std::shared_ptr<Expression> CallFunction(std::vector<std::shared_ptr<Expression>> args, Context c) {
+        std::shared_ptr<Expression> CallFunction(std::vector<std::shared_ptr<Expression>> args, Context c) override final {
             auto argty = args[0]->GetType();
             args[1] = BuildValue(std::move(args[1]));
             auto intty = dynamic_cast<IntegralType*>(args[1]->GetType());
@@ -116,15 +116,15 @@ OverloadSet* ArrayType::CreateOperatorOverloadSet(Parse::OperatorName what, Pars
                 return Semantic::CollapseMember(argty, { con->CreateGEP(arr, indices), array->t }, con);
             });
         }
-        Wide::Util::optional<std::vector<Type*>> MatchParameter(std::vector<Type*> args, Analyzer& a, Type* source) {
+        Wide::Util::optional<std::vector<Type*>> MatchParameter(std::vector<Type*> args, Analyzer& a, Type* source) override final {
             if (args.size() != 2) return Util::none;
             auto arrty = dynamic_cast<ArrayType*>(args[0]->Decay());
             auto intty = dynamic_cast<IntegralType*>(args[1]->Decay());
             if (!arrty || !intty) return Util::none;
             return args;
         }
-        std::vector<std::shared_ptr<Expression>> AdjustArguments(std::vector<std::shared_ptr<Expression>> args, Context c) { return args; }
-        Callable* GetCallableForResolution(std::vector<Type*>, Analyzer& a) { return this; }
+        std::vector<std::shared_ptr<Expression>> AdjustArguments(std::vector<std::shared_ptr<Expression>> args, Context c) override final { return args; }
+        Callable* GetCallableForResolution(std::vector<Type*>, Type*, Analyzer& a) override final { return this; }
     };
     if (!IndexOperator) IndexOperator = Wide::Memory::MakeUnique<IndexOperatorResolvable>(this);
     return analyzer.GetOverloadSet(IndexOperator.get());

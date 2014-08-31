@@ -21,6 +21,8 @@ namespace Wide {
         class OverloadSet;
         class Module;
         class UserDefinedType : public AggregateType, public TupleInitializable, public ConstructorContext {
+            struct ImportConstructorCallable;
+            struct ImportConstructorResolvable;
 
             std::vector<Type*> GetMembers() { return GetMemberData().members; }
             std::vector<std::shared_ptr<Expression>> GetDefaultInitializerForMember(unsigned);
@@ -28,7 +30,8 @@ namespace Wide {
             const Parse::Type* type;
             std::string source_name;
             Type* context;
-            
+            std::unordered_map<Type*, std::unique_ptr<OverloadResolvable>> AssignmentOperatorImportResolvables;
+
             struct BaseData {
                 BaseData(UserDefinedType* self);
                 BaseData(BaseData&& other);
@@ -68,6 +71,7 @@ namespace Wide {
                 bool HasNSDMI = false;
                 std::vector<Type*> members;
                 std::unordered_map<Parse::Name, std::unordered_set<Type*>> BaseImports;
+                std::unordered_map<Type*, std::unique_ptr<OverloadResolvable>> imported_constructors;
             };
             Wide::Util::optional<MemberData> Members;
             MemberData& GetMemberData() {

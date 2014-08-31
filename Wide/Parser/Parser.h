@@ -7,13 +7,28 @@
 #include <vector>
 #include <functional>
 #include <Wide/Lexer/Token.h>
-#include <Wide/Parser/ParserError.h>
 #include <Wide/Parser/AST.h>
 #include <Wide/Util/Memory/MemoryArena.h>
 #include <Wide/Util/Ranges/Optional.h>
 
 namespace Wide {
     namespace Parse {
+        class Error : public std::exception {
+            Wide::Lexer::Token previous;
+            Wide::Util::optional<Wide::Lexer::Token> unexpected;
+            std::unordered_set<Wide::Lexer::TokenType> expected;
+            std::string err;
+        public:
+            Error(Wide::Lexer::Token previous, Wide::Util::optional<Wide::Lexer::Token> error, std::unordered_set<Wide::Lexer::TokenType> expected);
+            const char* what() const
+#ifndef _MSC_VER
+                noexcept
+#endif
+            { return err.c_str(); };
+            Wide::Lexer::Token GetLastValidToken();
+            Wide::Util::optional<Wide::Lexer::Token> GetInvalidToken();
+            std::unordered_set<Wide::Lexer::TokenType> GetExpectedTokenTypes();
+        };
         enum class OutliningType : int {
             Module,
             Function,
@@ -24,20 +39,19 @@ namespace Wide {
             
             std::function<Wide::Util::optional<Lexer::Token>()> lex;
             std::vector<Lexer::Token> putbacks;
-            std::vector<Lexer::Range> locations;
+            std::vector<Lexer::Token> tokens;
 
             Wide::Util::optional<Lexer::Token> operator()();
-            Lexer::Token operator()(Parse::Error);
+            Lexer::Token operator()(Lexer::TokenType required);
+            Lexer::Token operator()(std::unordered_set<Lexer::TokenType> required);
             void operator()(Lexer::Token arg);
-            Lexer::Range GetLastPosition();
+            Lexer::Token GetLastToken();
         };
         
         struct Parser {
             PutbackLexer lex;
             Wide::Memory::Arena arena;
             Module GlobalModule;
-            std::function<void(std::vector<Wide::Lexer::Range>, Error)> error;
-            std::function<void(Lexer::Range, Warning)> warning;
             std::function<void(Lexer::Range, OutliningType)> outlining;
             
             // All the valid productions in the global module.
@@ -87,23 +101,28 @@ namespace Wide {
             OperatorName ParseOperatorName(std::unordered_set<OperatorName> valid_ops, OperatorName, OperatorName);
             // Get possible remaining matches.
             std::unordered_set<OperatorName> GetRemainingValidOperators(std::unordered_set<OperatorName>, OperatorName);
+
+            std::unordered_set<Lexer::TokenType> GetExpressionBeginnings();
+            std::unordered_set<Lexer::TokenType> GetStatementBeginnings();
+            std::unordered_set<Lexer::TokenType> GetIdentifierFollowups();
+
+            template<typename T> static std::unordered_set<Lexer::TokenType> GetExpectedTokenTypesFromMap(T&& t) {
+                std::unordered_set<Lexer::TokenType> expected;
+                for (auto&& pair : t)
+                    expected.insert(pair.first);
+                return expected;
+            }
+            template<typename T, typename... Args> static std::unordered_set<Lexer::TokenType> GetExpectedTokenTypesFromMap(T&& t, Args&&... args) {
+                auto rest = GetExpectedTokenTypesFromMap(std::forward<Args>(args)...);
+                for (auto&& pair : t)
+                    rest.insert(pair.first);                
+                return rest;
+            }
             
-            ParserError BadToken(const Lexer::Token& first, Parse::Error err);
             Expression* ParseSubAssignmentExpression(unsigned slot, Parse::Import* imp);
             Expression* ParseSubAssignmentExpression(unsigned slot, Expression* Unary, Parse::Import* imp);
             std::unordered_set<OperatorName> GetAllOperators();
-
-            Lexer::Token Check(Parse::Error error, Lexer::TokenType tokty);
-            Lexer::Token Check(Parse::Error error, std::initializer_list<Lexer::TokenType> tokty);
-            template<typename F> Lexer::Token Check(Parse::Error error, F&& f) {
-                auto t = lex();
-                if (!t)
-                    throw ParserError(lex.GetLastPosition(), error);
-                if (!f(*t))
-                    throw BadToken(*t, error);
-                return *t;
-            }
-            
+                        
             Attribute ParseAttribute(Lexer::Token& tok, Parse::Import* imp);
 
             void ParseGlobalModuleContents(Module* m, Parse::Import* imp = nullptr);
@@ -131,7 +150,7 @@ namespace Wide {
             Function* ParseFunction(const Lexer::Token& first, Parse::Import* imp, std::vector<Attribute> attrs);
             Destructor* ParseDestructor(const Lexer::Token& first, Parse::Import* imp, std::vector<Attribute> attrs);
             
-            Module* ParseQualifiedName(Lexer::Token& first, Module* m, Parse::Access a, Parse::Error err);
+            Module* ParseQualifiedName(Lexer::Token& first, Module* m, Parse::Access a, std::unordered_set<Lexer::TokenType> admissible, std::unordered_set<Lexer::TokenType> final);
             void ParseTypeBody(Type* ty, Parse::Import* imp);
             std::vector<Expression*> ParseTypeBases(Parse::Import* imp);
             Type* ParseTypeDeclaration(Module* m, Lexer::Range loc, Parse::Import* imp, Lexer::Token& ident, std::vector<Attribute>& attrs);

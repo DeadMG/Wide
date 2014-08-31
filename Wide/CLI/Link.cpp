@@ -35,7 +35,7 @@ void Driver::AddLinkOptions(boost::program_options::options_description& opts) {
 }
 void Driver::Link(llvm::LLVMContext& con, llvm::Module* mod, std::vector<std::string> files, const Wide::Options::Clang& ClangOpts, const boost::program_options::variables_map& args) {
     std::string outputfile = args.count("link-output") ? args["link-output"].as<std::string>() : "a.o";
-    auto inputmodules = args["link-module"].as<std::vector<std::string>>();
+    auto inputmodules = args.count("link_module") ? args["link-module"].as<std::vector<std::string>>() : std::vector<std::string>();
     std::vector<std::string> import_bitcodes;
     std::vector<std::pair<std::string, std::string>> imports;
     for (auto file : inputmodules) {
