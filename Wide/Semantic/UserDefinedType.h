@@ -5,6 +5,7 @@
 #include <functional>
 #include <string>
 #include <vector>
+#include <tuple>
 
 #pragma warning(push, 0)
 #include <clang/AST/Type.h>
@@ -79,6 +80,18 @@ namespace Wide {
                 return *Members;
             }
 
+            struct ExportData {
+                ExportData(UserDefinedType* self) : exported(false) {}
+                bool exported;
+                // First is reference, second is value.
+                std::unordered_map<std::string, std::pair<std::string, std::string>> MemberPropertyNames;
+            };
+            Wide::Util::optional<ExportData> Exports;
+            ExportData& GetExportData() {
+                if (!Exports) Exports = ExportData(this);
+                return *Exports;
+            }
+
             struct DefaultData {
                 DefaultData(UserDefinedType* self);
                 DefaultData(DefaultData&&);
@@ -139,7 +152,10 @@ namespace Wide {
             std::shared_ptr<Expression> AccessStaticMember(std::string name, Context c) override final;
             std::string explain() override final;
             Wide::Util::optional<unsigned> GetVirtualFunctionIndex(const Parse::DynamicFunction* func);
-            bool IsFinal() override final { return false; }
+            bool IsFinal() override final;
+            std::string GetExportBody() override final;
+            void Export(llvm::Module* mod) override final;
+            bool AlwaysKeepInMemory(llvm::Module* mod) override final;
         };
     }
 }

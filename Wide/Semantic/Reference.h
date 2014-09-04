@@ -44,6 +44,7 @@ namespace Wide {
             bool IsSourceATarget(Type* first, Type* second, Type* context) override final;
             OverloadSet* CreateConstructorOverloadSet(Parse::Access access) override final;
             std::string explain() override final;
+            std::string Export() override final;
         };
         class RvalueType : public Reference {
             std::unique_ptr<OverloadResolvable> RvalueConvertible;
@@ -54,6 +55,7 @@ namespace Wide {
             bool IsSourceATarget(Type* first, Type* second, Type* context) override final;
             OverloadSet* CreateConstructorOverloadSet(Parse::Access access) override final;
             std::string explain() override final;
+            std::string Export() override final;
         };
     }
 }

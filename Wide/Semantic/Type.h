@@ -240,7 +240,6 @@ namespace Wide {
             virtual std::size_t alignment() = 0;
             virtual std::string explain() = 0;
             virtual llvm::Type* GetLLVMType(llvm::Module* module) = 0;
-            virtual std::function<llvm::Constant*(llvm::Module*)> GetRTTI();
 
             virtual bool IsFinal();
             virtual bool IsAbstract();
@@ -248,7 +247,7 @@ namespace Wide {
             virtual bool IsReference();
             virtual Type* Decay();
             virtual Type* GetContext();
-            virtual bool AlwaysKeepInMemory();
+            virtual bool AlwaysKeepInMemory(llvm::Module* mod);
             virtual bool IsTriviallyDestructible();
             virtual bool IsTriviallyCopyConstructible();
             virtual Wide::Util::optional<clang::QualType> GetClangType(ClangTU& TU);
@@ -266,6 +265,10 @@ namespace Wide {
             virtual std::vector<std::pair<Type*, unsigned>> GetBasesAndOffsets();
             virtual bool IsNonstaticMemberContext();
             virtual bool IsLookupContext();
+            virtual std::function<llvm::Constant*(llvm::Module*)> GetRTTI();
+            virtual std::string Export();
+            virtual std::string GetExportBody();
+            virtual void Export(llvm::Module* mod);
 
             // Do not ever call from public API, it is for derived types and implementation details only.
             virtual bool IsSourceATarget(Type* source, Type* target, Type* context) { return false; }

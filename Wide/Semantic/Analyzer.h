@@ -137,7 +137,10 @@ namespace Wide {
 
             llvm::DataLayout layout;
             std::unordered_map<const Parse::Expression*, std::shared_ptr<Expression>> ExpressionCache;
+            std::unordered_map<Type*, std::string> ExportedTypes;
         public:
+            std::string GetTypeExports();
+            std::string GetTypeExport(Type* t);
             auto GetFunctions() -> const decltype(WideFunctions)& { return WideFunctions; }
             
             std::function<void(Lexer::Range where, Type* t)> QuickInfo;

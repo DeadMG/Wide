@@ -956,7 +956,7 @@ std::shared_ptr<Expression> UserDefinedType::PrimitiveAccessMember(std::shared_p
 
 std::string UserDefinedType::explain() {
     if (context == analyzer.GetGlobalModule())
-        return source_name;
+        return "." + source_name;
     return GetContext()->explain() + "." + source_name;
 } 
 Type::VTableLayout UserDefinedType::ComputePrimaryVTableLayout() {
@@ -1238,4 +1238,78 @@ std::shared_ptr<Expression> UserDefinedType::AccessStaticMember(std::string name
     if (!BaseType)
         return nullptr;
     return BaseType->AccessStaticMember(name, c);
+}
+bool UserDefinedType::IsFinal() {
+    for (auto attr : type->attributes) {
+        if (auto name = dynamic_cast<const Parse::Identifier*>(attr.initialized)) {
+            if (auto str = boost::get<std::string>(&name->val)) {
+                if (*str == "final") {
+                    auto expr = analyzer.AnalyzeExpression(GetContext(), attr.initializer);
+                    if (auto constant = dynamic_cast<Semantic::Boolean*>(expr.get())) {
+                        return constant->b;
+                    }
+                }
+            }
+        }
+    }
+    return false;
+}
+std::string UserDefinedType::GetExportBody() {
+    GetExportData().exported = true;
+    std::string import = "[size := " + std::to_string(size()) + "]\n";
+    import += "[alignment := " + std::to_string(alignment()) + "]\n";
+    import += "[__always_keep_in_memory := true]\n";
+    import += "type " + explain() + "{\n";
+    for (auto member : GetMemberData().member_indices) {
+        // Need lvalue/rvalue/value overloads.
+        auto var = type->variables[member.second];
+        if (IsFinal() && var.access == Parse::Access::Protected) continue;
+        if (var.access != Parse::Access::Public) continue;
+        import += "private:\n";
+        auto refname = analyzer.GetUniqueFunctionName();
+        import += "[import_name := \"" + refname + "\"]\n";
+        import += "get_" + member.first + "(this := " + explain() + ".rvalue) := " + analyzer.GetTypeExport(Semantic::CollapseType(analyzer.GetRvalueType(this), GetMemberData().members[member.second])) + " {}\n";
+        import += "[import_name := \"" + refname + "\"]\n";
+        import += "get_" + member.first + "(this := " + explain() + ".lvalue) := " + analyzer.GetTypeExport(Semantic::CollapseType(analyzer.GetLvalueType(this), GetMemberData().members[member.second])) + " {}\n";
+        auto valname = analyzer.GetUniqueFunctionName();
+        import += "[import_name := \"" + valname + "\"]\n";
+        import += "get_" + member.first + "(this := " + explain() + ") := " + analyzer.GetTypeExport(GetMemberData().members[member.second]) + " {}\n";
+        import += "public:\n";
+        import += "using " + member.first + " := " + "get_" + member.first + "();\n";
+        GetExportData().MemberPropertyNames[member.first] = { refname, valname };
+    }
+    import += "}";
+    return import;
+}
+void UserDefinedType::Export(llvm::Module* mod) {
+    for (auto tuple : GetExportData().MemberPropertyNames) {
+        auto memtype = GetMemberData().members[GetMemberData().member_indices[tuple.first]];
+        auto fty = analyzer.GetFunctionType(Semantic::CollapseType(analyzer.GetLvalueType(this), memtype), { analyzer.GetLvalueType(this) }, false);
+        llvm::Function* reffunc = llvm::Function::Create(llvm::cast<llvm::FunctionType>(fty->GetLLVMType(mod)->getElementType()), llvm::GlobalValue::LinkageTypes::ExternalLinkage, tuple.second.first, mod);
+        CodegenContext::EmitFunctionBody(reffunc, [&](CodegenContext&) {
+
+        });
+        fty = analyzer.GetFunctionType(memtype, { this }, false);
+        llvm::Function* valfunc = llvm::Function::Create(llvm::cast<llvm::FunctionType>(fty->GetLLVMType(mod)->getElementType()), llvm::GlobalValue::LinkageTypes::ExternalLinkage, tuple.second.second, mod);
+        CodegenContext::EmitFunctionBody(valfunc, [&](CodegenContext&) {
+
+        });
+    }
+}
+bool UserDefinedType::AlwaysKeepInMemory(llvm::Module* mod) {
+    if (GetExportData().exported)
+        return true;
+    for (auto attr : type->attributes) {
+        if (auto name = dynamic_cast<const Parse::Identifier*>(attr.initialized)) {
+            if (auto str = boost::get<std::string>(&name->val)) {
+                if (*str == "__always_keep_in_memory") {
+                    auto expr = analyzer.AnalyzeExpression(GetContext(), attr.initializer);
+                    if (auto constant = dynamic_cast<Semantic::Boolean*>(expr.get())) {
+                        return constant->b;
+                    }
+                }
+            }
+        }
+    }
+    return AggregateType::AlwaysKeepInMemory(mod);
 }

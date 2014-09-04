@@ -23,15 +23,8 @@ std::shared_ptr<Expression> TupleType::ConstructFromLiteral(std::vector<std::sha
     // Else try to avoid making an allocation.
     std::vector<std::shared_ptr<Expression>> initializers;
     auto self = std::make_shared<ImplicitTemporaryExpr>(this, c);
-    if (AlwaysKeepInMemory()) {
-        for (std::size_t i = 0; i < exprs.size(); ++i) {
-            initializers.push_back(Type::BuildInplaceConstruction(PrimitiveAccessMember(self, i), { std::move(exprs[i]) }, c));
-        }
-    } else {
-        for (std::size_t i = 0; i < exprs.size(); ++i) {
-            initializers.push_back(GetMembers()[i]->BuildValueConstruction({ std::move(exprs[i]) }, c));
-            assert(initializers.back()->GetType() == GetMembers()[i]);
-        }
+    for (std::size_t i = 0; i < exprs.size(); ++i) {
+        initializers.push_back(Type::BuildInplaceConstruction(PrimitiveAccessMember(self, i), { std::move(exprs[i]) }, c));
     }
 
     struct TupleConstruction : Expression {
@@ -49,23 +42,14 @@ std::shared_ptr<Expression> TupleType::ConstructFromLiteral(std::vector<std::sha
             return self->GetType()->Decay();
         }
         llvm::Value* ComputeValue(CodegenContext& con) override final {
-            if (GetType()->AlwaysKeepInMemory()) {
                 for (auto&& init : inits)
                     init->GetValue(con);
                 if (destructor)
                     con.AddDestructor(destructor);
+            if (GetType()->AlwaysKeepInMemory(con)) {
                 return self->GetValue(con);
             }
-            llvm::Value* agg = llvm::UndefValue::get(tuplety->GetLLVMType(con));
-            // The inits will be values, so insert them.
-            for (unsigned i = 0; i < tuplety->GetMembers().size(); ++i) {
-                auto ty = inits[i]->GetType();
-                auto memty = tuplety->GetMembers()[i];
-                assert(ty == memty);
-                auto val = inits[i]->GetValue(con);
-                agg = con->CreateInsertValue(agg, val, { boost::get<LLVMFieldIndex>(tuplety->GetLocation(i)).index });
-            }
-            return agg;
+            return con->CreateLoad(self->GetValue(con));
         }
     };
 

@@ -918,10 +918,7 @@ Expression* Parser::ParseSubAssignmentExpression(unsigned slot, Expression* Unar
 Expression* Parser::ParsePrimaryExpression(Parse::Import* imp) {
     // ParseUnaryExpression throws if there is no token available so we should be safe here.
     auto t = lex(GetExpectedTokenTypesFromMap(PrimaryExpressions));
-    if (PrimaryExpressions.find(t.GetType()) != PrimaryExpressions.end())
-        return PrimaryExpressions[t.GetType()](*this, imp, t);
-    lex(t);
-    throw Error(lex.GetLastToken(), t, GetExpectedTokenTypesFromMap(PrimaryExpressions));
+    return PrimaryExpressions[t.GetType()](*this, imp, t);
 }
 
 std::vector<Expression*> Parser::ParseFunctionArguments(Parse::Import* imp) {

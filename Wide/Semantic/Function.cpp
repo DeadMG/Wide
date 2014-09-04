@@ -100,7 +100,7 @@ void Function::LocalVariable::OnNodeChanged(Node* n, Change what) {
 llvm::Value* Function::LocalVariable::ComputeValue(CodegenContext& con) {
     if (init_expr->GetType() == var_type) {
         // If they return a complex value by value, just steal it, and don't worry about destructors as it will already have handled it.
-        if (init_expr->GetType()->AlwaysKeepInMemory() || var_type->IsReference()) return init_expr->GetValue(con);
+        if (init_expr->GetType()->AlwaysKeepInMemory(con) || var_type->IsReference()) return init_expr->GetValue(con);
         // If they return a simple by value, then we can just alloca it fine, no destruction needed.
         auto alloc = con.CreateAlloca(var_type);
         con->CreateStore(init_expr->GetValue(con), alloc);
@@ -188,7 +188,7 @@ void Function::ReturnStatement::GenerateCode(CodegenContext& con) {
     }
 
     // If we return a simple type
-    if (!self->ReturnType->AlwaysKeepInMemory()) {
+    if (!self->ReturnType->AlwaysKeepInMemory(con)) {
         // and we already have an expression of that type
         if (ret_expr->GetType() == self->ReturnType) {
             // then great, just return it directly.
@@ -528,11 +528,11 @@ Type* Function::Parameter::GetType() {
 }
 llvm::Value* Function::Parameter::ComputeValue(CodegenContext& con) {
     auto argnum = num;
-    if (self->ReturnType->AlwaysKeepInMemory())
+    if (self->ReturnType->AlwaysKeepInMemory(con))
         ++argnum;
     auto llvm_argument = std::next(self->llvmfunc->arg_begin(), argnum);
     
-    if (self->Args[num]->AlwaysKeepInMemory() || self->Args[num]->IsReference())
+    if (self->Args[num]->AlwaysKeepInMemory(con) || self->Args[num]->IsReference())
         return llvm_argument;
 
     auto alloc = con.CreateAlloca(self->Args[num]);
@@ -548,6 +548,7 @@ Function::Function(std::vector<Type*> args, const Parse::FunctionBase* astfun, A
 , s(State::NotYetAnalyzed)
 , root_scope(nullptr)
 , source_name(src_name) {
+    llvmname = a.GetUniqueFunctionName();
     assert(mem);
     // Only match the non-concrete arguments.
     root_scope = Wide::Memory::MakeUnique<Scope>(nullptr);
@@ -934,12 +935,14 @@ llvm::Function* Function::EmitCode(llvm::Module* module) {
     auto sig = GetSignature();
     auto llvmsig = sig->GetLLVMType(module);
     if (import_name) {
+        if (llvmfunc = module->getFunction(*import_name))
+            return llvmfunc;
         llvmfunc = llvm::Function::Create(llvm::dyn_cast<llvm::FunctionType>(llvmsig->getElementType()), llvm::GlobalValue::LinkageTypes::ExternalLinkage, *import_name, module);
         for (auto exportnam : trampoline)
             exportnam(module);
         return llvmfunc;
     }
-    llvmfunc = llvm::Function::Create(llvm::dyn_cast<llvm::FunctionType>(llvmsig->getElementType()), llvm::GlobalValue::LinkageTypes::ExternalLinkage, analyzer.GetUniqueFunctionName(), module);
+    llvmfunc = llvm::Function::Create(llvm::dyn_cast<llvm::FunctionType>(llvmsig->getElementType()), llvm::GlobalValue::LinkageTypes::ExternalLinkage, llvmname, module);
     CodegenContext::EmitFunctionBody(llvmfunc, [this](CodegenContext& c) {
         for (auto&& stmt : root_scope->active)
             if (!c.IsTerminated(c->GetInsertBlock()))
@@ -1155,4 +1158,28 @@ std::shared_ptr<Expression> Function::GetStaticSelf() {
         llvm::Value* ComputeValue(CodegenContext& con) override final { return f->EmitCode(con); }
     };
     return std::make_shared<Self>(this);
+}
+std::string Function::GetExportBody() {
+    auto sig = GetSignature();
+    auto import = "[import_name := \"" + llvmname + "\"]\n";
+    if (!dynamic_cast<UserDefinedType*>(GetContext()))
+        import += analyzer.GetTypeExport(GetContext());
+    import += source_name;
+    import += "(";
+    unsigned i = 0;
+    for (auto& ty : Args) {
+        if (Args.size() == fun->args.size() + 1 && i == 0) {
+            import += "this := ";
+            ++i;
+        } else {
+            import += fun->args[i++].name + " := ";
+        }
+        if (&ty != &Args.back())
+            import += analyzer.GetTypeExport(ty) + ", ";
+        else
+            import += analyzer.GetTypeExport(ty);
+    }
+    import += ")";
+    import += " := " + analyzer.GetTypeExport(sig->GetReturnType()) + " { } \n";
+    return import;
 }

@@ -36,20 +36,23 @@ void Driver::AddExportOptions(boost::program_options::options_description& opts)
 }
 void Driver::Export(llvm::LLVMContext& con, llvm::Module* mod, std::vector<std::string> files, const Wide::Options::Clang& ClangOpts, const boost::program_options::variables_map& args) {
     std::string outputfile = args.count("export-output") ? args["export-output"].as<std::string>() : "module.tar.gz";
+    if (args.count("export-include")) {
+        auto folder = args["export-include"].as<std::string>();
+        
+    }
     std::string exports;
     Wide::Driver::Compile(ClangOpts, files, [&](Wide::Semantic::Analyzer& a, const Wide::Parse::Module* root) {
-        std::vector<std::pair<std::string, Wide::Semantic::Function*>> funcs;
+        //std::vector<std::pair<std::string, Wide::Semantic::Function*>> funcs;
         Wide::Semantic::AnalyzeExportedFunctions(a, [&](const Parse::AttributeFunctionBase* func, std::string name, Wide::Semantic::Module* mod) {
-            auto semfunc = mod->analyzer.GetWideFunction(func, mod, name);
-            semfunc->ComputeBody();
-            funcs.push_back(std::make_pair(GetFunctionName(func, mod->analyzer, mod->explain() + name, mod) + " := " + semfunc->GetSignature()->GetReturnType()->explain() + "\n", semfunc));
+            auto semfunc = a.GetWideFunction(func, mod, name);
+            a.GetTypeExport(semfunc);
         });
 
+        exports = a.GetTypeExports();
         a.GenerateCode(mod);
+
         if (llvm::verifyModule(*mod, llvm::VerifierFailureAction::PrintMessageAction))
             throw std::runtime_error("Internal compiler error: An LLVM module failed verification.");
-        for (auto pair : funcs)
-            exports += "[import_name := \"" + std::string(pair.second->EmitCode(mod)->getName()) + "\"]\n" + pair.first + "{}";
     });
     Wide::Util::Archive a;
     std::string mod_ir;

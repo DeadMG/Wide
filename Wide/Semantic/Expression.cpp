@@ -71,7 +71,7 @@ Type* RvalueCast::GetType() {
 llvm::Value* RvalueCast::ComputeValue(CodegenContext& con) {
     if (IsLvalueType(expr->GetType()))
         return expr->GetValue(con);
-    if (expr->GetType()->AlwaysKeepInMemory())
+    if (expr->GetType()->AlwaysKeepInMemory(con))
         return expr->GetValue(con);
     assert(!IsRvalueType(expr->GetType()));
     auto tempalloc = con.CreateAlloca(expr->GetType());
@@ -214,7 +214,7 @@ llvm::Value* Expression::GetValue(CodegenContext& con) {
     if (val) return *val; 
     val = ComputeValue(con);
     auto selfty = GetType()->GetLLVMType(con);
-    if (GetType()->AlwaysKeepInMemory()) {
+    if (GetType()->AlwaysKeepInMemory(con)) {
         auto ptrty = llvm::dyn_cast<llvm::PointerType>((*val)->getType());
         assert(ptrty);
         assert(ptrty->getElementType() == selfty);

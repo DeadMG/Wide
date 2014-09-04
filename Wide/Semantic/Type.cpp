@@ -75,7 +75,7 @@ Type* Type::GetContext() {
     return analyzer.GetGlobalModule();
 }
 
-bool Type::AlwaysKeepInMemory() {
+bool Type::AlwaysKeepInMemory(llvm::Module* mod) {
     return !IsTriviallyDestructible() || !IsTriviallyCopyConstructible();
 }
 
@@ -327,7 +327,7 @@ struct ValueConstruction : Expression {
         return self;
     }
     llvm::Value* ComputeValue(CodegenContext& con) override final {
-        if (!self->AlwaysKeepInMemory()) {
+        if (!self->AlwaysKeepInMemory(con)) {
             if (auto implicitstore = dynamic_cast<ImplicitStoreExpr*>(InplaceConstruction.get())) {
                 if (implicitstore->mem == temporary) {
                     assert(implicitstore->val->GetType() == self);
@@ -361,7 +361,7 @@ struct ValueConstruction : Expression {
             }
         }
         InplaceConstruction->GetValue(con);
-        if (self->AlwaysKeepInMemory()) {
+        if (self->AlwaysKeepInMemory(con)) {
             if (!self->IsTriviallyDestructible())
                 con.AddDestructor(destructor);
             return temporary->GetValue(con);
@@ -995,4 +995,11 @@ std::shared_ptr<Expression> Type::BuildIndex(std::shared_ptr<Expression> val, st
     auto call = set->Resolve(types, c.from);
     if (!call) set->IssueResolutionError(types, c);
     return call->Call(std::move(args), c);
+}
+std::string Type::Export() {
+    return explain();
+}
+void Type::Export(llvm::Module* mod) {}
+std::string Type::GetExportBody() {
+    return "";
 }

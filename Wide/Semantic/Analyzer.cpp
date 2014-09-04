@@ -818,6 +818,8 @@ void Analyzer::GenerateCode(llvm::Module* module) {
     for (auto&& set : WideFunctions)
         for (auto&& signature : set.second)
             signature.second->EmitCode(module);
+    for (auto&& pair : ExportedTypes)
+        pair.first->Export(module);
 }
 WideFunctionType* Analyzer::GetFunctionType(Type* ret, const std::vector<Type*>& t, bool variadic, clang::CallingConv conv) {
     std::map<clang::CallingConv, llvm::CallingConv::ID> convconverter = {
@@ -1469,7 +1471,7 @@ Type* Semantic::CollapseType(Type* source, Type* member) {
     return source->analyzer.GetRvalueType(member);
 }
 llvm::Value* Semantic::CollapseMember(Type* source, std::pair<llvm::Value*, Type*> member, CodegenContext& con) {
-    if ((source->IsReference() && member.second->IsReference()) || (source->AlwaysKeepInMemory() && !member.second->AlwaysKeepInMemory()))
+    if ((source->IsReference() && member.second->IsReference()) || (source->AlwaysKeepInMemory(con) && !member.second->AlwaysKeepInMemory(con)))
         return con->CreateLoad(member.first);
     return member.first;
 }
@@ -1529,4 +1531,18 @@ ClangTypeInfo* Analyzer::MaybeGetClangTypeInfo(const clang::CXXRecordDecl* decl)
     if (GeneratedClangTypes.find(decl) != GeneratedClangTypes.end())
         return &GeneratedClangTypes[decl];
     return nullptr;
+}
+std::string Analyzer::GetTypeExport(Type* t) {
+    if (ExportedTypes.find(t) == ExportedTypes.end()) {
+        // Break any recursion here.
+        ExportedTypes[t] = "";
+        ExportedTypes[t] = t->GetExportBody();
+    }
+    return t->Export();
+}
+std::string Analyzer::GetTypeExports() {
+    std::string exports;
+    for (auto&& pair : ExportedTypes)
+        exports += pair.second;
+    return exports;
 }

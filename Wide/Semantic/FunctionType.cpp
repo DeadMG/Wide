@@ -68,14 +68,14 @@ bool FunctionType::CanThunkFromFirstToSecond(FunctionType* lhs, FunctionType* rh
 llvm::PointerType* WideFunctionType::GetLLVMType(llvm::Module* module) {
     llvm::Type* ret;
     std::vector<llvm::Type*> args;
-    if (ReturnType->AlwaysKeepInMemory()) {
+    if (ReturnType->AlwaysKeepInMemory(module)) {
         ret = analyzer.GetVoidType()->GetLLVMType(module);
         args.push_back(analyzer.GetRvalueType(ReturnType)->GetLLVMType(module));
     } else {
         ret = ReturnType->GetLLVMType(module);
     }
     for(auto&& x : Args) {
-        if (x->AlwaysKeepInMemory()) {
+        if (x->AlwaysKeepInMemory(module)) {
             args.push_back(analyzer.GetRvalueType(x)->GetLLVMType(module));
         } else {
             args.push_back(x->GetLLVMType(module));
@@ -89,13 +89,11 @@ std::shared_ptr<Expression> WideFunctionType::ConstructCall(std::shared_ptr<Expr
         Call(Analyzer& an, std::shared_ptr<Expression> self, std::vector<std::shared_ptr<Expression>> args, Context c, llvm::CallingConv::ID conv)
             : a(an), args(std::move(args)), val(std::move(self)), convention(conv)
         {
-            if (GetType()->AlwaysKeepInMemory()) {
-                Ret = Wide::Memory::MakeUnique<ImplicitTemporaryExpr>(GetType(), c);
-                if (!GetType()->IsTriviallyDestructible())
-                    Destructor = GetType()->BuildDestructorCall(Ret, c, true);
-                else
-                    Destructor = {};
-            }
+            Ret = Wide::Memory::MakeUnique<ImplicitTemporaryExpr>(GetType(), c);
+            if (!GetType()->IsTriviallyDestructible())
+                Destructor = GetType()->BuildDestructorCall(Ret, c, true);
+            else
+                Destructor = {};
         }
 
         Analyzer& a;
@@ -112,7 +110,7 @@ std::shared_ptr<Expression> WideFunctionType::ConstructCall(std::shared_ptr<Expr
         llvm::Value* ComputeValue(CodegenContext& con) override final {
             llvm::Value* llvmfunc = val->GetValue(con);
             std::vector<llvm::Value*> llvmargs;
-            if (GetType()->AlwaysKeepInMemory())
+            if (GetType()->AlwaysKeepInMemory(con))
                 llvmargs.push_back(Ret->GetValue(con));
             // The CALLER calls the destructor, NOT the CALLEE. So let this just destroy them naturally.
             for (auto&& arg : args)
@@ -132,7 +130,7 @@ std::shared_ptr<Expression> WideFunctionType::ConstructCall(std::shared_ptr<Expr
                 callinst->setCallingConv(convention);
                 call = callinst;
             }
-            if (Ret) {
+            if (GetType()->AlwaysKeepInMemory(con)) {
                 if (Destructor)
                     con.AddDestructor(Destructor);
                 return Ret->GetValue(con);
@@ -206,12 +204,12 @@ std::function<void(llvm::Module*)> WideFunctionType::CreateThunk(std::function<l
     Context c{ context, std::make_shared<std::string>("Analyzer internal thunk") };
     // For the zeroth argument, if the rhs is derived from the lhs, force a cast for vthunks.
     struct arg : Expression {
-        arg(Type* t, unsigned i) : ty(t), i(i) {}
+        arg(Type* t, std::function<unsigned(llvm::Module* mod)> i) : ty(t), i(i) {}
         Type* ty;
-        unsigned i;
+        std::function<unsigned(llvm::Module* mod)> i;
         Type* GetType() override final { return ty; }
         llvm::Value* ComputeValue(CodegenContext& con) { 
-            return std::next(con->GetInsertBlock()->getParent()->arg_begin(), i); 
+            return std::next(con->GetInsertBlock()->getParent()->arg_begin(), i(con)); 
         }
     };
     for (unsigned i = 0; i < GetArguments().size(); ++i) {
@@ -220,41 +218,45 @@ std::function<void(llvm::Module*)> WideFunctionType::CreateThunk(std::function<l
             auto basethis = GetArguments()[0]->Decay();
             if (derthis->IsDerivedFrom(basethis) == InheritanceRelationship::UnambiguouslyDerived && IsLvalueType(derthis) == IsLvalueType(basethis)) {
                 struct cast : Expression {
-                    cast(Type* dest, unsigned off, bool complex)
+                    cast(Type* dest, unsigned off, std::function<bool(llvm::Module* mod)> complex)
                         : desttype(dest), offset(off), complexthis(complex) {}
                     Type* desttype;
                     unsigned offset;
-                    bool complexthis;
+                    std::function<bool(llvm::Module* mod)> complexthis;
                     Type* GetType() override final { return desttype; }
                     llvm::Value* ComputeValue(CodegenContext& con) override final {
-                        auto src = std::next(con->GetInsertBlock()->getParent()->arg_begin(), complexthis);
+                        auto src = std::next(con->GetInsertBlock()->getParent()->arg_begin(), complexthis(con));
                         auto cast = con->CreateBitCast(src, con.GetInt8PtrTy());
                         auto adjusted = con->CreateGEP(cast, llvm::ConstantInt::get(llvm::IntegerType::getInt32Ty(con), -offset, true));
                         return con->CreateBitCast(adjusted, desttype->GetLLVMType(con));
                     }
                 };
-                conversion_exprs.push_back(std::make_shared<cast>(destty->GetArguments()[0], derthis->GetOffsetToBase(basethis), GetReturnType()->AlwaysKeepInMemory()));
+                conversion_exprs.push_back(std::make_shared<cast>(destty->GetArguments()[0], derthis->GetOffsetToBase(basethis), [this](llvm::Module* mod) { return GetReturnType()->AlwaysKeepInMemory(mod); }));
                 continue;
             }
         }
-        conversion_exprs.push_back(destty->GetArguments()[i]->BuildValueConstruction({ std::make_shared<arg>(GetArguments()[i], i + GetReturnType()->AlwaysKeepInMemory()) }, c));
+        conversion_exprs.push_back(destty->GetArguments()[i]->BuildValueConstruction({ std::make_shared<arg>(GetArguments()[i], [this, i](llvm::Module* mod) { return i + GetReturnType()->AlwaysKeepInMemory(mod); }) }, c));
     }
     auto call = Type::BuildCall(dest, conversion_exprs, c);
-    std::shared_ptr<Expression> ret_expr;
-    if (GetReturnType()->AlwaysKeepInMemory()) {
-        ret_expr = Type::BuildInplaceConstruction(std::make_shared<arg>(analyzer.GetLvalueType(GetReturnType()), 0), { call }, c);
-    } else if (GetReturnType() != analyzer.GetVoidType())
-        ret_expr = GetReturnType()->BuildValueConstruction({ call }, c);
-    else
-        ret_expr = call;
-    return [src, ret_expr](llvm::Module* mod) {
-        CodegenContext::EmitFunctionBody(src(mod), [ret_expr](CodegenContext& con) {
+    std::shared_ptr<Expression> ret_expr = call;
+    if (GetReturnType() != analyzer.GetVoidType()) {
+        call = GetReturnType()->BuildValueConstruction({ call }, c);
+        ret_expr = Type::BuildInplaceConstruction(std::make_shared<arg>(analyzer.GetLvalueType(GetReturnType()), [](llvm::Module* mod) { return 0; }), { call }, c);
+    }
+    return [this, src, ret_expr, call](llvm::Module* mod) {
+        CodegenContext::EmitFunctionBody(src(mod), [this, ret_expr, call](CodegenContext& con) {
+            if (!GetReturnType()->AlwaysKeepInMemory(con)) {
+                auto val = call->GetValue(con);
+                con.DestroyAll(false);
+                if (val->getType() == llvm::Type::getVoidTy(con))
+                    con->CreateRetVoid();
+                else
+                    con->CreateRet(val);
+                return;
+            }
             auto val = ret_expr->GetValue(con);
             con.DestroyAll(false);
-            if (val->getType() == llvm::Type::getVoidTy(con))
-                con->CreateRetVoid();
-            else
-                con->CreateRet(val);
+            con->CreateRetVoid();
         });
     };
 }
@@ -288,13 +290,11 @@ std::shared_ptr<Expression> ClangFunctionType::ConstructCall(std::shared_ptr<Exp
         Call(Analyzer& an, std::shared_ptr<Expression> self, std::vector<std::shared_ptr<Expression>> args, Context c)
             : a(an), args(std::move(args)), val(std::move(self))
         {
-            if (GetType()->AlwaysKeepInMemory()) {
-                Ret = Wide::Memory::MakeUnique<ImplicitTemporaryExpr>(GetType(), c);
-                if (!GetType()->IsTriviallyDestructible())
-                    Destructor = GetType()->BuildDestructorCall(Ret, c, true);
-                else
-                    Destructor = {};
-            }
+            Ret = Wide::Memory::MakeUnique<ImplicitTemporaryExpr>(GetType(), c);
+            if (!GetType()->IsTriviallyDestructible())
+                Destructor = GetType()->BuildDestructorCall(Ret, c, true);
+            else
+                Destructor = {};
         }
         Type* GetType() override final {
             auto fty = dynamic_cast<ClangFunctionType*>(val->GetType());
@@ -318,14 +318,14 @@ std::shared_ptr<Expression> ClangFunctionType::ConstructCall(std::shared_ptr<Exp
                 if (arg->GetType() == a.GetBooleanType())
                     val = con->CreateTrunc(val, llvm::IntegerType::getInt1Ty(con));
                 auto clangty = *arg->GetType()->GetClangType(*clangfuncty->from);
-                if (arg->GetType()->AlwaysKeepInMemory())
+                if (arg->GetType()->AlwaysKeepInMemory(con))
                     list.add(clang::CodeGen::RValue::getAggregate(val), clangty);
                 else
                     list.add(clang::CodeGen::RValue::get(val), clangty);
             }
             llvm::Instruction* call_or_invoke;
             clang::CodeGen::ReturnValueSlot slot;
-            if (clangfuncty->GetReturnType()->AlwaysKeepInMemory()) {
+            if (clangfuncty->GetReturnType()->AlwaysKeepInMemory(con)) {
                 slot = clang::CodeGen::ReturnValueSlot(Ret->GetValue(con), false);
             }
             auto result = codegenfunc.EmitCall(clangfuncty->GetCGFunctionInfo(con), llvmfunc, slot, list, nullptr, &call_or_invoke);
@@ -360,7 +360,7 @@ std::shared_ptr<Expression> ClangFunctionType::ConstructCall(std::shared_ptr<Exp
                 return val;
             }
             auto val = result.getAggregateAddr();
-            if (clangfuncty->GetReturnType()->IsReference() || clangfuncty->GetReturnType()->AlwaysKeepInMemory())
+            if (clangfuncty->GetReturnType()->IsReference() || clangfuncty->GetReturnType()->AlwaysKeepInMemory(con))
                 return val;
             return con->CreateLoad(val);
         }
@@ -377,13 +377,13 @@ std::function<void(llvm::Module*)> ClangFunctionType::CreateThunk(std::function<
     // For the zeroth argument, if the rhs is derived from the lhs, force a cast for vthunks.
     auto args = std::make_shared<std::vector<llvm::Value*>>();
     struct arg : Expression {
-        arg(Type* t, unsigned i, std::shared_ptr<std::vector<llvm::Value*>> vec) : arg_vec(vec), ty(t), i(i) {}
+        arg(Type* t, std::function<unsigned(llvm::Module* mod)> i, std::shared_ptr<std::vector<llvm::Value*>> vec) : arg_vec(vec), ty(t), i(i) {}
         Type* ty;
-        unsigned i;
+        std::function<unsigned(llvm::Module* mod)> i;
         std::shared_ptr<std::vector<llvm::Value*>> arg_vec;
         Type* GetType() override final { return ty; }
         llvm::Value* ComputeValue(CodegenContext& con) {
-            auto val = arg_vec->at(i);
+            auto val = arg_vec->at(i(con));
             if (val->getType() == llvm::IntegerType::getInt1Ty(con))
                 val = con->CreateZExt(val, llvm::IntegerType::getInt8Ty(con));
             if (val->getType() == GetType()->GetLLVMType(con)->getPointerTo())
@@ -398,31 +398,29 @@ std::function<void(llvm::Module*)> ClangFunctionType::CreateThunk(std::function<
             auto basethis = GetArguments()[0]->Decay();
             if (derthis->IsDerivedFrom(basethis) == InheritanceRelationship::UnambiguouslyDerived && IsLvalueType(derthis) == IsLvalueType(basethis)) {
                 struct cast : Expression {
-                    cast(Type* dest, unsigned off, bool complex, std::shared_ptr<std::vector<llvm::Value*>> arg_vec)
+                    cast(Type* dest, unsigned off, std::function<bool(llvm::Module* mod)> complex, std::shared_ptr<std::vector<llvm::Value*>> arg_vec)
                         : desttype(dest), offset(off), complexret(complex), arg_vec(arg_vec) {}
                     Type* desttype;
                     unsigned offset;
-                    bool complexret;
+                    std::function<bool(llvm::Module* mod)> complexret;
                     std::shared_ptr<std::vector<llvm::Value*>> arg_vec;
                     Type* GetType() override final { return desttype; }
                     llvm::Value* ComputeValue(CodegenContext& con) override final {
-                        auto src = arg_vec->at(complexret);
+                        auto src = arg_vec->at(complexret(con));
                         auto cast = con->CreateBitCast(src, con.GetInt8PtrTy());
                         auto adjusted = con->CreateGEP(cast, llvm::ConstantInt::get(llvm::IntegerType::getInt32Ty(con), offset, true));
                         return con->CreateBitCast(adjusted, desttype->GetLLVMType(con));
                     }
                 };
-                conversion_exprs.push_back(std::make_shared<cast>(destty->GetArguments()[0], derthis->GetOffsetToBase(basethis), GetReturnType()->AlwaysKeepInMemory(), args));
+                conversion_exprs.push_back(std::make_shared<cast>(destty->GetArguments()[0], derthis->GetOffsetToBase(basethis), [this](llvm::Module* mod) { return GetReturnType()->AlwaysKeepInMemory(mod); }, args));
                 continue;
             }
         }
-        conversion_exprs.push_back(destty->GetArguments()[i]->BuildValueConstruction({ std::make_shared<arg>(GetArguments()[i], i + GetReturnType()->AlwaysKeepInMemory(), args) }, c));
+        conversion_exprs.push_back(destty->GetArguments()[i]->BuildValueConstruction({ std::make_shared<arg>(GetArguments()[i], [this, i](llvm::Module* mod) { return i + GetReturnType()->AlwaysKeepInMemory(mod); }, args) }, c));
     }
     auto call = Type::BuildCall(dest, conversion_exprs, c);
     std::shared_ptr<Expression> ret_expr;
-    if (GetReturnType()->AlwaysKeepInMemory()) {
-        ret_expr = Type::BuildInplaceConstruction(std::make_shared<arg>(analyzer.GetLvalueType(GetReturnType()), 0, args), { call }, c);
-    } else if (dynamic_cast<StringType*>(destty->GetReturnType())) {
+    if (dynamic_cast<StringType*>(destty->GetReturnType())) {
         struct ImplicitStringDecay : Expression {
             ImplicitStringDecay(std::shared_ptr<Expression> expr)
                 : StringExpr(std::move(expr)) {}
@@ -435,14 +433,15 @@ std::function<void(llvm::Module*)> ClangFunctionType::CreateThunk(std::function<
                 return analyzer.GetPointerType(analyzer.GetIntegralType(8, true));
             }
         };
-        ret_expr = std::make_shared<ImplicitStringDecay>(call);
-    } else if (GetReturnType() != analyzer.GetVoidType())
-        ret_expr = GetReturnType()->BuildValueConstruction({ call }, c);
-    else
-        ret_expr = call;
-    return [src, ret_expr, decl, this, args](llvm::Module* mod) {
+        call = std::make_shared<ImplicitStringDecay>(call);
+    } else
+        if (GetReturnType() != analyzer.GetVoidType())
+            call = GetReturnType()->BuildValueConstruction({ call }, c);
+    if (GetReturnType() != analyzer.GetVoidType())
+        ret_expr = Type::BuildInplaceConstruction(std::make_shared<arg>(analyzer.GetLvalueType(GetReturnType()), [](llvm::Module* mod) { return 0; }, args), { call }, c);
+    return [src, ret_expr, decl, this, args, call](llvm::Module* mod) {
         auto func = src(mod);
-        CodegenContext::EmitFunctionBody(func, [ret_expr, func, decl, args, this](CodegenContext& con) {
+        CodegenContext::EmitFunctionBody(func, [ret_expr, func, decl, args, this, call](CodegenContext& con) {
             clang::CodeGen::CodeGenFunction codegenfunc(from->GetCodegenModule(con), true);
             codegenfunc.AllocaInsertPt = con.GetAllocaInsertPoint();
             codegenfunc.Builder.SetInsertPoint(con->GetInsertBlock(), con->GetInsertBlock()->end());
@@ -463,21 +462,27 @@ std::function<void(llvm::Module*)> ClangFunctionType::CreateThunk(std::function<
             codegenfunc.EmitFunctionProlog(GetCGFunctionInfo(con), func, list);
             if (llvm::dyn_cast<clang::CXXMethodDecl>(decl)) {
                 from->GetCodegenModule(con).getCXXABI().EmitInstanceFunctionProlog(codegenfunc);
-                args->push_back(std::next(func->arg_begin(), GetReturnType()->AlwaysKeepInMemory()));
+                args->push_back(std::next(func->arg_begin(), GetReturnType()->AlwaysKeepInMemory(con)));
             }
             for (auto param = decl->param_begin(); param != decl->param_end(); ++param)
                 args->push_back(codegenfunc.GetAddrOfLocalVar(*param));
-            if (GetReturnType()->AlwaysKeepInMemory())
+            if (GetReturnType()->AlwaysKeepInMemory(con))
                 args->insert(args->begin(), func->arg_begin());
 
+            if (!GetReturnType()->AlwaysKeepInMemory(con)) {
+                auto val = call->GetValue(con);
+                con.DestroyAll(false);
+                if (val->getType() == llvm::Type::getVoidTy(con))
+                    con->CreateRetVoid();
+                else if (val->getType() == llvm::Type::getInt8Ty(con) && func->getReturnType() == llvm::Type::getInt1Ty(con))
+                    con->CreateRet(con->CreateTrunc(val, llvm::IntegerType::getInt1Ty(con)));
+                else
+                    con->CreateRet(val);
+                return;
+            }
             auto val = ret_expr->GetValue(con);
             con.DestroyAll(false);
-            if (val->getType() == llvm::Type::getVoidTy(con))
-                con->CreateRetVoid();
-            else if (val->getType() == llvm::Type::getInt8Ty(con) && func->getReturnType() == llvm::Type::getInt1Ty(con))
-                con->CreateRet(con->CreateTrunc(val, llvm::IntegerType::getInt1Ty(con)));
-            else
-                con->CreateRet(val);
+            con->CreateRetVoid();
         });
     };
 }

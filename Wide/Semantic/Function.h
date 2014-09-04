@@ -23,6 +23,7 @@ namespace Wide {
         class UserDefinedType;
         class ClangFunctionType;
         class Function : public MetaType, public Callable {
+            std::string llvmname;
             llvm::Function* llvmfunc = nullptr;
             std::shared_ptr<Statement> AnalyzeStatement(const Parse::Statement*);
             Wide::Util::optional<Type*> ExplicitReturnType;
@@ -235,6 +236,7 @@ namespace Wide {
             ~Function();
             std::shared_ptr<Expression> GetStaticSelf();
             void AddExportName(std::function<void(llvm::Module*)> mod);
+            std::string GetExportBody();
         };
     }
 }
