@@ -126,6 +126,7 @@ namespace Wide {
             llvm::Function* CreateDestructorFunction(llvm::Module* module) override final;
             bool HasVirtualDestructor() override final;
             bool IsNonstaticMemberContext() override final { return true; }
+            std::string GetLLVMTypeName() override final;
         public:
             std::function<llvm::Constant*(llvm::Module*)> GetRTTI() override final;
             UserDefinedType(const Parse::Type* t, Analyzer& a, Type* context, std::string);

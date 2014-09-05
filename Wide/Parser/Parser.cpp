@@ -428,6 +428,15 @@ Parser::Parser(std::function<Wide::Util::optional<Lexer::Token>()> l)
     };
 
     PrimaryExpressions[&Lexer::TokenTypes::Dot] = [](Parser& p, Parse::Import* imp, Lexer::Token& t) -> Expression* {
+        // May be in the form ".t", say.
+        auto next = p.lex();
+        if (!next)
+            return p.arena.Allocate<GlobalModuleReference>(t.GetLocation());
+        if (next->GetType() == &Lexer::TokenTypes::Identifier)
+            return p.arena.Allocate<MemberAccess>(next->GetValue(), p.arena.Allocate<GlobalModuleReference>(t.GetLocation()), t.GetLocation() + next->GetLocation(), next->GetLocation());
+        if (next->GetType() == &Lexer::TokenTypes::Operator)
+            return p.arena.Allocate<MemberAccess>(p.ParseOperatorName(p.GetAllOperators()), p.arena.Allocate<GlobalModuleReference>(t.GetLocation()), t.GetLocation() + p.lex.GetLastToken().GetLocation(), next->GetLocation() + p.lex.GetLastToken().GetLocation());
+        p.lex(*next);
         return p.arena.Allocate<GlobalModuleReference>(t.GetLocation());
     };
 
@@ -709,6 +718,25 @@ Parser::Parser(std::function<Wide::Util::optional<Lexer::Token>()> l)
         t->constructor_decls[access].insert(con);
         return access;
     };
+
+    TypeAttributeTokens[&Lexer::TokenTypes::Operator] = [](Parser& p, Type* t, Parse::Access a, Parse::Import* imp, Lexer::Token& tok, std::vector<Attribute> attrs) {
+        auto valid_ops = p.ModuleOverloadableOperators;
+        valid_ops.insert(p.MemberOverloadableOperators.begin(), p.MemberOverloadableOperators.end());
+        auto name = p.ParseOperatorName(valid_ops);
+        p.lex(&Lexer::TokenTypes::OpenBracket);
+        auto func = p.ParseFunction(tok, imp, attrs);
+        auto overset = boost::get<OverloadSet<Function>>(&t->nonvariables[name]);
+        if (!overset) throw std::runtime_error("Found overload set but there was already a property by that name.");
+        (*overset)[a].insert(func);
+        return a;
+    };
+
+    TypeAttributeTokens[&Lexer::TokenTypes::Negate] = [](Parser& p, Type* t, Parse::Access a, Parse::Import* imp, Lexer::Token& tok, std::vector<Attribute> attrs) {
+        auto des = p.ParseDestructor(tok, imp, attrs);
+        t->destructor_decl = des;
+        return a;
+    };
+
 
     DynamicMemberFunctions[&Lexer::TokenTypes::Identifier] = [](Parser& p, Type* t, Parse::Access a, Parse::Import* imp, Lexer::Token& tok, std::vector<Attribute> attrs) {
         p.lex(&Lexer::TokenTypes::OpenBracket);

@@ -14,6 +14,7 @@
 #include <Wide/Semantic/Expression.h>
 #include <Wide/Semantic/IntegralType.h>
 #include <Wide/Lexer/Token.h>
+#include <boost/algorithm/string.hpp>
 #include <iostream>
 #include <sstream>
 #include <array>
@@ -354,6 +355,7 @@ std::string ClangType::explain() {
         }
         basename += ")";
     }
+    boost::algorithm::replace_all(basename, "\\", "/");
     return basename;
 }
 std::vector<std::pair<Type*, unsigned>> ClangType::GetBasesAndOffsets() {

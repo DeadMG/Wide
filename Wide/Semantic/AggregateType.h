@@ -11,6 +11,7 @@ namespace Wide {
             virtual bool HasDeclaredDynamicFunctions() { return false; }
             virtual Wide::Util::optional<unsigned> SizeOverride() { return Wide::Util::none; }
             virtual Wide::Util::optional<unsigned> AlignOverride() { return Wide::Util::none; }
+            virtual std::string GetLLVMTypeName();
             void EmitConstructor(CodegenContext& con, std::vector<std::shared_ptr<Expression>> inits);
             void EmitAssignmentOperator(CodegenContext& con, std::vector<std::shared_ptr<Expression>> exprs);
             OverloadSet* MaybeCreateSet(Wide::Util::optional<std::unique_ptr<OverloadResolvable>>&, std::function<bool(Type*, unsigned)> should, std::function<std::unique_ptr<OverloadResolvable>()> create);
@@ -63,31 +64,47 @@ namespace Wide {
             std::vector<std::shared_ptr<Expression>> GetConstructorInitializers(std::shared_ptr<Expression> self, Context c, std::function<std::vector<std::shared_ptr<Expression>>(unsigned)> initializers);
             std::vector<std::shared_ptr<Expression>> GetAssignmentOpExpressions(std::shared_ptr<Expression> self, Context c, std::function<std::shared_ptr<Expression>(unsigned)> initializers);
 
+            std::string CopyAssignmentName;
             llvm::Function* CopyAssignmentFunction = nullptr;
             Wide::Util::optional<std::vector<std::shared_ptr<Expression>>> CopyAssignmentExpressions;
             Wide::Util::optional<std::unique_ptr<OverloadResolvable>> CopyAssignmentOperator;
             OverloadSet* GetCopyAssignmentOperator();
+            void CreateCopyAssignmentExpressions();
+            void EmitCopyAssignmentOperator(llvm::Module*);
 
+            std::string MoveAssignmentName;
             llvm::Function* MoveAssignmentFunction = nullptr;
             Wide::Util::optional<std::vector<std::shared_ptr<Expression>>> MoveAssignmentExpressions;
             Wide::Util::optional<std::unique_ptr<OverloadResolvable>> MoveAssignmentOperator;
             OverloadSet* GetMoveAssignmentOperator();
+            void CreateMoveAssignmentExpressions();
+            void EmitMoveAssignmentOperator(llvm::Module*);
 
+            std::string CopyConstructorName;
             llvm::Function* CopyConstructorFunction = nullptr;
             Wide::Util::optional<std::vector<std::shared_ptr<Expression>>> CopyConstructorInitializers;
             Wide::Util::optional<std::unique_ptr<OverloadResolvable>> CopyConstructor;
             OverloadSet* GetCopyConstructor();
+            void CreateCopyConstructorInitializers();
+            void EmitCopyConstructor(llvm::Module*);
 
+            std::string MoveConstructorName;
             llvm::Function* MoveConstructorFunction = nullptr;
             Wide::Util::optional<std::vector<std::shared_ptr<Expression>>> MoveConstructorInitializers;
             Wide::Util::optional<std::unique_ptr<OverloadResolvable>> MoveConstructor;
             OverloadSet* GetMoveConstructor();
+            void CreateMoveConstructorInitializers();
+            void EmitMoveConstructor(llvm::Module*);
 
+            std::string DefaultConstructorName;
             llvm::Function* DefaultConstructorFunction = nullptr;
             Wide::Util::optional<std::vector<std::shared_ptr<Expression>>> DefaultConstructorInitializers;
             Wide::Util::optional<std::unique_ptr<OverloadResolvable>> DefaultConstructor;
             OverloadSet* GetDefaultConstructor();
+            void CreateDefaultConstructorInitializers();
+            void EmitDefaultConstructor(llvm::Module*);
 
+            std::string DestructorName;
             std::vector<std::function<void(CodegenContext&)>> destructors;
             Wide::Util::optional<Layout> layout;
             Layout& GetLayout() {
@@ -105,9 +122,20 @@ namespace Wide {
                 bool move_operator;
                 bool copy_operator;
             };
+            void PrepareExportedFunctions(AggregateAssignmentOperators, AggregateConstructors, bool);
             OverloadSet* CreateAssignmentOperatorOverloadSet(AggregateAssignmentOperators which);
             OverloadSet* CreateConstructorOverloadSet(AggregateConstructors which);
+            void Export(llvm::Module* mod) override;
         public:
+            enum class SpecialFunction {
+                DefaultConstructor,
+                CopyConstructor,
+                MoveConstructor,
+                MoveAssignmentOperator,
+                CopyAssignmentOperator,
+                Destructor
+            };
+            std::string GetSpecialFunctionName(SpecialFunction f);
             AggregateType(Analyzer& a);
 
             std::function<llvm::Constant*(llvm::Module*)> GetRTTI() override;

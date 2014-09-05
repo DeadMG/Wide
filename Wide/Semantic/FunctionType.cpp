@@ -329,8 +329,8 @@ std::shared_ptr<Expression> ClangFunctionType::ConstructCall(std::shared_ptr<Exp
                 slot = clang::CodeGen::ReturnValueSlot(Ret->GetValue(con), false);
             }
             auto result = codegenfunc.EmitCall(clangfuncty->GetCGFunctionInfo(con), llvmfunc, slot, list, nullptr, &call_or_invoke);
-            // We need to invoke if we're not destructing, and we have something to destroy OR a catch block we may need to jump to.
-            if (!con.destructing && (con.HasDestructors() || con.EHHandler)) {
+            // We need to invoke if we're not destructing, and we have something to destroy OR a catch block we may need to jump to, and the function may throw.
+            if (!con.destructing && (con.HasDestructors() || con.EHHandler) && clangfuncty->type->getNoexceptSpec(clangfuncty->from->GetASTContext()) != clang::FunctionProtoType::NoexceptResult::NR_Nothrow) {
                 llvm::BasicBlock* continueblock = llvm::BasicBlock::Create(con, "continue", con->GetInsertBlock()->getParent());
                 // If we have a try/catch block, let the catch block figure out what to do.
                 // Else, kill everything in the scope and resume.

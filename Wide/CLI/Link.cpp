@@ -35,7 +35,7 @@ void Driver::AddLinkOptions(boost::program_options::options_description& opts) {
 }
 void Driver::Link(llvm::LLVMContext& con, llvm::Module* mod, std::vector<std::string> files, const Wide::Options::Clang& ClangOpts, const boost::program_options::variables_map& args) {
     std::string outputfile = args.count("link-output") ? args["link-output"].as<std::string>() : "a.o";
-    auto inputmodules = args.count("link_module") ? args["link-module"].as<std::vector<std::string>>() : std::vector<std::string>();
+    auto inputmodules = args.count("link-module") ? args["link-module"].as<std::vector<std::string>>() : std::vector<std::string>();
     std::vector<std::string> import_bitcodes;
     std::vector<std::pair<std::string, std::string>> imports;
     for (auto file : inputmodules) {
@@ -81,8 +81,14 @@ void Driver::Link(llvm::LLVMContext& con, llvm::Module* mod, std::vector<std::st
     for (auto bitcode : import_bitcodes) {
         std::string err;
         auto newmod = llvm::ParseBitcodeFile(llvm::MemoryBuffer::getMemBuffer(bitcode), con, &err);
+        std::string mod_ir;
+        llvm::raw_string_ostream stream(mod_ir);
+        newmod->print(stream, nullptr);
+        stream.flush();
         llvm::Linker::LinkModules(mod, newmod, llvm::Linker::LinkerMode::DestroySource, &err);
     }
+    if (llvm::verifyModule(*mod, llvm::VerifierFailureAction::PrintMessageAction))
+        throw std::runtime_error("Internal compiler error: An LLVM module failed verification.");
     std::string mod_ir;
     llvm::raw_string_ostream stream(mod_ir);
     mod->print(stream, nullptr);

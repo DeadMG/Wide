@@ -22,24 +22,6 @@
 using namespace Wide;
 using namespace Semantic;
 
-// A quick helper to get an expression that emits a function.
-struct AggregateType::AggregateFunction : Expression {
-    AggregateFunction(llvm::Function*& func, FunctionType* functy, std::function<void(CodegenContext&)> emit)
-    : func(func), functy(functy), emit(emit) {}
-    llvm::Function*& func;
-    std::function<void(CodegenContext&)> emit;
-    FunctionType* functy;
-    Type* GetType() override final {
-        return functy;
-    }
-    llvm::Value* ComputeValue(CodegenContext& con) override final {
-        if (!func) {
-            func = llvm::Function::Create(llvm::cast<llvm::FunctionType>(functy->GetLLVMType(con)->getElementType()), llvm::GlobalValue::LinkageTypes::ExternalLinkage, functy->analyzer.GetUniqueFunctionName(), con);
-            CodegenContext::EmitFunctionBody(func, emit);
-        }
-        return func;
-    }
-};
 AggregateType::Properties& AggregateType::GetProperties() {
     if (!props) props = Properties(this);
     return *props;
@@ -259,9 +241,7 @@ AggregateType::Layout::CodeGen::CodeGen(AggregateType* self, Layout& lay, llvm::
 }
 llvm::Type* AggregateType::Layout::CodeGen::GetLLVMType(AggregateType* self, llvm::Module* module) {
     if (llvmtype) return llvmtype;
-    std::stringstream stream;
-    stream << "struct.__" << self;
-    auto llvmname = stream.str();
+    auto llvmname = "struct." + self->GetLLVMTypeName();
     if (auto structty = module->getTypeByName(llvmname)) {
         // Hook up the field indices before we go.
         for (auto&& offset : self->GetLayout().Offsets) {
@@ -275,11 +255,11 @@ llvm::Type* AggregateType::Layout::CodeGen::GetLLVMType(AggregateType* self, llv
     llvmtype = ty;
     std::vector<llvm::Type*> llvmtypes;
 
-    if (self->IsEmpty() && !self->GetLayout().hasvptr) {
-        llvmtypes.push_back(self->analyzer.GetIntegralType(8, true)->GetLLVMType(module));
-        ty->setBody(llvmtypes, false);
-        return ty;
-    }
+    //if (self->IsEmpty() && !self->GetLayout().hasvptr && !self->SizeOverride() && !self->AlignOverride()) {
+    //    llvmtypes.push_back(self->analyzer.GetIntegralType(8, true)->GetLLVMType(module));
+    //    ty->setBody(llvmtypes, false);
+    //    return ty;
+    //}
 
     unsigned curroffset = 0;
     if (self->GetLayout().hasvptr) {
@@ -354,7 +334,14 @@ std::shared_ptr<Expression> AggregateType::PrimitiveAccessMember(std::shared_ptr
     assert(self);
     return Wide::Memory::MakeUnique<FieldAccess>(std::move(self), this, num);
 }
-AggregateType::AggregateType(Analyzer& a) : Type(a) {}
+AggregateType::AggregateType(Analyzer& a) : Type(a) {
+    CopyAssignmentName = analyzer.GetUniqueFunctionName();
+    CopyConstructorName = analyzer.GetUniqueFunctionName();
+    MoveAssignmentName = analyzer.GetUniqueFunctionName();
+    MoveConstructorName = analyzer.GetUniqueFunctionName();
+    DefaultConstructorName = analyzer.GetUniqueFunctionName();
+    DestructorName = analyzer.GetUniqueFunctionName();
+}
 
 OverloadSet* AggregateType::CreateOperatorOverloadSet(Parse::OperatorName type, Parse::Access access, OperatorAccess kind) {
     if (type != Parse::OperatorName{ &Lexer::TokenTypes::Assignment }) return Type::CreateOperatorOverloadSet(type, access, kind);
@@ -364,7 +351,7 @@ OverloadSet* AggregateType::CreateOperatorOverloadSet(Parse::OperatorName type, 
 
 llvm::Function* AggregateType::CreateDestructorFunction(llvm::Module* module) {    
     auto functy = llvm::FunctionType::get(llvm::Type::getVoidTy(module->getContext()), { analyzer.GetLvalueType(this)->GetLLVMType(module) }, false);
-    auto DestructorFunction = llvm::Function::Create(functy, llvm::GlobalValue::LinkageTypes::InternalLinkage, analyzer.GetUniqueFunctionName(), module);
+    auto DestructorFunction = llvm::Function::Create(functy, llvm::GlobalValue::LinkageTypes::ExternalLinkage, DestructorName, module);
     this->DestructorFunction = DestructorFunction;
     CodegenContext::EmitFunctionBody(DestructorFunction, [this](CodegenContext& newcon) {
         for (auto des : destructors)
@@ -387,18 +374,10 @@ OverloadSet* AggregateType::GetCopyAssignmentOperator() {
             return MakeResolvable([this](std::vector<std::shared_ptr<Expression>> args, Context c) -> std::shared_ptr < Expression > {
                 if (GetLayout().Offsets.size() == 0)
                     return BuildChain(std::move(args[0]), std::move(args[1]));
-        
-                if (!CopyAssignmentExpressions) {
-                    auto rhs = CreatePrimGlobal(analyzer.GetLvalueType(this), [this](CodegenContext& con) {
-                        return ++CopyAssignmentFunction->arg_begin();
-                    });
-                    CopyAssignmentExpressions = GetAssignmentOpExpressions(GetConstructorSelf(CopyAssignmentFunction), c, [this, rhs](unsigned i) -> std::shared_ptr<Expression> {
-                        return PrimitiveAccessMember(rhs, i);
-                    });
-                }
+                CreateCopyAssignmentExpressions();
         
                 auto functy = analyzer.GetFunctionType(analyzer.GetLvalueType(this), { analyzer.GetLvalueType(this), analyzer.GetLvalueType(this) }, false);
-                return Type::BuildCall(std::make_shared<AggregateFunction>(CopyAssignmentFunction, functy, [this](CodegenContext& con) { EmitAssignmentOperator(con, *CopyAssignmentExpressions); }), { args[0], args[1] }, c);
+                return Type::BuildCall(CreatePrimGlobal(functy, [this](CodegenContext& con) { EmitCopyAssignmentOperator(con); return CopyAssignmentFunction; }), { args[0], args[1] }, c);
             }, { analyzer.GetLvalueType(this), analyzer.GetLvalueType(this) });
         }
     );
@@ -410,18 +389,10 @@ OverloadSet* AggregateType::GetMoveAssignmentOperator() {
             return MakeResolvable([this](std::vector<std::shared_ptr<Expression>> args, Context c) -> std::shared_ptr < Expression > {
                 if (GetLayout().Offsets.size() == 0)
                     return BuildChain(std::move(args[0]), std::move(args[1]));
-            
-                if (!MoveAssignmentExpressions) {
-                    auto rhs = CreatePrimGlobal(analyzer.GetLvalueType(this), [this](CodegenContext& con) {
-                        return ++MoveAssignmentFunction->arg_begin();
-                    });
-                    MoveAssignmentExpressions = GetAssignmentOpExpressions(GetConstructorSelf(MoveAssignmentFunction), c, [this, rhs](unsigned i) -> std::shared_ptr<Expression> {
-                        return PrimitiveAccessMember(rhs, i);
-                    });
-                }
+                CreateMoveAssignmentExpressions();
             
                 auto functy = analyzer.GetFunctionType(analyzer.GetLvalueType(this), { analyzer.GetLvalueType(this), analyzer.GetRvalueType(this) }, false);
-                return Type::BuildCall(std::make_shared<AggregateFunction>(MoveAssignmentFunction, functy, [this](CodegenContext& con) { EmitAssignmentOperator(con, *MoveAssignmentExpressions); }), { args[0], args[1] }, c);
+                return Type::BuildCall(CreatePrimGlobal(functy, [this](CodegenContext& con) { EmitMoveAssignmentOperator(con); return MoveAssignmentFunction; }), { args[0], args[1] }, c);
             }, { analyzer.GetLvalueType(this), analyzer.GetRvalueType(this) });            
         }
     );
@@ -430,18 +401,11 @@ OverloadSet* AggregateType::GetMoveConstructor() {
     return MaybeCreateSet(MoveConstructor, 
         [this](Type* ty, unsigned i) { return ty->IsMoveConstructible(GetAccessSpecifier(this, ty)); },
         [this] {
-            return MakeResolvable([this](std::vector<std::shared_ptr<Expression>> args, Context c) -> std::shared_ptr < Expression > {            
-                if (!MoveConstructorInitializers) {
-                    auto rhs = CreatePrimGlobal(analyzer.GetLvalueType(this), [this](CodegenContext& con) {
-                        return ++MoveConstructorFunction->arg_begin();
-                    });
-                    MoveConstructorInitializers = GetConstructorInitializers(GetConstructorSelf(MoveConstructorFunction), c, [this, rhs](unsigned i) -> std::vector<std::shared_ptr<Expression>> {
-                        return { PrimitiveAccessMember(rhs, i) };
-                    });
-                }
+            return MakeResolvable([this](std::vector<std::shared_ptr<Expression>> args, Context c) -> std::shared_ptr < Expression > {  
+                CreateMoveConstructorInitializers();
             
                 auto functy = analyzer.GetFunctionType(analyzer.GetVoidType(), { analyzer.GetLvalueType(this), analyzer.GetRvalueType(this) }, false);
-                return Type::BuildCall(std::make_shared<AggregateFunction>(MoveConstructorFunction, functy, [this](CodegenContext& con) { EmitConstructor(con, *MoveConstructorInitializers); }), { args[0], args[1] }, c);
+                return Type::BuildCall(CreatePrimGlobal(functy, [this](CodegenContext& con) { EmitMoveConstructor(con); return MoveConstructorFunction; }), { args[0], args[1] }, c);
             }, { analyzer.GetLvalueType(this), analyzer.GetRvalueType(this) });
         }
     );
@@ -450,18 +414,11 @@ OverloadSet* AggregateType::GetCopyConstructor() {
     return MaybeCreateSet(CopyConstructor,
         [this](Type* ty, unsigned i) { return ty->IsCopyConstructible(GetAccessSpecifier(this, ty)); },
         [this] {
-            return MakeResolvable([this](std::vector<std::shared_ptr<Expression>> args, Context c) -> std::shared_ptr<Expression> {        
-                if (!CopyConstructorInitializers) {
-                    auto rhs = CreatePrimGlobal(analyzer.GetLvalueType(this), [this](CodegenContext& con) {
-                        return ++CopyConstructorFunction->arg_begin();
-                    });
-                    CopyConstructorInitializers = GetConstructorInitializers(GetConstructorSelf(CopyConstructorFunction), c, [this, rhs](unsigned i) -> std::vector<std::shared_ptr<Expression>> {
-                        return { PrimitiveAccessMember(rhs, i) };
-                    });
-                }
+            return MakeResolvable([this](std::vector<std::shared_ptr<Expression>> args, Context c) -> std::shared_ptr<Expression> {     
+                CreateCopyConstructorInitializers();
         
                 auto functy = analyzer.GetFunctionType(analyzer.GetVoidType(), { analyzer.GetLvalueType(this), analyzer.GetLvalueType(this) }, false);
-                return Type::BuildCall(std::make_shared<AggregateFunction>(CopyConstructorFunction, functy, [this](CodegenContext& con) { EmitConstructor(con, *CopyConstructorInitializers); }), { args[0], args[1] }, c);
+                return Type::BuildCall(CreatePrimGlobal(functy, [this](CodegenContext& con) { EmitCopyConstructor(con); return CopyConstructorFunction; }), { args[0], args[1] }, c);
             }, { analyzer.GetLvalueType(this), analyzer.GetLvalueType(this) });
         }
     );
@@ -581,15 +538,10 @@ OverloadSet* AggregateType::GetDefaultConstructor() {
     // If we shouldn't generate, give back an empty set and set the cache for future use.
     auto create = [this] {
         return MakeResolvable([this](std::vector<std::shared_ptr<Expression>> args, Context c) -> std::shared_ptr < Expression > {
-            if (!DefaultConstructorInitializers)
-                DefaultConstructorInitializers = GetConstructorInitializers(GetConstructorSelf(DefaultConstructorFunction), c, [this](unsigned i) -> std::vector < std::shared_ptr<Expression> > {
-                if (i < GetBases().size())
-                    return{};
-                return GetDefaultInitializerForMember(i - GetBases().size());
-            });
+            CreateDefaultConstructorInitializers();
 
             auto functy = analyzer.GetFunctionType(analyzer.GetVoidType(), { analyzer.GetLvalueType(this) }, false);
-            return Type::BuildCall(std::make_shared<AggregateFunction>(DefaultConstructorFunction, functy, [this](CodegenContext& con) { EmitConstructor(con, *DefaultConstructorInitializers); }), { args[0] }, c);
+            return Type::BuildCall(CreatePrimGlobal(functy, [this](CodegenContext& con) { EmitDefaultConstructor(con); return DefaultConstructorFunction; }), { args[0] }, c);
         }, { analyzer.GetLvalueType(this) });
     };
     return MaybeCreateSet(DefaultConstructor, is_default_constructible, create);
@@ -634,7 +586,7 @@ std::function<llvm::Constant*(llvm::Module*)> AggregateType::GetRTTI() {
     // Else, nope. Aggregate types are user-defined types with no bases by default.
     return [this](llvm::Module* module) {
         std::stringstream stream;
-        stream << "struct.__" << this;
+        stream << "struct.__" << this << "_rtti";
         if (auto existing = module->getGlobalVariable(stream.str())) {
             return existing;
         }
@@ -661,4 +613,130 @@ bool AggregateType::IsTriviallyDestructible() {
 }
 bool AggregateType::IsTriviallyCopyConstructible() {
     return GetProperties().triviallycopyconstructible;
+}
+std::string AggregateType::GetSpecialFunctionName(SpecialFunction f) {
+    switch (f) {
+    case SpecialFunction::CopyAssignmentOperator: return CopyAssignmentName;
+    case SpecialFunction::MoveAssignmentOperator: return MoveAssignmentName;
+    case SpecialFunction::CopyConstructor: return CopyConstructorName;
+    case SpecialFunction::MoveConstructor: return MoveConstructorName;
+    case SpecialFunction::DefaultConstructor: return DefaultConstructorName;
+    case SpecialFunction::Destructor: return DestructorName;
+    }
+}
+
+void AggregateType::CreateMoveConstructorInitializers() {
+    if (!MoveConstructorInitializers) {
+        auto rhs = CreatePrimGlobal(analyzer.GetLvalueType(this), [this](CodegenContext& con) {
+            return ++MoveConstructorFunction->arg_begin();
+        });
+        MoveConstructorInitializers = GetConstructorInitializers(GetConstructorSelf(MoveConstructorFunction), { this, Wide::Lexer::Range(std::make_shared<std::string>("Analyzer Internal Function")) }, [this, rhs](unsigned i) -> std::vector<std::shared_ptr<Expression>> {
+            return{ PrimitiveAccessMember(rhs, i) };
+        });
+    }
+
+}
+void AggregateType::CreateCopyConstructorInitializers() {
+    if (!CopyConstructorInitializers) {
+        auto rhs = CreatePrimGlobal(analyzer.GetLvalueType(this), [this](CodegenContext& con) {
+            return ++CopyConstructorFunction->arg_begin();
+        });
+        CopyConstructorInitializers = GetConstructorInitializers(GetConstructorSelf(CopyConstructorFunction), { this, Wide::Lexer::Range(std::make_shared<std::string>("Analyzer Internal Function")) }, [this, rhs](unsigned i) -> std::vector<std::shared_ptr<Expression>> {
+            return{ PrimitiveAccessMember(rhs, i) };
+        });
+    }
+}
+void AggregateType::CreateMoveAssignmentExpressions() {
+    if (!MoveAssignmentExpressions) {
+        auto rhs = CreatePrimGlobal(analyzer.GetLvalueType(this), [this](CodegenContext& con) {
+            return ++MoveAssignmentFunction->arg_begin();
+        });
+        MoveAssignmentExpressions = GetAssignmentOpExpressions(GetConstructorSelf(MoveAssignmentFunction), { this, Wide::Lexer::Range(std::make_shared<std::string>("Analyzer Internal Function")) }, [this, rhs](unsigned i) -> std::shared_ptr<Expression> {
+            return PrimitiveAccessMember(rhs, i);
+        });
+    }
+}
+void AggregateType::CreateCopyAssignmentExpressions() {
+    if (!CopyAssignmentExpressions) {
+        auto rhs = CreatePrimGlobal(analyzer.GetLvalueType(this), [this](CodegenContext& con) {
+            return ++CopyAssignmentFunction->arg_begin();
+        });
+        CopyAssignmentExpressions = GetAssignmentOpExpressions(GetConstructorSelf(CopyAssignmentFunction), { this, Wide::Lexer::Range(std::make_shared<std::string>("Analyzer Internal Function")) }, [this, rhs](unsigned i) -> std::shared_ptr<Expression> {
+            return PrimitiveAccessMember(rhs, i);
+        });
+    }
+}
+void AggregateType::CreateDefaultConstructorInitializers() {
+    if (!DefaultConstructorInitializers)
+        DefaultConstructorInitializers = GetConstructorInitializers(GetConstructorSelf(DefaultConstructorFunction), { this, Wide::Lexer::Range(std::make_shared<std::string>("Analyzer Internal Function")) }, [this](unsigned i) -> std::vector < std::shared_ptr<Expression> > {
+        if (i < GetBases().size())
+            return{};
+        return GetDefaultInitializerForMember(i - GetBases().size());
+    });
+}
+void AggregateType::EmitMoveConstructor(llvm::Module* mod) {
+    if (!MoveConstructorFunction && MoveConstructorInitializers) {
+        auto functy = analyzer.GetFunctionType(analyzer.GetVoidType(), { analyzer.GetLvalueType(this), analyzer.GetRvalueType(this) }, false);
+        MoveConstructorFunction = llvm::Function::Create(llvm::cast<llvm::FunctionType>(functy->GetLLVMType(mod)->getElementType()), llvm::GlobalValue::LinkageTypes::ExternalLinkage, MoveConstructorName, mod);
+        CodegenContext::EmitFunctionBody(MoveConstructorFunction, [this](CodegenContext& con) {
+            EmitConstructor(con, *MoveConstructorInitializers);
+        });
+    }
+}
+void AggregateType::EmitCopyConstructor(llvm::Module* mod) {
+    if (!CopyConstructorFunction && CopyConstructorInitializers) {
+        auto functy = analyzer.GetFunctionType(analyzer.GetVoidType(), { analyzer.GetLvalueType(this), analyzer.GetLvalueType(this) }, false);
+        CopyConstructorFunction = llvm::Function::Create(llvm::cast<llvm::FunctionType>(functy->GetLLVMType(mod)->getElementType()), llvm::GlobalValue::LinkageTypes::ExternalLinkage, CopyConstructorName, mod);
+        CodegenContext::EmitFunctionBody(CopyConstructorFunction, [this](CodegenContext& con) {
+            EmitConstructor(con, *CopyConstructorInitializers);
+        });
+    }
+}
+void AggregateType::EmitDefaultConstructor(llvm::Module* mod) {
+    if (!DefaultConstructorFunction && DefaultConstructorInitializers) {
+        auto functy = analyzer.GetFunctionType(analyzer.GetVoidType(), { analyzer.GetLvalueType(this) }, false);
+        DefaultConstructorFunction = llvm::Function::Create(llvm::cast<llvm::FunctionType>(functy->GetLLVMType(mod)->getElementType()), llvm::GlobalValue::LinkageTypes::ExternalLinkage, DefaultConstructorName, mod);
+        CodegenContext::EmitFunctionBody(DefaultConstructorFunction, [this](CodegenContext& con) {
+            EmitConstructor(con, *DefaultConstructorInitializers);
+        });
+    }
+}
+void AggregateType::EmitMoveAssignmentOperator(llvm::Module* mod) {
+    if (!MoveAssignmentFunction && MoveAssignmentExpressions) {
+        auto functy = analyzer.GetFunctionType(analyzer.GetLvalueType(this), { analyzer.GetLvalueType(this), analyzer.GetRvalueType(this) }, false);
+        MoveAssignmentFunction = llvm::Function::Create(llvm::cast<llvm::FunctionType>(functy->GetLLVMType(mod)->getElementType()), llvm::GlobalValue::LinkageTypes::ExternalLinkage, MoveAssignmentName, mod);
+        CodegenContext::EmitFunctionBody(MoveAssignmentFunction, [this](CodegenContext& con) {
+            EmitAssignmentOperator(con, *MoveAssignmentExpressions);
+        });
+    }
+}
+void AggregateType::EmitCopyAssignmentOperator(llvm::Module* mod) {
+    if (!CopyAssignmentFunction && CopyAssignmentExpressions) {
+        auto functy = analyzer.GetFunctionType(analyzer.GetLvalueType(this), { analyzer.GetLvalueType(this), analyzer.GetLvalueType(this) }, false);
+        CopyAssignmentFunction = llvm::Function::Create(llvm::cast<llvm::FunctionType>(functy->GetLLVMType(mod)->getElementType()), llvm::GlobalValue::LinkageTypes::ExternalLinkage, CopyAssignmentName, mod);
+        CodegenContext::EmitFunctionBody(CopyAssignmentFunction, [this](CodegenContext& con) {
+            EmitAssignmentOperator(con, *CopyAssignmentExpressions);
+        });
+    }
+}
+
+void AggregateType::PrepareExportedFunctions(AggregateAssignmentOperators ops, AggregateConstructors cons, bool des) {
+    if (ops.copy_operator) CreateCopyConstructorInitializers();
+    if (ops.move_operator) CreateMoveConstructorInitializers();
+    if (cons.default_constructor) CreateDefaultConstructorInitializers();
+    if (cons.move_constructor) CreateMoveConstructorInitializers();
+    if (cons.copy_constructor) CreateCopyConstructorInitializers();
+}
+void AggregateType::Export(llvm::Module* mod) {
+    EmitMoveConstructor(mod);
+    EmitCopyConstructor(mod);
+    EmitMoveAssignmentOperator(mod);
+    EmitCopyAssignmentOperator(mod);
+    EmitDefaultConstructor(mod);
+    GetDestructorFunction(mod);
+}
+std::string AggregateType::GetLLVMTypeName() {
+    std::stringstream strstr;
+    strstr << this;
+    return "__" + strstr.str();
 }

@@ -963,7 +963,7 @@ llvm::Function* Type::GetDestructorFunction(llvm::Module* module) {
 }
 llvm::Function* Type::CreateDestructorFunction(llvm::Module* module) {
     auto fty = llvm::FunctionType::get(llvm::Type::getVoidTy(module->getContext()), { llvm::Type::getInt8PtrTy(module->getContext()) }, false);
-    DestructorFunction = llvm::Function::Create(fty, llvm::GlobalValue::LinkageTypes::InternalLinkage, analyzer.GetUniqueFunctionName(), module);
+    DestructorFunction = llvm::Function::Create(fty, llvm::GlobalValue::LinkageTypes::ExternalLinkage, analyzer.GetUniqueFunctionName(), module);
     CodegenContext::EmitFunctionBody(DestructorFunction, [this](CodegenContext& c) {;
         struct DestructorExpression : Expression {
             DestructorExpression(Type* self, llvm::Value* val)
