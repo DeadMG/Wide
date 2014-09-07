@@ -36,6 +36,7 @@ namespace Wide {
             std::vector<member> GetConstructionMembers() override final;
             bool HasVirtualDestructor() override final;
             bool IsNonstaticMemberContext() override final { return true; }
+            bool AlwaysKeepInMemory(llvm::Module* mod) override final;
         public:
             // Used for type.destructor access.
             std::function<llvm::Constant*(llvm::Module*)> GetRTTI() override final;

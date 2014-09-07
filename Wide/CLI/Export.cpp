@@ -19,12 +19,12 @@
 #include <llvm/Target/TargetOptions.h>
 #include <llvm/Target/TargetMachine.h>
 #include <llvm/Bitcode/ReaderWriter.h>
-#include <llvm/Analysis/Verifier.h>
 #include <llvm/Support/TargetRegistry.h>
 #include <llvm/Support/Host.h>
 #include <llvm/Support/FormattedStream.h>
 #include <llvm/Support/Program.h>
 #include <llvm/Support/raw_os_ostream.h>
+#include <llvm/IR/Verifier.h>
 #include <llvm/Support/FileSystem.h>
 #include <llvm/Support/Path.h>
 #pragma warning(pop)
@@ -42,7 +42,7 @@ namespace {
     std::unordered_set<std::string> SearchHeaders(std::string path) {
         std::unordered_set<std::string> ret;
         auto end = llvm::sys::fs::directory_iterator();
-        llvm::error_code fuck_error_codes;
+        std::error_code fuck_error_codes;
         bool out = true;
         auto begin = llvm::sys::fs::directory_iterator(path, fuck_error_codes);
         std::set<std::string> entries;
@@ -102,7 +102,7 @@ void Driver::Export(llvm::LLVMContext& con, llvm::Module* mod, std::vector<std::
         exports = a.GetTypeExports();
         a.GenerateCode(mod);
 
-        if (llvm::verifyModule(*mod, llvm::VerifierFailureAction::PrintMessageAction))
+        if (llvm::verifyModule(*mod))
             throw std::runtime_error("Internal compiler error: An LLVM module failed verification.");
     });
     Wide::Util::Archive a;

@@ -288,7 +288,7 @@ std::pair<Callable*, std::vector<Type*>> OverloadSet::ResolveWithArguments(std::
         std::vector<clang::Expr*> exprptrs;
         for (auto&& x : exprs)
             exprptrs.push_back(&x);
-        clang::OverloadCandidateSet s((clang::SourceLocation()));
+        clang::OverloadCandidateSet s(clang::SourceLocation(), clang::OverloadCandidateSet::CandidateSetKind::CSK_Normal);
         clang::UnresolvedSet<8> us;
         bool has_members = false;
         for (auto decl : clangfuncs) {

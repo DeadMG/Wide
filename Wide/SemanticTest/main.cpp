@@ -16,7 +16,12 @@
 
 int main(int argc, char** argv) {
     Wide::Options::Clang clangopts;
-    clangopts.TargetOptions.Triple = llvm::sys::getProcessTriple();
+    auto triple = llvm::Triple(llvm::sys::getProcessTriple());
+#ifdef _MSC_VER
+    //triple.setOS(llvm::Triple::OSType::MinGW32);
+    triple.setEnvironment(llvm::Triple::EnvironmentType::Itanium);
+#endif
+    clangopts.TargetOptions.Triple = triple.getTriple();
 #ifdef _MSC_VER
     // MCJIT can't handle non-ELF on Windows for some reason.
     clangopts.TargetOptions.Triple += "-elf";

@@ -261,7 +261,6 @@ std::function<void(llvm::Module*)> WideFunctionType::CreateThunk(std::function<l
     };
 }
 
-// Now ClangFunctionType.
 const clang::CodeGen::CGFunctionInfo& ClangFunctionType::GetCGFunctionInfo(llvm::Module* module) {
    return from->GetABIForFunction(type, self ? self->getNonReferenceType()->getAsCXXRecordDecl() : nullptr, module);
 }
@@ -271,16 +270,16 @@ llvm::PointerType* ClangFunctionType::GetLLVMType(llvm::Module* module) {
 Wide::Util::optional<clang::QualType> ClangFunctionType::GetClangType(ClangTU& to) {
     if (&to != from) return Util::none;
     if (self) return Util::none;
-    return from->GetASTContext().getFunctionType(type->getResultType(), type->getArgTypes(), type->getExtProtoInfo());
+    return from->GetASTContext().getFunctionType(type->getReturnType(), type->getParamTypes(), type->getExtProtoInfo());
 }
 Type* ClangFunctionType::GetReturnType() {
-    return analyzer.GetClangType(*from, type->getResultType());
+    return analyzer.GetClangType(*from, type->getReturnType());
 }
 std::vector<Type*> ClangFunctionType::GetArguments() {
     std::vector<Type*> out;
     if (self)
         out.push_back(analyzer.GetClangType(*from, *self));
-    for (auto arg : type->getArgTypes())
+    for (auto arg : type->getParamTypes())
         out.push_back(analyzer.GetClangType(*from, arg));
     return out;
 }
@@ -312,6 +311,7 @@ std::shared_ptr<Expression> ClangFunctionType::ConstructCall(std::shared_ptr<Exp
             clang::CodeGen::CodeGenFunction codegenfunc(clangfuncty->from->GetCodegenModule(con), true);
             codegenfunc.AllocaInsertPt = con.GetAllocaInsertPoint();
             codegenfunc.Builder.SetInsertPoint(con->GetInsertBlock(), con->GetInsertBlock()->end());
+            codegenfunc.CurCodeDecl = nullptr;
             clang::CodeGen::CallArgList list;
             for (auto&& arg : args) {
                 auto val = arg->GetValue(con); 
@@ -454,8 +454,8 @@ std::function<void(llvm::Module*)> ClangFunctionType::CreateThunk(std::function<
                 codegenfunc.CurGD = decl;
             clang::CodeGen::FunctionArgList list;
             if (llvm::dyn_cast<clang::CXXMethodDecl>(decl)) {
-                auto retty = type->getResultType();
-                from->GetCodegenModule(con).getCXXABI().BuildInstanceFunctionParams(codegenfunc, retty, list);               
+                auto retty = type->getReturnType();
+                from->GetCodegenModule(con).getCXXABI().buildThisParam(codegenfunc, list);               
             }
             for (auto param = decl->param_begin(); param != decl->param_end(); ++param)
                 list.push_back(*param);
@@ -487,7 +487,7 @@ std::function<void(llvm::Module*)> ClangFunctionType::CreateThunk(std::function<
     };
 }
 std::shared_ptr<Expression> ClangFunctionType::CreateThunkFrom(std::shared_ptr<Expression> dest, Type* context) {
-    auto qualty = from->GetASTContext().getFunctionType(type->getResultType(), type->getArgTypes(), type->getExtProtoInfo());
+    auto qualty = from->GetASTContext().getFunctionType(type->getReturnType(), type->getParamTypes(), type->getExtProtoInfo());
     clang::FunctionDecl* decl;
     std::string name = analyzer.GetUniqueFunctionName();
     auto GetParmVarDecls = [this](std::vector<clang::QualType> types, ClangTU& TU, clang::DeclContext* recdecl) {
@@ -521,7 +521,7 @@ std::shared_ptr<Expression> ClangFunctionType::CreateThunkFrom(std::shared_ptr<E
             false,
             clang::SourceLocation()
             );
-        auto explicitparams = GetParmVarDecls(type->getArgTypes(), *from, recdecl);
+        auto explicitparams = GetParmVarDecls(type->getParamTypes(), *from, recdecl);
         decl->setParams(explicitparams);
     } else {
         decl = clang::FunctionDecl::Create(
@@ -535,7 +535,7 @@ std::shared_ptr<Expression> ClangFunctionType::CreateThunkFrom(std::shared_ptr<E
             false,
             false
             );
-        decl->setParams(GetParmVarDecls(type->getArgTypes(), *from, from->GetDeclContext()));
+        decl->setParams(GetParmVarDecls(type->getParamTypes(), *from, from->GetDeclContext()));
     }
     struct self : Expression {
         self(std::function<void(llvm::Module*)> emit, ClangFunctionType* dest, std::function<llvm::Function*(llvm::Module*)> create)

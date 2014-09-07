@@ -15,14 +15,15 @@
 #include <llvm/PassManager.h>
 #include <llvm/Target/TargetOptions.h>
 #include <llvm/Target/TargetMachine.h>
-#include <llvm/Analysis/Verifier.h>
+#include <llvm/IR/Verifier.h>
 #include <llvm/Support/TargetRegistry.h>
 #include <llvm/Support/Host.h>
 #include <llvm/Support/FormattedStream.h>
 #include <llvm/Support/Program.h>
 #include <llvm/Support/raw_os_ostream.h>
 #include <llvm/Support/MemoryBuffer.h>
-#include <llvm/Linker.h>
+#include <llvm/Bitcode/ReaderWriter.h>
+#include <llvm/Linker/Linker.h>
 #pragma warning(pop)
 
 using namespace Wide;
@@ -38,13 +39,21 @@ void Driver::Link(llvm::LLVMContext& con, llvm::Module* mod, std::vector<std::st
     auto inputmodules = args.count("link-module") ? args["link-module"].as<std::vector<std::string>>() : std::vector<std::string>();
     std::vector<std::string> import_bitcodes;
     std::vector<std::pair<std::string, std::string>> imports;
-    for (auto file : inputmodules) {
-        auto archive = Wide::Util::ReadFromFile(file);
-        auto exports = archive.data.at("exports.txt");
-        imports.push_back({ exports, file });
-        import_bitcodes.push_back(archive.data.at(ClangOpts.TargetOptions.Triple + ".bc"));
+    std::unordered_map<std::string, std::string> imported_headers;
+    for (auto module : inputmodules) {        
+        for (auto file : Wide::Util::ReadFromFile(module).data) {
+            if (file.first == "exports.txt")
+                imports.push_back({ file.second, module });
+            else if (file.first == ClangOpts.TargetOptions.Triple + ".bc")
+                import_bitcodes.push_back(file.second);
+            else if (*llvm::sys::path::begin(file.first) == "headers") {
+                llvm::SmallVector<char, 10> fuck;
+                llvm::sys::path::append(fuck, ++llvm::sys::path::begin(file.first), llvm::sys::path::end(file.first));
+                imported_headers[std::string(fuck.begin(), fuck.end())] = file.second;
+            }
+        }
     }
-    Wide::Driver::Compile(ClangOpts, files, imports, [&](Wide::Semantic::Analyzer& a, const Wide::Parse::Module* root) {
+    Wide::Driver::Compile(ClangOpts, files, imports, imported_headers, [&](Wide::Semantic::Analyzer& a, const Wide::Parse::Module* root) {
         Wide::Semantic::AnalyzeExportedFunctions(a);
         static const Wide::Lexer::Range location = std::make_shared<std::string>("Analyzer entry point");
         Wide::Semantic::Context c(a.GetGlobalModule(), location);
@@ -75,19 +84,19 @@ void Driver::Link(llvm::LLVMContext& con, llvm::Module* mod, std::vector<std::st
                 throw std::runtime_error("Main() did not return an int32, int64, or void.");
             builder.CreateRet(call);
         }
-        if (llvm::verifyModule(*mod, llvm::VerifierFailureAction::PrintMessageAction))
+        if (llvm::verifyModule(*mod))
             throw std::runtime_error("Internal compiler error: An LLVM module failed verification.");
     });
     for (auto bitcode : import_bitcodes) {
         std::string err;
-        auto newmod = llvm::ParseBitcodeFile(llvm::MemoryBuffer::getMemBuffer(bitcode), con, &err);
+        auto newmod = llvm::parseBitcodeFile(llvm::MemoryBuffer::getMemBuffer(bitcode), con);
         std::string mod_ir;
         llvm::raw_string_ostream stream(mod_ir);
-        newmod->print(stream, nullptr);
+        (*newmod)->print(stream, nullptr);
         stream.flush();
-        llvm::Linker::LinkModules(mod, newmod, llvm::Linker::LinkerMode::DestroySource, &err);
+        llvm::Linker::LinkModules(mod, *newmod, llvm::Linker::LinkerMode::DestroySource, &err);
     }
-    if (llvm::verifyModule(*mod, llvm::VerifierFailureAction::PrintMessageAction))
+    if (llvm::verifyModule(*mod))
         throw std::runtime_error("Internal compiler error: An LLVM module failed verification.");
     std::string mod_ir;
     llvm::raw_string_ostream stream(mod_ir);

@@ -33,7 +33,7 @@
 #include <clang/Parse/ParseAST.h>
 #include <CodeGen/CGCXXABI.h>
 #include <CodeGen/CGRecordLayout.h>
-#include <llvm/Linker.h>
+#include <llvm/Support/Path.h>
 #include <clang/AST/RecursiveASTVisitor.h>
 #include <clang/AST/ASTConsumer.h>
 #include <clang/Basic/AllDiagnostics.h>
@@ -57,10 +57,9 @@ public:
     }
 }; 
 
-clang::TargetInfo* CreateTargetInfoFromTriple(clang::DiagnosticsEngine& engine, std::string triple) {
-    clang::TargetOptions& target = *new clang::TargetOptions();
-    target.Triple = triple;
-    auto targetinfo = clang::TargetInfo::CreateTargetInfo(engine, &target);
+clang::TargetInfo* CreateTargetInfoFromTriple(clang::DiagnosticsEngine& engine, clang::TargetOptions opts) {
+    auto target = std::make_shared<clang::TargetOptions>(opts);
+    auto targetinfo = clang::TargetInfo::CreateTargetInfo(engine, target);
     targetinfo->setCXXABI(clang::TargetCXXABI::GenericItanium);
     return targetinfo;
 }
@@ -89,7 +88,6 @@ public:
     std::set<clang::VarDecl*> globals;
     std::set<clang::FunctionDecl*> functions;
 
-    std::unordered_set<const clang::FileEntry*> files;
     const Options::Clang* Options;
     clang::FileManager FileManager;
     ClangTUDiagnosticConsumer DiagnosticConsumer;
@@ -107,8 +105,8 @@ public:
     clang::ASTContext astcon;
     CodeGenConsumer consumer;
     clang::Sema sema;
-    std::string filename;
-    clang::Parser p;
+    clang::Parser p; 
+    std::unordered_map<std::string, std::string> AbsoluteToRelativeFileMapping;
 private:
     std::unique_ptr<clang::CodeGen::CodeGenModule> codegenmod;
 public:
@@ -118,6 +116,33 @@ public:
     clang::CodeGen::CodeGenModule& GetCodegenModule(llvm::Module* module) {
         return *codegenmod;
     } 
+    
+    /*struct WideVFS : clang::vfs::FileSystem {
+        const std::unordered_map<std::string, std::string>* imports;
+
+        llvm::ErrorOr<clang::vfs::Status> status(const llvm::Twine& path) override final {
+            if (imports->find(path.getSingleStringRef()) == imports->end()) {
+                return clang::vfs::Status(path.getSingleStringRef(), path.getSingleStringRef(), llvm::sys::fs::UniqueID(), llvm::sys::TimeValue(), 0, 0, 0, llvm::sys::fs::file_type::regular_file, llvm::sys::fs::perms::all_read);
+            }
+            return std::make_error_code(std::errc::no_such_file_or_directory);
+        }
+        std::error_code openFileForRead(const llvm::Twine& path, std::unique_ptr<clang::vfs::File>& result) override final {
+            if (imports->find(path.getSingleStringRef()) == imports->end())
+                return std::make_error_code(std::errc::no_such_file_or_directory);           
+            struct WideFile : clang::vfs::File {
+
+            };
+        }
+        /*std::error_code getBufferForFile(const llvm::Twine &path, std::unique_ptr<llvm::MemoryBuffer> &result, int64_t FileSize, bool RequiresNullTerminator, bool IsVolatile) override final {
+            if (imports->find(path.getSingleStringRef()) == imports->end())
+                return std::make_error_code(std::errc::no_such_file_or_directory);
+            result = std::unique_ptr<llvm::MemoryBuffer>(llvm::MemoryBuffer::getMemBuffer(imports->at(path.getSingleStringRef())));
+            return std::error_code();
+        }
+        clang::vfs::directory_iterator dir_begin(const llvm::Twine &Dir, std::error_code &EC) override final {
+
+        }
+    };*/
 
     struct WideASTSource : clang::ExternalASTSource, llvm::RefCountedBase<WideASTSource> {
         WideASTSource(Analyzer& a) : a(a) {}
@@ -145,42 +170,63 @@ public:
         }
     };
 
+    const clang::FileEntry* CheckImportedHeader(std::string file, Analyzer& a) {
+        if (a.GetImportHeaders().find(file) != a.GetImportHeaders().end()) {
+            auto entry = FileManager.getVirtualFile(file, a.GetImportHeaders().at(file).size(), 0);
+            bool invalid = true;
+            sm.getBuffer(sm.translateFile(entry), &invalid);
+            if (invalid)
+                sm.overrideFileContents(entry, llvm::MemoryBuffer::getMemBuffer(a.GetImportHeaders().at(file)));
+            return entry;
+        }
+        return FileManager.getFile(file);
+    }
+
     Impl(std::string file, const Wide::Options::Clang& opts, Lexer::Range where, Analyzer& a)        
         : Options(&opts)
         , FileManager(opts.FileSearchOptions)
-        , engine(opts.DiagnosticIDs, opts.DiagnosticOptions.getPtr(), &DiagnosticConsumer, false)
-        , targetinfo(CreateTargetInfoFromTriple(engine, opts.TargetOptions.Triple))
+        , engine(opts.DiagnosticIDs, opts.DiagnosticOptions.get(), &DiagnosticConsumer, false)
+        , targetinfo(CreateTargetInfoFromTriple(engine, opts.TargetOptions))
         , sm(engine, FileManager)
         , hs(opts.HeaderSearchOptions, sm, engine, opts.LanguageOptions, targetinfo.get())
         , langopts(Options->LanguageOptions)
-        , preproc(Options->PreprocessorOptions, engine, langopts, targetinfo.get(), sm, hs, ci)
-        , astcon(langopts, sm, targetinfo.get(), preproc.getIdentifierTable(), preproc.getSelectorTable(), preproc.getBuiltinInfo(), 1000)
+        , preproc(Options->PreprocessorOptions, engine, langopts, sm, hs, ci)
+        , astcon(langopts, sm, preproc.getIdentifierTable(), preproc.getSelectorTable(), preproc.getBuiltinInfo())
         , consumer(stuff)
         , sema(preproc, astcon, consumer, clang::TranslationUnitKind::TU_Complete) 
-        , filename(std::move(file))   
         , p(preproc, sema, false)
     {
-        llvm::OwningPtr<clang::ExternalASTSource> wastsource(new WideASTSource(a));
-        astcon.setExternalSource(wastsource);
-       
+        // WHY THE FUCK AM I DOING THIS MYSELF CLANG
+        // CAN'T YOU READ YOUR OWN CONSTRUCTOR PARAMETERS AND OPTIONS STRUCTS?
+        std::vector<clang::DirectoryLookup> lookups;
+        for (auto entry : opts.HeaderSearchOptions->UserEntries) {
+            lookups.push_back(clang::DirectoryLookup(FileManager.getDirectory(entry.Path), clang::SrcMgr::CharacteristicKind::C_System, false));
+        }
+        hs.SetSearchPaths(lookups, 0, 0, true);
+
+        llvm::IntrusiveRefCntPtr<clang::ExternalASTSource> wastsource(new WideASTSource(a));
+        astcon.setExternalSource(wastsource);      
+        astcon.InitBuiltinTypes(*targetinfo);
         preproc.enableIncrementalProcessing(true);
-        std::string err;
-        clang::InitializePreprocessor(preproc, *Options->PreprocessorOptions, *Options->HeaderSearchOptions, Options->FrontendOptions);
+        preproc.Initialize(*targetinfo); // why would you do this
+        clang::InitializePreprocessor(preproc, *Options->PreprocessorOptions, Options->FrontendOptions);
         preproc.getBuiltinInfo().InitializeBuiltins(preproc.getIdentifierTable(), Options->LanguageOptions);
         std::vector<std::string> paths;
         for (auto it = hs.search_dir_begin(); it != hs.search_dir_end(); ++it)
             paths.push_back(it->getDir()->getName());
         const clang::DirectoryLookup* directlookup = nullptr;
-        auto entry = hs.LookupFile(filename, true, nullptr, directlookup, nullptr, nullptr, nullptr, nullptr);
+        auto entry = hs.LookupFile(file, clang::SourceLocation(), true, nullptr, directlookup, nullptr, nullptr, nullptr, nullptr);
         if (!entry)
-            entry = FileManager.getFile(filename);
+            entry = CheckImportedHeader(file, a);
         if (!entry)
-            throw CantFindHeader(filename, paths, where);
+            throw CantFindHeader(file, paths, where);
         
         auto fileid = sm.createFileID(entry, clang::SourceLocation(), clang::SrcMgr::CharacteristicKind::C_User);
         if (fileid.isInvalid())
-            throw CannotTranslateFile(filename, where);
-        files.insert(entry);
+            throw CannotTranslateFile(file, where);
+        AbsoluteToRelativeFileMapping[entry->getName()] = file;
+
+
         sm.setMainFileID(fileid);
         engine.getClient()->BeginSourceFile(Options->LanguageOptions, &preproc);
         preproc.EnterMainSourceFile();
@@ -200,7 +246,7 @@ public:
         for (auto diag : DiagnosticConsumer.diagnostics)
             errors += diag;
         if (engine.hasFatalErrorOccurred())
-            throw ClangFileParseError(filename, errors, where);
+            throw ClangFileParseError(file, errors, where);
         if (!errors.empty()) Options->OnDiagnostic(errors);
         errors.clear();
     }
@@ -209,23 +255,26 @@ public:
         return astcon.getTranslationUnitDecl();
     }
 
-    void AddFile(std::string filename, Lexer::Range where) {
+    void AddFile(std::string filename, Lexer::Range where, Analyzer& a) {
+        llvm::SmallVector<char, 10> smallvec(filename.begin(), filename.end());
+        llvm::sys::fs::make_absolute(smallvec);
+        auto abspath = std::string(smallvec.begin(), smallvec.end());
+        if (AbsoluteToRelativeFileMapping.find(abspath) != AbsoluteToRelativeFileMapping.end())
+            return;
+        AbsoluteToRelativeFileMapping[abspath] = filename;
         std::vector<std::string> paths;
         for (auto it = hs.search_dir_begin(); it != hs.search_dir_end(); ++it)
             paths.push_back(it->getDir()->getName());
         const clang::DirectoryLookup* directlookup = nullptr;
-        auto entry = hs.LookupFile(filename, true, nullptr, directlookup, nullptr, nullptr, nullptr, nullptr);
+        auto entry = hs.LookupFile(filename, clang::SourceLocation(), true, nullptr, directlookup, nullptr, nullptr, nullptr, nullptr);
         if (!entry)
-            entry = FileManager.getFile(filename);
+            entry = CheckImportedHeader(filename, a);
         if (!entry)
             throw CantFindHeader(filename, paths, where);
 
         auto fileid = sm.createFileID(entry, sm.getLocForEndOfFile(sm.getMainFileID()), clang::SrcMgr::CharacteristicKind::C_User);
         if (fileid.isInvalid())
             throw CannotTranslateFile(filename, where);
-        if (files.find(entry) != files.end())
-            return;
-        files.insert(entry);
         // Partially a re-working of clang::ParseAST's implementation
 
         preproc.EnterSourceFile(fileid, preproc.GetCurDirLookup(), sm.getLocForEndOfFile(sm.getMainFileID()));
@@ -263,7 +312,7 @@ ClangTU::ClangTU(std::string file, const Wide::Options::Clang& ccs, Lexer::Range
 {
 }
 void ClangTU::AddFile(std::string filename, Lexer::Range where) {
-    return impl->AddFile(filename, where);
+    return impl->AddFile(filename, where, a);
 }
 
 ClangTU::ClangTU(ClangTU&& other)
@@ -339,14 +388,8 @@ llvm::Type* ClangTU::GetLLVMTypeFromClangType(clang::QualType t, llvm::Module* m
 
 bool ClangTU::IsComplexType(clang::CXXRecordDecl* decl, llvm::Module* module) {
     if (!decl) return false;
-    auto indirect = impl->GetCodegenModule(module).getCXXABI().isReturnTypeIndirect(decl);
     auto arg = impl->GetCodegenModule(module).getCXXABI().getRecordArgABI(decl);
-    auto t = impl->astcon.getTypeDeclType(decl);
-    if (!indirect && arg != clang::CodeGen::CGCXXABI::RecordArgABI::RAA_Default)
-        assert(false);
-    if (indirect && arg != clang::CodeGen::CGCXXABI::RecordArgABI::RAA_Indirect)
-        assert(false);
-    return indirect;
+    return arg != clang::CodeGen::CGCXXABI::RecordArgABI::RAA_Default;
 }
 
 void ClangTU::MarkDecl(clang::NamedDecl* D) {
@@ -354,14 +397,14 @@ void ClangTU::MarkDecl(clang::NamedDecl* D) {
         if (funcdecl->getType()->getAs<clang::FunctionProtoType>()->getExtProtoInfo().ExceptionSpecType == clang::ExceptionSpecificationType::EST_Unevaluated) {
             GetSema().EvaluateImplicitExceptionSpec(clang::SourceLocation(), funcdecl);
         }
-    }
+    }/*
     if (D->hasAttrs()) {
         D->addAttr(new (impl->astcon) clang::UsedAttr(clang::SourceLocation(), impl->astcon));
     } else {
         clang::AttrVec v;
         v.push_back(new (impl->astcon) clang::UsedAttr(clang::SourceLocation(), impl->astcon));
         D->setAttrs(v);
-    }
+    }*/
     impl->sema.MarkAnyDeclReferenced(clang::SourceLocation(), D, true);
 }
 std::function<llvm::Function*(llvm::Module*)> ClangTU::GetObject(Analyzer& a, clang::CXXDestructorDecl* D, clang::CXXDtorType d) {
@@ -444,8 +487,8 @@ std::function<unsigned(llvm::Module*)> ClangTU::GetBaseNumber(const clang::CXXRe
 clang::SourceLocation ClangTU::GetFileEnd() {
     return impl->sm.getLocForEndOfFile(impl->sm.getMainFileID());
 }
-std::string ClangTU::GetFilename() {
-    return impl->filename;
+std::unordered_map<std::string, std::string> ClangTU::GetFilename() {
+    return impl->AbsoluteToRelativeFileMapping;
 }
 clang::SourceLocation ClangTU::GetLocationForRange(Lexer::Range r) {
     auto entry = impl->FileManager.getFile(*r.begin.name);
@@ -493,7 +536,7 @@ llvm::PointerType* ClangTU::GetFunctionPointerType(const clang::CodeGen::CGFunct
 }
 const clang::CodeGen::CGFunctionInfo& ClangTU::GetABIForFunction(const clang::FunctionProtoType* proto, clang::CXXRecordDecl* decl, llvm::Module* module) {
     if (decl) return impl->GetCodegenModule(module).getTypes().arrangeCXXMethodType(decl, proto);
-    return impl->GetCodegenModule(module).getTypes().arrangeFreeFunctionType(GetASTContext().getCanonicalType(GetASTContext().getFunctionType(proto->getResultType(), proto->getArgTypes(), proto->getExtProtoInfo())).getAs<clang::FunctionProtoType>());
+    return impl->GetCodegenModule(module).getTypes().arrangeFreeFunctionType(GetASTContext().getCanonicalType(GetASTContext().getFunctionType(proto->getReturnType(), proto->getParamTypes(), proto->getExtProtoInfo())).getAs<clang::FunctionProtoType>());
 }
 clang::CodeGen::CodeGenModule& ClangTU::GetCodegenModule(llvm::Module* module) {
     return impl->GetCodegenModule(module);

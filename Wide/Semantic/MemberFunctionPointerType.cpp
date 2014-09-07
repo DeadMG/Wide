@@ -48,7 +48,7 @@ OverloadSet* MemberFunctionPointer::CreateOperatorOverloadSet(Parse::OperatorNam
     if (!booltest)
         booltest = MakeResolvable([](std::vector<std::shared_ptr<Expression>> args, Context c) {
             return CreatePrimUnOp(std::move(args[0]), c.from->analyzer.GetBooleanType(), [](llvm::Value* val, CodegenContext& con) {
-                auto ptrbits = llvm::DataLayout(con.module->getDataLayout()).getPointerSizeInBits();
+                auto ptrbits = con.module->getDataLayout()->getPointerSizeInBits();
                 auto ptr = con->CreateExtractValue(val, { 0 });
                 auto constantzero = llvm::ConstantInt::get(llvm::IntegerType::get(con, ptrbits), uint64_t(0), true);
                 return con->CreateZExt(con->CreateICmpNE(ptr, constantzero), llvm::IntegerType::getInt8Ty(con));

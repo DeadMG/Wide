@@ -18,7 +18,7 @@ std::unordered_set<std::string> Wide::Driver::SearchStdlibDirectory(std::string 
         "Mac";
     std::unordered_set<std::string> ret;
     auto end = llvm::sys::fs::directory_iterator();
-    llvm::error_code fuck_error_codes;
+    std::error_code fuck_error_codes;
     bool out = true;
     auto begin = llvm::sys::fs::directory_iterator(path, fuck_error_codes);
     std::set<std::string> entries;

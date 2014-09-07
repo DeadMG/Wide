@@ -13,7 +13,6 @@
 #include <llvm/IR/Module.h>
 #include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/DataLayout.h>
-#include <llvm/Analysis/Verifier.h>
 #include <clang/AST/ASTContext.h>
 #include <clang/AST/AST.h>
 #include <clang/AST/RecordLayout.h>
@@ -358,8 +357,6 @@ llvm::Function* AggregateType::CreateDestructorFunction(llvm::Module* module) {
             des(newcon);
         newcon->CreateRetVoid();
     });
-    if (llvm::verifyFunction(*DestructorFunction, llvm::VerifierFailureAction::PrintMessageAction))
-        throw std::runtime_error("Internal Compiler Error: An LLVM function failed verification.");
     return DestructorFunction;
 }
 std::function<void(CodegenContext&)> AggregateType::BuildDestruction(std::shared_ptr<Expression> self, Context c, bool devirtualize) {

@@ -27,7 +27,6 @@
 #include <clang/Sema/Sema.h>
 #include <llvm/IR/DerivedTypes.h>
 #include <clang/Sema/Lookup.h>
-#include <llvm/Analysis/Verifier.h>
 #pragma warning(pop)
 
 using namespace Wide;
@@ -762,8 +761,6 @@ struct Wide::Semantic::UserDefinedType::ImportConstructorCallable : Callable {
                 init->GetValue(con);
             con->CreateRetVoid();
         });
-        if (llvm::verifyFunction(*thunk_function, llvm::VerifierFailureAction::PrintMessageAction))
-            throw std::runtime_error("Internal Compiler Error: An LLVM function failed verification.");
     }
     WideFunctionType* GetFunctionType() {
         auto&& a = self->analyzer;

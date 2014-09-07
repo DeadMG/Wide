@@ -24,7 +24,7 @@
 #include <llvm/Support/Program.h>
 #include <llvm/Support/FileSystem.h>
 #include <llvm/Support/DynamicLibrary.h>
-#include <llvm/Analysis/Verifier.h>
+#include <llvm/IR/Verifier.h>
 #pragma warning(pop)
 
 void TestDirectory(std::string path, std::string mode, std::string program, bool debugbreak, std::unordered_map<std::string, std::function<bool()>>& failedset) {
@@ -52,7 +52,7 @@ void TestDirectory(std::string path, std::string mode, std::string program, bool
     };
 
     auto end = llvm::sys::fs::directory_iterator();
-    llvm::error_code fuck_error_codes;
+    std::error_code fuck_error_codes;
     bool out = true;
     fuck_error_codes = llvm::sys::fs::is_directory(path, out);
     if (!out || fuck_error_codes) {
@@ -147,8 +147,14 @@ void Jit(Wide::Options::Clang& copts, std::string file) {
         if (f->GetSignature()->GetReturnType() != a.GetBooleanType())
             throw std::runtime_error("Main did not return bool.");
         a.GenerateCode(module.get());
+        std::string mod_ir;
+        llvm::raw_string_ostream stream(mod_ir);
+        module->print(stream, nullptr);
+        stream.flush();
+        std::string err;
+        llvm::raw_string_ostream errstream(err);
         main = f->EmitCode(module.get());
-        if (llvm::verifyModule(*module, llvm::VerifierFailureAction::PrintMessageAction))
+        if (llvm::verifyModule(*module, &errstream))
             throw std::runtime_error("An LLVM module failed verification.");
     });
     llvm::EngineBuilder b(module.get());
@@ -264,9 +270,9 @@ void Compile(Wide::Options::Clang& copts, std::string file) {
         builder.CreateStore(builder.CreateExtractValue(call, { boost::get<Wide::Semantic::LLVMFieldIndex>(tupty->GetLocation(4)).index }), current++);
         builder.CreateRetVoid();
         int64_t beginline, begincolumn, endline, endcolumn;
-        if (llvm::verifyFunction(*tramp, llvm::VerifierFailureAction::PrintMessageAction))
+        if (llvm::verifyFunction(*tramp))
             throw std::runtime_error("Internal Compiler Error: An LLVM function failed verification.");
-        if (llvm::verifyModule(*module, llvm::VerifierFailureAction::PrintMessageAction))
+        if (llvm::verifyModule(*module))
             throw std::runtime_error("An LLVM module failed verification.");
         GenerateCode(module.get(), [&](llvm::ExecutionEngine* ee) {
             ee->finalizeObject();

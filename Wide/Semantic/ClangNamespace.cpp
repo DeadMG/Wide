@@ -79,7 +79,9 @@ std::string ClangNamespace::explain() {
             filepath = from->GetASTContext().getSourceManager().getFilename(sloc);
             sloc = from->GetASTContext().getSourceManager().getIncludeLoc(from->GetASTContext().getSourceManager().getFileID(sloc));
         }
-        return "cpp(\"" + filepath + "\")." + namespac->getName().str();
+        auto filenames = from->GetFilename();
+        assert(filenames.find(filepath) != filenames.end());
+        return "cpp(\"" + filenames[filepath] + "\")." + namespac->getName().str();
     }
     auto names = llvm::dyn_cast<clang::NamespaceDecl>(con);
     return GetContext()->explain() + "." + names->getName().str();

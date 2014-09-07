@@ -45,7 +45,7 @@ std::shared_ptr<Expression> ClangTemplateClass::ConstructCall(std::shared_ptr<Ex
         throw UnresolvableTemplate(this, types, from->PopLastDiagnostic(), c.where);
 
     void* pos = 0;
-    auto spec = tempdecl->findSpecialization(tempargs.data(), tempargs.size(), pos);    
+    auto spec = tempdecl->findSpecialization(tempargs, pos);    
     if (spec)    
         return analyzer.GetConstructorType(analyzer.GetClangType(*from, from->GetASTContext().getRecordType(spec)))->BuildValueConstruction({}, { this, c.where });
     auto loc = from->GetFileEnd();

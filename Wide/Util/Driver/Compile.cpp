@@ -25,10 +25,18 @@
 #pragma warning(pop)
 
 void Wide::Driver::Compile(const Wide::Options::Clang& copts, const std::vector<std::string>& files, std::function<void(Semantic::Analyzer&, const Parse::Module*)> func) {
-    return Wide::Driver::Compile(copts, files, {}, func);
+    return Wide::Driver::Compile(copts, files, {}, {}, func);
 }
 
 void Wide::Driver::Compile(const Wide::Options::Clang& copts, const std::vector<std::string>& files, const std::vector<std::pair<std::string, std::string>>& sources, std::function<void(Wide::Semantic::Analyzer&, const Parse::Module*)> func) {
+    return Wide::Driver::Compile(copts, files, sources, {}, func);
+}
+void Wide::Driver::Compile(const Wide::Options::Clang& copts,
+    const std::vector<std::string>& files, 
+    const std::vector<std::pair<std::string, std::string>>& sources,
+    const std::unordered_map<std::string, std::string>& import_headers,
+    std::function<void(Wide::Semantic::Analyzer&, const Parse::Module*)> func
+) {
     Wide::Concurrency::Vector<std::string> excepts;
     Wide::Concurrency::Vector<std::string> warnings;
     Wide::Parse::Combiner combiner;
@@ -90,7 +98,7 @@ void Wide::Driver::Compile(const Wide::Options::Clang& copts, const std::vector<
         combiner.Add(&x->GlobalModule);
 
     if (excepts.empty()) {
-        Wide::Semantic::Analyzer a(copts, combiner.GetGlobalModule());
+        Wide::Semantic::Analyzer a(copts, combiner.GetGlobalModule(), import_headers);
         func(a, combiner.GetGlobalModule());
     } else {
         std::string err = "Compilation failed with errors:\n";

@@ -66,8 +66,9 @@ namespace {
 // After definition of type
 Analyzer::~Analyzer() {}
 
-Analyzer::Analyzer(const Options::Clang& opts, const Parse::Module* GlobalModule)
+Analyzer::Analyzer(const Options::Clang& opts, const Parse::Module* GlobalModule, const std::unordered_map<std::string, std::string>& headers)
 : clangopts(&opts)
+, ImportHeaders(headers)
 , QuickInfo([](Lexer::Range, Type*) {})
 , ParameterHighlight([](Lexer::Range){})
 , layout(::GetDataLayout(opts.TargetOptions.Triple))

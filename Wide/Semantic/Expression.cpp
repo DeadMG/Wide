@@ -6,6 +6,7 @@
 #include <Wide/Util/Memory/MakeUnique.h>
 #include <Wide/Semantic/Analyzer.h>
 #include <Wide/Semantic/Function.h>
+#include <llvm/IR/Verifier.h>
 
 using namespace Wide;
 using namespace Semantic;
@@ -373,6 +374,8 @@ void CodegenContext::EmitFunctionBody(llvm::Function* func, std::function<void(C
     llvm::IRBuilder<> insertbuilder(entries);
     CodegenContext newcon(func->getParent(), allocabuilder, gepbuilder, insertbuilder);
     body(newcon);
+    if (llvm::verifyFunction(*func))
+        throw std::runtime_error("Internal Compiler Error: An LLVM function failed verification.");
 }
 CodegenContext::CodegenContext(llvm::Module* mod, llvm::IRBuilder<>& alloc_builder, llvm::IRBuilder<>& gep_builder, llvm::IRBuilder<>& ir_builder)
     : module(mod), alloca_builder(&alloc_builder), gep_builder(&gep_builder), insert_builder(&ir_builder)
@@ -424,5 +427,5 @@ llvm::Function* CodegenContext::GetCXAFreeException() {
 }
 
 llvm::IntegerType* CodegenContext::GetPointerSizedIntegerType() {
-    return llvm::IntegerType::get(module->getContext(), llvm::DataLayout(module->getDataLayout()).getPointerSizeInBits());
+    return llvm::IntegerType::get(module->getContext(), llvm::DataLayout(module->getDataLayout()->getStringRepresentation()).getPointerSizeInBits());
 }

@@ -63,7 +63,8 @@ namespace Wide {
 
             ClangTU(std::string file, const Wide::Options::Clang&, Lexer::Range where, Analyzer& an);
             llvm::Type* GetLLVMTypeFromClangType(clang::QualType t, llvm::Module* module);
-            std::string GetFilename();
+            // Absolute mapped to user-provided.
+            std::unordered_map<std::string, std::string> GetFilename();
 
             clang::ASTContext& GetASTContext();
             clang::Sema& GetSema();

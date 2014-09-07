@@ -23,7 +23,6 @@
 #pragma warning(push, 0)
 #include <llvm/IR/Function.h>
 #include <llvm/IR/IRBuilder.h>
-#include <llvm/Analysis/Verifier.h>
 #include <llvm/IR/Intrinsics.h>
 #include <llvm/Support/raw_os_ostream.h>
 #include <clang/AST/Type.h>
@@ -956,10 +955,7 @@ llvm::Function* Function::EmitCode(llvm::Module* module) {
                 c->CreateUnreachable();
         }
     });
-
-    if (llvm::verifyFunction(*llvmfunc, llvm::VerifierFailureAction::PrintMessageAction))
-        throw std::runtime_error("Internal Compiler Error: An LLVM function failed verification.");
-
+    
     for (auto exportnam : trampoline)
         exportnam(module);
     return llvmfunc;

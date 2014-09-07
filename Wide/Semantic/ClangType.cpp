@@ -175,7 +175,7 @@ OverloadSet* ClangType::CreateADLOverloadSet(Parse::OperatorName what, Parse::Ac
     clang::OpaqueValueExpr lhsexpr(clang::SourceLocation(), type.getNonLValueExprType(from->GetASTContext()), Semantic::GetKindOfType(this));
     std::vector<clang::Expr*> exprs;
     exprs.push_back(&lhsexpr);
-    from->GetSema().ArgumentDependentLookup(from->GetASTContext().DeclarationNames.getCXXOperatorName(GetTokenMappings().at(what).first), true, clang::SourceLocation(), exprs, res);
+    from->GetSema().ArgumentDependentLookup(from->GetASTContext().DeclarationNames.getCXXOperatorName(GetTokenMappings().at(what).first), clang::SourceLocation(), exprs, res);
     std::unordered_set<clang::NamedDecl*> decls;
     decls.insert(res.begin(), res.end());
     return analyzer.GetOverloadSet(std::move(decls), from, GetContext());
@@ -419,11 +419,11 @@ Type::VTableLayout ClangType::ComputePrimaryVTableLayout() {
                 for (auto overriddenit = methit->begin_overridden_methods(); overriddenit != methit->end_overridden_methods(); ++overriddenit) {
                     auto basemeth = *overriddenit;
                     if (basemeth->getParent() == layout.getPrimaryBase()) {
-                        if (basemeth->getResultType() == methit->getResultType())
+                        if (basemeth->getReturnType() == methit->getReturnType())
                             return false;
                         // If they have an adjustment of zero.
-                        auto basety = analyzer.GetClangType(*from, basemeth->getResultType());
-                        auto derty = analyzer.GetClangType(*from, methit->getResultType());
+                        auto basety = analyzer.GetClangType(*from, basemeth->getReturnType());
+                        auto derty = analyzer.GetClangType(*from, methit->getReturnType());
                         if (derty->InheritsFromAtOffsetZero(basety)) return false;
                         continue;
                     }
@@ -615,4 +615,7 @@ bool ClangType::IsFinal() {
 }
 bool ClangType::HasVirtualDestructor() {
     return type->getAsCXXRecordDecl()->getDestructor()->isVirtual();
+}
+bool ClangType::AlwaysKeepInMemory(llvm::Module* mod) {
+    return from->IsComplexType(type->getAsCXXRecordDecl(), mod);
 }

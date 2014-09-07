@@ -67,10 +67,8 @@ function AddClangDependencies(plat, conf)
         if plat == 'x64' then
             llvmbuild = path.join(llvmbuild, 'x64')
         end
-        libdirs({ path.join(_OPTIONS["llvm-path"], llvmbuild, "lib", llvmconf) })
-    else
-        libdirs({ path.join(_OPTIONS["llvm-path"], llvmbuild, llvmconf, "lib") })
     end
+    libdirs({ path.join(_OPTIONS["llvm-path"], llvmbuild, llvmconf, "lib") })
     local clanglibs = { 
         "clangFrontend",
         "clangSerialization",
@@ -81,7 +79,7 @@ function AddClangDependencies(plat, conf)
         "clangSema",
         "clangAnalysis",
         "clangRewriteFrontend",
-        "clangRewriteCore",
+        "clangRewrite",
         "clangEdit",
         "clangAST",
         "clangLex",
@@ -152,6 +150,9 @@ function AddClangDependencies(plat, conf)
         "LLVMSparcCodeGen",
         "LLVMSparcDesc",
         "LLVMSparcInfo",
+        "LLVMSparcDisassembler",
+        "LLVMSparcAsmParser",
+        "LLVMSparcAsmPrinter",
         "LLVMTableGen",
         "LLVMDebugInfo",
         "LLVMOption",
@@ -182,7 +183,8 @@ function AddClangDependencies(plat, conf)
         "LLVMMC",
         "LLVMObject",
         "LLVMCore",
-        "LLVMSupport"
+        "LLVMSupport",
+        "LLVMProfileData"
     }
     for k, v in pairs(clanglibs) do
         links { v }

@@ -138,7 +138,9 @@ namespace Wide {
             llvm::DataLayout layout;
             std::unordered_map<const Parse::Expression*, std::shared_ptr<Expression>> ExpressionCache;
             std::unordered_map<Type*, std::string> ExportedTypes;
+            std::unordered_map<std::string, std::string> ImportHeaders;
         public:
+            const std::unordered_map<std::string, std::string>& GetImportHeaders() { return ImportHeaders; }
             std::string GetTypeExports();
             std::string GetTypeExport(Type* t);
             auto GetFunctions() -> const decltype(WideFunctions)& { return WideFunctions; }
@@ -202,7 +204,7 @@ namespace Wide {
             std::shared_ptr<Expression> AnalyzeCachedExpression(Type* lookup, const Parse::Expression* e);
             std::shared_ptr<Expression> AnalyzeExpression(Type* lookup, const Parse::Expression* e);
 
-            Analyzer(const Options::Clang&, const Parse::Module*);
+            Analyzer(const Options::Clang&, const Parse::Module*, const std::unordered_map<std::string, std::string>& = std::unordered_map<std::string, std::string>());
 
             ClangTU* LoadCPPHeader(std::string file, Lexer::Range where);
             ClangTU* AggregateCPPHeader(std::string file, Lexer::Range where);
