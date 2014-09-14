@@ -1,6 +1,6 @@
 ExpectedFailure() { return { "OverloadResolutionFailure", 9, 12, 9, 15 }; }
 type t2 {
-    operator()(this := t2.rvalue) {
+    operator()(this : t2.rvalue) {
         return false;
     }
 }

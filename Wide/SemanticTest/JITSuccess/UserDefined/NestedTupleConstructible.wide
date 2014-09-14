@@ -1,10 +1,10 @@
 type inner {
-    x := int64;
-    y := int64;
+    x : int64;
+    y : int64;
 }
 type outer {
-    first := inner;
-    second := inner;
+    first : inner;
+    second : inner;
 }
 Main() {
     var := outer({{1, 2}, {3, 4}});

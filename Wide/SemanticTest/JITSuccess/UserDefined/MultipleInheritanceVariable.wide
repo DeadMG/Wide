@@ -5,12 +5,12 @@ type b2 {
     dynamic g() { return false; }
 }
 type der : b1 : b2 {
-    b := bool;
-    type(x := bool) : b := x {}
+    b : bool;
+    type(x : bool) : b := x {}
     f() { return b; }
     g() { return b; }
 }
-f(arg1 := b1.lvalue, arg2 := b2.lvalue) {
+f(arg1 : b1.lvalue, arg2 : b2.lvalue) {
     return arg1.f() & arg2.g();
 }
 Main() {

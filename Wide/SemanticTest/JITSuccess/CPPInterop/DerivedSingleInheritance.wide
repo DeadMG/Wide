@@ -1,7 +1,7 @@
 using header := cpp("JITSuccess/CPPInterop/DerivedSingleInheritance.h");
 
 [export := header.f.resolve(header.x.rvalue)]
-f(arg := header.x.rvalue) {
+f(arg : header.x.rvalue) {
     return arg.f();
 }
 

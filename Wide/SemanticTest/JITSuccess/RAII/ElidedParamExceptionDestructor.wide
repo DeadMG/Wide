@@ -1,13 +1,13 @@
 type t {
-    ptr := int64.pointer;
-    type(arg := int64.lvalue, constructed := int64.lvalue) : ptr := &arg { ++constructed; }
+    ptr : int64.pointer;
+    type(arg : int64.lvalue, constructed : int64.lvalue) : ptr := &arg { ++constructed; }
     ~type() { *ptr += 1; }
 }
 g() {
     throw true;
     return true;
 }
-f(arg := t, arg2 := bool) {}
+f(arg : t, arg2 : bool) {}
 Main() {
     destructed := 0;
     constructed := 0;
@@ -15,7 +15,7 @@ Main() {
     {
         try { 
             f(t(destructed, constructed), g());
-        } catch(val := bool.lvalue) {
+        } catch(val : bool.lvalue) {
             except = val;
         }
     }

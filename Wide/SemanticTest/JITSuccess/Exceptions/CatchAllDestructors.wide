@@ -1,9 +1,9 @@
 type t {
-    ptr := bool.pointer;
-    type(arg := bool.lvalue) : ptr := &arg {}
+    ptr : bool.pointer;
+    type(arg : bool.lvalue) : ptr := &arg {}
     ~type() { *ptr = true; }
 }
-f(arg := bool.lvalue) {
+f(arg : bool.lvalue) {
     try {
         throw 1;
     } catch(...) {

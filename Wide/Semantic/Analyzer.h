@@ -116,7 +116,6 @@ namespace Wide {
             std::unordered_map<const Parse::FunctionBase*, std::unique_ptr<OverloadResolvable>> FunctionCallables;
             std::unordered_map<const Parse::TemplateType*, std::unique_ptr<OverloadResolvable>> TemplateTypeCallables;
             std::unordered_map<std::vector<Type*>, std::unique_ptr<TupleType>, VectorTypeHasher> tupletypes;
-            std::unordered_map<std::string, std::unique_ptr<StringType>> LiteralStringTypes;
             std::unordered_map<const Parse::Lambda*, std::unordered_map<std::vector<std::pair<Parse::Name, Type*>>, std::unique_ptr<LambdaType>, VectorTypeHasher>> LambdaTypes;
             std::unordered_map<Type*, std::unordered_map<unsigned, std::unique_ptr<ArrayType>>> ArrayTypes;
             std::unordered_map<Type*, std::unordered_map<Type*, std::unique_ptr<MemberDataPointer>>> MemberDataPointers;
@@ -134,6 +133,7 @@ namespace Wide {
             std::unique_ptr<OverloadSet> EmptyOverloadSet;
             std::unique_ptr<OverloadResolvable> PointerCast;
             std::unique_ptr<OverloadResolvable> Move;
+            std::unique_ptr<StringType> LiteralStringType;
 
             llvm::DataLayout layout;
             std::unordered_map<const Parse::Expression*, std::shared_ptr<Expression>> ExpressionCache;
@@ -156,7 +156,7 @@ namespace Wide {
             Type* GetNullType();
             Type* GetBooleanType();
             //Type* GetNothingFunctorType();
-            Type* GetTypeForString(std::string str);
+            Type* GetLiteralStringType();
             Type* GetTypeForInteger(llvm::APInt val);
             
             // The contract of this function is to return the Wide type that corresponds to that Clang type.

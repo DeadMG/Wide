@@ -4,7 +4,7 @@ type base {
 type derived : base {
     dynamic operator()() { return true; }
 }
-f(arg := base.rvalue) {
+f(arg : base.rvalue) {
     return arg();
 }
 Main() {

@@ -371,7 +371,7 @@ Parser::Parser(std::function<Wide::Util::optional<Lexer::Token>()> l)
         }
         auto expr = p.ParseExpression(imp);
         std::vector<Statement*> stmts = { p.arena.Allocate<Return>(expr, expr->location) };
-        std::vector<FunctionArgument> args = { { t.GetLocation(), t.GetValue() } };
+        std::vector<FunctionArgument> args = { { t.GetLocation(), t.GetValue(), nullptr, nullptr } };
         return p.arena.Allocate<Lambda>(std::move(stmts), std::move(args), t.GetLocation() + expr->location, false, std::vector<Variable*>());
     };
 
@@ -474,7 +474,7 @@ Parser::Parser(std::function<Wide::Util::optional<Lexer::Token>()> l)
             auto var = p.lex(expected);
             if (var.GetType() == &Lexer::TokenTypes::VarCreate) {
                 auto expr = p.ParseExpression(imp);
-                auto variable = p.arena.Allocate<Variable>(std::vector<Variable::Name>{{ ident.GetValue(), t.GetLocation() + expr->location }}, std::move(expr), ident.GetLocation());
+                auto variable = p.arena.Allocate<Variable>(std::vector<Variable::Name>{{ ident.GetValue(), t.GetLocation() + expr->location }}, std::move(expr), ident.GetLocation(), nullptr);
                 p.lex(&Lexer::TokenTypes::CloseBracket);
                 auto body = p.ParseStatement(imp);
                 auto next = p.lex(else_expected);
@@ -525,7 +525,7 @@ Parser::Parser(std::function<Wide::Util::optional<Lexer::Token>()> l)
             auto var = p.lex(expected);
             if (var.GetType() == &Lexer::TokenTypes::VarCreate) {
                 auto expr = p.ParseExpression(imp);
-                auto variable = p.arena.Allocate<Variable>(std::vector<Variable::Name>{{ ident.GetValue(), t.GetLocation() + expr->location }}, std::move(expr), ident.GetLocation());
+                auto variable = p.arena.Allocate<Variable>(std::vector<Variable::Name>{{ ident.GetValue(), t.GetLocation() + expr->location }}, std::move(expr), ident.GetLocation(), nullptr);
                 p.lex(&Lexer::TokenTypes::CloseBracket);
                 auto body = p.ParseStatement(imp);
                 return p.arena.Allocate<While>(body, variable, t.GetLocation() + body->location);
@@ -544,8 +544,9 @@ Parser::Parser(std::function<Wide::Util::optional<Lexer::Token>()> l)
         auto expected = p.GetIdentifierFollowups();
         expected.insert(&Lexer::TokenTypes::VarCreate);
         expected.insert(&Lexer::TokenTypes::Comma);
+        expected.insert(&Lexer::TokenTypes::Colon);
         auto next = p.lex(expected);
-        if (next.GetType() != &Lexer::TokenTypes::VarCreate && next.GetType() != &Lexer::TokenTypes::Comma) {
+        if (next.GetType() != &Lexer::TokenTypes::VarCreate && next.GetType() != &Lexer::TokenTypes::Comma && next.GetType() != &Lexer::TokenTypes::Colon) {
             p.lex(next);
             p.lex(t);
             auto expr = p.ParseExpression(imp);
@@ -555,11 +556,16 @@ Parser::Parser(std::function<Wide::Util::optional<Lexer::Token>()> l)
             while (next.GetType() == &Lexer::TokenTypes::Comma) {
                 auto ident = p.lex(&Lexer::TokenTypes::Identifier);
                 names.push_back({ ident.GetValue(), ident.GetLocation() });
-                next = p.lex({ &Lexer::TokenTypes::Comma, &Lexer::TokenTypes::VarCreate });
+                next = p.lex({ &Lexer::TokenTypes::Comma, &Lexer::TokenTypes::VarCreate, &Lexer::TokenTypes::Colon });
+            }
+            Expression* type = nullptr;
+            if (next.GetType() == &Lexer::TokenTypes::Colon) {
+                type = p.ParseExpression(imp);
+                p.lex(&Lexer::TokenTypes::VarCreate);
             }
             auto init = p.ParseExpression(imp);
             auto semi = p.lex(&Lexer::TokenTypes::Semicolon);
-            return p.arena.Allocate<Variable>(std::move(names), init, t.GetLocation() + semi.GetLocation());
+            return p.arena.Allocate<Variable>(std::move(names), init, t.GetLocation() + semi.GetLocation(), type);
         }
     };
 
@@ -622,7 +628,7 @@ Parser::Parser(std::function<Wide::Util::optional<Lexer::Token>()> l)
                 break;
             }
             auto name = next.GetValue();
-            p.lex(&Lexer::TokenTypes::VarCreate);
+            p.lex(&Lexer::TokenTypes::Colon);
             auto type = p.ParseExpression(imp);
             p.lex(&Lexer::TokenTypes::CloseBracket);
             p.lex(&Lexer::TokenTypes::OpenCurlyBracket);
@@ -698,11 +704,21 @@ Parser::Parser(std::function<Wide::Util::optional<Lexer::Token>()> l)
     };
 
     TypeAttributeTokens[&Lexer::TokenTypes::Identifier] = [](Parser& p, Type* t, Parse::Access access, Parse::Import* imp, Lexer::Token& tok, std::vector<Attribute> attributes) {
-        auto next = p.lex({ &Lexer::TokenTypes::VarCreate, &Lexer::TokenTypes::OpenBracket });
+        auto next = p.lex({ &Lexer::TokenTypes::VarCreate, &Lexer::TokenTypes::Colon, &Lexer::TokenTypes::OpenBracket });
         if (next.GetType() == &Lexer::TokenTypes::VarCreate) {
             auto init = p.ParseExpression(imp);
             auto semi = p.lex(&Lexer::TokenTypes::Semicolon);
-            t->variables.push_back(MemberVariable(tok.GetValue(), init, access, tok.GetLocation() + semi.GetLocation(), attributes));
+            t->variables.push_back(MemberVariable(tok.GetValue(), init, access, tok.GetLocation() + semi.GetLocation(), attributes, nullptr));
+        } else if (next.GetType() == &Lexer::TokenTypes::Colon) {
+            auto type = p.ParseExpression(imp);
+            auto ass = p.lex({ &Lexer::TokenTypes::Assignment, &Lexer::TokenTypes::Semicolon });
+            if (ass.GetType() == &Lexer::TokenTypes::Semicolon) {
+                t->variables.push_back(MemberVariable(tok.GetValue(), nullptr, access, tok.GetLocation() + ass.GetLocation(), attributes, type));
+                return access;
+            }
+            auto init = p.ParseExpression(imp);
+            auto semi = p.lex(&Lexer::TokenTypes::Semicolon);
+            t->variables.push_back(MemberVariable(tok.GetValue(), init, access, tok.GetLocation() + semi.GetLocation(), attributes, type));            
         } else {
             auto func = p.ParseFunction(tok, imp, attributes);
             auto overset = boost::get<OverloadSet<Function>>(&t->nonvariables[tok.GetValue()]);
@@ -971,7 +987,7 @@ std::vector<Variable*> Parser::ParseLambdaCaptures(Parse::Import* imp) {
     while (true) {
         auto varassign = lex(&Lexer::TokenTypes::VarCreate);
         auto init = ParseExpression(imp);
-        variables.push_back(arena.Allocate<Variable>(std::vector<Variable::Name>{{tok.GetValue(), tok.GetLocation() }}, init, tok.GetLocation() + init->location));
+        variables.push_back(arena.Allocate<Variable>(std::vector<Variable::Name>{{tok.GetValue(), tok.GetLocation() }}, init, tok.GetLocation() + init->location, nullptr));
         tok = lex({ &Lexer::TokenTypes::CloseSquareBracket, &Lexer::TokenTypes::Comma });
         if (tok.GetType() == &Lexer::TokenTypes::CloseSquareBracket)
             break;
@@ -1014,21 +1030,27 @@ std::vector<FunctionArgument> Parser::ParseFunctionDefinitionArguments(Parse::Im
             ? lex({ &Lexer::TokenTypes::Identifier, &Lexer::TokenTypes::This })
             : lex(&Lexer::TokenTypes::Identifier);
         first = false;
-        auto t2 = lex({ &Lexer::TokenTypes::VarCreate, &Lexer::TokenTypes::CloseBracket, &Lexer::TokenTypes::Comma });
+        auto t2 = lex({ &Lexer::TokenTypes::VarCreate, &Lexer::TokenTypes::CloseBracket, &Lexer::TokenTypes::Comma, &Lexer::TokenTypes::Colon });
+        Expression* type = nullptr;
+        Expression* default_value = nullptr;
+        if (t2.GetType() == &Lexer::TokenTypes::Colon) {
+            type = ParseExpression(imp);
+            t2 = lex({ &Lexer::TokenTypes::Comma, &Lexer::TokenTypes::CloseBracket, &Lexer::TokenTypes::Assignment });
+        }
         if (t2.GetType() == &Lexer::TokenTypes::CloseBracket) {
-            ret.push_back(FunctionArgument(ident.GetLocation(), ident.GetValue()));
+            ret.push_back(FunctionArgument(ident.GetLocation(), ident.GetValue(), type, default_value));
             break;
         }
-        if (t2.GetType() == &Lexer::TokenTypes::VarCreate) {
-            auto type = ParseExpression(imp);
-            ret.push_back(FunctionArgument(ident.GetLocation() + type->location, ident.GetValue(), type));
-            auto next = lex({ &Lexer::TokenTypes::Comma, &Lexer::TokenTypes::CloseBracket });
-            if (next.GetType() == &Lexer::TokenTypes::Comma)
-                continue;
-            break;
+        if (t2.GetType() == &Lexer::TokenTypes::Comma) {
+            ret.push_back({ ident.GetLocation(), ident.GetValue(), type, default_value });
+            continue;
         }
-        ret.push_back({ ident.GetLocation(), ident.GetValue() });
-        continue;
+        default_value = ParseExpression(imp);
+        ret.push_back(FunctionArgument(ident.GetLocation() + lex.GetLastToken().GetLocation(), ident.GetValue(), type, nullptr));
+        auto next = lex({ &Lexer::TokenTypes::Comma, &Lexer::TokenTypes::CloseBracket });
+        if (next.GetType() == &Lexer::TokenTypes::Comma)
+            continue;
+        break;
     }
     return ret;
 }
@@ -1059,14 +1081,14 @@ void Parser::ParseTypeBody(Type* ty, Parse::Import* imp) {
 Function* Parser::ParseFunction(const Lexer::Token& first, Parse::Import* imp, std::vector<Attribute> attrs) {
     auto args = ParseFunctionDefinitionArguments(imp);
     // Gotta be := or {
-    auto next = lex({ &Lexer::TokenTypes::OpenCurlyBracket, &Lexer::TokenTypes::VarCreate, &Lexer::TokenTypes::Default, &Lexer::TokenTypes::Delete });
+    auto next = lex({ &Lexer::TokenTypes::OpenCurlyBracket, &Lexer::TokenTypes::Colon, &Lexer::TokenTypes::Default, &Lexer::TokenTypes::Delete });
     if (next.GetType() == &Lexer::TokenTypes::Default) {
         auto func = arena.Allocate<Function>(std::vector<Statement*>(), first.GetLocation() + next.GetLocation(), std::move(args), nullptr, attrs);
         func->defaulted = true;
         return func;
     }
     Expression* explicit_return = nullptr;
-    if (next.GetType() == &Lexer::TokenTypes::VarCreate) {
+    if (next.GetType() == &Lexer::TokenTypes::Colon) {
         explicit_return = ParseExpression(imp);
         next = lex({ &Lexer::TokenTypes::OpenCurlyBracket, &Lexer::TokenTypes::Abstract });
     }

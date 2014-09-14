@@ -22,6 +22,7 @@ namespace Wide {
         class WideFunctionType;
         class UserDefinedType;
         class ClangFunctionType;
+        class TupleType;
         class Function : public MetaType, public Callable {
             std::string llvmname;
             llvm::Function* llvmfunc = nullptr;
@@ -57,7 +58,7 @@ namespace Wide {
             struct LocalVariable : public Expression {
                 std::shared_ptr<Expression> construction;
                 Wide::Util::optional<unsigned> tuple_num;
-                Type* tup_ty = nullptr;
+                Wide::Util::optional<Type*> explicit_type;
                 Type* var_type = nullptr;
                 std::shared_ptr<ImplicitTemporaryExpr> variable;
                 std::shared_ptr<Expression> init_expr;
@@ -67,8 +68,8 @@ namespace Wide {
                 Lexer::Range init_where;
 
                 void OnNodeChanged(Node* n, Change what) override final;
-                LocalVariable(std::shared_ptr<Expression> ex, unsigned u, Function* self, Lexer::Range where, Lexer::Range init_where);
-                LocalVariable(std::shared_ptr<Expression> ex, Function* self, Lexer::Range where, Lexer::Range init_where);
+                LocalVariable(std::shared_ptr<Expression> ex, unsigned u, Function* self, Lexer::Range where, Lexer::Range init_where, TupleType* p = nullptr);
+                LocalVariable(std::shared_ptr<Expression> ex, Function* self, Lexer::Range where, Lexer::Range init_where, Type* p = nullptr);
                 llvm::Value* ComputeValue(CodegenContext& con) override final;
                 Type* GetType() override final;
             };

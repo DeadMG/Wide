@@ -1,10 +1,10 @@
 type t {
-    ptr := bool.pointer;
-    type(arg := bool.lvalue) : ptr := &arg {}
+    ptr : bool.pointer;
+    type(arg : bool.lvalue) : ptr := &arg {}
     ~type() { *ptr = true; }
 }
 type outer {
-    inner := t;
+    inner : t;
 }
 Main() {
     tup := { false };

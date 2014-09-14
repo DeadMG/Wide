@@ -36,13 +36,13 @@ std::shared_ptr<Expression> ClangIncludeEntity::AccessNamedMember(std::shared_pt
             Callable* GetCallableForResolution(std::vector<Type*>, Type*, Analyzer& a) override final { return this; }
             std::vector<std::shared_ptr<Expression>> AdjustArguments(std::vector<std::shared_ptr<Expression>> args, Context c) override final { return args; }
             std::shared_ptr<Expression> CallFunction(std::vector<std::shared_ptr<Expression>> args, Context c) override final {
-                auto str = dynamic_cast<StringType*>(args[0]->GetType()->Decay());
+                auto str = dynamic_cast<String*>(args[0]->IsConstantExpression());
                 llvm::SmallVector<char, 30> fuck_out_parameters;
                 auto error = llvm::sys::fs::createTemporaryFile("", "", fuck_out_parameters);
                 if (error) throw CannotCreateTemporaryFile(c.where);
                 std::string path(fuck_out_parameters.begin(), fuck_out_parameters.end());
                 std::ofstream file(path, std::ios::out);
-                file << str->GetValue();
+                file << str->str;
                 file.flush();
                 file.close();
                 auto clangtu = args[0]->GetType()->analyzer.LoadCPPHeader(std::move(path), c.where);
@@ -66,11 +66,11 @@ std::shared_ptr<Expression> ClangIncludeEntity::AccessNamedMember(std::shared_pt
             std::vector<std::shared_ptr<Expression>> AdjustArguments(std::vector<std::shared_ptr<Expression>> args, Context c) override final { return args; }
             std::shared_ptr<Expression> CallFunction(std::vector<std::shared_ptr<Expression>> args, Context c) override final{
                 auto gnamespace = dynamic_cast<ClangNamespace*>(args[0]->GetType()->Decay());
-                auto str = dynamic_cast<StringType*>(args[1]->GetType()->Decay());
+                auto str = dynamic_cast<String*>(args[1]->IsConstantExpression());
                 assert(gnamespace && "Overload resolution picked bad candidate.");
-                assert(str && "Overload resolution picked bad candidate.");
+                if (!str) throw std::runtime_error("Failed to evaluate macro: name was not a constant expression.");
                 auto tu = gnamespace->GetTU();
-                return InterpretExpression(tu->ParseMacro(str->GetValue(), c.where), *tu, c, c.from->analyzer);
+                return InterpretExpression(tu->ParseMacro(str->str, c.where), *tu, c, c.from->analyzer);
             }
         };
         MacroHandler = Wide::Memory::MakeUnique<ClangMacroHandler>();
@@ -88,8 +88,8 @@ std::shared_ptr<Expression> ClangIncludeEntity::AccessNamedMember(std::shared_pt
             Callable* GetCallableForResolution(std::vector<Type*>, Type*, Analyzer& a) override final { return this; }
             std::vector<std::shared_ptr<Expression>> AdjustArguments(std::vector<std::shared_ptr<Expression>> args, Context c) override final { return args; }
             std::shared_ptr<Expression> CallFunction(std::vector<std::shared_ptr<Expression>> args, Context c) override final {
-                auto str = dynamic_cast<StringType*>(args[0]->GetType()->Decay());
-                auto name = str->GetValue();
+                auto str = dynamic_cast<String*>(args[0]->IsConstantExpression());
+                auto name = str->str;
                 if (name.size() > 1 && name[0] == '<')
                     name = std::string(name.begin() + 1, name.end());
                 if (name.size() > 1 && name.back() == '>')
@@ -106,12 +106,12 @@ std::shared_ptr<Expression> ClangIncludeEntity::AccessNamedMember(std::shared_pt
 }
 
 std::shared_ptr<Expression> ClangIncludeEntity::ConstructCall(std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c) {
-    if (!dynamic_cast<StringType*>(args[0]->GetType()->Decay()))
+    if (!dynamic_cast<String*>(args[0]->IsConstantExpression()))
         throw std::runtime_error("fuck");
     if (args.size() != 1)
         throw std::runtime_error("fuck");
-    auto str = dynamic_cast<StringType*>(args[0]->GetType()->Decay());
-    auto name = str->GetValue();
+    auto str = dynamic_cast<String*>(args[0]->IsConstantExpression());
+    auto name = str->str;
     if (name.size() > 1 && name[0] == '<')
         name = std::string(name.begin() + 1, name.end());
     if (name.size() > 1 && name.back() == '>')

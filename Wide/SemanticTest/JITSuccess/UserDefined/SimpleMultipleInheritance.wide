@@ -8,7 +8,7 @@ type der : b1 : b2 {
     f() { return true; }
     g() { return true; }
 }
-f(arg1 := b1.lvalue, arg2 := b2.lvalue) {
+f(arg1 : b1.lvalue, arg2 : b2.lvalue) {
     return arg1.f() & arg2.g();
 }
 Main() {

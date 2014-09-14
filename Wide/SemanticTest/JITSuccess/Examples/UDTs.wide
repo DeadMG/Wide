@@ -1,5 +1,5 @@
 type t {
-    var := std.string;
+    var : std.string;
     var2 := "World!";
 }
 Main() {

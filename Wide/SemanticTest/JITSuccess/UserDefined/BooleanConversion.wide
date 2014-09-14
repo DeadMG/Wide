@@ -1,8 +1,8 @@
 type t {
-    val := bool;
+    val : bool;
     operator?() { return val; }
 }
-f(arg := bool) {
+f(arg : bool) {
     return arg;
 }
 Main() {

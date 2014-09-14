@@ -1,5 +1,5 @@
 type t {
-    var := bool;
+    var : bool;
 }
 Main() {
     local := t({false});

@@ -1,6 +1,6 @@
 type base { dynamic f() {} }
 type derived : base { }
-f(arg := base.lvalue) := base.lvalue { 
+f(arg : base.lvalue) : base.lvalue { 
     return arg; 
 }
 Main() {

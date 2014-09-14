@@ -1,6 +1,6 @@
 [alignment := 64]
 type t {
-    arg := bool;
+    arg : bool;
 }
 
 Main() {

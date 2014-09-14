@@ -1,4 +1,4 @@
-f(arg := bool.lvalue, arg2 := bool) {
+f(arg : bool.lvalue, arg2 : bool) {
     arg = arg2;
     return false;
 }

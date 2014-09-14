@@ -1,10 +1,10 @@
-f(arg := int64) {
+f(arg : int64) {
     return true;
 }
-f(arg := int64.lvalue) {
+f(arg : int64.lvalue) {
     return false;
 }
-f(arg := int64.rvalue) {
+f(arg : int64.rvalue) {
     return false;
 }
 Main() {

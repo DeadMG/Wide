@@ -1,10 +1,10 @@
 type t {
-    type(arg := t.lvalue) default
-    type(arg := t.rvalue) default
-    operator=(arg := t.lvalue) default
-    operator=(arg := t.rvalue) default
+    type(arg : t.lvalue) default
+    type(arg : t.rvalue) default
+    operator=(arg : t.lvalue) default
+    operator=(arg : t.rvalue) default
     ~type() default
-    local := bool;
+    local : bool;
 }
 Main() {
     local := t({true});

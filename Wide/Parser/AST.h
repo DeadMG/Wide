@@ -119,12 +119,13 @@ namespace Wide {
         };
 
         struct MemberVariable {
-            MemberVariable(std::string nam, Expression* expr, Parse::Access access, Lexer::Range loc, std::vector<Attribute> attributes)
-                : name(std::move(nam)), initializer(expr), where(loc), access(access), attributes(std::move(attributes)) {}
+            MemberVariable(std::string nam, Expression* expr, Parse::Access access, Lexer::Range loc, std::vector<Attribute> attributes, Expression* type)
+                : name(std::move(nam)), initializer(expr), where(loc), access(access), attributes(std::move(attributes)), type(type) {}
             std::string name;
             Lexer::Range where;
             Parse::Access access;
             Expression* initializer;
+            Expression* type;
             std::vector<Attribute> attributes;
         };
         struct Destructor;
@@ -176,12 +177,11 @@ namespace Wide {
             Expression* index;
         };
         struct FunctionArgument {
-            FunctionArgument(Lexer::Range where, std::string name, Expression* ty)
-                : location(std::move(where)), name(std::move(name)), type(ty) {}
-            FunctionArgument(Lexer::Range where, std::string name)
-                : location(std::move(where)), name(std::move(name)), type(nullptr) {}
+            FunctionArgument(Lexer::Range where, std::string name, Expression* ty, Expression* def)
+                : location(std::move(where)), name(std::move(name)), type(ty), default_value(def) {}
              // May be null
             Expression* type;
+            Expression* default_value;
             std::string name;
             Lexer::Range location;
         };
@@ -269,9 +269,10 @@ namespace Wide {
                 std::string name;
                 Lexer::Range where;
             };
-            Variable(std::vector<Name> nam, Expression* expr, Lexer::Range r)
-                : Statement(r), name(std::move(nam)), initializer(expr) {}
+            Variable(std::vector<Name> nam, Expression* expr, Lexer::Range r, Expression* type)
+                : Statement(r), name(std::move(nam)), initializer(expr), type(type) {}
             std::vector<Name> name;
+            Expression* type;
             Expression* initializer;
         };
         struct Integer : public Expression {

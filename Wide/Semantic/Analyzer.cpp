@@ -199,10 +199,10 @@ Analyzer::Analyzer(const Options::Clang& opts, const Parse::Module* GlobalModule
                 return nullptr;
             }
 
-            Expression* GetImplementation() override final {
+            ConstantExpression* IsConstantExpression() override final {
                 if (access)
-                    return access->GetImplementation();
-                return this;
+                    return access->IsConstantExpression();
+                return nullptr;
             }
 
             llvm::Value* ComputeValue(CodegenContext& con) override final {
@@ -1097,6 +1097,13 @@ std::vector<Type*> Analyzer::GetFunctionParameters(const Parse::FunctionBase* fu
     }
     for (auto&& arg : func->args) {
         if (!arg.type) {
+            if (arg.default_value) {
+                auto p_type = AnalyzeExpression(context, arg.default_value)->GetType()->Decay();
+                QuickInfo(arg.location, p_type);
+                ParameterHighlight(arg.location);
+                out.push_back(p_type);
+                continue;
+            }
             ParameterHighlight(arg.location);
             out.push_back(nullptr);
             continue;
@@ -1362,10 +1369,10 @@ TemplateType* Analyzer::GetTemplateType(const Wide::Parse::TemplateType* ty, Typ
     return WideTemplateInstantiations[ty][arguments].get();
 }
 
-Type* Analyzer::GetTypeForString(std::string str) {
-    if (LiteralStringTypes.find(str) == LiteralStringTypes.end())
-        LiteralStringTypes[str] = Wide::Memory::MakeUnique<StringType>(str, *this);
-    return LiteralStringTypes[str].get();
+Type* Analyzer::GetLiteralStringType() {
+    if (!LiteralStringType)
+        LiteralStringType = Wide::Memory::MakeUnique<StringType>(*this);
+    return LiteralStringType.get();
 }
 LambdaType* Analyzer::GetLambdaType(const Parse::Lambda* lam, std::vector<std::pair<Parse::Name, Type*>> types, Type* context) {
     if (LambdaTypes.find(lam) == LambdaTypes.end()

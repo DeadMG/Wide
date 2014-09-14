@@ -1,12 +1,12 @@
 type inner {
-    x := int64;
-    y := int64;
+    x : int64;
+    y : int64;
 }
 type outer {
-    first := inner;
-    second := inner;
+    first : inner;
+    second : inner;
 }
-f(var := outer) {
+f(var : outer) {
     return var.first.x == 1 & 
            var.first.y == 2 & 
            var.second.x == 3 & 

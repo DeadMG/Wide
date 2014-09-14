@@ -158,18 +158,25 @@ bool UserDefinedType::HasVirtualDestructor(){
 UserDefinedType::MemberData::MemberData(UserDefinedType* self) {
     for (auto&& var : self->type->variables) {
         member_indices[var.name] = members.size();
-        auto expr = self->analyzer.AnalyzeExpression(self->context, var.initializer);
-        if (auto con = dynamic_cast<ConstructorType*>(expr->GetType()->Decay())) {
-            members.push_back(con->GetConstructedType());
-            NSDMIs.push_back(nullptr);
-        } else {
-            members.push_back(expr->GetType()->Decay());
+        Type* explicit_type = nullptr;
+        if (var.type) {
+            auto expr = self->analyzer.AnalyzeExpression(self->context, var.type);
+            if (auto con = dynamic_cast<ConstructorType*>(expr->GetType()->Decay()))
+                members.push_back(explicit_type = con->GetConstructedType());
+            else
+                throw NotAType(expr->GetType(), var.type->location);
+        }
+        if (var.initializer) {
+            auto expr = self->analyzer.AnalyzeExpression(self->context, var.initializer);
+            if (!explicit_type)
+                members.push_back(expr->GetType()->Decay());
             HasNSDMI = true;
             NSDMIs.push_back(var.initializer);
-        }
+        } else
+            NSDMIs.push_back(nullptr);
         if (auto agg = dynamic_cast<AggregateType*>(members.back())) {
             if (agg == self || agg->HasMemberOfType(self))
-                throw RecursiveMember(self, var.initializer->location);
+                throw RecursiveMember(self, var.type ? var.type->location : var.initializer->location);
         }
     }
     for (auto tuple : self->type->imports) {
@@ -1123,7 +1130,7 @@ Wide::Util::optional<unsigned> UserDefinedType::SizeOverride() {
             if (auto string = boost::get<std::string>(&ident->val)) {
                 if (*string == "size") {
                     auto expr = analyzer.AnalyzeExpression(GetContext(), attr.initializer);
-                    if (auto integer = dynamic_cast<Integer*>(expr->GetImplementation())) {
+                    if (auto integer = dynamic_cast<Integer*>(expr->IsConstantExpression())) {
                         return integer->value.getLimitedValue();
                     }
                     throw std::runtime_error("Found size attribute but the initializing expression was not a constant integer.");
@@ -1139,7 +1146,7 @@ Wide::Util::optional<unsigned> UserDefinedType::AlignOverride() {
             if (auto string = boost::get<std::string>(&ident->val)) {
                 if (*string == "alignment") {
                     auto expr = analyzer.AnalyzeExpression(GetContext(), attr.initializer);
-                    if (auto integer = dynamic_cast<Integer*>(expr->GetImplementation())) {
+                    if (auto integer = dynamic_cast<Integer*>(expr->IsConstantExpression())) {
                         return integer->value.getLimitedValue();
                     }
                     throw std::runtime_error("Found size attribute but the initializing expression was not a constant integer.");

@@ -1,6 +1,6 @@
 type t {
-    val := bool;
-    type(arg := bool)
+    val : bool;
+    type(arg : bool)
         : val := arg {}
 }
 Main() {

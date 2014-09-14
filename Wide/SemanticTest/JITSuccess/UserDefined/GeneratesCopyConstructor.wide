@@ -1,6 +1,6 @@
 type t {
-    val := bool;
-    type(var := bool) : val := var {}
+    val : bool;
+    type(var : bool) : val := var {}
 }
 Main() {
     source := t(true);

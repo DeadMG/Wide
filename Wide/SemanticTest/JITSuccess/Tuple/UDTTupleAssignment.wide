@@ -1,6 +1,6 @@
 type t {
-    first := int64;
-    second := int64;
+    first : int64;
+    second : int64;
 }
 Main() {
     local := t({1, 2});

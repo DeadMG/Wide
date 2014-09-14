@@ -1,9 +1,9 @@
 // Fails if decltype evaluates the argument.
-f(result := bool.pointer) {
+f(result : bool.pointer) {
     *result = false;
     return true;
 }
-testfunc(result := bool.pointer) {
+testfunc(result : bool.pointer) {
     decltype(f(result));
 }
 Main() {

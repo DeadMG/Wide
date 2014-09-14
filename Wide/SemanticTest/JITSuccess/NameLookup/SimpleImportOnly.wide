@@ -2,11 +2,11 @@ from x import g;
 type base {}
 type derived : base {}
 module x {
-    g(var := derived) { return true; }
-    f(var := derived) { return false; }
+    g(var : derived) { return true; }
+    f(var : derived) { return false; }
 }
-g(var := base) { return false; }
-f(var := base) { return true; }
+g(var : base) { return false; }
+f(var : base) { return true; }
 Main() {
     return g(derived()) & f(derived());
 }

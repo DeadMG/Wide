@@ -5,6 +5,5 @@ type t : test {
 }
 Main() {
     var := t();
-    ref := header.test.lvalue(var);
-    return header.g(ref);
+    return header.g(var);
 }

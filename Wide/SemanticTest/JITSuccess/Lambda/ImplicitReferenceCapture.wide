@@ -1,4 +1,4 @@
-f(arg := bool.lvalue) {
+f(arg : bool.lvalue) {
     return function()[&] { arg = true; };
 }
 Main() {

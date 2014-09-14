@@ -1,5 +1,5 @@
 type t {
-    local := bool;
+    local : bool;
     ~type() default
 }
 Main() {

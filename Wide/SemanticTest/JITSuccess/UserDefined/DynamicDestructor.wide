@@ -1,16 +1,16 @@
 type base {
-    ptr := int64.pointer;
-    type(arg := int64.lvalue) : ptr := &arg {}
+    ptr : int64.pointer;
+    type(arg : int64.lvalue) : ptr := &arg {}
     dynamic ~type() { *ptr += 1; }
 }
 type derived : base {
-    val := bool.pointer;
+    val : bool.pointer;
     ~type() {
         *val = true;
     }
-    type(arg := bool.lvalue, arg2 := int64.lvalue) : base := arg2 : val := &arg {}
+    type(arg : bool.lvalue, arg2 : int64.lvalue) : base := arg2 : val := &arg {}
 }
-f(arg := base.lvalue) {
+f(arg : base.lvalue) {
     arg.~type();
 }
 Main() {

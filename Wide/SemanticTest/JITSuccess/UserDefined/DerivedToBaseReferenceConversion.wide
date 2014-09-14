@@ -1,8 +1,8 @@
 type base {
-    val := bool;
+    val : bool;
 }
 type derived : base {}
-f(arg := base.rvalue) {
+f(arg : base.rvalue) {
     return arg.val;
 }
 Main() {

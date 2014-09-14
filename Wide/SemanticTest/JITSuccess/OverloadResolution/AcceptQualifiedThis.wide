@@ -1,34 +1,34 @@
 // Fails if qualified this lookup finds the wrong overload or fails to analyze.
 type t1 {
-    operator()(this := t1) {
+    operator()(this : t1) {
         return false;
     }
-    operator()(this := t1.lvalue) {
+    operator()(this : t1.lvalue) {
         return true;
     }
-    operator()(this := t1.rvalue) {
+    operator()(this : t1.rvalue) {
         return false;
     }
 }
 type t2 {
-    operator()(this := t2) {
+    operator()(this : t2) {
         return true;
     }
-    operator()(this := t2.lvalue) {
+    operator()(this : t2.lvalue) {
         return false;
     }
-    operator()(this := t2.rvalue) {
+    operator()(this : t2.rvalue) {
         return false;
     }
 }
 type t3 {
-    operator()(this := t3) {
+    operator()(this : t3) {
         return false;
     }
-    operator()(this := t3.lvalue) {
+    operator()(this : t3.lvalue) {
         return false;
     }
-    operator()(this := t3.rvalue) {
+    operator()(this : t3.rvalue) {
         return true;
     }    
 }

@@ -11,6 +11,7 @@
 #pragma warning(push, 0)
 #include <llvm/Support/Host.h>
 #include <llvm/ADT/Triple.h>
+#include <llvm/Support/Path.h>
 #pragma warning(pop)
 
 
@@ -64,9 +65,12 @@ int main(int argc, char** argv) {
         return ret;
     }());
     if (input.count("input")) {
-        if (modes.find(input["mode"].as<std::string>()) != modes.end())
-            return modes[input["mode"].as<std::string>()]();
-        return 1;
+        if (input.count("mode")) {
+            if (modes.find(input["mode"].as<std::string>()) != modes.end())
+                return modes[input["mode"].as<std::string>()]();
+            return 1;
+        }
+        return modes[*llvm::sys::path::begin(input["input"].as<std::string>())]();
     }
     std::unordered_map<std::string, std::function<bool()>> files;
 #pragma warning(disable : 4800)

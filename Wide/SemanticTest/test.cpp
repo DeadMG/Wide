@@ -257,27 +257,37 @@ void Compile(Wide::Options::Clang& copts, std::string file) {
 
         a.GenerateCode(module.get());
 
-        // JIT cannot handle aggregate returns so check it.
-        std::vector<llvm::Type*> types = { llvm::Type::getInt64PtrTy(con), llvm::Type::getInt64PtrTy(con), llvm::Type::getInt64PtrTy(con), llvm::Type::getInt64PtrTy(con) };
+        // JIT cannot handle aggregate returns so make a trampline.
+        std::vector<llvm::Type*> types = { 
+            llvm::PointerType::get(llvm::IntegerType::getInt8PtrTy(con), 0),
+            llvm::Type::getInt64PtrTy(con), 
+            llvm::Type::getInt64PtrTy(con), 
+            llvm::Type::getInt64PtrTy(con), 
+            llvm::Type::getInt64PtrTy(con) 
+        };
         auto tramp = llvm::Function::Create(llvm::FunctionType::get(llvm::Type::getVoidTy(con), types, false), llvm::GlobalValue::LinkageTypes::ExternalLinkage, "tramp", module.get());
         auto bb = llvm::BasicBlock::Create(con, "entry", tramp);
         auto builder = llvm::IRBuilder<>(bb);
         auto call = builder.CreateCall(failfunc->EmitCode(module.get()));
         auto current = tramp->arg_begin();
+        builder.CreateStore(builder.CreateExtractValue(call, { boost::get<Wide::Semantic::LLVMFieldIndex>(tupty->GetLocation(0)).index }), current++);
         builder.CreateStore(builder.CreateExtractValue(call, { boost::get<Wide::Semantic::LLVMFieldIndex>(tupty->GetLocation(1)).index }), current++);
         builder.CreateStore(builder.CreateExtractValue(call, { boost::get<Wide::Semantic::LLVMFieldIndex>(tupty->GetLocation(2)).index }), current++);
         builder.CreateStore(builder.CreateExtractValue(call, { boost::get<Wide::Semantic::LLVMFieldIndex>(tupty->GetLocation(3)).index }), current++);
         builder.CreateStore(builder.CreateExtractValue(call, { boost::get<Wide::Semantic::LLVMFieldIndex>(tupty->GetLocation(4)).index }), current++);
         builder.CreateRetVoid();
         int64_t beginline, begincolumn, endline, endcolumn;
+        std::string error_string;
         if (llvm::verifyFunction(*tramp))
             throw std::runtime_error("Internal Compiler Error: An LLVM function failed verification.");
         if (llvm::verifyModule(*module))
             throw std::runtime_error("An LLVM module failed verification.");
         GenerateCode(module.get(), [&](llvm::ExecutionEngine* ee) {
             ee->finalizeObject();
-            auto fptr = (void(*)(int64_t*, int64_t*, int64_t*, int64_t*))ee->getPointerToFunction(tramp);
-            fptr(&beginline, &begincolumn, &endline, &endcolumn);
+            const char* val;
+            auto fptr = (void(*)(const char**, int64_t*, int64_t*, int64_t*, int64_t*))ee->getPointerToFunction(tramp);
+            fptr(&val, &beginline, &begincolumn, &endline, &endcolumn);
+            error_string = val;
         });
 
         auto m = Wide::Semantic::Type::AccessMember(global, std::string("Main"), { a.GetGlobalModule(), loc });
@@ -293,9 +303,9 @@ void Compile(Wide::Options::Clang& copts, std::string file) {
             f->ComputeBody();
             throw std::runtime_error("CompileFail did not fail.");
         } catch (Wide::Semantic::Error& err) {
-            if (error_type_strings.find(str->GetValue()) == error_type_strings.end())
+            if (error_type_strings.find(error_string) == error_type_strings.end())
                 throw std::runtime_error("Could not find error type string.");
-            if (!error_type_strings.at(str->GetValue())(err))
+            if (!error_type_strings.at(error_string)(err))
                 throw std::runtime_error("The error type string was incorrect.");
             if (err.location().begin.line != beginline)
                 throw std::runtime_error("Exception location did not match return from ExpectedFailure!" + to_string(err.location()));

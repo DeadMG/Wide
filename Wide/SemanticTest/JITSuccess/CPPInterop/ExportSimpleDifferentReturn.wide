@@ -1,6 +1,6 @@
 using header := cpp.literal("long long f(); bool g() { return f() == 0; }");
 [export := header.f]
-f() := int32 { return 0; }
+f() : int32 { return 0; }
 
 Main() {
     return header.g();

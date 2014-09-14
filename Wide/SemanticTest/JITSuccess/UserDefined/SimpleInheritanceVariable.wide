@@ -1,5 +1,5 @@
 type base {
-    val := bool;
+    val : bool;
     type() : val := true {}
 }
 type derived : base {

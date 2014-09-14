@@ -1,9 +1,9 @@
 type base { 
-    f(var := derived) { return true; }
+    f(var : derived) { return true; }
 }
 type derived : base {
     from base import f;
-    f(var := base) { return false; }
+    f(var : base) { return false; }
 }
 Main() {
     return derived().f(derived());

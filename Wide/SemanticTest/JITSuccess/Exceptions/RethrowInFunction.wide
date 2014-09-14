@@ -6,12 +6,12 @@ Main() {
         try {
             throw true;
             return false;
-        } catch(arg := bool.lvalue) {
+        } catch(arg : bool.lvalue) {
             f();
             return false;
         }
         return false;
-    } catch(arg := bool.lvalue) {
+    } catch(arg : bool.lvalue) {
         return arg;
     }
     return false;

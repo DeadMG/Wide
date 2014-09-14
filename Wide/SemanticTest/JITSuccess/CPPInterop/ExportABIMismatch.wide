@@ -1,6 +1,6 @@
 using header := cpp("JITSuccess/CPPInterop/ExportABIMismatch.h");
 [export := header.f]
-f(b := bool, arg := header.test) {
+f(b : bool, arg : header.test) {
     return b;
 }
 Main() {

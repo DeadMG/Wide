@@ -1,5 +1,5 @@
 type t {
-    local := std.string;
+    local : std.string;
     type() : local := "Hello, World!" {}
 }
 Main() {

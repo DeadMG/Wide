@@ -93,7 +93,7 @@ llvm::Value* ImplicitAddressOf::ComputeValue(CodegenContext& con) {
 String::String(std::string str, Analyzer& a)
 : str(std::move(str)), a(a){}
 Type* String::GetType() {
-    return a.GetTypeForString(str);
+    return a.GetLiteralStringType();
 }
 llvm::Value* String::ComputeValue(CodegenContext& con) {
     return con->CreateGlobalStringPtr(str);
@@ -203,8 +203,8 @@ llvm::Value* Chain::ComputeValue(CodegenContext& con) {
     SideEffect->GetValue(con);
     return result->GetValue(con);
 }
-Expression* Chain::GetImplementation() {
-    return result->GetImplementation();
+ConstantExpression* Chain::IsConstantExpression() {
+    return result->IsConstantExpression();
 }
 std::shared_ptr<Expression> Semantic::BuildChain(std::shared_ptr<Expression> lhs, std::shared_ptr<Expression> rhs) {
     assert(lhs);

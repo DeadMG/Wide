@@ -1,12 +1,12 @@
 type testty {
-    result := int64.pointer;
+    result : int64.pointer;
     ~type() {
          (*result)++;
     }
     f() {
         return true;
     }
-    type(arg := int64.pointer)
+    type(arg : int64.pointer)
         : result := arg {}
 }
 Main() {

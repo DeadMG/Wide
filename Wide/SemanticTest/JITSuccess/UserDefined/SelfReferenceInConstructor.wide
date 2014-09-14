@@ -1,8 +1,8 @@
 type t {
-    val := int64.pointer;
-    type(p := int64.lvalue) : val := &p {}
-    type(other := t.lvalue) : val := other.val { (*val)++; }
-    operator=(other := t.lvalue) { val = other.val; (*val)++; }
+    val : int64.pointer;
+    type(p : int64.lvalue) : val := &p {}
+    type(other : t.lvalue) : val := other.val { (*val)++; }
+    operator=(other : t.lvalue) { val = other.val; (*val)++; }
 }
 Main() {
     counter := 0;

@@ -1,7 +1,7 @@
 type t {
-    val := bool.pointer;
-    result := bool;
-    type(arg := bool.lvalue, arg2 := bool)
+    val : bool.pointer;
+    result : bool;
+    type(arg : bool.lvalue, arg2 : bool)
        : val := &arg
        : result := arg2 
    {}

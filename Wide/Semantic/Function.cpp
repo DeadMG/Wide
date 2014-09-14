@@ -36,23 +36,36 @@ using namespace Semantic;
 void Function::AddExportName(std::function<void(llvm::Module*)> func) {
     trampoline.push_back(func);
 }
-Function::LocalVariable::LocalVariable(std::shared_ptr<Expression> ex, Function* self, Lexer::Range where, Lexer::Range init_where)
-: init_expr(std::move(ex)), self(self), where(where), init_where(init_where)
+Function::LocalVariable::LocalVariable(std::shared_ptr<Expression> ex, Function* self, Lexer::Range where, Lexer::Range init_where, Type* p)
+    : init_expr(std::move(ex)), self(self), where(where), init_where(init_where)
 {
+    if (p) {
+        explicit_type = var_type = p;
+        variable = Wide::Memory::MakeUnique<ImplicitTemporaryExpr>(var_type, Context{ self, where });
+        construction = Type::BuildInplaceConstruction(variable, { init_expr }, { self, init_where });
+        destructor = var_type->BuildDestructorCall(variable, Context{ self, where }, true);
+    }
     ListenToNode(init_expr.get());
     OnNodeChanged(init_expr.get(), Change::Contents);
 }
-Function::LocalVariable::LocalVariable(std::shared_ptr<Expression> ex, unsigned u, Function* self, Lexer::Range where, Lexer::Range init_where)
+Function::LocalVariable::LocalVariable(std::shared_ptr<Expression> ex, unsigned u, Function* self, Lexer::Range where, Lexer::Range init_where, TupleType* p)
 : init_expr(std::move(ex)), tuple_num(u), self(self), where(where), init_where(init_where)
 {
+    if (p) {
+        explicit_type = var_type = p->GetMembers()[u];
+        variable = Wide::Memory::MakeUnique<ImplicitTemporaryExpr>(var_type, Context{ self, where });
+        construction = Type::BuildInplaceConstruction(variable, { p->PrimitiveAccessMember(init_expr, u) }, { self, init_where });
+        destructor = var_type->BuildDestructorCall(variable, Context{ self, where }, true);
+    }
     ListenToNode(init_expr.get());
     OnNodeChanged(init_expr.get(), Change::Contents);
 }
 void Function::LocalVariable::OnNodeChanged(Node* n, Change what) {
+    if (explicit_type) return;
     if (what == Change::Destroyed) return;
     if (init_expr->GetType()) {
         // If we're a value we handle it at codegen time.
-        auto newty = InferTypeFromExpression(init_expr->GetImplementation(), true);
+        auto newty = InferTypeFromExpression(init_expr.get(), true);
         if (tuple_num) {
             if (auto tupty = dynamic_cast<TupleType*>(newty)) {
                 auto tuple_access = tupty->PrimitiveAccessMember(init_expr, *tuple_num);
@@ -377,19 +390,32 @@ std::shared_ptr<Statement> Function::AnalyzeStatement(const Parse::Statement* s)
     if (auto var = dynamic_cast<const Parse::Variable*>(s)) {
         std::vector<LocalVariable*> locals;
         auto init_expr = analyzer.AnalyzeExpression(this, var->initializer);
+        Type* var_type = nullptr;
+        if (var->type) {
+            auto expr = analyzer.AnalyzeExpression(this, var->type);
+            auto conty = dynamic_cast<ConstructorType*>(expr->GetType()->Decay());
+            if (!conty) throw std::runtime_error("Local variable type was not a type.");
+            var_type = conty->GetConstructedType();
+        }
         if (var->name.size() == 1) {
             auto&& name = var->name.front();
             if (current_scope->named_variables.find(var->name.front().name) != current_scope->named_variables.end())
                 throw VariableShadowing(name.name, current_scope->named_variables.at(name.name).second, name.where);
-            auto var_stmt = Wide::Memory::MakeUnique<LocalVariable>(init_expr, this, var->name.front().where, var->initializer->location);
+            auto var_stmt = Wide::Memory::MakeUnique<LocalVariable>(init_expr, this, var->name.front().where, var->initializer->location, var_type);
             locals.push_back(var_stmt.get());
             current_scope->named_variables.insert(std::make_pair(name.name, std::make_pair(std::move(var_stmt), name.where)));
         } else {
+            TupleType* tupty = nullptr;
+            if (var_type) {
+                tupty = dynamic_cast<TupleType*>(var_type);
+                if (!tupty) throw std::runtime_error("The explicit type was not a tuple when there were multiple variables.");
+                if (tupty->GetMembers().size() != var->name.size()) throw std::runtime_error("Explicit tuple type size did not match number of locals.");
+            }
             unsigned i = 0;
             for (auto&& name : var->name) {
                 if (current_scope->named_variables.find(name.name) != current_scope->named_variables.end())
                     throw VariableShadowing(name.name, current_scope->named_variables.at(name.name).second, name.where);
-                auto var_stmt = Wide::Memory::MakeUnique<LocalVariable>(init_expr, i++, this, name.where, var->initializer->location);
+                auto var_stmt = Wide::Memory::MakeUnique<LocalVariable>(init_expr, i++, this, name.where, var->initializer->location, tupty);
                 locals.push_back(var_stmt.get());
                 current_scope->named_variables.insert(std::make_pair(name.name, std::make_pair(std::move(var_stmt), name.where)));
             }
@@ -602,8 +628,8 @@ Function::Function(std::vector<Type*> args, const Parse::FunctionBase* astfun, A
                     }
                     if (*string == "import_name") {
                         auto expr = analyzer.AnalyzeExpression(GetContext(), attr.initializer);
-                        auto string = dynamic_cast<StringType*>(expr->GetType()->Decay());
-                        import_name = string->GetValue();
+                        auto string = dynamic_cast<String*>(expr->IsConstantExpression());
+                        import_name = string->str;
                     }
                 }
             }

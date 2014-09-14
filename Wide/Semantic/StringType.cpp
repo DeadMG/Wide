@@ -27,5 +27,5 @@ std::size_t StringType::alignment() {
     return analyzer.GetDataLayout().getPointerABIAlignment();
 }
 std::string StringType::explain() {
-    return "(Constant string: \"" + value + "\")";
+    return "string";
 }

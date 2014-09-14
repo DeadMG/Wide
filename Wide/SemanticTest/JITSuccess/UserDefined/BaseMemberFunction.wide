@@ -1,5 +1,5 @@
 type base {
-    b := bool;
+    b : bool;
     f() { return b; }
     type() : b := true {}
 }

@@ -1,14 +1,14 @@
 type t {
-    type(arg := t.lvalue) delete
-    type(arg := t.rvalue) default
-    type(arg := bool)
+    type(arg : t.lvalue) delete
+    type(arg : t.rvalue) default
+    type(arg : bool)
         : local := arg {}
-    local := bool;
+    local : bool;
 }
-f(arg := t) {
+f(arg : t) {
     return false;
 }
-f(arg := t.lvalue) {
+f(arg : t.lvalue) {
     return arg.local;
 }
 Main() {

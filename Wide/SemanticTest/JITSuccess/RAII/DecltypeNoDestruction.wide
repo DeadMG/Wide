@@ -1,13 +1,13 @@
 // Fails if decltype destroys the argument.
 type testty {
-    result := bool.pointer;
+    result : bool.pointer;
     ~type() {
          *result = false;
     }
-    type(arg := bool.pointer)
+    type(arg : bool.pointer)
         : result := arg {}
 }
-testfunc(result := bool.pointer) {
+testfunc(result : bool.pointer) {
     decltype(testty(result));
 }
 Main() {

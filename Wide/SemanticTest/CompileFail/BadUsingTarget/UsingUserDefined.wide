@@ -1,7 +1,7 @@
 ExpectedFailure() { return { "BadUsingTarget", 6, 14, 6, 18 }; }
 type t {
-    x := int;
-    type(i := int64) : x := i {}
+    x : int;
+    type(i : int64) : x := i {}
 }
 using arg := t(5);
 Main() {

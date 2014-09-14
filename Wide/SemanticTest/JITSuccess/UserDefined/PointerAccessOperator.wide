@@ -1,9 +1,9 @@
 type sub {
-    val := bool;
+    val : bool;
     type() : val := true {}
 }
 type outer {
-    var := sub;
-    operator*() := sub.lvalue { return var; }
+    var : sub;
+    operator*() : sub.lvalue { return var; }
 }
 Main() { return outer()->val; }

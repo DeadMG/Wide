@@ -1,5 +1,5 @@
 using header := cpp.literal("struct T { template<typename T> struct F { T f(T t) { return t; } }; };");
-f(arg := bool.lvalue) {
+f(arg : bool.lvalue) {
     arg = true;
     return header.T();
 }

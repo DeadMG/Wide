@@ -2,6 +2,7 @@
 
 #include <Wide/Parser/AST.h>
 #include <Wide/Util/Ranges/Optional.h>
+#include <Wide/Semantic/Expression.h>
 #include <Wide/Semantic/SemanticError.h>
 #include <Wide/Semantic/Hashers.h>
 #include <vector>
@@ -43,44 +44,6 @@ namespace Wide {
         class OverloadSet;
         class Error;
         struct Type;
-
-        enum Change {
-            Contents,
-            Destroyed
-        };
-        struct Node {
-        private:
-            std::unordered_set<Node*> listeners;
-            std::unordered_set<Node*> listening_to;
-            void AddChangedListener(Node* n) { listeners.insert(n); }
-            void RemoveChangedListener(Node* n) { listeners.erase(n); }
-        protected:
-            virtual void OnNodeChanged(Node* n, Change what) {}
-            void ListenToNode(Node* n) {
-                n->AddChangedListener(this);
-                listening_to.insert(n);
-            }
-            void StopListeningToNode(Node* n) {
-                n->RemoveChangedListener(this);
-                listening_to.erase(n);
-            }
-            void OnChange() {
-                for (auto node : listeners)
-                    node->OnNodeChanged(this, Change::Contents);
-            }
-        public:
-            virtual ~Node() {
-                for (auto node : listening_to)
-                    node->listeners.erase(this);
-                for (auto node : listeners) {
-                    // ENABLE TO DEBUG ACCIDENTALLY DESTROYED EXPRESSIONS
-                    //    node->OnNodeChanged(this, Change::Destroyed);
-                    node->listening_to.erase(this);
-                }
-            }
-        };
-
-        struct Expression;
         struct CodegenContext {
             CodegenContext(const CodegenContext&) = default;
             struct EHScope {
@@ -141,28 +104,7 @@ namespace Wide {
             void AddDestructors(std::list<std::pair<std::function<void(CodegenContext&)>, bool>>);
             static void EmitFunctionBody(llvm::Function* func, std::function<void(CodegenContext&)> body);
         };
-
-        struct Statement : public Node {
-            virtual void GenerateCode(CodegenContext& con) = 0;
-        };
-        struct Expression : public Statement {
-            virtual Type* GetType() = 0; // If the type is unknown then nullptr
-            llvm::Value* GetValue(CodegenContext& con);
-            virtual Expression* GetImplementation() { return this; }
-        private:
-            Wide::Util::optional<llvm::Value*> val;
-            void GenerateCode(CodegenContext& con) override final {
-                GetValue(con);
-            }
-            virtual llvm::Value* ComputeValue(CodegenContext& con) = 0;
-        };
-
-        struct Context {
-            Context(Type* f, Lexer::Range r) : from(f), where(r) {}
-            Type* from;
-            Lexer::Range where;
-        };
-
+        
         class FunctionType;
         enum class OperatorAccess {
             Implicit,

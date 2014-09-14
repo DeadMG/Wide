@@ -1,6 +1,6 @@
 type t1 {
-    f(this := t1.lvalue) { return true; }
-    f(this := t1.rvalue) { return true; }
+    f(this : t1.lvalue) { return true; }
+    f(this : t1.rvalue) { return true; }
 }
 Main() {
     x := t1();

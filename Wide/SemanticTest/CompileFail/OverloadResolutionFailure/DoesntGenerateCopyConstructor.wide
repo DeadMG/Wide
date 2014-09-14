@@ -1,8 +1,8 @@
 ExpectedFailure() { return { "OverloadResolutionFailure", 9, 13, 9, 16 }; }
 type t {
-    val := bool;
+    val : bool;
     type() : val := true {}
-    type(other := t.rvalue) : val := other.val {}
+    type(other : t.rvalue) : val := other.val {}
 }
 Main() {
     var := t();

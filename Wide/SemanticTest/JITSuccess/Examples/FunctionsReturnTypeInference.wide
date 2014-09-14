@@ -15,7 +15,7 @@ using header := cpp.literal("
         return optional<T>(t);
     }
 ");
-f(x := bool) {
+f(x : bool) {
     if (x) return header.make_optional("Hello, World!");
     return header.none;
 }

@@ -1,7 +1,7 @@
-f(p := bool.pointer.rvalue) {
+f(p : bool.pointer.rvalue) {
     return true;
 }
-f(i := int64) {
+f(i : int64) {
     return false;
 }
 Main() {

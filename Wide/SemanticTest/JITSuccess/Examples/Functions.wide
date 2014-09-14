@@ -1,4 +1,4 @@
-f(x := std.ostream.lvalue) := void {
+f(x : std.ostream.lvalue) : void {
     x << "Hello, World!";
 }
 Main() {

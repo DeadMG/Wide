@@ -4,7 +4,7 @@ type t {
 type x : t {
     f() { return true; }
 }
-f(arg := t.rvalue) {
+f(arg : t.rvalue) {
     return arg.f();
 }
 Main() {

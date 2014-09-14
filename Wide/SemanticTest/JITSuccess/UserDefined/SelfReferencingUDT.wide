@@ -1,6 +1,6 @@
 type node {
-    next := node.pointer;
-    val := bool;
+    next : node.pointer;
+    val : bool;
 }
 Main() {
     var1 := node({null, true});

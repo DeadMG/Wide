@@ -2,7 +2,7 @@
 using clangtest := cpp("JITSuccess/CPPInterop/MixedADL.h").ClangADL.test;
 module Test {
     type t {}
-    operator==(lhs := t, rhs := clangtest) { return true; }
+    operator==(lhs : t, rhs : clangtest) { return true; }
 }
 Main() {
     return Test.t() == clangtest();

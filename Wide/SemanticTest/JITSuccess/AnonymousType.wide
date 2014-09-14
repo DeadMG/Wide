@@ -1,6 +1,3 @@
-GetTestMetadata() {
-    Categories({ Test.Type });
-}
 Main() {
     return type { f() { return true; } }().f();
 }

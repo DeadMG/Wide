@@ -1,9 +1,9 @@
 type base {
-    operator+(var := derived) { return true; }
+    operator+(var : derived) { return true; }
 }
 type derived : base {
     from base import operator+;
-    operator+(var := base) { return false; }
+    operator+(var : base) { return false; }
 }
 Main() {
     return derived() + derived();

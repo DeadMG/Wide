@@ -1,9 +1,9 @@
 ExpectedFailure() { return { "OverloadResolutionFailure", 10, 13, 10, 16 }; }
 type t {
     type() {}
-    type(r := t.rvalue) {}
+    type(r : t.rvalue) {}
 private:
-    type(r := t.lvalue) {}
+    type(r : t.lvalue) {}
 }
 Main() {
     var := { t(), false };

@@ -1,6 +1,6 @@
 type t {
-    local := bool;
-    type(arg := t.lvalue) default
+    local : bool;
+    type(arg : t.lvalue) default
 }
 Main() {
     var := t({true});

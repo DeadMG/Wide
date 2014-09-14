@@ -1,5 +1,5 @@
 type base {
-    type(arg := bool.lvalue) {
+    type(arg : bool.lvalue) {
         arg = true;
     }
 }

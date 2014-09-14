@@ -1,10 +1,10 @@
 type base {
-    b := bool;
+    b : bool;
     f() { return b; }
     type() : b := true {}
 }
 type base2 {
-    f(i := int64) { return false; }
+    f(i : int64) { return false; }
 }
 type derived : base : base2 {}
 Main() {

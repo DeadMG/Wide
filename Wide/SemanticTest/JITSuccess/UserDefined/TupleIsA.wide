@@ -1,8 +1,8 @@
 type t {
-    x := int64;
-    y := int64;
+    x : int64;
+    y : int64;
 }
-f(arg := t) {
+f(arg : t) {
     return arg.x == 1 & arg.y == 2;
 }
 Main() {

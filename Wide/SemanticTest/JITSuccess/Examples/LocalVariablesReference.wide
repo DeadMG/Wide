@@ -1,6 +1,6 @@
 Main() {
     local := false;
-    ref := bool.lvalue(local);
+    ref : bool.lvalue := local;
     ref = true;    
     if (local) 
         std.cout << "Hello, World!";

@@ -22,7 +22,7 @@ namespace {
             auto constructed = t->GetConstructedType();
             if (args.size() == 0)
                 throw std::runtime_error("Attempted to make an array without passing a size.");
-            auto integer = dynamic_cast<Wide::Semantic::Integer*>(args[0]->GetImplementation());
+            auto integer = dynamic_cast<Wide::Semantic::Integer*>(args[0]->IsConstantExpression());
             if (!integer)
                 throw std::runtime_error("Attempted to make an array but the argument was not an integer.");
             return BuildChain(std::move(self), analyzer.GetConstructorType(analyzer.GetArrayType(t->GetConstructedType(), integer->value.getLimitedValue()))->BuildValueConstruction({}, { this, c.where }));

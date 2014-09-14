@@ -2,9 +2,9 @@ import x;
 type base {}
 type derived : base {}
 module x {
-    f(var := derived) { return true; }
+    f(var : derived) { return true; }
 }
-f(var := base) { return false; }
+f(var : base) { return false; }
 Main() {
     return f(derived());
 }

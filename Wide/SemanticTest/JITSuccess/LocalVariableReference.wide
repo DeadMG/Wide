@@ -1,6 +1,6 @@
 Main() {
     ret := false;
-    ref := bool.lvalue(ret);
+    ref : bool.lvalue := ret;
     ref = true;
     return ret;
 }
