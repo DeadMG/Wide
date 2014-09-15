@@ -1581,6 +1581,9 @@ std::string Analyzer::GetTypeExports() {
 llvm::APInt Analyzer::EvaluateConstantIntegerExpression(std::shared_ptr<Expression> e) {
     assert(dynamic_cast<IntegralType*>(e->GetType()));
     assert(e->IsConstantExpression());
+    if (auto integer = dynamic_cast<Integer*>(e.get()))
+        return integer->value;
+    // BUG: Invoking MCJIT causes second MCJIT invocation to fail. This causes spurious test failures.
     auto evalfunc = llvm::Function::Create(llvm::FunctionType::get(e->GetType()->GetLLVMType(&ConstantModule), {}, false), llvm::GlobalValue::LinkageTypes::InternalLinkage, GetUniqueFunctionName(), &ConstantModule);
     CodegenContext::EmitFunctionBody(evalfunc, [e](CodegenContext& con) {
         con->CreateRet(e->GetValue(con));
