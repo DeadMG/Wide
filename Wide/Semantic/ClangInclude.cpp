@@ -36,7 +36,7 @@ std::shared_ptr<Expression> ClangIncludeEntity::AccessNamedMember(std::shared_pt
             Callable* GetCallableForResolution(std::vector<Type*>, Type*, Analyzer& a) override final { return this; }
             std::vector<std::shared_ptr<Expression>> AdjustArguments(std::vector<std::shared_ptr<Expression>> args, Context c) override final { return args; }
             std::shared_ptr<Expression> CallFunction(std::vector<std::shared_ptr<Expression>> args, Context c) override final {
-                auto str = dynamic_cast<String*>(args[0]->IsConstantExpression());
+                auto str = dynamic_cast<String*>(args[0].get());
                 llvm::SmallVector<char, 30> fuck_out_parameters;
                 auto error = llvm::sys::fs::createTemporaryFile("", "", fuck_out_parameters);
                 if (error) throw CannotCreateTemporaryFile(c.where);
@@ -66,7 +66,7 @@ std::shared_ptr<Expression> ClangIncludeEntity::AccessNamedMember(std::shared_pt
             std::vector<std::shared_ptr<Expression>> AdjustArguments(std::vector<std::shared_ptr<Expression>> args, Context c) override final { return args; }
             std::shared_ptr<Expression> CallFunction(std::vector<std::shared_ptr<Expression>> args, Context c) override final{
                 auto gnamespace = dynamic_cast<ClangNamespace*>(args[0]->GetType()->Decay());
-                auto str = dynamic_cast<String*>(args[1]->IsConstantExpression());
+                auto str = dynamic_cast<String*>(args[1].get());
                 assert(gnamespace && "Overload resolution picked bad candidate.");
                 if (!str) throw std::runtime_error("Failed to evaluate macro: name was not a constant expression.");
                 auto tu = gnamespace->GetTU();
@@ -88,7 +88,7 @@ std::shared_ptr<Expression> ClangIncludeEntity::AccessNamedMember(std::shared_pt
             Callable* GetCallableForResolution(std::vector<Type*>, Type*, Analyzer& a) override final { return this; }
             std::vector<std::shared_ptr<Expression>> AdjustArguments(std::vector<std::shared_ptr<Expression>> args, Context c) override final { return args; }
             std::shared_ptr<Expression> CallFunction(std::vector<std::shared_ptr<Expression>> args, Context c) override final {
-                auto str = dynamic_cast<String*>(args[0]->IsConstantExpression());
+                auto str = dynamic_cast<String*>(args[0].get());
                 auto name = str->str;
                 if (name.size() > 1 && name[0] == '<')
                     name = std::string(name.begin() + 1, name.end());
@@ -106,11 +106,11 @@ std::shared_ptr<Expression> ClangIncludeEntity::AccessNamedMember(std::shared_pt
 }
 
 std::shared_ptr<Expression> ClangIncludeEntity::ConstructCall(std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c) {
-    if (!dynamic_cast<String*>(args[0]->IsConstantExpression()))
+    if (!dynamic_cast<String*>(args[0].get()))
         throw std::runtime_error("fuck");
     if (args.size() != 1)
         throw std::runtime_error("fuck");
-    auto str = dynamic_cast<String*>(args[0]->IsConstantExpression());
+    auto str = dynamic_cast<String*>(args[0].get());
     auto name = str->str;
     if (name.size() > 1 && name[0] == '<')
         name = std::string(name.begin() + 1, name.end());

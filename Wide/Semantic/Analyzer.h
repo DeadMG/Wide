@@ -17,6 +17,7 @@
 #include <clang/AST/Type.h>
 #include <clang/AST/CharUnits.h>
 #include <llvm/IR/DataLayout.h>
+#include <llvm/IR/Module.h>
 #pragma warning(pop)
 
 namespace llvm {
@@ -139,6 +140,7 @@ namespace Wide {
             std::unordered_map<const Parse::Expression*, std::shared_ptr<Expression>> ExpressionCache;
             std::unordered_map<Type*, std::string> ExportedTypes;
             std::unordered_map<std::string, std::string> ImportHeaders;
+            llvm::Module ConstantModule;
         public:
             const std::unordered_map<std::string, std::string>& GetImportHeaders() { return ImportHeaders; }
             std::string GetTypeExports();
@@ -204,7 +206,7 @@ namespace Wide {
             std::shared_ptr<Expression> AnalyzeCachedExpression(Type* lookup, const Parse::Expression* e);
             std::shared_ptr<Expression> AnalyzeExpression(Type* lookup, const Parse::Expression* e);
 
-            Analyzer(const Options::Clang&, const Parse::Module*, const std::unordered_map<std::string, std::string>& = std::unordered_map<std::string, std::string>());
+            Analyzer(const Options::Clang&, const Parse::Module*, llvm::LLVMContext& con, const std::unordered_map<std::string, std::string>& = std::unordered_map<std::string, std::string>());
 
             ClangTU* LoadCPPHeader(std::string file, Lexer::Range where);
             ClangTU* AggregateCPPHeader(std::string file, Lexer::Range where);
@@ -218,6 +220,8 @@ namespace Wide {
             Type* GetNonstaticContext(const Parse::FunctionBase* p, Type* context);
 
             std::string GetUniqueFunctionName();
+
+            llvm::APInt EvaluateConstantIntegerExpression(std::shared_ptr<Expression> e);
         };
         bool IsRvalueType(Type* t);
         bool IsLvalueType(Type* t);

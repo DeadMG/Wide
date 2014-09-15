@@ -1130,10 +1130,9 @@ Wide::Util::optional<unsigned> UserDefinedType::SizeOverride() {
             if (auto string = boost::get<std::string>(&ident->val)) {
                 if (*string == "size") {
                     auto expr = analyzer.AnalyzeExpression(GetContext(), attr.initializer);
-                    if (auto integer = dynamic_cast<Integer*>(expr->IsConstantExpression())) {
-                        return integer->value.getLimitedValue();
-                    }
-                    throw std::runtime_error("Found size attribute but the initializing expression was not a constant integer.");
+                    if (!dynamic_cast<IntegralType*>(expr->GetType()))
+                        throw std::runtime_error("size attribute was not initialized with a constant integer.");
+                    return analyzer.EvaluateConstantIntegerExpression(expr).getLimitedValue();
                 }
             }
         }
@@ -1146,10 +1145,9 @@ Wide::Util::optional<unsigned> UserDefinedType::AlignOverride() {
             if (auto string = boost::get<std::string>(&ident->val)) {
                 if (*string == "alignment") {
                     auto expr = analyzer.AnalyzeExpression(GetContext(), attr.initializer);
-                    if (auto integer = dynamic_cast<Integer*>(expr->IsConstantExpression())) {
-                        return integer->value.getLimitedValue();
-                    }
-                    throw std::runtime_error("Found size attribute but the initializing expression was not a constant integer.");
+                    if (!dynamic_cast<IntegralType*>(expr->GetType()))
+                        throw std::runtime_error("size attribute was not initialized with a constant integer.");
+                    return analyzer.EvaluateConstantIntegerExpression(expr).getLimitedValue();
                 }
             }
         }

@@ -160,7 +160,7 @@ OverloadSet* IntegralType::CreateADLOverloadSet(Parse::OperatorName opname, Pars
         });
         return analyzer.GetOverloadSet(PlusAssign.get());
     } else if (name == &Lexer::TokenTypes::Plus) {
-        Plus = CreateAssOp([](llvm::Value* lhs, llvm::Value* rhs, CodegenContext& con) {
+        Plus = CreateOp([](llvm::Value* lhs, llvm::Value* rhs, CodegenContext& con) {
             return con->CreateAdd(lhs, rhs);
         });
         return analyzer.GetOverloadSet(Plus.get());
@@ -170,7 +170,7 @@ OverloadSet* IntegralType::CreateADLOverloadSet(Parse::OperatorName opname, Pars
         });
         return analyzer.GetOverloadSet(OrAssign.get());
     } else if (name == &Lexer::TokenTypes::Or) {
-        Or = CreateAssOp([](llvm::Value* lhs, llvm::Value* rhs, CodegenContext& con) {
+        Or = CreateOp([](llvm::Value* lhs, llvm::Value* rhs, CodegenContext& con) {
             return con->CreateOr(lhs, rhs);
         });
         return analyzer.GetOverloadSet(Or.get());
@@ -180,7 +180,7 @@ OverloadSet* IntegralType::CreateADLOverloadSet(Parse::OperatorName opname, Pars
         });
         return analyzer.GetOverloadSet(AndAssign.get());
     } else if (name == &Lexer::TokenTypes::And) {
-        And = CreateAssOp([](llvm::Value* lhs, llvm::Value* rhs, CodegenContext& con) {
+        And = CreateOp([](llvm::Value* lhs, llvm::Value* rhs, CodegenContext& con) {
             return con->CreateAnd(lhs, rhs);
         });
         return analyzer.GetOverloadSet(And.get());
@@ -190,7 +190,7 @@ OverloadSet* IntegralType::CreateADLOverloadSet(Parse::OperatorName opname, Pars
         });
         return analyzer.GetOverloadSet(XorAssign.get());
     } else if (name == &Lexer::TokenTypes::Xor) {
-        XorAssign = CreateAssOp([](llvm::Value* lhs, llvm::Value* rhs, CodegenContext& con) {
+        XorAssign = CreateOp([](llvm::Value* lhs, llvm::Value* rhs, CodegenContext& con) {
             return con->CreateXor(lhs, rhs);
         });
         return analyzer.GetOverloadSet(Xor.get());
@@ -200,7 +200,7 @@ OverloadSet* IntegralType::CreateADLOverloadSet(Parse::OperatorName opname, Pars
         });
         return analyzer.GetOverloadSet(MinusAssign.get());
     } else if (name == &Lexer::TokenTypes::Minus) {
-        Minus = CreateAssOp([](llvm::Value* lhs, llvm::Value* rhs, CodegenContext& con) {
+        Minus = CreateOp([](llvm::Value* lhs, llvm::Value* rhs, CodegenContext& con) {
             return con->CreateSub(lhs, rhs);
         });
         return analyzer.GetOverloadSet(Minus.get());
@@ -212,7 +212,7 @@ OverloadSet* IntegralType::CreateADLOverloadSet(Parse::OperatorName opname, Pars
         });
         return analyzer.GetOverloadSet(ModAssign.get());
     } else if (name == &Lexer::TokenTypes::Modulo) {
-        Mod = CreateAssOp([this](llvm::Value* lhs, llvm::Value* rhs, CodegenContext& con) {
+        Mod = CreateOp([this](llvm::Value* lhs, llvm::Value* rhs, CodegenContext& con) {
             if (is_signed)
                 return con->CreateSRem(lhs, rhs);
             return con->CreateURem(lhs, rhs);
@@ -226,7 +226,7 @@ OverloadSet* IntegralType::CreateADLOverloadSet(Parse::OperatorName opname, Pars
         });
         return analyzer.GetOverloadSet(DivAssign.get());
     } else if (name == &Lexer::TokenTypes::Divide) {
-        Div = CreateAssOp([this](llvm::Value* lhs, llvm::Value* rhs, CodegenContext& con) {
+        Div = CreateOp([this](llvm::Value* lhs, llvm::Value* rhs, CodegenContext& con) {
             if (is_signed)
                 return con->CreateSDiv(lhs, rhs);
             return con->CreateUDiv(lhs, rhs);

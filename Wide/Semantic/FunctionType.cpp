@@ -107,6 +107,14 @@ std::shared_ptr<Expression> WideFunctionType::ConstructCall(std::shared_ptr<Expr
             auto fty = dynamic_cast<FunctionType*>(val->GetType());
             return fty->GetReturnType();
         }
+        bool IsConstantExpression() override final {
+            if (!val->IsConstantExpression()) return false;
+            for (auto&& arg : args) {
+                if (!arg->IsConstantExpression()) 
+                    return false;
+            }
+            return true;
+        }
         llvm::Value* ComputeValue(CodegenContext& con) override final {
             llvm::Value* llvmfunc = val->GetValue(con);
             std::vector<llvm::Value*> llvmargs;

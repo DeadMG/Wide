@@ -7,26 +7,15 @@
 #include <functional>
 #include <Wide/Util/Concurrency/ConcurrentUnorderedSet.h>
 #include <Wide/Util/Concurrency/ParallelForEach.h>
+#include <Wide/Util/Codegen/GetMCJITProcessTriple.h>
 
 #pragma warning(push, 0)
-#include <llvm/Support/Host.h>
-#include <llvm/ADT/Triple.h>
 #include <llvm/Support/Path.h>
 #pragma warning(pop)
 
-
 int main(int argc, char** argv) {
     Wide::Options::Clang clangopts;
-    auto triple = llvm::Triple(llvm::sys::getProcessTriple());
-#ifdef _MSC_VER
-    //triple.setOS(llvm::Triple::OSType::MinGW32);
-    triple.setEnvironment(llvm::Triple::EnvironmentType::Itanium);
-#endif
-    clangopts.TargetOptions.Triple = triple.getTriple();
-#ifdef _MSC_VER
-    // MCJIT can't handle non-ELF on Windows for some reason.
-    clangopts.TargetOptions.Triple += "-elf";
-#endif
+    clangopts.TargetOptions.Triple = Wide::Util::GetMCJITProcessTriple();
     // Enabling RTTI requires a Standard Library to be linked.
     // Else, there is an undefined reference to an ABI support class.
     boost::program_options::options_description desc;

@@ -319,6 +319,20 @@ struct ValueConstruction : Expression {
     std::shared_ptr<Expression> single_arg;
     bool no_args = false;
     Type* self;
+    bool IsConstantExpression() override final {
+        if (self->GetConstantContext() == self && no_args) return true;
+        if (auto func = dynamic_cast<Function*>(self)) return true;
+        if (single_arg) {
+            auto otherty = single_arg->GetType();
+            if (single_arg->GetType()->Decay() == self->Decay()) {
+                if (single_arg->GetType() == self && single_arg->IsConstantExpression())
+                    return true;
+                if (single_arg->GetType()->IsReference(self) && single_arg->IsConstantExpression())
+                    return true;
+            }
+        }
+        return InplaceConstruction->IsConstantExpression();
+    }
     void OnNodeChanged(Node* n, Change what) {
         if (what == Change::Destroyed)
             assert(false);

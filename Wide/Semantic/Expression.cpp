@@ -177,6 +177,7 @@ std::shared_ptr<Expression> Semantic::CreatePrimOp(std::shared_ptr<Expression> l
         Type* ret;
         std::function<llvm::Value*(llvm::Value*, llvm::Value*, CodegenContext& con)> action;
         Type* GetType() override final { return ret; }
+        bool IsConstantExpression() override final { return lhs->IsConstantExpression() && rhs->IsConstantExpression(); }
         llvm::Value* ComputeValue(CodegenContext& con) override final {
             // Strict order of evaluation.
             auto left = lhs->GetValue(con);
@@ -203,8 +204,8 @@ llvm::Value* Chain::ComputeValue(CodegenContext& con) {
     SideEffect->GetValue(con);
     return result->GetValue(con);
 }
-ConstantExpression* Chain::IsConstantExpression() {
-    return result->IsConstantExpression();
+bool Chain::IsConstantExpression() {
+    return result->IsConstantExpression() && SideEffect->IsConstantExpression();
 }
 std::shared_ptr<Expression> Semantic::BuildChain(std::shared_ptr<Expression> lhs, std::shared_ptr<Expression> rhs) {
     assert(lhs);

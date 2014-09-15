@@ -132,7 +132,7 @@ void Jit(Wide::Options::Clang& copts, std::string file) {
     files.push_back(file);
     copts.HeaderSearchOptions->AddPath("../WideLibrary", clang::frontend::IncludeDirGroup::System, false, false);
     llvm::Function* main = nullptr;
-    Wide::Driver::Compile(copts, files, [&](Wide::Semantic::Analyzer& a, const Wide::Parse::Module* root) {
+    Wide::Driver::Compile(copts, files, con, [&](Wide::Semantic::Analyzer& a, const Wide::Parse::Module* root) {
         Wide::Semantic::AnalyzeExportedFunctions(a);
         auto m = Wide::Semantic::Type::AccessMember(a.GetGlobalModule()->BuildValueConstruction({}, { a.GetGlobalModule(), loc }), std::string("Main"), { a.GetGlobalModule(), loc });
         if (!m)
@@ -172,16 +172,20 @@ void Jit(Wide::Options::Clang& copts, std::string file) {
     auto ee = b.create();
     AddStdlibLink(ee, mod);
     // Fuck you, shitty LLVM ownership semantics.
-    if (ee)
-        module.release();
     ee->finalizeObject();
 #ifdef _MSC_VER
     ee->runStaticConstructorsDestructors(false);
 #endif
+    std::string jit_ir;
+    llvm::raw_string_ostream jitstream(jit_ir);
+    module->print(jitstream, nullptr);
+    jitstream.flush();
     auto result = ee->runFunction(main, std::vector<llvm::GenericValue>());
 #ifdef _MSC_VER
     ee->runStaticConstructorsDestructors(true);
 #endif
+    if (ee)
+        module.release();
     auto intval = result.IntVal.getLimitedValue();
     if (!intval)
         throw std::runtime_error("Test returned false.");
@@ -236,7 +240,7 @@ void Compile(Wide::Options::Clang& copts, std::string file) {
     std::vector<std::string> files(stdlib.begin(), stdlib.end());
     copts.HeaderSearchOptions->AddPath("../WideLibrary", clang::frontend::IncludeDirGroup::System, false, false);
     files.push_back(file);
-    Wide::Driver::Compile(copts, files, [&](Wide::Semantic::Analyzer& a, const Wide::Parse::Module* root) {
+    Wide::Driver::Compile(copts, files, con, [&](Wide::Semantic::Analyzer& a, const Wide::Parse::Module* root) {
         auto global = a.GetGlobalModule()->BuildValueConstruction({}, { a.GetGlobalModule(), loc });
         auto failure = Wide::Semantic::Type::AccessMember(global, std::string("ExpectedFailure"), { a.GetGlobalModule(), loc });
         if (!failure)

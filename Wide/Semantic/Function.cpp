@@ -628,7 +628,7 @@ Function::Function(std::vector<Type*> args, const Parse::FunctionBase* astfun, A
                     }
                     if (*string == "import_name") {
                         auto expr = analyzer.AnalyzeExpression(GetContext(), attr.initializer);
-                        auto string = dynamic_cast<String*>(expr->IsConstantExpression());
+                        auto string = dynamic_cast<String*>(expr.get());
                         import_name = string->str;
                     }
                 }
@@ -955,8 +955,11 @@ void Function::ComputeReturnType() {
 }
 
 llvm::Function* Function::EmitCode(llvm::Module* module) {
-    if (llvmfunc)
-        return llvmfunc;
+    if (llvmfunc) {
+        if (llvmfunc->getParent() == module)
+            return llvmfunc;
+        return module->getFunction(llvmfunc->getName());
+    }
     auto sig = GetSignature();
     auto llvmsig = sig->GetLLVMType(module);
     if (import_name) {
@@ -1008,6 +1011,10 @@ std::shared_ptr<Expression> Function::ConstructCall(std::shared_ptr<Expression> 
         Function* self;
         Type* GetType() override final {
             return self->GetSignature();
+        }
+        bool IsConstantExpression() override final {
+            if (obj) return obj->IsConstantExpression() && val->IsConstantExpression();
+            return val->IsConstantExpression();
         }
         llvm::Value* ComputeValue(CodegenContext& con) override final {
             if (!self->llvmfunc)

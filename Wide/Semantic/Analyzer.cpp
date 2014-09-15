@@ -36,6 +36,7 @@
 #include <unordered_set>
 #include <fstream>
 #include <boost/uuid/uuid_io.hpp>
+#include <Wide/Util/Codegen/GetMCJITProcessTriple.h>
 
 #pragma warning(push, 0)
 #include <clang/AST/Type.h>
@@ -46,6 +47,11 @@
 #include <clang/Basic/LangOptions.h>
 #include <llvm/Support/TargetRegistry.h>
 #include <clang/Basic/TargetOptions.h>
+#include <llvm/Linker/Linker.h>
+#include <llvm/ExecutionEngine/GenericValue.h>
+// Gotta include the header or creating JIT won't work... fucking LLVM.
+#include <llvm/ExecutionEngine/MCJIT.h>
+#include <llvm/ExecutionEngine/ExecutionEngine.h>
 #pragma warning(pop)
 
 using namespace Wide;
@@ -66,13 +72,16 @@ namespace {
 // After definition of type
 Analyzer::~Analyzer() {}
 
-Analyzer::Analyzer(const Options::Clang& opts, const Parse::Module* GlobalModule, const std::unordered_map<std::string, std::string>& headers)
-: clangopts(&opts)
-, ImportHeaders(headers)
-, QuickInfo([](Lexer::Range, Type*) {})
-, ParameterHighlight([](Lexer::Range){})
-, layout(::GetDataLayout(opts.TargetOptions.Triple))
+Analyzer::Analyzer(const Options::Clang& opts, const Parse::Module* GlobalModule, llvm::LLVMContext& con, const std::unordered_map<std::string, std::string>& headers)
+    : clangopts(&opts)
+    , ImportHeaders(headers)
+    , QuickInfo([](Lexer::Range, Type*) {})
+    , ParameterHighlight([](Lexer::Range){})
+    , layout(::GetDataLayout(opts.TargetOptions.Triple))
+    , ConstantModule("Wide Constant Expression Module", con)
 {
+    ConstantModule.setTargetTriple(Wide::Util::GetMCJITProcessTriple());
+    ConstantModule.setDataLayout(::GetDataLayout(ConstantModule.getTargetTriple()).getStringRepresentation());
     assert(opts.LanguageOptions.CXXExceptions);
     assert(opts.LanguageOptions.RTTI);
     struct PointerCastType : OverloadResolvable, Callable {
@@ -199,10 +208,10 @@ Analyzer::Analyzer(const Options::Clang& opts, const Parse::Module* GlobalModule
                 return nullptr;
             }
 
-            ConstantExpression* IsConstantExpression() override final {
+            bool IsConstantExpression() override final {
                 if (access)
                     return access->IsConstantExpression();
-                return nullptr;
+                return false;
             }
 
             llvm::Value* ComputeValue(CodegenContext& con) override final {
@@ -260,6 +269,12 @@ Analyzer::Analyzer(const Options::Clang& opts, const Parse::Module* GlobalModule
                 if (call)
                     return call->GetType();
                 return nullptr;
+            }
+
+            bool IsConstantExpression() override final {
+                if (call)
+                    return call->IsConstantExpression();
+                return false;
             }
 
             llvm::Value* ComputeValue(CodegenContext& con) override final {
@@ -392,6 +407,12 @@ Analyzer::Analyzer(const Options::Clang& opts, const Parse::Module* GlobalModule
             }
             llvm::Value* ComputeValue(CodegenContext& con) override final {
                 return result->GetValue(con);
+            }
+
+            bool IsConstantExpression() override final {
+                if (result)
+                    return result->IsConstantExpression();
+                return false;
             }
         };
         return Wide::Memory::MakeUnique<IdentifierLookup>(ident, a, lookup);
@@ -812,15 +833,18 @@ void Analyzer::GenerateCode(llvm::Module* module) {
         for (auto&& pair : udt.second)
             pair.second->size();
     if (AggregateTU)
-        AggregateTU->GenerateCodeAndLinkModule(module, layout, *this);
+        AggregateTU->GenerateCodeAndLinkModule(&ConstantModule, layout, *this);
     for (auto&& tu : headers)
-        tu.second.GenerateCodeAndLinkModule(module, layout, *this);
+        tu.second.GenerateCodeAndLinkModule(&ConstantModule, layout, *this);
 
     for (auto&& set : WideFunctions)
         for (auto&& signature : set.second)
-            signature.second->EmitCode(module);
+            signature.second->EmitCode(&ConstantModule);
     for (auto&& pair : ExportedTypes)
-        pair.first->Export(module);
+        pair.first->Export(&ConstantModule);
+    std::string err;
+    if (llvm::Linker::LinkModules(module, &ConstantModule, llvm::Linker::PreserveSource, &err))
+        throw std::runtime_error("Internal compiler error: LLVM Linking failed\n" + err);    
 }
 WideFunctionType* Analyzer::GetFunctionType(Type* ret, const std::vector<Type*>& t, bool variadic, clang::CallingConv conv) {
     std::map<clang::CallingConv, llvm::CallingConv::ID> convconverter = {
@@ -1553,4 +1577,23 @@ std::string Analyzer::GetTypeExports() {
     for (auto&& pair : ExportedTypes)
         exports += pair.second;
     return exports;
+}
+llvm::APInt Analyzer::EvaluateConstantIntegerExpression(std::shared_ptr<Expression> e) {
+    assert(dynamic_cast<IntegralType*>(e->GetType()));
+    assert(e->IsConstantExpression());
+    auto evalfunc = llvm::Function::Create(llvm::FunctionType::get(e->GetType()->GetLLVMType(&ConstantModule), {}, false), llvm::GlobalValue::LinkageTypes::InternalLinkage, GetUniqueFunctionName(), &ConstantModule);
+    CodegenContext::EmitFunctionBody(evalfunc, [e](CodegenContext& con) {
+        con->CreateRet(e->GetValue(con));
+    });
+    llvm::EngineBuilder b(&ConstantModule);
+    b.setAllocateGVsWithCode(false);
+    b.setUseMCJIT(true);
+    b.setEngineKind(llvm::EngineKind::JIT);
+    std::unique_ptr<llvm::ExecutionEngine> ee(b.create());
+    ee->finalizeObject();
+    auto result = ee->runFunction(evalfunc, std::vector<llvm::GenericValue>());
+    ee->removeModule(&ConstantModule);
+    evalfunc->eraseFromParent();
+    //evalfunc->removeFromParent();
+    return result.IntVal;
 }

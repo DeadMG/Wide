@@ -31,7 +31,7 @@ std::shared_ptr<Expression> ClangTemplateClass::ConstructCall(std::shared_ptr<Ex
             types.push_back(con->GetConstructedType());
             continue;
         }
-        if (auto in = dynamic_cast<Integer*>(x->IsConstantExpression())) {
+        if (auto in = dynamic_cast<Integer*>(x.get())) {
             literals.emplace_back(from->GetASTContext(), in->value, from->GetASTContext().LongLongTy, clang::SourceLocation());
             tl.addArgument(clang::TemplateArgumentLoc(clang::TemplateArgument(&literals.back()), clang::TemplateArgumentLocInfo(&literals.back())));
             types.push_back(x->GetType());

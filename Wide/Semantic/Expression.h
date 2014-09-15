@@ -65,11 +65,10 @@ namespace Wide {
         struct Statement : public Node {
             virtual void GenerateCode(CodegenContext& con) = 0;
         };
-        struct ConstantExpression;
         struct Expression : public Statement {
             virtual Type* GetType() = 0; // If the type is unknown then nullptr
             llvm::Value* GetValue(CodegenContext& con);
-            virtual ConstantExpression* IsConstantExpression() { return nullptr; } // If not constant then nullptr
+            virtual bool IsConstantExpression() { return false; } // If not constant then nullptr
         private:
             Wide::Util::optional<llvm::Value*> val;
             void GenerateCode(CodegenContext& con) override final {
@@ -83,6 +82,7 @@ namespace Wide {
             std::shared_ptr<Expression> src;
             Type* GetType() override final;
             llvm::Value* ComputeValue(CodegenContext& con) override final;
+            bool IsConstantExpression() override final { return src->IsConstantExpression(); }
         };
 
         struct ImplicitStoreExpr : public Expression {
@@ -90,6 +90,7 @@ namespace Wide {
             std::shared_ptr<Expression> mem, val;
             Type* GetType() override final;
             llvm::Value* ComputeValue(CodegenContext& con) override final;
+            bool IsConstantExpression() override final { return mem->IsConstantExpression() && val->IsConstantExpression(); }
         };
 
         struct ImplicitTemporaryExpr : public Expression {
@@ -106,6 +107,7 @@ namespace Wide {
             std::shared_ptr<Expression> expr;
             Type* GetType() override final;
             llvm::Value* ComputeValue(CodegenContext& con) override final;
+            bool IsConstantExpression() override final { return expr->IsConstantExpression(); }
         };
 
         struct RvalueCast : public Expression {
@@ -113,6 +115,7 @@ namespace Wide {
             std::shared_ptr<Expression> expr;
             Type* GetType() override final;
             llvm::Value* ComputeValue(CodegenContext& con) override final;
+            bool IsConstantExpression() override final { return expr->IsConstantExpression(); }
         };
 
         struct ImplicitAddressOf : public Expression {
@@ -121,6 +124,7 @@ namespace Wide {
             std::shared_ptr<Expression> expr;
             Type* GetType() override final;
             llvm::Value* ComputeValue(CodegenContext& con) override final;
+            bool IsConstantExpression() override final { return expr->IsConstantExpression(); }
         };
         
         struct Chain : Expression {
@@ -129,7 +133,7 @@ namespace Wide {
             std::shared_ptr<Expression> result;
             Type* GetType() override final;
             llvm::Value* ComputeValue(CodegenContext& con) override final;
-            ConstantExpression* IsConstantExpression() override final;
+            bool IsConstantExpression() override final;
         };
 
         struct DestructorCall : Expression {
@@ -141,7 +145,7 @@ namespace Wide {
         };
 
         struct ConstantExpression : Expression {
-            ConstantExpression* IsConstantExpression() override final { return this; }
+            bool IsConstantExpression() override final { return true; }
         };
 
         struct String : ConstantExpression {
