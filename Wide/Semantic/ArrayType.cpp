@@ -131,3 +131,7 @@ OverloadSet* ArrayType::CreateConstructorOverloadSet(Parse::Access access) {
 bool ArrayType::AlwaysKeepInMemory(llvm::Module* mod) {
     return true;
 }
+std::shared_ptr<Expression> ArrayType::AccessNamedMember(std::shared_ptr<Expression> t, std::string name, Context c) {
+    if (name != "size") return nullptr;
+    return std::make_shared<Integer>(llvm::APInt(64, (uint64_t)count, false), analyzer);
+}
