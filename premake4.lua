@@ -244,7 +244,7 @@ function AddZlibDependency(plat, conf)
     end
 end
 if not _OPTIONS["llvm-path"] then
-    print("Error: boost-path was not provided.\n")
+    print("Error: llvm-path was not provided.\n")
     return
 end
 
@@ -368,7 +368,7 @@ if not os.is("Windows") then
     if _OPTIONS["TeamCity"] then
         defines { "TEAMCITY=" .. _OPTIONS["TeamCity"] }
     end
-    buildoptions  {"-std=c++11", "-D __STDC_CONSTANT_MACROS", "-D __STDC_LIMIT_MACROS", "-fPIC" }
+    buildoptions  {"-std=c++1y", "-D __STDC_CONSTANT_MACROS", "-D __STDC_LIMIT_MACROS", "-fPIC" }
 else
     defines { "_SCL_SECURE_NO_WARNINGS" }
     buildoptions  {"/wd4503" }
