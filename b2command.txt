@@ -1,0 +1,1 @@
+b2.exe link=static variant=debug threading=multi address-model=32 runtime-link=static --with-program_options --toolset=msvc
