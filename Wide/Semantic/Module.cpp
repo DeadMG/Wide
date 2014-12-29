@@ -12,8 +12,8 @@
 using namespace Wide;
 using namespace Semantic;
 
-Module::Module(const Parse::Module* p, Module* higher, Analyzer& a)
-    : m(p), context(higher), MetaType(a) {}
+Module::Module(const Parse::Module* p, Module* higher, std::string name, Analyzer& a)
+    : m(p), context(higher), name(name), MetaType(a) {}
 
 void Module::AddSpecialMember(std::string name, std::shared_ptr<Expression> t){
     SpecialMembers.insert(std::make_pair(std::move(name), std::move(t)));
@@ -27,7 +27,7 @@ OverloadSet* Module::CreateOperatorOverloadSet(Parse::OperatorName ty, Parse::Ac
                 for (auto func : set.second) {
                     if (set.first > access)
                         continue;
-                    resolvable.insert(analyzer.GetCallableForFunction(func, this, GetOperatorName(ty)));
+                    resolvable.insert(analyzer.GetCallableForFunction(func.get(), this, GetOperatorName(ty)));
                 }
             }
             return analyzer.GetOverloadSet(resolvable);
@@ -38,46 +38,16 @@ OverloadSet* Module::CreateOperatorOverloadSet(Parse::OperatorName ty, Parse::Ac
 std::shared_ptr<Expression> Module::AccessNamedMember(std::shared_ptr<Expression> val, std::string name, Context c)  {
     auto access = GetAccessSpecifier(c.from, this);
     if (m->named_decls.find(name) != m->named_decls.end()) {
-        if (auto mod = boost::get<std::pair<Parse::Access, Parse::Module*>>(&m->named_decls.at(name))) {
-            if (mod->first > access)
-                return nullptr;
-            return BuildChain(std::move(val), analyzer.GetWideModule(mod->second, this)->BuildValueConstruction({}, c));
+        if (auto shared = boost::get<std::pair<Parse::Access, std::shared_ptr<Parse::SharedObjectTag>>>(&m->named_decls.at(name))) {
+            if (shared->first > access) return nullptr;
+            return BuildChain(std::move(val), analyzer.SharedObjectHandlers.at(typeid(*shared->second))(shared->second.get(), analyzer, this, name));
         }
-        if (auto usedecl = boost::get<std::pair<Parse::Access, Parse::Using*>>(&m->named_decls.at(name))) {
-            if (usedecl->first > access)
-                return nullptr;
-            auto expr = analyzer.AnalyzeCachedExpression(this, usedecl->second->expr);
-            if (auto constant = expr->GetType()->Decay()->GetConstantContext())
-                return BuildChain(std::move(val), constant->BuildValueConstruction({}, c));
-            throw BadUsingTarget(expr->GetType()->Decay(), usedecl->second->expr->location);
+        if (auto unique = boost::get<std::pair<Parse::Access, std::unique_ptr<Parse::UniqueAccessContainer>>>(&m->named_decls.at(name))) {
+            if (unique->first > access) return nullptr;
+            return BuildChain(std::move(val), analyzer.UniqueObjectHandlers.at(typeid(*unique->second))(unique->second.get(), analyzer, this, name));
         }
-        if (auto tydecl = boost::get<std::pair<Parse::Access, Parse::Type*>>(&m->named_decls.at(name))) {
-            if (tydecl->first > access)
-                return nullptr;
-            return BuildChain(std::move(val), analyzer.GetConstructorType(analyzer.GetUDT(tydecl->second, this, name))->BuildValueConstruction({}, c));
-        }
-        if (auto overdecl = boost::get<std::unordered_map<Parse::Access, std::unordered_set<Parse::Function*>>>(&m->named_decls.at(name))) {
-            std::unordered_set<OverloadResolvable*> resolvable;
-            for (auto map : *overdecl) {
-                if (map.first > access)
-                    continue;
-                for (auto func : map.second)
-                    resolvable.insert(analyzer.GetCallableForFunction(func, this, name));
-            }
-            if (resolvable.empty()) return nullptr;
-            return BuildChain(std::move(val), analyzer.GetOverloadSet(resolvable)->BuildValueConstruction({}, c));
-        }
-        if (auto overdecl = boost::get<std::unordered_map<Parse::Access, std::unordered_set<Parse::TemplateType*>>>(&m->named_decls.at(name))) {
-            std::unordered_set<OverloadResolvable*> resolvable;
-            for (auto map : *overdecl) {
-                if (map.first > access)
-                    continue;
-                for (auto func : map.second)
-                    resolvable.insert(analyzer.GetCallableForTemplateType(func, this));
-            }
-            if (resolvable.empty()) return nullptr;
-            return BuildChain(std::move(val), analyzer.GetOverloadSet(resolvable)->BuildValueConstruction({}, c));
-        }
+        auto&& multi = boost::get<std::unique_ptr<Parse::MultipleAccessContainer>>(m->named_decls.at(name));
+        return BuildChain(std::move(val), analyzer.MultiObjectHandlers.at(typeid(*multi))(multi.get(), analyzer, this, access, name, c.where));
     }    
     if (SpecialMembers.find(name) != SpecialMembers.end())
         return BuildChain(std::move(val), SpecialMembers[name]);
@@ -85,12 +55,47 @@ std::shared_ptr<Expression> Module::AccessNamedMember(std::shared_ptr<Expression
 }
 std::string Module::explain() {
     if (!context) return ".";
-    std::string name;
-    for (auto decl : context->GetASTModule()->named_decls) {
-        if (auto mod = boost::get<std::pair<Parse::Access, Parse::Module*>>(&decl.second))
-            name = decl.first;
-    }
     if (context == analyzer.GetGlobalModule())
         return "." + name;
     return context->explain() + "." + name;
+}
+void Module::AddDefaultHandlers(Analyzer& a) {
+    AddHandler<const Parse::Using>(a.SharedObjectHandlers, [](const Parse::Using* usedecl, Analyzer& analyzer, Module* lookup, std::string name) {
+        auto expr = analyzer.AnalyzeExpression(lookup, usedecl->expr.get(), [](Wide::Parse::Name, Wide::Lexer::Range) { return nullptr; });
+        if (auto constant = expr->GetType(nullptr)->Decay()->GetConstantContext())
+            return constant->BuildValueConstruction({}, { lookup, usedecl->location });
+        throw BadUsingTarget(expr->GetType(nullptr)->Decay(), usedecl->expr->location);
+    });
+
+    AddHandler<const Parse::Type>(a.SharedObjectHandlers, [](const Parse::Type* type, Analyzer& analyzer, Module* lookup, std::string name) {
+        return analyzer.GetConstructorType(analyzer.GetUDT(type, lookup, name))->BuildValueConstruction({}, { lookup, type->location });
+    });
+
+    AddHandler<const Parse::Module>(a.UniqueObjectHandlers, [](const Parse::Module* mod, Analyzer& analyzer, Module* lookup, std::string name) {
+        return analyzer.GetWideModule(mod, lookup, name)->BuildValueConstruction({}, { lookup, *mod->locations.begin() });
+    });
+
+    AddHandler<const Parse::ModuleOverloadSet<Parse::Function>>(a.MultiObjectHandlers, [](const Parse::ModuleOverloadSet<Parse::Function>* overset, Analyzer& analyzer, Module* lookup, Parse::Access access, std::string name, Lexer::Range where) -> std::shared_ptr<Expression> {
+        std::unordered_set<OverloadResolvable*> resolvable;
+        for (auto&& map : overset->funcs) {
+            if (map.first > access)
+                continue;
+            for (auto&& func : map.second)
+                resolvable.insert(analyzer.GetCallableForFunction(func.get(), lookup, name));
+        }
+        if (resolvable.empty()) return nullptr;
+        return analyzer.GetOverloadSet(resolvable)->BuildValueConstruction({}, { lookup, where });
+    });
+
+    AddHandler<const Parse::ModuleOverloadSet<Parse::TemplateType>>(a.MultiObjectHandlers, [](const Parse::ModuleOverloadSet<Parse::TemplateType>* overset, Analyzer& analyzer, Module* lookup, Parse::Access access, std::string name, Lexer::Range where) -> std::shared_ptr<Expression> {
+        std::unordered_set<OverloadResolvable*> resolvable;
+        for (auto&& map : overset->funcs) {
+            if (map.first > access)
+                continue;
+            for (auto&& func : map.second)
+                resolvable.insert(analyzer.GetCallableForTemplateType(func.get(), lookup));
+        }
+        if (resolvable.empty()) return nullptr;
+        return analyzer.GetOverloadSet(resolvable)->BuildValueConstruction({}, { lookup, where });
+    });
 }

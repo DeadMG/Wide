@@ -8,7 +8,6 @@
 #include <functional>
 #include <Wide/Lexer/Token.h>
 #include <Wide/Parser/AST.h>
-#include <Wide/Util/Memory/MemoryArena.h>
 #include <Wide/Util/Ranges/Optional.h>
 
 namespace Wide {
@@ -50,16 +49,15 @@ namespace Wide {
         
         struct Parser {
             PutbackLexer lex;
-            Wide::Memory::Arena arena;
             Module GlobalModule;
             std::function<void(Lexer::Range, OutliningType)> outlining;
             
             // All the valid productions in the global module.
-            std::unordered_map<Lexer::TokenType, std::function<Parse::Import*(Parser&, Module*, Parse::Access, Parse::Import*, Lexer::Token& token)>> GlobalModuleTokens;
+            std::unordered_map<Lexer::TokenType, std::function<std::shared_ptr<Parse::Import>(Parser&, Module*, Parse::Access, std::shared_ptr<Parse::Import>, Lexer::Token& token)>> GlobalModuleTokens;
             // All the valid productions in global module with attributes.
-            std::unordered_map<Lexer::TokenType, std::function<void(Parser&, Module*, Parse::Access, Parse::Import*, Lexer::Token& token, std::vector<Attribute> attributes)>> GlobalModuleAttributeTokens;
+            std::unordered_map<Lexer::TokenType, std::function<void(Parser&, Module*, Parse::Access, std::shared_ptr<Parse::Import>, Lexer::Token& token, std::vector<Attribute> attributes)>> GlobalModuleAttributeTokens;
             // All the productions valid in non-global modules only.
-            std::unordered_map<Lexer::TokenType, std::function<Parse::Access(Parser&, Module*, Parse::Access, Parse::Import*, Lexer::Token& token)>> ModuleTokens;
+            std::unordered_map<Lexer::TokenType, std::function<Parse::Access(Parser&, Module*, Parse::Access, std::shared_ptr<Parse::Import>, Lexer::Token& token)>> ModuleTokens;
             
             // All user-defined overloadable operators that can be overloaded as free functions.
             std::unordered_set<OperatorName> ModuleOverloadableOperators;
@@ -67,29 +65,29 @@ namespace Wide {
             std::unordered_set<OperatorName> MemberOverloadableOperators;
 
             // Assignment operators and their behaviour
-            std::unordered_map<Lexer::TokenType, std::function<Expression*(Parser&, Parse::Import*, Expression*)>> AssignmentOperators;
+            std::unordered_map<Lexer::TokenType, std::function<std::unique_ptr<Expression>(Parser&, std::shared_ptr<Parse::Import>, std::unique_ptr<Expression>)>> AssignmentOperators;
 
             // Describes the operators and their precedences- all left-associative between assignment and unary
             std::vector<std::unordered_set<Lexer::TokenType>> ExpressionPrecedences;
             
             // Unary operators and their behaviour
-            std::unordered_map<Lexer::TokenType, std::function<Expression*(Parser&, Parse::Import*, Lexer::Token&)>> UnaryOperators;
+            std::unordered_map<Lexer::TokenType, std::function<std::unique_ptr<Expression>(Parser&, std::shared_ptr<Parse::Import>, Lexer::Token&)>> UnaryOperators;
 
             // Postfix operators and their behaviour
-            std::unordered_map<Lexer::TokenType, std::function<Expression*(Parser&, Parse::Import*, Expression*, Lexer::Token&)>> PostfixOperators;
+            std::unordered_map<Lexer::TokenType, std::function<std::unique_ptr<Expression>(Parser&, std::shared_ptr<Parse::Import>, std::unique_ptr<Expression>, Lexer::Token&)>> PostfixOperators;
 
             // Primary expressions and their behaviour
-            std::unordered_map<Lexer::TokenType, std::function<Expression*(Parser&, Parse::Import* imp, Lexer::Token&)>> PrimaryExpressions;
+            std::unordered_map<Lexer::TokenType, std::function<std::unique_ptr<Expression>(Parser&, std::shared_ptr<Parse::Import> imp, Lexer::Token&)>> PrimaryExpressions;
 
             // Statements and their behaviour
-            std::unordered_map<Lexer::TokenType, std::function<Statement*(Parser& p, Parse::Import* imp, Lexer::Token& tok)>> Statements;
+            std::unordered_map<Lexer::TokenType, std::function<std::unique_ptr<Statement>(Parser& p, std::shared_ptr<Parse::Import> imp, Lexer::Token& tok)>> Statements;
 
             // Type 
-            std::unordered_map<Lexer::TokenType, std::function<Parse::Access(Parser&, Type*, Parse::Access, Parse::Import* imp, Lexer::Token&)>> TypeTokens;
+            std::unordered_map<Lexer::TokenType, std::function<Parse::Access(Parser&, Type*, Parse::Access, std::shared_ptr<Parse::Import> imp, Lexer::Token&)>> TypeTokens;
             // Type attribute
-            std::unordered_map<Lexer::TokenType, std::function<Parse::Access(Parser&, Type*, Parse::Access, Parse::Import* imp, Lexer::Token&, std::vector<Attribute>)>> TypeAttributeTokens;
+            std::unordered_map<Lexer::TokenType, std::function<Parse::Access(Parser&, Type*, Parse::Access, std::shared_ptr<Parse::Import> imp, Lexer::Token&, std::vector<Attribute>)>> TypeAttributeTokens;
             // Dynamic members
-            std::unordered_map<Lexer::TokenType, std::function<DynamicFunction*(Parser&, Type*, Parse::Access, Parse::Import* imp, Lexer::Token&, std::vector<Attribute>)>> DynamicMemberFunctions;
+            std::unordered_map<Lexer::TokenType, std::function<DynamicFunction*(Parser&, Type*, Parse::Access, std::shared_ptr<Parse::Import> imp, Lexer::Token&, std::vector<Attribute>)>> DynamicMemberFunctions;
 
             Parser(std::function<Wide::Util::optional<Lexer::Token>()> l);
 
@@ -119,41 +117,41 @@ namespace Wide {
                 return rest;
             }
             
-            Expression* ParseSubAssignmentExpression(unsigned slot, Parse::Import* imp);
-            Expression* ParseSubAssignmentExpression(unsigned slot, Expression* Unary, Parse::Import* imp);
+            std::unique_ptr<Expression> ParseSubAssignmentExpression(unsigned slot, std::shared_ptr<Parse::Import> imp);
+            std::unique_ptr<Expression> ParseSubAssignmentExpression(unsigned slot, std::unique_ptr<Expression> Unary, std::shared_ptr<Parse::Import> imp);
             std::unordered_set<OperatorName> GetAllOperators();
                         
-            Attribute ParseAttribute(Lexer::Token& tok, Parse::Import* imp);
+            Attribute ParseAttribute(Lexer::Token& tok, std::shared_ptr<Parse::Import> imp);
 
-            void ParseGlobalModuleContents(Module* m, Parse::Import* imp = nullptr);
-            Parse::Import* ParseGlobalModuleLevelDeclaration(Module* m, Parse::Import* imp);
-            void ParseModuleContents(Module* m, Lexer::Range where, Parse::Import* imp);
+            void ParseGlobalModuleContents(Module* m, std::shared_ptr<Parse::Import> imp = nullptr);
+            std::shared_ptr<Parse::Import> ParseGlobalModuleLevelDeclaration(Module* m, std::shared_ptr<Parse::Import> imp);
+            void ParseModuleContents(Module* m, Lexer::Range where, std::shared_ptr<Parse::Import> imp);
 
-            void AddTypeToModule(Module* m, std::string name, Type* t, Parse::Access specifier);
-            void AddFunctionToModule(Module* m, std::string name, Function* f, Parse::Access specifier);
-            void AddUsingToModule(Module* m, std::string name, Using* f, Parse::Access specifier);
-            void AddTemplateTypeToModule(Module* m, std::string name, std::vector<FunctionArgument>, Type* t, Parse::Access specifier);
+            void AddTypeToModule(Module* m, std::string name, std::shared_ptr<Type> t, Parse::Access specifier);
+            void AddFunctionToModule(Module* m, std::string name, std::shared_ptr<Function> f, Parse::Access specifier);
+            void AddUsingToModule(Module* m, std::string name, std::shared_ptr<Using> f, Parse::Access specifier);
+            void AddTemplateTypeToModule(Module* m, std::string name, Lexer::Range where, std::vector<FunctionArgument>, std::unique_ptr<Type> t, Parse::Access specifier);
             Module* CreateModule(std::string name, Module* in, Lexer::Range where, Parse::Access access);
 
             Using* CreateUsing(std::string val, Lexer::Range loc, Expression* expr, Module* p, Parse::Access a); 
-            Parse::Access ParseModuleLevelDeclaration(Module* m, Parse::Access a, Parse::Import* imp);
-            std::vector<Variable*> ParseLambdaCaptures(Parse::Import* imp);
-            Expression* ParsePrimaryExpression(Parse::Import* imp);
-            std::vector<Expression*> ParseFunctionArguments(Parse::Import* imp);
-            Expression* ParsePostfixExpression(Parse::Import* imp);
-            Expression* ParseUnaryExpression(Parse::Import* imp);
-            Expression* ParseAssignmentExpression(Parse::Import* imp);
-            Expression* ParseExpression(Parse::Import* imp);
-            Statement* ParseStatement(Parse::Import* imp);
-            std::vector<FunctionArgument> ParseFunctionDefinitionArguments(Parse::Import* imp);
-            Constructor* ParseConstructor(const Lexer::Token& first, Parse::Import* imp, std::vector<Attribute> attrs);
-            Function* ParseFunction(const Lexer::Token& first, Parse::Import* imp, std::vector<Attribute> attrs);
-            Destructor* ParseDestructor(const Lexer::Token& first, Parse::Import* imp, std::vector<Attribute> attrs);
+            Parse::Access ParseModuleLevelDeclaration(Module* m, Parse::Access a, std::shared_ptr<Parse::Import> imp);
+            std::vector<Variable> ParseLambdaCaptures(std::shared_ptr<Parse::Import> imp);
+            std::unique_ptr<Expression> ParsePrimaryExpression(std::shared_ptr<Parse::Import> imp);
+            std::vector<std::unique_ptr<Expression>> ParseFunctionArguments(std::shared_ptr<Parse::Import> imp);
+            std::unique_ptr<Expression> ParsePostfixExpression(std::shared_ptr<Parse::Import> imp);
+            std::unique_ptr<Expression> ParseUnaryExpression(std::shared_ptr<Parse::Import> imp);
+            std::unique_ptr<Expression> ParseAssignmentExpression(std::shared_ptr<Parse::Import> imp);
+            std::unique_ptr<Expression> ParseExpression(std::shared_ptr<Parse::Import> imp);
+            std::unique_ptr<Statement> ParseStatement(std::shared_ptr<Parse::Import> imp);
+            std::vector<FunctionArgument> ParseFunctionDefinitionArguments(std::shared_ptr<Parse::Import> imp);
+            std::unique_ptr<Constructor> ParseConstructor(const Lexer::Token& first, std::shared_ptr<Parse::Import> imp, std::vector<Attribute> attrs);
+            std::unique_ptr<Function> ParseFunction(const Lexer::Token& first, std::shared_ptr<Parse::Import> imp, std::vector<Attribute> attrs);
+            std::unique_ptr<Destructor> ParseDestructor(const Lexer::Token& first, std::shared_ptr<Parse::Import> imp, std::vector<Attribute> attrs);
             
             Module* ParseQualifiedName(Lexer::Token& first, Module* m, Parse::Access a, std::unordered_set<Lexer::TokenType> admissible, std::unordered_set<Lexer::TokenType> final);
-            void ParseTypeBody(Type* ty, Parse::Import* imp);
-            std::vector<Expression*> ParseTypeBases(Parse::Import* imp);
-            Type* ParseTypeDeclaration(Module* m, Lexer::Range loc, Parse::Import* imp, Lexer::Token& ident, std::vector<Attribute>& attrs);
+            void ParseTypeBody(Type* ty, std::shared_ptr<Parse::Import> imp);
+            std::vector<std::unique_ptr<Expression>> ParseTypeBases(std::shared_ptr<Parse::Import> imp);
+            std::unique_ptr<Type> ParseTypeDeclaration(Lexer::Range loc, std::shared_ptr<Parse::Import> imp, Lexer::Token& ident, std::vector<Attribute>& attrs);
         };
     }
 }

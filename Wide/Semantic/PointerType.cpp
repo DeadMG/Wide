@@ -56,7 +56,6 @@ OverloadSet* PointerType::CreateConstructorOverloadSet(Parse::Access access) {
         std::vector<std::shared_ptr<Expression>> AdjustArguments(std::vector<std::shared_ptr<Expression>> args, Context c) override final { return args; }
         std::shared_ptr<Expression> CallFunction(std::vector<std::shared_ptr<Expression>> args, Context c) override final {
             auto other = BuildValue(std::move(args[1]));
-            auto udt = dynamic_cast<PointerType*>(other->GetType())->pointee;
             return Wide::Memory::MakeUnique<ImplicitStoreExpr>(std::move(args[0]), Type::AccessBase(std::move(other), self->pointee));
         }
         Callable* GetCallableForResolution(std::vector<Type*>, Type*, Analyzer& a) override final { return this; }

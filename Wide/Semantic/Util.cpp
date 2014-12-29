@@ -156,7 +156,7 @@ std::shared_ptr<Expression> Semantic::InterpretExpression(clang::Expr* expr, Cla
         // C++ treats string lits as pointer to character so we need to special-case here.
         auto castty = a.GetClangType(tu, cast->getType());
         auto castexpr = InterpretExpression(cast->getSubExpr(), tu, c, a, exprmap);
-        if (castty == a.GetPointerType(a.GetIntegralType(8, true)) && dynamic_cast<StringType*>(castexpr->GetType()->Decay()))
+        if (castty == a.GetPointerType(a.GetIntegralType(8, true)) && dynamic_cast<StringType*>(castexpr->GetType(nullptr)->Decay()))
             return castexpr;
         if (castty == a.GetBooleanType()) {
             return Type::BuildBooleanConversion(castexpr, c);
@@ -173,12 +173,12 @@ std::shared_ptr<Expression> Semantic::InterpretExpression(clang::Expr* expr, Cla
         if (auto convdecl = llvm::dyn_cast<clang::CXXConversionDecl>(decl)) {
             std::unordered_set<clang::NamedDecl*> decls;
             decls.insert(convdecl);
-            return a.GetOverloadSet(decls, &tu, object->GetType())->BuildValueConstruction({ object }, c);
+            return a.GetOverloadSet(decls, &tu, object->GetType(nullptr))->BuildValueConstruction({ object }, c);
         }
         if (auto funcdecl = llvm::dyn_cast<clang::FunctionDecl>(decl)) {
             return Type::AccessMember(object, name, c);
         }
-        // Fuck
+        // foauck.
     }
     if (auto bindtemp = llvm::dyn_cast<clang::CXXBindTemporaryExpr>(expr)) {
         return InterpretExpression(bindtemp->getSubExpr(), tu, c, a, exprmap);

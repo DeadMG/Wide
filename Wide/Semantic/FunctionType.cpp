@@ -85,40 +85,17 @@ llvm::PointerType* WideFunctionType::GetLLVMType(llvm::Module* module) {
 }
 
 std::shared_ptr<Expression> WideFunctionType::ConstructCall(std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c) {
-    struct Call : Expression {
-        Call(Analyzer& an, std::shared_ptr<Expression> self, std::vector<std::shared_ptr<Expression>> args, Context c, llvm::CallingConv::ID conv)
-            : a(an), args(std::move(args)), val(std::move(self)), convention(conv)
-        {
-            Ret = Wide::Memory::MakeUnique<ImplicitTemporaryExpr>(GetType(), c);
-            if (!GetType()->IsTriviallyDestructible())
-                Destructor = GetType()->BuildDestructorCall(Ret, c, true);
-            else
-                Destructor = {};
-        }
-
-        Analyzer& a;
-        std::vector<std::shared_ptr<Expression>> args;
-        std::shared_ptr<Expression> val;
-        std::shared_ptr<Expression> Ret;
-        std::function<void(CodegenContext&)> Destructor;
-        llvm::CallingConv::ID convention;
-
-        Type* GetType() override final {
-            auto fty = dynamic_cast<FunctionType*>(val->GetType());
-            return fty->GetReturnType();
-        }
-        bool IsConstantExpression() override final {
-            if (!val->IsConstantExpression()) return false;
-            for (auto&& arg : args) {
-                if (!arg->IsConstantExpression()) 
-                    return false;
-            }
-            return true;
-        }
-        llvm::Value* ComputeValue(CodegenContext& con) override final {
+    return CreateResultExpression([=](Function* f) {
+        auto result_type = dynamic_cast<FunctionType*>(val->GetType(f)->Decay())->GetReturnType();
+        auto Ret = std::make_shared<ImplicitTemporaryExpr>(result_type, c);
+        auto Destructor = !result_type->IsTriviallyDestructible()
+            ? result_type->BuildDestructorCall(Ret, c, true)
+            : std::function<void(CodegenContext&)>();
+        
+        return CreatePrimGlobal(result_type, [=](CodegenContext& con) {
             llvm::Value* llvmfunc = val->GetValue(con);
             std::vector<llvm::Value*> llvmargs;
-            if (GetType()->AlwaysKeepInMemory(con))
+            if (result_type->AlwaysKeepInMemory(con))
                 llvmargs.push_back(Ret->GetValue(con));
             // The CALLER calls the destructor, NOT the CALLEE. So let this just destroy them naturally.
             for (auto&& arg : args)
@@ -138,15 +115,14 @@ std::shared_ptr<Expression> WideFunctionType::ConstructCall(std::shared_ptr<Expr
                 callinst->setCallingConv(convention);
                 call = callinst;
             }
-            if (GetType()->AlwaysKeepInMemory(con)) {
+            if (result_type->AlwaysKeepInMemory(con)) {
                 if (Destructor)
                     con.AddDestructor(Destructor);
                 return Ret->GetValue(con);
             }
             return call;
-        }
-    };
-    return Wide::Memory::MakeUnique<Call>(analyzer, std::move(val), std::move(args), c, convention);
+        });
+    });
 }
 Type* WideFunctionType::GetReturnType() {
     return ReturnType;
@@ -182,74 +158,56 @@ Wide::Util::optional<clang::QualType> WideFunctionType::GetClangType(ClangTU& fr
     return from.GetASTContext().getFunctionType(*retty, types, protoinfo);
 }
 std::shared_ptr<Expression> WideFunctionType::CreateThunkFrom(std::shared_ptr<Expression> to, Type* context) {
-    auto dest = this;
-    if (to->GetType() == dest) return to;
-    auto name = dest->analyzer.GetUniqueFunctionName();
-    auto functy = dynamic_cast<FunctionType*>(to->GetType());
-    if (!functy) throw std::runtime_error("Cannot thunk from a non-function-type.");
-    auto func = [name](llvm::Module* mod) { return mod->getFunction(name); };
-    auto emit = dest->CreateThunk(func, to, context);
-    struct self : Expression {
-        self(std::function<void(llvm::Module*)> emit, WideFunctionType* dest, std::string name)
-            : emit(emit), dest(dest), name(name) {}
-        std::function<void(llvm::Module*)> emit;
-        WideFunctionType* dest;
-        std::string name;
-        Type* GetType() override final { return dest; }
-        llvm::Value* ComputeValue(CodegenContext& con) override final {
+    return CreateResultExpression([=](Function* f) -> std::shared_ptr<Expression>{
+        auto dest = this;
+        if (to->GetType(f) == dest) return to;
+        auto name = dest->analyzer.GetUniqueFunctionName();
+        auto functy = dynamic_cast<FunctionType*>(to->GetType(f));
+        if (!functy) throw std::runtime_error("Cannot thunk from a non-function-type.");
+        auto func = [name](llvm::Module* mod) { return mod->getFunction(name); };
+        auto emit = dest->CreateThunk(func, to, context);
+        return CreatePrimGlobal(dest, [=](CodegenContext& con) {
             auto func = llvm::Function::Create(llvm::cast<llvm::FunctionType>(dest->GetLLVMType(con)->getElementType()), llvm::GlobalValue::LinkageTypes::ExternalLinkage, name, con);
             emit(con);
             return func;
-        }
-    };
-    return std::make_shared<self>(emit, dest, name);
+        });
+    });
 }
 std::function<void(llvm::Module*)> WideFunctionType::CreateThunk(std::function<llvm::Function*(llvm::Module*)> src, std::shared_ptr<Expression> dest, Type* context) {
     std::vector<std::shared_ptr<Expression>> conversion_exprs;
-    auto destty = dynamic_cast<WideFunctionType*>(dest->GetType());
+    auto destty = dynamic_cast<WideFunctionType*>(dest->GetType(nullptr));
     assert(destty);
     assert(destty != this);
     Context c{ context, std::make_shared<std::string>("Analyzer internal thunk") };
     // For the zeroth argument, if the rhs is derived from the lhs, force a cast for vthunks.
-    struct arg : Expression {
-        arg(Type* t, std::function<unsigned(llvm::Module* mod)> i) : ty(t), i(i) {}
-        Type* ty;
-        std::function<unsigned(llvm::Module* mod)> i;
-        Type* GetType() override final { return ty; }
-        llvm::Value* ComputeValue(CodegenContext& con) { 
-            return std::next(con->GetInsertBlock()->getParent()->arg_begin(), i(con)); 
-        }
+    auto arg = [](Type* ty, std::function<unsigned(llvm::Module* mod)> i) {
+        return CreatePrimGlobal(ty, [=](CodegenContext& con) {
+            return std::next(con->GetInsertBlock()->getParent()->arg_begin(), i(con));
+        });
     };
     for (unsigned i = 0; i < GetArguments().size(); ++i) {
         if (i == 0) {
             auto derthis = destty->GetArguments()[0]->Decay();
             auto basethis = GetArguments()[0]->Decay();
             if (derthis->IsDerivedFrom(basethis) == InheritanceRelationship::UnambiguouslyDerived && IsLvalueType(derthis) == IsLvalueType(basethis)) {
-                struct cast : Expression {
-                    cast(Type* dest, unsigned off, std::function<bool(llvm::Module* mod)> complex)
-                        : desttype(dest), offset(off), complexthis(complex) {}
-                    Type* desttype;
-                    unsigned offset;
-                    std::function<bool(llvm::Module* mod)> complexthis;
-                    Type* GetType() override final { return desttype; }
-                    llvm::Value* ComputeValue(CodegenContext& con) override final {
-                        auto src = std::next(con->GetInsertBlock()->getParent()->arg_begin(), complexthis(con));
-                        auto cast = con->CreateBitCast(src, con.GetInt8PtrTy());
-                        auto adjusted = con->CreateGEP(cast, llvm::ConstantInt::get(llvm::IntegerType::getInt32Ty(con), -offset, true));
-                        return con->CreateBitCast(adjusted, desttype->GetLLVMType(con));
-                    }
-                };
-                conversion_exprs.push_back(std::make_shared<cast>(destty->GetArguments()[0], derthis->GetOffsetToBase(basethis), [this](llvm::Module* mod) { return GetReturnType()->AlwaysKeepInMemory(mod); }));
+                auto resultty = destty->GetArguments()[0];
+                auto offset = derthis->GetOffsetToBase(basethis);
+                conversion_exprs.push_back(CreatePrimGlobal(resultty, [=](CodegenContext& con) {
+                    auto src = std::next(con->GetInsertBlock()->getParent()->arg_begin(), GetReturnType()->AlwaysKeepInMemory(con));
+                    auto cast = con->CreateBitCast(src, con.GetInt8PtrTy());
+                    auto adjusted = con->CreateGEP(cast, llvm::ConstantInt::get(llvm::IntegerType::getInt32Ty(con), -offset, true));
+                    return con->CreateBitCast(adjusted, resultty->GetLLVMType(con));
+                }));
                 continue;
             }
         }
-        conversion_exprs.push_back(destty->GetArguments()[i]->BuildValueConstruction({ std::make_shared<arg>(GetArguments()[i], [this, i](llvm::Module* mod) { return i + GetReturnType()->AlwaysKeepInMemory(mod); }) }, c));
+        conversion_exprs.push_back(destty->GetArguments()[i]->BuildValueConstruction({ arg(GetArguments()[i], [this, i](llvm::Module* mod) { return i + GetReturnType()->AlwaysKeepInMemory(mod); }) }, c));
     }
     auto call = Type::BuildCall(dest, conversion_exprs, c);
     std::shared_ptr<Expression> ret_expr = call;
     if (GetReturnType() != analyzer.GetVoidType()) {
         call = GetReturnType()->BuildValueConstruction({ call }, c);
-        ret_expr = Type::BuildInplaceConstruction(std::make_shared<arg>(analyzer.GetLvalueType(GetReturnType()), [](llvm::Module* mod) { return 0; }), { call }, c);
+        ret_expr = Type::BuildInplaceConstruction(arg(analyzer.GetLvalueType(GetReturnType()), [](llvm::Module* mod) { return 0; }), { call }, c);
     }
     return [this, src, ret_expr, call](llvm::Module* mod) {
         CodegenContext::EmitFunctionBody(src(mod), [this, ret_expr, call](CodegenContext& con) {
@@ -293,28 +251,16 @@ std::vector<Type*> ClangFunctionType::GetArguments() {
 }
 
 std::shared_ptr<Expression> ClangFunctionType::ConstructCall(std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c) {
-    struct Call : Expression {
-        Call(Analyzer& an, std::shared_ptr<Expression> self, std::vector<std::shared_ptr<Expression>> args, Context c)
-            : a(an), args(std::move(args)), val(std::move(self))
-        {
-            Ret = Wide::Memory::MakeUnique<ImplicitTemporaryExpr>(GetType(), c);
-            if (!GetType()->IsTriviallyDestructible())
-                Destructor = GetType()->BuildDestructorCall(Ret, c, true);
-            else
-                Destructor = {};
-        }
-        Type* GetType() override final {
-            auto fty = dynamic_cast<ClangFunctionType*>(val->GetType());
-            return fty->GetReturnType();
-        }
-
-        Analyzer& a;
-        std::vector<std::shared_ptr<Expression>> args;
-        std::shared_ptr<Expression> val;
-        std::shared_ptr<Expression> Ret;
+    return CreateResultExpression([=](Function* f) {
+        auto clangfuncty = dynamic_cast<ClangFunctionType*>(val->GetType(f)->Decay());
+        auto RetType = clangfuncty->GetReturnType();
+        auto Ret = std::make_shared<ImplicitTemporaryExpr>(RetType, c);
         std::function<void(CodegenContext&)> Destructor;
-        llvm::Value* ComputeValue(CodegenContext& con) override final {
-            auto clangfuncty = dynamic_cast<ClangFunctionType*>(val->GetType());
+        if (!RetType->IsTriviallyDestructible())
+            Destructor = RetType->BuildDestructorCall(Ret, c, true);
+        else
+            Destructor = {};
+        return CreatePrimGlobal(RetType, [=](CodegenContext& con) -> llvm::Value* {
             llvm::Value* llvmfunc = val->GetValue(con);
             clang::CodeGen::CodeGenFunction codegenfunc(clangfuncty->from->GetCodegenModule(con), true);
             codegenfunc.AllocaInsertPt = con.GetAllocaInsertPoint();
@@ -322,11 +268,11 @@ std::shared_ptr<Expression> ClangFunctionType::ConstructCall(std::shared_ptr<Exp
             codegenfunc.CurCodeDecl = nullptr;
             clang::CodeGen::CallArgList list;
             for (auto&& arg : args) {
-                auto val = arg->GetValue(con); 
-                if (arg->GetType() == a.GetBooleanType())
+                auto val = arg->GetValue(con);
+                if (arg->GetType(f) == analyzer.GetBooleanType())
                     val = con->CreateTrunc(val, llvm::IntegerType::getInt1Ty(con));
-                auto clangty = *arg->GetType()->GetClangType(*clangfuncty->from);
-                if (arg->GetType()->AlwaysKeepInMemory(con))
+                auto clangty = *arg->GetType(f)->GetClangType(*clangfuncty->from);
+                if (arg->GetType(f)->AlwaysKeepInMemory(con))
                     list.add(clang::CodeGen::RValue::getAggregate(val), clangty);
                 else
                     list.add(clang::CodeGen::RValue::get(val), clangty);
@@ -356,7 +302,7 @@ std::shared_ptr<Expression> ClangFunctionType::ConstructCall(std::shared_ptr<Exp
                     callinst->eraseFromParent();
                 }
                 con->SetInsertPoint(continueblock);
-            }            
+            }
             if (!clangfuncty->GetReturnType()->IsTriviallyDestructible())
                 con.AddDestructor(Destructor);
             if (call_or_invoke->getType() == clangfuncty->GetReturnType()->GetLLVMType(con))
@@ -371,82 +317,53 @@ std::shared_ptr<Expression> ClangFunctionType::ConstructCall(std::shared_ptr<Exp
             if (clangfuncty->GetReturnType()->IsReference() || clangfuncty->GetReturnType()->AlwaysKeepInMemory(con))
                 return val;
             return con->CreateLoad(val);
-        }
-    };
-    return Wide::Memory::MakeUnique<Call>(analyzer, std::move(val), std::move(args), c);
+        });
+    });
 }
 std::function<void(llvm::Module*)> ClangFunctionType::CreateThunk(std::function<llvm::Function*(llvm::Module*)> src, std::shared_ptr<Expression> dest, clang::FunctionDecl* decl, Type* context) {
     // Emit thunk from from to to, with functiontypes source and dest.
     // Beware of ABI demons.
     std::vector<std::shared_ptr<Expression>> conversion_exprs;
-    auto destty = dynamic_cast<WideFunctionType*>(dest->GetType());
+    auto destty = dynamic_cast<WideFunctionType*>(dest->GetType(nullptr));
     assert(destty);
     Context c{ context, std::make_shared<std::string>("Analyzer internal thunk") };
     // For the zeroth argument, if the rhs is derived from the lhs, force a cast for vthunks.
     auto args = std::make_shared<std::vector<llvm::Value*>>();
-    struct arg : Expression {
-        arg(Type* t, std::function<unsigned(llvm::Module* mod)> i, std::shared_ptr<std::vector<llvm::Value*>> vec) : arg_vec(vec), ty(t), i(i) {}
-        Type* ty;
-        std::function<unsigned(llvm::Module* mod)> i;
-        std::shared_ptr<std::vector<llvm::Value*>> arg_vec;
-        Type* GetType() override final { return ty; }
-        llvm::Value* ComputeValue(CodegenContext& con) {
-            auto val = arg_vec->at(i(con));
-            if (val->getType() == llvm::IntegerType::getInt1Ty(con))
-                val = con->CreateZExt(val, llvm::IntegerType::getInt8Ty(con));
-            if (val->getType() == GetType()->GetLLVMType(con)->getPointerTo())
-                return con->CreateLoad(val);
-            return val;
-        }
+    auto arg = [](Type* ty, std::function<unsigned(llvm::Module* mod)> i) {
+        return CreatePrimGlobal(ty, [=](CodegenContext& con) {
+            return std::next(con->GetInsertBlock()->getParent()->arg_begin(), i(con));
+        });
     };
-    
+
     for (unsigned i = 0; i < GetArguments().size(); ++i) {
         if (i == 0) {
             auto derthis = destty->GetArguments()[0]->Decay();
             auto basethis = GetArguments()[0]->Decay();
             if (derthis->IsDerivedFrom(basethis) == InheritanceRelationship::UnambiguouslyDerived && IsLvalueType(derthis) == IsLvalueType(basethis)) {
-                struct cast : Expression {
-                    cast(Type* dest, unsigned off, std::function<bool(llvm::Module* mod)> complex, std::shared_ptr<std::vector<llvm::Value*>> arg_vec)
-                        : desttype(dest), offset(off), complexret(complex), arg_vec(arg_vec) {}
-                    Type* desttype;
-                    unsigned offset;
-                    std::function<bool(llvm::Module* mod)> complexret;
-                    std::shared_ptr<std::vector<llvm::Value*>> arg_vec;
-                    Type* GetType() override final { return desttype; }
-                    llvm::Value* ComputeValue(CodegenContext& con) override final {
-                        auto src = arg_vec->at(complexret(con));
-                        auto cast = con->CreateBitCast(src, con.GetInt8PtrTy());
-                        auto adjusted = con->CreateGEP(cast, llvm::ConstantInt::get(llvm::IntegerType::getInt32Ty(con), offset, true));
-                        return con->CreateBitCast(adjusted, desttype->GetLLVMType(con));
-                    }
-                };
-                conversion_exprs.push_back(std::make_shared<cast>(destty->GetArguments()[0], derthis->GetOffsetToBase(basethis), [this](llvm::Module* mod) { return GetReturnType()->AlwaysKeepInMemory(mod); }, args));
+                auto resultty = destty->GetArguments()[0];
+                auto offset = derthis->GetOffsetToBase(basethis);
+                conversion_exprs.push_back(CreatePrimGlobal(resultty, [=](CodegenContext& con) {
+                    auto src = std::next(con->GetInsertBlock()->getParent()->arg_begin(), GetReturnType()->AlwaysKeepInMemory(con));
+                    auto cast = con->CreateBitCast(src, con.GetInt8PtrTy());
+                    auto adjusted = con->CreateGEP(cast, llvm::ConstantInt::get(llvm::IntegerType::getInt32Ty(con), -offset, true));
+                    return con->CreateBitCast(adjusted, resultty->GetLLVMType(con));
+                }));
                 continue;
             }
         }
-        conversion_exprs.push_back(destty->GetArguments()[i]->BuildValueConstruction({ std::make_shared<arg>(GetArguments()[i], [this, i](llvm::Module* mod) { return i + GetReturnType()->AlwaysKeepInMemory(mod); }, args) }, c));
+        conversion_exprs.push_back(destty->GetArguments()[i]->BuildValueConstruction({ arg(GetArguments()[i], [this, i](llvm::Module* mod) { return i + GetReturnType()->AlwaysKeepInMemory(mod); }) }, c));
     }
     auto call = Type::BuildCall(dest, conversion_exprs, c);
     std::shared_ptr<Expression> ret_expr;
     if (dynamic_cast<StringType*>(destty->GetReturnType())) {
-        struct ImplicitStringDecay : Expression {
-            ImplicitStringDecay(std::shared_ptr<Expression> expr)
-                : StringExpr(std::move(expr)) {}
-            std::shared_ptr<Expression> StringExpr;
-            llvm::Value* ComputeValue(CodegenContext& con) override final {
-                return StringExpr->GetValue(con);
-            }
-            Type* GetType() override final {
-                auto&& analyzer = StringExpr->GetType()->analyzer;
-                return analyzer.GetPointerType(analyzer.GetIntegralType(8, true));
-            }
-        };
-        call = std::make_shared<ImplicitStringDecay>(call);
+        call = CreatePrimGlobal(context->analyzer.GetPointerType(context->analyzer.GetIntegralType(8, true)), [=](CodegenContext& con) {
+            return call->GetValue(con);
+        }); 
     } else
         if (GetReturnType() != analyzer.GetVoidType())
             call = GetReturnType()->BuildValueConstruction({ call }, c);
     if (GetReturnType() != analyzer.GetVoidType())
-        ret_expr = Type::BuildInplaceConstruction(std::make_shared<arg>(analyzer.GetLvalueType(GetReturnType()), [](llvm::Module* mod) { return 0; }, args), { call }, c);
+        ret_expr = Type::BuildInplaceConstruction(arg(analyzer.GetLvalueType(GetReturnType()), [](llvm::Module* mod) { return 0; }), { call }, c);
     return [src, ret_expr, decl, this, args, call](llvm::Module* mod) {
         auto func = src(mod);
         CodegenContext::EmitFunctionBody(func, [ret_expr, func, decl, args, this, call](CodegenContext& con) {
@@ -545,20 +462,11 @@ std::shared_ptr<Expression> ClangFunctionType::CreateThunkFrom(std::shared_ptr<E
             );
         decl->setParams(GetParmVarDecls(type->getParamTypes(), *from, from->GetDeclContext()));
     }
-    struct self : Expression {
-        self(std::function<void(llvm::Module*)> emit, ClangFunctionType* dest, std::function<llvm::Function*(llvm::Module*)> create)
-            : emit(emit), dest(dest), create(create) {}
-        std::function<void(llvm::Module*)> emit;
-        ClangFunctionType* dest;
-        std::function<llvm::Function*(llvm::Module*)> create;
-        Type* GetType() override final { return dest; }
-        llvm::Value* ComputeValue(CodegenContext& con) override final {
-            auto func = create(con);
-            emit(con);
-            return func;
-        }
-    };
-    auto obj = from->GetObject(analyzer, decl);
-    auto emit = CreateThunk(obj, dest, decl, context);
-    return std::make_shared<self>(emit, this, obj);
+    auto create = from->GetObject(analyzer, decl);
+    auto emit = CreateThunk(create, dest, decl, context);
+    return CreatePrimGlobal(this, [=](CodegenContext& con) {
+        auto func = create(con);
+        emit(con);
+        return func;
+    });
 }

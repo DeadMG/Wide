@@ -68,27 +68,29 @@ OverloadSet* IntegralType::CreateConstructorOverloadSet(Parse::Access access) {
         Callable* GetCallableForResolution(std::vector<Type*> types, Type*, Analyzer& a) override final { return this; }
         std::shared_ptr<Expression> CallFunction(std::vector<std::shared_ptr<Expression>> args, Context c) override final {
             args[1] = BuildValue(std::move(args[1]));
-            if (args[1]->GetType() == integral)
-                return Wide::Memory::MakeUnique<ImplicitStoreExpr>(std::move(args[0]), std::move(args[1]));
-            auto inttype = dynamic_cast<IntegralType*>(args[1]->GetType());
-            if (integral->bits < inttype->bits)
-                return Wide::Memory::MakeUnique<ImplicitStoreExpr>(std::move(args[0]), CreatePrimUnOp(std::move(args[1]), integral, [this](llvm::Value* rhs, CodegenContext& con) {
-                    return con->CreateTrunc(rhs, integral->GetLLVMType(con));
-                }));
-            if (integral->is_signed && inttype->is_signed)
-                return Wide::Memory::MakeUnique<ImplicitStoreExpr>(std::move(args[0]), CreatePrimUnOp(std::move(args[1]), integral, [this](llvm::Value* rhs, CodegenContext& con) {
-                    return con->CreateSExt(rhs, integral->GetLLVMType(con));
-                }));
-            if (!integral->is_signed && !inttype->is_signed)
-                return Wide::Memory::MakeUnique<ImplicitStoreExpr>(std::move(args[0]), CreatePrimUnOp(std::move(args[1]), integral, [this](llvm::Value* rhs, CodegenContext& con) {
-                    return con->CreateZExt(rhs, integral->GetLLVMType(con));
-                }));
-            if (integral->bits == inttype->bits)
-                return Wide::Memory::MakeUnique<ImplicitStoreExpr>(std::move(args[0]), CreatePrimUnOp(std::move(args[1]), integral, [this](llvm::Value* rhs, CodegenContext& con) {
-                    return rhs;
-                }));
-            assert(false && "Integer constructor called with conditions that OR should have prevented.");
-            return nullptr;
+            return CreateResultExpression([=](Function* f)-> std::shared_ptr<Expression> {
+                if (args[1]->GetType(f) == integral)
+                    return std::make_shared<ImplicitStoreExpr>(std::move(args[0]), std::move(args[1]));
+                auto inttype = dynamic_cast<IntegralType*>(args[1]->GetType(f));
+                if (integral->bits < inttype->bits)
+                    return std::make_shared<ImplicitStoreExpr>(std::move(args[0]), CreatePrimUnOp(std::move(args[1]), integral, [this](llvm::Value* rhs, CodegenContext& con) {
+                        return con->CreateTrunc(rhs, integral->GetLLVMType(con));
+                    }));
+                if (integral->is_signed && inttype->is_signed)
+                    return std::make_shared<ImplicitStoreExpr>(std::move(args[0]), CreatePrimUnOp(std::move(args[1]), integral, [this](llvm::Value* rhs, CodegenContext& con) {
+                         return con->CreateSExt(rhs, integral->GetLLVMType(con));
+                    }));
+                if (!integral->is_signed && !inttype->is_signed)
+                    return std::make_shared<ImplicitStoreExpr>(std::move(args[0]), CreatePrimUnOp(std::move(args[1]), integral, [this](llvm::Value* rhs, CodegenContext& con) {
+                        return con->CreateZExt(rhs, integral->GetLLVMType(con));
+                    }));
+                if (integral->bits == inttype->bits)
+                    return std::make_shared<ImplicitStoreExpr>(std::move(args[0]), CreatePrimUnOp(std::move(args[1]), integral, [this](llvm::Value* rhs, CodegenContext& con) {
+                        return rhs;
+                    }));
+                assert(false && "Function called with conditions OR should have prevented.");
+                return nullptr;
+            });
         }
         std::vector<std::shared_ptr<Expression>> AdjustArguments(std::vector<std::shared_ptr<Expression>> args, Context c) override final {
             return args;

@@ -33,24 +33,26 @@ template<typename T, typename U> T* debug_cast(U* other) {
 }
 
 std::shared_ptr<Expression> OverloadSet::ConstructCall(std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c) {
-    std::vector<Type*> targs;
+    return CreateResultExpression([=](Function* f) {
+        auto argscopy = args;
+        std::vector<Type*> targs;
 
-    if (nonstatic)
-        targs.push_back(nonstatic);
+        if (nonstatic)
+            targs.push_back(nonstatic);
+        for (auto&& x : argscopy)
+            targs.push_back(x->GetType(f));
+        auto call = Resolve(targs, c.from);
+        if (!call) IssueResolutionError(targs, c);
 
-    for(auto&& x : args)
-        targs.push_back(x->GetType());
-    auto call = Resolve(targs, c.from);
-    if (!call) IssueResolutionError(targs, c);
+        if (nonstatic)
+            argscopy.insert(argscopy.begin(), CreatePrimUnOp(BuildValue(std::move(val)), nonstatic, [](llvm::Value* self, CodegenContext& con) {
+                return con->CreateExtractValue(self, { 0 });
+            }));
 
-    if (nonstatic)
-        args.insert(args.begin(), CreatePrimUnOp(BuildValue(std::move(val)), nonstatic, [](llvm::Value* self, CodegenContext& con) {
-            return con->CreateExtractValue(self, { 0 });
-        }));
-
-    if (val)
-        return BuildChain(std::move(val), call->Call(std::move(args), c));
-    return call->Call(std::move(args), c);
+        if (val)
+            return BuildChain(std::move(val), call->Call(std::move(argscopy), c));
+        return call->Call(std::move(argscopy), c);
+    });
 }
 
 OverloadSet::OverloadSet(std::unordered_set<OverloadResolvable*> call, Type* t, Analyzer& a)
@@ -63,56 +65,42 @@ struct cppcallable : public Callable {
     std::vector<std::pair<Type*, bool>> types;
 
     std::shared_ptr<Expression> CallFunction(std::vector<std::shared_ptr<Expression>> args, Context c) override final {
-        struct CPPSelf : Expression {
-            CPPSelf(clang::FunctionDecl* func, ClangTU* from, Type* fty, std::shared_ptr<Expression> arg)
-            : func(func), from(from), fty(fty), self(arg) 
-            {
-                if (auto con = llvm::dyn_cast<clang::CXXConstructorDecl>(func))
-                    fun = from->GetObject(fty->analyzer, con, clang::CXXCtorType::Ctor_Complete);
-                else if (auto des = llvm::dyn_cast<clang::CXXDestructorDecl>(func))
-                    fun = from->GetObject(fty->analyzer, des, clang::CXXDtorType::Dtor_Complete);
-                else
-                    fun = from->GetObject(fty->analyzer, func);
-                if (auto meth = llvm::dyn_cast<clang::CXXMethodDecl>(func)) {
-                    if (meth->isVirtual()) {
-                        auto selfty = self->GetType();
-                        if (selfty->IsReference()) {
-                            auto clangty = dynamic_cast<ClangType*>(selfty->Decay());
-                            vtable = Type::GetVirtualPointer(self);
-                        }
-                    }
-                }
-            }
-            clang::FunctionDecl* func;
-            ClangTU* from;
-            Type* fty;
-            std::shared_ptr<Expression> self;
-            std::shared_ptr<Expression> vtable;
-            std::function<llvm::Function*(llvm::Module*)> fun;
-
-            Type* GetType() override final {
-                return fty;
-            }
-            llvm::Value* ComputeValue(CodegenContext& con) override final {
-                if (vtable)
-                    return con->CreateBitCast(con->CreateLoad(con->CreateConstGEP1_32(con->CreateLoad(vtable->GetValue(con)), from->GetVirtualFunctionOffset(llvm::dyn_cast<clang::CXXMethodDecl>(func), con))), fty->GetLLVMType(con));
-                auto llvmfunc = fun(con);
-                // Clang often generates functions with the wrong signature.
-                // But supplies attributes for a function with the right signature.
-                // This is super bad when the right signature has more arguments, as the verifier rejects the declaration.                
-                if (llvmfunc->getType() != fty->GetLLVMType(con)) {
-                    return con->CreateBitCast(llvmfunc, fty->GetLLVMType(con));
-                }
-                return llvmfunc;
-            }
-        };
         std::vector<Type*> local;
         for (auto x : types)
             local.push_back(x.first);
         auto&& analyzer = source->analyzer;
         auto fty = GetFunctionType(fun, *from, analyzer);
         auto self = args.size() > 0 ? args[0] : nullptr;
-        return Type::BuildCall(Wide::Memory::MakeUnique<CPPSelf>(fun, from, fty, self), std::move(args), { source, c.where });
+        return CreateResultExpression([=](Function* f) {
+            std::function<llvm::Function*(llvm::Module*)> object;
+            if (auto con = llvm::dyn_cast<clang::CXXConstructorDecl>(fun))
+                object = from->GetObject(fty->analyzer, con, clang::CXXCtorType::Ctor_Complete);
+            else if (auto des = llvm::dyn_cast<clang::CXXDestructorDecl>(fun))
+                object = from->GetObject(fty->analyzer, des, clang::CXXDtorType::Dtor_Complete);
+            else
+                object = from->GetObject(fty->analyzer, fun);
+            std::shared_ptr<Expression> vtable;
+            if (auto meth = llvm::dyn_cast<clang::CXXMethodDecl>(fun)) {
+                if (meth->isVirtual()) {
+                    auto selfty = self->GetType(f);
+                    if (selfty->IsReference()) {
+                        auto clangty = dynamic_cast<ClangType*>(selfty->Decay());
+                        vtable = Type::GetVirtualPointer(self);
+                    }
+                }
+            }
+            return CreatePrimGlobal(fty, [=](CodegenContext& con)-> llvm::Value* {
+                if (vtable)
+                    return con->CreateBitCast(con->CreateLoad(con->CreateConstGEP1_32(con->CreateLoad(vtable->GetValue(con)), from->GetVirtualFunctionOffset(llvm::dyn_cast<clang::CXXMethodDecl>(fun), con))), fty->GetLLVMType(con));
+                auto llvmfunc = object(con);
+                // Clang often generates functions with the wrong signature.
+                // But supplies attributes for a function with the right signature.
+                // This is super bad when the right signature has more arguments, as the verifier rejects the declaration.                
+                if (llvmfunc->getType() != fty->GetLLVMType(con))
+                    return con->CreateBitCast(llvmfunc, fty->GetLLVMType(con));
+                return llvmfunc;
+            });
+        });
     }
     std::vector<std::shared_ptr<Expression>> AdjustArguments(std::vector<std::shared_ptr<Expression>> args, Context c) override final {
         // Clang may resolve a static function. Drop "this" if it did.
@@ -141,64 +129,50 @@ struct cppcallable : public Callable {
         // so do the conversion ourselves if lvalues were not involved.
         std::vector<std::shared_ptr<Expression>> out;
         for (std::size_t i = 0; i < types.size(); ++i) {
-            if (types[i].first == args[i]->GetType()) {
-                out.push_back(std::move(args[i]));
-                continue;
-            }
+            out.push_back(CreateResultExpression([=](Function* f) {
+                if (types[i].first == args[i]->GetType(f))
+                    return std::move(args[i]);
 
-            // Handle base type mismatches first because else they are mishandled by the next check.
-            auto derived = args[i]->GetType()->Decay(); 
-            auto base = types[i].first->Decay();
-            if (derived->IsDerivedFrom(types[i].first->Decay()) == Type::InheritanceRelationship::UnambiguouslyDerived) {
-                out.push_back(types[i].first->BuildValueConstruction({ std::move(args[i]) }, c));
-                continue;
-            }
+                // Handle base type mismatches first because else they are mishandled by the next check.
+                auto derived = args[i]->GetType(f)->Decay();
+                auto base = types[i].first->Decay();
+                if (derived->IsDerivedFrom(types[i].first->Decay()) == Type::InheritanceRelationship::UnambiguouslyDerived)
+                    return types[i].first->BuildValueConstruction({ std::move(args[i]) }, c);
 
-            // Clang may ask us to build an int8* from a string literal.
-            // Just pretend that the argument was an int8*.
-            struct ImplicitStringDecay : Expression {
-                ImplicitStringDecay(std::shared_ptr<Expression> expr)
-                : StringExpr(std::move(expr)) {}
-                std::shared_ptr<Expression> StringExpr;
-                llvm::Value* ComputeValue(CodegenContext& con) override final {
-                    return StringExpr->GetValue(con);
+                // Clang may ask us to build an int8* from a string literal.
+                // Just pretend that the argument was an int8*.
+
+                auto ImplicitStringDecay = [this](std::shared_ptr<Expression> expr) {
+                    return CreatePrimGlobal(source->analyzer.GetPointerType(source->analyzer.GetIntegralType(8, true)), [=](CodegenContext& con) {
+                        return expr->GetValue(con);
+                    });
+                };
+
+                // If the function takes a const lvalue (as kindly provided by the second member),
+                // and we provided an rvalue, pretend secretly that it took an rvalue reference instead.
+                // Since is-a does not apply here, build construction from the underlying type, rather than going through rvaluetype.
+
+                // This section handles stuff like const i32& i = int64() and similar implicit conversions that Wide accepts explicitly.
+                // where C++ accepts the result by rvalue reference or const reference.
+                // As per usual, careful of infinite recursion. Took quite a few tries to get this piece apparently functional.
+                if ((types[i].second || IsRvalueType(types[i].first)) && !IsLvalueType(args[i]->GetType(f))) {
+                    if (types[i].first->Decay() == args[i]->GetType(f)->Decay())
+                        return types[i].first->analyzer.GetRvalueType(types[i].first->Decay())->BuildValueConstruction({ std::move(args[i]) }, c);
+                    else {
+                        if (types[i].first->Decay() == source->analyzer.GetPointerType(source->analyzer.GetIntegralType(8, true)) && dynamic_cast<StringType*>(args[i]->GetType(f)->Decay()))
+                            return types[i].first->Decay()->BuildRvalueConstruction({ ImplicitStringDecay(BuildValue(std::move(args[i]))) }, c);
+                        else
+                            return types[i].first->Decay()->BuildRvalueConstruction({ std::move(args[i]) }, c);
+                    }
                 }
-                Type* GetType() override final {
-                    auto&& analyzer = StringExpr->GetType()->analyzer;
-                    return analyzer.GetPointerType(analyzer.GetIntegralType(8, true));
-                }
-            };
 
-            // If the function takes a const lvalue (as kindly provided by the second member),
-            // and we provided an rvalue, pretend secretly that it took an rvalue reference instead.
-            // Since is-a does not apply here, build construction from the underlying type, rather than going through rvaluetype.
+                // Clang may ask us to build an int8* from a string literal.
+                // Just pretend that the argument was an int8*.
+                if (types[i].first->Decay() == source->analyzer.GetPointerType(source->analyzer.GetIntegralType(8, true)) && dynamic_cast<StringType*>(args[i]->GetType(f)->Decay()))
+                    return types[i].first->BuildValueConstruction({ ImplicitStringDecay(BuildValue(std::move(args[i]))) }, c);
 
-            // This section handles stuff like const i32& i = int64() and similar implicit conversions that Wide accepts explicitly.
-            // where C++ accepts the result by rvalue reference or const reference.
-            // As per usual, careful of infinite recursion. Took quite a few tries to get this piece apparently functional.
-            if (
-                (types[i].second || IsRvalueType(types[i].first)) && 
-                !IsLvalueType(args[i]->GetType())
-            ) {
-                if (types[i].first->Decay() == args[i]->GetType()->Decay())
-                    out.push_back(types[i].first->analyzer.GetRvalueType(types[i].first->Decay())->BuildValueConstruction({ std::move(args[i]) }, c));
-                else {
-                    if (types[i].first->Decay() == source->analyzer.GetPointerType(source->analyzer.GetIntegralType(8, true)) && dynamic_cast<StringType*>(args[i]->GetType()->Decay()))
-                        out.push_back(types[i].first->Decay()->BuildRvalueConstruction({ Wide::Memory::MakeUnique<ImplicitStringDecay>(BuildValue(std::move(args[i]))) }, c));
-                    else
-                        out.push_back(types[i].first->Decay()->BuildRvalueConstruction({ std::move(args[i]) }, c));
-                }
-                continue;
-            }
-            
-            // Clang may ask us to build an int8* from a string literal.
-            // Just pretend that the argument was an int8*.
-            if (types[i].first->Decay() == source->analyzer.GetPointerType(source->analyzer.GetIntegralType(8, true)) && dynamic_cast<StringType*>(args[i]->GetType()->Decay())) {
-                out.push_back(types[i].first->BuildValueConstruction({ Wide::Memory::MakeUnique<ImplicitStringDecay>(BuildValue(std::move(args[i]))) }, c));
-                continue;
-            }
-            
-            out.push_back(types[i].first->BuildValueConstruction({ std::move(args[i]) }, c));
+                return types[i].first->BuildValueConstruction({ std::move(args[i]) }, c);
+            }));
         }
         return out;
     }
@@ -427,18 +401,20 @@ std::shared_ptr<Expression> OverloadSet::AccessNamedMember(std::shared_ptr<Expre
         : from(f), MetaType(a) {}
         OverloadSet* from;
         std::shared_ptr<Expression> ConstructCall(std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c) override final {
-            std::vector<Type*> types;
-            for (auto&& arg : args) {
-                auto con = dynamic_cast<ConstructorType*>(arg->GetType()->Decay());
-                if (!con) throw std::runtime_error("Attempted to resolve but an argument was not a type.");
-                types.push_back(con->GetConstructedType());
-            }
-            auto call = from->Resolve(types, c.from);
-            if (!call) from->IssueResolutionError(types, c);
-            auto clangfunc = dynamic_cast<cppcallable*>(call);
-            std::unordered_set<clang::NamedDecl*> decls;
-            decls.insert(clangfunc->fun);
-            return analyzer.GetOverloadSet(decls, clangfunc->from, nullptr)->BuildValueConstruction({}, c);
+            return CreateResultExpression([=](Function* f) {
+                std::vector<Type*> types;
+                for (auto&& arg : args) {
+                    auto con = dynamic_cast<ConstructorType*>(arg->GetType(f)->Decay());
+                    if (!con) throw std::runtime_error("Attempted to resolve but an argument was not a type.");
+                    types.push_back(con->GetConstructedType());
+                }
+                auto call = from->Resolve(types, c.from);
+                if (!call) from->IssueResolutionError(types, c);
+                auto clangfunc = dynamic_cast<cppcallable*>(call);
+                std::unordered_set<clang::NamedDecl*> decls;
+                decls.insert(clangfunc->fun);
+                return analyzer.GetOverloadSet(decls, clangfunc->from, nullptr)->BuildValueConstruction({}, c);
+            });
         }
         std::string explain() override final {
             return from->explain() + ".resolve";

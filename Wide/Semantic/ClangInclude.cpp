@@ -45,8 +45,10 @@ std::shared_ptr<Expression> ClangIncludeEntity::AccessNamedMember(std::shared_pt
                 file << str->str;
                 file.flush();
                 file.close();
-                auto clangtu = args[0]->GetType()->analyzer.LoadCPPHeader(std::move(path), c.where);
-                return args[0]->GetType()->analyzer.GetClangNamespace(*clangtu, clangtu->GetDeclContext())->BuildValueConstruction({}, c);
+                auto clangtu = c.from->analyzer.LoadCPPHeader(std::move(path), c.where);
+                return CreateResultExpression([=](Function* f) {
+                    return args[0]->GetType(f)->analyzer.GetClangNamespace(*clangtu, clangtu->GetDeclContext())->BuildValueConstruction({}, c);
+                });
             }            
         };
         LiteralHandler = Wide::Memory::MakeUnique<LiteralIncluder>();
@@ -65,12 +67,14 @@ std::shared_ptr<Expression> ClangIncludeEntity::AccessNamedMember(std::shared_pt
             Callable* GetCallableForResolution(std::vector<Type*>, Type*, Analyzer& a) override final { return this; }
             std::vector<std::shared_ptr<Expression>> AdjustArguments(std::vector<std::shared_ptr<Expression>> args, Context c) override final { return args; }
             std::shared_ptr<Expression> CallFunction(std::vector<std::shared_ptr<Expression>> args, Context c) override final{
-                auto gnamespace = dynamic_cast<ClangNamespace*>(args[0]->GetType()->Decay());
-                auto str = dynamic_cast<String*>(args[1].get());
-                assert(gnamespace && "Overload resolution picked bad candidate.");
-                if (!str) throw std::runtime_error("Failed to evaluate macro: name was not a constant expression.");
-                auto tu = gnamespace->GetTU();
-                return InterpretExpression(tu->ParseMacro(str->str, c.where), *tu, c, c.from->analyzer);
+                return CreateResultExpression([=](Function* f) {
+                    auto gnamespace = dynamic_cast<ClangNamespace*>(args[0]->GetType(f)->Decay());
+                    auto str = dynamic_cast<String*>(args[1].get());
+                    assert(gnamespace && "Overload resolution picked bad candidate.");
+                    if (!str) throw std::runtime_error("Failed to evaluate macro: name was not a constant expression.");
+                    auto tu = gnamespace->GetTU();
+                    return InterpretExpression(tu->ParseMacro(str->str, c.where), *tu, c, c.from->analyzer);
+                });
             }
         };
         MacroHandler = Wide::Memory::MakeUnique<ClangMacroHandler>();

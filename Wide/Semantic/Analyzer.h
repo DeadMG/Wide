@@ -1,6 +1,5 @@
 #pragma once
 
-#include <Wide/Util/Memory/MemoryArena.h>
 #include <Wide/Semantic/Util.h>
 #include <Wide/Semantic/Type.h>
 #include <Wide/Util/Ranges/Optional.h>
@@ -81,6 +80,9 @@ namespace Wide {
         class LambdaType;
         class MemberDataPointer;
         class MemberFunctionPointer;
+        struct Scope;
+        struct Return;
+        class FunctionSkeleton;
         struct ClangTypeInfo {
             Type* ty;
             std::function<void()> Complete;
@@ -171,9 +173,11 @@ namespace Wide {
             ClangFunctionType* GetFunctionType(const clang::FunctionProtoType*, clang::QualType, ClangTU&);
             ClangFunctionType* GetFunctionType(const clang::FunctionProtoType*, ClangTU&);
             ClangFunctionType* GetFunctionType(const clang::FunctionProtoType*, Wide::Util::optional<clang::QualType>, ClangTU&);
-            Module* GetWideModule(const Parse::Module* m, Module* higher);
-            Function* GetWideFunction(const Parse::FunctionBase* p, Type* context, const std::vector<Type*>&, std::string name);
-            Function* GetWideFunction(const Parse::FunctionBase* p, Type* context, std::string name);
+            Module* GetWideModule(const Parse::Module* m, Module* higher, std::string name);
+            FunctionSkeleton* GetWideFunction(const Parse::FunctionBase* p, Type* context, std::string name, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup);
+            FunctionSkeleton* GetWideFunction(const Parse::FunctionBase* p, Type* context, std::string name);
+            Function* GetWideFunction(FunctionSkeleton* skeleton, const std::vector<Type*>&);
+            Function* GetWideFunction(FunctionSkeleton* skeleton);
             LvalueType* GetLvalueType(Type* t);
             Type* GetRvalueType(Type* t);
             ConstructorType* GetConstructorType(Type* t);
@@ -197,14 +201,32 @@ namespace Wide {
             MemberDataPointer* GetMemberDataPointer(Type* source, Type* dest);
             MemberFunctionPointer* GetMemberFunctionPointer(Type* source, FunctionType* dest);
 
-            std::unordered_map<std::type_index, std::function<std::shared_ptr<Expression>(Analyzer& a, Type* lookup, const Parse::Expression* e)>> expression_handlers;
-            template<typename T, typename F> void AddExpressionHandler(F f) {
-                expression_handlers[typeid(const T)] = [f](Analyzer& a, Type* lookup, const Parse::Expression* e) {
-                    return f(a, lookup, static_cast<const T*>(e));
-                };
-            }
-            std::shared_ptr<Expression> AnalyzeCachedExpression(Type* lookup, const Parse::Expression* e);
-            std::shared_ptr<Expression> AnalyzeExpression(Type* lookup, const Parse::Expression* e);
+            std::unordered_map<
+                std::type_index, 
+                std::function<std::shared_ptr<Expression>(const Parse::Expression*, Analyzer& a, Type* lookup, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup) >>
+            ExpressionHandlers;
+            std::unordered_map<
+                std::type_index, 
+                std::function<std::shared_ptr<Expression>(const Parse::SharedObjectTag* , Analyzer& a, Module* lookup, std::string name)>> 
+            SharedObjectHandlers;
+            std::unordered_map<
+                std::type_index, 
+                std::function<std::shared_ptr<Expression>(const Parse::UniqueAccessContainer*, Analyzer& a, Module* lookup, std::string name)>>
+            UniqueObjectHandlers;
+            std::unordered_map<
+                std::type_index,
+                std::function<std::shared_ptr<Expression>(const Parse::MultipleAccessContainer*, Analyzer& a, Module* lookup, Parse::Access access, std::string name, Lexer::Range where)>>
+            MultiObjectHandlers;
+            std::unordered_map<
+                std::type_index,
+                std::function<std::shared_ptr<Statement>(const Parse::Statement*, Analyzer& a, Type* parent, Scope* current, std::function<std::function<Type*()>(Return*)> ret, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup) >>
+            StatementHandlers;
+            std::unordered_map<
+                std::type_index,
+                std::function<std::shared_ptr<Expression>(Type* context, Parse::Name name, Lexer::Range where)>>
+            ContextLookupHandlers;
+
+            std::shared_ptr<Expression> AnalyzeExpression(Type* lookup, const Parse::Expression* e, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup);
 
             Analyzer(const Options::Clang&, const Parse::Module*, llvm::LLVMContext& con, const std::unordered_map<std::string, std::string>& = std::unordered_map<std::string, std::string>());
 
@@ -223,6 +245,14 @@ namespace Wide {
 
             llvm::APInt EvaluateConstantIntegerExpression(std::shared_ptr<Expression> e);
         };
+        template<typename T> struct base_pointer; template<typename T> struct base_pointer<const T*> { typedef T type;  };
+        template<typename T, typename Ret, typename First, typename... Args, typename F> void AddHandler(std::unordered_map<std::type_index, std::function<std::shared_ptr<Ret>(First, Args...)>>& map, F f) {
+            static_assert(std::is_base_of<typename base_pointer<First>::type, T>::value, "T must derive from the first argument.");
+            map[typeid(T)] = [f](First farg, Args... args) {
+                return f(static_cast<T*>(farg), std::forward<Args>(args)...);
+            };
+        }
+        std::shared_ptr<Statement> AnalyzeStatement(Analyzer& a, const Parse::Statement* stmt, Type* parent, Scope* current, std::function<std::function<Type*()>(Return*)>);
         bool IsRvalueType(Type* t);
         bool IsLvalueType(Type* t);
         Parse::Access GetAccessSpecifier(Type* from, Type* to);
@@ -236,5 +266,9 @@ namespace Wide {
         Type* CollapseType(Type* source, Type* member);
         llvm::Value* CollapseMember(Type* source, std::pair<llvm::Value*, Type*> member, CodegenContext& con);
         std::function<void(CodegenContext&)> ThrowObject(std::shared_ptr<Expression> expr, Context c);
+        std::shared_ptr<Expression> LookupFromImport(Type* context, Parse::Name name, Lexer::Range where, Parse::Import* imp);
+        std::shared_ptr<Expression> LookupFromContext(Type* context, Parse::Name name, Lexer::Range where);
+        std::shared_ptr<Expression> LookupIdentifier(Type* context, Parse::Name name, Lexer::Range where, Parse::Import* imp, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup);
+        void AddDefaultContextHandlers(Analyzer& a);
     }
 }

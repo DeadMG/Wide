@@ -11,9 +11,9 @@ TupleType::TupleType(std::vector<Type*> types, Analyzer& a)
 : contents(std::move(types)), AggregateType(a) {}
 
 std::shared_ptr<Expression> TupleType::ConstructFromLiteral(std::vector<std::shared_ptr<Expression>> exprs, Context c) {
-    assert(exprs.size() == GetMembers().size());
-    for (std::size_t i = 0; i < exprs.size(); ++i)
-        assert(GetMembers()[i] == exprs[i]->GetType()->Decay());
+    //assert(exprs.size() == GetMembers().size());
+    //for (std::size_t i = 0; i < exprs.size(); ++i)
+    //    assert(GetMembers()[i] == exprs[i]->GetType()->Decay());
 
     // If we have no members, return value (will be undef).
     if (GetMembers().size() == 0)
@@ -27,33 +27,16 @@ std::shared_ptr<Expression> TupleType::ConstructFromLiteral(std::vector<std::sha
         initializers.push_back(Type::BuildInplaceConstruction(PrimitiveAccessMember(self, i), { std::move(exprs[i]) }, c));
     }
 
-    struct TupleConstruction : Expression {
-        TupleConstruction(std::shared_ptr<Expression> self, std::vector<std::shared_ptr<Expression>> inits, TupleType* tup, Context c)
-            : self(std::move(self)), inits(std::move(inits)), tuplety(tup)
-        {
-            if (!tuplety->IsTriviallyDestructible())
-                destructor = tuplety->BuildDestructorCall(self, c, true);
-        }
-        TupleType* tuplety;
-        std::vector<std::shared_ptr<Expression>> inits;
-        std::shared_ptr<Expression> self; 
-        std::function<void(CodegenContext&)> destructor;
-        Type* GetType() override final {
-            return self->GetType()->Decay();
-        }
-        llvm::Value* ComputeValue(CodegenContext& con) override final {
-                for (auto&& init : inits)
-                    init->GetValue(con);
-                if (destructor)
-                    con.AddDestructor(destructor);
-            if (GetType()->AlwaysKeepInMemory(con)) {
-                return self->GetValue(con);
-            }
-            return con->CreateLoad(self->GetValue(con));
-        }
-    };
-
-    return Wide::Memory::MakeUnique<TupleConstruction>(self, std::move(initializers), this, c);
+    auto destructor = BuildDestructorCall(self, c, true);
+    return CreatePrimGlobal(this, [=](CodegenContext& con) -> llvm::Value* {
+        for (auto&& init : initializers)
+            init->GetValue(con);
+        if (destructor)
+            con.AddDestructor(destructor);
+        if (AlwaysKeepInMemory(con))
+            return self->GetValue(con);
+        return con->CreateLoad(self->GetValue(con));
+    });
 }
 
 bool TupleType::IsSourceATarget(Type* source, Type* target, Type* context) {
@@ -64,29 +47,27 @@ bool TupleType::IsSourceATarget(Type* source, Type* target, Type* context) {
     auto sourcetup = dynamic_cast<TupleType*>(source->Decay());
     if (!sourcetup) return false;
 
-    struct source_expr : public Expression {
-        source_expr(Type* s) :source(s) {}
-        Type* source;
-        Type* GetType() { return source; }
-        llvm::Value* ComputeValue(CodegenContext& e) { assert(false); return nullptr; }
-    };
-    auto expr = std::make_shared<source_expr>(source);
     std::vector<Type*> targettypes;
-
+    std::vector<Type*> sourcetypes;
     // The target should be either tuple initializable or a tuple. We is-a them if the types are is-a.
-    if (auto tupty = dynamic_cast<TupleType*>(target->Decay()))
-        targettypes = tupty->GetMembers();
-    else if (auto tupleinit = dynamic_cast<TupleInitializable*>(target->Decay()))
-        if (auto types = tupleinit->GetTypesForTuple())
-            targettypes = *types;
-        else
-            return false;
-    else
-        return false;
-    if (GetMembers().size() != targettypes.size()) return false;
-    for (std::size_t i = 0; i < GetMembers().size(); ++i)
-        if (!Type::IsFirstASecond(sourcetup->PrimitiveAccessMember(expr, i)->GetType(), targettypes[i], context)) return false;
-    return true;
+    auto get_types = [](Type* type) -> Wide::Util::optional<std::vector<Type*>> {
+        if (auto tupty = dynamic_cast<TupleType*>(type->Decay()))
+            return tupty->GetMembers();
+        else if (auto tupleinit = dynamic_cast<TupleInitializable*>(type->Decay()))
+            if (auto types = tupleinit->GetTypesForTuple())
+                return *types;
+        return Wide::Util::none;
+    };
+    if (auto sourcetypes = get_types(source)) {
+        if (auto targettypes = get_types(target)) {
+            if (sourcetypes->size() != targettypes->size()) return false;
+            for (std::size_t i = 0; i < sourcetypes->size(); ++i)
+                if (!Type::IsFirstASecond(Semantic::CollapseType(source, sourcetypes->at(i)), Semantic::CollapseType(target, targettypes->at(i)), context)) 
+                    return false;
+            return true;
+        }
+    }
+    return false;
 }
 std::string TupleType::explain() {
     std::string name = "{ ";

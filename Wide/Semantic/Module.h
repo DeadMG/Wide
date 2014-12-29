@@ -12,9 +12,10 @@ namespace Wide {
         class Module : public MetaType {
             const Parse::Module* m;
             Module* context;
+            std::string name;
             std::unordered_map<std::string, std::shared_ptr<Expression>> SpecialMembers;
         public:
-            Module(const Parse::Module* p, Module* higher, Analyzer& a);
+            Module(const Parse::Module* p, Module* higher, std::string name, Analyzer& a);
             Module* GetContext() override final { return context; }
             void AddSpecialMember(std::string name, std::shared_ptr<Expression> t);
 
@@ -23,6 +24,8 @@ namespace Wide {
             OverloadSet* CreateOperatorOverloadSet(Parse::OperatorName, Parse::Access access, OperatorAccess kind) override final;
             const Parse::Module* GetASTModule() { return m; }
             std::string explain() override final;
+
+            static void AddDefaultHandlers(Analyzer& a);
         };
     }
 }

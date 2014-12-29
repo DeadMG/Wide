@@ -180,7 +180,7 @@ AggregateType::Layout::Layout(AggregateType* agg, Wide::Semantic::Analyzer& a)
     struct Self : public Expression {
         Self(AggregateType* me) : self(me) {}
         AggregateType* self;
-        Type* GetType() override final { return self->analyzer.GetLvalueType(self); }
+        Type* GetType(Function* f) override final { return self->analyzer.GetLvalueType(self); }
         llvm::Value* ComputeValue(CodegenContext& c) override final { return self->DestructorFunction->arg_begin(); }
     };
     auto destructor_self = std::make_shared<Self>(agg);
@@ -212,16 +212,12 @@ std::shared_ptr<Expression> AggregateType::AccessVirtualPointer(std::shared_ptr<
     if (GetPrimaryBase()) return Type::GetVirtualPointer(Type::AccessBase(std::move(self), GetPrimaryBase()));
     if (!HasDeclaredDynamicFunctions()) return nullptr;
     auto vptrty = analyzer.GetPointerType(GetVirtualPointerType());
-    assert(self->GetType()->IsReference(this) || dynamic_cast<PointerType*>(self->GetType())->GetPointee() == this);
-    struct VPtrAccess : Expression {
-        VPtrAccess(Type* t, std::shared_ptr<Expression> self)
-        : ty(t), self(std::move(self)) {}
-        Type* ty;
-        std::shared_ptr<Expression> self;
-        llvm::Value* ComputeValue(CodegenContext& con) override final { return con.CreateStructGEP(self->GetValue(con), 0); }
-        Type* GetType() override final { return ty; }
-    };
-    return Wide::Memory::MakeUnique<VPtrAccess>(analyzer.GetLvalueType(vptrty), std::move(self));
+    return CreateResultExpression([=](Function* f) {
+        assert(self->GetType(f)->IsReference(this) || dynamic_cast<PointerType*>(self->GetType(f))->GetPointee() == this);
+        return CreatePrimGlobal(analyzer.GetLvalueType(vptrty), [=](CodegenContext& con) {
+            return con.CreateStructGEP(self->GetValue(con), 0);
+        });
+    });
 }
 
 bool AggregateType::IsEmpty() {
@@ -296,42 +292,33 @@ Type* AggregateType::GetConstantContext() {
     return this;
 }
 
-std::shared_ptr<Expression> AggregateType::PrimitiveAccessMember(std::shared_ptr<Expression> self, unsigned num) {
-    struct FieldAccess : Expression {
-        FieldAccess(std::shared_ptr<Expression> src, AggregateType* agg, unsigned n)
-        : source(std::move(src)), self(agg), num(n) {}
-        std::shared_ptr<Expression> source;
-        AggregateType* self;
-        unsigned num;
-        Type* GetType() override final {
-            auto source_ty = source->GetType();
-            auto root_ty = num < self->GetBases().size()
-                ? self->GetBases()[num]
-                : self->GetMembers()[num - self->GetBases().size()];
+std::shared_ptr<Expression> AggregateType::PrimitiveAccessMember(std::shared_ptr<Expression> source, unsigned num) {
+    return CreateResultExpression([=](Function* f) {
+        auto source_ty = source->GetType(f);
+        auto root_ty = num < GetBases().size()
+            ? GetBases()[num]
+            : GetMembers()[num - GetBases().size()];
 
-            return Semantic::CollapseType(source->GetType(), root_ty);
-        }
-        llvm::Value* ComputeValue(CodegenContext& con) override final {
+        auto result_ty = Semantic::CollapseType(source->GetType(f), root_ty);
+        return CreatePrimGlobal(result_ty, [=](CodegenContext& con) -> llvm::Value* {
             auto src = source->GetValue(con);
             // Is there even a field index? This may not be true for EBCO
-            auto&& offsets = self->GetLayout().Offsets;
+            auto&& offsets = GetLayout().Offsets;
             if (!offsets[num].FieldIndex) {
                 if (src->getType()->isPointerTy()) {
                     // Move it by that offset to get a unique pointer
                     auto self_as_int8ptr = con->CreatePointerCast(src, con.GetInt8PtrTy());
                     auto offset_self = con->CreateConstGEP1_32(self_as_int8ptr, offsets[num].ByteOffset);
-                    return con->CreatePointerCast(offset_self, GetType()->GetLLVMType(con));
+                    return con->CreatePointerCast(offset_self, result_ty->GetLLVMType(con));
                 }
                 // Downcasting to an EBCO'd value -> just produce a value.
-                return llvm::UndefValue::get(self->GetLayout().Offsets[num].ty->GetLLVMType(con));
+                return llvm::UndefValue::get(GetLayout().Offsets[num].ty->GetLLVMType(con));
             }
             auto fieldindex = *offsets[num].FieldIndex;
             auto obj = src->getType()->isPointerTy() ? con.CreateStructGEP(src, fieldindex) : con->CreateExtractValue(src, { fieldindex });
-            return Semantic::CollapseMember(source->GetType(), { obj, offsets[num].ty }, con);
-        }
-    };
-    assert(self);
-    return Wide::Memory::MakeUnique<FieldAccess>(std::move(self), this, num);
+            return Semantic::CollapseMember(source->GetType(f), { obj, offsets[num].ty }, con);
+        });
+    });
 }
 AggregateType::AggregateType(Analyzer& a) : Type(a) {
     CopyAssignmentName = analyzer.GetUniqueFunctionName();
@@ -499,8 +486,8 @@ std::vector<std::shared_ptr<Expression>> AggregateType::GetConstructorInitialize
                 con.AddExceptionOnlyDestructor(destructor);
             return val;
         }
-        Type* GetType() override final {
-            return Construction->GetType();
+        Type* GetType(Function* f) override final {
+            return Construction->GetType(f);
         }
         MemberConstructionAccess(Type* mem, Lexer::Range where, std::shared_ptr<Expression> expr, std::shared_ptr<Expression> memexpr)
             : member(mem), where(where), Construction(std::move(expr)), memexpr(memexpr)
@@ -529,7 +516,7 @@ OverloadSet* AggregateType::GetDefaultConstructor() {
             return ty->GetConstructorOverloadSet(GetAccessSpecifier(this, ty))->Resolve({ analyzer.GetLvalueType(ty) }, this);
         auto inits = GetDefaultInitializerForMember(i - GetBases().size());
         std::vector<Type*> types = { analyzer.GetLvalueType(ty) };
-        for (auto init : inits) types.push_back(init->GetType());
+        for (auto init : inits) types.push_back(init->GetType(nullptr));
         return ty->GetConstructorOverloadSet(GetAccessSpecifier(this, ty))->Resolve(types, this);
     };
     // If we shouldn't generate, give back an empty set and set the cache for future use.

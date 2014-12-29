@@ -44,66 +44,6 @@ namespace Wide {
         class OverloadSet;
         class Error;
         struct Type;
-        struct CodegenContext {
-            CodegenContext(const CodegenContext&) = default;
-            struct EHScope {
-                CodegenContext* context;
-                llvm::BasicBlock* target;
-                llvm::PHINode* phi;
-                std::vector<llvm::Constant*> types;
-            };
-
-            operator llvm::LLVMContext&() { return module->getContext(); }
-            llvm::IRBuilder<>* operator->() { return insert_builder; }
-            operator llvm::Module*() { return module; }
-
-            std::list<std::pair<std::function<void(CodegenContext&)>, bool>> GetAddedDestructors(CodegenContext& other) {
-                return std::list<std::pair<std::function<void(CodegenContext&)>, bool>>(std::next(other.Destructors.begin(), Destructors.size()), other.Destructors.end());
-            }
-            void GenerateCodeAndDestroyLocals(std::function<void(CodegenContext&)> action);
-            void DestroyDifference(CodegenContext& other, bool EH);
-            void DestroyAll(bool EH);
-            void DestroyTillLastTry();
-            bool IsTerminated(llvm::BasicBlock* bb);
-
-            llvm::BasicBlock* GetUnreachableBlock();
-            llvm::Type* GetLpadType();
-            llvm::Function* GetEHPersonality();
-            llvm::Function* GetCXABeginCatch();
-            llvm::Function* GetCXAEndCatch();
-            llvm::Function* GetCXARethrow();
-            llvm::Function* GetCXAThrow();
-            llvm::Function* GetCXAAllocateException();
-            llvm::Function* GetCXAFreeException();
-            llvm::IntegerType* GetPointerSizedIntegerType();
-            llvm::PointerType* GetInt8PtrTy();
-            llvm::Instruction* GetAllocaInsertPoint();
-
-            llvm::AllocaInst* CreateAlloca(Type* t);
-            llvm::Value* CreateStructGEP(llvm::Value* v, unsigned num);
-
-            llvm::BasicBlock* CreateLandingpadForEH();
-
-            bool destructing = false;
-            bool catching = false;
-            llvm::Module* module;
-            // Mostly used for e.g. member variables.
-            Wide::Util::optional<EHScope> EHHandler;
-        private:
-            CodegenContext(llvm::Module* mod, llvm::IRBuilder<>& alloc_builder, llvm::IRBuilder<>& gep_builder, llvm::IRBuilder<>& ir_builder);
-            std::list<std::pair<std::function<void(CodegenContext&)>, bool>> Destructors;
-            llvm::IRBuilder<>* alloca_builder;
-            llvm::IRBuilder<>* insert_builder;
-            llvm::IRBuilder<>* gep_builder;
-            std::shared_ptr<std::unordered_map<llvm::AllocaInst*, std::unordered_map<unsigned, llvm::Value*>>> gep_map;
-        public:
-            bool HasDestructors();
-            std::list<std::pair<std::function<void(CodegenContext&)>, bool>>::iterator AddDestructor(std::function<void(CodegenContext&)>);
-            std::list<std::pair<std::function<void(CodegenContext&)>, bool>>::iterator AddExceptionOnlyDestructor(std::function<void(CodegenContext&)>);
-            void EraseDestructor(std::list<std::pair<std::function<void(CodegenContext&)>, bool>>::iterator it);
-            void AddDestructors(std::list<std::pair<std::function<void(CodegenContext&)>, bool>>);
-            static void EmitFunctionBody(llvm::Function* func, std::function<void(CodegenContext&)> body);
-        };
         
         class FunctionType;
         enum class OperatorAccess {
@@ -121,7 +61,7 @@ namespace std {
 }
 namespace Wide {
     namespace Semantic {
-        struct Type : public Node {
+        struct Type {
         public:
             enum class InheritanceRelationship {
                 NotDerived,

@@ -3,6 +3,7 @@
 #include <unordered_set>
 #include <string>
 #include <memory>
+#include <Wide/Util/Hash.h>
 
 // Decorated name length exceeded
 #pragma warning(disable : 4503)
@@ -110,8 +111,8 @@ namespace Wide {
                 return offset > other.offset;
             }
         };
-        inline bool operator==(Position lhs, Position rhs) {
-            return lhs.offset == rhs.offset;
+        inline bool operator==(const Position& lhs, const Position& rhs) {
+            return lhs.name == rhs.name && lhs.offset == rhs.offset;
         }
         struct Range {
             Range(std::shared_ptr<std::string> where) : begin(where), end(where) {}
@@ -134,6 +135,25 @@ namespace Wide {
                 return out;
             }
         };
+        inline bool operator==(const Range& lhs, const Range& rhs) {
+            return lhs.begin == rhs.begin && lhs.end == rhs.end;
+        }
+    }
+}
+namespace std {
+    template<> struct hash<Wide::Lexer::Position> {
+        std::size_t operator()(const Wide::Lexer::Position& pos) const {
+            return Wide::Util::hash(Wide::Util::HashPermuter(), pos.offset, pos.name).value;
+        }
+    };
+    template<> struct hash<Wide::Lexer::Range> {
+        std::size_t operator()(const Wide::Lexer::Range& r) const {
+            return Wide::Util::hash(Wide::Util::HashPermuter(), r.begin, r.end).value;
+        }
+    };
+}
+namespace Wide {
+    namespace Lexer {
         inline Range operator+(Position lhs, Position rhs) {
             if (lhs.before(rhs))
                 return Range(lhs, rhs);

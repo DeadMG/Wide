@@ -101,8 +101,8 @@ OverloadSet* Bool::CreateOperatorOverloadSet(Parse::OperatorName opname, Parse::
                     phi->addIncoming(false_val, false_br);
                     return con->CreateZExt(phi, llvm::Type::getInt8Ty(con));
                 }
-                Type* GetType() override final {
-                    return lhs->GetType(); // Both args are bool and we produce bool
+                Type* GetType(Function* f) override final {
+                    return lhs->GetType(nullptr); // Both args are bool and we produce bool
                 }
             };
             return Wide::Memory::MakeUnique<ShortCircuitOr>(std::move(args[0]), std::move(args[1]));
@@ -145,8 +145,8 @@ OverloadSet* Bool::CreateOperatorOverloadSet(Parse::OperatorName opname, Parse::
                     phi->addIncoming(false_val, false_br);
                     return con->CreateZExt(phi, llvm::Type::getInt8Ty(con));
                 }
-                Type* GetType() override final {
-                    return lhs->GetType(); // Both args are bool and we produce bool
+                Type* GetType(Function* f) override final {
+                    return lhs->GetType(nullptr); // Both args are bool and we produce bool
                 }
             };
             return Wide::Memory::MakeUnique<ShortCircuitAnd>(std::move(args[0]), std::move(args[1]));

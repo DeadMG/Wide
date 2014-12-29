@@ -20,18 +20,19 @@ namespace Wide {
         };
         struct ExplicitConstruction : Expression {
             ExplicitConstruction(std::shared_ptr<Expression> self, std::vector<std::shared_ptr<Expression>> args, Context c, Type* t)
-            : c(c), self(std::move(self)) {
+            : c(c), self(std::move(self)), ty(t) {
                 result = t->BuildValueConstruction(std::move(args), c);
             }
             Context c;
+            Type* ty;
             std::shared_ptr<Expression> self;
             std::shared_ptr<Expression> result;
             llvm::Value* ComputeValue(CodegenContext& con) override final {
                 self->GetValue(con);
                 return result->GetValue(con);
             }
-            Type* GetType() override final {
-                return result->GetType();
+            Type* GetType(Function* f) override final {
+                return ty;
             }
         };
     }

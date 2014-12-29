@@ -2,7 +2,6 @@
 #include <Wide/Semantic/Type.h>
 #include <Wide/Semantic/ClangTU.h>
 #include <Wide/Parser/AST.h>
-#include <Wide/Parser/ASTVisitor.h>
 #include <Wide/Semantic/ClangType.h>
 #include <Wide/Semantic/StringType.h>
 #include <Wide/Semantic/Module.h>
@@ -134,7 +133,7 @@ Analyzer::Analyzer(const Options::Clang& opts, const Parse::Module* GlobalModule
         }
     };
 
-    global = GetWideModule(GlobalModule, nullptr);
+    global = GetWideModule(GlobalModule, nullptr, ".");
     EmptyOverloadSet = Wide::Memory::MakeUnique<OverloadSet>(std::unordered_set<OverloadResolvable*>(), nullptr, *this);
     ClangInclude = Wide::Memory::MakeUnique<ClangIncludeEntity>(*this);
     Void = Wide::Memory::MakeUnique<VoidType>(*this);
@@ -169,645 +168,11 @@ Analyzer::Analyzer(const Options::Clang& opts, const Parse::Module* GlobalModule
     global->AddSpecialMember("null", GetNullType()->BuildValueConstruction({}, context));
     global->AddSpecialMember("reinterpret_cast", GetOverloadSet(PointerCast.get())->BuildValueConstruction({}, context));
     global->AddSpecialMember("move", GetOverloadSet(Move.get())->BuildValueConstruction({}, context));
-            
-    AddExpressionHandler<Parse::String>([](Analyzer& a, Type* lookup, const Parse::String* str) {
-        return Wide::Memory::MakeUnique<String>(str->val, a);
-    });
 
-    AddExpressionHandler<Parse::MemberAccess>([](Analyzer& a, Type* lookup, const Parse::MemberAccess* memaccess) -> std::shared_ptr<Expression> {
-        struct MemberAccess : Expression {
-            MemberAccess(Type* l, Analyzer& an, const Parse::MemberAccess* mem, std::shared_ptr<Expression> obj)
-            : lookup(l), a(an), ast_node(mem), object(std::move(obj))
-            {
-                ListenToNode(object.get());
-                OnNodeChanged(object.get(), Change::Contents);
-            }
-            std::shared_ptr<Expression> object;
-            std::shared_ptr<Expression> access;
-            const Parse::MemberAccess* ast_node;
-            Analyzer& a;
-            Type* lookup;
-
-            void OnNodeChanged(Node* n, Change what) override final {
-                if (what == Change::Destroyed) return;
-                auto currty = GetType();
-                if (object->GetType()) {
-                    access = Type::AccessMember(object, ast_node->mem, Context{ lookup, ast_node->location });
-                    if (!access)
-                        throw NoMember(object->GetType(), lookup, ast_node->mem, ast_node->location);
-                }
-                else
-                    access = nullptr;
-                if (currty != GetType())
-                    OnChange();
-            }
-
-            Type* GetType() override final {
-                if (access)
-                    return access->GetType();
-                return nullptr;
-            }
-
-            bool IsConstantExpression() override final {
-                if (access)
-                    return access->IsConstantExpression();
-                return false;
-            }
-
-            llvm::Value* ComputeValue(CodegenContext& con) override final {
-                return access->GetValue(con);
-            }
-        };
-        return Wide::Memory::MakeUnique<MemberAccess>(lookup, a, memaccess, a.AnalyzeExpression(lookup, memaccess->expr));
-    });
-
-    AddExpressionHandler<Parse::BooleanTest>([](Analyzer& a, Type* lookup, const Parse::BooleanTest* test) {
-        return Type::BuildBooleanConversion(a.AnalyzeExpression(lookup, test->ex), { lookup, test->location });
-    });
-
-    AddExpressionHandler<Parse::FunctionCall>([](Analyzer& a, Type* lookup, const Parse::FunctionCall* call) -> std::shared_ptr<Expression> {
-        struct FunctionCall : Expression {
-            FunctionCall(Type* from, Lexer::Range where, std::shared_ptr<Expression> obj, std::vector<std::shared_ptr<Expression>> params)
-            : object(std::move(obj)), args(std::move(params)), from(from), where(where)
-            {
-                ListenToNode(object.get());
-                for (auto&& arg : args)
-                    ListenToNode(arg.get());
-                OnNodeChanged(object.get(), Change::Contents);
-            }
-            Lexer::Range where;
-            Type* from;
-
-            std::vector<std::shared_ptr<Expression>> args;
-            std::shared_ptr<Expression> object;
-            std::shared_ptr<Expression> call;
-
-            void OnNodeChanged(Node* n, Change what) override final {
-                if (what == Change::Destroyed) return;
-                if (n == call.get()) { OnChange(); return; }
-                auto ty = GetType();
-                if (object) {
-                    std::vector<std::shared_ptr<Expression>> refargs;
-                    for (auto&& arg : args) {
-                        if (arg->GetType())
-                            refargs.push_back(arg);
-                    }
-                    if (refargs.size() == args.size()) {
-                        call = Type::BuildCall(object, std::move(refargs), Context{ from, where });
-                        ListenToNode(call.get());
-                    }
-                    else
-                        throw std::runtime_error("fuck");
-                }
-                else
-                    throw std::runtime_error("fuck");
-                if (ty != GetType())
-                    OnChange();
-            }
-
-            Type* GetType() override final {
-                if (call)
-                    return call->GetType();
-                return nullptr;
-            }
-
-            bool IsConstantExpression() override final {
-                if (call)
-                    return call->IsConstantExpression();
-                return false;
-            }
-
-            llvm::Value* ComputeValue(CodegenContext& con) override final {
-                return call->GetValue(con);
-            }
-            Expression* GetImplementation() { return call.get(); }
-        };
-        std::vector<std::shared_ptr<Expression>> args;
-        for (auto arg : call->args)
-            args.push_back(a.AnalyzeExpression(lookup, arg));
-        return Wide::Memory::MakeUnique<FunctionCall>(lookup, call->location, a.AnalyzeExpression(lookup, call->callee), std::move(args));
-    });
-
-    AddExpressionHandler<Parse::Identifier>([](Analyzer& a, Type* lookup, const Parse::Identifier* ident) -> std::shared_ptr<Expression> {
-        struct IdentifierLookup : public Expression {
-            std::shared_ptr<Expression> LookupFromImport(Parse::Import* imp) {
-                auto propagate = [this, imp]() -> std::shared_ptr<Expression> {
-                    if (imp->previous)
-                        return LookupFromImport(imp->previous);
-                    else
-                        return nullptr;
-                };
-                if (std::find(imp->hidden.begin(), imp->hidden.end(), val) != imp->hidden.end())
-                    return propagate();
-                if (imp->names.size() != 0)
-                    if (std::find(imp->names.begin(), imp->names.end(), val) == imp->names.end())
-                        return propagate();
-                auto con = a.AnalyzeCachedExpression(a.GetGlobalModule(), imp->from);
-                if (auto result = Type::AccessMember(con, val, { lookup, location })) {
-                    auto subresult = propagate();
-                    if (!subresult) return result;
-                    auto over1 = dynamic_cast<OverloadSet*>(result->GetType());
-                    auto over2 = dynamic_cast<OverloadSet*>(subresult->GetType());
-                    if (over1 && over2)
-                        return a.GetOverloadSet(over1, over2)->BuildValueConstruction({}, { lookup, location });
-                    throw std::runtime_error("Ambiguous lookup of name " + Semantic::GetNameAsString(val));
-                }
-                return propagate();                
-            }
-            std::shared_ptr<Expression> LookupContext(Type* context) {
-                if (!context) return nullptr;
-                context = context->Decay();
-                if (auto mod = dynamic_cast<Module*>(context)) {
-                    // Module lookups shouldn't present any unknown types. They should only present constant contexts.
-                    auto local_mod_instance = mod->BuildValueConstruction({}, Context{ context, location });
-                    auto result = Type::AccessMember(local_mod_instance, val, { lookup, location });
-                    if (!result) return LookupContext(mod->GetContext());
-                    if (!dynamic_cast<OverloadSet*>(result->GetType()))
-                        return result;
-                    auto lookup2 = LookupContext(mod->GetContext());
-                    if (!lookup2)
-                        return result;
-                    if (!dynamic_cast<OverloadSet*>(lookup2->GetType()))
-                        return result;
-                    return a.GetOverloadSet(dynamic_cast<OverloadSet*>(result->GetType()), dynamic_cast<OverloadSet*>(lookup2->GetType()))->BuildValueConstruction({}, Context{ context, location });
-                }
-                if (auto udt = dynamic_cast<UserDefinedType*>(context)) {
-                    return LookupContext(context->GetContext());
-                }
-                if (auto result = Type::AccessMember(context->BuildValueConstruction({}, { lookup, location }), val, { lookup, location }))
-                    return result;
-                if (auto self = Type::AccessMember(context->BuildValueConstruction({}, { lookup, location }), "this", { lookup, location })) {
-                    if (auto result = Type::AccessMember(self, val, { lookup, location }))
-                        return result;
-                }
-                return LookupContext(context->GetContext());
-            }
-            std::shared_ptr<Expression> LookupIdentifierFromContext(Type* context) {
-                if (!context) return nullptr;
-                context = context->Decay();
-                auto result = LookupContext(context);
-                auto result2 = imports ? LookupFromImport(imports) : nullptr;
-                if (!result) return result2;
-                if (!result2) return result;
-                auto over1 = dynamic_cast<OverloadSet*>(result->GetType());
-                auto over2 = dynamic_cast<OverloadSet*>(result2->GetType());
-                if (over1 && over2)
-                    return a.GetOverloadSet(over1, over2)->BuildValueConstruction({}, { lookup, location });
-                throw std::runtime_error("Ambiguous lookup of name " + Semantic::GetNameAsString(val));                
-            }
-            std::shared_ptr<Expression> LookupIdentifier(Type* context) {
-                if (!context) return nullptr;
-                context = context->Decay();
-                if (auto fun = dynamic_cast<Function*>(context)) {
-                    auto lookup = fun->LookupLocal(val);
-                    if (lookup) return lookup;
-                    if (auto lam = dynamic_cast<LambdaType*>(context->GetContext())) {
-                        auto self = fun->LookupLocal("this");
-                        auto result = lam->LookupCapture(std::move(self), val);
-                        if (result)
-                            return std::move(result);
-                        return LookupIdentifierFromContext(context->GetContext()->GetContext());
-                    }
-                    if (auto member = fun->GetNonstaticMemberContext()) {
-                        auto self = fun->LookupLocal("this");
-                        auto result = Type::AccessMember(self, val, { self->GetType(), location });
-                        if (result)
-                            return std::move(result);
-                        if (member == context->GetContext())
-                            return LookupIdentifierFromContext(context->GetContext()->GetContext());
-                        return LookupIdentifierFromContext(context->GetContext());
-                    }
-                }
-                return LookupIdentifierFromContext(context);
-            }
-            IdentifierLookup(const Parse::Identifier* id, Analyzer& an, Type* lookup)
-                : a(an), location(id->location), val(id->val), lookup(lookup), imports(id->imp)
-            {
-                OnNodeChanged(lookup);
-            }
-            Analyzer& a;
-            Parse::Name val;
-            Lexer::Range location;
-            Type* lookup;
-            Parse::Import* imports;
-            std::shared_ptr<Expression> result;
-            void OnNodeChanged(Node* n) {
-                auto ty = GetType();
-                if (n == result.get()) { OnChange(); return; }
-                result = LookupIdentifier(lookup);
-                if (result)
-                    ListenToNode(result.get());
-                else
-                    throw NoMember(lookup, lookup, val, location);
-                if (ty != GetType())
-                    OnChange();
-            }
-            Type* GetType() {
-                return result ? result->GetType() : nullptr;
-            }
-            llvm::Value* ComputeValue(CodegenContext& con) override final {
-                return result->GetValue(con);
-            }
-
-            bool IsConstantExpression() override final {
-                if (result)
-                    return result->IsConstantExpression();
-                return false;
-            }
-        };
-        return Wide::Memory::MakeUnique<IdentifierLookup>(ident, a, lookup);
-    });
-
-    AddExpressionHandler<Parse::True>([](Analyzer& a, Type* lookup, const Parse::True* tru) {
-        return Wide::Memory::MakeUnique<Semantic::Boolean>(true, a);
-    });
-
-    AddExpressionHandler<Parse::False>([](Analyzer& a, Type* lookup, const Parse::False* fals) {
-        return Wide::Memory::MakeUnique<Semantic::Boolean>(false, a);
-    });
-
-    AddExpressionHandler<Parse::This>([](Analyzer& a, Type* lookup, const Parse::This* thi) {
-        Parse::Identifier i("this", nullptr, thi->location);
-        return a.AnalyzeExpression(lookup, &i);
-    });
-
-    AddExpressionHandler<Parse::Type>([](Analyzer& a, Type* lookup, const Parse::Type* ty) {
-        auto udt = a.GetUDT(ty, lookup->GetConstantContext() ? lookup->GetConstantContext() : lookup->GetContext(), "anonymous");
-        return a.GetConstructorType(udt)->BuildValueConstruction({}, { lookup, ty->location });
-    });
-
-
-    AddExpressionHandler<Parse::Integer>([](Analyzer& a, Type* lookup, const Parse::Integer* integer) {
-        return Wide::Memory::MakeUnique<Integer>(llvm::APInt(64, std::stoll(integer->integral_value), true), a);
-    });
-
-    AddExpressionHandler<Parse::BinaryExpression>([](Analyzer& a, Type* lookup, const Parse::BinaryExpression* bin) {
-        auto lhs = a.AnalyzeExpression(lookup, bin->lhs);
-        auto rhs = a.AnalyzeExpression(lookup, bin->rhs);
-        return Type::BuildBinaryExpression(std::move(lhs), std::move(rhs), bin->type, { lookup, bin->location });
-    });
-
-    AddExpressionHandler<Parse::UnaryExpression>([](Analyzer& a, Type* lookup, const Parse::UnaryExpression* unex) -> std::shared_ptr<Expression> {
-        auto expr = a.AnalyzeExpression(lookup, unex->ex);
-        if (unex->type == &Lexer::TokenTypes::And)
-            return Wide::Memory::MakeUnique<ImplicitAddressOf>(std::move(expr), Context(lookup, unex->location));
-        return Type::BuildUnaryExpression(std::move(expr), unex->type, { lookup, unex->location });
-    });
-
-
-    AddExpressionHandler<Parse::Increment>([](Analyzer& a, Type* lookup, const Parse::Increment* inc) {
-        auto expr = a.AnalyzeExpression(lookup, inc->ex);
-        auto ty = expr->GetType();
-        if (inc->postfix) {
-            auto copy = ty->Decay()->BuildValueConstruction({ expr }, { lookup, inc->location });
-            auto result = Type::BuildUnaryExpression(expr, &Lexer::TokenTypes::Increment, { lookup, inc->location });
-            return BuildChain(std::move(copy), BuildChain(std::move(result), copy));
-        }
-        return Type::BuildUnaryExpression(std::move(expr), &Lexer::TokenTypes::Increment, { lookup, inc->location });
-    });
-
-    AddExpressionHandler<Parse::Tuple>([](Analyzer& a, Type* lookup, const Parse::Tuple* tup) {
-        std::vector<std::shared_ptr<Expression>> exprs;
-        for (auto elem : tup->expressions)
-            exprs.push_back(a.AnalyzeExpression(lookup, elem));
-        std::vector<Type*> types;
-        for (auto&& expr : exprs)
-            types.push_back(expr->GetType()->Decay());
-        return a.GetTupleType(types)->ConstructFromLiteral(std::move(exprs), { lookup, tup->location });
-    });
-
-    AddExpressionHandler<Parse::PointerMemberAccess>([](Analyzer& a, Type* lookup, const Parse::PointerMemberAccess* paccess) {
-        auto subobj = Type::BuildUnaryExpression(a.AnalyzeExpression(lookup, paccess->ex), &Lexer::TokenTypes::Star, { lookup, paccess->location });
-        return Type::AccessMember(subobj, paccess->member, { lookup, paccess->location });
-    });
-
-    AddExpressionHandler<Parse::Decltype>([](Analyzer& a, Type* lookup, const Parse::Decltype* declty) {
-        auto expr = a.AnalyzeExpression(lookup, declty->ex);
-        return a.GetConstructorType(expr->GetType())->BuildValueConstruction({}, { lookup, declty->location });
-    });
-
-    AddExpressionHandler<Parse::Typeid>([](Analyzer& a, Type* lookup, const Parse::Typeid* rtti) -> std::shared_ptr<Expression> {
-        auto expr = a.AnalyzeExpression(lookup, rtti->ex);
-        auto tu = expr->GetType()->analyzer.AggregateCPPHeader("typeinfo", rtti->location);
-        auto global_namespace = expr->GetType()->analyzer.GetClangNamespace(*tu, tu->GetDeclContext());
-        auto std_namespace = Type::AccessMember(global_namespace->BuildValueConstruction({}, { lookup, rtti->location }), "std", { lookup, rtti->location });
-        assert(std_namespace && "<typeinfo> didn't have std namespace?");
-        auto clangty = Type::AccessMember(std::move(std_namespace), std::string("type_info"), { lookup, rtti->location });
-        assert(clangty && "<typeinfo> didn't have std::type_info?");
-        auto conty = dynamic_cast<ConstructorType*>(clangty->GetType()->Decay());
-        assert(conty && "<typeinfo>'s std::type_info wasn't a type?");
-        auto result = conty->analyzer.GetLvalueType(conty->GetConstructedType());
-        // typeid(T)
-        if (auto ty = dynamic_cast<ConstructorType*>(expr->GetType()->Decay())) {
-            struct RTTI : public Expression {
-                RTTI(Type* ty, Type* result) : ty(ty), result(result) { rtti = ty->GetRTTI(); }
-                Type* ty;
-                Type* result; 
-                std::function<llvm::Constant*(llvm::Module*)> rtti;
-                Type* GetType() override final { return result; }
-                llvm::Value* ComputeValue(CodegenContext& con) override final {
-                    return con->CreateBitCast(rtti(con), result->GetLLVMType(con));
-                }
-            };
-            return Wide::Memory::MakeUnique<RTTI>(ty->GetConstructedType(), result);
-        }
-        // typeid(expr)
-        struct RTTI : public Expression {
-            RTTI(std::shared_ptr<Expression> arg, Type* result) : expr(std::move(arg)), result(result)
-            {
-                // If we have a polymorphic type, find the RTTI entry, if applicable.
-                ty = expr->GetType()->Decay();
-                vtable = ty->GetVtableLayout();
-                if (!vtable.layout.empty()) {
-                    expr = Type::GetVirtualPointer(std::move(expr));
-                    for (unsigned int i = 0; i < vtable.layout.size(); ++i) {
-                        if (auto spec = boost::get<Type::VTableLayout::SpecialMember>(&vtable.layout[i].func)) {
-                            if (*spec == Type::VTableLayout::SpecialMember::RTTIPointer) {
-                                rtti_offset = i - vtable.offset;
-                                break;
-                            }
-                        }
-                    }
-                }
-                if (!rtti_offset)
-                    rtti = ty->GetRTTI();
-            }
-            std::function<llvm::Constant*(llvm::Module*)> rtti;
-            std::shared_ptr<Expression> expr;
-            Type::VTableLayout vtable;
-            Wide::Util::optional<unsigned> rtti_offset;
-            Type* result;
-            Type* ty;
-            Type* GetType() override final { return result; }
-            llvm::Value* ComputeValue(CodegenContext& con) override final {
-                // Do we have a vtable offset? If so, use the RTTI entry there. The expr will already be a pointer to the vtable pointer.
-                if (rtti_offset) {
-                    auto vtable_pointer = con->CreateLoad(expr->GetValue(con));
-                    auto rtti_pointer = con->CreateLoad(con->CreateConstGEP1_32(vtable_pointer, *rtti_offset));
-                    return con->CreateBitCast(rtti_pointer, result->GetLLVMType(con));
-                }
-                return con->CreateBitCast(rtti(con), result->GetLLVMType(con));
-            }
-        };
-        return Wide::Memory::MakeUnique<RTTI>(std::move(expr), result);
-    });
-    
-    AddExpressionHandler<Parse::Lambda>([](Analyzer& a, Type* lookup, const Parse::Lambda* lam) {
-        std::vector<std::unordered_set<Parse::Name>> lambda_locals;
-
-        // Only implicit captures.
-        std::unordered_set<Parse::Name> captures;
-        struct LambdaVisitor : Parse::Visitor<LambdaVisitor> {
-            std::vector<std::unordered_set<Parse::Name>>* lambda_locals;
-            std::unordered_set<Parse::Name>* captures;
-            void VisitVariableStatement(const Parse::Variable* v) {
-                for (auto&& name : v->name)
-                    lambda_locals->back().insert(name.name);
-            }
-            void VisitLambdaCapture(const Parse::Variable* v) {
-                for (auto&& name : v->name)
-                    lambda_locals->back().insert(name.name);
-            }
-            void VisitLambdaArgument(const Parse::FunctionArgument* arg) {
-                lambda_locals->back().insert(arg->name);
-            }
-            void VisitLambda(const Parse::Lambda* l) {
-                lambda_locals->emplace_back();
-                for (auto&& x : l->args)
-                    VisitLambdaArgument(&x);
-                for (auto&& x : l->Captures)
-                    VisitLambdaCapture(x);
-                lambda_locals->emplace_back();
-                for (auto&& x : l->statements)
-                    VisitStatement(x);
-                lambda_locals->pop_back();
-                lambda_locals->pop_back();
-            }
-            void VisitIdentifier(const Parse::Identifier* e) {
-                for (auto&& scope : *lambda_locals)
-                if (scope.find(e->val) != scope.end())
-                    return;
-                captures->insert(e->val);
-            }
-            void VisitCompoundStatement(const Parse::CompoundStatement* cs) {
-                lambda_locals->emplace_back();
-                for (auto&& x : cs->stmts)
-                    VisitStatement(x);
-                lambda_locals->pop_back();
-            }
-            void VisitWhileStatement(const Parse::While* wh) {
-                lambda_locals->emplace_back();
-                VisitExpression(wh->condition);
-                VisitStatement(wh->body);
-                lambda_locals->pop_back();
-            }
-            void VisitIfStatement(const Parse::If* br) {
-                lambda_locals->emplace_back();
-                VisitExpression(br->condition);
-                lambda_locals->emplace_back();
-                VisitStatement(br->true_statement);
-                lambda_locals->pop_back();
-                lambda_locals->pop_back();
-                lambda_locals->emplace_back();
-                VisitStatement(br->false_statement);
-                lambda_locals->pop_back();
-            }
-        };
-        LambdaVisitor l;
-        l.captures = &captures;
-        l.lambda_locals = &lambda_locals;
-        l.VisitLambda(lam);
-
-        Context c(lookup, lam->location);
-        // We obviously don't want to capture module-scope names.
-        // Only capture from the local scope, and from "this".
-        {
-            auto caps = std::move(captures);
-            for (auto&& name : caps) {
-                if (auto fun = dynamic_cast<Function*>(lookup)) {
-                    if (fun->LookupLocal(name))
-                        captures.insert(name);
-                    if (auto udt = dynamic_cast<UserDefinedType*>(fun->GetContext())) {
-                        if (udt->HasMember(name))
-                            captures.insert(name);
-                    }
-                }
-            }
-        }
-
-        // Just as a double-check, eliminate all explicit captures from the list. This should never have any effect
-        // but I'll hunt down any bugs caused by eliminating it later.
-        for (auto&& arg : lam->Captures)
-        for (auto&& name : arg->name)
-            captures.erase(name.name);
-
-        std::vector<std::pair<Parse::Name, std::shared_ptr<Expression>>> cap_expressions;
-        for (auto&& arg : lam->Captures) {
-            cap_expressions.push_back(std::make_pair(arg->name.front().name, a.AnalyzeExpression(lookup, arg->initializer)));
-        }
-        for (auto&& name : captures) {
-            Parse::Identifier ident(name, nullptr, lam->location);
-            cap_expressions.push_back(std::make_pair(name, a.AnalyzeExpression(lookup, &ident)));
-        }
-        std::vector<std::pair<Parse::Name, Type*>> types;
-        std::vector<std::shared_ptr<Expression>> expressions;
-        for (auto&& cap : cap_expressions) {
-            if (!lam->defaultref)
-                types.push_back(std::make_pair(cap.first, cap.second->GetType()->Decay()));
-            else {
-                auto IsImplicitCapture = [&]() {
-                    return captures.find(cap.first) != captures.end();
-                };
-                if (IsImplicitCapture()) {
-                    if (!cap.second->GetType()->IsReference())
-                        assert(false); // how the fuck
-                    types.push_back(std::make_pair(cap.first, cap.second->GetType()));
-                }
-                else {
-                    types.push_back(std::make_pair(cap.first, cap.second->GetType()->Decay()));
-                }
-            }
-            expressions.push_back(std::move(cap.second));
-        }
-        auto type = a.GetLambdaType(lam, types, lookup->GetConstantContext() ? lookup->GetConstantContext() : lookup->GetContext());
-        return type->BuildLambdaFromCaptures(std::move(expressions), c);
-    });
-
-    AddExpressionHandler<Parse::DynamicCast>([](Analyzer& a, Type* lookup, const Parse::DynamicCast* dyn_cast) -> std::shared_ptr<Expression> {
-        auto type = a.AnalyzeExpression(lookup, dyn_cast->type);
-        auto object = a.AnalyzeExpression(lookup, dyn_cast->object);
-
-        auto dynamic_cast_to_void = [&](PointerType* baseptrty) -> std::shared_ptr<Expression> {
-            // Load it from the vtable if it actually has one.
-            auto layout = baseptrty->GetPointee()->GetVtableLayout();
-            if (layout.layout.size() == 0) {
-                throw std::runtime_error("dynamic_casted to void* a non-polymorphic type.");
-            }
-            for (unsigned int i = 0; i < layout.layout.size(); ++i) {
-                if (auto spec = boost::get<Type::VTableLayout::SpecialMember>(&layout.layout[i].func)) {
-                    if (*spec == Type::VTableLayout::SpecialMember::OffsetToTop) {
-                        auto offset = i - layout.offset;
-                        auto vtable = Type::GetVirtualPointer(object);
-                        struct DynamicCastToVoidPointer : Expression {
-                            DynamicCastToVoidPointer(unsigned off, std::shared_ptr<Expression> obj, std::shared_ptr<Expression> vtable)
-                            : vtable_offset(off), vtable(std::move(vtable)), object(std::move(obj)) {}
-                            unsigned vtable_offset;
-                            std::shared_ptr<Expression> vtable;
-                            std::shared_ptr<Expression> object;
-                            llvm::Value* ComputeValue(CodegenContext& con) override final {
-                                auto obj_ptr = object->GetValue(con);
-                                llvm::BasicBlock* source_bb = con->GetInsertBlock();
-                                llvm::BasicBlock* nonnull_bb = llvm::BasicBlock::Create(con, "nonnull_bb", source_bb->getParent());
-                                llvm::BasicBlock* continue_bb = llvm::BasicBlock::Create(con, "continue_bb", source_bb->getParent());
-                                con->CreateCondBr(con->CreateIsNull(obj_ptr), continue_bb, nonnull_bb);
-                                con->SetInsertPoint(nonnull_bb);
-                                auto vtable_ptr = con->CreateLoad(vtable->GetValue(con));
-                                auto ptr_to_offset = con->CreateConstGEP1_32(vtable_ptr, vtable_offset);
-                                auto offset = con->CreateLoad(ptr_to_offset);
-                                auto result = con->CreateGEP(con->CreateBitCast(obj_ptr, con.GetInt8PtrTy()), offset);
-                                con->CreateBr(continue_bb);
-                                con->SetInsertPoint(continue_bb);
-                                auto phi = con->CreatePHI(con.GetInt8PtrTy(), 2);
-                                phi->addIncoming(llvm::Constant::getNullValue(con.GetInt8PtrTy()), source_bb);
-                                phi->addIncoming(result, nonnull_bb);
-                                return phi;
-                            }
-                            Type* GetType() override final {
-                                auto&& a = object->GetType()->analyzer;
-                                return a.GetPointerType(a.GetVoidType());
-                            }
-                        };
-                        return Wide::Memory::MakeUnique<DynamicCastToVoidPointer>(offset, std::move(object), std::move(vtable));
-                    }
-                }
-            }
-            throw std::runtime_error("Attempted to cast to void*, but the object's vtable did not carry an offset to top member.");
-        };
-
-        auto polymorphic_dynamic_cast = [&](PointerType* basety, PointerType* derty) -> std::shared_ptr<Expression> {
-            struct PolymorphicDynamicCast : Expression {
-                PolymorphicDynamicCast(Type* basety, Type* derty, std::shared_ptr<Expression> object)
-                : basety(basety), derty(derty), object(std::move(object)) 
-                {
-                    basertti = basety->GetRTTI();
-                    derrtti = derty->GetRTTI();
-                }
-                std::shared_ptr<Expression> object;
-                Type* basety;
-                Type* derty;
-                std::function<llvm::Constant*(llvm::Module*)> basertti;
-                std::function<llvm::Constant*(llvm::Module*)> derrtti;
-                Type* GetType() override final {
-                    return derty->analyzer.GetPointerType(derty);
-                }
-                llvm::Value* ComputeValue(CodegenContext& con) override final {
-                    auto obj_ptr = object->GetValue(con);
-                    llvm::BasicBlock* source_bb = con->GetInsertBlock();
-                    llvm::BasicBlock* nonnull_bb = llvm::BasicBlock::Create(con, "nonnull_bb", source_bb->getParent());
-                    llvm::BasicBlock* continue_bb = llvm::BasicBlock::Create(con, "continue_bb", source_bb->getParent());
-                    con->CreateCondBr(con->CreateIsNull(obj_ptr), continue_bb, nonnull_bb);
-                    con->SetInsertPoint(nonnull_bb);
-                    auto dynamic_cast_func = con.module->getFunction("__dynamic_cast");
-                    auto ptrdiffty = llvm::IntegerType::get(con, basety->analyzer.GetDataLayout().getPointerSize());
-                    if (!dynamic_cast_func) {
-                        llvm::Type* args[] = { con.GetInt8PtrTy(), con.GetInt8PtrTy(), con.GetInt8PtrTy(), ptrdiffty };
-                        auto functy = llvm::FunctionType::get(llvm::Type::getVoidTy(con), args, false);
-                        dynamic_cast_func = llvm::Function::Create(functy, llvm::GlobalValue::LinkageTypes::ExternalLinkage, "__dynamic_cast", con);
-                    }
-                    llvm::Value* args[] = { obj_ptr, basertti(con), derrtti(con), llvm::ConstantInt::get(ptrdiffty, (uint64_t)-1, true) };
-                    auto result = con->CreateCall(dynamic_cast_func, args, "");
-                    con->CreateBr(continue_bb);
-                    con->SetInsertPoint(continue_bb);
-                    auto phi = con->CreatePHI(con.GetInt8PtrTy(), 2);
-                    phi->addIncoming(llvm::Constant::getNullValue(derty->GetLLVMType(con)), source_bb);
-                    phi->addIncoming(result, nonnull_bb);
-                    return con->CreatePointerCast(phi, GetType()->GetLLVMType(con));
-                }
-            };
-            return Wide::Memory::MakeUnique<PolymorphicDynamicCast>(basety->GetPointee(), derty->GetPointee(), std::move(object));
-        };
-
-        if (auto con = dynamic_cast<ConstructorType*>(type->GetType()->Decay())) {
-            // Only support pointers right now
-            if (auto derptrty = dynamic_cast<PointerType*>(con->GetConstructedType())) {
-                if (auto baseptrty = dynamic_cast<PointerType*>(object->GetType()->Decay())) {
-                    // derived-to-base conversion- doesn't require calling the routine
-                    if (baseptrty->GetPointee()->IsDerivedFrom(derptrty->GetPointee()) == Type::InheritanceRelationship::UnambiguouslyDerived) {
-                        return derptrty->BuildValueConstruction({ object }, { lookup, dyn_cast->location });
-                    }
-
-                    // void*
-                    if (derptrty->GetPointee() == a.GetVoidType()) {
-                        return dynamic_cast_to_void(baseptrty);
-                    }
-
-                    // polymorphic
-                    if (baseptrty->GetPointee()->GetVtableLayout().layout.empty())
-                        throw std::runtime_error("Attempted dynamic_cast on non-polymorphic base.");
-
-                    return polymorphic_dynamic_cast(baseptrty, derptrty);
-                }
-            }
-        }
-        throw std::runtime_error("Used unimplemented dynamic_cast functionality.");
-    });
-
-    AddExpressionHandler<Parse::Index>([](Analyzer& a, Type* lookup, const Parse::Index* index) {
-        auto obj = a.AnalyzeExpression(lookup, index->object);
-        auto ind = a.AnalyzeExpression(lookup, index->index);
-        auto ty = obj->GetType();
-        return Type::BuildIndex(std::move(obj), std::move(ind), { lookup, index->location });
-    });
-
-    AddExpressionHandler<Parse::DestructorAccess>([](Analyzer& a, Type* lookup, const Parse::DestructorAccess* des) -> std::shared_ptr<Expression> {
-        auto object = a.AnalyzeExpression(lookup, des->expr);
-        auto ty = object->GetType();
-        return std::make_shared<DestructorCall>(ty->Decay()->BuildDestructorCall(std::move(object), { lookup, des->location }, false), a);
-    });
-
-    AddExpressionHandler<Parse::GlobalModuleReference>([](Analyzer& a, Type* lookup, const Parse::GlobalModuleReference* globmod) -> std::shared_ptr < Expression > {
-        return a.GetGlobalModule()->BuildValueConstruction({}, { lookup, globmod->location });
-    });
+    Module::AddDefaultHandlers(*this);
+    Expression::AddDefaultHandlers(*this);
+    Function::AddDefaultHandlers(*this);
+    AddDefaultContextHandlers(*this);
 }
 
 ClangTU* Analyzer::LoadCPPHeader(std::string file, Lexer::Range where) {
@@ -950,9 +315,9 @@ Function* Analyzer::GetWideFunction(const Parse::FunctionBase* p, Type* context,
     return WideFunctions[p][types].get();
 }
 
-Module* Analyzer::GetWideModule(const Parse::Module* p, Module* higher) {
+Module* Analyzer::GetWideModule(const Parse::Module* p, Module* higher, std::string name) {
     if (WideModules.find(p) == WideModules.end())
-        WideModules[p] = Wide::Memory::MakeUnique<Module>(p, higher, *this);
+        WideModules[p] = Wide::Memory::MakeUnique<Module>(p, higher, name, *this);
     return WideModules[p].get();
 }
 
@@ -1091,11 +456,11 @@ std::vector<Type*> Analyzer::GetFunctionParameters(const Parse::FunctionBase* fu
     if (HasImplicitThis(func, context)) {
         // If we're exported as an rvalue-qualified function, we need rvalue.
         if (auto astfun = dynamic_cast<const Parse::AttributeFunctionBase*>(func)) {
-            for (auto attr : astfun->attributes) {
-                if (auto name = dynamic_cast<const Parse::Identifier*>(attr.initialized)) {
+            for (auto&& attr : astfun->attributes) {
+                if (auto name = dynamic_cast<const Parse::Identifier*>(attr.initialized.get())) {
                     if (auto string = boost::get<std::string>(&name->val)) {
                         if (*string == "export") {
-                            auto expr = context->analyzer.AnalyzeExpression(context, attr.initializer);
+                            auto expr = context->analyzer.AnalyzeExpression(context, attr.initializer.get());
                             auto overset = dynamic_cast<OverloadSet*>(expr->GetType()->Decay());
                             if (!overset)
                                 throw NotAType(expr->GetType()->Decay(), attr.initializer->location);
@@ -1122,7 +487,7 @@ std::vector<Type*> Analyzer::GetFunctionParameters(const Parse::FunctionBase* fu
     for (auto&& arg : func->args) {
         if (!arg.type) {
             if (arg.default_value) {
-                auto p_type = AnalyzeExpression(context, arg.default_value)->GetType()->Decay();
+                auto p_type = AnalyzeExpression(context, arg.default_value.get())->GetType()->Decay();
                 QuickInfo(arg.location, p_type);
                 ParameterHighlight(arg.location);
                 out.push_back(p_type);
@@ -1133,7 +498,7 @@ std::vector<Type*> Analyzer::GetFunctionParameters(const Parse::FunctionBase* fu
             continue;
         }      
 
-        auto ty_expr = arg.type;
+        auto ty_expr = arg.type.get();
         auto expr = AnalyzeExpression(context, ty_expr);
         auto p_type = expr->GetType()->Decay();
         auto con_type = dynamic_cast<ConstructorType*>(p_type);
@@ -1168,11 +533,11 @@ Type* Analyzer::GetNonstaticContext(const Parse::FunctionBase* p, Type* context)
         return context;
     // May be exported.
     if (auto astfun = dynamic_cast<const Parse::AttributeFunctionBase*>(p)) {
-        for (auto attr : astfun->attributes) {
-            if (auto name = dynamic_cast<const Parse::Identifier*>(attr.initialized)) {
+        for (auto&& attr : astfun->attributes) {
+            if (auto name = dynamic_cast<const Parse::Identifier*>(attr.initialized.get())) {
                 if (auto string = boost::get<std::string>(&name->val)) {
                     if (*string == "export") {
-                        auto expr = context->analyzer.AnalyzeExpression(context, attr.initializer);
+                        auto expr = context->analyzer.AnalyzeExpression(context, attr.initializer.get());
                         auto overset = dynamic_cast<OverloadSet*>(expr->GetType()->Decay());
                         if (!overset)
                             //throw NotAType(expr->GetType()->Decay(), attr.initializer->location);
@@ -1268,8 +633,8 @@ namespace {
     void ProcessFunction(const Parse::AttributeFunctionBase* f, Analyzer& a, Module* m, std::string name, std::function<void(const Parse::AttributeFunctionBase*, std::string, Module*)> callback) {
         if (IsMultiTyped(f)) return;
         bool exported = false;
-        for (auto attr : f->attributes) {
-            if (auto ident = dynamic_cast<const Parse::Identifier*>(attr.initialized))
+        for (auto&& attr : f->attributes) {
+            if (auto ident = dynamic_cast<const Parse::Identifier*>(attr.initialized.get()))
                 if (auto str = boost::get<std::string>(&ident->val))
                     if (*str == "export")
                         exported = true;
@@ -1283,9 +648,9 @@ namespace {
                 return;
         callback(f, name, m);
     }
-    template<typename T> void ProcessOverloadSet(std::unordered_set<T*> set, Analyzer& a, Module* m, std::string name, std::function<void(const Parse::AttributeFunctionBase*, std::string, Module*)> callback) {
-        for (auto func : set) {
-            ProcessFunction(func, a, m, name, callback);
+    template<typename T> void ProcessOverloadSet(std::unordered_set<std::shared_ptr<T>> set, Analyzer& a, Module* m, std::string name, std::function<void(const Parse::AttributeFunctionBase*, std::string, Module*)> callback) {
+        for (auto&& func : set) {
+            ProcessFunction(func.get(), a, m, name, callback);
         }
     }
 }
@@ -1300,8 +665,8 @@ void AnalyzeExportedFunctionsInModule(Analyzer& a, Module* m, std::function<void
         }
     }
     for (auto&& decl : mod->named_decls) {
-        if (auto overset = boost::get<std::unordered_map<Parse::Access, std::unordered_set<Parse::Function*>>>(&decl.second)) {
-            for (auto access : (*overset))
+        if (auto overset = boost::get<Parse::ModuleOverloadSet<Parse::Function>>(&decl.second)) {
+            for (auto access : overset->funcs)
                 ProcessOverloadSet(access.second, a, m, decl.first, callback);
         }
     }
@@ -1348,7 +713,7 @@ OverloadResolvable* Analyzer::GetCallableForTemplateType(const Parse::TemplateTy
                     valid.push_back(arg);
                     continue;
                 }
-                auto p_type = a.AnalyzeCachedExpression(context, templatetype->arguments[num].type)->GetType()->Decay();
+                auto p_type = a.AnalyzeCachedExpression(context, templatetype->arguments[num].type.get())->GetType()->Decay();
                 auto con_type = dynamic_cast<ConstructorType*>(p_type);
                 if (!con_type)
                     throw Wide::Semantic::NotAType(p_type, templatetype->arguments[num].location);
@@ -1388,7 +753,7 @@ TemplateType* Analyzer::GetTemplateType(const Wide::Parse::TemplateType* ty, Typ
         }
         name += ")";
         
-        WideTemplateInstantiations[ty][arguments] = Wide::Memory::MakeUnique<TemplateType>(ty->t, *this, context, args, name);
+        WideTemplateInstantiations[ty][arguments] = Wide::Memory::MakeUnique<TemplateType>(ty->t.get(), *this, context, args, name);
     }
     return WideTemplateInstantiations[ty][arguments].get();
 }
@@ -1417,8 +782,10 @@ bool Semantic::IsMultiTyped(const Parse::FunctionBase* f) {
 std::shared_ptr<Expression> Analyzer::AnalyzeExpression(Type* lookup, const Parse::Expression* e) {
     static_assert(std::is_polymorphic<Parse::Expression>::value, "Expression must be polymorphic.");
     auto&& type_info = typeid(*e);
-    if (expression_handlers.find(type_info) != expression_handlers.end())
-        return expression_handlers[type_info](*this, lookup, e);
+    if (ExpressionCache.find(e) == ExpressionCache.end())
+        if (ExpressionHandlers.find(type_info) != ExpressionHandlers.end())
+            ExpressionCache[e] = ExpressionHandlers[type_info](e, *this, lookup);
+    return ExpressionCache[e];
     assert(false && "Attempted to analyze expression for which there was no handler.");
 }
 Type* Semantic::InferTypeFromExpression(Expression* e, bool local) {
@@ -1429,11 +796,6 @@ Type* Semantic::InferTypeFromExpression(Expression* e, bool local) {
         return explicitcon->GetType();
     }
     return e->GetType()->Decay();
-}
-std::shared_ptr<Expression> Analyzer::AnalyzeCachedExpression(Type* lookup, const Parse::Expression* e) {
-    if (ExpressionCache.find(e) == ExpressionCache.end())
-        ExpressionCache[e] = AnalyzeExpression(lookup, e);
-    return ExpressionCache[e];
 }
 ClangTU* Analyzer::GetAggregateTU() {
     if (!AggregateTU)
@@ -1599,4 +961,93 @@ llvm::APInt Analyzer::EvaluateConstantIntegerExpression(std::shared_ptr<Expressi
     evalfunc->eraseFromParent();
     //evalfunc->removeFromParent();
     return result.IntVal;
+}
+std::shared_ptr<Statement> Semantic::AnalyzeStatement(Analyzer& analyzer, const Parse::Statement* s, Type* parent, Scope* current, std::function<std::function<Type*()>(Return*)> func) {
+    if (analyzer.ExpressionHandlers.find(typeid(*s)) != analyzer.ExpressionHandlers.end())
+        return analyzer.ExpressionHandlers[typeid(*s)](static_cast<const Parse::Expression*>(s), analyzer, parent);
+    return analyzer.StatementHandlers[typeid(*s)](s, analyzer, parent, current, func);
+}
+std::shared_ptr<Expression> Semantic::LookupFromImport(Type* context, Wide::Parse::Name name, Lexer::Range where, Parse::Import* imp) {
+    auto propagate = [=]() -> std::shared_ptr<Expression> {
+        if (imp->previous) return LookupFromImport(context, name, where, imp->previous.get());
+        else return nullptr;
+    };
+    if (std::find(imp->hidden.begin(), imp->hidden.end(), name) != imp->hidden.end())
+        return propagate();
+    if (imp->names.size() != 0)
+        if (std::find(imp->names.begin(), imp->names.end(), name) == imp->names.end())
+            return propagate();
+    auto con = context->analyzer.AnalyzeExpression(context->analyzer.GetGlobalModule(), imp->from.get());
+    if (auto result = Type::AccessMember(con, name, { context, where })) {
+        auto subresult = propagate();
+        if (!subresult) return result;
+        auto over1 = dynamic_cast<OverloadSet*>(result->GetType(nullptr));
+        auto over2 = dynamic_cast<OverloadSet*>(subresult->GetType(nullptr));
+        if (over1 && over2)
+            return context->analyzer.GetOverloadSet(over1, over2)->BuildValueConstruction({}, { context, where });
+        throw std::runtime_error("Ambiguous lookup of name " + Semantic::GetNameAsString(name));
+    }
+    return propagate();
+}
+std::shared_ptr<Expression> Semantic::LookupFromContext(Type* context, Parse::Name name, Lexer::Range where) {
+    if (!context) return nullptr;
+    context = context->Decay();
+    if (context->analyzer.ContextLookupHandlers.find(typeid(*context)) != context->analyzer.ContextLookupHandlers.end()) {
+        auto result = context->analyzer.ContextLookupHandlers.at(typeid(*context))(context, name, where);
+        if (result)
+            return result;
+        return LookupFromContext(context->GetContext(), name, where);
+    }
+    if (auto result = Type::AccessMember(context->BuildValueConstruction({}, { context, where }), name, { context, where }))
+        return result;
+    return LookupFromContext(context->GetContext(), name, where);
+
+    if (auto udt = dynamic_cast<UserDefinedType*>(context))
+        return LookupFromContext(context, name, where);
+    if (auto self = Type::AccessMember(context->BuildValueConstruction({}, { context, where }), "this", { context, where })) {
+        if (auto result = Type::AccessMember(self, name, { context, where }))
+            return result;
+    }
+    return LookupFromContext(context, name, where);
+}
+std::shared_ptr<Expression> Semantic::LookupIdentifier(Type* context, Parse::Name name, Lexer::Range where, Parse::Import* imports, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup) {
+    if (auto result = NonstaticLookup(name, where))
+        return result;
+    // No non-static results found. Unify the results from context and from imports.
+    if (!context) return nullptr;
+    context = context->Decay();
+    auto result = LookupFromContext(context, name, where);
+    auto result2 = imports ? LookupFromImport(context, name, where, imports) : nullptr;
+    if (!result) return result2;
+    if (!result2) return result;
+    auto over1 = dynamic_cast<OverloadSet*>(result->GetType(nullptr));
+    auto over2 = dynamic_cast<OverloadSet*>(result2->GetType(nullptr));
+    if (over1 && over2)
+        return context->analyzer.GetOverloadSet(over1, over2)->BuildValueConstruction({}, { context, where });
+    throw std::runtime_error("Ambiguous lookup of name " + Semantic::GetNameAsString(name));
+}
+void Semantic::AddDefaultContextHandlers(Analyzer& a) {
+    AddHandler<Semantic::Module>(a.ContextLookupHandlers, [](Module* mod, Parse::Name name, Lexer::Range where) {
+        auto local_mod_instance = mod->BuildValueConstruction({}, Context{ mod, where });
+        auto result = Type::AccessMember(local_mod_instance, name, { mod, where });
+        if (!result) return LookupFromContext(mod, name, where);
+        if (!dynamic_cast<OverloadSet*>(result->GetType(nullptr)))
+            return result;
+        auto lookup2 = LookupFromContext(mod, name, where);
+        if (!lookup2)
+            return result;
+        if (!dynamic_cast<OverloadSet*>(lookup2->GetType(nullptr)))
+            return result;
+        return mod->analyzer.GetOverloadSet(dynamic_cast<OverloadSet*>(result->GetType(nullptr)), dynamic_cast<OverloadSet*>(lookup2->GetType(nullptr)))->BuildValueConstruction({}, Context{ mod, where });
+    });
+
+    AddHandler<Semantic::UserDefinedType>(a.ContextLookupHandlers, [](UserDefinedType* udt, Parse::Name name, Lexer::Range where) -> std::shared_ptr<Expression> {
+        if (auto nam = boost::get<std::string>(&name))
+            return udt->AccessStaticMember(*nam, { udt, where });
+        return nullptr;
+    });
+
+    AddHandler<Semantic::TemplateType>(a.ContextLookupHandlers, [](TemplateType* udt, Parse::Name name, Lexer::Range where) -> std::shared_ptr<Expression> {
+        return udt->analyzer.ContextLookupHandlers[typeid(UserDefinedType)](udt, name, where);
+    });
 }

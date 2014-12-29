@@ -1,22 +1,22 @@
 #include <Wide/Util/Driver/Warnings.h>
-#include <Wide/Semantic/Warnings/UnusedFunction.h>
-#include <Wide/Semantic/Warnings/NonvoidFalloff.h>
+//#include <Wide/Semantic/Warnings/UnusedFunction.h>
+//#include <Wide/Semantic/Warnings/NonvoidFalloff.h>
 #include <Wide/Parser/AST.h>
 #include <iostream>
 
 void Wide::Driver::PrintUnusedFunctionsWarning(const std::unordered_set<std::string>& files, Semantic::Analyzer& a) {
-    auto unused = Wide::Semantic::GetUnusedFunctions(a);
-    for (auto func : unused) {
-        if (files.find(*std::get<0>(func).begin.name) != files.end())
-            std::cout << "Warning: Unused function " << std::get<1>(func) << " at " << to_string(std::get<0>(func)) << "\n";
-    }
+    //auto unused = Wide::Semantic::GetUnusedFunctions(a);
+    //for (auto func : unused) {
+    //    if (files.find(*std::get<0>(func).begin.name) != files.end())
+    //        std::cout << "Warning: Unused function " << std::get<1>(func) << " at " << to_string(std::get<0>(func)) << "\n";
+    //}
 }
 void Wide::Driver::PrintNonvoidFalloffWarning(const std::unordered_set<std::string>& files, Semantic::Analyzer& a) {
-    auto unused = Wide::Semantic::GetNonvoidFalloffFunctions(a);
-    for (auto func : unused) {
-        if (files.find(*std::get<0>(func).begin.name) != files.end())
-            std::cout << "Warning: Control flow may fall off end of non-void function " << std::get<1>(func) << "\n";
-    }
+   // auto unused = Wide::Semantic::GetNonvoidFalloffFunctions(a);
+   // for (auto func : unused) {
+   //     if (files.find(*std::get<0>(func).begin.name) != files.end())
+   //         std::cout << "Warning: Control flow may fall off end of non-void function " << std::get<1>(func) << "\n";
+   // }
 }
 
 /*

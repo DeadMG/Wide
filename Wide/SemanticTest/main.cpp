@@ -36,7 +36,7 @@ int main(int argc, char** argv) {
 
         ret["CompileFail"] = [&] {
             try {
-                Compile(clangopts, input["input"].as<std::string>());
+                Wide::Driver::Compile(clangopts, input["input"].as<std::string>());
                 return 0;
             } catch (std::runtime_error& e) {
                 std::cout << e.what() << "\n";
@@ -45,7 +45,7 @@ int main(int argc, char** argv) {
         };
         ret["JITSuccess"] = [&] {
             try {
-                Jit(clangopts, input["input"].as<std::string>());
+                Wide::Driver::Jit(clangopts, input["input"].as<std::string>());
                 return 0;
             } catch (...) {
                 return 1;
@@ -64,7 +64,7 @@ int main(int argc, char** argv) {
     std::unordered_map<std::string, std::function<bool()>> files;
 #pragma warning(disable : 4800)
     for(auto mode : modes) {
-        TestDirectory(mode.first, mode.first, argv[0], input.count("break"), files);
+        Wide::Driver::TestDirectory(mode.first, mode.first, argv[0], input.count("break"), files);
     }
     Wide::Concurrency::UnorderedSet<std::string> failed;
 #ifdef _MSC_VER

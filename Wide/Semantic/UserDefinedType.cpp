@@ -34,9 +34,9 @@ using namespace Semantic;
 
 namespace {
     bool HasAttribute(const Parse::DynamicFunction* func, std::string arg) {
-        for (auto attr : func->attributes) {
-            if (auto ident = dynamic_cast<const Parse::Identifier*>(attr.initialized)) {
-                if (auto string = boost::get<std::string>(&ident->val)) {
+        for (auto&& attr : func->attributes) {
+            if (auto&& ident = dynamic_cast<const Parse::Identifier*>(attr.initialized.get())) {
+                if (auto&& string = boost::get<std::string>(&ident->val)) {
                     if (*string == arg)
                         return true;
                 }
@@ -45,17 +45,17 @@ namespace {
         return false;
     }
     void AddAllBases(std::unordered_set<Type*>& all_bases, Type* root) {
-        for (auto base : root->GetBases()) {
+        for (auto&&base : root->GetBases()) {
             all_bases.insert(base);
             AddAllBases(all_bases, base);
         }
     }
 }
 UserDefinedType::BaseData::BaseData(UserDefinedType* self) {
-    for (auto expr : self->type->bases) {
-        auto base = self->analyzer.AnalyzeExpression(self->context, expr);
-        auto con = dynamic_cast<ConstructorType*>(base->GetType()->Decay());
-        if (!con) throw NotAType(base->GetType(), expr->location);
+    for (auto&& expr : self->type->bases) {
+        auto base = self->analyzer.AnalyzeExpression(self->context, expr.get(), [](Parse::Name, Lexer::Range) { return nullptr; });
+        auto con = dynamic_cast<ConstructorType*>(base->GetType(nullptr)->Decay());
+        if (!con) throw NotAType(base->GetType(nullptr), expr->location);
         auto udt = con->GetConstructedType();
         if (udt == self) throw InvalidBase(con->GetConstructedType(), expr->location);
         if (udt->IsFinal()) throw InvalidBase(con->GetConstructedType(), expr->location);
@@ -75,20 +75,20 @@ UserDefinedType::VTableData::VTableData(UserDefinedType* self) {
     dynamic_destructor = self->type->destructor_decl ? self->type->destructor_decl->dynamic : false;
     std::unordered_set<Type*> all_bases;
     AddAllBases(all_bases, self);
-    for (auto base : all_bases) {
+    for (auto&&base : all_bases) {
         unsigned i = 0;
-        for (auto func : base->GetPrimaryVTable().layout) {
-            if (auto vfunc = boost::get<VTableLayout::VirtualFunction>(&func.func)) {
+        for (auto&&func : base->GetPrimaryVTable().layout) {
+            if (auto&& vfunc = boost::get<VTableLayout::VirtualFunction>(&func.func)) {
                 if (vfunc->final) continue;
                 if (self->type->nonvariables.find(vfunc->name) == self->type->nonvariables.end()) continue;
                 std::unordered_set<const Parse::Function*> matches;
                 auto&& set_or_using = self->type->nonvariables.at(vfunc->name);
-                if (!boost::get<Parse::OverloadSet<Parse::Function>>(&set_or_using)) continue;
-                auto set = boost::get<Parse::OverloadSet<Parse::Function>>(set_or_using);
-                for (auto access : set)
-                    for (auto function : access.second)                        
-                        if (FunctionType::CanThunkFromFirstToSecond(func.type, analyzer.GetWideFunction(function, self, GetNameAsString(vfunc->name))->GetSignature(), self, true))
-                            matches.insert(function);
+                if (!boost::get<Parse::OverloadSet<std::unique_ptr<Parse::Function>>>(&set_or_using)) continue;
+                auto&& set = boost::get<Parse::OverloadSet<std::unique_ptr<Parse::Function>>>(set_or_using);
+                for (auto&& access : set)
+                    for (auto&& function : access.second)                        
+                        if (FunctionType::CanThunkFromFirstToSecond(func.type, analyzer.GetWideFunction(function.get(), self, GetNameAsString(vfunc->name))->GetSignature(), self, true))
+                            matches.insert(function.get());
                 if (matches.size() > 1) throw std::runtime_error("Too many valid matches for dynamic function override.");
                 if (matches.empty()) {
                     if (vfunc->abstract)
@@ -100,7 +100,7 @@ UserDefinedType::VTableData::VTableData(UserDefinedType* self) {
                 else
                     dynamic_functions[*matches.begin()] = vfunc->name;
             }
-            if (auto specmem = boost::get<VTableLayout::SpecialMember>(&func.func)) {
+            if (auto&& specmem = boost::get<VTableLayout::SpecialMember>(&func.func)) {
                 if (*specmem == VTableLayout::SpecialMember::Destructor)
                     dynamic_destructor = true;
             }
@@ -108,11 +108,11 @@ UserDefinedType::VTableData::VTableData(UserDefinedType* self) {
     }
     // Add every function declared as dynamic or abstract.
     for (auto&& nonvar : self->type->nonvariables)
-        if (auto set = boost::get<Parse::OverloadSet<Parse::Function>>(&nonvar.second))
-            for (auto access : (*set))
-                for (auto func : access.second)
+        if (auto&& set = boost::get<Parse::OverloadSet<std::unique_ptr<Parse::Function>>>(&nonvar.second))
+            for (auto&& access : (*set))
+                for (auto&& func : access.second)
                     if (func->dynamic || func->abstract)
-                        dynamic_functions[func] = nonvar.first;
+                        dynamic_functions[func.get()] = nonvar.first;
     // If we don't have a primary base but we do have dynamic functions, first add offset and RTTI
     if (!self->GetPrimaryBase() && (!dynamic_functions.empty() || dynamic_destructor)) {
         funcs.offset = 2;
@@ -128,7 +128,7 @@ UserDefinedType::VTableData::VTableData(UserDefinedType* self) {
 
     // For every dynamic function that is not inherited from the primary base, add a slot.
     // Else, set the slot to the primary base's slot.
-    for (auto func : dynamic_functions) {
+    for (auto&&func : dynamic_functions) {
         auto fty = analyzer.GetWideFunction(func.first, self, analyzer.GetFunctionParameters(func.first, self), GetNameAsString(func.second))->GetSignature();
         VTableLayout::VirtualFunction vfunc = {
             func.second,
@@ -149,7 +149,7 @@ UserDefinedType::VTableData::VTableData(UserDefinedType* self) {
         funcs.layout.push_back({ VTableLayout::SpecialMember::Destructor, functy });
         funcs.layout.push_back({ VTableLayout::SpecialMember::ItaniumABIDeletingDestructor, functy });
         if (self->type->destructor_decl)
-            VTableIndices[self->type->destructor_decl] = (funcs.layout.size() - funcs.offset) - 2;
+            VTableIndices[self->type->destructor_decl.get()] = (funcs.layout.size() - funcs.offset) - 2;
     }
 }
 bool UserDefinedType::HasVirtualDestructor(){
@@ -160,31 +160,31 @@ UserDefinedType::MemberData::MemberData(UserDefinedType* self) {
         member_indices[var.name] = members.size();
         Type* explicit_type = nullptr;
         if (var.type) {
-            auto expr = self->analyzer.AnalyzeExpression(self->context, var.type);
-            if (auto con = dynamic_cast<ConstructorType*>(expr->GetType()->Decay()))
+            auto expr = self->analyzer.AnalyzeExpression(self->context, var.type.get());
+            if (auto&& con = dynamic_cast<ConstructorType*>(expr->GetType()->Decay()))
                 members.push_back(explicit_type = con->GetConstructedType());
             else
                 throw NotAType(expr->GetType(), var.type->location);
         }
         if (var.initializer) {
-            auto expr = self->analyzer.AnalyzeExpression(self->context, var.initializer);
+            auto expr = self->analyzer.AnalyzeExpression(self->context, var.initializer.get());
             if (!explicit_type)
                 members.push_back(expr->GetType()->Decay());
             HasNSDMI = true;
-            NSDMIs.push_back(var.initializer);
+            NSDMIs.push_back(var.initializer.get());
         } else
             NSDMIs.push_back(nullptr);
-        if (auto agg = dynamic_cast<AggregateType*>(members.back())) {
+        if (auto&& agg = dynamic_cast<AggregateType*>(members.back())) {
             if (agg == self || agg->HasMemberOfType(self))
                 throw RecursiveMember(self, var.type ? var.type->location : var.initializer->location);
         }
     }
-    for (auto tuple : self->type->imports) {
-        auto expr = self->analyzer.AnalyzeExpression(self->context, std::get<0>(tuple));
+    for (auto&& tuple : self->type->imports) {
+        auto expr = self->analyzer.AnalyzeExpression(self->context, std::get<0>(tuple).get());
         auto conty = dynamic_cast<ConstructorType*>(expr->GetType()->Decay());
         if (!conty) throw std::runtime_error("Bad import type name.");
         auto basety = conty->GetConstructedType();
-        for (auto name : std::get<1>(tuple))
+        for (auto&& name : std::get<1>(tuple))
             BaseImports[name].insert(basety);
         if (std::get<2>(tuple))
             imported_constructors[basety] = nullptr;
@@ -237,22 +237,22 @@ std::vector<UserDefinedType::member> UserDefinedType::GetConstructionMembers() {
 std::shared_ptr<Expression> UserDefinedType::AccessNamedMember(std::shared_ptr<Expression> self, std::string name, Context c) {
     auto spec = GetAccessSpecifier(c.from, this);
     if (GetMemberData().member_indices.find(name) != GetMemberData().member_indices.end()) {
-        auto member = type->variables[GetMemberData().member_indices[name]];
+        auto&& member = type->variables[GetMemberData().member_indices[name]];
         if (spec >= member.access)
             return PrimitiveAccessMember(std::move(self), GetMemberData().member_indices[name] + type->bases.size());
     }
     if (type->nonvariables.find(name) != type->nonvariables.end()) {
-        if (auto set = boost::get<Parse::OverloadSet<Parse::Function>>(&type->nonvariables.at(name))) {
+        if (auto&& set = boost::get<Parse::OverloadSet<std::unique_ptr<Parse::Function>>>(&type->nonvariables.at(name))) {
             std::unordered_set<OverloadResolvable*> resolvables;
-            for (auto access : *set) {
+            for (auto&& access : *set) {
                 if (spec >= access.first)
-                    for (auto func : access.second)
-                        resolvables.insert(analyzer.GetCallableForFunction(func, this, GetNameAsString(name)));
+                    for (auto&& func : access.second)
+                        resolvables.insert(analyzer.GetCallableForFunction(func.get(), this, GetNameAsString(name)));
             }
             // Check for imports.
             OverloadSet* imports = analyzer.GetOverloadSet();
             if (GetMemberData().BaseImports.find(name) != GetMemberData().BaseImports.end()) {
-                for (auto base : GetMemberData().BaseImports.at(name)) {
+                for (auto&&base : GetMemberData().BaseImports.at(name)) {
                     if (IsDerivedFrom(base) != InheritanceRelationship::UnambiguouslyDerived)
                         throw std::runtime_error("Tried to import from a non-base.");
                     auto baseobj = Type::AccessBase(self, base);
@@ -266,7 +266,7 @@ std::shared_ptr<Expression> UserDefinedType::AccessNamedMember(std::shared_ptr<E
             if (!resolvables.empty() || imports != analyzer.GetOverloadSet())
                 return analyzer.GetOverloadSet(imports, analyzer.GetOverloadSet(resolvables), analyzer.GetRvalueType(self->GetType()))->BuildValueConstruction({ self }, c);
         } else {
-            auto use = boost::get<std::pair<Parse::Access, Parse::Using*>>(type->nonvariables.at(name));
+            auto&& use = boost::get<std::pair<Parse::Access, std::unique_ptr<Parse::Using>>>(type->nonvariables.at(name));
             if (spec >= use.first) {
                 struct UsingLookup : MetaType {
                     Type* GetContext() override final { return self->GetType()->Decay(); }
@@ -280,16 +280,16 @@ std::shared_ptr<Expression> UserDefinedType::AccessNamedMember(std::shared_ptr<E
                     UsingLookup(std::shared_ptr<Expression> self, Analyzer& a) : self(self), MetaType(a) {}
                 };
                 UsingLookup ul(self, analyzer);
-                return BuildChain(self, analyzer.AnalyzeExpression(&ul, use.second->expr));
+                return BuildChain(self, analyzer.AnalyzeExpression(&ul, use.second->expr.get()));
             }
         }
     }
     // Any of our bases have this member?
     Type* BaseType = nullptr;
     OverloadSet* BaseOverloadSet = nullptr;
-    for (auto base : GetBases()) {
+    for (auto&&base : GetBases()) {
         auto baseobj = Type::AccessBase(self, base);
-        if (auto member = Type::AccessMember(std::move(baseobj), name, c)) {
+        if (auto&& member = Type::AccessMember(std::move(baseobj), name, c)) {
             // If there's nothing there, we win.
             // If we're an OS and the existing is an OS, we win by unifying.
             // Else we lose.
@@ -340,7 +340,7 @@ Wide::Util::optional<clang::QualType> UserDefinedType::GetClangType(ClangTU& TU)
             auto recdecl = (*GetBases()[i]->GetClangType(TU))->getAsCXXRecordDecl();
             bases[recdecl] = clang::CharUnits::fromQuantity(GetOffset(i));
         }
-        for (auto mem : GetMemberData().member_indices) {
+        for (auto&&mem : GetMemberData().member_indices) {
             auto offset = GetOffset(mem.second + type->bases.size());
             clang::LookupResult lr(
                 TU.GetSema(),
@@ -376,7 +376,7 @@ Wide::Util::optional<clang::QualType> UserDefinedType::GetClangType(ClangTU& TU)
             for (auto&& ty : types)  {
                 // Skip "this"
                 if (&ty == &types.front()) continue;
-                if (auto clangty = ty->GetClangType(TU))
+                if (auto&& clangty = ty->GetClangType(TU))
                     args.push_back(*clangty);
                 else
                     return Wide::Util::none;
@@ -386,7 +386,7 @@ Wide::Util::optional<clang::QualType> UserDefinedType::GetClangType(ClangTU& TU)
 
         auto GetParmVarDecls = [this](std::vector<clang::QualType> types, ClangTU& TU, clang::CXXMethodDecl* methdecl) {
             std::vector<clang::ParmVarDecl*> parms;
-            for (auto qualty : types) {
+            for (auto&&qualty : types) {
                 parms.push_back(clang::ParmVarDecl::Create(
                     TU.GetASTContext(),
                     methdecl,
@@ -403,7 +403,7 @@ Wide::Util::optional<clang::QualType> UserDefinedType::GetClangType(ClangTU& TU)
         };
 
         std::vector<clang::CXXBaseSpecifier*> basespecs;
-        for (auto base : GetBases()) {
+        for (auto&&base : GetBases()) {
             if (!base->GetClangType(TU)) return;
             basespecs.push_back(new clang::CXXBaseSpecifier(
                 clang::SourceRange(),
@@ -453,15 +453,15 @@ Wide::Util::optional<clang::QualType> UserDefinedType::GetClangType(ClangTU& TU)
                 );
             if (HasVirtualDestructor())
                 des->setVirtualAsWritten(true);
-            auto widedes = analyzer.GetWideFunction(type->destructor_decl, this, { analyzer.GetLvalueType(this) }, "~type");
+            auto widedes = analyzer.GetWideFunction(type->destructor_decl.get(), this, { analyzer.GetLvalueType(this) }, "~type");
             widedes->ComputeBody();
             widedes->AddExportName(GetFunctionType(des, TU, analyzer)->CreateThunk(TU.GetObject(analyzer, des, clang::CXXDtorType::Dtor_Complete), widedes->GetStaticSelf(), des, this));
         }
 
         std::vector<clang::CXXConstructorDecl*> cons;
-        for (auto access : type->constructor_decls) {
-            for (auto func : access.second) {
-                auto types = GetArgsForFunc(func);
+        for (auto&& access : type->constructor_decls) {
+            for (auto&& func : access.second) {
+                auto types = GetArgsForFunc(func.get());
                 auto ty = clang::CanQualType::CreateUnsafe(TU.GetASTContext().getRecordType(recdecl));
                 clang::FunctionProtoType::ExtProtoInfo ext_proto_info;
                 auto args = GetClangTypesForArgs(types, TU);
@@ -483,7 +483,7 @@ Wide::Util::optional<clang::QualType> UserDefinedType::GetClangType(ClangTU& TU)
                 con->setParams(GetParmVarDecls(*args, TU, con));
                 cons.push_back(con);
                 if (!func->deleted) {
-                    auto mfunc = analyzer.GetWideFunction(func, this, types, "type");
+                    auto mfunc = analyzer.GetWideFunction(func.get(), this, types, "type");
                     mfunc->ComputeBody();
                     mfunc->AddExportName(GetFunctionType(con, TU, analyzer)->CreateThunk(TU.GetObject(analyzer, con, clang::CXXCtorType::Ctor_Complete), mfunc->GetStaticSelf(), con, this));
                 } else
@@ -493,29 +493,28 @@ Wide::Util::optional<clang::QualType> UserDefinedType::GetClangType(ClangTU& TU)
 
         std::vector<clang::CXXMethodDecl*> methods;
         // TODO: Explicitly default all members we implicitly generated.
-        for (auto nonvar : type->nonvariables) {
-            auto maybe_overset = boost::get<Parse::OverloadSet<Parse::Function>>(&nonvar.second);
+        for (auto&& nonvar : type->nonvariables) {
+            auto maybe_overset = boost::get<Parse::OverloadSet<std::unique_ptr<Parse::Function>>>(&nonvar.second);
             if (!maybe_overset) continue;
-            auto overset = std::make_pair(nonvar.first, *maybe_overset);
-            for (auto access : overset.second) {
-                for (auto func : access.second) {
-                    if (IsMultiTyped(func)) continue;
+            for (auto&& access : *maybe_overset) {
+                for (auto&& func : access.second) {
+                    if (IsMultiTyped(func.get())) continue;
                     if (access.first == Parse::Access::Private) continue;
-                    auto types = GetArgsForFunc(func);
+                    auto types = GetArgsForFunc(func.get());
                     std::vector<clang::QualType> args;
                     for (auto&& ty : types)  {
                         // Skip "this"
                         if (&ty == &types.front()) continue;
-                        if (auto clangty = ty->GetClangType(TU))
+                        if (auto&& clangty = ty->GetClangType(TU))
                             args.push_back(*clangty);
                     }
                     auto get_return_type = [&] {
                         if (!func->deleted) {
-                            auto mfunc = analyzer.GetWideFunction(func, this, types, GetNameAsString(overset.first));
+                            auto mfunc = analyzer.GetWideFunction(func.get(), this, types, GetNameAsString(nonvar.first));
                             return mfunc->GetSignature()->GetReturnType()->GetClangType(TU);
                         }
                         if (func->explicit_return) {
-                            auto con = analyzer.AnalyzeExpression(this, func->explicit_return);
+                            auto con = analyzer.AnalyzeExpression(this, func->explicit_return.get());
                             auto conty = dynamic_cast<ConstructorType*>(con->GetType()->Decay());
                             return conty->GetConstructedType()->GetClangType(TU);
                         }
@@ -534,14 +533,14 @@ Wide::Util::optional<clang::QualType> UserDefinedType::GetClangType(ClangTU& TU)
                     }
                     auto fty = TU.GetASTContext().getFunctionType(*ret, args, ext_proto_info);
                     clang::DeclarationName name;
-                    if (auto string = boost::get<std::string>(&overset.first)) {
+                    if (auto&& string = boost::get<std::string>(&nonvar.first)) {
                         name = TU.GetIdentifierInfo(*string);
                     } else {
-                        auto op = boost::get<Parse::OperatorName>(overset.first);
+                        auto op = boost::get<Parse::OperatorName>(nonvar.first);
                         if (op == Parse::OperatorName{ &Lexer::TokenTypes::QuestionMark }) {
                             name = TU.GetASTContext().DeclarationNames.getCXXConversionFunctionName(TU.GetASTContext().BoolTy);
                         } else {
-                            auto opkind = GetTokenMappings().at(boost::get<Parse::OperatorName>(overset.first)).first;
+                            auto opkind = GetTokenMappings().at(boost::get<Parse::OperatorName>(nonvar.first)).first;
                             name = TU.GetASTContext().DeclarationNames.getCXXOperatorName(opkind);
                         }
                     }
@@ -565,7 +564,7 @@ Wide::Util::optional<clang::QualType> UserDefinedType::GetClangType(ClangTU& TU)
                     if (func->deleted)
                         meth->setDeletedAsWritten(true);
                     else {
-                        auto mfunc = analyzer.GetWideFunction(func, this, types, GetNameAsString(overset.first));
+                        auto mfunc = analyzer.GetWideFunction(func.get(), this, types, GetNameAsString(nonvar.first));
                         mfunc->ComputeBody();
                         mfunc->AddExportName(GetFunctionType(meth, TU, analyzer)->CreateThunk(TU.GetObject(analyzer, meth), mfunc->GetStaticSelf(), meth, this));
                     }
@@ -576,11 +575,11 @@ Wide::Util::optional<clang::QualType> UserDefinedType::GetClangType(ClangTU& TU)
         recdecl->setBases(basespecs.data(), basespecs.size());
         if (des)
             recdecl->addDecl(des);
-        for (auto field : fields)
+        for (auto&&field : fields)
             recdecl->addDecl(field);
-        for (auto con : cons)
+        for (auto&&con : cons)
             recdecl->addDecl(con);
-        for (auto meth : methods)
+        for (auto&&meth : methods)
             recdecl->addDecl(meth);
         recdecl->completeDefinition();
         recdecl->getDefinition()->setHasExternalLexicalStorage(true);
@@ -591,7 +590,7 @@ Wide::Util::optional<clang::QualType> UserDefinedType::GetClangType(ClangTU& TU)
 }
 
 bool UserDefinedType::HasMember(Parse::Name name) {
-    if (auto string = boost::get<std::string>(&name)) {
+    if (auto&& string = boost::get<std::string>(&name)) {
         return GetMemberData().member_indices.find(*string) != GetMemberData().member_indices.end();
     }
     return false;
@@ -599,7 +598,7 @@ bool UserDefinedType::HasMember(Parse::Name name) {
 
 std::vector<std::shared_ptr<Expression>> UserDefinedType::GetDefaultInitializerForMember(unsigned i) {
     if (GetMemberData().NSDMIs[i])
-        return { analyzer.AnalyzeExpression(GetContext(), GetMemberData().NSDMIs[i]) };
+        return { analyzer.AnalyzeExpression(GetContext(), GetMemberData().NSDMIs[i], [](Parse::Name, Lexer::Range) { return nullptr; }) };
     return {};
 }
 
@@ -615,10 +614,10 @@ UserDefinedType::DefaultData::DefaultData(UserDefinedType* self) {
     if (self->type->destructor_decl && (!self->type->destructor_decl->defaulted || self->type->destructor_decl->dynamic))
         IsComplex = true;
 
-    for (auto conset : self->type->constructor_decls) {
-        for (auto con : conset.second) {
-            if (IsMultiTyped(con)) continue;
-            auto params = self->analyzer.GetFunctionParameters(con, self);
+    for (auto&& conset : self->type->constructor_decls) {
+        for (auto&& con : conset.second) {
+            if (IsMultiTyped(con.get())) continue;
+            auto params = self->analyzer.GetFunctionParameters(con.get(), self);
             if (params.size() > 2) continue; //???
             if (params.size() == 1) {
                 AggregateCons.default_constructor = false;
@@ -636,13 +635,13 @@ UserDefinedType::DefaultData::DefaultData(UserDefinedType* self) {
 
     Parse::Name name(Parse::OperatorName({ &Lexer::TokenTypes::Assignment }));
     if (self->type->nonvariables.find(name) != self->type->nonvariables.end())  {
-        auto nonvar = self->type->nonvariables.at(name);
-        if (auto set = boost::get<Parse::OverloadSet<Parse::Function>>(&nonvar)) {
-            for (auto op_access_pair : *set) {
-                auto ops = op_access_pair.second;
-                for (auto op : ops) {
-                    if (IsMultiTyped(op)) continue;
-                    auto params = self->analyzer.GetFunctionParameters(op, self);
+        auto&& nonvar = self->type->nonvariables.at(name);
+        if (auto&& set = boost::get<Parse::OverloadSet<std::unique_ptr<Parse::Function>>>(&nonvar)) {
+            for (auto&& op_access_pair : *set) {
+                auto&& ops = op_access_pair.second;
+                for (auto&& op : ops) {
+                    if (IsMultiTyped(op.get())) continue;
+                    auto params = self->analyzer.GetFunctionParameters(op.get(), self);
                     if (params.size() > 2) continue; //???
                     if (params[1] == self->analyzer.GetLvalueType(self)) {
                         IsComplex = IsComplex || (!op->defaulted || op->dynamic);
@@ -739,11 +738,11 @@ struct Wide::Semantic::UserDefinedType::ImportConstructorCallable : Callable {
         auto this_ = std::make_shared<Argument>(this, 0);
         std::vector<std::shared_ptr<Expression>> inits;
         unsigned i = 0;
-        for (auto base : self->GetBases()) {
+        for (auto&&base : self->GetBases()) {
             if (base == target_base) {
                 std::vector<std::shared_ptr<Expression>> args;
                 args.push_back(Type::AccessBase(this_, base));
-                for (auto i = 1; i < arguments.size(); ++i)
+                for (auto&&i = 1; i < arguments.size(); ++i)
                     args.push_back(std::make_shared<Argument>(this, i));
                 inits.push_back(base_callable->CallFunction(args, c));
                 continue;
@@ -751,7 +750,7 @@ struct Wide::Semantic::UserDefinedType::ImportConstructorCallable : Callable {
             auto init = base->BuildInplaceConstruction(Type::AccessBase(this_, base), {}, c);
             inits.push_back(std::make_shared<MemberConstructionAccess>(base, c.where, init, Type::AccessBase(this_, base)));
         }
-        for (auto member : self->GetMembers()) {
+        for (auto&&member : self->GetMembers()) {
             auto lhs = GetMemberFromThis(this_, [this, i] { return self->GetOffset(i); }, member->analyzer.GetLvalueType(member));
             auto init = member->BuildInplaceConstruction(lhs, self->GetDefaultInitializerForMember(i++), c);
             inits.push_back(std::make_shared<MemberConstructionAccess>(member, c.where, init, lhs));
@@ -764,7 +763,7 @@ struct Wide::Semantic::UserDefinedType::ImportConstructorCallable : Callable {
         thunk_function = llvm::Function::Create(llvm::cast<llvm::FunctionType>(GetFunctionType()->GetLLVMType(module)->getElementType()), llvm::GlobalValue::LinkageTypes::ExternalLinkage, self->analyzer.GetUniqueFunctionName(), module);
         Wide::Semantic::CodegenContext::EmitFunctionBody(thunk_function, [this](Wide::Semantic::CodegenContext& con) {
             assert(initializers);
-            for (auto init : *initializers)
+            for (auto&&init : *initializers)
                 init->GetValue(con);
             con->CreateRetVoid();
         });
@@ -813,10 +812,10 @@ OverloadSet* UserDefinedType::CreateConstructorOverloadSet(Parse::Access access)
         if (type->constructor_decls.empty())
             return analyzer.GetOverloadSet();
         std::unordered_set<OverloadResolvable*> resolvables;
-        for (auto f : type->constructor_decls) {
+        for (auto&&f : type->constructor_decls) {
             if (f.first <= access)
-                for (auto func : f.second)
-                    resolvables.insert(analyzer.GetCallableForFunction(func, this, "type"));
+                for (auto&& func : f.second)
+                    resolvables.insert(analyzer.GetCallableForFunction(func.get(), this, "type"));
         }
         return analyzer.GetOverloadSet(resolvables, GetContext());
     };
@@ -857,7 +856,7 @@ OverloadSet* UserDefinedType::CreateOperatorOverloadSet(Parse::OperatorName name
     auto user_defined = [&, this] {
         OverloadSet* imports = analyzer.GetOverloadSet();
         if (GetMemberData().BaseImports.find(name) != GetMemberData().BaseImports.end()) {
-            for (auto base : GetMemberData().BaseImports.at(name)) {
+            for (auto&&base : GetMemberData().BaseImports.at(name)) {
                 if (IsDerivedFrom(base) != InheritanceRelationship::UnambiguouslyDerived)
                     throw std::runtime_error("Tried to import from a non-base.");
                 auto base_set = base->AccessMember(name, access == Parse::Access::Private ? Parse::Access::Protected : access, kind);
@@ -872,11 +871,11 @@ OverloadSet* UserDefinedType::CreateOperatorOverloadSet(Parse::OperatorName name
         }
         std::unordered_set<OverloadResolvable*> resolvable;
         if (type->nonvariables.find(name) != type->nonvariables.end()) {
-            if (auto set = boost::get<Parse::OverloadSet<Parse::Function>>(&type->nonvariables.at(name))) {
+            if (auto&& set = boost::get<Parse::OverloadSet<std::unique_ptr<Parse::Function>>>(&type->nonvariables.at(name))) {
                 for (auto&& f : *set) {
                     if (f.first <= access)
-                        for (auto func : f.second)
-                            resolvable.insert(analyzer.GetCallableForFunction(func, this, GetNameAsString(name)));
+                        for (auto&& func : f.second)
+                            resolvable.insert(analyzer.GetCallableForFunction(func.get(), this, GetNameAsString(name)));
                 }
             }
         }
@@ -888,7 +887,7 @@ OverloadSet* UserDefinedType::CreateOperatorOverloadSet(Parse::OperatorName name
         return analyzer.GetOverloadSet(user_defined(), AggregateType::CreateOperatorOverloadSet(name, access, kind));
     // Search base classes.
     OverloadSet* BaseOverloadSet = analyzer.GetOverloadSet();
-    for (auto base : GetBases())
+    for (auto&&base : GetBases())
         BaseOverloadSet = analyzer.GetOverloadSet(BaseOverloadSet, base->AccessMember(name, access, kind));
     if (BaseOverloadSet != analyzer.GetOverloadSet())
         return BaseOverloadSet;
@@ -896,12 +895,11 @@ OverloadSet* UserDefinedType::CreateOperatorOverloadSet(Parse::OperatorName name
 }
 
 std::function<void(CodegenContext&)> UserDefinedType::BuildDestruction(std::shared_ptr<Expression> self, Context c, bool devirtualize) {
-    assert(self->GetType()->IsReference(this));
     if (type->destructor_decl) {
         std::unordered_set<OverloadResolvable*> resolvables;
-        resolvables.insert(analyzer.GetCallableForFunction(type->destructor_decl, this, "~type"));
-        auto desset = analyzer.GetOverloadSet(resolvables, self->GetType());
-        auto callable = dynamic_cast<Wide::Semantic::Function*>(desset->Resolve({ self->GetType() }, c.from));
+        resolvables.insert(analyzer.GetCallableForFunction(type->destructor_decl.get(), this, "~type"));
+        auto desset = analyzer.GetOverloadSet(resolvables, analyzer.GetLvalueType(this));
+        auto callable = dynamic_cast<Wide::Semantic::Function*>(desset->Resolve({ analyzer.GetLvalueType(this) }, c.from));
         auto call = callable->Call({ self }, { this, c.where });
         if (HasVirtualDestructor() && !devirtualize) 
             return [=](CodegenContext& c) {
@@ -962,14 +960,14 @@ Type::VTableLayout UserDefinedType::ComputePrimaryVTableLayout() {
 }
 llvm::Function* UserDefinedType::CreateDestructorFunction(llvm::Module* module) {
     if (!type->destructor_decl) return AggregateType::CreateDestructorFunction(module);
-    auto desfunc = analyzer.GetWideFunction(type->destructor_decl, this, { analyzer.GetLvalueType(this) }, "~type");
+    auto desfunc = analyzer.GetWideFunction(type->destructor_decl.get(), this, { analyzer.GetLvalueType(this) }, "~type");
     return desfunc->EmitCode(module);
 }
 
 std::pair<FunctionType*, std::function<llvm::Function*(llvm::Module*)>> UserDefinedType::VirtualEntryFor(VTableLayout::VirtualFunctionEntry entry) {
-    if (auto special = boost::get<VTableLayout::SpecialMember>(&entry.func)) {
+    if (auto&& special = boost::get<VTableLayout::SpecialMember>(&entry.func)) {
         if (type->destructor_decl)
-            analyzer.GetWideFunction(type->destructor_decl, this, "~type")->ComputeBody();
+            analyzer.GetWideFunction(type->destructor_decl.get(), this, "~type")->ComputeBody();
         return { analyzer.GetFunctionType(analyzer.GetVoidType(), { analyzer.GetLvalueType(this) }, false), [this](llvm::Module* mod) { return GetDestructorFunction(mod); } };
     }
     auto vfunc = boost::get<VTableLayout::VirtualFunction>(entry.func);
@@ -981,14 +979,14 @@ std::pair<FunctionType*, std::function<llvm::Function*(llvm::Module*)>> UserDefi
         }
         return {};
     }
-    if (!boost::get<Parse::OverloadSet<Parse::Function>>(&type->nonvariables.at(name))) return {};
-    auto set = boost::get<Parse::OverloadSet<Parse::Function>>(type->nonvariables.at(name));
-    for (auto access : set) {
-        for (auto func : access.second) {
+    if (!boost::get<Parse::OverloadSet<std::unique_ptr<Parse::Function>>>(&type->nonvariables.at(name))) return{};
+    auto&& set = boost::get<Parse::OverloadSet<std::unique_ptr<Parse::Function>>>(type->nonvariables.at(name));
+    for (auto&& access : set) {
+        for (auto&& func : access.second) {
             if (func->deleted) continue;
-            if (IsMultiTyped(func)) continue;
+            if (IsMultiTyped(func.get())) continue;
 
-            auto widefunc = analyzer.GetWideFunction(func, this, GetNameAsString(name));
+            auto widefunc = analyzer.GetWideFunction(func.get(), this, GetNameAsString(name));
             if (!FunctionType::CanThunkFromFirstToSecond(entry.type, widefunc->GetSignature(), this, true))
                 continue;
             widefunc->ComputeBody();
@@ -1036,7 +1034,7 @@ bool UserDefinedType::IsSourceATarget(Type* source, Type* target, Type* context)
 std::function<llvm::Constant*(llvm::Module*)> UserDefinedType::GetRTTI() {
     // If we have a Clang type, then use it for compat.
     if (GetVtableLayout().layout.empty()) {
-        if (auto clangty = GetClangType(*analyzer.GetAggregateTU())) {
+        if (auto&& clangty = GetClangType(*analyzer.GetAggregateTU())) {
             return [clangty, this](llvm::Module* module) {
                 return analyzer.GetAggregateTU()->GetItaniumRTTI(*clangty, module);
             };
@@ -1050,7 +1048,7 @@ std::function<llvm::Constant*(llvm::Module*)> UserDefinedType::GetRTTI() {
         return[this, basertti](llvm::Module* module) {
             std::stringstream stream;
             stream << "struct.__" << this;
-            if (auto existing = module->getGlobalVariable(stream.str())) {
+            if (auto&& existing = module->getGlobalVariable(stream.str())) {
                 return existing;
             }
             auto mangledname = GetGlobalString(stream.str(), module);
@@ -1066,12 +1064,12 @@ std::function<llvm::Constant*(llvm::Module*)> UserDefinedType::GetRTTI() {
     }
     // Multiple bases. Yay.
     std::vector<std::pair<std::function<llvm::Constant*(llvm::Module*)>, unsigned>> basedata;
-    for (auto base : GetBasesAndOffsets())
+    for (auto&&base : GetBasesAndOffsets())
         basedata.push_back({ base.first->GetRTTI(), base.second });
     return [basedata, this](llvm::Module* module) {
         std::stringstream stream;
         stream << "struct.__" << this << "_rtti";
-        if (auto existing = module->getGlobalVariable(stream.str())) {
+        if (auto&& existing = module->getGlobalVariable(stream.str())) {
             return existing;
         }
         auto mangledname = GetGlobalString(stream.str(), module);
@@ -1088,7 +1086,7 @@ std::function<llvm::Constant*(llvm::Module*)> UserDefinedType::GetRTTI() {
         inits.push_back(llvm::ConstantInt::get(llvm::Type::getInt32Ty(module->getContext()), GetBases().size()));
 
         // Add one entry for every base.
-        for (auto bases : basedata) {
+        for (auto&&bases : basedata) {
             inits.push_back(bases.first(module));
             unsigned flags = 0x2 | (bases.second << 8);
             inits.push_back(llvm::ConstantInt::get(llvm::Type::getInt32Ty(module->getContext()), flags));
@@ -1100,10 +1098,10 @@ std::function<llvm::Constant*(llvm::Module*)> UserDefinedType::GetRTTI() {
     };
 }
 bool UserDefinedType::HasDeclaredDynamicFunctions() {
-    for (auto nonvar : type->nonvariables)
-        if (auto overset = boost::get<Parse::OverloadSet<Parse::Function>>(&nonvar.second))
-           for (auto access : *overset)
-               for (auto func : access.second)
+    for (auto&& nonvar : type->nonvariables)
+        if (auto&& overset = boost::get<Parse::OverloadSet<std::unique_ptr<Parse::Function>>>(&nonvar.second))
+           for (auto&& access : *overset)
+               for (auto&& func : access.second)
                    if (func->dynamic)
                        return true;
 
@@ -1125,12 +1123,12 @@ Type* UserDefinedType::GetConstantContext() {
     return AggregateType::GetConstantContext();
 }
 Wide::Util::optional<unsigned> UserDefinedType::SizeOverride() {
-    for (auto attr : type->attributes) {
-        if (auto ident = dynamic_cast<const Parse::Identifier*>(attr.initialized)) {
-            if (auto string = boost::get<std::string>(&ident->val)) {
+    for (auto&& attr : type->attributes) {
+        if (auto&& ident = dynamic_cast<const Parse::Identifier*>(attr.initialized.get())) {
+            if (auto&& string = boost::get<std::string>(&ident->val)) {
                 if (*string == "size") {
-                    auto expr = analyzer.AnalyzeExpression(GetContext(), attr.initializer);
-                    if (!dynamic_cast<IntegralType*>(expr->GetType()))
+                    auto expr = analyzer.AnalyzeExpression(GetContext(), attr.initializer.get(), [](Parse::Name, Lexer::Range) { return nullptr; });
+                    if (!dynamic_cast<IntegralType*>(expr->GetType(nullptr)))
                         throw std::runtime_error("size attribute was not initialized with a constant integer.");
                     return analyzer.EvaluateConstantIntegerExpression(expr).getLimitedValue();
                 }
@@ -1140,12 +1138,12 @@ Wide::Util::optional<unsigned> UserDefinedType::SizeOverride() {
     return Util::none;
 }
 Wide::Util::optional<unsigned> UserDefinedType::AlignOverride() {
-    for (auto attr : type->attributes) {
-        if (auto ident = dynamic_cast<const Parse::Identifier*>(attr.initialized)) {
-            if (auto string = boost::get<std::string>(&ident->val)) {
+    for (auto&& attr : type->attributes) {
+        if (auto&& ident = dynamic_cast<const Parse::Identifier*>(attr.initialized.get())) {
+            if (auto&& string = boost::get<std::string>(&ident->val)) {
                 if (*string == "alignment") {
-                    auto expr = analyzer.AnalyzeExpression(GetContext(), attr.initializer);
-                    if (!dynamic_cast<IntegralType*>(expr->GetType()))
+                    auto expr = analyzer.AnalyzeExpression(GetContext(), attr.initializer.get(), [](Parse::Name, Lexer::Range) { return nullptr; });
+                    if (!dynamic_cast<IntegralType*>(expr->GetType(nullptr)))
                         throw std::runtime_error("size attribute was not initialized with a constant integer.");
                     return analyzer.EvaluateConstantIntegerExpression(expr).getLimitedValue();
                 }
@@ -1159,9 +1157,9 @@ bool UserDefinedType::IsTriviallyCopyConstructible() {
         if (type->constructor_decls.empty())
             return analyzer.GetOverloadSet();
         std::unordered_set<OverloadResolvable*> resolvables;
-        for (auto f : type->constructor_decls) {
-            for (auto func : f.second)
-                resolvables.insert(analyzer.GetCallableForFunction(func, this, "type"));
+        for (auto&& f : type->constructor_decls) {
+            for (auto&& func : f.second)
+                resolvables.insert(analyzer.GetCallableForFunction(func.get(), this, "type"));
         }
         return analyzer.GetOverloadSet(resolvables, analyzer.GetLvalueType(this));
     };
@@ -1194,13 +1192,13 @@ std::shared_ptr<Expression> UserDefinedType::AccessStaticMember(std::string name
         return nullptr;
     }
     if (type->nonvariables.find(name) != type->nonvariables.end()) {
-        auto nonvar = boost::get<Parse::OverloadSet<Parse::Function>>(&type->nonvariables.at(name));
+        auto nonvar = boost::get<Parse::OverloadSet<std::unique_ptr<Parse::Function>>>(&type->nonvariables.at(name));
         if (nonvar) {
             std::unordered_set<OverloadResolvable*> resolvables;
-            for (auto access : *nonvar) {
+            for (auto&& access : *nonvar) {
                 if (spec >= access.first)
-                    for (auto func : access.second)
-                        resolvables.insert(analyzer.GetCallableForFunction(func, this, GetNameAsString(name)));
+                    for (auto&& func : access.second)
+                        resolvables.insert(analyzer.GetCallableForFunction(func.get(), this, GetNameAsString(name)));
             }
             if (!resolvables.empty())
                 return analyzer.GetOverloadSet(resolvables, nullptr)->BuildValueConstruction({}, c);
@@ -1209,12 +1207,12 @@ std::shared_ptr<Expression> UserDefinedType::AccessStaticMember(std::string name
     // Any of our bases have this member?
     Type* BaseType = nullptr;
     OverloadSet* BaseOverloadSet = nullptr;
-    for (auto base : GetBaseData().bases) {
-        if (auto member = base->AccessStaticMember(name, c)) {
+    for (auto&&base : GetBaseData().bases) {
+        if (auto&& member = base->AccessStaticMember(name, c)) {
             // If there's nothing there, we win.
             // If we're an OS and the existing is an OS, we win by unifying.
             // Else we lose.
-            auto otheros = dynamic_cast<OverloadSet*>(member->GetType()->Decay());
+            auto otheros = dynamic_cast<OverloadSet*>(member->GetType(nullptr)->Decay());
             if (!BaseType) {
                 if (otheros) {
                     if (BaseOverloadSet)
@@ -1236,12 +1234,12 @@ std::shared_ptr<Expression> UserDefinedType::AccessStaticMember(std::string name
     return BaseType->AccessStaticMember(name, c);
 }
 bool UserDefinedType::IsFinal() {
-    for (auto attr : type->attributes) {
-        if (auto name = dynamic_cast<const Parse::Identifier*>(attr.initialized)) {
-            if (auto str = boost::get<std::string>(&name->val)) {
+    for (auto&& attr : type->attributes) {
+        if (auto&& name = dynamic_cast<const Parse::Identifier*>(attr.initialized.get())) {
+            if (auto&& str = boost::get<std::string>(&name->val)) {
                 if (*str == "final") {
-                    auto expr = analyzer.AnalyzeExpression(GetContext(), attr.initializer);
-                    if (auto constant = dynamic_cast<Semantic::Boolean*>(expr.get())) {
+                    auto expr = analyzer.AnalyzeExpression(GetContext(), attr.initializer.get(), [](Parse::Name, Lexer::Range) { return nullptr; });
+                    if (auto&& constant = dynamic_cast<Semantic::Boolean*>(expr.get())) {
                         return constant->b;
                     }
                 }
@@ -1257,9 +1255,9 @@ std::string UserDefinedType::GetExportBody() {
     import += "[__always_keep_in_memory := true]\n";
     import += "[__llvm_name := \"" + GetLLVMTypeName() + "\"]\n";
     import += "type " + explain() + "{\n";
-    for (auto member : GetMemberData().member_indices) {
+    for (auto&&member : GetMemberData().member_indices) {
         // Need lvalue/rvalue/value overloads.
-        auto var = type->variables[member.second];
+        auto&& var = type->variables[member.second];
         if (IsFinal() && var.access == Parse::Access::Protected) continue;
         if (var.access != Parse::Access::Public) continue;
         import += "private:\n";
@@ -1311,14 +1309,14 @@ std::string UserDefinedType::GetExportBody() {
     return import;
 }
 void UserDefinedType::Export(llvm::Module* mod) {
-    for (auto tuple : GetExportData().MemberPropertyNames) {
+    for (auto&&tuple : GetExportData().MemberPropertyNames) {
         auto memtype = GetMemberData().members[GetMemberData().member_indices[tuple.first]];
         auto fty = analyzer.GetFunctionType(Semantic::CollapseType(analyzer.GetLvalueType(this), memtype), { analyzer.GetLvalueType(this) }, false);
         llvm::Function* reffunc = llvm::Function::Create(llvm::cast<llvm::FunctionType>(fty->GetLLVMType(mod)->getElementType()), llvm::GlobalValue::LinkageTypes::ExternalLinkage, tuple.second.first, mod);
         auto location = GetLocation(GetMemberData().member_indices[tuple.first] + type->bases.size());
         CodegenContext::EmitFunctionBody(reffunc, [&](CodegenContext& con) {
             auto val = con->GetInsertBlock()->getParent()->arg_begin();
-            if (auto field = boost::get<Wide::Semantic::LLVMFieldIndex>(&location)) {
+            if (auto&& field = boost::get<Wide::Semantic::LLVMFieldIndex>(&location)) {
                 con->CreateRet(con->CreateStructGEP(val, field->index));
                 return;
             } 
@@ -1342,7 +1340,7 @@ void UserDefinedType::Export(llvm::Module* mod) {
                 con->CreateRet(con->CreateLoad(con->CreateCall(reffunc, con->GetInsertBlock()->getParent()->arg_begin())));
                 return;
             }
-            if (auto field = boost::get<Wide::Semantic::LLVMFieldIndex>(&location)) {
+            if (auto&& field = boost::get<Wide::Semantic::LLVMFieldIndex>(&location)) {
                 con->CreateRet(con->CreateExtractValue(con->GetInsertBlock()->getParent()->arg_begin(), { field->index }));
                 return;
             }
@@ -1355,12 +1353,12 @@ void UserDefinedType::Export(llvm::Module* mod) {
 bool UserDefinedType::AlwaysKeepInMemory(llvm::Module* mod) {
     if (GetExportData().exported)
         return true;
-    for (auto attr : type->attributes) {
-        if (auto name = dynamic_cast<const Parse::Identifier*>(attr.initialized)) {
-            if (auto str = boost::get<std::string>(&name->val)) {
+    for (auto&& attr : type->attributes) {
+        if (auto&& name = dynamic_cast<const Parse::Identifier*>(attr.initialized.get())) {
+            if (auto&& str = boost::get<std::string>(&name->val)) {
                 if (*str == "__always_keep_in_memory") {
-                    auto expr = analyzer.AnalyzeExpression(GetContext(), attr.initializer);
-                    if (auto constant = dynamic_cast<Semantic::Boolean*>(expr.get())) {
+                    auto expr = analyzer.AnalyzeExpression(GetContext(), attr.initializer.get(), [](Parse::Name, Lexer::Range) { return nullptr; });
+                    if (auto&& constant = dynamic_cast<Semantic::Boolean*>(expr.get())) {
                         return constant->b;
                     }
                 }
@@ -1370,12 +1368,12 @@ bool UserDefinedType::AlwaysKeepInMemory(llvm::Module* mod) {
     return AggregateType::AlwaysKeepInMemory(mod);
 }
 std::string UserDefinedType::GetLLVMTypeName() {
-    for (auto attr : type->attributes) {
-        if (auto name = dynamic_cast<const Parse::Identifier*>(attr.initialized)) {
-            if (auto str = boost::get<std::string>(&name->val)) {
+    for (auto&& attr : type->attributes) {
+        if (auto&& name = dynamic_cast<const Parse::Identifier*>(attr.initialized.get())) {
+            if (auto&& str = boost::get<std::string>(&name->val)) {
                 if (*str == "__llvm_name") {
-                    auto expr = analyzer.AnalyzeExpression(GetContext(), attr.initializer);
-                    if (auto constant = dynamic_cast<Semantic::String*>(expr.get())) {
+                    auto expr = analyzer.AnalyzeExpression(GetContext(), attr.initializer.get(), [](Parse::Name, Lexer::Range) { return nullptr; });
+                    if (auto&& constant = dynamic_cast<Semantic::String*>(expr.get())) {
                         return constant->str;
                     }
                 }

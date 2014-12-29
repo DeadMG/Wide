@@ -50,19 +50,23 @@ std::shared_ptr<Expression> GetOverloadSet(clang::NamedDecl* d, ClangTU* from, s
     std::unordered_set<clang::NamedDecl*> decls;
     if (d)
         decls.insert(d);
-    auto ty = self->GetType();
-    return a.GetOverloadSet(std::move(decls), from, self->GetType())->BuildValueConstruction({ self }, c);
+    return CreateResultExpression([=, &a](Function* f) {
+        return a.GetOverloadSet(std::move(decls), from, self->GetType(f))->BuildValueConstruction({ self }, c);
+    });
 }
-OverloadSet* GetOverloadSet(clang::LookupResult& lr, ClangTU* from, Type* self, Parse::Access access, Analyzer& a) {
+OverloadSet* GetOverloadSet(std::unordered_set<clang::NamedDecl*> decls , ClangTU* from, Type* self, Parse::Access access, Analyzer& a) {
+    if (decls.empty())
+        return nullptr;
+    return a.GetOverloadSet(std::move(decls), from, self);
+}
+OverloadSet* GetOverloadSet(const clang::LookupResult& lr, ClangTU* from, Type* self, Parse::Access access, Analyzer& a) {
     std::unordered_set<clang::NamedDecl*> decls;
     for (auto decl : lr) {
         if (access < AccessMapping.at(decl->getAccess()))
             continue;
         decls.insert(decl);
     }
-    if (decls.empty())
-        return nullptr;
-    return a.GetOverloadSet(std::move(decls), from, self);
+    return GetOverloadSet(decls, from, self, access, a);
 }
 
 void ClangType::ProcessImplicitSpecialMember(std::function<bool()> needs, std::function<clang::CXXMethodDecl*()> declare, std::function<void(clang::CXXMethodDecl*)> define, std::function<clang::CXXMethodDecl*()> lookup) {
@@ -141,9 +145,17 @@ std::shared_ptr<Expression> ClangType::AccessNamedMember(std::shared_ptr<Express
         if (auto tempdecl = llvm::dyn_cast<clang::ClassTemplateDecl>(lr.getFoundDecl()))
             return BuildChain(val, analyzer.GetClangTemplateClass(*from, tempdecl)->BuildValueConstruction({}, c));
         throw ClangUnknownDecl(name, this, c.where);
-    }    
-    auto set = GetOverloadSet(lr, from, val->GetType(), access, analyzer);
-    return set ? set->BuildValueConstruction({ val }, c) : Type::AccessMember(std::move(val), name, c);
+    }        
+    std::unordered_set<clang::NamedDecl*> decls;
+    for (auto decl : lr) {
+        if (access < AccessMapping.at(decl->getAccess()))
+            continue;
+        decls.insert(decl);
+    }
+    return CreateResultExpression([=](Function* f) {
+        auto set = GetOverloadSet(decls, from, val->GetType(f), access, analyzer);
+        return set ? set->BuildValueConstruction({ val }, c) : Type::AccessMember(std::move(val), name, c);
+    });
 }
 
 llvm::Type* ClangType::GetLLVMType(llvm::Module* module) {
@@ -327,18 +339,20 @@ std::shared_ptr<Expression> ClangType::PrimitiveAccessMember(std::shared_ptr<Exp
     } else {
         resty = std::next(type->getAsCXXRecordDecl()->bases_begin(), num)->getType();
     }
-    auto source_type = self->GetType();
-    auto root_type = analyzer.GetClangType(*from, resty);
-    auto result_type = Semantic::CollapseType(source_type, root_type);
-    auto fieldnum = num >= numbases 
-        ? from->GetFieldNumber(*std::next(type->getAsCXXRecordDecl()->field_begin(), num - numbases))
-        : from->GetBaseNumber(type->getAsCXXRecordDecl(), (type->getAsCXXRecordDecl()->bases_begin() + num)->getType()->getAsCXXRecordDecl());
-    return CreatePrimUnOp(std::move(self), result_type, [this, num, result_type, resty, source_type, root_type, fieldnum](llvm::Value* self, CodegenContext& con) -> llvm::Value* {
-        std::size_t numbases = type->getAsCXXRecordDecl()->bases_end() - type->getAsCXXRecordDecl()->bases_begin();
-        if (num < numbases && resty->getAsCXXRecordDecl()->isEmpty())
-            return con->CreatePointerCast(self, result_type->GetLLVMType(con));
-        auto obj = self->getType()->isPointerTy() ? con.CreateStructGEP(self, fieldnum(con)) : con->CreateExtractValue(self, fieldnum(con));
-        return Semantic::CollapseMember(source_type, { obj, root_type }, con);
+    return CreateResultExpression([=](Function* f) {
+        auto source_type = self->GetType(f);
+        auto root_type = analyzer.GetClangType(*from, resty);
+        auto result_type = Semantic::CollapseType(source_type, root_type);
+        auto fieldnum = num >= numbases
+            ? from->GetFieldNumber(*std::next(type->getAsCXXRecordDecl()->field_begin(), num - numbases))
+            : from->GetBaseNumber(type->getAsCXXRecordDecl(), (type->getAsCXXRecordDecl()->bases_begin() + num)->getType()->getAsCXXRecordDecl());
+        return CreatePrimUnOp(std::move(self), result_type, [this, num, result_type, resty, source_type, root_type, fieldnum](llvm::Value* self, CodegenContext& con) -> llvm::Value* {
+            std::size_t numbases = type->getAsCXXRecordDecl()->bases_end() - type->getAsCXXRecordDecl()->bases_begin();
+            if (num < numbases && resty->getAsCXXRecordDecl()->isEmpty())
+                return con->CreatePointerCast(self, result_type->GetLLVMType(con));
+            auto obj = self->getType()->isPointerTy() ? con.CreateStructGEP(self, fieldnum(con)) : con->CreateExtractValue(self, fieldnum(con));
+            return Semantic::CollapseMember(source_type, { obj, root_type }, con);
+        });
     });
 }
 
@@ -384,7 +398,6 @@ std::shared_ptr<Expression> GetVTablePointer(std::shared_ptr<Expression> self, c
 
 std::shared_ptr<Expression> ClangType::AccessVirtualPointer(std::shared_ptr<Expression> self) {
     if (!type->getAsCXXRecordDecl()->isPolymorphic()) return nullptr;
-    assert(self->GetType()->IsReference());
     return ::GetVTablePointer(std::move(self), type->getAsCXXRecordDecl(), analyzer, from, GetVirtualPointerType());
 }
 

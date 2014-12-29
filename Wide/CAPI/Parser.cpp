@@ -1,5 +1,4 @@
 #include <Wide/CAPI/Parser.h>
-#include <Wide/Util/DebugUtilities.h>
 
 namespace CEquivalents {
     struct LexerResult {

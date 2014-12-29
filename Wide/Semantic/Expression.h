@@ -11,14 +11,18 @@
 #include <string>
 #include <cassert>
 #include <memory>
+#include <boost/signals2.hpp>
+#include <boost/signals2/connection.hpp>
 
 #pragma warning(push, 0)
 #include <llvm/IR/IRBuilder.h>
+#include <llvm/IR/Module.h>
 #include <llvm/ADT/APInt.h>
 #pragma warning(pop)
 
 namespace Wide {
     namespace Semantic {
+        class Function;
         struct Context {
             Context(Type* f, Lexer::Range r) : from(f), where(r) {}
             Type* from;
@@ -31,66 +35,133 @@ namespace Wide {
             Contents,
             Destroyed
         };
-        struct Node {
+        struct CodegenContext {
+            CodegenContext(const CodegenContext&) = default;
+            struct EHScope {
+                CodegenContext* context;
+                llvm::BasicBlock* target;
+                llvm::PHINode* phi;
+                std::vector<llvm::Constant*> types;
+            };
+
+            operator llvm::LLVMContext&() { return module->getContext(); }
+            llvm::IRBuilder<>* operator->() { return insert_builder; }
+            operator llvm::Module*() { return module; }
+
+            std::list<std::pair<std::function<void(CodegenContext&)>, bool>> GetAddedDestructors(CodegenContext& other) {
+                return std::list<std::pair<std::function<void(CodegenContext&)>, bool>>(std::next(other.Destructors.begin(), Destructors.size()), other.Destructors.end());
+            }
+            void GenerateCodeAndDestroyLocals(std::function<void(CodegenContext&)> action);
+            void DestroyDifference(CodegenContext& other, bool EH);
+            void DestroyAll(bool EH);
+            void DestroyTillLastTry();
+            bool IsTerminated(llvm::BasicBlock* bb);
+
+            llvm::BasicBlock* GetUnreachableBlock();
+            llvm::Type* GetLpadType();
+            llvm::Function* GetEHPersonality();
+            llvm::Function* GetCXABeginCatch();
+            llvm::Function* GetCXAEndCatch();
+            llvm::Function* GetCXARethrow();
+            llvm::Function* GetCXAThrow();
+            llvm::Function* GetCXAAllocateException();
+            llvm::Function* GetCXAFreeException();
+            llvm::IntegerType* GetPointerSizedIntegerType();
+            llvm::PointerType* GetInt8PtrTy();
+            llvm::Instruction* GetAllocaInsertPoint();
+
+            llvm::AllocaInst* CreateAlloca(Type* t);
+            llvm::Value* CreateStructGEP(llvm::Value* v, unsigned num);
+
+            llvm::BasicBlock* CreateLandingpadForEH();
+
+            bool destructing = false;
+            bool catching = false;
+            llvm::Module* module;
+            // Mostly used for e.g. member variables.
+            Wide::Util::optional<EHScope> EHHandler;
+            Function* func;
         private:
-            std::unordered_set<Node*> listeners;
-            std::unordered_set<Node*> listening_to;
-            void AddChangedListener(Node* n) { listeners.insert(n); }
-            void RemoveChangedListener(Node* n) { listeners.erase(n); }
-        protected:
-            virtual void OnNodeChanged(Node* n, Change what) {}
-            void ListenToNode(Node* n) {
-                n->AddChangedListener(this);
-                listening_to.insert(n);
-            }
-            void StopListeningToNode(Node* n) {
-                n->RemoveChangedListener(this);
-                listening_to.erase(n);
-            }
-            void OnChange() {
-                for (auto node : listeners)
-                    node->OnNodeChanged(this, Change::Contents);
-            }
+            CodegenContext(llvm::Module* mod, llvm::IRBuilder<>& alloc_builder, llvm::IRBuilder<>& gep_builder, llvm::IRBuilder<>& ir_builder);
+            std::list<std::pair<std::function<void(CodegenContext&)>, bool>> Destructors;
+            llvm::IRBuilder<>* alloca_builder;
+            llvm::IRBuilder<>* insert_builder;
+            llvm::IRBuilder<>* gep_builder;
+            std::shared_ptr<std::unordered_map<llvm::AllocaInst*, std::unordered_map<unsigned, llvm::Value*>>> gep_map;
         public:
-            virtual ~Node() {
-                for (auto node : listening_to)
-                    node->listeners.erase(this);
-                for (auto node : listeners) {
-                    // ENABLE TO DEBUG ACCIDENTALLY DESTROYED EXPRESSIONS
-                    //    node->OnNodeChanged(this, Change::Destroyed);
-                    node->listening_to.erase(this);
-                }
-            }
+            bool HasDestructors();
+            std::list<std::pair<std::function<void(CodegenContext&)>, bool>>::iterator AddDestructor(std::function<void(CodegenContext&)>);
+            std::list<std::pair<std::function<void(CodegenContext&)>, bool>>::iterator AddExceptionOnlyDestructor(std::function<void(CodegenContext&)>);
+            void EraseDestructor(std::list<std::pair<std::function<void(CodegenContext&)>, bool>>::iterator it);
+            void AddDestructors(std::list<std::pair<std::function<void(CodegenContext&)>, bool>>);
+            static void EmitFunctionBody(llvm::Function* func, std::function<void(CodegenContext&)> body);
         };
-        struct Statement : public Node {
+        struct Statement {
             virtual void GenerateCode(CodegenContext& con) = 0;
         };
         struct Expression : public Statement {
-            virtual Type* GetType() = 0; // If the type is unknown then nullptr
+            static void AddDefaultHandlers(Analyzer& a);
+            virtual Type* GetType(Function* f) = 0; // If the type is unknown then nullptr
             llvm::Value* GetValue(CodegenContext& con);
-            virtual bool IsConstantExpression() { return false; } // If not constant then nullptr
+            virtual bool IsConstantExpression(Function*) { return false; } // If not constant then false
+            boost::signals2::signal<void(Expression*, Function*)> OnChanged;
         private:
-            Wide::Util::optional<llvm::Value*> val;
+            std::unordered_map<llvm::Function*, llvm::Value*> values;
             void GenerateCode(CodegenContext& con) override final {
                 GetValue(con);
             }
             virtual llvm::Value* ComputeValue(CodegenContext& con) = 0;
         };
+        struct SourceExpression : public Expression {
+            struct ExpressionData {
+                std::unordered_map<Function*, Type*> types;
+                boost::signals2::scoped_connection connection;
+                ExpressionData(std::unordered_map<Function*, Type*> types, boost::signals2::scoped_connection connection)
+                    : types(std::move(types)), connection(std::move(connection)) {}
+                ExpressionData(ExpressionData&& other)
+                    : types(std::move(other.types))
+                    , connection(std::move(other.connection)) {}
+                ExpressionData& operator=(ExpressionData&& other) {
+                    types = std::move(other.types);
+                    connection = std::move(other.connection);
+                }
+            };
+        private:
+            std::unordered_map<Expression*, ExpressionData> exprs;
+            std::unordered_map<Function*, Type*> curr_type;
+        public:
+            SourceExpression(std::initializer_list<std::shared_ptr<Expression>> exprs);
+            SourceExpression(std::initializer_list<std::shared_ptr<Expression>> exprs, const std::vector<std::shared_ptr<Expression>>& args);
+            SourceExpression(const SourceExpression&) = delete;
+            Type* GetType(Function* f) override final;
 
-        struct ImplicitLoadExpr : public Expression {
-            ImplicitLoadExpr(std::shared_ptr<Expression> expr);
-            std::shared_ptr<Expression> src;
-            Type* GetType() override final;
-            llvm::Value* ComputeValue(CodegenContext& con) override final;
-            bool IsConstantExpression() override final { return src->IsConstantExpression(); }
+            virtual Type* CalculateType(Function* f) = 0;
+        };
+        struct ResultExpression : public SourceExpression {
+        private:
+            std::unordered_map<Function*, std::pair<std::shared_ptr<Expression>, boost::signals2::scoped_connection>> results;
+        public:
+            ResultExpression(std::initializer_list<std::shared_ptr<Expression>> exprs);
+            ResultExpression(std::initializer_list<std::shared_ptr<Expression>> exprs, const std::vector<std::shared_ptr<Expression>>& args);
+            virtual std::shared_ptr<Expression> CalculateResult(Function* f) = 0;
+            Type* CalculateType(Function* f) override final;
+            bool IsConstantExpression(Function*) override final;
         };
 
-        struct ImplicitStoreExpr : public Expression {
+        struct ImplicitLoadExpr : public SourceExpression {
+            ImplicitLoadExpr(std::shared_ptr<Expression> expr);
+            std::shared_ptr<Expression> src;
+            Type* CalculateType(Function* f) override final;
+            llvm::Value* ComputeValue(CodegenContext& con) override final;
+            bool IsConstantExpression(Function* f) override final { return src->IsConstantExpression(f); }
+        };
+
+        struct ImplicitStoreExpr : public SourceExpression {
             ImplicitStoreExpr(std::shared_ptr<Expression> memory, std::shared_ptr<Expression> value);
             std::shared_ptr<Expression> mem, val;
-            Type* GetType() override final;
+            Type* CalculateType(Function* f) override final;
             llvm::Value* ComputeValue(CodegenContext& con) override final;
-            bool IsConstantExpression() override final { return mem->IsConstantExpression() && val->IsConstantExpression(); }
+            bool IsConstantExpression(Function* f) override final { return mem->IsConstantExpression(f) && val->IsConstantExpression(f); }
         };
 
         struct ImplicitTemporaryExpr : public Expression {
@@ -98,61 +169,61 @@ namespace Wide {
             Type* of;
             llvm::Value* alloc;
             Context c;
-            Type* GetType() override final;
+            Type* GetType(Function* f) override final;
             llvm::Value* ComputeValue(CodegenContext& con) override final;
         };
 
-        struct LvalueCast : public Expression {
+        struct LvalueCast : public SourceExpression {
             LvalueCast(std::shared_ptr<Expression> expr);
             std::shared_ptr<Expression> expr;
-            Type* GetType() override final;
+            Type* CalculateType(Function* f) override final;
             llvm::Value* ComputeValue(CodegenContext& con) override final;
-            bool IsConstantExpression() override final { return expr->IsConstantExpression(); }
+            bool IsConstantExpression(Function* f) override final { return expr->IsConstantExpression(f); }
         };
 
-        struct RvalueCast : public Expression {
+        struct RvalueCast : public SourceExpression {
             RvalueCast(std::shared_ptr<Expression> expr);
             std::shared_ptr<Expression> expr;
-            Type* GetType() override final;
+            Type* CalculateType(Function* f) override final;
             llvm::Value* ComputeValue(CodegenContext& con) override final;
-            bool IsConstantExpression() override final { return expr->IsConstantExpression(); }
+            bool IsConstantExpression(Function* f) override final { return expr->IsConstantExpression(f); }
         };
 
-        struct ImplicitAddressOf : public Expression {
+        struct ImplicitAddressOf : public SourceExpression {
             ImplicitAddressOf(std::shared_ptr<Expression>, Context c);
             Context c;
             std::shared_ptr<Expression> expr;
-            Type* GetType() override final;
+            Type* CalculateType(Function* f) override final;
             llvm::Value* ComputeValue(CodegenContext& con) override final;
-            bool IsConstantExpression() override final { return expr->IsConstantExpression(); }
+            bool IsConstantExpression(Function* f) override final { return expr->IsConstantExpression(f); }
         };
         
-        struct Chain : Expression {
+        struct Chain : SourceExpression {
             Chain(std::shared_ptr<Expression> effect, std::shared_ptr<Expression> result);
             std::shared_ptr<Expression> SideEffect;
             std::shared_ptr<Expression> result;
-            Type* GetType() override final;
+            Type* CalculateType(Function* f) override final;
             llvm::Value* ComputeValue(CodegenContext& con) override final;
-            bool IsConstantExpression() override final;
+            bool IsConstantExpression(Function* f) override final;
         };
 
         struct DestructorCall : Expression {
             DestructorCall(std::function<void(CodegenContext&)> destructor, Analyzer& a);
             std::function<void(CodegenContext&)> destructor;
             Analyzer* a;
-            Type* GetType() override final;
+            Type* GetType(Function* f) override final;
             llvm::Value* ComputeValue(CodegenContext& con) override final;
         };
 
         struct ConstantExpression : Expression {
-            bool IsConstantExpression() override final { return true; }
+            bool IsConstantExpression(Function* f) override final { return true; }
         };
 
         struct String : ConstantExpression {
             String(std::string s, Analyzer& an);
             std::string str;
             Analyzer& a;
-            Type* GetType() override final;
+            Type* GetType(Function* f) override final;
             llvm::Value* ComputeValue(CodegenContext& con) override final;
         };
 
@@ -160,7 +231,7 @@ namespace Wide {
             Integer(llvm::APInt val, Analyzer& an);
             llvm::APInt value;
             Analyzer& a;
-            Type* GetType() override final;
+            Type* GetType(Function* f) override final;
             llvm::Value* ComputeValue(CodegenContext& con) override final;
         };
 
@@ -168,10 +239,11 @@ namespace Wide {
             Boolean(bool b, Analyzer& a);
             bool b;
             Analyzer& a;
-            Type* GetType() override final;
+            Type* GetType(Function* f) override final;
             llvm::Value* ComputeValue(CodegenContext& con) override final;
         };
 
+        std::shared_ptr<Expression> CreateResultExpression(std::function<std::shared_ptr<Expression>(Function* f)> func);
         std::shared_ptr<Expression> CreatePrimUnOp(std::shared_ptr<Expression> self, Type* ret, std::function<llvm::Value*(llvm::Value*, CodegenContext&)>);
         std::shared_ptr<Expression> CreatePrimOp(std::shared_ptr<Expression> lhs, std::shared_ptr<Expression> rhs, std::function<llvm::Value*(llvm::Value*, llvm::Value*, CodegenContext&)>);
         std::shared_ptr<Expression> CreatePrimAssOp(std::shared_ptr<Expression> lhs, std::shared_ptr<Expression> rhs, std::function<llvm::Value*(llvm::Value*, llvm::Value*, CodegenContext&)>);

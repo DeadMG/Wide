@@ -10,7 +10,7 @@
 #include <Wide/Semantic/Type.h>
 #include <Wide/Semantic/ConstructorType.h>
 #include <Wide/Semantic/FunctionType.h>
-#include <Wide/Util/DebugUtilities.h>
+#include <Wide/Util/DebugBreak.h>
 #pragma warning(push, 0)
 #include <llvm/Support/TargetSelect.h>
 #include <llvm/Target/TargetOptions.h>

@@ -27,7 +27,7 @@
 #include <llvm/IR/Verifier.h>
 #pragma warning(pop)
 
-void TestDirectory(std::string path, std::string mode, std::string program, bool debugbreak, std::unordered_map<std::string, std::function<bool()>>& failedset) {
+void Wide::Driver::TestDirectory(std::string path, std::string mode, std::string program, bool debugbreak, std::unordered_map<std::string, std::function<bool()>>& failedset) {
     unsigned tests_failed = 0;
     unsigned tests_succeeded = 0;
     auto run_test_process = [mode, program, debugbreak](std::string file) {
@@ -100,7 +100,7 @@ template<typename F> auto GenerateCode(llvm::Module* mod, F f) -> decltype(f(nul
     return f(ee);
 }
 
-void Jit(Wide::Options::Clang& copts, std::string file) {
+void Wide::Driver::Jit(Wide::Options::Clang& copts, std::string file) {
 #ifdef _MSC_VER
     const std::string MinGWInstallPath = "../Deployment/MinGW/";
     Wide::Driver::AddMinGWIncludePaths(copts, MinGWInstallPath);
@@ -225,7 +225,7 @@ const std::unordered_map<std::string, std::function<bool(Wide::Semantic::Error& 
     { "OverloadResolutionFailure", [](Wide::Semantic::Error& err) { return (bool)dynamic_cast<Wide::Semantic::OverloadResolutionFailure*>(&err); } },
 };
 
-void Compile(Wide::Options::Clang& copts, std::string file) {
+void Wide::Driver::Compile(Wide::Options::Clang& copts, std::string file) {
 #ifdef _MSC_VER
     const std::string MinGWInstallPath = "../Deployment/MinGW/";
     Wide::Driver::AddMinGWIncludePaths(copts, MinGWInstallPath);
