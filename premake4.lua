@@ -85,14 +85,15 @@ function AddClangDependencies(plat, conf)
         "clangLex",
         "clangBasic",
     }
-    local libs = {"LLVMLTO",
+     
+    local libs = {
+        "LLVMLTO",
         "LLVMObjCARCOpts",
         "LLVMLinker",
         "LLVMipo",
         "LLVMVectorize",
         "LLVMBitWriter",
         "LLVMIRReader",
-        "LLVMBitReader",
         "LLVMAsmParser",
         "LLVMR600CodeGen",
         "LLVMR600Desc",
@@ -129,12 +130,6 @@ function AddClangDependencies(plat, conf)
         "LLVMMipsDesc",
         "LLVMMipsInfo",
         "LLVMMipsAsmPrinter",
-        "LLVMARMDisassembler",
-        "LLVMARMCodeGen",
-        "LLVMARMAsmParser",
-        "LLVMARMDesc",
-        "LLVMARMInfo",
-        "LLVMARMAsmPrinter",
         "LLVMAArch64Disassembler",
         "LLVMAArch64CodeGen",
         "LLVMAArch64AsmParser",
@@ -142,16 +137,23 @@ function AddClangDependencies(plat, conf)
         "LLVMAArch64Info",
         "LLVMAArch64AsmPrinter",
         "LLVMAArch64Utils",
+        "LLVMARMDisassembler",
+        "LLVMARMCodeGen",
+        "LLVMARMAsmParser",
+        "LLVMARMDesc",
+        "LLVMARMInfo",
+        "LLVMARMAsmPrinter",
+        "LLVMPowerPCDisassembler",
         "LLVMPowerPCCodeGen",
         "LLVMPowerPCAsmParser",
         "LLVMPowerPCDesc",
         "LLVMPowerPCInfo",
         "LLVMPowerPCAsmPrinter",
+         "LLVMSparcDisassembler",
         "LLVMSparcCodeGen",
+        "LLVMSparcAsmParser",
         "LLVMSparcDesc",
         "LLVMSparcInfo",
-        "LLVMSparcDisassembler",
-        "LLVMSparcAsmParser",
         "LLVMSparcAsmPrinter",
         "LLVMTableGen",
         "LLVMDebugInfo",
@@ -161,12 +163,13 @@ function AddClangDependencies(plat, conf)
         "LLVMX86CodeGen",
         "LLVMSelectionDAG",
         "LLVMAsmPrinter",
-        "LLVMMCParser",
         "LLVMX86Desc",
         "LLVMX86Info",
         "LLVMX86AsmPrinter",
         "LLVMX86Utils",
         "LLVMJIT",
+        "LLVMLineEditor",
+        "LLVMMCAnalysis",
         "LLVMMCDisassembler",
         "LLVMInstrumentation",
         "LLVMInterpreter",
@@ -176,15 +179,17 @@ function AddClangDependencies(plat, conf)
         "LLVMTransformUtils",
         "LLVMipa",
         "LLVMAnalysis",
+        "LLVMProfileData",
         "LLVMMCJIT",
         "LLVMTarget",
         "LLVMRuntimeDyld",
+        "LLVMObject",
+        "LLVMMCParser",
+        "LLVMBitReader",
         "LLVMExecutionEngine",
         "LLVMMC",
-        "LLVMObject",
         "LLVMCore",
-        "LLVMSupport",
-        "LLVMProfileData"
+        "LLVMSupport"
     }
     for k, v in pairs(clanglibs) do
         links { v }
@@ -244,7 +249,7 @@ function AddZlibDependency(plat, conf)
     end
 end
 if not _OPTIONS["llvm-path"] then
-    print("Error: boost-path was not provided.\n")
+    print("Error: llvm-path was not provided.\n")
     return
 end
 
@@ -368,7 +373,7 @@ if not os.is("Windows") then
     if _OPTIONS["TeamCity"] then
         defines { "TEAMCITY=" .. _OPTIONS["TeamCity"] }
     end
-    buildoptions  {"-std=c++11", "-D __STDC_CONSTANT_MACROS", "-D __STDC_LIMIT_MACROS", "-fPIC" }
+    buildoptions  {"-std=c++1y", "-D __STDC_CONSTANT_MACROS", "-D __STDC_LIMIT_MACROS", "-fPIC" }
 else
     defines { "_SCL_SECURE_NO_WARNINGS" }
     buildoptions  {"/wd4503" }

@@ -15,6 +15,7 @@
 
 int main(int argc, char** argv) {
     Wide::Options::Clang clangopts;
+    clangopts.OnDiagnostic = [](std::string err) {};
     clangopts.TargetOptions.Triple = Wide::Util::GetMCJITProcessTriple();
     // Enabling RTTI requires a Standard Library to be linked.
     // Else, there is an undefined reference to an ABI support class.
