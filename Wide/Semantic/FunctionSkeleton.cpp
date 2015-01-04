@@ -441,133 +441,6 @@ void FunctionSkeleton::ComputeBody() {
     }
 }
 
-void FunctionSkeleton::ComputeReturnType() {
-    if (!ExplicitReturnType) {
-        if (returns.size() == 0) {
-            ReturnType = analyzer.GetVoidType();
-            return;
-        }
-
-        std::unordered_set<Type*> ret_types;
-        for (auto ret : returns) {
-            if (!ret->GetReturnType()) continue;
-            ret_types.insert(ret->GetReturnType()->Decay());
-        }
-
-        if (ret_types.size() == 1) {
-            ReturnType = *ret_types.begin();
-            OnChange();
-            return;
-        }
-
-        // If there are multiple return types, there should be a single return type where the rest all is-a that one.
-        std::unordered_set<Type*> isa_rets;
-        for (auto ret : ret_types) {
-            auto the_rest = ret_types;
-            the_rest.erase(ret);
-            auto all_isa = [&] {
-                for (auto other : the_rest) {
-                    if (!Type::IsFirstASecond(other, ret, this))
-                        return false;
-                }
-                return true;
-            };
-            if (all_isa())
-                isa_rets.insert(ret);
-        }
-        if (isa_rets.size() == 1) {
-            ReturnType = *isa_rets.begin();
-            OnChange();
-            return;
-        }
-        throw std::runtime_error("Fuck");
-    } else {
-        ReturnType = *ExplicitReturnType;
-    }
-}
-
-llvm::Function* FunctionSkeleton::EmitCode(llvm::Module* module) {
-    if (llvmfunc) {
-        if (llvmfunc->getParent() == module)
-            return llvmfunc;
-        return module->getFunction(llvmfunc->getName());
-    }
-    auto sig = GetSignature();
-    auto llvmsig = sig->GetLLVMType(module);
-    if (import_name) {
-        if (llvmfunc = module->getFunction(*import_name))
-            return llvmfunc;
-        llvmfunc = llvm::Function::Create(llvm::dyn_cast<llvm::FunctionType>(llvmsig->getElementType()), llvm::GlobalValue::LinkageTypes::ExternalLinkage, *import_name, module);
-        for (auto exportnam : trampoline)
-            exportnam(module);
-        return llvmfunc;
-    }
-    llvmfunc = llvm::Function::Create(llvm::dyn_cast<llvm::FunctionType>(llvmsig->getElementType()), llvm::GlobalValue::LinkageTypes::ExternalLinkage, llvmname, module);
-    CodegenContext::EmitFunctionBody(llvmfunc, [this](CodegenContext& c) {
-        for (auto&& stmt : root_scope->active)
-            if (!c.IsTerminated(c->GetInsertBlock()))
-                stmt->GenerateCode(c);
-
-        if (!c.IsTerminated(c->GetInsertBlock())) {
-            if (ReturnType == analyzer.GetVoidType()) {
-                c.DestroyAll(false);
-                c->CreateRetVoid();
-            } else
-                c->CreateUnreachable();
-        }
-    });
-
-    for (auto exportnam : trampoline)
-        exportnam(module);
-    return llvmfunc;
-}
-
-std::shared_ptr<Expression> FunctionSkeleton::ConstructCall(std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c) {
-    if (s == State::NotYetAnalyzed)
-        ComputeBody();
-    struct Self : public Expression {
-        Self(Function* self, std::shared_ptr<Expression> expr, std::shared_ptr<Expression> val)
-            : self(self), val(std::move(val))
-        {
-            if (!expr) return;
-            if (auto func = dynamic_cast<const Parse::DynamicFunction*>(self->fun)) {
-                udt = dynamic_cast<UserDefinedType*>(expr->GetType()->Decay());
-                if (!udt)
-                    return;
-                obj = Type::GetVirtualPointer(expr);
-            }
-        }
-        UserDefinedType* udt;
-        std::shared_ptr<Expression> obj;
-        std::shared_ptr<Expression> val;
-        Function* self;
-        Type* GetType() override final {
-            return self->GetSignature();
-        }
-        bool IsConstantExpression() override final {
-            if (obj) return obj->IsConstantExpression() && val->IsConstantExpression();
-            return val->IsConstantExpression();
-        }
-        llvm::Value* ComputeValue(CodegenContext& con) override final {
-            if (!self->llvmfunc)
-                self->EmitCode(con);
-            val->GetValue(con);
-            if (obj) {
-                auto func = dynamic_cast<const Parse::DynamicFunction*>(self->fun);
-                assert(func);
-                auto vindex = udt->GetVirtualFunctionIndex(func);
-                if (!vindex) return self->llvmfunc;
-                auto vptr = con->CreateLoad(obj->GetValue(con));
-                return con->CreatePointerCast(con->CreateLoad(con->CreateConstGEP1_32(vptr, *vindex)), self->GetSignature()->GetLLVMType(con));
-            }
-            return self->llvmfunc;
-        }
-    };
-    auto self = !args.empty() ? args[0] : nullptr;
-
-    return Type::BuildCall(Wide::Memory::MakeUnique<Self>(this, self, std::move(val)), std::move(args), c);
-}
-
 std::shared_ptr<Expression> FunctionSkeleton::LookupLocal(Parse::Name name) {
     Scope* current_scope = root_scope.get();
     while (!current_scope->children.empty())
@@ -576,17 +449,6 @@ std::shared_ptr<Expression> FunctionSkeleton::LookupLocal(Parse::Name name) {
         return current_scope->LookupLocal(*string);
     return nullptr;
 }
-WideFunctionType* FunctionSkeleton::GetSignature() {
-    if (s == State::NotYetAnalyzed)
-        ComputeBody();
-    if (ExplicitReturnType)
-        return analyzer.GetFunctionType(ReturnType, Args, false);
-    if (s == State::AnalyzeInProgress)
-        assert(false && "Attempted to call GetSignature whilst a function was still being analyzed.");
-    assert(ReturnType);
-    return analyzer.GetFunctionType(ReturnType, Args, false);
-}
-
 Type* FunctionSkeleton::GetConstantContext() {
     return nullptr;
 }
@@ -611,22 +473,6 @@ std::string FunctionSkeleton::explain() {
     if (context == analyzer.GetGlobalModule())
         context_name = "." + source_name;
     return context_name + args + " at " + fun->where;
-}
-Function::~Function() {}
-std::vector<std::shared_ptr<Expression>> FunctionSkeleton::AdjustArguments(std::vector<std::shared_ptr<Expression>> args, Context c) {
-    // May need to perform conversion on "this" that isn't handled by the usual machinery.
-    // But check first, because e.g. Derived& to Base& is fine.
-    if (analyzer.HasImplicitThis(fun, context) && !Type::IsFirstASecond(args[0]->GetType(), Args[0], context)) {
-        auto argty = args[0]->GetType();
-        // If T&&, cast.
-        // Else, build a T&& from the U then cast that. Use this instead of BuildRvalueConstruction because we may need to preserve derived semantics.
-        if (argty == analyzer.GetRvalueType(GetNonstaticMemberContext())) {
-            args[0] = std::make_shared<LvalueCast>(args[0]);
-        } else if (argty != analyzer.GetLvalueType(GetNonstaticMemberContext())) {
-            args[0] = std::make_shared<LvalueCast>(analyzer.GetRvalueType(GetNonstaticMemberContext())->BuildValueConstruction({ args[0] }, c));
-        }
-    }
-    return AdjustArgumentsForTypes(std::move(args), Args, c);
 }
 std::shared_ptr<Expression> FunctionSkeleton::GetStaticSelf() {
     struct Self : Expression {

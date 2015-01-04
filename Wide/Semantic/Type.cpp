@@ -2,7 +2,6 @@
 #include <Wide/Semantic/Analyzer.h>
 #include <Wide/Semantic/PointerType.h>
 #include <Wide/Semantic/Module.h>
-#include <Wide/Semantic/Function.h>
 #include <Wide/Semantic/Reference.h>
 #include <Wide/Semantic/SemanticError.h>
 #include <Wide/Lexer/Token.h>
@@ -330,7 +329,6 @@ struct ValueConstruction : Expression {
     Type* self;
     bool IsConstantExpression(Expression::InstanceKey key) override final {
         if (self->GetConstantContext() == self && no_args) return true;
-        if (auto func = dynamic_cast<Function*>(self)) return true;
         if (single_arg) {
             auto otherty = single_arg->GetType(key);
             if (single_arg->GetType(key)->Decay() == self->Decay()) {
@@ -355,8 +353,6 @@ struct ValueConstruction : Expression {
             }
             if (self->GetConstantContext() == self && no_args)
                 return llvm::UndefValue::get(self->GetLLVMType(con));
-            if (auto func = dynamic_cast<Function*>(self))
-                return llvm::UndefValue::get(self->GetLLVMType(con));
             if (single_arg) {
                 auto otherty = single_arg->GetType(con.func);
                 if (single_arg->GetType(con.func)->Decay() == self->Decay()) {
@@ -364,16 +360,6 @@ struct ValueConstruction : Expression {
                         return single_arg->GetValue(con);
                     }
                     if (single_arg->GetType(con.func)->IsReference(self)) {
-                        //if (auto val = dynamic_cast<ValueConstruction*>(single_arg.get())) {
-                        //    if (IsRvalueType(val->GetType())) {
-                        //        if (val->single_arg) {
-                        //            if (val->single_arg->GetType() == self) {
-                        //                state = State::ValueSingleArgument;
-                        //                return val->single_arg->GetValue(module, bb, allocas);
-                        //            }
-                        //        }
-                        //    }
-                        //}
                         return con->CreateLoad(single_arg->GetValue(con));
                     }
                 }

@@ -175,7 +175,6 @@ namespace Wide {
             ClangFunctionType* GetFunctionType(const clang::FunctionProtoType*, Wide::Util::optional<clang::QualType>, ClangTU&);
             Module* GetWideModule(const Parse::Module* m, Module* higher, std::string name);
             FunctionSkeleton* GetWideFunction(const Parse::FunctionBase* p, Type* context, std::string name, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup);
-            FunctionSkeleton* GetWideFunction(const Parse::FunctionBase* p, Type* context, std::string name);
             Function* GetWideFunction(FunctionSkeleton* skeleton, const std::vector<Type*>&);
             Function* GetWideFunction(FunctionSkeleton* skeleton);
             LvalueType* GetLvalueType(Type* t);

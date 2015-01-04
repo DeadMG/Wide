@@ -12,6 +12,8 @@
 #include <Wide/Semantic/TupleType.h>
 #include <Wide/Semantic/Module.h>
 #include <Wide/Semantic/LambdaType.h>
+#include <Wide/Semantic/Function.h>
+#include <Wide/Semantic/FunctionType.h>
 
 using namespace Wide;
 using namespace Semantic;
@@ -37,6 +39,9 @@ llvm::Value* ImplicitStoreExpr::ComputeValue(CodegenContext& con) {
     auto value = val->GetValue(con);
     con->CreateStore(value, memory);
     return memory;
+}
+void Expression::Instantiate(Function* f) {
+    GetType(f->GetSignature()->GetArguments());
 }
 
 ImplicitTemporaryExpr::ImplicitTemporaryExpr(Type* what, Context c)

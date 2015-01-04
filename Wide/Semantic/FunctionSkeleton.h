@@ -37,60 +37,44 @@ namespace Wide {
             ControlFlowStatement* GetCurrentControlFlow();
         };
         struct Return {
-            virtual Type* GetReturnType() = 0;
+            virtual Type* GetReturnType(Expression::InstanceKey key) = 0;
         };
-        class FunctionSkeleton : public MetaType, public Callable {
-            std::string llvmname;
-            llvm::Function* llvmfunc = nullptr;
-            Wide::Util::optional<Type*> ExplicitReturnType;
-            Type* ReturnType = nullptr;
-            std::vector<Type*> Args;
-            const Parse::FunctionBase* fun;
-            Type* context;
-            std::string source_name;
-            std::vector<std::function<void(llvm::Module*)>> trampoline;
-            std::vector<std::shared_ptr<Expression>> parameters;
-            std::vector<std::tuple<std::function<llvm::Function*(llvm::Module*)>, ClangFunctionType*, clang::FunctionDecl*>> clang_exports;
-            Wide::Util::optional<std::string> import_name;
-
-            // You can only be exported as constructors of one, or nonstatic member of one, class.
-            Wide::Util::optional<Semantic::ConstructorContext*> ConstructorContext;
-            Wide::Util::optional<Type*> NonstaticMemberContext;
+        class FunctionSkeleton {
             enum class State {
                 NotYetAnalyzed,
                 AnalyzeInProgress,
                 AnalyzeCompleted
             };
-            State s;
-            void ComputeReturnType();
-            std::shared_ptr<Expression> CallFunction(std::vector<std::shared_ptr<Expression>> args, Context c) override final {
-                return Type::BuildCall(BuildValueConstruction({}, c), std::move(args), c);
-            }
-            std::vector<std::shared_ptr<Expression>> AdjustArguments(std::vector<std::shared_ptr<Expression>> args, Context c) override final;
-            std::unordered_set<Return*> returns;
 
+            std::unordered_set<Return*> returns;
+            Type* context;
+            std::string source_name;
+            std::vector<std::shared_ptr<Expression>> parameters;
+            std::vector<std::tuple<std::function<llvm::Function*(llvm::Module*)>, ClangFunctionType*, clang::FunctionDecl*>> clang_exports;
+
+            // You can only be exported as constructors of one, or nonstatic member of one, class.
+            Wide::Util::optional<Semantic::ConstructorContext*> ConstructorContext;
+            Wide::Util::optional<Type*> NonstaticMemberContext;
+            State current_state;
             std::unique_ptr<Scope> root_scope;
+            const Parse::FunctionBase* fun;
         public:
             static void AddDefaultHandlers(Analyzer& a);
-            void ComputeBody();
-            llvm::Function* EmitCode(llvm::Module* module);
             FunctionSkeleton(std::vector<Type*> args, const Parse::FunctionBase* astfun, Analyzer& a, Type* container, std::string name, Type* nonstatic_context);
 
-            Wide::Util::optional<clang::QualType> GetClangType(ClangTU& where) override final;
-
-            std::shared_ptr<Expression> ConstructCall(std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c) override final;
-            Type* GetContext() override final { return context; }
             Type* GetNonstaticMemberContext() { if (NonstaticMemberContext) return *NonstaticMemberContext; return nullptr; }
 
-            WideFunctionType* GetSignature();
             std::shared_ptr<Expression> LookupLocal(Parse::Name name);
-            Type* GetConstantContext() override final;
-            std::string explain() override final;
             std::string GetSourceName() { return source_name; }
             std::shared_ptr<Expression> GetStaticSelf();
-            void AddExportName(std::function<void(llvm::Module*)> mod);
             std::string GetExportBody();
-            ~FunctionSkeleton();
+            ~FunctionSkeleton(); 
+
+            Type* GetContext();
+            const Parse::FunctionBase* GetASTFunction();
+            std::vector<Statement*> ComputeBody();
+            std::unordered_set<Return*> GetReturns();
+            Type* GetExplicitReturn(Expression::InstanceKey key);
         };
     }
 }

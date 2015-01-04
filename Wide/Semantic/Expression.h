@@ -37,6 +37,7 @@ namespace Wide {
         };
         struct Statement {
             virtual void GenerateCode(CodegenContext& con) = 0;
+            virtual void Instantiate(Function* f) = 0;
         };
         struct Expression : public Statement {
             typedef boost::optional<std::vector<Type*>> InstanceKey;
@@ -46,6 +47,7 @@ namespace Wide {
             virtual bool IsConstantExpression(InstanceKey) { return false; } // If not constant then false
             boost::signals2::signal<void(Expression*, InstanceKey)> OnChanged;
         private:
+            void Instantiate(Function* f);
             std::unordered_map<llvm::Function*, llvm::Value*> values;
             void GenerateCode(CodegenContext& con) override final {
                 GetValue(con);
