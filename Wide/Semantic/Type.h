@@ -100,13 +100,13 @@ namespace Wide {
             VTableLayout ComputeVTableLayout();
             std::shared_ptr<Expression> CreateVTable(std::vector<std::pair<Type*, unsigned>> path);
             std::shared_ptr<Expression> GetVTablePointer(std::vector<std::pair<Type*, unsigned>> path);
-            static std::shared_ptr<Expression> SetVirtualPointers(std::shared_ptr<Expression> self, std::vector<std::pair<Type*, unsigned>> path);
+            static std::shared_ptr<Expression> SetVirtualPointers(Expression::InstanceKey key, std::shared_ptr<Expression> self, std::vector<std::pair<Type*, unsigned>> path);
             virtual VTableLayout ComputePrimaryVTableLayout();
-            virtual std::shared_ptr<Expression> ConstructCall(std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c);
-            virtual std::shared_ptr<Expression> AccessVirtualPointer(std::shared_ptr<Expression> self);
+            virtual std::shared_ptr<Expression> ConstructCall(Expression::InstanceKey key, std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c);
+            virtual std::shared_ptr<Expression> AccessVirtualPointer(Expression::InstanceKey key, std::shared_ptr<Expression> self);
         protected:
             virtual std::function<void(CodegenContext&)> BuildDestruction(std::shared_ptr<Expression> self, Context c, bool devirtualize);
-            virtual std::shared_ptr<Expression> AccessNamedMember(std::shared_ptr<Expression> t, std::string name, Context c);
+            virtual std::shared_ptr<Expression> AccessNamedMember(Expression::InstanceKey key, std::shared_ptr<Expression> t, std::string name, Context c);
             llvm::Function* DestructorFunction = nullptr;
             virtual llvm::Function* CreateDestructorFunction(llvm::Module* module);
             virtual OverloadSet* CreateOperatorOverloadSet(Parse::OperatorName what, Parse::Access access, OperatorAccess implicit);
@@ -158,7 +158,6 @@ namespace Wide {
 
             std::shared_ptr<Expression> BuildValueConstruction(std::vector<std::shared_ptr<Expression>> args, Context c);
             std::shared_ptr<Expression> BuildRvalueConstruction(std::vector<std::shared_ptr<Expression>> exprs, Context c);
-            std::shared_ptr<Expression> BuildLvalueConstruction(std::vector<std::shared_ptr<Expression>> exprs, Context c);
 
             virtual ~Type() {}
 
@@ -190,16 +189,16 @@ namespace Wide {
 
         struct Callable {
         public:
-            std::shared_ptr<Expression> Call(std::vector<std::shared_ptr<Expression>> args, Context c);
-            virtual std::shared_ptr<Expression> CallFunction(std::vector<std::shared_ptr<Expression>> args, Context c) = 0;
-            virtual std::vector<std::shared_ptr<Expression>> AdjustArguments(std::vector<std::shared_ptr<Expression>> args, Context c) = 0;
+            std::shared_ptr<Expression> Call(Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c);
+            virtual std::shared_ptr<Expression> CallFunction(Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c) = 0;
+            virtual std::vector<std::shared_ptr<Expression>> AdjustArguments(Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c) = 0;
         };
         struct OverloadResolvable {
             virtual Wide::Util::optional<std::vector<Type*>> MatchParameter(std::vector<Type*>, Analyzer& a, Type* source) = 0;
             virtual Callable* GetCallableForResolution(std::vector<Type*>, Type*, Analyzer& a) = 0;
         };
 
-        std::vector<std::shared_ptr<Expression>> AdjustArgumentsForTypes(std::vector<std::shared_ptr<Expression>> args, std::vector<Type*> types, Context c);
+        std::vector<std::shared_ptr<Expression>> AdjustArgumentsForTypes(Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, std::vector<Type*> types, Context c);
         std::unique_ptr<OverloadResolvable> MakeResolvable(std::function<std::shared_ptr<Expression>(std::vector<std::shared_ptr<Expression>>, Context)> f, std::vector<Type*> types);
 
         struct TupleInitializable {

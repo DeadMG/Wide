@@ -18,16 +18,14 @@ namespace {
         Array(ConstructorType* con, Analyzer& a)
             : MetaType(a), t(con) {}
 
-        std::shared_ptr<Expression> ConstructCall(std::shared_ptr<Expression> self, std::vector<std::shared_ptr<Expression>> args, Context c) override final {
+        std::shared_ptr<Expression> ConstructCall(Expression::InstanceKey key, std::shared_ptr<Expression> self, std::vector<std::shared_ptr<Expression>> args, Context c) override final {
             if (args.size() == 0)
                 throw std::runtime_error("Attempted to make an array without passing a size.");
-            return CreateResultExpression([=](Function* f) {
-                auto constructed = t->GetConstructedType();
-                if (!args[0]->IsConstantExpression(f))
-                    throw std::runtime_error("Attempted to make an array but the argument was not a constant integer.");
-                auto integer = analyzer.EvaluateConstantIntegerExpression(args[0]);
-                return BuildChain(std::move(self), analyzer.GetConstructorType(analyzer.GetArrayType(t->GetConstructedType(), integer.getLimitedValue()))->BuildValueConstruction({}, { this, c.where }));
-            });
+            auto constructed = t->GetConstructedType();
+            if (!args[0]->IsConstantExpression(key))
+                throw std::runtime_error("Attempted to make an array but the argument was not a constant integer.");
+            auto integer = analyzer.EvaluateConstantIntegerExpression(args[0], key);
+            return BuildChain(std::move(self), analyzer.GetConstructorType(analyzer.GetArrayType(t->GetConstructedType(), integer.getLimitedValue()))->BuildValueConstruction({}, { this, c.where }));
         }
 
         std::string explain() override final { return t->explain() + ".array"; }
@@ -39,7 +37,7 @@ namespace {
 
         std::string explain() override final { return t->explain() + ".members"; }
         bool IsLookupContext() { return true; }
-        std::shared_ptr<Expression> AccessNamedMember(std::shared_ptr<Expression> self, std::string name, Context c) override final {
+        std::shared_ptr<Expression> AccessNamedMember(Expression::InstanceKey key, std::shared_ptr<Expression> self, std::string name, Context c) override final {
             auto member = t->GetConstructedType()->AccessStaticMember(name, c);
             if (!member)
                 throw std::runtime_error("Attempted to access nonexistent member.");
@@ -53,10 +51,10 @@ namespace {
     };
 }
 
-std::shared_ptr<Expression> ConstructorType::ConstructCall(std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c) {
-    return Wide::Memory::MakeUnique<ExplicitConstruction>(std::move(val), std::move(args), c, t);
+std::shared_ptr<Expression> ConstructorType::ConstructCall(Expression::InstanceKey key, std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c) {
+    return BuildChain(val, t->BuildValueConstruction(args, c));
 }
-std::shared_ptr<Expression> ConstructorType::AccessNamedMember(std::shared_ptr<Expression> self, std::string name, Context c) {
+std::shared_ptr<Expression> ConstructorType::AccessNamedMember(Expression::InstanceKey key, std::shared_ptr<Expression> self, std::string name, Context c) {
     //return t->AccessStaticMember(name, c);
     if (name == "decay")
         return BuildChain(std::move(self), analyzer.GetConstructorType(t->Decay())->BuildValueConstruction({}, { this, c.where }));

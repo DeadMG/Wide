@@ -243,7 +243,7 @@ namespace Wide {
 
             std::string GetUniqueFunctionName();
 
-            llvm::APInt EvaluateConstantIntegerExpression(std::shared_ptr<Expression> e);
+            llvm::APInt EvaluateConstantIntegerExpression(std::shared_ptr<Expression> e, Expression::InstanceKey key);
         };
         template<typename T> struct base_pointer; template<typename T> struct base_pointer<const T*> { typedef T type;  };
         template<typename T, typename Ret, typename First, typename... Args, typename F> void AddHandler(std::unordered_map<std::type_index, std::function<std::shared_ptr<Ret>(First, Args...)>>& map, F f) {
@@ -260,7 +260,6 @@ namespace Wide {
         void AnalyzeExportedFunctions(Analyzer& a);
         bool IsMultiTyped(const Parse::FunctionArgument& f);
         bool IsMultiTyped(const Parse::FunctionBase* f);
-        Type* InferTypeFromExpression(Expression* e, bool local);
         std::string GetOperatorName(Parse::OperatorName name);
         std::string GetNameAsString(Parse::Name name);
         Type* CollapseType(Type* source, Type* member);

@@ -53,8 +53,8 @@ OverloadSet* PointerType::CreateConstructorOverloadSet(Parse::Access access) {
             if (!Type::IsFirstASecond(types[1], self, source)) return Util::none;
             return types;
         }
-        std::vector<std::shared_ptr<Expression>> AdjustArguments(std::vector<std::shared_ptr<Expression>> args, Context c) override final { return args; }
-        std::shared_ptr<Expression> CallFunction(std::vector<std::shared_ptr<Expression>> args, Context c) override final {
+        std::vector<std::shared_ptr<Expression>> AdjustArguments(Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c) override final { return args; }
+        std::shared_ptr<Expression> CallFunction(Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c) override final {
             auto other = BuildValue(std::move(args[1]));
             return Wide::Memory::MakeUnique<ImplicitStoreExpr>(std::move(args[0]), Type::AccessBase(std::move(other), self->pointee));
         }
@@ -114,7 +114,7 @@ OverloadSet* PointerType::CreateOperatorOverloadSet(Parse::OperatorName name, Pa
 std::string PointerType::explain() {
     return pointee->explain() + ".pointer";
 }
-std::shared_ptr<Expression> PointerType::AccessVirtualPointer(std::shared_ptr<Expression> self) {
+std::shared_ptr<Expression> PointerType::AccessVirtualPointer(Expression::InstanceKey key, std::shared_ptr<Expression> self) {
     auto deref = CreatePrimUnOp(std::move(self), analyzer.GetLvalueType(pointee), [](llvm::Value* val, CodegenContext& con) {
         return val;
     });

@@ -94,23 +94,14 @@ Analyzer::Analyzer(const Options::Clang& opts, const Parse::Module* GlobalModule
         }
         Callable* GetCallableForResolution(std::vector<Type*>, Type*, Analyzer& a) override final { return this; }
         std::shared_ptr<Expression> CallFunction(std::vector<std::shared_ptr<Expression>> args, Context c) override final {
-            struct PointerCast : Expression {
-                PointerCast(Type* t, std::shared_ptr<Expression> type, std::shared_ptr<Expression> arg)
-                : to(t), arg(BuildValue(std::move(arg))), type(std::move(type)) {}
-                Type* to;
-                std::shared_ptr<Expression> arg;
-                std::shared_ptr<Expression> type;
-
-                Type* GetType() override final { return to; }
-                llvm::Value* ComputeValue(CodegenContext& con) override final {
-                    type->GetValue(con);
-                    auto val = arg->GetValue(con);
-                    return con->CreatePointerCast(val, to->GetLLVMType(con));
-                }
-            };
-            auto conty = dynamic_cast<ConstructorType*>(args[0]->GetType()->Decay());
-            assert(conty); // OR should not pick us if this is invalid.
-            return Wide::Memory::MakeUnique<PointerCast>(conty->GetConstructedType(), std::move(args[0]), std::move(args[1]));
+            return CreateResultExpression([=](Expression::InstanceKey key) {
+                auto conty = dynamic_cast<ConstructorType*>(args[0]->GetType(key)->Decay());
+                return CreatePrimGlobal(conty, [=](CodegenContext& con) {
+                    args[0]->GetValue(con);
+                    auto val = args[1]->GetValue(con);
+                    return con->CreatePointerCast(val, conty->GetLLVMType(con));
+                });
+            });
         }
         std::vector<std::shared_ptr<Expression>> AdjustArguments(std::vector<std::shared_ptr<Expression>> args, Context c) override final {
             return args; 
@@ -171,7 +162,7 @@ Analyzer::Analyzer(const Options::Clang& opts, const Parse::Module* GlobalModule
 
     Module::AddDefaultHandlers(*this);
     Expression::AddDefaultHandlers(*this);
-    Function::AddDefaultHandlers(*this);
+    FunctionSkeleton::AddDefaultHandlers(*this);
     AddDefaultContextHandlers(*this);
 }
 
@@ -460,12 +451,12 @@ std::vector<Type*> Analyzer::GetFunctionParameters(const Parse::FunctionBase* fu
                 if (auto name = dynamic_cast<const Parse::Identifier*>(attr.initialized.get())) {
                     if (auto string = boost::get<std::string>(&name->val)) {
                         if (*string == "export") {
-                            auto expr = context->analyzer.AnalyzeExpression(context, attr.initializer.get());
-                            auto overset = dynamic_cast<OverloadSet*>(expr->GetType()->Decay());
+                            auto expr = context->analyzer.AnalyzeExpression(context, attr.initializer.get(), [](Parse::Name, Lexer::Range) { return nullptr; });
+                            auto overset = dynamic_cast<OverloadSet*>(expr->GetType(boost::none)->Decay());
                             if (!overset)
-                                throw NotAType(expr->GetType()->Decay(), attr.initializer->location);
+                                throw NotAType(expr->GetType(boost::none)->Decay(), attr.initializer->location);
                             auto tuanddecl = overset->GetSingleFunction();
-                            if (!tuanddecl.second) throw NotAType(expr->GetType()->Decay(), attr.initializer->location);
+                            if (!tuanddecl.second) throw NotAType(expr->GetType(boost::none)->Decay(), attr.initializer->location);
                             auto tu = tuanddecl.first;
                             auto decl = tuanddecl.second;
                             if (auto meth = llvm::dyn_cast<clang::CXXMethodDecl>(decl)) {
@@ -487,7 +478,7 @@ std::vector<Type*> Analyzer::GetFunctionParameters(const Parse::FunctionBase* fu
     for (auto&& arg : func->args) {
         if (!arg.type) {
             if (arg.default_value) {
-                auto p_type = AnalyzeExpression(context, arg.default_value.get())->GetType()->Decay();
+                auto p_type = AnalyzeExpression(context, arg.default_value.get(), [](Parse::Name, Lexer::Range) { return nullptr; })->GetType(boost::none)->Decay();
                 QuickInfo(arg.location, p_type);
                 ParameterHighlight(arg.location);
                 out.push_back(p_type);
@@ -499,8 +490,8 @@ std::vector<Type*> Analyzer::GetFunctionParameters(const Parse::FunctionBase* fu
         }      
 
         auto ty_expr = arg.type.get();
-        auto expr = AnalyzeExpression(context, ty_expr);
-        auto p_type = expr->GetType()->Decay();
+        auto expr = AnalyzeExpression(context, ty_expr, [](Parse::Name, Lexer::Range) { return nullptr; });
+        auto p_type = expr->GetType(boost::none)->Decay();
         auto con_type = dynamic_cast<ConstructorType*>(p_type);
         if (!con_type)
             throw Wide::Semantic::NotAType(p_type, arg.type->location);
@@ -537,13 +528,13 @@ Type* Analyzer::GetNonstaticContext(const Parse::FunctionBase* p, Type* context)
             if (auto name = dynamic_cast<const Parse::Identifier*>(attr.initialized.get())) {
                 if (auto string = boost::get<std::string>(&name->val)) {
                     if (*string == "export") {
-                        auto expr = context->analyzer.AnalyzeExpression(context, attr.initializer.get());
-                        auto overset = dynamic_cast<OverloadSet*>(expr->GetType()->Decay());
+                        auto expr = context->analyzer.AnalyzeExpression(context, attr.initializer.get(), [](Parse::Name, Lexer::Range) { return nullptr; });
+                        auto overset = dynamic_cast<OverloadSet*>(expr->GetType(boost::none)->Decay());
                         if (!overset)
                             //throw NotAType(expr->GetType()->Decay(), attr.initializer->location);
                             continue;
                         auto tuanddecl = overset->GetSingleFunction();
-                        if (!tuanddecl.second) throw NotAType(expr->GetType()->Decay(), attr.initializer->location);
+                        if (!tuanddecl.second) throw NotAType(expr->GetType(boost::none)->Decay(), attr.initializer->location);
                         auto tu = tuanddecl.first;
                         auto decl = tuanddecl.second;
                         if (auto meth = llvm::dyn_cast<clang::CXXMethodDecl>(decl)) {
@@ -619,7 +610,7 @@ Parse::Access Semantic::GetAccessSpecifier(Type* from, Type* to) {
     if (source == target) return Parse::Access::Private;
     if (source->IsDerivedFrom(target) == Type::InheritanceRelationship::UnambiguouslyDerived)
         return Parse::Access::Protected;
-    if (auto func = dynamic_cast<Function*>(from)) {
+    if (auto func = dynamic_cast<FunctionSkeleton*>(from)) {
         if (func->GetNonstaticMemberContext()) {
             return std::max(GetAccessSpecifier(func->GetContext(), target), GetAccessSpecifier(func->GetNonstaticMemberContext(), target));
         }
@@ -713,7 +704,7 @@ OverloadResolvable* Analyzer::GetCallableForTemplateType(const Parse::TemplateTy
                     valid.push_back(arg);
                     continue;
                 }
-                auto p_type = a.AnalyzeCachedExpression(context, templatetype->arguments[num].type.get())->GetType()->Decay();
+                auto p_type = a.AnalyzeExpression(context, templatetype->arguments[num].type.get(), [](Parse::Name, Lexer::Range) { return nullptr; })->GetType(boost::none)->Decay();
                 auto con_type = dynamic_cast<ConstructorType*>(p_type);
                 if (!con_type)
                     throw Wide::Semantic::NotAType(p_type, templatetype->arguments[num].location);
@@ -779,23 +770,14 @@ bool Semantic::IsMultiTyped(const Parse::FunctionBase* f) {
     return ret;
 }
 
-std::shared_ptr<Expression> Analyzer::AnalyzeExpression(Type* lookup, const Parse::Expression* e) {
+std::shared_ptr<Expression> Analyzer::AnalyzeExpression(Type* lookup, const Parse::Expression* e, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup) {
     static_assert(std::is_polymorphic<Parse::Expression>::value, "Expression must be polymorphic.");
     auto&& type_info = typeid(*e);
     if (ExpressionCache.find(e) == ExpressionCache.end())
         if (ExpressionHandlers.find(type_info) != ExpressionHandlers.end())
-            ExpressionCache[e] = ExpressionHandlers[type_info](e, *this, lookup);
+            ExpressionCache[e] = ExpressionHandlers[type_info](e, *this, lookup, NonstaticLookup);
     return ExpressionCache[e];
     assert(false && "Attempted to analyze expression for which there was no handler.");
-}
-Type* Semantic::InferTypeFromExpression(Expression* e, bool local) {
-    if (!local)
-        if (auto con = dynamic_cast<ConstructorType*>(e->GetType()->Decay()))
-            return con->GetConstructedType();
-    if (auto explicitcon = dynamic_cast<ExplicitConstruction*>(e)) {
-        return explicitcon->GetType();
-    }
-    return e->GetType()->Decay();
 }
 ClangTU* Analyzer::GetAggregateTU() {
     if (!AggregateTU)
@@ -870,55 +852,48 @@ llvm::Value* Semantic::CollapseMember(Type* source, std::pair<llvm::Value*, Type
     return member.first;
 }
 std::function<void(CodegenContext&)> Semantic::ThrowObject(std::shared_ptr<Expression> expr, Context c) {
-    struct ExceptionAllocateMemory : Expression{
-        ExceptionAllocateMemory(Type* t)
-        : alloc(t) {
-            auto&& analyzer = t->analyzer;
-            if (t->alignment() > std::max(analyzer.GetDataLayout().getABIIntegerTypeAlignment(64), analyzer.GetDataLayout().getPointerABIAlignment()))
-                throw std::runtime_error("EH runtime does not provide memory of enough alignment to support this exception type.");
-        }
-        Type* alloc;
-        std::list<std::pair<std::function<void(CodegenContext&)>, bool>>::iterator destructor;
-        Type* GetType() override final { return alloc->analyzer.GetLvalueType(alloc); }
-        llvm::Value* ComputeValue(CodegenContext& con) override final {
-            auto except_memory = con->CreateCall(con.GetCXAAllocateException(), { llvm::ConstantInt::get(con.GetPointerSizedIntegerType(), alloc->size(), false) });
-            destructor = con.AddDestructor([this, except_memory](CodegenContext& con) {
+
+    // http://mentorembedded.github.io/cxx-abi/abi-eh.html
+    // 2.4.2
+    return[=](Expression::InstanceKey key) {
+        auto ty = expr->GetType(key)->Decay();
+        auto RTTI = ty->GetRTTI();
+        auto memty = ty->analyzer.GetLvalueType(ty);
+        auto destructor = std::make_shared<std::list<std::pair<std::function<void(CodegenContext&)>, bool>>::iterator>();
+        auto except_memory = CreatePrimGlobal(memty, [=](CodegenContext& con) {
+            auto except_memory = con->CreateCall(con.GetCXAAllocateException(), { llvm::ConstantInt::get(con.GetPointerSizedIntegerType(), ty->size(), false) });
+            *destructor = con.AddDestructor([except_memory](CodegenContext& con) {
                 auto free_exception = con.GetCXAFreeException();
                 con->CreateCall(free_exception, { except_memory });
             });
-            return con->CreatePointerCast(except_memory, GetType()->GetLLVMType(con));
-        }
-    };
-    // http://mentorembedded.github.io/cxx-abi/abi-eh.html
-    // 2.4.2
-    auto ty = expr->GetType()->Decay();
-    auto RTTI = ty->GetRTTI();
-    auto except_memory = std::make_shared<ExceptionAllocateMemory>(ty);
-    // There is no longer a guarantee thas, as an argument, except_memory will be in the same CodegenContext
-    // and the iterator could be invalidated. Strictly get the value in the original CodegenContext that ThrowStatement::GenerateCode
-    // is called with so that we can erase the destructor later.
-    auto exception = BuildChain(BuildChain(except_memory, Type::BuildInplaceConstruction(except_memory, { std::move(expr) }, c)), except_memory);
-    return [=](CodegenContext& con) {
-        auto value = exception->GetValue(con);
-        auto cxa_throw = con.GetCXAThrow();
-        // Throw this shit.
-        // If we got here then creating the exception value didn't throw. Don't destroy it now.
-        con.EraseDestructor(except_memory->destructor);
-        llvm::Value* destructor;
-        if (ty->IsTriviallyDestructible()) {
-            destructor = llvm::Constant::getNullValue(con.GetInt8PtrTy());
-        } else
-            destructor = con->CreatePointerCast(ty->GetDestructorFunction(con), con.GetInt8PtrTy());
-        llvm::Value* args[] = { con->CreatePointerCast(value, con.GetInt8PtrTy()), con->CreatePointerCast(RTTI(con), con.GetInt8PtrTy()), destructor };
-        // Do we have an existing handler to go to? If we do, then first land, then branch directly to it.
-        // Else, kill everything and GTFO this function and let the EH routines worry about it.
-        if (con.HasDestructors() || con.EHHandler)
-            con->CreateInvoke(cxa_throw, con.GetUnreachableBlock(), con.CreateLandingpadForEH(), args);
-        else {
-            con->CreateCall(cxa_throw, args);
-            // This is unreachable, but terminate the block so we know to stop code-generating.
-            con->CreateUnreachable();
-        }
+            return con->CreatePointerCast(except_memory, memty->GetLLVMType(con));
+        });
+        // There is no longer a guarantee thas, as an argument, except_memory will be in the same CodegenContext
+        // and the iterator could be invalidated. Strictly get the value in the original CodegenContext that ThrowStatement::GenerateCode
+        // is called with so that we can erase the destructor later.
+        auto exception = BuildChain(BuildChain(except_memory, Type::BuildInplaceConstruction(except_memory, { std::move(expr) }, c)), except_memory);
+        return [=](CodegenContext& con) {
+            auto value = exception->GetValue(con);
+            auto cxa_throw = con.GetCXAThrow();
+            // Throw this shit.
+            // If we got here then creating the exception value didn't throw. Don't destroy it now.
+            con.EraseDestructor(*destructor);
+            llvm::Value* destructor;
+            if (ty->IsTriviallyDestructible()) {
+                destructor = llvm::Constant::getNullValue(con.GetInt8PtrTy());
+            } else
+                destructor = con->CreatePointerCast(ty->GetDestructorFunction(con), con.GetInt8PtrTy());
+            llvm::Value* args[] = { con->CreatePointerCast(value, con.GetInt8PtrTy()), con->CreatePointerCast(RTTI(con), con.GetInt8PtrTy()), destructor };
+            // Do we have an existing handler to go to? If we do, then first land, then branch directly to it.
+            // Else, kill everything and GTFO this function and let the EH routines worry about it.
+            if (con.HasDestructors() || con.EHHandler)
+                con->CreateInvoke(cxa_throw, con.GetUnreachableBlock(), con.CreateLandingpadForEH(), args);
+            else {
+                con->CreateCall(cxa_throw, args);
+                // This is unreachable, but terminate the block so we know to stop code-generating.
+                con->CreateUnreachable();
+            }
+        };
     };
 }
 ClangTypeInfo* Analyzer::MaybeGetClangTypeInfo(const clang::CXXRecordDecl* decl) {
@@ -940,13 +915,13 @@ std::string Analyzer::GetTypeExports() {
         exports += pair.second;
     return exports;
 }
-llvm::APInt Analyzer::EvaluateConstantIntegerExpression(std::shared_ptr<Expression> e) {
-    assert(dynamic_cast<IntegralType*>(e->GetType()));
-    assert(e->IsConstantExpression());
+llvm::APInt Analyzer::EvaluateConstantIntegerExpression(std::shared_ptr<Expression> e, Expression::InstanceKey key) {
+    assert(dynamic_cast<IntegralType*>(e->GetType(key)));
+    assert(e->IsConstantExpression(key));
     if (auto integer = dynamic_cast<Integer*>(e.get()))
         return integer->value;
     // BUG: Invoking MCJIT causes second MCJIT invocation to fail. This causes spurious test failures.
-    auto evalfunc = llvm::Function::Create(llvm::FunctionType::get(e->GetType()->GetLLVMType(&ConstantModule), {}, false), llvm::GlobalValue::LinkageTypes::InternalLinkage, GetUniqueFunctionName(), &ConstantModule);
+    auto evalfunc = llvm::Function::Create(llvm::FunctionType::get(e->GetType(key)->GetLLVMType(&ConstantModule), {}, false), llvm::GlobalValue::LinkageTypes::InternalLinkage, GetUniqueFunctionName(), &ConstantModule);
     CodegenContext::EmitFunctionBody(evalfunc, [e](CodegenContext& con) {
         con->CreateRet(e->GetValue(con));
     });
@@ -963,9 +938,10 @@ llvm::APInt Analyzer::EvaluateConstantIntegerExpression(std::shared_ptr<Expressi
     return result.IntVal;
 }
 std::shared_ptr<Statement> Semantic::AnalyzeStatement(Analyzer& analyzer, const Parse::Statement* s, Type* parent, Scope* current, std::function<std::function<Type*()>(Return*)> func) {
+    auto nonstatic = [=](Parse::Name name, Lexer::Range where) { return current->LookupLocal(Semantic::GetNameAsString(name)) };
     if (analyzer.ExpressionHandlers.find(typeid(*s)) != analyzer.ExpressionHandlers.end())
-        return analyzer.ExpressionHandlers[typeid(*s)](static_cast<const Parse::Expression*>(s), analyzer, parent);
-    return analyzer.StatementHandlers[typeid(*s)](s, analyzer, parent, current, func);
+        return analyzer.ExpressionHandlers[typeid(*s)](static_cast<const Parse::Expression*>(s), analyzer, parent, nonstatic);
+    return analyzer.StatementHandlers[typeid(*s)](s, analyzer, parent, current, func, nonstatic);
 }
 std::shared_ptr<Expression> Semantic::LookupFromImport(Type* context, Wide::Parse::Name name, Lexer::Range where, Parse::Import* imp) {
     auto propagate = [=]() -> std::shared_ptr<Expression> {
@@ -977,7 +953,7 @@ std::shared_ptr<Expression> Semantic::LookupFromImport(Type* context, Wide::Pars
     if (imp->names.size() != 0)
         if (std::find(imp->names.begin(), imp->names.end(), name) == imp->names.end())
             return propagate();
-    auto con = context->analyzer.AnalyzeExpression(context->analyzer.GetGlobalModule(), imp->from.get());
+    auto con = context->analyzer.AnalyzeExpression(context->analyzer.GetGlobalModule(), imp->from.get(), [](Parse::Name, Lexer::Range) { return nullptr; });
     if (auto result = Type::AccessMember(con, name, { context, where })) {
         auto subresult = propagate();
         if (!subresult) return result;

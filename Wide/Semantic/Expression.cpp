@@ -18,7 +18,7 @@ using namespace Semantic;
 
 ImplicitLoadExpr::ImplicitLoadExpr(std::shared_ptr<Expression> arg)
     : SourceExpression({ arg }), src(std::move(arg)) {}
-Type* ImplicitLoadExpr::CalculateType(Function* f) {
+Type* ImplicitLoadExpr::CalculateType(InstanceKey f) {
     assert(src->GetType(f)->IsReference());
     return src->GetType(f)->Decay();
 }
@@ -28,7 +28,7 @@ llvm::Value* ImplicitLoadExpr::ComputeValue(CodegenContext& con) {
 
 ImplicitStoreExpr::ImplicitStoreExpr(std::shared_ptr<Expression> memory, std::shared_ptr<Expression> value)
     : SourceExpression({ memory, value }), mem(std::move(memory)), val(std::move(value)) {}
-Type* ImplicitStoreExpr::CalculateType(Function* f) {
+Type* ImplicitStoreExpr::CalculateType(InstanceKey f) {
     assert(mem->GetType(f)->IsReference(val->GetType(f)));
     return mem->GetType(f);
 }
@@ -43,7 +43,7 @@ ImplicitTemporaryExpr::ImplicitTemporaryExpr(Type* what, Context c)
 : of(what), c(c)
 {
 }
-Type* ImplicitTemporaryExpr::GetType(Function* f) {
+Type* ImplicitTemporaryExpr::GetType(InstanceKey) {
     return of->analyzer.GetLvalueType(of);
 }
 llvm::Value* ImplicitTemporaryExpr::ComputeValue(CodegenContext& con) {
@@ -54,7 +54,7 @@ llvm::Value* ImplicitTemporaryExpr::ComputeValue(CodegenContext& con) {
 
 LvalueCast::LvalueCast(std::shared_ptr<Expression> expr)
     : SourceExpression({ expr }), expr(std::move(expr)) {}
-Type* LvalueCast::CalculateType(Function* f) {
+Type* LvalueCast::CalculateType(InstanceKey f) {
     assert(IsRvalueType(expr->GetType(f)));
     return expr->GetType(f)->analyzer.GetLvalueType(expr->GetType(f)->Decay());
 }
@@ -64,7 +64,7 @@ llvm::Value* LvalueCast::ComputeValue(CodegenContext& con) {
 
 RvalueCast::RvalueCast(std::shared_ptr<Expression> ex)
     : SourceExpression({ ex }), expr(std::move(ex)) {}
-Type* RvalueCast::CalculateType(Function* f) {
+Type* RvalueCast::CalculateType(InstanceKey f) {
     assert(!IsRvalueType(expr->GetType(f)));
     return expr->GetType(f)->analyzer.GetRvalueType(expr->GetType(f)->Decay());
 }
@@ -81,7 +81,7 @@ llvm::Value* RvalueCast::ComputeValue(CodegenContext& con) {
 
 ImplicitAddressOf::ImplicitAddressOf(std::shared_ptr<Expression> expr, Context c)
     : SourceExpression({ expr }), expr(std::move(expr)), c(c) {}
-Type* ImplicitAddressOf::CalculateType(Function* f) {
+Type* ImplicitAddressOf::CalculateType(InstanceKey f) {
     auto ty = expr->GetType(f);
     if (!IsLvalueType(ty)) throw AddressOfNonLvalue(ty, c.where);
     return expr->GetType(f)->analyzer.GetPointerType(ty->Decay());
@@ -92,7 +92,7 @@ llvm::Value* ImplicitAddressOf::ComputeValue(CodegenContext& con) {
 
 String::String(std::string str, Analyzer& a)
 : str(std::move(str)), a(a){}
-Type* String::GetType(Function* f) {
+Type* String::GetType(InstanceKey f) {
     return a.GetLiteralStringType();
 }
 llvm::Value* String::ComputeValue(CodegenContext& con) {
@@ -101,7 +101,7 @@ llvm::Value* String::ComputeValue(CodegenContext& con) {
 
 Integer::Integer(llvm::APInt val, Analyzer& an)
 : a(an), value(std::move(val)) {}
-Type* Integer::GetType(Function* f) {
+Type* Integer::GetType(InstanceKey f) {
     auto width = value.getBitWidth();
     if (width < 8)
         width = 8;
@@ -114,7 +114,7 @@ llvm::Value* Integer::ComputeValue(CodegenContext& con) {
 
 Boolean::Boolean(bool b, Analyzer& a)
 : b(b), a(a) {}
-Type* Boolean::GetType(Function* f) {
+Type* Boolean::GetType(InstanceKey f) {
     return a.GetBooleanType();
 }
 llvm::Value* Boolean::ComputeValue(CodegenContext& con) {
@@ -130,7 +130,7 @@ std::shared_ptr<Expression> Semantic::CreatePrimUnOp(std::shared_ptr<Expression>
         Type* ret;
         std::function<llvm::Value*(llvm::Value*, CodegenContext& con)> action;
 
-        Type* GetType(Function* f) override final {
+        Type* GetType(InstanceKey f) override final {
             return ret;
         }
         llvm::Value* ComputeValue(CodegenContext& con) override final {
@@ -151,7 +151,7 @@ std::shared_ptr<Expression> Semantic::CreatePrimGlobal(Type* ret, std::function<
         Type* ret;
         std::function<llvm::Value*(CodegenContext& con)> action;
 
-        Type* GetType(Function* f) override final {
+        Type* GetType(InstanceKey f) override final {
             return ret;
         }
         llvm::Value* ComputeValue(CodegenContext& con) override final {
@@ -170,25 +170,14 @@ std::shared_ptr<Expression> Semantic::CreatePrimAssOp(std::shared_ptr<Expression
     return Wide::Memory::MakeUnique<ImplicitStoreExpr>(lhs, CreatePrimOp(Wide::Memory::MakeUnique<ImplicitLoadExpr>(lhs), std::move(rhs), func));
 }
 std::shared_ptr<Expression> Semantic::CreatePrimOp(std::shared_ptr<Expression> lhs, std::shared_ptr<Expression> rhs, Type* ret, std::function<llvm::Value*(llvm::Value*, llvm::Value*, CodegenContext& con)> func) {
-    struct PrimBinOp : Expression {
-        PrimBinOp(std::shared_ptr<Expression> left, std::shared_ptr<Expression> right, Type* t, std::function<llvm::Value*(llvm::Value*, llvm::Value*, CodegenContext& con)> func)
-        : lhs(std::move(left)), rhs(std::move(right)), ret(t), action(std::move(func)) {}
-        std::shared_ptr<Expression> lhs, rhs;
-        Type* ret;
-        std::function<llvm::Value*(llvm::Value*, llvm::Value*, CodegenContext& con)> action;
-        Type* GetType(Function* f) override final { return ret; }
-        bool IsConstantExpression(Function* f) override final { return lhs->IsConstantExpression(f) && rhs->IsConstantExpression(f); }
-        llvm::Value* ComputeValue(CodegenContext& con) override final {
-            // Strict order of evaluation.
-            auto left = lhs->GetValue(con);
-            auto right = rhs->GetValue(con);
-            auto val = action(left, right, con);
-            if (ret != ret->analyzer.GetVoidType())
-                assert(val);
-            return val;
-        }
-    };
-    return Wide::Memory::MakeUnique<PrimBinOp>(std::move(lhs), std::move(rhs), ret, std::move(func));
+    return CreatePrimGlobal(ret, [=](CodegenContext& con) {
+        auto left = lhs->GetValue(con);
+        auto right = rhs->GetValue(con);
+        auto val = func(left, right, con);
+        if (ret != ret->analyzer.GetVoidType())
+            assert(val);
+        return val;
+    });
 }
 std::shared_ptr<Expression> Semantic::BuildValue(std::shared_ptr<Expression> e) {
     if (e->GetType(nullptr)->IsReference())
@@ -197,14 +186,14 @@ std::shared_ptr<Expression> Semantic::BuildValue(std::shared_ptr<Expression> e) 
 }
 Chain::Chain(std::shared_ptr<Expression> effect, std::shared_ptr<Expression> result)
     : SourceExpression({ result }), SideEffect(std::move(effect)), result(std::move(result)) {}
-Type* Chain::CalculateType(Function* f) {
+Type* Chain::CalculateType(InstanceKey f) {
     return result->GetType(f);
 }
 llvm::Value* Chain::ComputeValue(CodegenContext& con) {
     SideEffect->GetValue(con);
     return result->GetValue(con);
 }
-bool Chain::IsConstantExpression(Function* f) {
+bool Chain::IsConstantExpression(InstanceKey f) {
     return result->IsConstantExpression(f) && SideEffect->IsConstantExpression(f);
 }
 std::shared_ptr<Expression> Semantic::BuildChain(std::shared_ptr<Expression> lhs, std::shared_ptr<Expression> rhs) {
@@ -388,7 +377,7 @@ CodegenContext::CodegenContext(llvm::Module* mod, llvm::IRBuilder<>& alloc_build
 }
 DestructorCall::DestructorCall(std::function<void(CodegenContext&)> destructor, Analyzer& a)
     : destructor(destructor), a(&a) {}
-Type* DestructorCall::GetType(Function* f)  {
+Type* DestructorCall::GetType(InstanceKey f)  {
     return a->GetVoidType();
 }
 llvm::Value* DestructorCall::ComputeValue(CodegenContext& con) {
@@ -437,12 +426,12 @@ SourceExpression::SourceExpression(std::initializer_list<std::shared_ptr<Express
     : SourceExpression(init_exprs, {}) {}
 SourceExpression::SourceExpression(std::initializer_list<std::shared_ptr<Expression>> init_exprs, const std::vector<std::shared_ptr<Expression>>& args) {
     auto lambda = [this](std::shared_ptr<Expression> expr) {
-        exprs[expr.get()] = ExpressionData {
-            {}, 
-            expr->OnChanged.connect([this](Expression* e, Function* f) {
+        exprs.insert(std::make_pair(expr.get(), ExpressionData{
+            {},
+            expr->OnChanged.connect([this](Expression* e, InstanceKey f) {
                 auto newtype = e->GetType(f);
-                if (exprs[e].types[f] != newtype) {
-                    exprs[e].types[f] = newtype;
+                if (exprs.at(e).types[f] != newtype) {
+                    exprs.at(e).types[f] = newtype;
                     bool recalc = true;
                     for (auto&& arg : exprs) {
                         if (arg.second.types[f] == nullptr)
@@ -456,13 +445,17 @@ SourceExpression::SourceExpression(std::initializer_list<std::shared_ptr<Express
                     }
                 }
             })
-        };
+        }));
     };
     for (auto&& expr : init_exprs) { lambda(expr); }
     for (auto&& expr : args) { lambda(expr); }
+    GetType(boost::none);
 }
-Type* SourceExpression::GetType(Function* f) {
+Type* SourceExpression::GetType(InstanceKey f) {
     // Check the cache first.
+    if (curr_type.find(boost::none) != curr_type.end())
+        if (curr_type[boost::none] != nullptr)
+            return curr_type[boost::none];
     if (curr_type.find(f) == curr_type.end())
         curr_type[f] = CalculateType(f);
     for(auto&& arg : exprs) {
@@ -479,15 +472,15 @@ ResultExpression::ResultExpression(std::initializer_list<std::shared_ptr<Express
     : SourceExpression(exprs) {}
 ResultExpression::ResultExpression(std::initializer_list<std::shared_ptr<Expression>> exprs, const std::vector<std::shared_ptr<Expression>>& args)
     : SourceExpression(exprs, args) {}
-bool ResultExpression::IsConstantExpression(Function* f) {
+bool ResultExpression::IsConstantExpression(InstanceKey f) {
     if (results.find(f) == results.end())
         CalculateType(f);
     return results[f].first->IsConstantExpression(f);
 }
-Type* ResultExpression::CalculateType(Function* f) {
+Type* ResultExpression::CalculateType(InstanceKey f) {
     if (results.find(f) == results.end()) {
         auto result = CalculateResult(f);
-        auto result_connection = result->OnChanged.connect([this](Expression* e, Function* f) {
+        auto result_connection = result->OnChanged.connect([this](Expression* e, InstanceKey f) {
             OnChanged(this, f);
         });
         results.insert(std::make_pair(f, std::make_pair(result, std::move(result_connection))));
@@ -496,92 +489,92 @@ Type* ResultExpression::CalculateType(Function* f) {
 }
 
 void Expression::AddDefaultHandlers(Analyzer& a) {
-    AddHandler<const Parse::String>(a.ExpressionHandlers, [](const Parse::String* str, Analyzer& a, Type* lookup, std::function<std::shared_ptr<Expression>(Parse::Name)> NonstaticLookup) {
+    AddHandler<const Parse::String>(a.ExpressionHandlers, [](const Parse::String* str, Analyzer& a, Type* lookup, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup) {
         return Wide::Memory::MakeUnique<String>(str->val, a);
     });
 
-    AddHandler<const Parse::MemberAccess>(a.ExpressionHandlers, [](const Parse::MemberAccess* memaccess, Analyzer& a, Type* lookup, std::function<std::shared_ptr<Expression>(Parse::Name)> NonstaticLookup) -> std::shared_ptr<Expression> {
+    AddHandler<const Parse::MemberAccess>(a.ExpressionHandlers, [](const Parse::MemberAccess* memaccess, Analyzer& a, Type* lookup, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup) -> std::shared_ptr<Expression> {
         auto object = a.AnalyzeExpression(lookup, memaccess->expr.get(), NonstaticLookup);
-        return CreateResultExpression([=, &a](Function* f) {
+        return CreateResultExpression([=, &a](InstanceKey f) {
             auto access = Type::AccessMember(object, memaccess->mem, Context{ lookup, memaccess->location });
             if (!access) throw NoMember(object->GetType(f), lookup, memaccess->mem, memaccess->location);
             return access;
         });
     });
 
-    AddHandler<const Parse::BooleanTest>(a.ExpressionHandlers, [](const Parse::BooleanTest* test, Analyzer& a, Type* lookup, std::function<std::shared_ptr<Expression>(Parse::Name)> NonstaticLookup) {
+    AddHandler<const Parse::BooleanTest>(a.ExpressionHandlers, [](const Parse::BooleanTest* test, Analyzer& a, Type* lookup, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup) {
         return Type::BuildBooleanConversion(a.AnalyzeExpression(lookup, test->ex.get(), NonstaticLookup), { lookup, test->location });
     });
 
-    AddHandler<const Parse::FunctionCall>(a.ExpressionHandlers, [](const Parse::FunctionCall* call, Analyzer& a, Type* lookup, std::function<std::shared_ptr<Expression>(Parse::Name)> NonstaticLookup) -> std::shared_ptr<Expression> {
+    AddHandler<const Parse::FunctionCall>(a.ExpressionHandlers, [](const Parse::FunctionCall* call, Analyzer& a, Type* lookup, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup) -> std::shared_ptr<Expression> {
         std::vector<std::shared_ptr<Expression>> args;
         for (auto&& arg : call->args)
             args.push_back(a.AnalyzeExpression(lookup, arg.get(), NonstaticLookup));
         auto object = a.AnalyzeExpression(lookup, call->callee.get(), NonstaticLookup);
-        return CreateResultExpression([=, &a](Function* f) {
+        return CreateResultExpression([=, &a](InstanceKey f) {
             return Type::BuildCall(object, args, Context{ lookup, call->location });
         });
     });
 
-    AddHandler<const Parse::Identifier>(a.ExpressionHandlers, [](const Parse::Identifier* ident, Analyzer& a, Type* lookup, std::function<std::shared_ptr<Expression>(Parse::Name)> NonstaticLookup) -> std::shared_ptr<Expression> {
+    AddHandler<const Parse::Identifier>(a.ExpressionHandlers, [](const Parse::Identifier* ident, Analyzer& a, Type* lookup, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup) -> std::shared_ptr<Expression> {
         return LookupIdentifier(lookup, ident->val, ident->location, ident->imp.get(), NonstaticLookup);
     });
 
-    AddHandler<const Parse::True>(a.ExpressionHandlers, [](const Parse::True* tru, Analyzer& a, Type* lookup, std::function<std::shared_ptr<Expression>(Parse::Name)> NonstaticLookup) {
+    AddHandler<const Parse::True>(a.ExpressionHandlers, [](const Parse::True* tru, Analyzer& a, Type* lookup, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup) {
         return Wide::Memory::MakeUnique<Semantic::Boolean>(true, a);
     });
 
-    AddHandler<const Parse::False>(a.ExpressionHandlers, [](const Parse::False* fals, Analyzer& a, Type* lookup, std::function<std::shared_ptr<Expression>(Parse::Name)> NonstaticLookup) {
+    AddHandler<const Parse::False>(a.ExpressionHandlers, [](const Parse::False* fals, Analyzer& a, Type* lookup, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup) {
         return Wide::Memory::MakeUnique<Semantic::Boolean>(false, a);
     });
 
-    AddHandler<const Parse::This>(a.ExpressionHandlers, [](const Parse::This* thi, Analyzer& a, Type* lookup, std::function<std::shared_ptr<Expression>(Parse::Name)> NonstaticLookup) {
+    AddHandler<const Parse::This>(a.ExpressionHandlers, [](const Parse::This* thi, Analyzer& a, Type* lookup, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup) {
         return LookupIdentifier(lookup, "this", thi->location, nullptr, NonstaticLookup);
     });
 
-    AddHandler<const Parse::Type>(a.ExpressionHandlers, [](const Parse::Type* ty, Analyzer& a, Type* lookup, std::function<std::shared_ptr<Expression>(Parse::Name)> NonstaticLookup) {
+    AddHandler<const Parse::Type>(a.ExpressionHandlers, [](const Parse::Type* ty, Analyzer& a, Type* lookup, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup) {
         auto udt = a.GetUDT(ty, lookup->GetConstantContext() ? lookup->GetConstantContext() : lookup->GetContext(), "anonymous");
         return a.GetConstructorType(udt)->BuildValueConstruction({}, { lookup, ty->location });
     });
 
 
-    AddHandler<const Parse::Integer>(a.ExpressionHandlers, [](const Parse::Integer* integer, Analyzer& a, Type* lookup, std::function<std::shared_ptr<Expression>(Parse::Name)> NonstaticLookup) {
+    AddHandler<const Parse::Integer>(a.ExpressionHandlers, [](const Parse::Integer* integer, Analyzer& a, Type* lookup, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup) {
         return Wide::Memory::MakeUnique<Integer>(llvm::APInt(64, std::stoll(integer->integral_value), true), a);
     });
 
-    AddHandler<const Parse::BinaryExpression>(a.ExpressionHandlers, [](const Parse::BinaryExpression* bin, Analyzer& a, Type* lookup, std::function<std::shared_ptr<Expression>(Parse::Name)> NonstaticLookup) {
+    AddHandler<const Parse::BinaryExpression>(a.ExpressionHandlers, [](const Parse::BinaryExpression* bin, Analyzer& a, Type* lookup, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup) {
         auto lhs = a.AnalyzeExpression(lookup, bin->lhs.get(), NonstaticLookup);
         auto rhs = a.AnalyzeExpression(lookup, bin->rhs.get(), NonstaticLookup);
-        return CreateResultExpression([=, &a](Function* f) {
+        return CreateResultExpression([=, &a](InstanceKey f) {
             return Type::BuildBinaryExpression(std::move(lhs), std::move(rhs), bin->type, { lookup, bin->location });
         });
     });
 
-    AddHandler<const Parse::UnaryExpression>(a.ExpressionHandlers, [](const Parse::UnaryExpression* unex, Analyzer& a, Type* lookup, std::function<std::shared_ptr<Expression>(Parse::Name)> NonstaticLookup) -> std::shared_ptr<Expression> {
+    AddHandler<const Parse::UnaryExpression>(a.ExpressionHandlers, [](const Parse::UnaryExpression* unex, Analyzer& a, Type* lookup, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup) -> std::shared_ptr<Expression> {
         auto expr = a.AnalyzeExpression(lookup, unex->ex.get(), NonstaticLookup);
         if (unex->type == &Lexer::TokenTypes::And)
-            return CreateResultExpression([=, &a](Function* f) { return Wide::Memory::MakeUnique<ImplicitAddressOf>(std::move(expr), Context(lookup, unex->location)); });
-        return CreateResultExpression([=, &a](Function* f) { return Type::BuildUnaryExpression(std::move(expr), unex->type, { lookup, unex->location }); });
+            return CreateResultExpression([=, &a](InstanceKey f) { return Wide::Memory::MakeUnique<ImplicitAddressOf>(std::move(expr), Context(lookup, unex->location)); });
+        return CreateResultExpression([=, &a](InstanceKey f) { return Type::BuildUnaryExpression(std::move(expr), unex->type, { lookup, unex->location }); });
     });
 
 
-    AddHandler<const Parse::Increment>(a.ExpressionHandlers, [](const Parse::Increment* inc, Analyzer& a, Type* lookup, std::function<std::shared_ptr<Expression>(Parse::Name)> NonstaticLookup) {
+    AddHandler<const Parse::Increment>(a.ExpressionHandlers, [](const Parse::Increment* inc, Analyzer& a, Type* lookup, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup) {
         auto expr = a.AnalyzeExpression(lookup, inc->ex.get(), NonstaticLookup);
         if (inc->postfix) {
-            return CreateResultExpression([=, &a](Function* f) {
+            return CreateResultExpression([=, &a](InstanceKey f) {
                 auto copy = expr->GetType(f)->Decay()->BuildValueConstruction({ expr }, { lookup, inc->location });
                 auto result = Type::BuildUnaryExpression(expr, &Lexer::TokenTypes::Increment, { lookup, inc->location });
                 return BuildChain(std::move(copy), BuildChain(std::move(result), copy));
             });
         }
-        return CreateResultExpression([=, &a](Function* f) { return Type::BuildUnaryExpression(std::move(expr), &Lexer::TokenTypes::Increment, { lookup, inc->location }); });
+        return CreateResultExpression([=, &a](InstanceKey f) { return Type::BuildUnaryExpression(std::move(expr), &Lexer::TokenTypes::Increment, { lookup, inc->location }); });
     });
 
-    AddHandler<const Parse::Tuple>(a.ExpressionHandlers, [](const Parse::Tuple* tup, Analyzer& a, Type* lookup, std::function<std::shared_ptr<Expression>(Parse::Name)> NonstaticLookup) {
+    AddHandler<const Parse::Tuple>(a.ExpressionHandlers, [](const Parse::Tuple* tup, Analyzer& a, Type* lookup, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup) {
         std::vector<std::shared_ptr<Expression>> exprs;
         for (auto&& elem : tup->expressions)
             exprs.push_back(a.AnalyzeExpression(lookup, elem.get(), NonstaticLookup));
-        return CreateResultExpression([=, &a](Function* f) {
+        return CreateResultExpression([=, &a](InstanceKey f) {
             std::vector<Type*> types;
             for (auto&& expr : exprs)
                 types.push_back(expr->GetType(f)->Decay());
@@ -589,19 +582,19 @@ void Expression::AddDefaultHandlers(Analyzer& a) {
         });
     });
 
-    AddHandler<const Parse::PointerMemberAccess>(a.ExpressionHandlers, [](const Parse::PointerMemberAccess* paccess, Analyzer& a, Type* lookup, std::function<std::shared_ptr<Expression>(Parse::Name)> NonstaticLookup) {
+    AddHandler<const Parse::PointerMemberAccess>(a.ExpressionHandlers, [](const Parse::PointerMemberAccess* paccess, Analyzer& a, Type* lookup, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup) {
         auto subobj = Type::BuildUnaryExpression(a.AnalyzeExpression(lookup, paccess->ex.get(), NonstaticLookup), &Lexer::TokenTypes::Star, { lookup, paccess->location });
         return Type::AccessMember(subobj, paccess->member, { lookup, paccess->location });
     });
 
-    AddHandler<const Parse::Decltype>(a.ExpressionHandlers, [](const Parse::Decltype* declty, Analyzer& a, Type* lookup, std::function<std::shared_ptr<Expression>(Parse::Name)> NonstaticLookup) {
+    AddHandler<const Parse::Decltype>(a.ExpressionHandlers, [](const Parse::Decltype* declty, Analyzer& a, Type* lookup, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup) {
         auto expr = a.AnalyzeExpression(lookup, declty->ex.get(), NonstaticLookup);
-        return CreateResultExpression([=, &a](Function* f) { return a.GetConstructorType(expr->GetType(f))->BuildValueConstruction({}, { lookup, declty->location }); });
+        return CreateResultExpression([=, &a](InstanceKey f) { return a.GetConstructorType(expr->GetType(f))->BuildValueConstruction({}, { lookup, declty->location }); });
     });
 
-    AddHandler<const Parse::Typeid>(a.ExpressionHandlers, [](const Parse::Typeid* rtti, Analyzer& a, Type* lookup, std::function<std::shared_ptr<Expression>(Parse::Name)> NonstaticLookup)  {
+    AddHandler<const Parse::Typeid>(a.ExpressionHandlers, [](const Parse::Typeid* rtti, Analyzer& a, Type* lookup, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup)  {
         auto expr = a.AnalyzeExpression(lookup, rtti->ex.get(), NonstaticLookup);
-        return CreateResultExpression([=, &a](Function* f) -> std::shared_ptr<Expression> {
+        return CreateResultExpression([=, &a](InstanceKey f) -> std::shared_ptr<Expression> {
             auto tu = expr->GetType(f)->analyzer.AggregateCPPHeader("typeinfo", rtti->location);
             auto global_namespace = expr->GetType(f)->analyzer.GetClangNamespace(*tu, tu->GetDeclContext());
             auto std_namespace = Type::AccessMember(a.GetGlobalModule()->BuildValueConstruction({}, { lookup, rtti->location }), "std", { lookup, rtti->location });
@@ -618,7 +611,7 @@ void Expression::AddDefaultHandlers(Analyzer& a) {
                     Type* ty;
                     Type* result;
                     std::function<llvm::Constant*(llvm::Module*)> rtti;
-                    Type* GetType(Function* f) override final { return result; }
+                    Type* GetType(InstanceKey f) override final { return result; }
                     llvm::Value* ComputeValue(CodegenContext& con) override final {
                         return con->CreateBitCast(rtti(con), result->GetLLVMType(con));
                     }
@@ -627,7 +620,7 @@ void Expression::AddDefaultHandlers(Analyzer& a) {
             }
             // typeid(expr)
             struct RTTI : public Expression {
-                RTTI(std::shared_ptr<Expression> arg, Type* result, Function* f) : expr(std::move(arg)), result(result)
+                RTTI(std::shared_ptr<Expression> arg, Type* result, InstanceKey f) : expr(std::move(arg)), result(result)
                 {
                     // If we have a polymorphic type, find the RTTI entry, if applicable.
                     ty = expr->GetType(f)->Decay();
@@ -652,7 +645,7 @@ void Expression::AddDefaultHandlers(Analyzer& a) {
                 Wide::Util::optional<unsigned> rtti_offset;
                 Type* result;
                 Type* ty;
-                Type* GetType(Function* f) override final { return result; }
+                Type* GetType(InstanceKey f) override final { return result; }
                 llvm::Value* ComputeValue(CodegenContext& con) override final {
                     // Do we have a vtable offset? If so, use the RTTI entry there. The expr will already be a pointer to the vtable pointer.
                     if (rtti_offset) {
@@ -676,7 +669,7 @@ void Expression::AddDefaultHandlers(Analyzer& a) {
         auto skeleton = a.GetWideFunction(lam, lookup, "lambda at " + to_string(lam->where), [&](Parse::Name name, Lexer::Range where) -> std::shared_ptr<Expression> {
             auto access = [&] {
                 auto self = NonstaticLookup("this", where);
-                return CreateResultExpression([=] {
+                return CreateResultExpression([=](Expression::InstanceKey) {
                     return Type::AccessMember(self, name, { lookup, where });
                 });
             };
@@ -699,10 +692,10 @@ void Expression::AddDefaultHandlers(Analyzer& a) {
             cap_expressions.push_back(std::make_pair(arg.name.front().name, a.AnalyzeExpression(lookup, arg.initializer.get(), NonstaticLookup)));
         }
         for (auto&& name : implicit_captures) {
-            cap_expressions.push_back(std::make_pair(name, name.second));
+            cap_expressions.push_back(std::make_pair(name.first, name.second));
         }
         
-        return CreateResultExpression([=, &a](Function* f) {
+        return CreateResultExpression([=, &a](InstanceKey f) {
             std::vector<std::pair<Parse::Name, Type*>> types;
             std::vector<std::shared_ptr<Expression>> expressions;
             for (auto&& cap : cap_expressions) {
@@ -724,11 +717,11 @@ void Expression::AddDefaultHandlers(Analyzer& a) {
         });
     });
 
-    AddHandler<const Parse::DynamicCast>(a.ExpressionHandlers, [](const Parse::DynamicCast* dyn_cast, Analyzer& a, Type* lookup, std::function<std::shared_ptr<Expression>(Parse::Name)> NonstaticLookup) -> std::shared_ptr<Expression> {
+    AddHandler<const Parse::DynamicCast>(a.ExpressionHandlers, [](const Parse::DynamicCast* dyn_cast, Analyzer& a, Type* lookup, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup) -> std::shared_ptr<Expression> {
         auto type = a.AnalyzeExpression(lookup, dyn_cast->type.get(), NonstaticLookup);
         auto object = a.AnalyzeExpression(lookup, dyn_cast->object.get(), NonstaticLookup);
 
-        auto dynamic_cast_to_void = [&](PointerType* baseptrty, Function* f) -> std::shared_ptr<Expression> {
+        auto dynamic_cast_to_void = [&](PointerType* baseptrty, InstanceKey f) -> std::shared_ptr<Expression> {
             // Load it from the vtable if it actually has one.
             auto layout = baseptrty->GetPointee()->GetVtableLayout();
             if (layout.layout.size() == 0) {
@@ -763,7 +756,7 @@ void Expression::AddDefaultHandlers(Analyzer& a) {
                                 phi->addIncoming(result, nonnull_bb);
                                 return phi;
                             }
-                            Type* GetType(Function* f) override final {
+                            Type* GetType(InstanceKey f) override final {
                                 auto&& a = object->GetType(f)->analyzer;
                                 return a.GetPointerType(a.GetVoidType());
                             }
@@ -775,7 +768,7 @@ void Expression::AddDefaultHandlers(Analyzer& a) {
             throw std::runtime_error("Attempted to cast to void*, but the object's vtable did not carry an offset to top member.");
         };
 
-        auto polymorphic_dynamic_cast = [&](PointerType* basety, PointerType* derty, Function* f) -> std::shared_ptr<Expression> {
+        auto polymorphic_dynamic_cast = [&](PointerType* basety, PointerType* derty, InstanceKey f) -> std::shared_ptr<Expression> {
             struct PolymorphicDynamicCast : Expression {
                 PolymorphicDynamicCast(Type* basety, Type* derty, std::shared_ptr<Expression> object)
                     : basety(basety), derty(derty), object(std::move(object))
@@ -788,7 +781,7 @@ void Expression::AddDefaultHandlers(Analyzer& a) {
                 Type* derty;
                 std::function<llvm::Constant*(llvm::Module*)> basertti;
                 std::function<llvm::Constant*(llvm::Module*)> derrtti;
-                Type* GetType(Function* f) override final {
+                Type* GetType(InstanceKey f) override final {
                     return derty->analyzer.GetPointerType(derty);
                 }
                 llvm::Value* ComputeValue(CodegenContext& con) override final {
@@ -818,7 +811,7 @@ void Expression::AddDefaultHandlers(Analyzer& a) {
             return Wide::Memory::MakeUnique<PolymorphicDynamicCast>(basety->GetPointee(), derty->GetPointee(), std::move(object));
         };
 
-        return CreateResultExpression([=](Function* f) {
+        return CreateResultExpression([=](InstanceKey f) {
             if (auto con = dynamic_cast<ConstructorType*>(type->GetType(f)->Decay())) {
                 // Only support pointers right now
                 if (auto derptrty = dynamic_cast<PointerType*>(con->GetConstructedType())) {
@@ -845,24 +838,24 @@ void Expression::AddDefaultHandlers(Analyzer& a) {
         });
     });
 
-    AddHandler<const Parse::Index>(a.ExpressionHandlers, [](const Parse::Index* index, Analyzer& a, Type* lookup, std::function<std::shared_ptr<Expression>(Parse::Name)> NonstaticLookup) {
+    AddHandler<const Parse::Index>(a.ExpressionHandlers, [](const Parse::Index* index, Analyzer& a, Type* lookup, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup) {
         auto obj = a.AnalyzeExpression(lookup, index->object.get(), NonstaticLookup);
         auto ind = a.AnalyzeExpression(lookup, index->index.get(), NonstaticLookup);
-        return CreateResultExpression([=, &a](Function* f) {
+        return CreateResultExpression([=, &a](InstanceKey f) {
             auto ty = obj->GetType(f);
             return Type::BuildIndex(std::move(obj), std::move(ind), { lookup, index->location });
         });
     });
 
-    AddHandler<const Parse::DestructorAccess>(a.ExpressionHandlers, [](const Parse::DestructorAccess* des, Analyzer& a, Type* lookup, std::function<std::shared_ptr<Expression>(Parse::Name)> NonstaticLookup) -> std::shared_ptr<Expression> {
+    AddHandler<const Parse::DestructorAccess>(a.ExpressionHandlers, [](const Parse::DestructorAccess* des, Analyzer& a, Type* lookup, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup) -> std::shared_ptr<Expression> {
         auto object = a.AnalyzeExpression(lookup, des->expr.get(), NonstaticLookup);
-        return CreateResultExpression([=, &a](Function* f) {
+        return CreateResultExpression([=, &a](InstanceKey f) {
             auto ty = object->GetType(f);
             return std::make_shared<DestructorCall>(ty->Decay()->BuildDestructorCall(std::move(object), { lookup, des->location }, false), a);
         });
     });
 
-    AddHandler<const Parse::GlobalModuleReference>(a.ExpressionHandlers, [](const Parse::GlobalModuleReference* globmod, Analyzer& a, Type* lookup, std::function<std::shared_ptr<Expression>(Parse::Name)> NonstaticLookup) -> std::shared_ptr < Expression > {
+    AddHandler<const Parse::GlobalModuleReference>(a.ExpressionHandlers, [](const Parse::GlobalModuleReference* globmod, Analyzer& a, Type* lookup, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup) -> std::shared_ptr < Expression > {
         return a.GetGlobalModule()->BuildValueConstruction({}, { lookup, globmod->location });
     });
 }

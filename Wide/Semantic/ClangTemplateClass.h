@@ -16,7 +16,7 @@ namespace Wide {
             ClangTemplateClass(clang::ClassTemplateDecl* decl, ClangTU* ptr, Analyzer& a)
                 : tempdecl(decl), from(ptr), MetaType(a) {}
 
-            std::shared_ptr<Expression> ConstructCall(std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c) override final;
+            std::shared_ptr<Expression> ConstructCall(Expression::InstanceKey key, std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c) override final;
             std::string explain() override final;
             Type* GetContext() override final;
         };

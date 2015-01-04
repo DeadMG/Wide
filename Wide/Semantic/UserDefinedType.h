@@ -133,7 +133,7 @@ namespace Wide {
             Type* GetContext() override final { return context; }
             bool HasMember(Parse::Name name);
             Wide::Util::optional<clang::QualType> GetClangType(ClangTU& TU) override final;
-            std::shared_ptr<Expression> AccessNamedMember(std::shared_ptr<Expression> t, std::string name, Context) override final;
+            std::shared_ptr<Expression> AccessNamedMember(Expression::InstanceKey key, std::shared_ptr<Expression> t, std::string name, Context) override final;
             using Type::AccessMember;
             std::function<void(CodegenContext&)> BuildDestruction(std::shared_ptr<Expression> self, Context c, bool devirtualize) override final;
             OverloadSet* CreateConstructorOverloadSet(Parse::Access access) override final;

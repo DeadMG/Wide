@@ -23,23 +23,21 @@ LambdaType::LambdaType(std::vector<std::pair<Parse::Name, Type*>> capturetypes, 
         names[pair.first] = i++;
 }
 
-std::shared_ptr<Expression> LambdaType::ConstructCall(std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c) {
+std::shared_ptr<Expression> LambdaType::ConstructCall(Expression::InstanceKey key, std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c) {
     args.insert(args.begin(), std::move(val));
-    return CreateResultExpression([=](Function* f) {
-        std::vector<Type*> types;
-        for (auto&& arg : args)
-            types.push_back(arg->GetType(f));
-        auto overset = analyzer.GetOverloadSet(analyzer.GetCallableForFunction(lam, args[0]->GetType(f), "operator()"));
-        auto call = overset->Resolve(types, c.from);
-        if (!call) overset->IssueResolutionError(types, c);
-        return call->Call(std::move(args), c);
-    });
+    std::vector<Type*> types;
+    for (auto&& arg : args)
+        types.push_back(arg->GetType(key));
+    auto overset = analyzer.GetOverloadSet(analyzer.GetCallableForFunction(lam, args[0]->GetType(key), "operator()"));
+    auto call = overset->Resolve(types, c.from);
+    if (!call) overset->IssueResolutionError(types, c);
+    return call->Call(key, std::move(args), c);
 }
 std::shared_ptr<Expression> LambdaType::BuildLambdaFromCaptures(std::vector<std::shared_ptr<Expression>> exprs, Context c) {
     auto self = std::make_shared<ImplicitTemporaryExpr>(this, c);
     if (contents.size() == 0)
         return std::make_shared<ImplicitLoadExpr>(std::move(self));
-    return CreateResultExpression([=](Function* f) {
+    return CreateResultExpression([=](Expression::InstanceKey f) {
         std::vector<std::shared_ptr<Expression>> initializers;
         for (std::size_t i = 0; i < exprs.size(); ++i) {
             std::vector<Type*> types;
@@ -52,7 +50,7 @@ std::shared_ptr<Expression> LambdaType::BuildLambdaFromCaptures(std::vector<std:
             auto obj = CreatePrimUnOp(self, types[0], [this, i](llvm::Value* val, CodegenContext& con) {
                 return con.CreateStructGEP(val, boost::get<LLVMFieldIndex>(GetLocation(i)).index);
             });
-            initializers.push_back(call->Call({ std::move(obj), std::move(exprs[i]) }, c));
+            initializers.push_back(call->Call(f, { std::move(obj), std::move(exprs[i]) }, c));
         }
 
         auto destructor = BuildDestructorCall(self, c, true);

@@ -24,7 +24,7 @@
 using namespace Wide;
 using namespace Semantic;
 
-std::shared_ptr<Expression> ClangIncludeEntity::AccessNamedMember(std::shared_ptr<Expression> t, std::string name, Context c) {
+std::shared_ptr<Expression> ClangIncludeEntity::AccessNamedMember(Expression::InstanceKey key, std::shared_ptr<Expression> t, std::string name, Context c) {
     if (name == "literal") {
         if (LiteralOverloadSet) return BuildChain(std::move(t), LiteralOverloadSet->BuildValueConstruction({}, { this, c.where }));
         struct LiteralIncluder : OverloadResolvable, Callable {
@@ -34,8 +34,8 @@ std::shared_ptr<Expression> ClangIncludeEntity::AccessNamedMember(std::shared_pt
                 return types;
             }
             Callable* GetCallableForResolution(std::vector<Type*>, Type*, Analyzer& a) override final { return this; }
-            std::vector<std::shared_ptr<Expression>> AdjustArguments(std::vector<std::shared_ptr<Expression>> args, Context c) override final { return args; }
-            std::shared_ptr<Expression> CallFunction(std::vector<std::shared_ptr<Expression>> args, Context c) override final {
+            std::vector<std::shared_ptr<Expression>> AdjustArguments(Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c) override final { return args; }
+            std::shared_ptr<Expression> CallFunction(Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c) override final {
                 auto str = dynamic_cast<String*>(args[0].get());
                 llvm::SmallVector<char, 30> fuck_out_parameters;
                 auto error = llvm::sys::fs::createTemporaryFile("", "", fuck_out_parameters);
@@ -46,9 +46,7 @@ std::shared_ptr<Expression> ClangIncludeEntity::AccessNamedMember(std::shared_pt
                 file.flush();
                 file.close();
                 auto clangtu = c.from->analyzer.LoadCPPHeader(std::move(path), c.where);
-                return CreateResultExpression([=](Function* f) {
-                    return args[0]->GetType(f)->analyzer.GetClangNamespace(*clangtu, clangtu->GetDeclContext())->BuildValueConstruction({}, c);
-                });
+                return args[0]->GetType(key)->analyzer.GetClangNamespace(*clangtu, clangtu->GetDeclContext())->BuildValueConstruction({}, c);
             }            
         };
         LiteralHandler = Wide::Memory::MakeUnique<LiteralIncluder>();
@@ -65,16 +63,14 @@ std::shared_ptr<Expression> ClangIncludeEntity::AccessNamedMember(std::shared_pt
                 return types;
             }
             Callable* GetCallableForResolution(std::vector<Type*>, Type*, Analyzer& a) override final { return this; }
-            std::vector<std::shared_ptr<Expression>> AdjustArguments(std::vector<std::shared_ptr<Expression>> args, Context c) override final { return args; }
-            std::shared_ptr<Expression> CallFunction(std::vector<std::shared_ptr<Expression>> args, Context c) override final{
-                return CreateResultExpression([=](Function* f) {
-                    auto gnamespace = dynamic_cast<ClangNamespace*>(args[0]->GetType(f)->Decay());
-                    auto str = dynamic_cast<String*>(args[1].get());
-                    assert(gnamespace && "Overload resolution picked bad candidate.");
-                    if (!str) throw std::runtime_error("Failed to evaluate macro: name was not a constant expression.");
-                    auto tu = gnamespace->GetTU();
-                    return InterpretExpression(tu->ParseMacro(str->str, c.where), *tu, c, c.from->analyzer);
-                });
+            std::vector<std::shared_ptr<Expression>> AdjustArguments(Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c) override final { return args; }
+            std::shared_ptr<Expression> CallFunction(Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c) override final{
+                auto gnamespace = dynamic_cast<ClangNamespace*>(args[0]->GetType(key)->Decay());
+                auto str = dynamic_cast<String*>(args[1].get());
+                assert(gnamespace && "Overload resolution picked bad candidate.");
+                if (!str) throw std::runtime_error("Failed to evaluate macro: name was not a constant expression.");
+                auto tu = gnamespace->GetTU();
+                return InterpretExpression(tu->ParseMacro(str->str, c.where), *tu, c, c.from->analyzer);
             }
         };
         MacroHandler = Wide::Memory::MakeUnique<ClangMacroHandler>();
@@ -90,8 +86,8 @@ std::shared_ptr<Expression> ClangIncludeEntity::AccessNamedMember(std::shared_pt
                 return types;
             }
             Callable* GetCallableForResolution(std::vector<Type*>, Type*, Analyzer& a) override final { return this; }
-            std::vector<std::shared_ptr<Expression>> AdjustArguments(std::vector<std::shared_ptr<Expression>> args, Context c) override final { return args; }
-            std::shared_ptr<Expression> CallFunction(std::vector<std::shared_ptr<Expression>> args, Context c) override final {
+            std::vector<std::shared_ptr<Expression>> AdjustArguments(Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c) override final { return args; }
+            std::shared_ptr<Expression> CallFunction(Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c) override final {
                 auto str = dynamic_cast<String*>(args[0].get());
                 auto name = str->str;
                 if (name.size() > 1 && name[0] == '<')
@@ -109,7 +105,7 @@ std::shared_ptr<Expression> ClangIncludeEntity::AccessNamedMember(std::shared_pt
     return nullptr;
 }
 
-std::shared_ptr<Expression> ClangIncludeEntity::ConstructCall(std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c) {
+std::shared_ptr<Expression> ClangIncludeEntity::ConstructCall(Expression::InstanceKey key, std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c) {
     if (!dynamic_cast<String*>(args[0].get()))
         throw std::runtime_error("fuck");
     if (args.size() != 1)

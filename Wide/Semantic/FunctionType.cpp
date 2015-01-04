@@ -84,44 +84,42 @@ llvm::PointerType* WideFunctionType::GetLLVMType(llvm::Module* module) {
     return llvm::FunctionType::get(ret, args, variadic)->getPointerTo();
 }
 
-std::shared_ptr<Expression> WideFunctionType::ConstructCall(std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c) {
-    return CreateResultExpression([=](Function* f) {
-        auto result_type = dynamic_cast<FunctionType*>(val->GetType(f)->Decay())->GetReturnType();
-        auto Ret = std::make_shared<ImplicitTemporaryExpr>(result_type, c);
-        auto Destructor = !result_type->IsTriviallyDestructible()
-            ? result_type->BuildDestructorCall(Ret, c, true)
-            : std::function<void(CodegenContext&)>();
-        
-        return CreatePrimGlobal(result_type, [=](CodegenContext& con) {
-            llvm::Value* llvmfunc = val->GetValue(con);
-            std::vector<llvm::Value*> llvmargs;
-            if (result_type->AlwaysKeepInMemory(con))
-                llvmargs.push_back(Ret->GetValue(con));
-            // The CALLER calls the destructor, NOT the CALLEE. So let this just destroy them naturally.
-            for (auto&& arg : args)
-                llvmargs.push_back(arg->GetValue(con));
-            llvm::Value* call;
-            // We need to invoke if we're not destructing, and we have something to destroy OR a catch block we may need to jump to.
-            if (!con.destructing && (con.HasDestructors() || con.EHHandler)) {
-                llvm::BasicBlock* continueblock = llvm::BasicBlock::Create(con, "continue", con->GetInsertBlock()->getParent());
-                // If we have a try/catch block, let the catch block figure out what to do.
-                // Else, kill everything in the scope and resume.
-                auto invokeinst = con->CreateInvoke(llvmfunc, continueblock, con.CreateLandingpadForEH(), llvmargs);
-                con->SetInsertPoint(continueblock);
-                invokeinst->setCallingConv(convention);
-                call = invokeinst;
-            } else {
-                auto callinst = con->CreateCall(llvmfunc, llvmargs);
-                callinst->setCallingConv(convention);
-                call = callinst;
-            }
-            if (result_type->AlwaysKeepInMemory(con)) {
-                if (Destructor)
-                    con.AddDestructor(Destructor);
-                return Ret->GetValue(con);
-            }
-            return call;
-        });
+std::shared_ptr<Expression> WideFunctionType::ConstructCall(Expression::InstanceKey key, std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c) {
+    auto result_type = dynamic_cast<FunctionType*>(val->GetType(key)->Decay())->GetReturnType();
+    auto Ret = std::make_shared<ImplicitTemporaryExpr>(result_type, c);
+    auto Destructor = !result_type->IsTriviallyDestructible()
+        ? result_type->BuildDestructorCall(Ret, c, true)
+        : std::function<void(CodegenContext&)>();
+    
+    return CreatePrimGlobal(result_type, [=](CodegenContext& con) {
+        llvm::Value* llvmfunc = val->GetValue(con);
+        std::vector<llvm::Value*> llvmargs;
+        if (result_type->AlwaysKeepInMemory(con))
+            llvmargs.push_back(Ret->GetValue(con));
+        // The CALLER calls the destructor, NOT the CALLEE. So let this just destroy them naturally.
+        for (auto&& arg : args)
+            llvmargs.push_back(arg->GetValue(con));
+        llvm::Value* call;
+        // We need to invoke if we're not destructing, and we have something to destroy OR a catch block we may need to jump to.
+        if (!con.destructing && (con.HasDestructors() || con.EHHandler)) {
+            llvm::BasicBlock* continueblock = llvm::BasicBlock::Create(con, "continue", con->GetInsertBlock()->getParent());
+            // If we have a try/catch block, let the catch block figure out what to do.
+            // Else, kill everything in the scope and resume.
+            auto invokeinst = con->CreateInvoke(llvmfunc, continueblock, con.CreateLandingpadForEH(), llvmargs);
+            con->SetInsertPoint(continueblock);
+            invokeinst->setCallingConv(convention);
+            call = invokeinst;
+        } else {
+            auto callinst = con->CreateCall(llvmfunc, llvmargs);
+            callinst->setCallingConv(convention);
+            call = callinst;
+        }
+        if (result_type->AlwaysKeepInMemory(con)) {
+            if (Destructor)
+                con.AddDestructor(Destructor);
+            return Ret->GetValue(con);
+        }
+        return call;
     });
 }
 Type* WideFunctionType::GetReturnType() {
@@ -158,7 +156,7 @@ Wide::Util::optional<clang::QualType> WideFunctionType::GetClangType(ClangTU& fr
     return from.GetASTContext().getFunctionType(*retty, types, protoinfo);
 }
 std::shared_ptr<Expression> WideFunctionType::CreateThunkFrom(std::shared_ptr<Expression> to, Type* context) {
-    return CreateResultExpression([=](Function* f) -> std::shared_ptr<Expression>{
+    return CreateResultExpression([=](Expression::InstanceKey f) -> std::shared_ptr<Expression>{
         auto dest = this;
         if (to->GetType(f) == dest) return to;
         auto name = dest->analyzer.GetUniqueFunctionName();
@@ -250,74 +248,72 @@ std::vector<Type*> ClangFunctionType::GetArguments() {
     return out;
 }
 
-std::shared_ptr<Expression> ClangFunctionType::ConstructCall(std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c) {
-    return CreateResultExpression([=](Function* f) {
-        auto clangfuncty = dynamic_cast<ClangFunctionType*>(val->GetType(f)->Decay());
-        auto RetType = clangfuncty->GetReturnType();
-        auto Ret = std::make_shared<ImplicitTemporaryExpr>(RetType, c);
-        std::function<void(CodegenContext&)> Destructor;
-        if (!RetType->IsTriviallyDestructible())
-            Destructor = RetType->BuildDestructorCall(Ret, c, true);
-        else
-            Destructor = {};
-        return CreatePrimGlobal(RetType, [=](CodegenContext& con) -> llvm::Value* {
-            llvm::Value* llvmfunc = val->GetValue(con);
-            clang::CodeGen::CodeGenFunction codegenfunc(clangfuncty->from->GetCodegenModule(con), true);
-            codegenfunc.AllocaInsertPt = con.GetAllocaInsertPoint();
-            codegenfunc.Builder.SetInsertPoint(con->GetInsertBlock(), con->GetInsertBlock()->end());
-            codegenfunc.CurCodeDecl = nullptr;
-            clang::CodeGen::CallArgList list;
-            for (auto&& arg : args) {
-                auto val = arg->GetValue(con);
-                if (arg->GetType(f) == analyzer.GetBooleanType())
-                    val = con->CreateTrunc(val, llvm::IntegerType::getInt1Ty(con));
-                auto clangty = *arg->GetType(f)->GetClangType(*clangfuncty->from);
-                if (arg->GetType(f)->AlwaysKeepInMemory(con))
-                    list.add(clang::CodeGen::RValue::getAggregate(val), clangty);
-                else
-                    list.add(clang::CodeGen::RValue::get(val), clangty);
+std::shared_ptr<Expression> ClangFunctionType::ConstructCall(Expression::InstanceKey key, std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c) {
+    auto clangfuncty = dynamic_cast<ClangFunctionType*>(val->GetType(key)->Decay());
+    auto RetType = clangfuncty->GetReturnType();
+    auto Ret = std::make_shared<ImplicitTemporaryExpr>(RetType, c);
+    std::function<void(CodegenContext&)> Destructor;
+    if (!RetType->IsTriviallyDestructible())
+        Destructor = RetType->BuildDestructorCall(Ret, c, true);
+    else
+        Destructor = {};
+    return CreatePrimGlobal(RetType, [=](CodegenContext& con) -> llvm::Value* {
+        llvm::Value* llvmfunc = val->GetValue(con);
+        clang::CodeGen::CodeGenFunction codegenfunc(clangfuncty->from->GetCodegenModule(con), true);
+        codegenfunc.AllocaInsertPt = con.GetAllocaInsertPoint();
+        codegenfunc.Builder.SetInsertPoint(con->GetInsertBlock(), con->GetInsertBlock()->end());
+        codegenfunc.CurCodeDecl = nullptr;
+        clang::CodeGen::CallArgList list;
+        for (auto&& arg : args) {
+            auto val = arg->GetValue(con);
+            if (arg->GetType(key) == analyzer.GetBooleanType())
+                val = con->CreateTrunc(val, llvm::IntegerType::getInt1Ty(con));
+            auto clangty = *arg->GetType(key)->GetClangType(*clangfuncty->from);
+            if (arg->GetType(key)->AlwaysKeepInMemory(con))
+                list.add(clang::CodeGen::RValue::getAggregate(val), clangty);
+            else
+                list.add(clang::CodeGen::RValue::get(val), clangty);
+        }
+        llvm::Instruction* call_or_invoke;
+        clang::CodeGen::ReturnValueSlot slot;
+        if (clangfuncty->GetReturnType()->AlwaysKeepInMemory(con)) {
+            slot = clang::CodeGen::ReturnValueSlot(Ret->GetValue(con), false);
+        }
+        auto result = codegenfunc.EmitCall(clangfuncty->GetCGFunctionInfo(con), llvmfunc, slot, list, nullptr, &call_or_invoke);
+        // We need to invoke if we're not destructing, and we have something to destroy OR a catch block we may need to jump to, and the function may throw.
+        if (!con.destructing && (con.HasDestructors() || con.EHHandler) && clangfuncty->type->getNoexceptSpec(clangfuncty->from->GetASTContext()) != clang::FunctionProtoType::NoexceptResult::NR_Nothrow) {
+            llvm::BasicBlock* continueblock = llvm::BasicBlock::Create(con, "continue", con->GetInsertBlock()->getParent());
+            // If we have a try/catch block, let the catch block figure out what to do.
+            // Else, kill everything in the scope and resume.
+            if (auto invokeinst = llvm::dyn_cast<llvm::InvokeInst>(call_or_invoke)) {
+                invokeinst->setUnwindDest(con.CreateLandingpadForEH());
+            } else {
+                auto callinst = llvm::cast<llvm::CallInst>(call_or_invoke);
+                std::vector<llvm::Value*> args;
+                for (unsigned i = 0; i < callinst->getNumArgOperands(); ++i)
+                    args.push_back(callinst->getArgOperand(i));
+                invokeinst = con->CreateInvoke(llvmfunc, continueblock, con.CreateLandingpadForEH(), args);
+                invokeinst->setAttributes(callinst->getAttributes());
+                call_or_invoke = invokeinst;
+                callinst->replaceAllUsesWith(invokeinst);
+                callinst->eraseFromParent();
             }
-            llvm::Instruction* call_or_invoke;
-            clang::CodeGen::ReturnValueSlot slot;
-            if (clangfuncty->GetReturnType()->AlwaysKeepInMemory(con)) {
-                slot = clang::CodeGen::ReturnValueSlot(Ret->GetValue(con), false);
-            }
-            auto result = codegenfunc.EmitCall(clangfuncty->GetCGFunctionInfo(con), llvmfunc, slot, list, nullptr, &call_or_invoke);
-            // We need to invoke if we're not destructing, and we have something to destroy OR a catch block we may need to jump to, and the function may throw.
-            if (!con.destructing && (con.HasDestructors() || con.EHHandler) && clangfuncty->type->getNoexceptSpec(clangfuncty->from->GetASTContext()) != clang::FunctionProtoType::NoexceptResult::NR_Nothrow) {
-                llvm::BasicBlock* continueblock = llvm::BasicBlock::Create(con, "continue", con->GetInsertBlock()->getParent());
-                // If we have a try/catch block, let the catch block figure out what to do.
-                // Else, kill everything in the scope and resume.
-                if (auto invokeinst = llvm::dyn_cast<llvm::InvokeInst>(call_or_invoke)) {
-                    invokeinst->setUnwindDest(con.CreateLandingpadForEH());
-                } else {
-                    auto callinst = llvm::cast<llvm::CallInst>(call_or_invoke);
-                    std::vector<llvm::Value*> args;
-                    for (unsigned i = 0; i < callinst->getNumArgOperands(); ++i)
-                        args.push_back(callinst->getArgOperand(i));
-                    invokeinst = con->CreateInvoke(llvmfunc, continueblock, con.CreateLandingpadForEH(), args);
-                    invokeinst->setAttributes(callinst->getAttributes());
-                    call_or_invoke = invokeinst;
-                    callinst->replaceAllUsesWith(invokeinst);
-                    callinst->eraseFromParent();
-                }
-                con->SetInsertPoint(continueblock);
-            }
-            if (!clangfuncty->GetReturnType()->IsTriviallyDestructible())
-                con.AddDestructor(Destructor);
-            if (call_or_invoke->getType() == clangfuncty->GetReturnType()->GetLLVMType(con))
-                return call_or_invoke;
-            if (result.isScalar()) {
-                auto val = result.getScalarVal();
-                if (val->getType() == llvm::IntegerType::getInt1Ty(con))
-                    return con->CreateZExt(val, llvm::IntegerType::getInt8Ty(con));
-                return val;
-            }
-            auto val = result.getAggregateAddr();
-            if (clangfuncty->GetReturnType()->IsReference() || clangfuncty->GetReturnType()->AlwaysKeepInMemory(con))
-                return val;
-            return con->CreateLoad(val);
-        });
+            con->SetInsertPoint(continueblock);
+        }
+        if (!clangfuncty->GetReturnType()->IsTriviallyDestructible())
+            con.AddDestructor(Destructor);
+        if (call_or_invoke->getType() == clangfuncty->GetReturnType()->GetLLVMType(con))
+            return call_or_invoke;
+        if (result.isScalar()) {
+            auto val = result.getScalarVal();
+            if (val->getType() == llvm::IntegerType::getInt1Ty(con))
+                return con->CreateZExt(val, llvm::IntegerType::getInt8Ty(con));
+            return val;
+        }
+        auto val = result.getAggregateAddr();
+        if (clangfuncty->GetReturnType()->IsReference() || clangfuncty->GetReturnType()->AlwaysKeepInMemory(con))
+            return val;
+        return con->CreateLoad(val);
     });
 }
 std::function<void(llvm::Module*)> ClangFunctionType::CreateThunk(std::function<llvm::Function*(llvm::Module*)> src, std::shared_ptr<Expression> dest, clang::FunctionDecl* decl, Type* context) {

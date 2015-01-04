@@ -35,7 +35,7 @@ std::string ArrayType::explain() {
 }
 std::shared_ptr<Expression> ArrayType::PrimitiveAccessMember(std::shared_ptr<Expression> self, unsigned num) {
     assert(num < count);
-    return CreateResultExpression([=](Function* f) {
+    return CreateResultExpression([=](Expression::InstanceKey f) {
         auto result_ty = IsLvalueType(self->GetType(f))
             ? t->analyzer.GetLvalueType(t)
             : IsRvalueType(self->GetType(f))
@@ -65,7 +65,7 @@ OverloadSet* ArrayType::CreateOperatorOverloadSet(Parse::OperatorName what, Pars
     struct IndexOperatorResolvable : OverloadResolvable, Callable {
         IndexOperatorResolvable(ArrayType* el) : array(el) {}
         ArrayType* array;
-        std::shared_ptr<Expression> CallFunction(std::vector<std::shared_ptr<Expression>> args, Context c) override final {
+        std::shared_ptr<Expression> CallFunction(Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c) override final {
             args[1] = BuildValue(std::move(args[1]));
             auto globmod = c.from->analyzer.GetGlobalModule()->BuildValueConstruction({}, c);
             auto stdmod = Type::AccessMember(globmod, "Standard", c);
@@ -75,35 +75,32 @@ OverloadSet* ArrayType::CreateOperatorOverloadSet(Parse::OperatorName what, Pars
             auto array_bounds_exception = Type::AccessMember(errmod, "ArrayIndexOutOfBounds", c);
             if (!array_bounds_exception) throw std::runtime_error("Could not find Standard.Error.ArrayIndexOutOfBounds.");
             auto throw_ = Semantic::ThrowObject(Type::BuildCall(array_bounds_exception, {}, c), c);
-            return CreateResultExpression([=](Function* f) {
-                auto intty = dynamic_cast<IntegralType*>(args[1]->GetType(f));
-                auto argty = args[0]->GetType(f);
-                return CreatePrimOp(std::move(args[0]), std::move(args[1]), Semantic::CollapseType(args[0]->GetType(f), array->t), [this, argty, throw_, intty](llvm::Value* arr, llvm::Value* index, CodegenContext& con) -> llvm::Value* {
-                    auto zero = (llvm::Value*)llvm::ConstantInt::get(intty->GetLLVMType(con), llvm::APInt(intty->GetLLVMType(con)->getBitWidth(), uint64_t(0), false));
-                    llvm::BasicBlock* out_of_bounds = llvm::BasicBlock::Create(con, "out_of_bounds", con->GetInsertBlock()->getParent());
-                    llvm::BasicBlock* in_bounds = llvm::BasicBlock::Create(con, "in_bounds", con->GetInsertBlock()->getParent());
-                    // if (index >= 0 && index < size)
-                    llvm::Value* is_in_bounds;
-                    if (intty->IsSigned()) {
-                        auto is_gte_zero = con->CreateICmpSGE(index, zero);
-                        auto is_lt_bound = con->CreateICmpSLT(index, llvm::ConstantInt::get(intty->GetLLVMType(con), llvm::APInt(intty->GetLLVMType(con)->getBitWidth(), uint64_t(array->count), false)));
-                        is_in_bounds = con->CreateAnd(is_gte_zero, is_lt_bound);
+            auto intty = dynamic_cast<IntegralType*>(args[1]->GetType(key));
+            auto argty = args[0]->GetType(key);
+            return CreatePrimOp(std::move(args[0]), std::move(args[1]), Semantic::CollapseType(argty, array->t), [this, argty, throw_, intty](llvm::Value* arr, llvm::Value* index, CodegenContext& con) -> llvm::Value* {
+                auto zero = (llvm::Value*)llvm::ConstantInt::get(intty->GetLLVMType(con), llvm::APInt(intty->GetLLVMType(con)->getBitWidth(), uint64_t(0), false));
+                llvm::BasicBlock* out_of_bounds = llvm::BasicBlock::Create(con, "out_of_bounds", con->GetInsertBlock()->getParent());
+                llvm::BasicBlock* in_bounds = llvm::BasicBlock::Create(con, "in_bounds", con->GetInsertBlock()->getParent());
+                // if (index >= 0 && index < size)
+                llvm::Value* is_in_bounds;
+                if (intty->IsSigned()) {
+                    auto is_gte_zero = con->CreateICmpSGE(index, zero);
+                    auto is_lt_bound = con->CreateICmpSLT(index, llvm::ConstantInt::get(intty->GetLLVMType(con), llvm::APInt(intty->GetLLVMType(con)->getBitWidth(), uint64_t(array->count), false)));
+                    is_in_bounds = con->CreateAnd(is_gte_zero, is_lt_bound);
+                } else {
+                    if (array->count > (std::pow(2, intty->GetBitness() - 1))) {
+                        is_in_bounds = llvm::ConstantInt::getTrue(con);
                     } else {
-                        if (array->count > (std::pow(2, intty->GetBitness() - 1))) {
-                            is_in_bounds = llvm::ConstantInt::getTrue(con);
-                        } else {
-                            is_in_bounds = con->CreateICmpULT(index, llvm::ConstantInt::get(intty->GetLLVMType(con), llvm::APInt(intty->GetLLVMType(con)->getBitWidth(), uint64_t(array->count), false)));
-                        }
+                        is_in_bounds = con->CreateICmpULT(index, llvm::ConstantInt::get(intty->GetLLVMType(con), llvm::APInt(intty->GetLLVMType(con)->getBitWidth(), uint64_t(array->count), false)));
                     }
-                    con->CreateCondBr(is_in_bounds, in_bounds, out_of_bounds);
-                    con->SetInsertPoint(out_of_bounds);
-                    throw_(con);
-                    con->SetInsertPoint(in_bounds);
-                    llvm::Value* indices[] = { zero, index };
-                    return Semantic::CollapseMember(argty, { con->CreateGEP(arr, indices), array->t }, con);
-                });
-
-            }); 
+                }
+                con->CreateCondBr(is_in_bounds, in_bounds, out_of_bounds);
+                con->SetInsertPoint(out_of_bounds);
+                throw_(con);
+                con->SetInsertPoint(in_bounds);
+                llvm::Value* indices[] = { zero, index };
+                return Semantic::CollapseMember(argty, { con->CreateGEP(arr, indices), array->t }, con);
+            });
         }
         Wide::Util::optional<std::vector<Type*>> MatchParameter(std::vector<Type*> args, Analyzer& a, Type* source) override final {
             if (args.size() != 2) return Util::none;
@@ -112,7 +109,7 @@ OverloadSet* ArrayType::CreateOperatorOverloadSet(Parse::OperatorName what, Pars
             if (!arrty || !intty) return Util::none;
             return args;
         }
-        std::vector<std::shared_ptr<Expression>> AdjustArguments(std::vector<std::shared_ptr<Expression>> args, Context c) override final { return args; }
+        std::vector<std::shared_ptr<Expression>> AdjustArguments(Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c) override final { return args; }
         Callable* GetCallableForResolution(std::vector<Type*>, Type*, Analyzer& a) override final { return this; }
     };
     if (!IndexOperator) IndexOperator = Wide::Memory::MakeUnique<IndexOperatorResolvable>(this);
@@ -125,7 +122,7 @@ OverloadSet* ArrayType::CreateConstructorOverloadSet(Parse::Access access) {
 bool ArrayType::AlwaysKeepInMemory(llvm::Module* mod) {
     return true;
 }
-std::shared_ptr<Expression> ArrayType::AccessNamedMember(std::shared_ptr<Expression> t, std::string name, Context c) {
+std::shared_ptr<Expression> ArrayType::AccessNamedMember(Expression::InstanceKey key, std::shared_ptr<Expression> t, std::string name, Context c) {
     if (name != "size") return nullptr;
     return std::make_shared<Integer>(llvm::APInt(64, (uint64_t)count, false), analyzer);
 }

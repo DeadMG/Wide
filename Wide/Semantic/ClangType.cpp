@@ -50,7 +50,7 @@ std::shared_ptr<Expression> GetOverloadSet(clang::NamedDecl* d, ClangTU* from, s
     std::unordered_set<clang::NamedDecl*> decls;
     if (d)
         decls.insert(d);
-    return CreateResultExpression([=, &a](Function* f) {
+    return CreateResultExpression([=, &a](Expression::InstanceKey f) {
         return a.GetOverloadSet(std::move(decls), from, self->GetType(f))->BuildValueConstruction({ self }, c);
     });
 }
@@ -110,7 +110,7 @@ Wide::Util::optional<clang::QualType> ClangType::GetClangType(ClangTU& tu) {
     return type;
 }
 
-std::shared_ptr<Expression> ClangType::AccessNamedMember(std::shared_ptr<Expression> val, std::string name, Context c) {
+std::shared_ptr<Expression> ClangType::AccessNamedMember(Expression::InstanceKey key, std::shared_ptr<Expression> val, std::string name, Context c) {
     auto access = GetAccessSpecifier(c.from, this);
 
     clang::LookupResult lr(
@@ -126,7 +126,7 @@ std::shared_ptr<Expression> ClangType::AccessNamedMember(std::shared_ptr<Express
     if (lr.isSingleResult()) {
         auto declaccess = AccessMapping.at(lr.getFoundDecl()->getAccess());
         if (access < declaccess)
-            return Type::AccessNamedMember(std::move(val), name, c);
+            return Type::AccessNamedMember(key, std::move(val), name, c);
 
         if (auto field = llvm::dyn_cast<clang::FieldDecl>(lr.getFoundDecl())) {
             return PrimitiveAccessMember(std::move(val), field->getFieldIndex() + type->getAsCXXRecordDecl()->bases_end() - type->getAsCXXRecordDecl()->bases_begin());
@@ -152,10 +152,8 @@ std::shared_ptr<Expression> ClangType::AccessNamedMember(std::shared_ptr<Express
             continue;
         decls.insert(decl);
     }
-    return CreateResultExpression([=](Function* f) {
-        auto set = GetOverloadSet(decls, from, val->GetType(f), access, analyzer);
-        return set ? set->BuildValueConstruction({ val }, c) : Type::AccessMember(std::move(val), name, c);
-    });
+    auto set = GetOverloadSet(decls, from, val->GetType(key), access, analyzer);
+    return set ? set->BuildValueConstruction({ val }, c) : Type::AccessMember(std::move(val), name, c);
 }
 
 llvm::Type* ClangType::GetLLVMType(llvm::Module* module) {
@@ -339,7 +337,7 @@ std::shared_ptr<Expression> ClangType::PrimitiveAccessMember(std::shared_ptr<Exp
     } else {
         resty = std::next(type->getAsCXXRecordDecl()->bases_begin(), num)->getType();
     }
-    return CreateResultExpression([=](Function* f) {
+    return CreateResultExpression([=](Expression::InstanceKey f) {
         auto source_type = self->GetType(f);
         auto root_type = analyzer.GetClangType(*from, resty);
         auto result_type = Semantic::CollapseType(source_type, root_type);
@@ -396,7 +394,7 @@ std::shared_ptr<Expression> GetVTablePointer(std::shared_ptr<Expression> self, c
     return GetVTablePointer(std::move(self), layout.getPrimaryBase(), a, from, vptrty);
 }
 
-std::shared_ptr<Expression> ClangType::AccessVirtualPointer(std::shared_ptr<Expression> self) {
+std::shared_ptr<Expression> ClangType::AccessVirtualPointer(Expression::InstanceKey key, std::shared_ptr<Expression> self) {
     if (!type->getAsCXXRecordDecl()->isPolymorphic()) return nullptr;
     return ::GetVTablePointer(std::move(self), type->getAsCXXRecordDecl(), analyzer, from, GetVirtualPointerType());
 }

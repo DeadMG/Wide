@@ -35,7 +35,7 @@ OverloadSet* Module::CreateOperatorOverloadSet(Parse::OperatorName ty, Parse::Ac
     }
     return PrimitiveType::CreateOperatorOverloadSet(ty, access, kind);
 }
-std::shared_ptr<Expression> Module::AccessNamedMember(std::shared_ptr<Expression> val, std::string name, Context c)  {
+std::shared_ptr<Expression> Module::AccessNamedMember(Expression::InstanceKey key, std::shared_ptr<Expression> val, std::string name, Context c)  {
     auto access = GetAccessSpecifier(c.from, this);
     if (m->named_decls.find(name) != m->named_decls.end()) {
         if (auto shared = boost::get<std::pair<Parse::Access, std::shared_ptr<Parse::SharedObjectTag>>>(&m->named_decls.at(name))) {

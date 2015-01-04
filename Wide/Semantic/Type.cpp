@@ -195,26 +195,30 @@ std::vector<std::pair<Type*, unsigned>> Type::GetBasesAndOffsets() {
 }
 
 std::shared_ptr<Expression> Type::GetVirtualPointer(std::shared_ptr<Expression> self) { 
-    return self->GetType()->Decay()->AccessVirtualPointer(self);
+    return CreateResultExpression([=](Expression::InstanceKey key) {
+        return self->GetType(key)->Decay()->AccessVirtualPointer(key, self);
+    });
 }
 
 std::shared_ptr<Expression> Type::AccessStaticMember(std::string name, Context c) {
     return nullptr;
 }
 
-std::shared_ptr<Expression> Type::AccessNamedMember(std::shared_ptr<Expression> t, std::string name, Context c) {
+std::shared_ptr<Expression> Type::AccessNamedMember(Expression::InstanceKey key, std::shared_ptr<Expression> t, std::string name, Context c) {
     if (IsReference())
-        return Decay()->AccessNamedMember(std::move(t), name, c);
+        return Decay()->AccessNamedMember(key, std::move(t), name, c);
     return nullptr;
 }
 std::shared_ptr<Expression> Type::AccessMember(std::shared_ptr<Expression> t, Parse::Name name, Context c) {
-    auto ty = t->GetType();
-    if (auto string = boost::get<std::string>(&name))
-        return ty->Decay()->AccessNamedMember(t, *string, c);
-    auto set = ty->Decay()->AccessMember(boost::get<Parse::OperatorName>(name), GetAccessSpecifier(c.from, ty), OperatorAccess::Explicit);
-    if (ty->Decay()->IsLookupContext())
-        return ty->analyzer.GetOverloadSet(set, ty->analyzer.GetOverloadSet())->BuildValueConstruction({}, c);
-    return ty->analyzer.GetOverloadSet(set, ty->analyzer.GetOverloadSet(), ty)->BuildValueConstruction({t}, c);    
+    return CreateResultExpression([=](Expression::InstanceKey key) {
+        auto ty = t->GetType(key);
+        if (auto string = boost::get<std::string>(&name))
+            return ty->Decay()->AccessNamedMember(key, t, *string, c);
+        auto set = ty->Decay()->AccessMember(boost::get<Parse::OperatorName>(name), GetAccessSpecifier(c.from, ty), OperatorAccess::Explicit);
+        if (ty->Decay()->IsLookupContext())
+            return ty->analyzer.GetOverloadSet(set, ty->analyzer.GetOverloadSet())->BuildValueConstruction({}, c);
+        return ty->analyzer.GetOverloadSet(set, ty->analyzer.GetOverloadSet(), ty)->BuildValueConstruction({ t }, c);
+    });
 }
 std::shared_ptr<Expression> Type::AccessStaticMember(Parse::Name name, Context c) {
     if (auto string = boost::get<std::string>(&name))
@@ -223,39 +227,43 @@ std::shared_ptr<Expression> Type::AccessStaticMember(Parse::Name name, Context c
 }
 
 std::shared_ptr<Expression> Type::BuildCall(std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c) {
-    auto ty = val->GetType();
-    if (ty->IsReference())
-        ty = ty->Decay();
-    return ty->ConstructCall(val, std::move(args), c);
+    return CreateResultExpression([=](Expression::InstanceKey key) {
+        auto ty = val->GetType(key);
+        if (ty->IsReference())
+            ty = ty->Decay();
+        return ty->ConstructCall(key, val, std::move(args), c);
+    });
 }
-std::shared_ptr<Expression> Type::ConstructCall(std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c) {
-    auto set = val->GetType()->AccessMember({ &Lexer::TokenTypes::OpenBracket, &Lexer::TokenTypes::CloseBracket }, GetAccessSpecifier(c.from, this), OperatorAccess::Implicit);
+std::shared_ptr<Expression> Type::ConstructCall(Expression::InstanceKey key, std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c) {
     args.insert(args.begin(), std::move(val));
+    auto set = val->GetType(key)->AccessMember({ &Lexer::TokenTypes::OpenBracket, &Lexer::TokenTypes::CloseBracket }, GetAccessSpecifier(c.from, this), OperatorAccess::Implicit);
     std::vector<Type*> types;
     for (auto&& arg : args)
-        types.push_back(arg->GetType());
+        types.push_back(arg->GetType(key));
     auto call = set->Resolve(types, c.from);
     if (!call) set->IssueResolutionError(types, c);
-    return call->Call(std::move(args), c);
+    return call->Call(key, std::move(args), c);
 }
 std::function<void(CodegenContext&)> Type::BuildDestruction(std::shared_ptr<Expression> self, Context c, bool devirtualize) {
     return [](CodegenContext&) {};
 }
-std::shared_ptr<Expression> Type::AccessVirtualPointer(std::shared_ptr<Expression> self) {
+std::shared_ptr<Expression> Type::AccessVirtualPointer(Expression::InstanceKey key, std::shared_ptr<Expression> self) {
     assert(false && "Attempted to access the virtual pointer of a type with no virtual functions.");
     return nullptr;
 }
 
 std::shared_ptr<Expression> Type::BuildBooleanConversion(std::shared_ptr<Expression> val, Context c) {
-    auto set = val->GetType()->Decay()->AccessMember({ &Lexer::TokenTypes::QuestionMark }, GetAccessSpecifier(c.from, val->GetType()), OperatorAccess::Implicit);
-    std::vector<std::shared_ptr<Expression>> args;
-    args.push_back(std::move(val));
-    std::vector<Type*> types;
-    for (auto&& arg : args)
-        types.push_back(arg->GetType());
-    auto call = set->Resolve(types, c.from);
-    if (!call) set->IssueResolutionError(types, c);
-    return call->Call(std::move(args), c);
+    return CreateResultExpression([=](Expression::InstanceKey key) {
+        auto set = val->GetType(key)->Decay()->AccessMember({ &Lexer::TokenTypes::QuestionMark }, GetAccessSpecifier(c.from, val->GetType(key)), OperatorAccess::Implicit);
+        std::vector<std::shared_ptr<Expression>> args;
+        args.push_back(std::move(val));
+        std::vector<Type*> types;
+        for (auto&& arg : args)
+            types.push_back(arg->GetType(key));
+        auto call = set->Resolve(types, c.from);
+        if (!call) set->IssueResolutionError(types, c);
+        return call->Call(key, std::move(args), c);
+    });
 }
 
 std::function<void(CodegenContext&)> Type::BuildDestructorCall(std::shared_ptr<Expression> self, Context c, bool devirtualize) {
@@ -286,32 +294,33 @@ OverloadSet* Type::AccessMember(Parse::OperatorName type, Parse::Access access, 
 }
 
 std::shared_ptr<Expression> Type::BuildInplaceConstruction(std::shared_ptr<Expression> self, std::vector<std::shared_ptr<Expression>> exprs, Context c) {
-    auto selfty = self->GetType();
     exprs.insert(exprs.begin(), std::move(self));
-    std::vector<Type*> types;
-    for (auto&& arg : exprs)
-        types.push_back(arg->GetType());
-    auto conset = selfty->Decay()->GetConstructorOverloadSet(GetAccessSpecifier(c.from, selfty));
-    auto callable = conset->Resolve(types, c.from);
-    if (!callable)
-        conset->IssueResolutionError(types, c);
-    return callable->Call(std::move(exprs), c);
+    return CreateResultExpression([=](Expression::InstanceKey key) {
+        auto selfty = self->GetType(key);
+        std::vector<Type*> types;
+        for (auto&& arg : exprs)
+            types.push_back(arg->GetType(key));
+        auto conset = selfty->Decay()->GetConstructorOverloadSet(GetAccessSpecifier(c.from, selfty));
+        auto callable = conset->Resolve(types, c.from);
+        if (!callable)
+            conset->IssueResolutionError(types, c);
+        return callable->Call(key, std::move(exprs), c);
+    });
 }
 
 struct ValueConstruction : Expression {
     ValueConstruction(Type* self, std::vector<std::shared_ptr<Expression>> args, Context c)
     : self(self) {
-        ListenToNode(self);
         no_args = args.size() == 0;
         temporary = Wide::Memory::MakeUnique<ImplicitTemporaryExpr>(self, c);
         if (args.size() == 1)
             single_arg = args[0];
         InplaceConstruction = Type::BuildInplaceConstruction(temporary, std::move(args), c);
         destructor = self->BuildDestructorCall(temporary, c, true);
-        if (auto implicitstore = dynamic_cast<ImplicitStoreExpr*>(InplaceConstruction.get())) {
-            if (implicitstore->mem == temporary)
-                assert(implicitstore->val->GetType() == self);
-        }
+        //if (auto implicitstore = dynamic_cast<ImplicitStoreExpr*>(InplaceConstruction.get())) {
+        //    if (implicitstore->mem == temporary)
+        //        assert(implicitstore->val->GetType() == self);
+        //}
     }
     std::shared_ptr<ImplicitTemporaryExpr> temporary;
     std::function<void(CodegenContext&)> destructor;
@@ -319,32 +328,28 @@ struct ValueConstruction : Expression {
     std::shared_ptr<Expression> single_arg;
     bool no_args = false;
     Type* self;
-    bool IsConstantExpression() override final {
+    bool IsConstantExpression(Expression::InstanceKey key) override final {
         if (self->GetConstantContext() == self && no_args) return true;
         if (auto func = dynamic_cast<Function*>(self)) return true;
         if (single_arg) {
-            auto otherty = single_arg->GetType();
-            if (single_arg->GetType()->Decay() == self->Decay()) {
-                if (single_arg->GetType() == self && single_arg->IsConstantExpression())
+            auto otherty = single_arg->GetType(key);
+            if (single_arg->GetType(key)->Decay() == self->Decay()) {
+                if (single_arg->GetType(key) == self && single_arg->IsConstantExpression(key))
                     return true;
-                if (single_arg->GetType()->IsReference(self) && single_arg->IsConstantExpression())
+                if (single_arg->GetType(key)->IsReference(self) && single_arg->IsConstantExpression(key))
                     return true;
             }
         }
-        return InplaceConstruction->IsConstantExpression();
+        return InplaceConstruction->IsConstantExpression(key);
     }
-    void OnNodeChanged(Node* n, Change what) {
-        if (what == Change::Destroyed)
-            assert(false);
-    }
-    Type* GetType() override final {
+    Type* GetType(Expression::InstanceKey key) override final {
         return self;
     }
     llvm::Value* ComputeValue(CodegenContext& con) override final {
         if (!self->AlwaysKeepInMemory(con)) {
             if (auto implicitstore = dynamic_cast<ImplicitStoreExpr*>(InplaceConstruction.get())) {
                 if (implicitstore->mem == temporary) {
-                    assert(implicitstore->val->GetType() == self);
+                    assert(implicitstore->val->GetType(con.func) == self);
                     return implicitstore->val->GetValue(con);
                 }
             }
@@ -353,12 +358,12 @@ struct ValueConstruction : Expression {
             if (auto func = dynamic_cast<Function*>(self))
                 return llvm::UndefValue::get(self->GetLLVMType(con));
             if (single_arg) {
-                auto otherty = single_arg->GetType();
-                if (single_arg->GetType()->Decay() == self->Decay()) {
-                    if (single_arg->GetType() == self) {
+                auto otherty = single_arg->GetType(con.func);
+                if (single_arg->GetType(con.func)->Decay() == self->Decay()) {
+                    if (single_arg->GetType(con.func) == self) {
                         return single_arg->GetValue(con);
                     }
-                    if (single_arg->GetType()->IsReference(self)) {
+                    if (single_arg->GetType(con.func)->IsReference(self)) {
                         //if (auto val = dynamic_cast<ValueConstruction*>(single_arg.get())) {
                         //    if (IsRvalueType(val->GetType())) {
                         //        if (val->single_arg) {
@@ -387,54 +392,16 @@ std::shared_ptr<Expression> Type::BuildValueConstruction(std::vector<std::shared
     return Wide::Memory::MakeUnique<ValueConstruction>(this, std::move(exprs), c);
 }
 
-std::shared_ptr<Expression> Type::BuildRvalueConstruction(std::vector<std::shared_ptr<Expression>> exprs, Context c) {
-    struct RValueConstruction : Expression {
-        RValueConstruction(Type* self, std::vector<std::shared_ptr<Expression>> args, Context c)
-        : self(self) {
-            temporary = Wide::Memory::MakeUnique<ImplicitTemporaryExpr>(self, c);
-            InplaceConstruction = Type::BuildInplaceConstruction(temporary, std::move(args), c);
-            destructor = self->BuildDestructorCall(temporary, c, true);
-        }
-        std::shared_ptr<ImplicitTemporaryExpr> temporary;
-        std::shared_ptr<Expression> InplaceConstruction;
-        std::function<void(CodegenContext&)> destructor;
-        Type* self;
-        Type* GetType() override final {
-            return self->analyzer.GetRvalueType(self);
-        }
-        llvm::Value* ComputeValue(CodegenContext& con) override final {
-            InplaceConstruction->GetValue(con);
-            if (!self->IsTriviallyDestructible())
-                con.AddDestructor(destructor);
-            return temporary->GetValue(con);
-        }
-    };
-    return Wide::Memory::MakeUnique<RValueConstruction>(this, std::move(exprs), c);
-}
-
-std::shared_ptr<Expression> Type::BuildLvalueConstruction(std::vector<std::shared_ptr<Expression>> exprs, Context c) {
-    struct LValueConstruction : Expression {
-        LValueConstruction(Type* self, std::vector<std::shared_ptr<Expression>> args, Context c)
-        : self(self) {
-            temporary = Wide::Memory::MakeUnique<ImplicitTemporaryExpr>(self, c);
-            InplaceConstruction = Type::BuildInplaceConstruction(temporary, std::move(args), c);
-            destructor = self->BuildDestructorCall(temporary, c, true);
-        }
-        std::shared_ptr<ImplicitTemporaryExpr> temporary;
-        std::shared_ptr<Expression> InplaceConstruction;
-        std::function<void(CodegenContext&)> destructor;
-        Type* self;
-        Type* GetType() override final {
-            return self->analyzer.GetLvalueType(self);
-        }
-        llvm::Value* ComputeValue(CodegenContext& con) override final {
-            InplaceConstruction->GetValue(con);
-            if (!self->IsTriviallyDestructible())
-                con.AddDestructor(destructor);
-            return temporary->GetValue(con);
-        }
-    };
-    return Wide::Memory::MakeUnique<LValueConstruction>(this, std::move(exprs), c);
+std::shared_ptr<Expression> Type::BuildRvalueConstruction(std::vector<std::shared_ptr<Expression>> args, Context c) {
+    auto temporary = std::make_shared<ImplicitTemporaryExpr>(this, c);
+    auto InplaceConstruction = Type::BuildInplaceConstruction(temporary, std::move(args), c);
+    auto destructor = BuildDestructorCall(temporary, c, true);
+    return CreatePrimGlobal(analyzer.GetRvalueType(this), [=](CodegenContext& con) {
+        InplaceConstruction->GetValue(con);
+        if (!IsTriviallyDestructible())
+            con.AddDestructor(destructor);
+        return temporary->GetValue(con);
+    });
 }
 
 Type::InheritanceRelationship Type::IsDerivedFrom(Type* base) {
@@ -473,27 +440,20 @@ Type::VTableLayout Type::GetPrimaryVTable() {
 }
 
 std::shared_ptr<Expression> Type::AccessBase(std::shared_ptr<Expression> self, Type* other) {
-    auto selfty = self->GetType()->Decay();
-    assert(selfty->IsDerivedFrom(other) == InheritanceRelationship::UnambiguouslyDerived);
-    assert(!other->IsReference());
-    Type* result = self->GetType()->IsReference()
-        ? IsLvalueType(self->GetType()) ? selfty->analyzer.GetLvalueType(other) : selfty->analyzer.GetRvalueType(other)
-        : dynamic_cast<PointerType*>(self->GetType())
-        ? selfty->analyzer.GetPointerType(other)
-        : other;
-    struct DerivedToBaseConversion : public Expression {
-        DerivedToBaseConversion(std::shared_ptr<Expression> self, Type* result, Type* derived, Type* targetbase)
-        : self(std::move(self)), result(result), derived(derived), targetbase(targetbase) {}
-        std::shared_ptr<Expression> self;
-        Type* derived;
-        Type* targetbase;
-        Type* result;
-        Type* GetType() override final { return result; }
-        llvm::Value* ComputeValue(CodegenContext& con) override final {
+    return CreateResultExpression([=](Expression::InstanceKey key) {
+        auto selfty = self->GetType(key)->Decay();
+        assert(selfty->IsDerivedFrom(other) == InheritanceRelationship::UnambiguouslyDerived);
+        assert(!other->IsReference());
+        Type* result = self->GetType(key)->IsReference()
+            ? IsLvalueType(self->GetType(key)) ? selfty->analyzer.GetLvalueType(other) : selfty->analyzer.GetRvalueType(other)
+            : dynamic_cast<PointerType*>(self->GetType(key))
+            ? selfty->analyzer.GetPointerType(other)
+            : other;
+        return CreatePrimGlobal(result, [=](CodegenContext& con) -> llvm::Value* {
             // Must succeed because we know we're unambiguously derived.
             unsigned offset;
-            for (auto base : derived->GetBasesAndOffsets()) {
-                if (base.first == targetbase) {
+            for (auto base : selfty->GetBasesAndOffsets()) {
+                if (base.first == other) {
                     offset = base.second;
                 }
             }
@@ -529,9 +489,8 @@ std::shared_ptr<Expression> Type::AccessBase(std::shared_ptr<Expression> self, T
             phi->addIncoming(llvm::Constant::getNullValue(result->GetLLVMType(con)), source_block);
             phi->addIncoming(offset_ptr, not_null_bb);
             return phi;
-        }
-    };
-    return Wide::Memory::MakeUnique<DerivedToBaseConversion>(std::move(self), result, selfty, other);
+        });
+    });
 }
 
 bool Type::InheritsFromAtOffsetZero(Type* other) {
@@ -548,56 +507,60 @@ bool Type::InheritsFromAtOffsetZero(Type* other) {
 }
 
 std::shared_ptr<Expression> Type::BuildUnaryExpression(std::shared_ptr<Expression> self, Lexer::TokenType type, Context c) {
-    auto selfty = self->GetType()->Decay();
-    auto opset = selfty->AccessMember({ type }, GetAccessSpecifier(c.from, selfty), OperatorAccess::Implicit);
-    auto callable = opset->Resolve({ self->GetType() }, c.from);
-    if (!callable) {
-        if (type == &Lexer::TokenTypes::Negate) {
-            if (auto self_as_bool = Type::BuildBooleanConversion(self, c))
-                return Type::BuildUnaryExpression(self_as_bool, &Lexer::TokenTypes::Negate, c);
+    return CreateResultExpression([=](Expression::InstanceKey key) {
+        auto selfty = self->GetType(key)->Decay();
+        auto opset = selfty->AccessMember({ type }, GetAccessSpecifier(c.from, selfty), OperatorAccess::Implicit);
+        auto callable = opset->Resolve({ self->GetType(key) }, c.from);
+        if (!callable) {
+            if (type == &Lexer::TokenTypes::Negate) {
+                if (auto self_as_bool = Type::BuildBooleanConversion(self, c))
+                    return Type::BuildUnaryExpression(self_as_bool, &Lexer::TokenTypes::Negate, c);
+            }
+            opset->IssueResolutionError({ self->GetType(key) }, c);
         }
-        opset->IssueResolutionError({ self->GetType() }, c);
-    }
-    return callable->Call({ std::move(self) }, c);
+        return callable->Call(key, { std::move(self) }, c);
+    });
 }
 
 std::shared_ptr<Expression> Type::BuildBinaryExpression(std::shared_ptr<Expression> lhs, std::shared_ptr<Expression> rhs, Lexer::TokenType type, Context c) {
-    auto&& analyzer = lhs->GetType()->analyzer;
-    auto lhsaccess = GetAccessSpecifier(c.from, lhs->GetType());
-    auto rhsaccess = GetAccessSpecifier(c.from, rhs->GetType());
-    auto lhsadl = lhs->GetType()->PerformADL({ type }, lhsaccess);
-    auto rhsadl = rhs->GetType()->PerformADL({ type }, rhsaccess);
-    auto lhsmember = lhs->GetType()->AccessMember({ type }, lhsaccess, OperatorAccess::Implicit);
-    auto finalset = analyzer.GetOverloadSet(lhsadl, analyzer.GetOverloadSet(rhsadl, lhsmember));
-    std::vector<Type*> arguments;
-    arguments.push_back(lhs->GetType());
-    arguments.push_back(rhs->GetType());
-    if (auto call = finalset->Resolve(arguments, c.from)) {
-        return call->Call({ std::move(lhs), std::move(rhs) }, c);
-    }
-    
-    if (type == &Lexer::TokenTypes::EqCmp) {
-        // a == b if (!(a < b) && !(b > a)).
-        auto a_lt_b = Type::BuildBinaryExpression(lhs, rhs, &Lexer::TokenTypes::LT, c);
-        auto b_lt_a = Type::BuildBinaryExpression(std::move(rhs), std::move(lhs), &Lexer::TokenTypes::LT, c);
-        auto not_a_lt_b = Type::BuildUnaryExpression(std::move(a_lt_b), &Lexer::TokenTypes::Negate, c);
-        auto not_b_lt_a = Type::BuildUnaryExpression(std::move(b_lt_a), &Lexer::TokenTypes::Negate, c);
-        return Type::BuildBinaryExpression(std::move(not_a_lt_b), std::move(not_b_lt_a), &Lexer::TokenTypes::And, c);
-    } else if (type == &Lexer::TokenTypes::LTE) {
-        auto subexpr = Type::BuildBinaryExpression(std::move(rhs), std::move(lhs), &Lexer::TokenTypes::LT, c);
-        return Type::BuildUnaryExpression(std::move(subexpr), &Lexer::TokenTypes::Negate, c);
-    } else if (type == &Lexer::TokenTypes::GT) {
-        return Type::BuildBinaryExpression(std::move(rhs), std::move(lhs), &Lexer::TokenTypes::LT, c);
-    } else if (type == &Lexer::TokenTypes::GTE) {
-        auto subexpr = Type::BuildBinaryExpression(std::move(lhs), std::move(rhs), &Lexer::TokenTypes::LT, c);
-        return Type::BuildUnaryExpression(std::move(subexpr), &Lexer::TokenTypes::Negate, c);
-    } else if (type == &Lexer::TokenTypes::NotEqCmp) {
-        auto subexpr = Type::BuildBinaryExpression(std::move(lhs), std::move(rhs), &Lexer::TokenTypes::EqCmp, c);
-        return Type::BuildUnaryExpression(std::move(subexpr), &Lexer::TokenTypes::Negate, c);
-    }
+    return CreateResultExpression([=](Expression::InstanceKey key) -> std::shared_ptr<Expression> {
+        auto&& analyzer = lhs->GetType(key)->analyzer;
+        auto lhsaccess = GetAccessSpecifier(c.from, lhs->GetType(key));
+        auto rhsaccess = GetAccessSpecifier(c.from, rhs->GetType(key));
+        auto lhsadl = lhs->GetType(key)->PerformADL({ type }, lhsaccess);
+        auto rhsadl = rhs->GetType(key)->PerformADL({ type }, rhsaccess);
+        auto lhsmember = lhs->GetType(key)->AccessMember({ type }, lhsaccess, OperatorAccess::Implicit);
+        auto finalset = analyzer.GetOverloadSet(lhsadl, analyzer.GetOverloadSet(rhsadl, lhsmember));
+        std::vector<Type*> arguments;
+        arguments.push_back(lhs->GetType(key));
+        arguments.push_back(rhs->GetType(key));
+        if (auto call = finalset->Resolve(arguments, c.from)) {
+            return call->Call(key, { std::move(lhs), std::move(rhs) }, c);
+        }
 
-    finalset->IssueResolutionError(arguments, c);
-    return nullptr;
+        if (type == &Lexer::TokenTypes::EqCmp) {
+            // a == b if (!(a < b) && !(b > a)).
+            auto a_lt_b = Type::BuildBinaryExpression(lhs, rhs, &Lexer::TokenTypes::LT, c);
+            auto b_lt_a = Type::BuildBinaryExpression(std::move(rhs), std::move(lhs), &Lexer::TokenTypes::LT, c);
+            auto not_a_lt_b = Type::BuildUnaryExpression(std::move(a_lt_b), &Lexer::TokenTypes::Negate, c);
+            auto not_b_lt_a = Type::BuildUnaryExpression(std::move(b_lt_a), &Lexer::TokenTypes::Negate, c);
+            return Type::BuildBinaryExpression(std::move(not_a_lt_b), std::move(not_b_lt_a), &Lexer::TokenTypes::And, c);
+        } else if (type == &Lexer::TokenTypes::LTE) {
+            auto subexpr = Type::BuildBinaryExpression(std::move(rhs), std::move(lhs), &Lexer::TokenTypes::LT, c);
+            return Type::BuildUnaryExpression(std::move(subexpr), &Lexer::TokenTypes::Negate, c);
+        } else if (type == &Lexer::TokenTypes::GT) {
+            return Type::BuildBinaryExpression(std::move(rhs), std::move(lhs), &Lexer::TokenTypes::LT, c);
+        } else if (type == &Lexer::TokenTypes::GTE) {
+            auto subexpr = Type::BuildBinaryExpression(std::move(lhs), std::move(rhs), &Lexer::TokenTypes::LT, c);
+            return Type::BuildUnaryExpression(std::move(subexpr), &Lexer::TokenTypes::Negate, c);
+        } else if (type == &Lexer::TokenTypes::NotEqCmp) {
+            auto subexpr = Type::BuildBinaryExpression(std::move(lhs), std::move(rhs), &Lexer::TokenTypes::EqCmp, c);
+            return Type::BuildUnaryExpression(std::move(subexpr), &Lexer::TokenTypes::Negate, c);
+        }
+
+        finalset->IssueResolutionError(arguments, c);
+        return nullptr;
+    });
 }
 
 OverloadSet* PrimitiveType::CreateConstructorOverloadSet(Parse::Access access) {
@@ -652,15 +615,15 @@ OverloadSet* MetaType::CreateConstructorOverloadSet(Parse::Access access) {
     return analyzer.GetOverloadSet(PrimitiveType::CreateConstructorOverloadSet(access), analyzer.GetOverloadSet(DefaultConstructor.get()));
 }
 
-std::shared_ptr<Expression> Callable::Call(std::vector<std::shared_ptr<Expression>> args, Context c) {
-    return CallFunction(AdjustArguments(std::move(args), c), c);
+std::shared_ptr<Expression> Callable::Call(Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c) {
+    return CallFunction(key, AdjustArguments(key, std::move(args), c), c);
 }
 
-std::vector<std::shared_ptr<Expression>> Semantic::AdjustArgumentsForTypes(std::vector<std::shared_ptr<Expression>> args, std::vector<Type*> types, Context c) {
+std::vector<std::shared_ptr<Expression>> Semantic::AdjustArgumentsForTypes(Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, std::vector<Type*> types, Context c) {
     assert(args.size() == types.size());
     std::vector<std::shared_ptr<Expression>> out;
     for (std::size_t i = 0; i < types.size(); ++i) {
-        auto argty = args[i]->GetType();
+        auto argty = args[i]->GetType(key);
         if (argty == types[i]) {
             out.push_back(std::move(args[i]));
             continue;
@@ -691,14 +654,14 @@ struct Resolvable : OverloadResolvable, Callable {
         assert(types == tys);
         return this;
     }
-    std::shared_ptr<Expression> CallFunction(std::vector<std::shared_ptr<Expression>> args, Context c) override final {
+    std::shared_ptr<Expression> CallFunction(Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c) override final {
         assert(types.size() == args.size());
         for (std::size_t num = 0; num < types.size(); ++num)
-            assert(types[num] == args[num]->GetType());
+            assert(types[num] == args[num]->GetType(key));
         return action(std::move(args), c);
     }
-    std::vector<std::shared_ptr<Expression>> AdjustArguments(std::vector<std::shared_ptr<Expression>> args, Context c) override final {
-        return AdjustArgumentsForTypes(std::move(args), types, c);
+    std::vector<std::shared_ptr<Expression>> AdjustArguments(Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c) override final {
+        return AdjustArgumentsForTypes(key, std::move(args), types, c);
     }
 };
 
@@ -720,28 +683,21 @@ OverloadSet* TupleInitializable::CreateConstructorOverloadSet(Parse::Access acce
             // We accept it if it's constructible.
             auto types = self->GetTypesForTuple();
             if (!types) return Util::none;
-            struct opaqueexpr : Expression {
-                Type* ty;
-                opaqueexpr(Type* t) : ty(t) {}
-                Type* GetType() override final { return ty; }
-                llvm::Value* ComputeValue(CodegenContext& con) override final { assert(false); return nullptr; }
-            };
             if (tup->GetMembers().size() != types->size()) return Util::none;
             for (unsigned i = 0; i < types->size(); ++i) {
                 auto member = (*types)[i];
-                auto sourcety = tup->PrimitiveAccessMember(std::make_shared<opaqueexpr>(args[1]), i)->GetType();
+                auto sourcety = Semantic::CollapseType(args[1], tup->GetMembers()[i]);
                 if (!member->GetConstructorOverloadSet(GetAccessSpecifier(self->GetSelfAsType(), member))->Resolve({ member->analyzer.GetLvalueType(member), sourcety }, source))
                     return Util::none;
             }
-
             return args;
         }
-        std::vector<std::shared_ptr<Expression>> AdjustArguments(std::vector<std::shared_ptr<Expression>> args, Context c) override final { return args; }
-        std::shared_ptr<Expression> CallFunction(std::vector<std::shared_ptr<Expression>> args, Context c) override final {
+        std::vector<std::shared_ptr<Expression>> AdjustArguments(Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c) override final { return args; }
+        std::shared_ptr<Expression> CallFunction(Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c) override final {
             // We should already have properly-typed memory at 0.
             // and the tuple at 1.
             // This stuff won't be called unless we are valid
-            auto tupty = dynamic_cast<TupleType*>(args[1]->GetType()->Decay());
+            auto tupty = dynamic_cast<TupleType*>(args[1]->GetType(key)->Decay());
             assert(tupty);
             auto members_opt = self->GetTypesForTuple();
             assert(members_opt);
@@ -757,27 +713,11 @@ OverloadSet* TupleInitializable::CreateConstructorOverloadSet(Parse::Access acce
                 initializers.push_back(Type::BuildInplaceConstruction(std::move(memory), { std::move(argument) }, c));
             }
 
-            struct TupleInitialization : Expression {
-                TupleInitialization(Type* this_t, std::shared_ptr<Expression> s, std::shared_ptr<Expression> t, std::vector<std::shared_ptr<Expression>> inits)
-                : self(std::move(s)), tuple(std::move(t)), initializers(std::move(inits)), this_type(this_t) {}
-                std::vector<std::shared_ptr<Expression>> initializers;
-                std::shared_ptr<Expression> self;
-                std::shared_ptr<Expression> tuple;
-                Type* this_type;
-
-                Type* GetType() override final {
-                    return this_type->analyzer.GetLvalueType(this_type);
-                }
-
-                llvm::Value* ComputeValue(CodegenContext& con) override final {
-                    // Evaluate left-to-right
-                    for (auto&& init : initializers)
-                        init->GetValue(con);
-                    return self->GetValue(con);
-                }
-            };
-
-            return Wide::Memory::MakeUnique<TupleInitialization>(self->GetSelfAsType(), std::move(args[0]), std::move(args[1]), std::move(initializers));
+            return CreatePrimGlobal(self->GetSelfAsType()->analyzer.GetLvalueType(self->GetSelfAsType()), [=](CodegenContext& con) {
+                for (auto&& init : initializers)
+                    init->GetValue(con);
+                return args[0]->GetValue(con);
+            });
         }
     };
     if (!TupleConstructor) TupleConstructor = Wide::Memory::MakeUnique<TupleConstructorType>(this);
@@ -793,6 +733,7 @@ std::shared_ptr<Expression> Type::CreateVTable(std::vector<std::pair<Type*, unsi
         if (auto mem = boost::get<VTableLayout::SpecialMember>(&func.func)) {
             if (*mem == VTableLayout::SpecialMember::OffsetToTop) {
                 auto size = analyzer.GetDataLayout().getPointerSizeInBits();
+                // LLVM interprets this as signed regardless of the fact that it's technically unsigned.
                 if (path.front().first != this)
                     entries.push_back(Wide::Memory::MakeUnique<Integer>(llvm::APInt(size, (uint64_t)-offset_total, true), analyzer));
                 else
@@ -800,39 +741,25 @@ std::shared_ptr<Expression> Type::CreateVTable(std::vector<std::pair<Type*, unsi
                 continue;
             }
             if (*mem == VTableLayout::SpecialMember::RTTIPointer) {
-                struct RTTIExpr : Expression {
-                    RTTIExpr(Type* ty) : ty(ty) { rtti = ty->GetRTTI(); }
-                    Type* ty;
-                    std::function<llvm::Constant*(llvm::Module*)> rtti;
-                    llvm::Value* ComputeValue(CodegenContext& con) override final {
-                        return con->CreateBitCast(rtti(con), con.GetInt8PtrTy());
-                    }
-                    Type* GetType() override final {
-                        return ty->analyzer.GetPointerType(ty->analyzer.GetIntegralType(8, true));
-                    }
-                };
-                entries.push_back(Wide::Memory::MakeUnique<RTTIExpr>(path.front().first));
+                auto type = path.front().first;
+                auto rtti = type->GetRTTI();
+                entries.push_back(CreatePrimGlobal(type->analyzer.GetPointerType(type->analyzer.GetIntegralType(8, true)), [=](CodegenContext& con) {
+                    return con->CreateBitCast(rtti(con), con.GetInt8PtrTy());
+                }));
                 continue;
             }
         }
         bool found = false;
         for (auto more_derived : path) {
             auto expr = more_derived.first->VirtualEntryFor(func);
-            struct Thunk : Expression {
-                Thunk(std::function<llvm::Function*(llvm::Module*)> f, Type* dest_type)
-                    : func(f), dest_type(dest_type) {}
-                std::function<llvm::Function*(llvm::Module*)> func;
-                Type* dest_type;
-                Type* GetType() override final { return dest_type; }
-                llvm::Value* ComputeValue(CodegenContext& con) override final {
-                    return func(con);
-                }
-            };
+            auto thunk = CreatePrimGlobal(expr.first, [=](CodegenContext& con) {
+                return expr.second(con);
+            });
             if (expr.first) {
                 if (func.type != expr.first)
-                    entries.push_back(func.type->CreateThunkFrom(std::make_shared<Thunk>(expr.second, expr.first), this));
+                    entries.push_back(func.type->CreateThunkFrom(thunk, this));
                 else
-                    entries.push_back(std::make_shared<Thunk>(expr.second, expr.first));
+                    entries.push_back(thunk);
                 found = true;
                 break;
             }
@@ -846,39 +773,28 @@ std::shared_ptr<Expression> Type::CreateVTable(std::vector<std::pair<Type*, unsi
         } else
             assert(found);
     }
-    struct VTable : Expression {
-        VTable(Type* self, std::vector<std::shared_ptr<Expression>> funcs, unsigned offset)
-        : self(self), entries(std::move(funcs)), offset(offset) {}
-        unsigned offset;
-        std::vector<std::shared_ptr<Expression>> entries;
-        Type* self;
-        Type* GetType() override final {
-            return self->analyzer.GetPointerType(self->GetVirtualPointerType());
-        }
-        llvm::Value* ComputeValue(CodegenContext& con) override final {
-            auto vfuncty = self->GetVirtualPointerType()->GetLLVMType(con);
-            std::vector<llvm::Constant*> constants;
-            for (auto&& init : entries) {
-                if (!init)
-                    constants.push_back(llvm::Constant::getNullValue(vfuncty));
-                else {
-                    auto val = init->GetValue(con);
-                    auto con = llvm::dyn_cast<llvm::Constant>(val);
-                    constants.push_back(con);
-                }
+    return CreatePrimGlobal(analyzer.GetPointerType(GetVirtualPointerType()), [=](CodegenContext& con) {
+        auto vfuncty = GetVirtualPointerType()->GetLLVMType(con);
+        std::vector<llvm::Constant*> constants;
+        for (auto&& init : entries) {
+            if (!init)
+                constants.push_back(llvm::Constant::getNullValue(vfuncty));
+            else {
+                auto val = init->GetValue(con);
+                auto con = llvm::dyn_cast<llvm::Constant>(val);
+                constants.push_back(con);
             }
-            auto vtablety = llvm::ConstantStruct::getTypeForElements(constants);
-            auto vtable = llvm::ConstantStruct::get(vtablety, constants);
-            std::stringstream strstr;
-            strstr << this;
-            auto global = llvm::dyn_cast<llvm::GlobalVariable>(con.module->getOrInsertGlobal(strstr.str(), vtablety));
-            global->setInitializer(vtable);
-            global->setLinkage(llvm::GlobalValue::LinkageTypes::InternalLinkage);
-            global->setConstant(true);
-            return con->CreatePointerCast(con.CreateStructGEP(global, offset), self->analyzer.GetPointerType(self->GetVirtualPointerType())->GetLLVMType(con));
         }
-    };
-    return Wide::Memory::MakeUnique<VTable>(this, std::move(entries), GetVtableLayout().offset);
+        auto vtablety = llvm::ConstantStruct::getTypeForElements(constants);
+        auto vtable = llvm::ConstantStruct::get(vtablety, constants);
+        std::stringstream strstr;
+        strstr << this;
+        auto global = llvm::dyn_cast<llvm::GlobalVariable>(con.module->getOrInsertGlobal(strstr.str(), vtablety));
+        global->setInitializer(vtable);
+        global->setLinkage(llvm::GlobalValue::LinkageTypes::InternalLinkage);
+        global->setConstant(true);
+        return con->CreatePointerCast(con.CreateStructGEP(global, GetVtableLayout().offset), analyzer.GetPointerType(GetVirtualPointerType())->GetLLVMType(con));
+    });
 }      
 
 std::shared_ptr<Expression> Type::GetVTablePointer(std::vector<std::pair<Type*, unsigned>> path) {
@@ -888,16 +804,18 @@ std::shared_ptr<Expression> Type::GetVTablePointer(std::vector<std::pair<Type*, 
 }
 
 std::shared_ptr<Expression> Type::SetVirtualPointers(std::shared_ptr<Expression> self) {
-    return Type::SetVirtualPointers(std::move(self), {});
+    return CreateResultExpression([=](Expression::InstanceKey key) {
+        return Type::SetVirtualPointers(key, std::move(self), {});
+    });
 }
 
-std::shared_ptr<Expression> Type::SetVirtualPointers(std::shared_ptr<Expression> self, std::vector<std::pair<Type*, unsigned>> path) {
+std::shared_ptr<Expression> Type::SetVirtualPointers(Expression::InstanceKey key, std::shared_ptr<Expression> self, std::vector<std::pair<Type*, unsigned>> path) {
     // Set the base vptrs first, because some Clang types share vtables with their base.
+    auto selfty = self->GetType(key)->Decay();
     std::vector<std::shared_ptr<Expression>> BasePointerInitializers;
-    auto selfty = self->GetType()->Decay();
     for (auto base : selfty->GetBasesAndOffsets()) {
         path.push_back(std::make_pair(selfty, base.second));
-        BasePointerInitializers.push_back(Type::SetVirtualPointers(Type::AccessBase(self, base.first), path));
+        BasePointerInitializers.push_back(Type::SetVirtualPointers(key, Type::AccessBase(self, base.first), path));
         path.pop_back();
     }
     // If we actually have a vptr, then set it; else just set the bases.
@@ -906,23 +824,12 @@ std::shared_ptr<Expression> Type::SetVirtualPointers(std::shared_ptr<Expression>
         path.push_back(std::make_pair(selfty, 0));
         BasePointerInitializers.push_back(Wide::Memory::MakeUnique<ImplicitStoreExpr>(std::move(vptr), selfty->GetVTablePointer(path)));
     }
-    
-    struct VTableInitializer : Expression {
-        VTableInitializer(std::shared_ptr<Expression> obj, std::vector<std::shared_ptr<Expression>> inits)
-        : self(std::move(obj)), inits(std::move(inits)) {}
-        std::shared_ptr<Expression> self;
-        std::vector<std::shared_ptr<Expression>> inits;
-        Type* GetType() override final {
-            return self->GetType();
-        }
-        llvm::Value* ComputeValue(CodegenContext& con) override final {
-            for (auto&& init : inits)
-                init->GetValue(con);
-            return self->GetValue(con);
-        }
-    };
 
-    return Wide::Memory::MakeUnique<VTableInitializer>(std::move(self), std::move(BasePointerInitializers));
+    return CreatePrimGlobal(self->GetType(key), [=](CodegenContext& con) {
+        for (auto&& init : BasePointerInitializers)
+            init->GetValue(con);
+        return self->GetValue(con);
+    });
 }
 
 std::function<llvm::Constant*(llvm::Module*)> Type::GetRTTI() {
@@ -978,20 +885,10 @@ llvm::Function* Type::GetDestructorFunction(llvm::Module* module) {
 llvm::Function* Type::CreateDestructorFunction(llvm::Module* module) {
     auto fty = llvm::FunctionType::get(llvm::Type::getVoidTy(module->getContext()), { llvm::Type::getInt8PtrTy(module->getContext()) }, false);
     DestructorFunction = llvm::Function::Create(fty, llvm::GlobalValue::LinkageTypes::ExternalLinkage, analyzer.GetUniqueFunctionName(), module);
-    CodegenContext::EmitFunctionBody(DestructorFunction, [this](CodegenContext& c) {;
-        struct DestructorExpression : Expression {
-            DestructorExpression(Type* self, llvm::Value* val)
-                : self(self), val(val) {}
-            llvm::Value* val;
-            Type* self;
-            Type* GetType() override final {
-                return self->analyzer.GetLvalueType(self);
-            }
-            llvm::Value* ComputeValue(CodegenContext& con) override final {
-                return con->CreateBitCast(val, GetType()->GetLLVMType(con));
-            }
-        };
-        auto obj = std::make_shared<DestructorExpression>(this, DestructorFunction->arg_begin());
+    CodegenContext::EmitFunctionBody(DestructorFunction, [this](CodegenContext& c) {
+        auto obj = CreatePrimGlobal(analyzer.GetLvalueType(this), [=](CodegenContext& con) {
+            return con->CreateBitCast(DestructorFunction->arg_begin(), analyzer.GetLvalueType(this)->GetLLVMType(con));
+        });
         BuildDestructorCall(obj, { this, Lexer::Range(nullptr) }, true)(c);
         c->CreateRetVoid();
     });
@@ -999,16 +896,18 @@ llvm::Function* Type::CreateDestructorFunction(llvm::Module* module) {
 }
 
 std::shared_ptr<Expression> Type::BuildIndex(std::shared_ptr<Expression> val, std::shared_ptr<Expression> arg, Context c) {
-    auto set = val->GetType()->AccessMember({ &Lexer::TokenTypes::OpenSquareBracket, &Lexer::TokenTypes::CloseSquareBracket }, GetAccessSpecifier(c.from, val->GetType()), OperatorAccess::Implicit);
-    std::vector<std::shared_ptr<Expression>> args;
-    args.push_back(std::move(val));
-    args.push_back(std::move(arg));
-    std::vector<Type*> types;
-    for (auto&& arg : args)
-        types.push_back(arg->GetType());
-    auto call = set->Resolve(types, c.from);
-    if (!call) set->IssueResolutionError(types, c);
-    return call->Call(std::move(args), c);
+    return CreateResultExpression([=](Expression::InstanceKey key) {
+        auto set = val->GetType(key)->AccessMember({ &Lexer::TokenTypes::OpenSquareBracket, &Lexer::TokenTypes::CloseSquareBracket }, GetAccessSpecifier(c.from, val->GetType(key)), OperatorAccess::Implicit);
+        std::vector<std::shared_ptr<Expression>> args;
+        args.push_back(std::move(val));
+        args.push_back(std::move(arg));
+        std::vector<Type*> types;
+        for (auto&& arg : args)
+            types.push_back(arg->GetType(key));
+        auto call = set->Resolve(types, c.from);
+        if (!call) set->IssueResolutionError(types, c);
+        return call->Call(key, std::move(args), c);
+    });
 }
 std::string Type::Export() {
     return explain();

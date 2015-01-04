@@ -177,13 +177,9 @@ AggregateType::Layout::Layout(AggregateType* agg, Wide::Semantic::Analyzer& a)
     if (sizec % alignc != 0 || sizec == 0)
         sizec += alignc - (sizec % alignc);
 
-    struct Self : public Expression {
-        Self(AggregateType* me) : self(me) {}
-        AggregateType* self;
-        Type* GetType(Function* f) override final { return self->analyzer.GetLvalueType(self); }
-        llvm::Value* ComputeValue(CodegenContext& c) override final { return self->DestructorFunction->arg_begin(); }
-    };
-    auto destructor_self = std::make_shared<Self>(agg);
+    auto destructor_self = CreatePrimGlobal(a.GetLvalueType(agg), [=](CodegenContext& con) {
+        return agg->DestructorFunction->arg_begin();
+    });
     for (int i = Offsets.size() - 1; i >= 0; --i) {
         auto member = Offsets[i].ty;
         agg->destructors.push_back(member->BuildDestructorCall(agg->PrimitiveAccessMember(destructor_self, i), { agg, Lexer::Range(std::make_shared<std::string>("AggregateDestructor")) }, true));
@@ -208,15 +204,13 @@ bool AggregateType::IsCopyAssignable(Parse::Access access) {
 bool AggregateType::IsCopyConstructible(Parse::Access access) {
     return GetProperties().copyconstructible;
 }
-std::shared_ptr<Expression> AggregateType::AccessVirtualPointer(std::shared_ptr<Expression> self) {
+std::shared_ptr<Expression> AggregateType::AccessVirtualPointer(Expression::InstanceKey key, std::shared_ptr<Expression> self) {
     if (GetPrimaryBase()) return Type::GetVirtualPointer(Type::AccessBase(std::move(self), GetPrimaryBase()));
     if (!HasDeclaredDynamicFunctions()) return nullptr;
     auto vptrty = analyzer.GetPointerType(GetVirtualPointerType());
-    return CreateResultExpression([=](Function* f) {
-        assert(self->GetType(f)->IsReference(this) || dynamic_cast<PointerType*>(self->GetType(f))->GetPointee() == this);
-        return CreatePrimGlobal(analyzer.GetLvalueType(vptrty), [=](CodegenContext& con) {
-            return con.CreateStructGEP(self->GetValue(con), 0);
-        });
+    assert(self->GetType(key)->IsReference(this) || dynamic_cast<PointerType*>(self->GetType(key))->GetPointee() == this);
+    return CreatePrimGlobal(analyzer.GetLvalueType(vptrty), [=](CodegenContext& con) {
+       return con.CreateStructGEP(self->GetValue(con), 0);
     });
 }
 
@@ -293,7 +287,7 @@ Type* AggregateType::GetConstantContext() {
 }
 
 std::shared_ptr<Expression> AggregateType::PrimitiveAccessMember(std::shared_ptr<Expression> source, unsigned num) {
-    return CreateResultExpression([=](Function* f) {
+    return CreateResultExpression([=](Expression::InstanceKey f) {
         auto source_ty = source->GetType(f);
         auto root_ty = num < GetBases().size()
             ? GetBases()[num]
@@ -486,7 +480,7 @@ std::vector<std::shared_ptr<Expression>> AggregateType::GetConstructorInitialize
                 con.AddExceptionOnlyDestructor(destructor);
             return val;
         }
-        Type* GetType(Function* f) override final {
+        Type* GetType(Expression::InstanceKey f) override final {
             return Construction->GetType(f);
         }
         MemberConstructionAccess(Type* mem, Lexer::Range where, std::shared_ptr<Expression> expr, std::shared_ptr<Expression> memexpr)

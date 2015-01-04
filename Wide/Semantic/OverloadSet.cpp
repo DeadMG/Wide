@@ -32,27 +32,25 @@ template<typename T, typename U> T* debug_cast(U* other) {
     return static_cast<T*>(other);
 }
 
-std::shared_ptr<Expression> OverloadSet::ConstructCall(std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c) {
-    return CreateResultExpression([=](Function* f) {
-        auto argscopy = args;
-        std::vector<Type*> targs;
+std::shared_ptr<Expression> OverloadSet::ConstructCall(Expression::InstanceKey key, std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c) {
+    auto argscopy = args;
+    std::vector<Type*> targs;
 
-        if (nonstatic)
-            targs.push_back(nonstatic);
-        for (auto&& x : argscopy)
-            targs.push_back(x->GetType(f));
-        auto call = Resolve(targs, c.from);
-        if (!call) IssueResolutionError(targs, c);
+    if (nonstatic)
+        targs.push_back(nonstatic);
+    for (auto&& x : argscopy)
+        targs.push_back(x->GetType(key));
+    auto call = Resolve(targs, c.from);
+    if (!call) IssueResolutionError(targs, c);
 
-        if (nonstatic)
-            argscopy.insert(argscopy.begin(), CreatePrimUnOp(BuildValue(std::move(val)), nonstatic, [](llvm::Value* self, CodegenContext& con) {
-                return con->CreateExtractValue(self, { 0 });
-            }));
+    if (nonstatic)
+        argscopy.insert(argscopy.begin(), CreatePrimUnOp(BuildValue(std::move(val)), nonstatic, [](llvm::Value* self, CodegenContext& con) {
+            return con->CreateExtractValue(self, { 0 });
+        }));
 
-        if (val)
-            return BuildChain(std::move(val), call->Call(std::move(argscopy), c));
-        return call->Call(std::move(argscopy), c);
-    });
+    if (val)
+        return BuildChain(std::move(val), call->Call(key, std::move(argscopy), c));
+    return call->Call(key, std::move(argscopy), c);
 }
 
 OverloadSet::OverloadSet(std::unordered_set<OverloadResolvable*> call, Type* t, Analyzer& a)
@@ -64,45 +62,43 @@ struct cppcallable : public Callable {
     ClangTU* from;
     std::vector<std::pair<Type*, bool>> types;
 
-    std::shared_ptr<Expression> CallFunction(std::vector<std::shared_ptr<Expression>> args, Context c) override final {
+    std::shared_ptr<Expression> CallFunction(Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c) override final {
         std::vector<Type*> local;
         for (auto x : types)
             local.push_back(x.first);
         auto&& analyzer = source->analyzer;
         auto fty = GetFunctionType(fun, *from, analyzer);
         auto self = args.size() > 0 ? args[0] : nullptr;
-        return CreateResultExpression([=](Function* f) {
-            std::function<llvm::Function*(llvm::Module*)> object;
-            if (auto con = llvm::dyn_cast<clang::CXXConstructorDecl>(fun))
-                object = from->GetObject(fty->analyzer, con, clang::CXXCtorType::Ctor_Complete);
-            else if (auto des = llvm::dyn_cast<clang::CXXDestructorDecl>(fun))
-                object = from->GetObject(fty->analyzer, des, clang::CXXDtorType::Dtor_Complete);
-            else
-                object = from->GetObject(fty->analyzer, fun);
-            std::shared_ptr<Expression> vtable;
-            if (auto meth = llvm::dyn_cast<clang::CXXMethodDecl>(fun)) {
-                if (meth->isVirtual()) {
-                    auto selfty = self->GetType(f);
-                    if (selfty->IsReference()) {
-                        auto clangty = dynamic_cast<ClangType*>(selfty->Decay());
-                        vtable = Type::GetVirtualPointer(self);
-                    }
+        std::function<llvm::Function*(llvm::Module*)> object;
+        if (auto con = llvm::dyn_cast<clang::CXXConstructorDecl>(fun))
+            object = from->GetObject(fty->analyzer, con, clang::CXXCtorType::Ctor_Complete);
+        else if (auto des = llvm::dyn_cast<clang::CXXDestructorDecl>(fun))
+            object = from->GetObject(fty->analyzer, des, clang::CXXDtorType::Dtor_Complete);
+        else
+            object = from->GetObject(fty->analyzer, fun);
+        std::shared_ptr<Expression> vtable;
+        if (auto meth = llvm::dyn_cast<clang::CXXMethodDecl>(fun)) {
+            if (meth->isVirtual()) {
+                auto selfty = self->GetType(key);
+                if (selfty->IsReference()) {
+                    auto clangty = dynamic_cast<ClangType*>(selfty->Decay());
+                    vtable = Type::GetVirtualPointer(self);
                 }
             }
-            return CreatePrimGlobal(fty, [=](CodegenContext& con)-> llvm::Value* {
-                if (vtable)
-                    return con->CreateBitCast(con->CreateLoad(con->CreateConstGEP1_32(con->CreateLoad(vtable->GetValue(con)), from->GetVirtualFunctionOffset(llvm::dyn_cast<clang::CXXMethodDecl>(fun), con))), fty->GetLLVMType(con));
-                auto llvmfunc = object(con);
-                // Clang often generates functions with the wrong signature.
-                // But supplies attributes for a function with the right signature.
-                // This is super bad when the right signature has more arguments, as the verifier rejects the declaration.                
-                if (llvmfunc->getType() != fty->GetLLVMType(con))
-                    return con->CreateBitCast(llvmfunc, fty->GetLLVMType(con));
-                return llvmfunc;
-            });
+        }
+        return CreatePrimGlobal(fty, [=](CodegenContext& con)-> llvm::Value* {
+            if (vtable)
+                return con->CreateBitCast(con->CreateLoad(con->CreateConstGEP1_32(con->CreateLoad(vtable->GetValue(con)), from->GetVirtualFunctionOffset(llvm::dyn_cast<clang::CXXMethodDecl>(fun), con))), fty->GetLLVMType(con));
+            auto llvmfunc = object(con);
+            // Clang often generates functions with the wrong signature.
+            // But supplies attributes for a function with the right signature.
+            // This is super bad when the right signature has more arguments, as the verifier rejects the declaration.                
+            if (llvmfunc->getType() != fty->GetLLVMType(con))
+                return con->CreateBitCast(llvmfunc, fty->GetLLVMType(con));
+            return llvmfunc;
         });
     }
-    std::vector<std::shared_ptr<Expression>> AdjustArguments(std::vector<std::shared_ptr<Expression>> args, Context c) override final {
+    std::vector<std::shared_ptr<Expression>> AdjustArguments(Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c) override final {
         // Clang may resolve a static function. Drop "this" if it did.
         if (auto meth = llvm::dyn_cast<clang::CXXMethodDecl>(fun))
             if (meth->isStatic())
@@ -129,7 +125,7 @@ struct cppcallable : public Callable {
         // so do the conversion ourselves if lvalues were not involved.
         std::vector<std::shared_ptr<Expression>> out;
         for (std::size_t i = 0; i < types.size(); ++i) {
-            out.push_back(CreateResultExpression([=](Function* f) {
+            out.push_back(CreateResultExpression([=](Expression::InstanceKey f) {
                 if (types[i].first == args[i]->GetType(f))
                     return std::move(args[i]);
 
@@ -390,7 +386,7 @@ OverloadSet* OverloadSet::CreateConstructorOverloadSet(Parse::Access access) {
         
     return AggregateType::CreateConstructorOverloadSet(access);
 }
-std::shared_ptr<Expression> OverloadSet::AccessNamedMember(std::shared_ptr<Expression> t, std::string name, Context c) {
+std::shared_ptr<Expression> OverloadSet::AccessNamedMember(Expression::InstanceKey key, std::shared_ptr<Expression> t, std::string name, Context c) {
     if (name != "resolve")
         return Type::AccessMember(std::move(t), name, c);
     if (ResolveType)
@@ -400,21 +396,19 @@ std::shared_ptr<Expression> OverloadSet::AccessNamedMember(std::shared_ptr<Expre
         ResolveCallable(OverloadSet* f, Analyzer& a)
         : from(f), MetaType(a) {}
         OverloadSet* from;
-        std::shared_ptr<Expression> ConstructCall(std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c) override final {
-            return CreateResultExpression([=](Function* f) {
-                std::vector<Type*> types;
-                for (auto&& arg : args) {
-                    auto con = dynamic_cast<ConstructorType*>(arg->GetType(f)->Decay());
-                    if (!con) throw std::runtime_error("Attempted to resolve but an argument was not a type.");
-                    types.push_back(con->GetConstructedType());
-                }
-                auto call = from->Resolve(types, c.from);
-                if (!call) from->IssueResolutionError(types, c);
-                auto clangfunc = dynamic_cast<cppcallable*>(call);
-                std::unordered_set<clang::NamedDecl*> decls;
-                decls.insert(clangfunc->fun);
-                return analyzer.GetOverloadSet(decls, clangfunc->from, nullptr)->BuildValueConstruction({}, c);
-            });
+        std::shared_ptr<Expression> ConstructCall(Expression::InstanceKey key, std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c) override final {
+            std::vector<Type*> types;
+            for (auto&& arg : args) {
+                auto con = dynamic_cast<ConstructorType*>(arg->GetType(key)->Decay());
+                if (!con) throw std::runtime_error("Attempted to resolve but an argument was not a type.");
+                types.push_back(con->GetConstructedType());
+            }
+            auto call = from->Resolve(types, c.from);
+            if (!call) from->IssueResolutionError(types, c);
+            auto clangfunc = dynamic_cast<cppcallable*>(call);
+            std::unordered_set<clang::NamedDecl*> decls;
+            decls.insert(clangfunc->fun);
+            return analyzer.GetOverloadSet(decls, clangfunc->from, nullptr)->BuildValueConstruction({}, c);
         }
         std::string explain() override final {
             return from->explain() + ".resolve";

@@ -65,91 +65,73 @@ OverloadSet* Bool::CreateOperatorOverloadSet(Parse::OperatorName opname, Parse::
         }, { analyzer.GetLvalueType(this), this });
         return analyzer.GetOverloadSet(XorAssignOperator.get());
     } else if (name == &Lexer::TokenTypes::Or) {
-        OrOperator = MakeResolvable([](std::vector<std::shared_ptr<Expression>> args, Context c) -> std::shared_ptr<Expression> {
-            struct ShortCircuitOr : Expression {
-                ShortCircuitOr(std::shared_ptr<Expression> lhs, std::shared_ptr<Expression> rhs)
-                : lhs(std::move(lhs)), rhs(std::move(rhs)) {}
-                std::shared_ptr<Expression> lhs, rhs;
-                llvm::Value* ComputeValue(CodegenContext& con) override final {
-                    auto val = con->CreateTrunc(lhs->GetValue(con), llvm::Type::getInt1Ty(con));
-                    auto cur_block = con->GetInsertBlock();
-                    auto false_br = llvm::BasicBlock::Create(con, "false", con->GetInsertBlock()->getParent());
-                    auto true_br = llvm::BasicBlock::Create(con, "true", con->GetInsertBlock()->getParent());
-                    con->CreateCondBr(val, true_br, false_br);
-                    con->SetInsertPoint(false_br);
-                    CodegenContext rhscon(con);
-                    auto false_val = con->CreateTrunc(rhs->GetValue(rhscon), llvm::Type::getInt1Ty(con));
-                    auto rhs_destructors = con.GetAddedDestructors(rhscon);
-                    if (!rhs_destructors.empty()) {
-                        con.AddDestructor([=](CodegenContext& con) {
-                            auto false_bb = llvm::BasicBlock::Create(con, "false_destroy", con->GetInsertBlock()->getParent());
-                            auto cont_bb = llvm::BasicBlock::Create(con, "cont_destroy", con->GetInsertBlock()->getParent());
-                            con->CreateCondBr(con->CreateTrunc(lhs->GetValue(con), llvm::Type::getInt1Ty(con)), cont_bb, false_bb);
-                            con->SetInsertPoint(false_bb);
-                            for (auto rit = rhs_destructors.rbegin(); rit != rhs_destructors.rend(); ++rit) {
-                                rit->first(con);
-                            }
-                            con->CreateBr(cont_bb);
-                            con->SetInsertPoint(cont_bb);
-                        });
-                    }
-                    con->CreateBr(true_br);
-                    false_br = con->GetInsertBlock();
-                    con->SetInsertPoint(true_br);
-                    auto phi = con->CreatePHI(llvm::Type::getInt1Ty(con), 2);
-                    phi->addIncoming(val, cur_block);
-                    phi->addIncoming(false_val, false_br);
-                    return con->CreateZExt(phi, llvm::Type::getInt8Ty(con));
+        OrOperator = MakeResolvable([this](std::vector<std::shared_ptr<Expression>> args, Context c) -> std::shared_ptr<Expression> {
+            return CreatePrimGlobal(this, [=](CodegenContext& con) {
+                auto val = con->CreateTrunc(args[0]->GetValue(con), llvm::Type::getInt1Ty(con));
+                auto cur_block = con->GetInsertBlock();
+                auto false_br = llvm::BasicBlock::Create(con, "false", con->GetInsertBlock()->getParent());
+                auto true_br = llvm::BasicBlock::Create(con, "true", con->GetInsertBlock()->getParent());
+                con->CreateCondBr(val, true_br, false_br);
+                con->SetInsertPoint(false_br);
+                CodegenContext rhscon(con);
+                auto false_val = con->CreateTrunc(args[1]->GetValue(rhscon), llvm::Type::getInt1Ty(con));
+                auto rhs_destructors = con.GetAddedDestructors(rhscon);
+                if (!rhs_destructors.empty()) {
+                    con.AddDestructor([=](CodegenContext& con) {
+                        auto false_bb = llvm::BasicBlock::Create(con, "false_destroy", con->GetInsertBlock()->getParent());
+                        auto cont_bb = llvm::BasicBlock::Create(con, "cont_destroy", con->GetInsertBlock()->getParent());
+                        con->CreateCondBr(con->CreateTrunc(args[0]->GetValue(con), llvm::Type::getInt1Ty(con)), cont_bb, false_bb);
+                        con->SetInsertPoint(false_bb);
+                        for (auto rit = rhs_destructors.rbegin(); rit != rhs_destructors.rend(); ++rit) {
+                            rit->first(con);
+                        }
+                        con->CreateBr(cont_bb);
+                        con->SetInsertPoint(cont_bb);
+                    });
                 }
-                Type* GetType(Function* f) override final {
-                    return lhs->GetType(nullptr); // Both args are bool and we produce bool
-                }
-            };
-            return Wide::Memory::MakeUnique<ShortCircuitOr>(std::move(args[0]), std::move(args[1]));
+                con->CreateBr(true_br);
+                false_br = con->GetInsertBlock();
+                con->SetInsertPoint(true_br);
+                auto phi = con->CreatePHI(llvm::Type::getInt1Ty(con), 2);
+                phi->addIncoming(val, cur_block);
+                phi->addIncoming(false_val, false_br);
+                return con->CreateZExt(phi, llvm::Type::getInt8Ty(con));
+            });
         }, { this, this });
         return analyzer.GetOverloadSet(OrOperator.get());
     } else if (name == &Lexer::TokenTypes::And) {
-        AndOperator = MakeResolvable([](std::vector<std::shared_ptr<Expression>> args, Context c) -> std::shared_ptr<Expression> {
-            struct ShortCircuitAnd : Expression {
-                ShortCircuitAnd(std::shared_ptr<Expression> lhs, std::shared_ptr<Expression> rhs)
-                : lhs(std::move(lhs)), rhs(std::move(rhs)) {}
-                std::shared_ptr<Expression> lhs, rhs;
-                llvm::Value* ComputeValue(CodegenContext& con) override final {
-                    auto val = con->CreateTrunc(lhs->GetValue(con), llvm::Type::getInt1Ty(con));
-                    auto cur_block = con->GetInsertBlock();
-                    auto false_br = llvm::BasicBlock::Create(con, "true", con->GetInsertBlock()->getParent());
-                    auto true_br = llvm::BasicBlock::Create(con, "false", con->GetInsertBlock()->getParent());
-                    con->CreateCondBr(val, false_br, true_br);
-                    con->SetInsertPoint(false_br);
-                    CodegenContext rhscon(con);
-                    auto false_val = con->CreateTrunc(rhs->GetValue(rhscon), llvm::Type::getInt1Ty(con));
-                    auto rhs_destructors = con.GetAddedDestructors(rhscon);
-                    if (!rhs_destructors.empty()) {
-                        con.AddDestructor([=](CodegenContext& con) {
-                            auto cont_bb = llvm::BasicBlock::Create(con, "cont_destroy", con->GetInsertBlock()->getParent());
-                            auto true_bb = llvm::BasicBlock::Create(con, "true_destroy", con->GetInsertBlock()->getParent());
-                            con->CreateCondBr(con->CreateTrunc(lhs->GetValue(con), llvm::Type::getInt1Ty(con)), true_bb, cont_bb);
-                            con->SetInsertPoint(true_bb);
-                            for (auto rit = rhs_destructors.rbegin(); rit != rhs_destructors.rend(); ++rit) {
-                                rit->first(con);
-                            }
-                            con->CreateBr(cont_bb);
-                            con->SetInsertPoint(cont_bb);
-                        });
-                    }
-                    con->CreateBr(true_br);
-                    false_br = con->GetInsertBlock();
-                    con->SetInsertPoint(true_br);
-                    auto phi = con->CreatePHI(llvm::Type::getInt1Ty(con), 2);
-                    phi->addIncoming(val, cur_block);
-                    phi->addIncoming(false_val, false_br);
-                    return con->CreateZExt(phi, llvm::Type::getInt8Ty(con));
+        AndOperator = MakeResolvable([this](std::vector<std::shared_ptr<Expression>> args, Context c) -> std::shared_ptr<Expression> {
+            return CreatePrimGlobal(this, [=](CodegenContext& con) {
+                auto val = con->CreateTrunc(args[0]->GetValue(con), llvm::Type::getInt1Ty(con));
+                auto cur_block = con->GetInsertBlock();
+                auto false_br = llvm::BasicBlock::Create(con, "true", con->GetInsertBlock()->getParent());
+                auto true_br = llvm::BasicBlock::Create(con, "false", con->GetInsertBlock()->getParent());
+                con->CreateCondBr(val, false_br, true_br);
+                con->SetInsertPoint(false_br);
+                CodegenContext rhscon(con);
+                auto false_val = con->CreateTrunc(args[1]->GetValue(rhscon), llvm::Type::getInt1Ty(con));
+                auto rhs_destructors = con.GetAddedDestructors(rhscon);
+                if (!rhs_destructors.empty()) {
+                    con.AddDestructor([=](CodegenContext& con) {
+                        auto cont_bb = llvm::BasicBlock::Create(con, "cont_destroy", con->GetInsertBlock()->getParent());
+                        auto true_bb = llvm::BasicBlock::Create(con, "true_destroy", con->GetInsertBlock()->getParent());
+                        con->CreateCondBr(con->CreateTrunc(args[0]->GetValue(con), llvm::Type::getInt1Ty(con)), true_bb, cont_bb);
+                        con->SetInsertPoint(true_bb);
+                        for (auto rit = rhs_destructors.rbegin(); rit != rhs_destructors.rend(); ++rit) {
+                            rit->first(con);
+                        }
+                        con->CreateBr(cont_bb);
+                        con->SetInsertPoint(cont_bb);
+                    });
                 }
-                Type* GetType(Function* f) override final {
-                    return lhs->GetType(nullptr); // Both args are bool and we produce bool
-                }
-            };
-            return Wide::Memory::MakeUnique<ShortCircuitAnd>(std::move(args[0]), std::move(args[1]));
+                con->CreateBr(true_br);
+                false_br = con->GetInsertBlock();
+                con->SetInsertPoint(true_br);
+                auto phi = con->CreatePHI(llvm::Type::getInt1Ty(con), 2);
+                phi->addIncoming(val, cur_block);
+                phi->addIncoming(false_val, false_br);
+                return con->CreateZExt(phi, llvm::Type::getInt8Ty(con));
+            });
         }, { this, this });
         return analyzer.GetOverloadSet(AndOperator.get());
     } else if (name == &Lexer::TokenTypes::LT) {

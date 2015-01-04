@@ -234,7 +234,7 @@ std::vector<UserDefinedType::member> UserDefinedType::GetConstructionMembers() {
     return out;
 }
 
-std::shared_ptr<Expression> UserDefinedType::AccessNamedMember(std::shared_ptr<Expression> self, std::string name, Context c) {
+std::shared_ptr<Expression> UserDefinedType::AccessNamedMember(Expression::InstanceKey key, std::shared_ptr<Expression> self, std::string name, Context c) {
     auto spec = GetAccessSpecifier(c.from, this);
     if (GetMemberData().member_indices.find(name) != GetMemberData().member_indices.end()) {
         auto&& member = type->variables[GetMemberData().member_indices[name]];
@@ -271,7 +271,7 @@ std::shared_ptr<Expression> UserDefinedType::AccessNamedMember(std::shared_ptr<E
                 struct UsingLookup : MetaType {
                     Type* GetContext() override final { return self->GetType()->Decay(); }
                     std::shared_ptr<Expression> self;
-                    std::shared_ptr<Expression> AccessNamedMember(std::shared_ptr<Expression>, std::string name, Context c) override final {
+                    std::shared_ptr<Expression> AccessNamedMember(Expression::InstanceKey key, std::shared_ptr<Expression>, std::string name, Context c) override final {
                         if (name == "this")
                             return self;
                         return nullptr;
