@@ -37,6 +37,7 @@ namespace Wide {
             ControlFlowStatement* GetCurrentControlFlow();
         };
         struct Return {
+            boost::signals2::signal<void(Type*)> OnReturnType;
             virtual Type* GetReturnType(Expression::InstanceKey key) = 0;
         };
         class FunctionSkeleton {
@@ -45,12 +46,11 @@ namespace Wide {
                 AnalyzeInProgress,
                 AnalyzeCompleted
             };
-
+            Analyzer& analyzer;
             std::unordered_set<Return*> returns;
             Type* context;
             std::string source_name;
             std::vector<std::shared_ptr<Expression>> parameters;
-            std::vector<std::tuple<std::function<llvm::Function*(llvm::Module*)>, ClangFunctionType*, clang::FunctionDecl*>> clang_exports;
 
             // You can only be exported as constructors of one, or nonstatic member of one, class.
             Wide::Util::optional<Semantic::ConstructorContext*> ConstructorContext;
@@ -58,16 +58,15 @@ namespace Wide {
             State current_state;
             std::unique_ptr<Scope> root_scope;
             const Parse::FunctionBase* fun;
+            std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup;
         public:
             static void AddDefaultHandlers(Analyzer& a);
-            FunctionSkeleton(std::vector<Type*> args, const Parse::FunctionBase* astfun, Analyzer& a, Type* container, std::string name, Type* nonstatic_context);
+            FunctionSkeleton(const Parse::FunctionBase* astfun, Analyzer& a, Type* container, std::string name, Type* nonstatic_context, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup);
 
             Type* GetNonstaticMemberContext() { if (NonstaticMemberContext) return *NonstaticMemberContext; return nullptr; }
 
             std::shared_ptr<Expression> LookupLocal(Parse::Name name);
             std::string GetSourceName() { return source_name; }
-            std::shared_ptr<Expression> GetStaticSelf();
-            std::string GetExportBody();
             ~FunctionSkeleton(); 
 
             Type* GetContext();

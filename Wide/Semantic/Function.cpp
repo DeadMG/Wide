@@ -4,6 +4,7 @@
 #include <Wide/Semantic/FunctionType.h>
 #include <Wide/Semantic/Reference.h>
 #include <Wide/Semantic/UserDefinedType.h>
+#include <Wide/Semantic/OverloadSet.h>
 
 using namespace Wide;
 using namespace Semantic;
@@ -13,7 +14,42 @@ Function::Function(Analyzer& a, FunctionSkeleton* skel, std::vector<Type*> args)
     , skeleton(skel)
     , Args(args) 
 {
+    llvmname = a.GetUniqueFunctionName();
 
+    // Deal with the exports first, if any
+    if (auto fun = dynamic_cast<const Parse::AttributeFunctionBase*>(skeleton->GetASTFunction())) {
+        for (auto&& attr : fun->attributes) {
+            if (auto name = dynamic_cast<const Parse::Identifier*>(attr.initialized.get())) {
+                if (auto string = boost::get<std::string>(&name->val)) {
+                    if (*string == "export") {
+                        auto expr = a.AnalyzeExpression(skeleton->GetContext(), attr.initializer.get(), [](Parse::Name, Lexer::Range) { return nullptr; });
+                        auto overset = dynamic_cast<OverloadSet*>(expr->GetType(Expression::NoInstance())->Decay());
+                        if (!overset)
+                            continue;
+                        //throw NotAType(expr->GetType()->Decay(), attr.initializer->location);
+                        auto tuanddecl = overset->GetSingleFunction();
+                        if (!tuanddecl.second) throw NotAType(expr->GetType(Expression::NoInstance())->Decay(), attr.initializer->location);
+                        auto tu = tuanddecl.first;
+                        auto decl = tuanddecl.second;
+                        std::function<llvm::Function*(llvm::Module*)> source;
+
+                        if (auto des = llvm::dyn_cast<clang::CXXDestructorDecl>(decl))
+                            source = tu->GetObject(a, des, clang::CXXDtorType::Dtor_Complete);
+                        else if (auto con = llvm::dyn_cast<clang::CXXConstructorDecl>(decl))
+                            source = tu->GetObject(a, con, clang::CXXCtorType::Ctor_Complete);
+                        else
+                            source = tu->GetObject(a, decl);
+                        clang_exports.push_back(std::make_tuple(source, GetFunctionType(decl, *tu, a), decl));
+                    }
+                    //if (*string == "import_name") {
+                    //    auto expr = a.AnalyzeExpression(GetContext(), attr.initializer.get());
+                    //    auto string = dynamic_cast<String*>(expr.get());
+                    //    import_name = string->str;
+                    //}
+                }
+            }
+        }
+    }
 }
 
 void Function::ComputeBody() {
@@ -22,7 +58,7 @@ void Function::ComputeBody() {
     }
     if (ReturnType) return;
     auto returns = skeleton->GetReturns();
-    if (!skeleton->GetExplicitReturn(Args)) {
+    if (!skeleton->GetExplicitReturn(this)) {
         if (returns.size() == 0) {
             ReturnType = analyzer.GetVoidType();
             return;
@@ -30,8 +66,8 @@ void Function::ComputeBody() {
 
         std::unordered_set<Type*> ret_types;
         for (auto ret : returns) {
-            if (!ret->GetReturnType(Args)) continue;
-            ret_types.insert(ret->GetReturnType(Args)->Decay());
+            if (!ret->GetReturnType(this)) continue;
+            ret_types.insert(ret->GetReturnType(this)->Decay());
         }
 
         if (ret_types.size() == 1) {
@@ -47,7 +83,7 @@ void Function::ComputeBody() {
             the_rest.erase(ret);
             auto all_isa = [&] {
                 for (auto other : the_rest) {
-                    if (!Type::IsFirstASecond(other, ret, this))
+                    if (!Type::IsFirstASecond(other, ret, skeleton->GetContext()))
                         return false;
                 }
                 return true;
@@ -62,8 +98,37 @@ void Function::ComputeBody() {
         }
         throw std::runtime_error("Fuck");
     } else {
-        ReturnType = skeleton->GetExplicitReturn(Args);
+        ReturnType = skeleton->GetExplicitReturn(this);
     }
+    for (auto pair : clang_exports) {
+        if (!FunctionType::CanThunkFromFirstToSecond(std::get<1>(pair), GetSignature(), skeleton->GetContext(), false))
+            throw std::runtime_error("Tried to export to a function decl, but the signatures were incompatible.");
+        trampoline.push_back(std::get<1>(pair)->CreateThunk(std::get<0>(pair), CreatePrimGlobal(GetSignature(), [this](CodegenContext& con) { return EmitCode(con); }), std::get<2>(pair), skeleton->GetContext()));
+    }
+}
+std::string Function::GetExportBody() {
+    auto sig = GetSignature();
+    auto import = "[import_name := \"" + llvmname + "\"]\n";
+    if (!dynamic_cast<UserDefinedType*>(skeleton->GetContext()))
+        import += analyzer.GetTypeExport(skeleton->GetContext());
+    import += skeleton->GetSourceName();
+    import += "(";
+    unsigned i = 0;
+    for (auto& ty : Args) {
+        if (Args.size() == skeleton->GetASTFunction()->args.size() + 1 && i == 0) {
+            import += "this := ";
+            ++i;
+        } else {
+            import += skeleton->GetASTFunction()->args[i++].name + " := ";
+        }
+        if (&ty != &Args.back())
+            import += analyzer.GetTypeExport(ty) + ", ";
+        else
+            import += analyzer.GetTypeExport(ty);
+    }
+    import += ")";
+    import += " := " + analyzer.GetTypeExport(sig->GetReturnType()) + " { } \n";
+    return import;
 }
 llvm::Function* Function::EmitCode(llvm::Module* module) {
     if (llvmfunc) {
@@ -132,11 +197,11 @@ std::shared_ptr<Expression> Function::CallFunction(Expression::InstanceKey key, 
             return llvmfunc;
 
         auto func = dynamic_cast<const Parse::DynamicFunction*>(skeleton->GetASTFunction());
-        auto udt = dynamic_cast<UserDefinedType*>(args[0]->GetType(Args)->Decay());
+        auto udt = dynamic_cast<UserDefinedType*>(args[0]->GetType(this)->Decay());
         if (!func || !udt) return llvmfunc;
-        auto obj = Type::GetVirtualPointer(args[0]);
         auto vindex = udt->GetVirtualFunctionIndex(func);
         if (!vindex) return llvmfunc;
+        auto obj = Type::GetVirtualPointer(args[0]);
         auto vptr = con->CreateLoad(obj->GetValue(con));
         return con->CreatePointerCast(con->CreateLoad(con->CreateConstGEP1_32(vptr, *vindex)), GetSignature()->GetLLVMType(con));
     });

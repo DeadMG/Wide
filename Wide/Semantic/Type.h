@@ -61,6 +61,11 @@ namespace std {
 }
 namespace Wide {
     namespace Semantic {
+        struct Context {
+            Context(Type* f, Lexer::Range r) : from(f), where(r) {}
+            Type* from;
+            Lexer::Range where;
+        };
         struct Type {
         public:
             enum class InheritanceRelationship {

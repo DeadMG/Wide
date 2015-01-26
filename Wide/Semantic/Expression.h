@@ -23,26 +23,24 @@
 namespace Wide {
     namespace Semantic {
         class Function;
-        struct Context {
-            Context(Type* f, Lexer::Range r) : from(f), where(r) {}
-            Type* from;
-            Lexer::Range where;
-        };
         struct Type;
-        struct Context;
         struct CodegenContext;
         enum Change {
             Contents,
             Destroyed
         };
+        struct Context;
         struct Statement {
             virtual void GenerateCode(CodegenContext& con) = 0;
             virtual void Instantiate(Function* f) = 0;
         };
         struct Expression : public Statement {
-            typedef boost::optional<std::vector<Type*>> InstanceKey;
+            typedef Function* InstanceKey;
+            typedef std::nullptr_t NoInstance;
+            static Type* GetArgumentType(InstanceKey key, int num);
+
             static void AddDefaultHandlers(Analyzer& a);
-            virtual Type* GetType(boost::optional<std::vector<Type*>> f) = 0; // If the type is unknown then nullptr
+            virtual Type* GetType(InstanceKey f) = 0; // If the type is unknown then nullptr
             llvm::Value* GetValue(CodegenContext& con);
             virtual bool IsConstantExpression(InstanceKey) { return false; } // If not constant then false
             boost::signals2::signal<void(Expression*, InstanceKey)> OnChanged;
@@ -175,16 +173,7 @@ namespace Wide {
             llvm::Value* ComputeValue(CodegenContext& con) override final;
             bool IsConstantExpression(InstanceKey f) override final { return mem->IsConstantExpression(f) && val->IsConstantExpression(f); }
         };
-
-        struct ImplicitTemporaryExpr : public Expression {
-            ImplicitTemporaryExpr(Type* what, Context c);
-            Type* of;
-            llvm::Value* alloc;
-            Context c;
-            Type* GetType(InstanceKey) override final;
-            llvm::Value* ComputeValue(CodegenContext& con) override final;
-        };
-
+        
         struct LvalueCast : public SourceExpression {
             LvalueCast(std::shared_ptr<Expression> expr);
             std::shared_ptr<Expression> expr;
@@ -201,14 +190,6 @@ namespace Wide {
             bool IsConstantExpression(InstanceKey f) override final { return expr->IsConstantExpression(f); }
         };
 
-        struct ImplicitAddressOf : public SourceExpression {
-            ImplicitAddressOf(std::shared_ptr<Expression>, Context c);
-            Context c;
-            std::shared_ptr<Expression> expr;
-            Type* CalculateType(InstanceKey) override final;
-            llvm::Value* ComputeValue(CodegenContext& con) override final;
-            bool IsConstantExpression(InstanceKey f) override final { return expr->IsConstantExpression(f); }
-        };
         
         struct Chain : SourceExpression {
             Chain(std::shared_ptr<Expression> effect, std::shared_ptr<Expression> result);
@@ -263,5 +244,7 @@ namespace Wide {
         std::shared_ptr<Expression> CreatePrimGlobal(Type* ret, std::function<llvm::Value*(CodegenContext&)>);
         std::shared_ptr<Expression> BuildValue(std::shared_ptr<Expression>);
         std::shared_ptr<Expression> BuildChain(std::shared_ptr<Expression>, std::shared_ptr<Expression>);
+        std::shared_ptr<Expression> CreateTemporary(Type* t, Context c);
+        std::shared_ptr<Expression> CreateAddressOf(std::shared_ptr<Expression> expr, Context c);
     }
 }

@@ -44,8 +44,7 @@ void Wide::Driver::Compile(const Wide::Options::Clang& copts,
     Wide::Concurrency::Vector<std::shared_ptr<Wide::Parse::Parser>> builders;
     auto errs = Wide::Concurrency::ParallelForEach(files.begin(), files.end(), [&](const std::string& filename) {
         std::ifstream inputfile(filename, std::ios::binary | std::ios::in);
-        if (!inputfile)
-            throw std::runtime_error("Could not open input file " + filename + "\n");
+        if (!inputfile) throw std::runtime_error("Could not open input file " + filename + "\n");
         std::noskipws(inputfile);
         Wide::Lexer::Invocation lex(Wide::Range::IStreamRange(inputfile), std::make_shared<std::string>(filename));
         try {

@@ -34,7 +34,7 @@ std::shared_ptr<Expression> LambdaType::ConstructCall(Expression::InstanceKey ke
     return call->Call(key, std::move(args), c);
 }
 std::shared_ptr<Expression> LambdaType::BuildLambdaFromCaptures(std::vector<std::shared_ptr<Expression>> exprs, Context c) {
-    auto self = std::make_shared<ImplicitTemporaryExpr>(this, c);
+    auto self = CreateTemporary(this, c);
     if (contents.size() == 0)
         return std::make_shared<ImplicitLoadExpr>(std::move(self));
     return CreateResultExpression([=](Expression::InstanceKey f) {

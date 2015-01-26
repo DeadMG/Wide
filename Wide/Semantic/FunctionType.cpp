@@ -86,7 +86,7 @@ llvm::PointerType* WideFunctionType::GetLLVMType(llvm::Module* module) {
 
 std::shared_ptr<Expression> WideFunctionType::ConstructCall(Expression::InstanceKey key, std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c) {
     auto result_type = dynamic_cast<FunctionType*>(val->GetType(key)->Decay())->GetReturnType();
-    auto Ret = std::make_shared<ImplicitTemporaryExpr>(result_type, c);
+    auto Ret = CreateTemporary(result_type, c);
     auto Destructor = !result_type->IsTriviallyDestructible()
         ? result_type->BuildDestructorCall(Ret, c, true)
         : std::function<void(CodegenContext&)>();
@@ -251,7 +251,7 @@ std::vector<Type*> ClangFunctionType::GetArguments() {
 std::shared_ptr<Expression> ClangFunctionType::ConstructCall(Expression::InstanceKey key, std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c) {
     auto clangfuncty = dynamic_cast<ClangFunctionType*>(val->GetType(key)->Decay());
     auto RetType = clangfuncty->GetReturnType();
-    auto Ret = std::make_shared<ImplicitTemporaryExpr>(RetType, c);
+    auto Ret = CreateTemporary(RetType, c);
     std::function<void(CodegenContext&)> Destructor;
     if (!RetType->IsTriviallyDestructible())
         Destructor = RetType->BuildDestructorCall(Ret, c, true);

@@ -311,7 +311,7 @@ struct ValueConstruction : Expression {
     ValueConstruction(Type* self, std::vector<std::shared_ptr<Expression>> args, Context c)
     : self(self) {
         no_args = args.size() == 0;
-        temporary = Wide::Memory::MakeUnique<ImplicitTemporaryExpr>(self, c);
+        temporary = CreateTemporary(self, c);
         if (args.size() == 1)
             single_arg = args[0];
         InplaceConstruction = Type::BuildInplaceConstruction(temporary, std::move(args), c);
@@ -321,7 +321,7 @@ struct ValueConstruction : Expression {
         //        assert(implicitstore->val->GetType() == self);
         //}
     }
-    std::shared_ptr<ImplicitTemporaryExpr> temporary;
+    std::shared_ptr<Expression> temporary;
     std::function<void(CodegenContext&)> destructor;
     std::shared_ptr<Expression> InplaceConstruction;
     std::shared_ptr<Expression> single_arg;
@@ -379,7 +379,7 @@ std::shared_ptr<Expression> Type::BuildValueConstruction(std::vector<std::shared
 }
 
 std::shared_ptr<Expression> Type::BuildRvalueConstruction(std::vector<std::shared_ptr<Expression>> args, Context c) {
-    auto temporary = std::make_shared<ImplicitTemporaryExpr>(this, c);
+    auto temporary = CreateTemporary(this, c);
     auto InplaceConstruction = Type::BuildInplaceConstruction(temporary, std::move(args), c);
     auto destructor = BuildDestructorCall(temporary, c, true);
     return CreatePrimGlobal(analyzer.GetRvalueType(this), [=](CodegenContext& con) {

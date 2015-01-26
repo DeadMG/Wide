@@ -36,6 +36,7 @@
 #include <fstream>
 #include <boost/uuid/uuid_io.hpp>
 #include <Wide/Util/Codegen/GetMCJITProcessTriple.h>
+#include <Wide/Semantic/FunctionSkeleton.h>
 
 #pragma warning(push, 0)
 #include <clang/AST/Type.h>
@@ -93,17 +94,15 @@ Analyzer::Analyzer(const Options::Clang& opts, const Parse::Module* GlobalModule
             return types;
         }
         Callable* GetCallableForResolution(std::vector<Type*>, Type*, Analyzer& a) override final { return this; }
-        std::shared_ptr<Expression> CallFunction(std::vector<std::shared_ptr<Expression>> args, Context c) override final {
-            return CreateResultExpression([=](Expression::InstanceKey key) {
-                auto conty = dynamic_cast<ConstructorType*>(args[0]->GetType(key)->Decay());
-                return CreatePrimGlobal(conty, [=](CodegenContext& con) {
-                    args[0]->GetValue(con);
-                    auto val = args[1]->GetValue(con);
-                    return con->CreatePointerCast(val, conty->GetLLVMType(con));
-                });
+        std::shared_ptr<Expression> CallFunction(Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c) override final {
+            auto conty = dynamic_cast<ConstructorType*>(args[0]->GetType(key)->Decay());
+            return CreatePrimGlobal(conty, [=](CodegenContext& con) {
+                args[0]->GetValue(con);
+                auto val = args[1]->GetValue(con);
+                return con->CreatePointerCast(val, conty->GetLLVMType(con));
             });
         }
-        std::vector<std::shared_ptr<Expression>> AdjustArguments(std::vector<std::shared_ptr<Expression>> args, Context c) override final {
+        std::vector<std::shared_ptr<Expression>> AdjustArguments(Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c) override final {
             return args; 
         }
     };
@@ -116,10 +115,10 @@ Analyzer::Analyzer(const Options::Clang& opts, const Parse::Module* GlobalModule
         Callable* GetCallableForResolution(std::vector<Type*>, Type*, Analyzer& a) override final {
             return this; 
         }
-        std::vector<std::shared_ptr<Expression>> AdjustArguments(std::vector<std::shared_ptr<Expression>> args, Context c) override final {
+        std::vector<std::shared_ptr<Expression>> AdjustArguments(Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c) override final {
             return args; 
         }
-        std::shared_ptr<Expression> CallFunction(std::vector<std::shared_ptr<Expression>> args, Context c) override final {
+        std::shared_ptr<Expression> CallFunction(Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c) override final {
             return Wide::Memory::MakeUnique<RvalueCast>(std::move(args[0]));
         }
     };
@@ -294,16 +293,14 @@ WideFunctionType* Analyzer::GetFunctionType(Type* ret, const std::vector<Type*>&
     return FunctionTypes[ret][t][conv][variadic].get();
 }
 
-Function* Analyzer::GetWideFunction(const Parse::FunctionBase* p, Type* context, std::string name) {
-    assert(!IsMultiTyped(p));
-    return GetWideFunction(p, context, GetFunctionParameters(p, context), name);
+Function* Analyzer::GetWideFunction(FunctionSkeleton* skeleton) {
+    return GetWideFunction(skeleton, GetFunctionParameters(skeleton->GetASTFunction(), skeleton->GetContext()));
 }
-Function* Analyzer::GetWideFunction(const Parse::FunctionBase* p, Type* context, const std::vector<Type*>& types, std::string name) {
-    assert(!context->IsReference());
-    if (WideFunctions.find(p) == WideFunctions.end()
-        || WideFunctions[p].find(types) == WideFunctions[p].end())
-        WideFunctions[p][types] = Wide::Memory::MakeUnique<Function>(types, p, *this, context, name, GetNonstaticContext(p, context));
-    return WideFunctions[p][types].get();
+Function* Analyzer::GetWideFunction(FunctionSkeleton* skeleton, const std::vector<Type*>& types) {
+    if (WideFunctions.find(skeleton) == WideFunctions.end()
+        || WideFunctions[skeleton].find(types) == WideFunctions[skeleton].end())
+        WideFunctions[skeleton][types] = Wide::Memory::MakeUnique<Function>(*this, skeleton, types);
+    return WideFunctions[skeleton][types].get();
 }
 
 Module* Analyzer::GetWideModule(const Parse::Module* p, Module* higher, std::string name) {
@@ -452,11 +449,11 @@ std::vector<Type*> Analyzer::GetFunctionParameters(const Parse::FunctionBase* fu
                     if (auto string = boost::get<std::string>(&name->val)) {
                         if (*string == "export") {
                             auto expr = context->analyzer.AnalyzeExpression(context, attr.initializer.get(), [](Parse::Name, Lexer::Range) { return nullptr; });
-                            auto overset = dynamic_cast<OverloadSet*>(expr->GetType(boost::none)->Decay());
+                            auto overset = dynamic_cast<OverloadSet*>(expr->GetType(Expression::NoInstance())->Decay());
                             if (!overset)
-                                throw NotAType(expr->GetType(boost::none)->Decay(), attr.initializer->location);
+                                throw NotAType(expr->GetType(Expression::NoInstance())->Decay(), attr.initializer->location);
                             auto tuanddecl = overset->GetSingleFunction();
-                            if (!tuanddecl.second) throw NotAType(expr->GetType(boost::none)->Decay(), attr.initializer->location);
+                            if (!tuanddecl.second) throw NotAType(expr->GetType(Expression::NoInstance())->Decay(), attr.initializer->location);
                             auto tu = tuanddecl.first;
                             auto decl = tuanddecl.second;
                             if (auto meth = llvm::dyn_cast<clang::CXXMethodDecl>(decl)) {
@@ -478,7 +475,7 @@ std::vector<Type*> Analyzer::GetFunctionParameters(const Parse::FunctionBase* fu
     for (auto&& arg : func->args) {
         if (!arg.type) {
             if (arg.default_value) {
-                auto p_type = AnalyzeExpression(context, arg.default_value.get(), [](Parse::Name, Lexer::Range) { return nullptr; })->GetType(boost::none)->Decay();
+                auto p_type = AnalyzeExpression(context, arg.default_value.get(), [](Parse::Name, Lexer::Range) { return nullptr; })->GetType(Expression::NoInstance())->Decay();
                 QuickInfo(arg.location, p_type);
                 ParameterHighlight(arg.location);
                 out.push_back(p_type);
@@ -491,7 +488,7 @@ std::vector<Type*> Analyzer::GetFunctionParameters(const Parse::FunctionBase* fu
 
         auto ty_expr = arg.type.get();
         auto expr = AnalyzeExpression(context, ty_expr, [](Parse::Name, Lexer::Range) { return nullptr; });
-        auto p_type = expr->GetType(boost::none)->Decay();
+        auto p_type = expr->GetType(Expression::NoInstance())->Decay();
         auto con_type = dynamic_cast<ConstructorType*>(p_type);
         if (!con_type)
             throw Wide::Semantic::NotAType(p_type, arg.type->location);
@@ -529,12 +526,12 @@ Type* Analyzer::GetNonstaticContext(const Parse::FunctionBase* p, Type* context)
                 if (auto string = boost::get<std::string>(&name->val)) {
                     if (*string == "export") {
                         auto expr = context->analyzer.AnalyzeExpression(context, attr.initializer.get(), [](Parse::Name, Lexer::Range) { return nullptr; });
-                        auto overset = dynamic_cast<OverloadSet*>(expr->GetType(boost::none)->Decay());
+                        auto overset = dynamic_cast<OverloadSet*>(expr->GetType(Expression::NoInstance())->Decay());
                         if (!overset)
                             //throw NotAType(expr->GetType()->Decay(), attr.initializer->location);
                             continue;
                         auto tuanddecl = overset->GetSingleFunction();
-                        if (!tuanddecl.second) throw NotAType(expr->GetType(boost::none)->Decay(), attr.initializer->location);
+                        if (!tuanddecl.second) throw NotAType(expr->GetType(Expression::NoInstance())->Decay(), attr.initializer->location);
                         auto tu = tuanddecl.first;
                         auto decl = tuanddecl.second;
                         if (auto meth = llvm::dyn_cast<clang::CXXMethodDecl>(decl)) {
@@ -547,19 +544,20 @@ Type* Analyzer::GetNonstaticContext(const Parse::FunctionBase* p, Type* context)
     }
     return nullptr;
 }
-OverloadResolvable* Analyzer::GetCallableForFunction(const Parse::FunctionBase* f, Type* context, std::string name) {
+OverloadResolvable* Analyzer::GetCallableForFunction(const Parse::FunctionBase* f, Type* context, std::string name, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup) {
     if (FunctionCallables.find(f) != FunctionCallables.end())
         return FunctionCallables.at(f).get();
 
     struct FunctionCallable : public OverloadResolvable {
-        FunctionCallable(const Parse::FunctionBase* f, Type* con, std::string str)
-        : func(f), context(con), name(str) 
+        FunctionCallable(const Parse::FunctionBase* f, Type* con, std::string str, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup)
+            : func(f), context(con), name(str), nonstatic(NonstaticLookup)
         {}
 
         const Parse::FunctionBase* func;
         Type* context;
         std::string name;
-        
+        std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> nonstatic;
+
         Util::optional<std::vector<Type*>> MatchParameter(std::vector<Type*> types, Analyzer& a, Type* source) override final {
             // If we are a member and we have an explicit this then treat the first normally.
             // Else if we are a member, blindly accept whatever is given for argument 0 as long as it's the member type.
@@ -597,17 +595,17 @@ OverloadResolvable* Analyzer::GetCallableForFunction(const Parse::FunctionBase* 
             if (auto con = dynamic_cast<const Parse::Constructor*>(func))
                 if (con->deleted)
                     return nullptr;
-            return a.GetWideFunction(func, context, std::move(types), name);
+            return a.GetWideFunction(a.GetWideFunction(func, context, name, context->IsNonstaticMemberContext() ? context : nullptr, nonstatic), std::move(types));
         }
     };
-    FunctionCallables[f] = Wide::Memory::MakeUnique<FunctionCallable>(f, context->Decay(), name);
+    FunctionCallables[f] = Wide::Memory::MakeUnique<FunctionCallable>(f, context->Decay(), name, NonstaticLookup);
     return FunctionCallables.at(f).get();
 }
 
 Parse::Access Semantic::GetAccessSpecifier(Type* from, Type* to) {
     auto source = from->Decay();
     auto target = to->Decay();
-    if (source == target) return Parse::Access::Private;
+    if (source == target) return Parse::Access::Private; 
     if (source->IsDerivedFrom(target) == Type::InheritanceRelationship::UnambiguouslyDerived)
         return Parse::Access::Protected;
     if (auto func = dynamic_cast<FunctionSkeleton*>(from)) {
@@ -617,7 +615,6 @@ Parse::Access Semantic::GetAccessSpecifier(Type* from, Type* to) {
     }
     if (auto context = source->GetContext())
         return GetAccessSpecifier(context, target);
-
     return Parse::Access::Public;
 }
 namespace {
@@ -667,7 +664,9 @@ void Semantic::AnalyzeExportedFunctions(Analyzer& a, std::function<void(const Pa
 }
 void Semantic::AnalyzeExportedFunctions(Analyzer& a) {
     AnalyzeExportedFunctions(a, [](const Parse::AttributeFunctionBase* func, std::string name, Module* m) {
-        m->analyzer.GetWideFunction(func, m, name)->ComputeBody();
+        auto skeleton = m->analyzer.GetWideFunction(func, m, name, nullptr, [](Parse::Name, Lexer::Range) { return nullptr; });
+        auto function = m->analyzer.GetWideFunction(skeleton);
+        function->ComputeBody();
     });
 }
 OverloadResolvable* Analyzer::GetCallableForTemplateType(const Parse::TemplateType* t, Type* context) {
@@ -680,8 +679,8 @@ OverloadResolvable* Analyzer::GetCallableForTemplateType(const Parse::TemplateTy
         Type* context;
         const Wide::Parse::TemplateType* templatetype;
         std::vector<Type*> types;
-        std::vector<std::shared_ptr<Expression>> AdjustArguments(std::vector<std::shared_ptr<Expression>> args, Context c) override final { return args; }
-        std::shared_ptr<Expression> CallFunction(std::vector<std::shared_ptr<Expression>> args, Context c) override final {
+        std::vector<std::shared_ptr<Expression>> AdjustArguments(Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c) override final { return args; }
+        std::shared_ptr<Expression> CallFunction(Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c) override final {
             return context->analyzer.GetConstructorType(context->analyzer.GetTemplateType(templatetype, context, types, ""))->BuildValueConstruction({}, c);
         }
     };
@@ -704,7 +703,7 @@ OverloadResolvable* Analyzer::GetCallableForTemplateType(const Parse::TemplateTy
                     valid.push_back(arg);
                     continue;
                 }
-                auto p_type = a.AnalyzeExpression(context, templatetype->arguments[num].type.get(), [](Parse::Name, Lexer::Range) { return nullptr; })->GetType(boost::none)->Decay();
+                auto p_type = a.AnalyzeExpression(context, templatetype->arguments[num].type.get(), [](Parse::Name, Lexer::Range) { return nullptr; })->GetType(Expression::NoInstance())->Decay();
                 auto con_type = dynamic_cast<ConstructorType*>(p_type);
                 if (!con_type)
                     throw Wide::Semantic::NotAType(p_type, templatetype->arguments[num].location);
@@ -773,11 +772,13 @@ bool Semantic::IsMultiTyped(const Parse::FunctionBase* f) {
 std::shared_ptr<Expression> Analyzer::AnalyzeExpression(Type* lookup, const Parse::Expression* e, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup) {
     static_assert(std::is_polymorphic<Parse::Expression>::value, "Expression must be polymorphic.");
     auto&& type_info = typeid(*e);
-    if (ExpressionCache.find(e) == ExpressionCache.end())
+    if (ExpressionCache.find(e) == ExpressionCache.end()
+        || ExpressionCache[e].find(lookup) == ExpressionCache[e].end())
         if (ExpressionHandlers.find(type_info) != ExpressionHandlers.end())
-            ExpressionCache[e] = ExpressionHandlers[type_info](e, *this, lookup, NonstaticLookup);
-    return ExpressionCache[e];
-    assert(false && "Attempted to analyze expression for which there was no handler.");
+            ExpressionCache[e][lookup] = ExpressionHandlers[type_info](e, *this, lookup, NonstaticLookup);
+        else
+            assert(false && "Attempted to analyze expression for which there was no handler.");
+    return ExpressionCache[e][lookup];
 }
 ClangTU* Analyzer::GetAggregateTU() {
     if (!AggregateTU)
@@ -855,8 +856,8 @@ std::function<void(CodegenContext&)> Semantic::ThrowObject(std::shared_ptr<Expre
 
     // http://mentorembedded.github.io/cxx-abi/abi-eh.html
     // 2.4.2
-    return[=](Expression::InstanceKey key) {
-        auto ty = expr->GetType(key)->Decay();
+    return [=](CodegenContext& con) {
+        auto ty = expr->GetType(con.func)->Decay();
         auto RTTI = ty->GetRTTI();
         auto memty = ty->analyzer.GetLvalueType(ty);
         auto destructor = std::make_shared<std::list<std::pair<std::function<void(CodegenContext&)>, bool>>::iterator>();
@@ -872,28 +873,26 @@ std::function<void(CodegenContext&)> Semantic::ThrowObject(std::shared_ptr<Expre
         // and the iterator could be invalidated. Strictly get the value in the original CodegenContext that ThrowStatement::GenerateCode
         // is called with so that we can erase the destructor later.
         auto exception = BuildChain(BuildChain(except_memory, Type::BuildInplaceConstruction(except_memory, { std::move(expr) }, c)), except_memory);
-        return [=](CodegenContext& con) {
-            auto value = exception->GetValue(con);
-            auto cxa_throw = con.GetCXAThrow();
-            // Throw this shit.
-            // If we got here then creating the exception value didn't throw. Don't destroy it now.
-            con.EraseDestructor(*destructor);
-            llvm::Value* destructor;
-            if (ty->IsTriviallyDestructible()) {
-                destructor = llvm::Constant::getNullValue(con.GetInt8PtrTy());
-            } else
-                destructor = con->CreatePointerCast(ty->GetDestructorFunction(con), con.GetInt8PtrTy());
-            llvm::Value* args[] = { con->CreatePointerCast(value, con.GetInt8PtrTy()), con->CreatePointerCast(RTTI(con), con.GetInt8PtrTy()), destructor };
-            // Do we have an existing handler to go to? If we do, then first land, then branch directly to it.
-            // Else, kill everything and GTFO this function and let the EH routines worry about it.
-            if (con.HasDestructors() || con.EHHandler)
-                con->CreateInvoke(cxa_throw, con.GetUnreachableBlock(), con.CreateLandingpadForEH(), args);
-            else {
-                con->CreateCall(cxa_throw, args);
-                // This is unreachable, but terminate the block so we know to stop code-generating.
-                con->CreateUnreachable();
-            }
-        };
+        auto value = exception->GetValue(con);
+        auto cxa_throw = con.GetCXAThrow();
+        // Throw this shit.
+        // If we got here then creating the exception value didn't throw. Don't destroy it now.
+        con.EraseDestructor(*destructor);
+        llvm::Value* llvmdestructor;
+        if (ty->IsTriviallyDestructible()) {
+            llvmdestructor = llvm::Constant::getNullValue(con.GetInt8PtrTy());
+        } else
+            llvmdestructor = con->CreatePointerCast(ty->GetDestructorFunction(con), con.GetInt8PtrTy());
+        llvm::Value* args[] = { con->CreatePointerCast(value, con.GetInt8PtrTy()), con->CreatePointerCast(RTTI(con), con.GetInt8PtrTy()), llvmdestructor };
+        // Do we have an existing handler to go to? If we do, then first land, then branch directly to it.
+        // Else, kill everything and GTFO this function and let the EH routines worry about it.
+        if (con.HasDestructors() || con.EHHandler)
+            con->CreateInvoke(cxa_throw, con.GetUnreachableBlock(), con.CreateLandingpadForEH(), args);
+        else {
+            con->CreateCall(cxa_throw, args);
+            // This is unreachable, but terminate the block so we know to stop code-generating.
+            con->CreateUnreachable();
+        }
     };
 }
 ClangTypeInfo* Analyzer::MaybeGetClangTypeInfo(const clang::CXXRecordDecl* decl) {
@@ -937,11 +936,15 @@ llvm::APInt Analyzer::EvaluateConstantIntegerExpression(std::shared_ptr<Expressi
     //evalfunc->removeFromParent();
     return result.IntVal;
 }
-std::shared_ptr<Statement> Semantic::AnalyzeStatement(Analyzer& analyzer, const Parse::Statement* s, Type* parent, Scope* current, std::function<std::function<Type*()>(Return*)> func) {
-    auto nonstatic = [=](Parse::Name name, Lexer::Range where) { return current->LookupLocal(Semantic::GetNameAsString(name)) };
+std::shared_ptr<Statement> Semantic::AnalyzeStatement(Analyzer& analyzer, const Parse::Statement* s, Type* parent, Scope* current, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> nonstatic) {
+    auto local_nonstatic = [=](Parse::Name name, Lexer::Range where) { 
+        if (auto result = current->LookupLocal(Semantic::GetNameAsString(name)))
+            return result;
+        return nonstatic(name, where);
+    };
     if (analyzer.ExpressionHandlers.find(typeid(*s)) != analyzer.ExpressionHandlers.end())
-        return analyzer.ExpressionHandlers[typeid(*s)](static_cast<const Parse::Expression*>(s), analyzer, parent, nonstatic);
-    return analyzer.StatementHandlers[typeid(*s)](s, analyzer, parent, current, func, nonstatic);
+        return analyzer.ExpressionHandlers[typeid(*s)](static_cast<const Parse::Expression*>(s), analyzer, parent, local_nonstatic);
+    return analyzer.StatementHandlers[typeid(*s)](s, analyzer, parent, current, local_nonstatic);
 }
 std::shared_ptr<Expression> Semantic::LookupFromImport(Type* context, Wide::Parse::Name name, Lexer::Range where, Parse::Import* imp) {
     auto propagate = [=]() -> std::shared_ptr<Expression> {
