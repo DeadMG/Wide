@@ -238,7 +238,7 @@ std::vector<Statement*> FunctionSkeleton::ComputeBody() {
                         auto make_member_initializer = [&, this](std::vector<std::shared_ptr<Expression>> init, Lexer::Range where) {
                             auto member = make_member(analyzer.GetLvalueType(x.t), x.num, LookupLocal("this"));
                             auto construction = Type::BuildInplaceConstruction(member, std::move(init), { GetContext(), where });
-                            auto destructor = x.t->IsTriviallyDestructible 
+                            auto destructor = x.t->IsTriviallyDestructible()
                                 ? std::function<void(CodegenContext&)>()
                                 : x.t->BuildDestructorCall(construction, { GetContext(), where }, true);
                             return CreatePrimGlobal(analyzer.GetVoidType(), [=](CodegenContext& con) {
@@ -420,169 +420,75 @@ void FunctionSkeleton::AddDefaultHandlers(Analyzer& a) {
         });
     });
 
-    AddHandler<Parse::Variable>(a.StatementHandlers, [](const Parse::Variable* var, Analyzer& analyzer, Type* self, Scope* current, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> nonstatic) {
-        struct LocalVariable : public Expression {
-            std::shared_ptr<Expression> construction;
-            Wide::Util::optional<unsigned> tuple_num;
-            Wide::Util::optional<Type*> explicit_type;
-            Type* var_type = nullptr;
-            std::shared_ptr<Expression> variable;
-            std::shared_ptr<Expression> init_expr;
-            std::function<void(CodegenContext&)> destructor;
-            Type* self;
-            Lexer::Range where;
-            Lexer::Range init_where;
-
-            void OnNodeChanged(Node* n, Change what) override final {
-                if (explicit_type) return;
-                if (what == Change::Destroyed) return;
-                if (init_expr->GetType()) {
-                    // If we're a value we handle it at codegen time.
-                    auto newty = InferTypeFromExpression(init_expr.get(), true);
-                    if (tuple_num) {
-                        if (auto tupty = dynamic_cast<TupleType*>(newty)) {
-                            auto tuple_access = tupty->PrimitiveAccessMember(init_expr, *tuple_num);
-                            newty = tuple_access->GetType()->Decay();
-                            variable = Wide::Memory::MakeUnique<ImplicitTemporaryExpr>(newty, Context{ self, where });
-                            construction = Type::BuildInplaceConstruction(variable, { std::move(tuple_access) }, { self, init_where });
-                            destructor = newty->BuildDestructorCall(variable, Context{ self, where }, true);
-                            if (newty != var_type) {
-                                var_type = newty;
-                                OnChange();
-                            }
-                            return;
-                        }
-                        throw std::runtime_error("fuck");
-                    }
-                    if (!init_expr->GetType()->IsReference() && init_expr->GetType() == newty) {
-                        if (init_expr->GetType() != var_type) {
-                            var_type = newty;
-                            OnChange();
-                            return;
-                        }
-                    }
-                    if (newty->IsReference()) {
-                        var_type = newty;
-                        OnChange();
-                        return;
-                    }
-                    if (newty != var_type) {
-                        if (newty) {
-                            variable = CreateTemporary(newty, Context{ self, where });
-                            construction = Type::BuildInplaceConstruction(variable, { init_expr }, { self, init_where });
-                            destructor = newty->BuildDestructorCall(variable, Context{ self, where }, true);
-                        }
-                        var_type = newty;
-                        OnChange();
-                    }
-                    return;
-                }
-                if (var_type) {
-                    var_type = nullptr;
-                    OnChange();
-                }
-            }
-            LocalVariable(std::shared_ptr<Expression> ex, unsigned u, Type* self, Lexer::Range where, Lexer::Range init_where, TupleType* p = nullptr)
-                : init_expr(std::move(ex)), tuple_num(u), self(self), where(where), init_where(init_where)
-            {
-                if (p) {
-                    explicit_type = var_type = p->GetMembers()[u];
-                    variable = CreateTemporary(var_type, Context{ self, where });
-                    construction = Type::BuildInplaceConstruction(variable, { p->PrimitiveAccessMember(init_expr, u) }, { self, init_where });
-                    destructor = var_type->BuildDestructorCall(variable, Context{ self, where }, true);
-                }
-                ListenToNode(init_expr.get());
-                OnNodeChanged(init_expr.get(), Change::Contents);
-            }
-            LocalVariable(std::shared_ptr<Expression> ex, Type* self, Lexer::Range where, Lexer::Range init_where, Type* p = nullptr)
-                : init_expr(std::move(ex)), self(self), where(where), init_where(init_where)
-            {
-                if (p) {
-                    explicit_type = var_type = p;
-                    variable = CreateTemporary(var_type, Context{ self, where });
-                    construction = Type::BuildInplaceConstruction(variable, { init_expr }, { self, init_where });
-                    destructor = var_type->BuildDestructorCall(variable, Context{ self, where }, true);
-                }
-                ListenToNode(init_expr.get());
-                OnNodeChanged(init_expr.get(), Change::Contents);
-            }
-            llvm::Value* ComputeValue(CodegenContext& con) override final {
-                if (init_expr->GetType() == var_type) {
-                    // If they return a complex value by value, just steal it, and don't worry about destructors as it will already have handled it.
-                    if (init_expr->GetType()->AlwaysKeepInMemory(con) || var_type->IsReference()) return init_expr->GetValue(con);
-                    // If they return a simple by value, then we can just alloca it fine, no destruction needed.
-                    auto alloc = con.CreateAlloca(var_type);
-                    con->CreateStore(init_expr->GetValue(con), alloc);
-                    return alloc;
-                }
-
-                construction->GetValue(con);
-                if (!var_type->IsTriviallyDestructible())
-                    con.AddDestructor(destructor);
-                return variable->GetValue(con);
-            }
-            Type* GetType() override final {
-                if (var_type) {
-                    if (var_type->IsReference())
-                        return self->analyzer.GetLvalueType(var_type->Decay());
-                    return self->analyzer.GetLvalueType(var_type);
-                }
-                return nullptr;
-            }
-        };
-
-        struct VariableStatement : public Statement {
-            VariableStatement(std::vector<LocalVariable*> locs, std::shared_ptr<Expression> expr)
-                : locals(std::move(locs)), init_expr(std::move(expr)){}
-            std::shared_ptr<Expression> init_expr;
-            std::vector<LocalVariable*> locals;
-
-            void GenerateCode(CodegenContext& con) override final {
-                init_expr->GetValue(con);
-                for (auto local : locals)
-                    local->GetValue(con);
-            }
-        };
-
-        std::vector<LocalVariable*> locals;
+    AddHandler<Parse::Variable>(a.StatementHandlers, [](const Parse::Variable* var, Analyzer& analyzer, Type* self, Scope* current, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> nonstatic) {        
         auto init_expr = analyzer.AnalyzeExpression(self, var->initializer.get(), nonstatic);
         auto var_type_expr = var->type ? analyzer.AnalyzeExpression(self, var->type.get(), nonstatic) : nullptr;
-        return CreateResultExpression([=](Expression::InstanceKey key) {
-            Type* var_type = nullptr;
-            if (var_type_expr) {
-                auto conty = dynamic_cast<ConstructorType*>(var_type_expr->GetType()->Decay());
-                if (!conty) throw std::runtime_error("Local variable type was not a type.");
-                var_type = conty->GetConstructedType();
-            } else
-                var_type = init_expr->GetType(key)->Decay();
-        });
-        if (var->type) {
-            auto expr = analyzer.AnalyzeExpression(self, var->type.get(), nonstatic);
-        }
         if (var->name.size() == 1) {
             auto&& name = var->name.front();
             if (current->named_variables.find(var->name.front().name) != current->named_variables.end())
                 throw VariableShadowing(name.name, current->named_variables.at(name.name).second, name.where);
-            auto var_stmt = Wide::Memory::MakeUnique<LocalVariable>(init_expr, self, var->name.front().where, var->initializer->location, var_type);
-            locals.push_back(var_stmt.get());
-            current->named_variables.insert(std::make_pair(name.name, std::make_pair(std::move(var_stmt), name.where)));
-        } else {
-            TupleType* tupty = nullptr;
-            if (var_type) {
-                tupty = dynamic_cast<TupleType*>(var_type);
-                if (!tupty) throw std::runtime_error("The explicit type was not a tuple when there were multiple variables.");
-                if (tupty->GetMembers().size() != var->name.size()) throw std::runtime_error("Explicit tuple type size did not match number of locals.");
-            }
-            unsigned i = 0;
-            for (auto&& name : var->name) {
-                if (current->named_variables.find(name.name) != current->named_variables.end())
-                    throw VariableShadowing(name.name, current->named_variables.at(name.name).second, name.where);
-                auto var_stmt = Wide::Memory::MakeUnique<LocalVariable>(init_expr, i++, self, name.where, var->initializer->location, tupty);
-                locals.push_back(var_stmt.get());
-                current->named_variables.insert(std::make_pair(name.name, std::make_pair(std::move(var_stmt), name.where)));
-            }
+            auto var = CreateResultExpression([=](Expression::InstanceKey key) {
+                Type* var_type = nullptr;
+                if (var_type_expr) {
+                    auto conty = dynamic_cast<ConstructorType*>(var_type_expr->GetType(key)->Decay());
+                    if (!conty) throw std::runtime_error("Local variable type was not a type.");
+                    var_type = conty->GetConstructedType();
+                } else
+                    var_type = init_expr->GetType(key)->Decay();
+                if (var_type == init_expr->GetType(key))
+                    return init_expr;
+                auto temp = CreateTemporary(var_type, { self, name.where });
+                auto construct = Type::BuildInplaceConstruction(temp, { init_expr }, { self, name.where });
+                auto des = var_type->BuildDestructorCall(temp, { self, name.where }, true);
+                return CreatePrimGlobal(var_type, [=](CodegenContext& con) {
+                    construct->GetValue(con);
+                    con.AddDestructor(des);
+                    return temp->GetValue(con);
+                });
+            });
+            current->named_variables.insert(std::make_pair(name.name, std::make_pair(var, name.where)));
+            return var;
         }
-        return Wide::Memory::MakeUnique<VariableStatement>(std::move(locals), std::move(init_expr));
+        std::vector<std::shared_ptr<Expression>> exprs;
+        for (auto&& name : var->name) {
+            auto&& name = var->name.front();
+            if (current->named_variables.find(var->name.front().name) != current->named_variables.end())
+                throw VariableShadowing(name.name, current->named_variables.at(name.name).second, name.where);
+            auto local = CreateResultExpression([=](Expression::InstanceKey key) {
+                Type* var_type = nullptr;
+                if (var_type_expr) {
+                    auto conty = dynamic_cast<ConstructorType*>(var_type_expr->GetType(key)->Decay());
+                    if (!conty) throw std::runtime_error("Local variable type was not a type.");
+                    auto tup = dynamic_cast<TupleType*>(conty->GetConstructedType());
+                    if (!tup || tup->GetMembers().size() != var->name.size())
+                        throw std::runtime_error("Tuple size and name number mismatch.");
+                    var_type = tup->GetMembers()[&name - &var->name[0]];
+                } else {
+                    auto tup = dynamic_cast<TupleType*>(init_expr->GetType(key)->Decay());
+                    if (!tup || tup->GetMembers().size() != var->name.size())
+                        throw std::runtime_error("Tuple size and name number mismatch.");
+                    var_type = tup->GetMembers()[&name - &var->name[0]]->Decay();
+                }
+                auto temp = CreateTemporary(var_type, { self, name.where });
+                auto construct = Type::BuildInplaceConstruction(temp, { init_expr }, { self, name.where });
+                auto des = var_type->BuildDestructorCall(temp, { self, name.where }, true);
+                return CreatePrimGlobal(var_type, [=](CodegenContext& con) {
+                    construct->GetValue(con);
+                    con.AddDestructor(des);
+                    return temp->GetValue(con);
+                });
+            });
+            current->named_variables.insert(std::make_pair(name.name, std::make_pair(local, name.where)));
+            exprs.push_back(local);
+        }
+        return CreateResultExpression([=, &analyzer](Expression::InstanceKey key) {
+            for (auto&& var : exprs)
+                var->GetType(key);
+            return CreatePrimGlobal(analyzer.GetVoidType(), [=](CodegenContext& con) {
+                for (auto&& var : exprs)
+                    var->GetValue(con);
+            });
+        });
     });
 
     AddHandler<Parse::While>(a.StatementHandlers, [](const Parse::While* whil, Analyzer& analyzer, Type* self, Scope* current, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> nonstatic) {
@@ -659,7 +565,7 @@ void FunctionSkeleton::AddDefaultHandlers(Analyzer& a) {
         auto bodyscope = new Scope(condscope);
         bodyscope->active.push_back(AnalyzeStatement(analyzer, whil->body.get(), self, bodyscope, nonstatic));
         while_stmt->body = bodyscope->active.back();
-        return std::move(while_stmt);
+        return while_stmt;
     });
 
     AddHandler<Parse::Continue>(a.StatementHandlers, [](const Parse::Continue* continue_stmt, Analyzer& analyzer, Type* self, Scope* current, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> nonstatic) {
@@ -743,17 +649,18 @@ void FunctionSkeleton::AddDefaultHandlers(Analyzer& a) {
         return CreatePrimGlobal(analyzer.GetVoidType(), Semantic::ThrowObject(analyzer.AnalyzeExpression(self, thro->expr.get(), nonstatic), { self, thro->location }));
     });
 
-    AddHandler<Parse::TryCatch>(a.StatementHandlers, [](const Parse::TryCatch* try_, Analyzer& analyzer, Type* self, Scope* current, std::function<std::function<Type*()>(Return*)> func) {
+    AddHandler<Parse::TryCatch>(a.StatementHandlers, [](const Parse::TryCatch* try_, Analyzer& analyzer, Type* self, Scope* current, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> nonstatic) {
         struct Catch {
-            Type* t; // Null for catch-all
-            std::function<llvm::Constant*(llvm::Module*)> RTTI;
             std::vector<std::shared_ptr<Statement>> stmts;
+            std::shared_ptr<llvm::Value*> val;
+            std::shared_ptr<Expression> type;
+            std::function<llvm::Constant*(llvm::Module*)> RTTI;
         };
         std::vector<std::shared_ptr<Statement>> try_stmts;
         {
             auto tryscope = new Scope(current);
             for (auto&& stmt : try_->statements->stmts)
-                try_stmts.push_back(AnalyzeStatement(analyzer, stmt.get(), self, tryscope, func));
+                try_stmts.push_back(AnalyzeStatement(analyzer, stmt.get(), self, tryscope, nonstatic));
         }
         std::vector<Catch> catches;
         for (auto&& catch_ : try_->catches) {
@@ -761,11 +668,12 @@ void FunctionSkeleton::AddDefaultHandlers(Analyzer& a) {
             if (catch_.all) {
                 std::vector<std::shared_ptr<Statement>> stmts;
                 for (auto&& stmt : catch_.statements)
-                    stmts.push_back(AnalyzeStatement(analyzer, stmt.get(), self, catchscope, func));
-                catches.push_back(Catch{ nullptr, {}, std::move(stmts) });
+                    stmts.push_back(AnalyzeStatement(analyzer, stmt.get(), self, catchscope, nonstatic));
+                catches.push_back(Catch{ std::move(stmts) });
                 break;
             }
-            auto type = analyzer.AnalyzeExpression(self, catch_.type.get());
+            auto type = analyzer.AnalyzeExpression(self, catch_.type.get(), nonstatic);
+            auto param = std::make_shared<llvm::Value*>();
             auto catch_param = CreateResultExpression([=](Expression::InstanceKey key) {
                 auto con = dynamic_cast<ConstructorType*>(type->GetType(key));
                 if (!con) throw std::runtime_error("Catch parameter type was not a type.");
@@ -776,57 +684,90 @@ void FunctionSkeleton::AddDefaultHandlers(Analyzer& a) {
                     ? catch_type->Decay()
                     : dynamic_cast<PointerType*>(catch_type)->GetPointee();
                 return CreatePrimGlobal(target_type, [=](CodegenContext& con) {
-                    return con->CreatePointerCast(param, target_type->GetLLVMType(con));
+                    return con->CreatePointerCast(*param, target_type->GetLLVMType(con));
                 });
             });
             catchscope->named_variables.insert(std::make_pair(catch_.name, std::make_pair(catch_param, catch_.type->location)));
             std::vector<std::shared_ptr<Statement>> stmts;
             for (auto&& stmt : catch_.statements)
-                stmts.push_back(AnalyzeStatement(analyzer, stmt.get(), self, catchscope, func));
-            catches.push_back(Catch{ catch_type, std::move(stmts), std::move(catch_parameter) });
+                stmts.push_back(AnalyzeStatement(analyzer, stmt.get(), self, catchscope, nonstatic));
+            catches.push_back(Catch{ std::move(stmts), param, type });
         }
-        return CreatePrimGlobal(analyzer.GetVoidType(), [=](CodegenContext& con) {
-            auto source_block = con->GetInsertBlock();
-
-            auto try_con = con;
-            auto catch_block = llvm::BasicBlock::Create(con, "catch_block", con->GetInsertBlock()->getParent());
-            auto dest_block = llvm::BasicBlock::Create(con, "dest_block", con->GetInsertBlock()->getParent());
-
-            con->SetInsertPoint(catch_block);
-            auto phi = con->CreatePHI(con.GetLpadType(), 0);
-            std::vector<llvm::Constant*> rttis;
-            for (auto&& catch_ : catches) {
-                if (catch_.t)
-                    rttis.push_back(llvm::cast<llvm::Constant>(con->CreatePointerCast(catch_.RTTI(con), con.GetInt8PtrTy())));
+        return CreateResultExpression([=, &analyzer](Expression::InstanceKey key) {
+            auto catch_blocks = catches;
+            for (auto&& catch_ : catch_blocks) {
+                auto con = dynamic_cast<ConstructorType*>(catch_.type->GetType(key));
+                if (!con) throw std::runtime_error("Catch parameter type was not a type.");
+                auto catch_type = con->GetConstructedType();
+                if (!IsLvalueType(catch_type) && !dynamic_cast<PointerType*>(catch_type))
+                    throw std::runtime_error("Attempted to catch by non-lvalue and nonpointer.");
+                auto target_type = IsLvalueType(catch_type)
+                    ? catch_type->Decay()
+                    : dynamic_cast<PointerType*>(catch_type)->GetPointee();
+                catch_.RTTI = target_type->GetRTTI();
             }
-            try_con.EHHandler = CodegenContext::EHScope{ &con, catch_block, phi, rttis };
-            try_con->SetInsertPoint(source_block);
+            return CreatePrimGlobal(analyzer.GetVoidType(), [=](CodegenContext& con) {
+                auto source_block = con->GetInsertBlock();
 
-            for (auto&& stmt : try_stmts)
+                auto try_con = con;
+                auto catch_block = llvm::BasicBlock::Create(con, "catch_block", con->GetInsertBlock()->getParent());
+                auto dest_block = llvm::BasicBlock::Create(con, "dest_block", con->GetInsertBlock()->getParent());
+
+                con->SetInsertPoint(catch_block);
+                auto phi = con->CreatePHI(con.GetLpadType(), 0);
+                std::vector<llvm::Constant*> rttis;
+                for (auto&& catch_ : catches) {
+                    if (catch_.val)
+                        rttis.push_back(llvm::cast<llvm::Constant>(con->CreatePointerCast(catch_.RTTI(con), con.GetInt8PtrTy())));
+                }
+                try_con.EHHandler = CodegenContext::EHScope{ &con, catch_block, phi, rttis };
+                try_con->SetInsertPoint(source_block);
+
+                for (auto&& stmt : try_stmts)
+                    if (!try_con.IsTerminated(try_con->GetInsertBlock()))
+                        stmt->GenerateCode(try_con);
                 if (!try_con.IsTerminated(try_con->GetInsertBlock()))
-                    stmt->GenerateCode(try_con);
-            if (!try_con.IsTerminated(try_con->GetInsertBlock()))
-                try_con->CreateBr(dest_block);
-            if (phi->getNumIncomingValues() == 0) {
-                phi->removeFromParent();
-                catch_block->removeFromParent();
-                con->SetInsertPoint(dest_block);
-                return;
-            }
+                    try_con->CreateBr(dest_block);
+                if (phi->getNumIncomingValues() == 0) {
+                    phi->removeFromParent();
+                    catch_block->removeFromParent();
+                    con->SetInsertPoint(dest_block);
+                    return;
+                }
 
-            // Generate the code for all the catch statements.
-            auto for_ = llvm::Intrinsic::getDeclaration(con, llvm::Intrinsic::eh_typeid_for);
-            auto catch_con = con;
-            catch_con->SetInsertPoint(catch_block);
-            auto selector = catch_con->CreateExtractValue(phi, { 1 });
-            auto except_object = catch_con->CreateExtractValue(phi, { 0 });
+                // Generate the code for all the catch statements.
+                auto for_ = llvm::Intrinsic::getDeclaration(con, llvm::Intrinsic::eh_typeid_for);
+                auto catch_con = con;
+                catch_con->SetInsertPoint(catch_block);
+                auto selector = catch_con->CreateExtractValue(phi, { 1 });
+                auto except_object = catch_con->CreateExtractValue(phi, { 0 });
 
-            auto catch_ender = [](CodegenContext& con) {
-                con->CreateCall(con.GetCXAEndCatch());
-            };
-            for (auto&& catch_ : catches) {
-                CodegenContext catch_block_con(catch_con);
-                if (!catch_.t) {
+                auto catch_ender = [](CodegenContext& con) {
+                    con->CreateCall(con.GetCXAEndCatch());
+                };
+                for (auto&& catch_ : catches) {
+                    CodegenContext catch_block_con(catch_con);
+                    if (!catch_.val) {
+                        for (auto&& stmt : catch_.stmts)
+                            if (!catch_block_con.IsTerminated(catch_block_con->GetInsertBlock()))
+                                stmt->GenerateCode(catch_block_con);
+                        if (!catch_block_con.IsTerminated(catch_block_con->GetInsertBlock())) {
+                            con.DestroyDifference(catch_block_con, false);
+                            catch_block_con->CreateBr(dest_block);
+                        }
+                        break;
+                    }
+                    auto catch_target = llvm::BasicBlock::Create(con, "catch_target", catch_block_con->GetInsertBlock()->getParent());
+                    auto catch_continue = llvm::BasicBlock::Create(con, "catch_continue", catch_block_con->GetInsertBlock()->getParent());
+                    auto target_selector = catch_block_con->CreateCall(for_, { con->CreatePointerCast(catch_.RTTI(con), con.GetInt8PtrTy()) });
+                    auto result = catch_block_con->CreateICmpEQ(selector, target_selector);
+                    catch_block_con->CreateCondBr(result, catch_target, catch_continue);
+                    catch_block_con->SetInsertPoint(catch_target);
+                    // Call __cxa_begin_catch and get our result. We don't need __cxa_get_exception_ptr as Wide cannot catch by value.
+                    *catch_.val = catch_block_con->CreateCall(catch_block_con.GetCXABeginCatch(), { except_object });
+                    // Ensure __cxa_end_catch is called.
+                    catch_block_con.AddDestructor(catch_ender);
+
                     for (auto&& stmt : catch_.stmts)
                         if (!catch_block_con.IsTerminated(catch_block_con->GetInsertBlock()))
                             stmt->GenerateCode(catch_block_con);
@@ -834,35 +775,16 @@ void FunctionSkeleton::AddDefaultHandlers(Analyzer& a) {
                         con.DestroyDifference(catch_block_con, false);
                         catch_block_con->CreateBr(dest_block);
                     }
-                    break;
+                    catch_con->SetInsertPoint(catch_continue);
                 }
-                auto catch_target = llvm::BasicBlock::Create(con, "catch_target", catch_block_con->GetInsertBlock()->getParent());
-                auto catch_continue = llvm::BasicBlock::Create(con, "catch_continue", catch_block_con->GetInsertBlock()->getParent());
-                auto target_selector = catch_block_con->CreateCall(for_, { con->CreatePointerCast(catch_.RTTI(con), con.GetInt8PtrTy()) });
-                auto result = catch_block_con->CreateICmpEQ(selector, target_selector);
-                catch_block_con->CreateCondBr(result, catch_target, catch_continue);
-                catch_block_con->SetInsertPoint(catch_target);
-                // Call __cxa_begin_catch and get our result. We don't need __cxa_get_exception_ptr as Wide cannot catch by value.
-                auto except = catch_block_con->CreateCall(catch_block_con.GetCXABeginCatch(), { except_object });
-                // Ensure __cxa_end_catch is called.
-                catch_block_con.AddDestructor(catch_ender);
-
-                for (auto&& stmt : catch_.stmts)
-                    if (!catch_block_con.IsTerminated(catch_block_con->GetInsertBlock()))
-                        stmt->GenerateCode(catch_block_con);
-                if (!catch_block_con.IsTerminated(catch_block_con->GetInsertBlock())) {
-                    con.DestroyDifference(catch_block_con, false);
-                    catch_block_con->CreateBr(dest_block);
+                // If we had no catch all, then we need to clean up and rethrow to the next try.
+                if (catches.back().val) {
+                    auto except = catch_con->CreateCall(catch_con.GetCXABeginCatch(), { except_object });
+                    catch_con.AddDestructor(catch_ender);
+                    catch_con->CreateInvoke(catch_con.GetCXARethrow(), catch_con.GetUnreachableBlock(), catch_con.CreateLandingpadForEH());
                 }
-                catch_con->SetInsertPoint(catch_continue);
-            }
-            // If we had no catch all, then we need to clean up and rethrow to the next try.
-            if (catches.back().t) {
-                auto except = catch_con->CreateCall(catch_con.GetCXABeginCatch(), { except_object });
-                catch_con.AddDestructor(catch_ender);
-                catch_con->CreateInvoke(catch_con.GetCXARethrow(), catch_con.GetUnreachableBlock(), catch_con.CreateLandingpadForEH());
-            }
-            con->SetInsertPoint(dest_block);
+                con->SetInsertPoint(dest_block);
+            });
         });
     });
 }

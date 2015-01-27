@@ -22,7 +22,7 @@ std::shared_ptr<Expression> TupleType::ConstructFromLiteral(std::vector<std::sha
     // If we are complex, then build directly in-place.
     // Else try to avoid making an allocation.
     std::vector<std::shared_ptr<Expression>> initializers;
-    auto self = std::make_shared<ImplicitTemporaryExpr>(this, c);
+    auto self = CreateTemporary(this, c);
     for (std::size_t i = 0; i < exprs.size(); ++i) {
         initializers.push_back(Type::BuildInplaceConstruction(PrimitiveAccessMember(self, i), { std::move(exprs[i]) }, c));
     }

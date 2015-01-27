@@ -28,7 +28,9 @@ std::shared_ptr<Expression> LambdaType::ConstructCall(Expression::InstanceKey ke
     std::vector<Type*> types;
     for (auto&& arg : args)
         types.push_back(arg->GetType(key));
-    auto overset = analyzer.GetOverloadSet(analyzer.GetCallableForFunction(lam, args[0]->GetType(key), "operator()"));
+    auto overset = analyzer.GetOverloadSet(analyzer.GetCallableForFunction(lam, args[0]->GetType(key), "operator()", [=](Wide::Parse::Name name, Lexer::Range where) { 
+        return Type::AccessMember(args[0], name, { this, where }); 
+    }));
     auto call = overset->Resolve(types, c.from);
     if (!call) overset->IssueResolutionError(types, c);
     return call->Call(key, std::move(args), c);

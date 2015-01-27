@@ -6,6 +6,10 @@
 #include <Wide/Semantic/UserDefinedType.h>
 #include <Wide/Semantic/OverloadSet.h>
 
+#pragma warning(push, 0)
+#include <clang/AST/DeclCXX.h>
+#pragma warning(pop)
+
 using namespace Wide;
 using namespace Semantic;
 

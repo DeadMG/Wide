@@ -3,9 +3,13 @@
 #include <Wide/Semantic/Type.h>
 #include <boost/signals2.hpp>
 
+namespace clang {
+    class FunctionDecl;
+}
 namespace Wide {
     namespace Semantic {
         class FunctionSkeleton;
+        class ClangFunctionType;
         class WideFunctionType;
         class Function : public Callable {
             FunctionSkeleton* skeleton;
