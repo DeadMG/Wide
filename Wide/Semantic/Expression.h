@@ -35,8 +35,8 @@ namespace Wide {
             virtual void Instantiate(Function* f) = 0;
         };
         struct Expression : public Statement {
-            typedef Function* InstanceKey;
-            typedef std::nullptr_t NoInstance;
+            typedef boost::optional<std::vector<Type*>> InstanceKey;
+            typedef boost::none_t NoInstance;
             static Type* GetArgumentType(InstanceKey key, int num);
 
             static void AddDefaultHandlers(Analyzer& a);
@@ -156,6 +156,7 @@ namespace Wide {
             virtual std::shared_ptr<Expression> CalculateResult(InstanceKey f) = 0;
             Type* CalculateType(InstanceKey) override final;
             bool IsConstantExpression(InstanceKey) override final;
+            llvm::Value* ComputeValue(CodegenContext&) override final;
         };
 
         struct ImplicitLoadExpr : public SourceExpression {
@@ -242,6 +243,7 @@ namespace Wide {
         std::shared_ptr<Expression> CreatePrimAssOp(std::shared_ptr<Expression> lhs, std::shared_ptr<Expression> rhs, std::function<llvm::Value*(llvm::Value*, llvm::Value*, CodegenContext&)>);
         std::shared_ptr<Expression> CreatePrimOp(std::shared_ptr<Expression> lhs, std::shared_ptr<Expression> rhs, Type* ret, std::function<llvm::Value*(llvm::Value*, llvm::Value*, CodegenContext&)>);
         std::shared_ptr<Expression> CreatePrimGlobal(Type* ret, std::function<llvm::Value*(CodegenContext&)>);
+        std::shared_ptr<Expression> CreatePrimGlobal(Analyzer& a, std::function<void(CodegenContext&)>);
         std::shared_ptr<Expression> BuildValue(std::shared_ptr<Expression>);
         std::shared_ptr<Expression> BuildChain(std::shared_ptr<Expression>, std::shared_ptr<Expression>);
         std::shared_ptr<Expression> CreateTemporary(Type* t, Context c);

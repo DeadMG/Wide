@@ -110,7 +110,7 @@ namespace Wide {
             virtual std::shared_ptr<Expression> ConstructCall(Expression::InstanceKey key, std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c);
             virtual std::shared_ptr<Expression> AccessVirtualPointer(Expression::InstanceKey key, std::shared_ptr<Expression> self);
         protected:
-            virtual std::function<void(CodegenContext&)> BuildDestruction(std::shared_ptr<Expression> self, Context c, bool devirtualize);
+            virtual std::function<void(CodegenContext&)> BuildDestruction(Expression::InstanceKey key, std::shared_ptr<Expression> self, Context c, bool devirtualize);
             virtual std::shared_ptr<Expression> AccessNamedMember(Expression::InstanceKey key, std::shared_ptr<Expression> t, std::string name, Context c);
             llvm::Function* DestructorFunction = nullptr;
             virtual llvm::Function* CreateDestructorFunction(llvm::Module* module);
@@ -178,7 +178,7 @@ namespace Wide {
             bool InheritsFromAtOffsetZero(Type* other);
             unsigned GetOffsetToBase(Type* base);
 
-            std::function<void(CodegenContext&)> BuildDestructorCall(std::shared_ptr<Expression> self, Context c, bool devirtualize);
+            std::function<void(CodegenContext&)> BuildDestructorCall(Expression::InstanceKey key, std::shared_ptr<Expression> self, Context c, bool devirtualize);
             static std::shared_ptr<Expression> GetVirtualPointer(std::shared_ptr<Expression> self);
             static std::shared_ptr<Expression> BuildCall(std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c);
             static std::shared_ptr<Expression> AccessMember(std::shared_ptr<Expression> t, Parse::Name name, Context c);

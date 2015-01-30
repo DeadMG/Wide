@@ -28,7 +28,7 @@ std::shared_ptr<Expression> LambdaType::ConstructCall(Expression::InstanceKey ke
     std::vector<Type*> types;
     for (auto&& arg : args)
         types.push_back(arg->GetType(key));
-    auto overset = analyzer.GetOverloadSet(analyzer.GetCallableForFunction(lam, args[0]->GetType(key), "operator()", [=](Wide::Parse::Name name, Lexer::Range where) { 
+    auto overset = analyzer.GetOverloadSet(analyzer.GetCallableForFunction(lam, args[0]->GetType(key), "operator()", args[0]->GetType(key), [=](Wide::Parse::Name name, Lexer::Range where) {
         return Type::AccessMember(args[0], name, { this, where }); 
     }));
     auto call = overset->Resolve(types, c.from);
@@ -55,7 +55,7 @@ std::shared_ptr<Expression> LambdaType::BuildLambdaFromCaptures(std::vector<std:
             initializers.push_back(call->Call(f, { std::move(obj), std::move(exprs[i]) }, c));
         }
 
-        auto destructor = BuildDestructorCall(self, c, true);
+        auto destructor = BuildDestructorCall(f, self, c, true);
         return CreatePrimGlobal(this, [=](CodegenContext& con) -> llvm::Value* {
             for (auto&& init : initializers)
                 init->GetValue(con);

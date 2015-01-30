@@ -21,9 +21,13 @@ namespace Wide {
         class Function;
         class OverloadSet;
         class Module;
+        class FunctionSkeleton;
         class UserDefinedType : public AggregateType, public TupleInitializable, public ConstructorContext {
             struct ImportConstructorCallable;
             struct ImportConstructorResolvable;
+            FunctionSkeleton* GetWideFunction(const Parse::FunctionBase* base, Parse::Name name);
+            std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> GetNonstaticLookup(const Parse::FunctionBase* base, Parse::Name name);
+            std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> GetNonstaticLookup(std::shared_ptr<Expression>);
 
             std::vector<Type*> GetMembers() { return GetMemberData().members; }
             std::vector<std::shared_ptr<Expression>> GetDefaultInitializerForMember(unsigned);
@@ -135,7 +139,7 @@ namespace Wide {
             Wide::Util::optional<clang::QualType> GetClangType(ClangTU& TU) override final;
             std::shared_ptr<Expression> AccessNamedMember(Expression::InstanceKey key, std::shared_ptr<Expression> t, std::string name, Context) override final;
             using Type::AccessMember;
-            std::function<void(CodegenContext&)> BuildDestruction(std::shared_ptr<Expression> self, Context c, bool devirtualize) override final;
+            std::function<void(CodegenContext&)> BuildDestruction(Expression::InstanceKey key, std::shared_ptr<Expression> self, Context c, bool devirtualize) override final;
             OverloadSet* CreateConstructorOverloadSet(Parse::Access access) override final;
             OverloadSet* CreateOperatorOverloadSet(Parse::OperatorName member, Parse::Access access, OperatorAccess) override final;
             Type* GetConstantContext() override final;

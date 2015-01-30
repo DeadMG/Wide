@@ -41,7 +41,7 @@ llvm::Value* ImplicitStoreExpr::ComputeValue(CodegenContext& con) {
     return memory;
 }
 void Expression::Instantiate(Function* f) {
-    GetType(f);
+    GetType(f->GetSignature()->GetArguments());
 }
 
 LvalueCast::LvalueCast(std::shared_ptr<Expression> expr)
@@ -473,6 +473,10 @@ Type* ResultExpression::CalculateType(InstanceKey f) {
         return results[f].first->GetType(f);    
     return nullptr;
 }
+llvm::Value* ResultExpression::ComputeValue(CodegenContext& con) {
+    assert(results.find(con.func) != results.end());
+    return results[con.func].first->GetValue(con);
+}
 
 void Expression::AddDefaultHandlers(Analyzer& a) {
     AddHandler<const Parse::String>(a.ExpressionHandlers, [](const Parse::String* str, Analyzer& a, Type* lookup, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup) {
@@ -837,7 +841,7 @@ void Expression::AddDefaultHandlers(Analyzer& a) {
         auto object = a.AnalyzeExpression(lookup, des->expr.get(), NonstaticLookup);
         return CreateResultExpression([=, &a](InstanceKey f) {
             auto ty = object->GetType(f);
-            return std::make_shared<DestructorCall>(ty->Decay()->BuildDestructorCall(std::move(object), { lookup, des->location }, false), a);
+            return std::make_shared<DestructorCall>(ty->Decay()->BuildDestructorCall(f, std::move(object), { lookup, des->location }, false), a);
         });
     });
 
@@ -860,4 +864,30 @@ std::shared_ptr<Expression> Semantic::CreateAddressOf(std::shared_ptr<Expression
             return expr->GetValue(con);
         });
     });
+}
+std::shared_ptr<Expression> Semantic::CreateResultExpression(std::function<std::shared_ptr<Expression>(Expression::InstanceKey f)> func) {
+    struct FunctionalResultExpression : ResultExpression {
+        FunctionalResultExpression(std::function<std::shared_ptr<Expression>(Expression::InstanceKey f)> f)
+            : ResultExpression(std::initializer_list<std::shared_ptr<Expression>>({})), func(f) {}
+        std::function<std::shared_ptr<Expression>(Expression::InstanceKey f)> func;
+        std::shared_ptr<Expression> CalculateResult(InstanceKey f) override final {
+            return func(f);
+        }
+    };
+    // innit
+    return std::make_shared<FunctionalResultExpression>(func);
+}
+std::shared_ptr<Expression> Semantic::CreatePrimGlobal(Analyzer& a, std::function<void(CodegenContext&)> func) {
+    return CreatePrimGlobal(a.GetVoidType(), [=](CodegenContext& con) {
+        func(con);
+        return nullptr;
+    });
+}
+std::size_t std::hash<Expression::InstanceKey>::operator()(const Wide::Semantic::Expression::InstanceKey& key) const {
+    if (!key) return 0;
+    return VectorTypeHasher()(*key);
+}
+Type* Expression::GetArgumentType(InstanceKey key, int num) {
+    if (!key) return nullptr;
+    return (*key)[num];
 }

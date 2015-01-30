@@ -182,7 +182,7 @@ AggregateType::Layout::Layout(AggregateType* agg, Wide::Semantic::Analyzer& a)
     });
     for (int i = Offsets.size() - 1; i >= 0; --i) {
         auto member = Offsets[i].ty;
-        agg->destructors.push_back(member->BuildDestructorCall(agg->PrimitiveAccessMember(destructor_self, i), { agg, Lexer::Range(std::make_shared<std::string>("AggregateDestructor")) }, true));
+        agg->destructors.push_back(member->BuildDestructorCall(Expression::NoInstance(), agg->PrimitiveAccessMember(destructor_self, i), { agg, Lexer::Range(std::make_shared<std::string>("AggregateDestructor")) }, true));
     }
 }
 std::size_t AggregateType::size() {
@@ -340,7 +340,7 @@ llvm::Function* AggregateType::CreateDestructorFunction(llvm::Module* module) {
     });
     return DestructorFunction;
 }
-std::function<void(CodegenContext&)> AggregateType::BuildDestruction(std::shared_ptr<Expression> self, Context c, bool devirtualize) {
+std::function<void(CodegenContext&)> AggregateType::BuildDestruction(Expression::InstanceKey, std::shared_ptr<Expression> self, Context c, bool devirtualize) {
     return [this, self](CodegenContext& con) {
         con->CreateCall(GetDestructorFunction(con), self->GetValue(con));
     };
@@ -487,7 +487,7 @@ std::vector<std::shared_ptr<Expression>> AggregateType::GetConstructorInitialize
             : member(mem), where(where), Construction(std::move(expr)), memexpr(memexpr)
         {
             if (!member->IsTriviallyDestructible())
-                destructor = member->BuildDestructorCall(memexpr, { member, where }, true);
+                destructor = member->BuildDestructorCall(Expression::NoInstance(), memexpr, { member, where }, true);
         }
     };
     for (std::size_t i = 0; i < GetBases().size(); ++i) {

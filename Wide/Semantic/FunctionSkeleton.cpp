@@ -80,7 +80,7 @@ FunctionSkeleton::FunctionSkeleton(const Parse::FunctionBase* astfun, Analyzer& 
             return CreatePrimGlobal(get_new_ty(), [=](CodegenContext& con) -> llvm::Value* {
                 auto argnum = num;
                 // We have an extra argument for the return type if we have 1 more argument than the number in the key.
-                if (con->GetInsertBlock()->getParent()->arg_size() == key->GetSignature()->GetArguments().size() + 1)
+                if (con->GetInsertBlock()->getParent()->arg_size() == key->size() + 1)
                     ++argnum;
                 auto llvm_argument = std::next(con->GetInsertBlock()->getParent()->arg_begin(), argnum);
 
@@ -198,8 +198,8 @@ std::vector<Statement*> FunctionSkeleton::ComputeBody() {
                     auto expr = analyzer.AnalyzeExpression(GetContext(), con->initializers.front().initializer.get(), NonstaticLookup);
                     auto conty = dynamic_cast<Type*>(*ConstructorContext);
                     auto conoverset = conty->GetConstructorOverloadSet(Parse::Access::Private);
-                    auto destructor = conty->BuildDestructorCall(LookupLocal("this"), c, true);
                     root_scope->active.push_back(CreateResultExpression([=](Expression::InstanceKey key) {
+                        auto destructor = conty->BuildDestructorCall(key, LookupLocal("this"), c, true);
                         auto self = LookupLocal("this");
                         auto callable = conoverset->Resolve({ self->GetType(key), expr->GetType(key) }, GetContext());
                         if (!callable) throw std::runtime_error("Couldn't resolve delegating constructor call.");
@@ -240,11 +240,12 @@ std::vector<Statement*> FunctionSkeleton::ComputeBody() {
                             auto construction = Type::BuildInplaceConstruction(member, std::move(init), { GetContext(), where });
                             auto destructor = x.t->IsTriviallyDestructible()
                                 ? std::function<void(CodegenContext&)>()
-                                : x.t->BuildDestructorCall(construction, { GetContext(), where }, true);
+                                : x.t->BuildDestructorCall(Expression::NoInstance(), construction, { GetContext(), where }, true);
                             return CreatePrimGlobal(analyzer.GetVoidType(), [=](CodegenContext& con) {
                                 construction->GetValue(con);
                                 if (destructor)
                                     con.AddExceptionOnlyDestructor(destructor);
+                                return nullptr;
                             });
                         };
                         if (auto init = has_initializer()) {
@@ -313,7 +314,7 @@ std::vector<Statement*> FunctionSkeleton::ComputeBody() {
 
         // Now the body.
         for (std::size_t i = 0; i < fun->statements.size(); ++i) {
-            root_scope->active.push_back(AnalyzeStatement(analyzer, fun->statements[i].get(), GetContext(), root_scope.get(), NonstaticLookup));
+            root_scope->active.push_back(AnalyzeStatement(analyzer, this, fun->statements[i].get(), GetContext(), root_scope.get(), NonstaticLookup));
         }
 
         // If we were a destructor, destroy.
@@ -329,7 +330,7 @@ std::vector<Statement*> FunctionSkeleton::ComputeBody() {
                     self = con->CreateConstGEP1_32(self, num());
                     return con->CreatePointerCast(self, result->GetLLVMType(con));
                 });
-                auto destructor = rit->t->BuildDestructorCall(member, { GetContext(), fun->where }, true);
+                auto destructor = rit->t->BuildDestructorCall(Expression::NoInstance(), member, { GetContext(), fun->where }, true);
                 root_scope->active.push_back(CreatePrimGlobal(analyzer.GetVoidType(), [=](CodegenContext& con) {
                     destructor(con);
                     return nullptr;
@@ -349,12 +350,14 @@ std::shared_ptr<Expression> FunctionSkeleton::LookupLocal(Parse::Name name) {
 }
 
 void FunctionSkeleton::AddDefaultHandlers(Analyzer& a) {
-    AddHandler<const Parse::Return>(a.StatementHandlers, [](const Parse::Return* ret, Analyzer& analyzer, Type* self, Scope* current, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> nonstatic) {
+    AddHandler<const Parse::Return>(a.StatementHandlers, [](const Parse::Return* ret, FunctionSkeleton* skel, Analyzer& analyzer, Type* self, Scope* current, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> nonstatic) {
         auto ret_expr = ret->RetExpr ? analyzer.AnalyzeExpression(self, ret->RetExpr.get(), nonstatic) : nullptr;
-        return CreateResultExpression([=, &analyzer](Expression::InstanceKey key) {
-            key->AddReturnExpression(ret_expr.get());
+        return CreateResultExpression([=, &analyzer](Expression::InstanceKey key) -> std::shared_ptr<Expression> {
+            if (!key) return nullptr;
+            auto func = analyzer.GetWideFunction(skel, *key);
+            func->AddReturnExpression(ret_expr.get());
             std::shared_ptr<std::shared_ptr<Expression>> build = std::make_shared<std::shared_ptr<Expression>>();
-            key->ReturnTypeChanged.connect([=, &analyzer](Type* t) {
+            func->ReturnTypeChanged.connect([=, &analyzer](Type* t) {
                 if (t != analyzer.GetVoidType() && t) {
                     *build = Type::BuildInplaceConstruction(
                         CreatePrimGlobal(analyzer.GetLvalueType(t), [](CodegenContext& con) { return con->GetInsertBlock()->getParent()->arg_begin(); }),
@@ -362,8 +365,8 @@ void FunctionSkeleton::AddDefaultHandlers(Analyzer& a) {
                     );
                 }
             });
-            return CreatePrimGlobal(analyzer.GetVoidType(), [=, &analyzer](CodegenContext& con) {
-                if (con.func->GetSignature()->GetReturnType() == analyzer.GetVoidType()) {
+            return CreatePrimGlobal(analyzer, [=, &analyzer](CodegenContext& con) {
+                if (func->GetSignature()->GetReturnType() == analyzer.GetVoidType()) {
                     // If we have a void-returning expression, evaluate it, destroy it, then return.
                     if (ret_expr) {
                         ret_expr->GetValue(con);
@@ -374,9 +377,9 @@ void FunctionSkeleton::AddDefaultHandlers(Analyzer& a) {
                 }
 
                 // If we return a simple type
-                if (!con.func->GetSignature()->GetReturnType()->AlwaysKeepInMemory(con)) {
+                if (!func->GetSignature()->GetReturnType()->AlwaysKeepInMemory(con)) {
                     // and we already have an expression of that type
-                    if (ret_expr->GetType(con.func) == con.func->GetSignature()->GetReturnType()) {
+                    if (ret_expr->GetType(con.func) == func->GetSignature()->GetReturnType()) {
                         // then great, just return it directly.
                         auto val = ret_expr->GetValue(con);
                         con.DestroyAll(false);
@@ -384,7 +387,7 @@ void FunctionSkeleton::AddDefaultHandlers(Analyzer& a) {
                         return;
                     }
                     // If we have a reference to it, just load it right away.
-                    if (ret_expr->GetType(con.func)->IsReference(con.func->GetSignature()->GetReturnType())) {
+                    if (ret_expr->GetType(con.func)->IsReference(func->GetSignature()->GetReturnType())) {
                         auto val = con->CreateLoad(ret_expr->GetValue(con));
                         con.DestroyAll(false);
                         con->CreateRet(val);
@@ -392,7 +395,7 @@ void FunctionSkeleton::AddDefaultHandlers(Analyzer& a) {
                     }
                     // Build will inplace construct this in our first argument, which is INCREDIBLY UNHELPFUL here.
                     // We would fix this up, but, cannot query the complexity of a type prior to code generation.
-                    auto val = con.func->GetSignature()->GetReturnType()->BuildValueConstruction({ ret_expr }, { self, ret->RetExpr->location })->GetValue(con);
+                    auto val = func->GetSignature()->GetReturnType()->BuildValueConstruction({ ret_expr }, { self, ret->RetExpr->location })->GetValue(con);
                     con.DestroyAll(false);
                     con->CreateRet(val);
                     return;
@@ -409,18 +412,19 @@ void FunctionSkeleton::AddDefaultHandlers(Analyzer& a) {
         });
     });
 
-    AddHandler<Parse::CompoundStatement>(a.StatementHandlers, [](const Parse::CompoundStatement* comp, Analyzer& analyzer, Type* self, Scope* current, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> nonstatic) {
+    AddHandler<const Parse::CompoundStatement>(a.StatementHandlers, [](const Parse::CompoundStatement* comp, FunctionSkeleton* skel, Analyzer& analyzer, Type* self, Scope* current, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> nonstatic) {
         auto compound = new Scope(current);
         for (auto&& stmt : comp->stmts)
-            compound->active.push_back(AnalyzeStatement(analyzer, stmt.get(), self, compound, nonstatic));
+            compound->active.push_back(AnalyzeStatement(analyzer, skel, stmt.get(), self, compound, nonstatic));
         return CreatePrimGlobal(analyzer.GetVoidType(), [=](CodegenContext& con) {
             for (auto&& stmt : compound->active)
                 if (!con.IsTerminated(con->GetInsertBlock()))
                     stmt->GenerateCode(con);
+            return nullptr;
         });
     });
 
-    AddHandler<Parse::Variable>(a.StatementHandlers, [](const Parse::Variable* var, Analyzer& analyzer, Type* self, Scope* current, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> nonstatic) {        
+    AddHandler<const Parse::Variable>(a.StatementHandlers, [](const Parse::Variable* var, FunctionSkeleton* skel, Analyzer& analyzer, Type* self, Scope* current, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> nonstatic) {
         auto init_expr = analyzer.AnalyzeExpression(self, var->initializer.get(), nonstatic);
         auto var_type_expr = var->type ? analyzer.AnalyzeExpression(self, var->type.get(), nonstatic) : nullptr;
         if (var->name.size() == 1) {
@@ -439,7 +443,7 @@ void FunctionSkeleton::AddDefaultHandlers(Analyzer& a) {
                     return init_expr;
                 auto temp = CreateTemporary(var_type, { self, name.where });
                 auto construct = Type::BuildInplaceConstruction(temp, { init_expr }, { self, name.where });
-                auto des = var_type->BuildDestructorCall(temp, { self, name.where }, true);
+                auto des = var_type->BuildDestructorCall(key, temp, { self, name.where }, true);
                 return CreatePrimGlobal(var_type, [=](CodegenContext& con) {
                     construct->GetValue(con);
                     con.AddDestructor(des);
@@ -471,7 +475,7 @@ void FunctionSkeleton::AddDefaultHandlers(Analyzer& a) {
                 }
                 auto temp = CreateTemporary(var_type, { self, name.where });
                 auto construct = Type::BuildInplaceConstruction(temp, { init_expr }, { self, name.where });
-                auto des = var_type->BuildDestructorCall(temp, { self, name.where }, true);
+                auto des = var_type->BuildDestructorCall(key, temp, { self, name.where }, true);
                 return CreatePrimGlobal(var_type, [=](CodegenContext& con) {
                     construct->GetValue(con);
                     con.AddDestructor(des);
@@ -484,18 +488,17 @@ void FunctionSkeleton::AddDefaultHandlers(Analyzer& a) {
         return CreateResultExpression([=, &analyzer](Expression::InstanceKey key) {
             for (auto&& var : exprs)
                 var->GetType(key);
-            return CreatePrimGlobal(analyzer.GetVoidType(), [=](CodegenContext& con) {
+            return CreatePrimGlobal(analyzer, [=](CodegenContext& con) {
                 for (auto&& var : exprs)
                     var->GetValue(con);
             });
         });
     });
 
-    AddHandler<Parse::While>(a.StatementHandlers, [](const Parse::While* whil, Analyzer& analyzer, Type* self, Scope* current, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> nonstatic) {
+    AddHandler<const Parse::While>(a.StatementHandlers, [](const Parse::While* whil, FunctionSkeleton* skel, Analyzer& analyzer, Type* self, Scope* current, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> nonstatic) -> std::shared_ptr<Statement> {
         struct WhileStatement : Statement, ControlFlowStatement {
             Type* self;
             Lexer::Range where;
-            std::shared_ptr<Expression> cond;
             std::shared_ptr<Statement> body;
             std::shared_ptr<Expression> boolconvert;
             llvm::BasicBlock* continue_bb = nullptr;
@@ -504,9 +507,9 @@ void FunctionSkeleton::AddDefaultHandlers(Analyzer& a) {
             CodegenContext* condition_con = nullptr;
 
             WhileStatement(std::shared_ptr<Expression> ex, Lexer::Range where, Type* s)
-                : cond(std::move(ex)), where(where), self(s)
+                : where(where), self(s)
             {
-                boolconvert = Type::BuildBooleanConversion(cond, { self, where });
+                boolconvert = Type::BuildBooleanConversion(std::move(ex), { self, where });
             }
             void GenerateCode(CodegenContext& con) override final {
                 source_con = &con;
@@ -547,52 +550,56 @@ void FunctionSkeleton::AddDefaultHandlers(Analyzer& a) {
                 condition_con->DestroyDifference(con, false);
                 con->CreateBr(continue_bb);
             }
+            void Instantiate(Function* f) override final {
+                body->Instantiate(f);
+                boolconvert->GetType(f->GetSignature()->GetArguments());
+            }
         };
         auto condscope = new Scope(current);
         auto get_expr = [&, self]() -> std::shared_ptr<Expression> {
             if (whil->var_condition) {
                 if (whil->var_condition->name.size() != 1)
                     throw std::runtime_error("fuck");
-                condscope->active.push_back(AnalyzeStatement(analyzer, whil->var_condition.get(), self, condscope, nonstatic));
+                condscope->active.push_back(AnalyzeStatement(analyzer, skel, whil->var_condition.get(), self, condscope, nonstatic));
                 return condscope->named_variables.begin()->second.first;
             }
             return analyzer.AnalyzeExpression(self, whil->condition.get(), nonstatic);
         };
         auto cond = get_expr();
-        auto while_stmt = Wide::Memory::MakeUnique<WhileStatement>(cond, whil->location, self);
+        auto while_stmt = std::make_shared<WhileStatement>(cond, whil->location, self);
         condscope->active.push_back(std::move(cond));
         condscope->control_flow = while_stmt.get();
         auto bodyscope = new Scope(condscope);
-        bodyscope->active.push_back(AnalyzeStatement(analyzer, whil->body.get(), self, bodyscope, nonstatic));
+        bodyscope->active.push_back(AnalyzeStatement(analyzer, skel, whil->body.get(), self, bodyscope, nonstatic));
         while_stmt->body = bodyscope->active.back();
         return while_stmt;
     });
 
-    AddHandler<Parse::Continue>(a.StatementHandlers, [](const Parse::Continue* continue_stmt, Analyzer& analyzer, Type* self, Scope* current, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> nonstatic) {
+    AddHandler<const Parse::Continue>(a.StatementHandlers, [](const Parse::Continue* continue_stmt, FunctionSkeleton* skel, Analyzer& analyzer, Type* self, Scope* current, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> nonstatic) {
         auto flow = current->GetCurrentControlFlow();
         if (!flow)
             throw NoControlFlowStatement(continue_stmt->location);
-        return CreatePrimGlobal(analyzer.GetVoidType(), [=](CodegenContext& con) {
+        return CreatePrimGlobal(analyzer, [=](CodegenContext& con) {
             flow->JumpForContinue(con);
         });
     });
 
-    AddHandler<Parse::Break>(a.StatementHandlers, [](const Parse::Break* break_stmt, Analyzer& analyzer, Type* self, Scope* current, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> nonstatic) {
+    AddHandler<const Parse::Break>(a.StatementHandlers, [](const Parse::Break* break_stmt, FunctionSkeleton* skel, Analyzer& analyzer, Type* self, Scope* current, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> nonstatic) {
         auto flow = current->GetCurrentControlFlow();
         if (!flow)
             throw NoControlFlowStatement(break_stmt->location);
-        return CreatePrimGlobal(analyzer.GetVoidType(), [=](CodegenContext& con) {
+        return CreatePrimGlobal(analyzer, [=](CodegenContext& con) {
             flow->JumpForBreak(con);
         });
     });
 
-    AddHandler<Parse::If>(a.StatementHandlers, [](const Parse::If* if_stmt, Analyzer& analyzer, Type* self, Scope* current, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> nonstatic) {
+    AddHandler<const Parse::If>(a.StatementHandlers, [](const Parse::If* if_stmt, FunctionSkeleton* skel, Analyzer& analyzer, Type* self, Scope* current, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> nonstatic) {
         auto condscope = new Scope(current);
         auto get_expr = [&, self]() -> std::shared_ptr<Expression> {
             if (if_stmt->var_condition) {
                 if (if_stmt->var_condition->name.size() != 1)
                     throw std::runtime_error("fuck");
-                condscope->active.push_back(AnalyzeStatement(analyzer, if_stmt->var_condition.get(), self, condscope, nonstatic));
+                condscope->active.push_back(AnalyzeStatement(analyzer, skel, if_stmt->var_condition.get(), self, condscope, nonstatic));
                 return condscope->named_variables.begin()->second.first;
             }
             return analyzer.AnalyzeExpression(self, if_stmt->condition.get(), nonstatic);
@@ -602,16 +609,16 @@ void FunctionSkeleton::AddDefaultHandlers(Analyzer& a) {
         Statement* true_br = nullptr;
         {
             auto truescope = new Scope(condscope);
-            truescope->active.push_back(AnalyzeStatement(analyzer, if_stmt->true_statement.get(), self, truescope, nonstatic));
+            truescope->active.push_back(AnalyzeStatement(analyzer, skel, if_stmt->true_statement.get(), self, truescope, nonstatic));
             true_br = truescope->active.back().get();
         }
         Statement* false_br = nullptr;
         if (if_stmt->false_statement) {
             auto falsescope = new Scope(condscope);
-            falsescope->active.push_back(AnalyzeStatement(analyzer, if_stmt->false_statement.get(), self, falsescope, nonstatic));
+            falsescope->active.push_back(AnalyzeStatement(analyzer, skel, if_stmt->false_statement.get(), self, falsescope, nonstatic));
             false_br = falsescope->active.back().get();
         }
-        return CreatePrimGlobal(analyzer.GetVoidType(), [=](CodegenContext& con) {
+        return CreatePrimGlobal(analyzer, [=](CodegenContext& con) {
             auto true_bb = llvm::BasicBlock::Create(con, "true_bb", con->GetInsertBlock()->getParent());
             auto continue_bb = llvm::BasicBlock::Create(con, "continue_bb", con->GetInsertBlock()->getParent());
             auto else_bb = false_br ? llvm::BasicBlock::Create(con->getContext(), "false_bb", con->GetInsertBlock()->getParent()) : continue_bb;
@@ -639,17 +646,17 @@ void FunctionSkeleton::AddDefaultHandlers(Analyzer& a) {
         });
     });
 
-    AddHandler<Parse::Throw>(a.StatementHandlers, [](const Parse::Throw* thro, Analyzer& analyzer, Type* self, Scope* current, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> nonstatic) {
-        if (!thro->expr) return CreatePrimGlobal(analyzer.GetVoidType(), [=](CodegenContext& con) {
+    AddHandler<const Parse::Throw>(a.StatementHandlers, [](const Parse::Throw* thro, FunctionSkeleton* skel, Analyzer& analyzer, Type* self, Scope* current, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> nonstatic) {
+        if (!thro->expr) return CreatePrimGlobal(analyzer, [=](CodegenContext& con) {
             if (con.HasDestructors() || con.EHHandler)
                 con->CreateInvoke(con.GetCXARethrow(), con.GetUnreachableBlock(), con.CreateLandingpadForEH());
             else
                 con->CreateCall(con.GetCXARethrow());
         });
-        return CreatePrimGlobal(analyzer.GetVoidType(), Semantic::ThrowObject(analyzer.AnalyzeExpression(self, thro->expr.get(), nonstatic), { self, thro->location }));
+        return CreatePrimGlobal(analyzer, Semantic::ThrowObject(analyzer.AnalyzeExpression(self, thro->expr.get(), nonstatic), { self, thro->location }));
     });
 
-    AddHandler<Parse::TryCatch>(a.StatementHandlers, [](const Parse::TryCatch* try_, Analyzer& analyzer, Type* self, Scope* current, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> nonstatic) {
+    AddHandler<const Parse::TryCatch>(a.StatementHandlers, [](const Parse::TryCatch* try_, FunctionSkeleton* skel, Analyzer& analyzer, Type* self, Scope* current, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> nonstatic) {
         struct Catch {
             std::vector<std::shared_ptr<Statement>> stmts;
             std::shared_ptr<llvm::Value*> val;
@@ -660,7 +667,7 @@ void FunctionSkeleton::AddDefaultHandlers(Analyzer& a) {
         {
             auto tryscope = new Scope(current);
             for (auto&& stmt : try_->statements->stmts)
-                try_stmts.push_back(AnalyzeStatement(analyzer, stmt.get(), self, tryscope, nonstatic));
+                try_stmts.push_back(AnalyzeStatement(analyzer, skel, stmt.get(), self, tryscope, nonstatic));
         }
         std::vector<Catch> catches;
         for (auto&& catch_ : try_->catches) {
@@ -668,7 +675,7 @@ void FunctionSkeleton::AddDefaultHandlers(Analyzer& a) {
             if (catch_.all) {
                 std::vector<std::shared_ptr<Statement>> stmts;
                 for (auto&& stmt : catch_.statements)
-                    stmts.push_back(AnalyzeStatement(analyzer, stmt.get(), self, catchscope, nonstatic));
+                    stmts.push_back(AnalyzeStatement(analyzer, skel, stmt.get(), self, catchscope, nonstatic));
                 catches.push_back(Catch{ std::move(stmts) });
                 break;
             }
@@ -690,7 +697,7 @@ void FunctionSkeleton::AddDefaultHandlers(Analyzer& a) {
             catchscope->named_variables.insert(std::make_pair(catch_.name, std::make_pair(catch_param, catch_.type->location)));
             std::vector<std::shared_ptr<Statement>> stmts;
             for (auto&& stmt : catch_.statements)
-                stmts.push_back(AnalyzeStatement(analyzer, stmt.get(), self, catchscope, nonstatic));
+                stmts.push_back(AnalyzeStatement(analyzer, skel, stmt.get(), self, catchscope, nonstatic));
             catches.push_back(Catch{ std::move(stmts), param, type });
         }
         return CreateResultExpression([=, &analyzer](Expression::InstanceKey key) {
@@ -706,7 +713,7 @@ void FunctionSkeleton::AddDefaultHandlers(Analyzer& a) {
                     : dynamic_cast<PointerType*>(catch_type)->GetPointee();
                 catch_.RTTI = target_type->GetRTTI();
             }
-            return CreatePrimGlobal(analyzer.GetVoidType(), [=](CodegenContext& con) {
+            return CreatePrimGlobal(analyzer, [=](CodegenContext& con) {
                 auto source_block = con->GetInsertBlock();
 
                 auto try_con = con;
@@ -788,3 +795,4 @@ void FunctionSkeleton::AddDefaultHandlers(Analyzer& a) {
         });
     });
 }
+FunctionSkeleton::~FunctionSkeleton() {}

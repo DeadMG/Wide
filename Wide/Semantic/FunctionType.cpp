@@ -88,7 +88,7 @@ std::shared_ptr<Expression> WideFunctionType::ConstructCall(Expression::Instance
     auto result_type = dynamic_cast<FunctionType*>(val->GetType(key)->Decay())->GetReturnType();
     auto Ret = CreateTemporary(result_type, c);
     auto Destructor = !result_type->IsTriviallyDestructible()
-        ? result_type->BuildDestructorCall(Ret, c, true)
+        ? result_type->BuildDestructorCall(key, Ret, c, true)
         : std::function<void(CodegenContext&)>();
     
     return CreatePrimGlobal(result_type, [=](CodegenContext& con) {
@@ -254,7 +254,7 @@ std::shared_ptr<Expression> ClangFunctionType::ConstructCall(Expression::Instanc
     auto Ret = CreateTemporary(RetType, c);
     std::function<void(CodegenContext&)> Destructor;
     if (!RetType->IsTriviallyDestructible())
-        Destructor = RetType->BuildDestructorCall(Ret, c, true);
+        Destructor = RetType->BuildDestructorCall(key, Ret, c, true);
     else
         Destructor = {};
     return CreatePrimGlobal(RetType, [=](CodegenContext& con) -> llvm::Value* {

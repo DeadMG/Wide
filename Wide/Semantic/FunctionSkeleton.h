@@ -60,6 +60,7 @@ namespace Wide {
             const Parse::FunctionBase* fun;
             std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup;
         public:
+            std::shared_ptr<Expression> GetParameter(unsigned num) { return parameters[num]; }
             static void AddDefaultHandlers(Analyzer& a);
             FunctionSkeleton(const Parse::FunctionBase* astfun, Analyzer& a, Type* container, std::string name, Type* nonstatic_context, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup);
 
@@ -69,10 +70,9 @@ namespace Wide {
             std::string GetSourceName() { return source_name; }
             ~FunctionSkeleton(); 
 
-            Type* GetContext();
-            const Parse::FunctionBase* GetASTFunction();
+            Type* GetContext() { return context; }
+            const Parse::FunctionBase* GetASTFunction() { return fun; }
             std::vector<Statement*> ComputeBody();
-            std::unordered_set<Return*> GetReturns();
             Type* GetExplicitReturn(Expression::InstanceKey key);
         };
     }

@@ -27,7 +27,7 @@ std::shared_ptr<Expression> TupleType::ConstructFromLiteral(std::vector<std::sha
         initializers.push_back(Type::BuildInplaceConstruction(PrimitiveAccessMember(self, i), { std::move(exprs[i]) }, c));
     }
 
-    auto destructor = BuildDestructorCall(self, c, true);
+    auto destructor = BuildDestructorCall(Expression::NoInstance(), self, c, true);
     return CreatePrimGlobal(this, [=](CodegenContext& con) -> llvm::Value* {
         for (auto&& init : initializers)
             init->GetValue(con);

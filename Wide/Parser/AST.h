@@ -200,8 +200,9 @@ namespace Wide {
 // Boost 1.55 and move-only types on VS don't play along.
 #ifdef _MSC_VER
 #if _MSC_VER >= 1600
-#if BOOST_VERSION == 105500
+#if BOOST_VERSION >= 105500
 namespace boost {
+    template<> struct is_nothrow_move_constructible<std::pair<Wide::Parse::Access, std::unique_ptr<Wide::Parse::Using>>> : public boost::true_type{};
     template<> struct is_nothrow_move_constructible<std::pair<Wide::Parse::Access, std::unique_ptr<Wide::Parse::UniqueAccessContainer>>> : public boost::true_type{};
     template<> struct is_nothrow_move_constructible<std::pair<Wide::Parse::Access, std::shared_ptr<Wide::Parse::SharedObjectTag>>> : public boost::true_type{};
     template<> struct is_nothrow_move_constructible<std::unique_ptr<Wide::Parse::MultipleAccessContainer>> : public boost::true_type{};
@@ -303,10 +304,9 @@ namespace Wide {
 }
 #ifdef _MSC_VER
 #if _MSC_VER >= 1600
-#if BOOST_VERSION == 105500
+#if BOOST_VERSION >= 105500
 namespace boost {
     template<> struct is_nothrow_move_constructible<Wide::Parse::OverloadSet<std::unique_ptr<Wide::Parse::Function>>> : public boost::true_type{};
-    template<> struct is_nothrow_move_constructible<std::pair<Wide::Parse::Access, std::unique_ptr<Wide::Parse::Using>>> : public boost::true_type{};
 }
 #endif
 #endif

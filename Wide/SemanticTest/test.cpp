@@ -137,7 +137,7 @@ void Wide::Driver::Jit(Wide::Options::Clang& copts, std::string file) {
         auto m = Wide::Semantic::Type::AccessMember(a.GetGlobalModule()->BuildValueConstruction({}, { a.GetGlobalModule(), loc }), std::string("Main"), { a.GetGlobalModule(), loc });
         if (!m)
             throw std::runtime_error("No Main() found for test!");
-        auto func = dynamic_cast<Wide::Semantic::OverloadSet*>(m->GetType()->Decay());
+        auto func = dynamic_cast<Wide::Semantic::OverloadSet*>(m->GetType(Wide::Semantic::Expression::NoInstance())->Decay());
         if (!func)
             throw std::runtime_error("Main was not an overload set.");
         auto f = dynamic_cast<Wide::Semantic::Function*>(func->Resolve({}, a.GetGlobalModule()));
@@ -245,7 +245,7 @@ void Wide::Driver::Compile(Wide::Options::Clang& copts, std::string file) {
         auto failure = Wide::Semantic::Type::AccessMember(global, std::string("ExpectedFailure"), { a.GetGlobalModule(), loc });
         if (!failure)
             throw std::runtime_error("Did not find a function indicating what failure was to be expected.");
-        auto failureos = dynamic_cast<Wide::Semantic::OverloadSet*>(failure->GetType()->Decay());
+        auto failureos = dynamic_cast<Wide::Semantic::OverloadSet*>(failure->GetType(Wide::Semantic::Expression::NoInstance())->Decay());
         if (!failureos)
             throw std::runtime_error("ExpectedFailure was not an overload set!");
         auto failfunc = dynamic_cast<Wide::Semantic::Function*>(failureos->Resolve({}, a.GetGlobalModule()));
@@ -297,7 +297,7 @@ void Wide::Driver::Compile(Wide::Options::Clang& copts, std::string file) {
         auto m = Wide::Semantic::Type::AccessMember(global, std::string("Main"), { a.GetGlobalModule(), loc });
         if (!m)
             throw std::runtime_error("No Main() found for test!");
-        auto func = dynamic_cast<Wide::Semantic::OverloadSet*>(m->GetType()->Decay());
+        auto func = dynamic_cast<Wide::Semantic::OverloadSet*>(m->GetType(Wide::Semantic::Expression::NoInstance())->Decay());
         if (!func)
             throw std::runtime_error("Main was not an overload set.");
         auto f = dynamic_cast<Wide::Semantic::Function*>(func->Resolve({}, a.GetGlobalModule()));

@@ -243,7 +243,7 @@ std::shared_ptr<Expression> Type::ConstructCall(Expression::InstanceKey key, std
     if (!call) set->IssueResolutionError(types, c);
     return call->Call(key, std::move(args), c);
 }
-std::function<void(CodegenContext&)> Type::BuildDestruction(std::shared_ptr<Expression> self, Context c, bool devirtualize) {
+std::function<void(CodegenContext&)> Type::BuildDestruction(Expression::InstanceKey, std::shared_ptr<Expression> self, Context c, bool devirtualize) {
     return [](CodegenContext&) {};
 }
 std::shared_ptr<Expression> Type::AccessVirtualPointer(Expression::InstanceKey key, std::shared_ptr<Expression> self) {
@@ -265,8 +265,8 @@ std::shared_ptr<Expression> Type::BuildBooleanConversion(std::shared_ptr<Express
     });
 }
 
-std::function<void(CodegenContext&)> Type::BuildDestructorCall(std::shared_ptr<Expression> self, Context c, bool devirtualize) {
-    return BuildDestruction(self, c, devirtualize);
+std::function<void(CodegenContext&)> Type::BuildDestructorCall(Expression::InstanceKey key, std::shared_ptr<Expression> self, Context c, bool devirtualize) {
+    return BuildDestruction(key, self, c, devirtualize);
 }
 
 OverloadSet* Type::GetConstructorOverloadSet(Parse::Access access) {
@@ -315,7 +315,7 @@ struct ValueConstruction : Expression {
         if (args.size() == 1)
             single_arg = args[0];
         InplaceConstruction = Type::BuildInplaceConstruction(temporary, std::move(args), c);
-        destructor = self->BuildDestructorCall(temporary, c, true);
+        destructor = self->BuildDestructorCall(Expression::NoInstance(), temporary, c, true);
         //if (auto implicitstore = dynamic_cast<ImplicitStoreExpr*>(InplaceConstruction.get())) {
         //    if (implicitstore->mem == temporary)
         //        assert(implicitstore->val->GetType() == self);
@@ -381,7 +381,7 @@ std::shared_ptr<Expression> Type::BuildValueConstruction(std::vector<std::shared
 std::shared_ptr<Expression> Type::BuildRvalueConstruction(std::vector<std::shared_ptr<Expression>> args, Context c) {
     auto temporary = CreateTemporary(this, c);
     auto InplaceConstruction = Type::BuildInplaceConstruction(temporary, std::move(args), c);
-    auto destructor = BuildDestructorCall(temporary, c, true);
+    auto destructor = BuildDestructorCall(Expression::NoInstance(), temporary, c, true);
     return CreatePrimGlobal(analyzer.GetRvalueType(this), [=](CodegenContext& con) {
         InplaceConstruction->GetValue(con);
         if (!IsTriviallyDestructible())
@@ -875,7 +875,7 @@ llvm::Function* Type::CreateDestructorFunction(llvm::Module* module) {
         auto obj = CreatePrimGlobal(analyzer.GetLvalueType(this), [=](CodegenContext& con) {
             return con->CreateBitCast(DestructorFunction->arg_begin(), analyzer.GetLvalueType(this)->GetLLVMType(con));
         });
-        BuildDestructorCall(obj, { this, Lexer::Range(nullptr) }, true)(c);
+        BuildDestructorCall(Expression::NoInstance(), obj, { this, Lexer::Range(nullptr) }, true)(c);
         c->CreateRetVoid();
     });
     return DestructorFunction;

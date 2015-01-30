@@ -280,7 +280,7 @@ OverloadSet* ClangType::CreateConstructorOverloadSet(Parse::Access access) {
     return analyzer.GetOverloadSet(analyzer.GetOverloadSet(decls, from, analyzer.GetLvalueType(this)), tupcon);
 }
 
-std::function<void(CodegenContext&)> ClangType::BuildDestruction(std::shared_ptr<Expression> self, Context c, bool devirtualize) {
+std::function<void(CodegenContext&)> ClangType::BuildDestruction(Expression::InstanceKey key, std::shared_ptr<Expression> self, Context c, bool devirtualize) {
     if (!ProcessedDestructors) {
         auto recdecl = type->getAsCXXRecordDecl();
         ProcessImplicitSpecialMember(
@@ -293,7 +293,7 @@ std::function<void(CodegenContext&)> ClangType::BuildDestruction(std::shared_ptr
     }
     auto des = from->GetSema().LookupDestructor(type->getAsCXXRecordDecl());
     if (des->isTrivial())
-        return Type::BuildDestruction(self, c, devirtualize);
+        return Type::BuildDestruction(key, self, c, devirtualize);
     if (des->isVirtual() && !devirtualize) {
         std::unordered_set<clang::NamedDecl*> decls;
         decls.insert(des);

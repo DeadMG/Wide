@@ -21,6 +21,7 @@ namespace Wide {
             Analyzer& analyzer;
             Wide::Util::optional<std::string> import_name;
             std::vector<std::tuple<std::function<llvm::Function*(llvm::Module*)>, ClangFunctionType*, clang::FunctionDecl*>> clang_exports;
+            std::unordered_set<Expression*> return_expressions;
 
             void ComputeReturnType();
         public:
@@ -39,6 +40,9 @@ namespace Wide {
 
             boost::signals2::signal<void(Type*)> ReturnTypeChanged;
             void AddReturnExpression(Expression*);
+
+            std::shared_ptr<Expression> GetThis();
+            std::shared_ptr<Expression> GetStaticSelf();
 
             virtual ~Function() {}
         };

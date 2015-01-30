@@ -61,17 +61,16 @@ void Function::ComputeBody() {
         stmt->Instantiate(this);
     }
     if (ReturnType) return;
-    auto returns = skeleton->GetReturns();
-    if (!skeleton->GetExplicitReturn(this)) {
-        if (returns.size() == 0) {
+    if (!skeleton->GetExplicitReturn(Args)) {
+        if (return_expressions.size() == 0) {
             ReturnType = analyzer.GetVoidType();
             return;
         }
 
         std::unordered_set<Type*> ret_types;
-        for (auto ret : returns) {
-            if (!ret->GetReturnType(this)) continue;
-            ret_types.insert(ret->GetReturnType(this)->Decay());
+        for (auto ret : return_expressions) {
+            if (!ret->GetType(Args)) continue;
+            ret_types.insert(ret->GetType(Args)->Decay());
         }
 
         if (ret_types.size() == 1) {
@@ -102,7 +101,7 @@ void Function::ComputeBody() {
         }
         throw std::runtime_error("Fuck");
     } else {
-        ReturnType = skeleton->GetExplicitReturn(this);
+        ReturnType = skeleton->GetExplicitReturn(Args);
     }
     for (auto pair : clang_exports) {
         if (!FunctionType::CanThunkFromFirstToSecond(std::get<1>(pair), GetSignature(), skeleton->GetContext(), false))
@@ -193,7 +192,7 @@ std::shared_ptr<Expression> Function::CallFunction(Expression::InstanceKey key, 
     ComputeBody();
 
     // Figure out if we need to do a dynamic dispatch.
-    return CreatePrimGlobal(GetSignature(), [=](CodegenContext& con) -> llvm::Value* {
+    auto self = CreatePrimGlobal(GetSignature(), [=](CodegenContext& con) -> llvm::Value* {
         if (!llvmfunc)
             EmitCode(con);
 
@@ -201,12 +200,31 @@ std::shared_ptr<Expression> Function::CallFunction(Expression::InstanceKey key, 
             return llvmfunc;
 
         auto func = dynamic_cast<const Parse::DynamicFunction*>(skeleton->GetASTFunction());
-        auto udt = dynamic_cast<UserDefinedType*>(args[0]->GetType(this)->Decay());
+        auto udt = dynamic_cast<UserDefinedType*>(args[0]->GetType(Args)->Decay());
         if (!func || !udt) return llvmfunc;
         auto vindex = udt->GetVirtualFunctionIndex(func);
         if (!vindex) return llvmfunc;
         auto obj = Type::GetVirtualPointer(args[0]);
         auto vptr = con->CreateLoad(obj->GetValue(con));
         return con->CreatePointerCast(con->CreateLoad(con->CreateConstGEP1_32(vptr, *vindex)), GetSignature()->GetLLVMType(con));
+    });
+    return Type::BuildCall(self, args, c);
+}
+void Function::AddExportName(std::function<void(llvm::Module*)> func) {
+    trampoline.push_back(func);
+}
+void Function::AddReturnExpression(Expression* expr) {
+    return_expressions.insert(expr);
+}
+std::shared_ptr<Expression> Function::GetThis() {
+    assert(skeleton->GetNonstaticMemberContext());
+    return skeleton->GetParameter(0);
+}
+std::shared_ptr<Expression> Function::GetStaticSelf() {
+    return CreatePrimGlobal(GetSignature(), [=](CodegenContext& con) -> llvm::Value* {
+        if (!llvmfunc)
+            EmitCode(con);
+        
+        return llvmfunc;
     });
 }

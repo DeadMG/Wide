@@ -126,6 +126,7 @@ namespace Wide {
             std::unordered_map<const clang::FunctionProtoType*, std::unordered_map<clang::QualType, std::unordered_map<ClangTU*, std::unique_ptr<ClangFunctionType>>, ClangTypeHasher>> ClangMemberFunctionTypes;
             std::unordered_map<const clang::FunctionProtoType*, std::unordered_map<ClangTU*, std::unique_ptr<ClangFunctionType>>> ClangFunctionTypes;
             std::unordered_map<const clang::CXXRecordDecl*, ClangTypeInfo> GeneratedClangTypes;
+            std::unordered_map<const Parse::FunctionBase*, std::unordered_map<Type*, std::unique_ptr<FunctionSkeleton>>> FunctionSkeletons;
 
             const Options::Clang* clangopts;
 
@@ -192,7 +193,7 @@ namespace Wide {
             FloatType* GetFloatType(unsigned);
             Module* GetGlobalModule();
             TupleType* GetTupleType(std::vector<Type*> types);
-            OverloadResolvable* GetCallableForFunction(const Parse::FunctionBase* f, Type* context, std::string name, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup);
+            OverloadResolvable* GetCallableForFunction(const Parse::FunctionBase* f, Type* context, std::string name, Type* nonstatic_context, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup);
             OverloadResolvable* GetCallableForTemplateType(const Parse::TemplateType* t, Type* context);
             TemplateType* GetTemplateType(const Parse::TemplateType* t, Type* context, std::vector<Type*> arguments, std::string name);
             LambdaType* GetLambdaType(const Parse::Lambda* funcbase, std::vector<std::pair<Parse::Name, Type*>> types, Type* context);
@@ -218,7 +219,7 @@ namespace Wide {
             MultiObjectHandlers;
             std::unordered_map<
                 std::type_index,
-                std::function<std::shared_ptr<Statement>(const Parse::Statement*, Analyzer& a, Type* parent, Scope* current, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup) >>
+                std::function<std::shared_ptr<Statement>(const Parse::Statement*, FunctionSkeleton* skel, Analyzer& a, Type* parent, Scope* current, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup) >>
             StatementHandlers;
             std::unordered_map<
                 std::type_index,
@@ -252,7 +253,7 @@ namespace Wide {
                 return f(static_cast<T*>(farg), std::forward<Args>(args)...);
             };
         }
-        std::shared_ptr<Statement> AnalyzeStatement(Analyzer& a, const Parse::Statement* stmt, Type* parent, Scope* current, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)>);
+        std::shared_ptr<Statement> AnalyzeStatement(Analyzer& a, FunctionSkeleton* skel, const Parse::Statement* stmt, Type* parent, Scope* current, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)>);
         bool IsRvalueType(Type* t);
         bool IsLvalueType(Type* t);
         Parse::Access GetAccessSpecifier(Type* from, Type* to);

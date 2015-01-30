@@ -544,19 +544,20 @@ Type* Analyzer::GetNonstaticContext(const Parse::FunctionBase* p, Type* context)
     }
     return nullptr;
 }
-OverloadResolvable* Analyzer::GetCallableForFunction(const Parse::FunctionBase* f, Type* context, std::string name, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup) {
+OverloadResolvable* Analyzer::GetCallableForFunction(const Parse::FunctionBase* f, Type* context, std::string name, Type* nonstatic_context, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup) {
     if (FunctionCallables.find(f) != FunctionCallables.end())
         return FunctionCallables.at(f).get();
 
     struct FunctionCallable : public OverloadResolvable {
-        FunctionCallable(const Parse::FunctionBase* f, Type* con, std::string str, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup)
-            : func(f), context(con), name(str), nonstatic(NonstaticLookup)
+        FunctionCallable(const Parse::FunctionBase* f, Type* con, std::string str, Type* n_con, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup)
+            : func(f), context(con), name(str), nonstatic(NonstaticLookup), nonstatic_context(n_con)
         {}
 
         const Parse::FunctionBase* func;
         Type* context;
         std::string name;
         std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> nonstatic;
+        Type* nonstatic_context;
 
         Util::optional<std::vector<Type*>> MatchParameter(std::vector<Type*> types, Analyzer& a, Type* source) override final {
             // If we are a member and we have an explicit this then treat the first normally.
@@ -598,7 +599,7 @@ OverloadResolvable* Analyzer::GetCallableForFunction(const Parse::FunctionBase* 
             return a.GetWideFunction(a.GetWideFunction(func, context, name, context->IsNonstaticMemberContext() ? context : nullptr, nonstatic), std::move(types));
         }
     };
-    FunctionCallables[f] = Wide::Memory::MakeUnique<FunctionCallable>(f, context->Decay(), name, NonstaticLookup);
+    FunctionCallables[f] = Wide::Memory::MakeUnique<FunctionCallable>(f, context->Decay(), name, nonstatic_context, NonstaticLookup);
     return FunctionCallables.at(f).get();
 }
 
@@ -914,6 +915,13 @@ std::string Analyzer::GetTypeExports() {
         exports += pair.second;
     return exports;
 }
+FunctionSkeleton* Analyzer::GetWideFunction(const Parse::FunctionBase* p, Type* context, std::string name, Type* nonstatic_context, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup) {
+    if (FunctionSkeletons.find(p) == FunctionSkeletons.end()
+     || FunctionSkeletons[p].find(context) == FunctionSkeletons[p].end())
+        FunctionSkeletons[p][context] = Wide::Memory::MakeUnique<FunctionSkeleton>(p, *this, context, name, nonstatic_context, NonstaticLookup);
+    return FunctionSkeletons[p][context].get();
+}
+
 llvm::APInt Analyzer::EvaluateConstantIntegerExpression(std::shared_ptr<Expression> e, Expression::InstanceKey key) {
     assert(dynamic_cast<IntegralType*>(e->GetType(key)));
     assert(e->IsConstantExpression(key));
@@ -936,7 +944,7 @@ llvm::APInt Analyzer::EvaluateConstantIntegerExpression(std::shared_ptr<Expressi
     //evalfunc->removeFromParent();
     return result.IntVal;
 }
-std::shared_ptr<Statement> Semantic::AnalyzeStatement(Analyzer& analyzer, const Parse::Statement* s, Type* parent, Scope* current, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> nonstatic) {
+std::shared_ptr<Statement> Semantic::AnalyzeStatement(Analyzer& analyzer, FunctionSkeleton* skel, const Parse::Statement* s, Type* parent, Scope* current, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> nonstatic) {
     auto local_nonstatic = [=](Parse::Name name, Lexer::Range where) { 
         if (auto result = current->LookupLocal(Semantic::GetNameAsString(name)))
             return result;
@@ -944,7 +952,7 @@ std::shared_ptr<Statement> Semantic::AnalyzeStatement(Analyzer& analyzer, const 
     };
     if (analyzer.ExpressionHandlers.find(typeid(*s)) != analyzer.ExpressionHandlers.end())
         return analyzer.ExpressionHandlers[typeid(*s)](static_cast<const Parse::Expression*>(s), analyzer, parent, local_nonstatic);
-    return analyzer.StatementHandlers[typeid(*s)](s, analyzer, parent, current, local_nonstatic);
+    return analyzer.StatementHandlers[typeid(*s)](s, skel, analyzer, parent, current, local_nonstatic);
 }
 std::shared_ptr<Expression> Semantic::LookupFromImport(Type* context, Wide::Parse::Name name, Lexer::Range where, Parse::Import* imp) {
     auto propagate = [=]() -> std::shared_ptr<Expression> {
