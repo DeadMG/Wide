@@ -338,6 +338,10 @@ std::vector<Statement*> FunctionSkeleton::ComputeBody() {
             }
         }
     }
+    std::vector<Statement*> ret;
+    for (auto&& stmt : root_scope->active)
+        ret.push_back(stmt.get());
+    return ret;
 }
 
 std::shared_ptr<Expression> FunctionSkeleton::LookupLocal(Parse::Name name) {

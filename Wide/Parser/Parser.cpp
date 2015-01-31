@@ -14,12 +14,12 @@ void PutbackLexer::operator()(Lexer::Token arg) {
 
 Wide::Util::optional<Lexer::Token> PutbackLexer::operator()() {
     if (!putbacks.empty()) {
-        auto&& val = std::move(putbacks.back());
+        auto val = std::move(putbacks.back());
         putbacks.pop_back();
         tokens.push_back(val);
         return val;
     }
-    auto&& val = lex();
+    auto val = lex();
     if (val)
         tokens.push_back(*val);
     return std::move(val);
@@ -33,7 +33,7 @@ Lexer::Token PutbackLexer::operator()(Lexer::TokenType required) {
     return *val;
 }
 Lexer::Token PutbackLexer::operator()(std::unordered_set<Lexer::TokenType> required) {
-    auto&& val = (*this)();
+    auto val = (*this)();
     if (!val)
         throw Error(tokens.back(), Wide::Util::none, required);
     if (required.find(val->GetType()) == required.end())
@@ -858,7 +858,7 @@ Attribute Parser::ParseAttribute(Lexer::Token& tok, std::shared_ptr<Parse::Impor
 
 std::shared_ptr<Parse::Import> Parser::ParseGlobalModuleLevelDeclaration(Module* m, std::shared_ptr<Parse::Import> imp) {
     // Can only get here if ParseGlobalModuleContents found a token, so we know we have at least one.
-    auto&& t = *lex();
+    auto t = *lex();
     if (GlobalModuleTokens.find(t.GetType()) != GlobalModuleTokens.end())
         return GlobalModuleTokens[t.GetType()](*this, m, Parse::Access::Public, imp, t);
     if (GlobalModuleAttributeTokens.find(t.GetType()) != GlobalModuleAttributeTokens.end()) {
@@ -894,7 +894,7 @@ void Parser::ParseModuleContents(Module* m, Lexer::Range first, std::shared_ptr<
     }
 }
 Parse::Access Parser::ParseModuleLevelDeclaration(Module* m, Parse::Access a, std::shared_ptr<Parse::Import> imp) {
-    auto&& t = *lex();
+    auto t = *lex();
     if (ModuleTokens.find(t.GetType()) != ModuleTokens.end())
         return ModuleTokens[t.GetType()](*this, m, a, imp, t);
     if (GlobalModuleTokens.find(t.GetType()) != GlobalModuleTokens.end()) {
@@ -1196,18 +1196,20 @@ void Parser::AddUsingToModule(Module* m, std::string name, std::shared_ptr<Using
 void Parser::AddFunctionToModule(Module* m, std::string name, std::shared_ptr<Function> f, Parse::Access specifier) {
     if (m->named_decls.find(name) == m->named_decls.end())
         m->named_decls[name] = Wide::Memory::MakeUnique<ModuleOverloadSet<Function>>();
-    auto&& overset = boost::get<ModuleOverloadSet<Function>>(&m->named_decls[name]);
+    auto&& set = boost::get<std::unique_ptr<MultipleAccessContainer>>(&m->named_decls[name]);
+    auto&& overset = dynamic_cast<ModuleOverloadSet<Function>*>(set->get());
     if (!overset)
         throw std::runtime_error("Tried to insert a function into a module but already found something there that was not an overload set.");
-    (*overset).funcs[specifier].insert(f);
+    overset->funcs[specifier].insert(f);
 }
 void Parser::AddTemplateTypeToModule(Module* m, std::string name, Lexer::Range where, std::vector<FunctionArgument> args, std::unique_ptr<Type> t, Parse::Access specifier) {
     if (m->named_decls.find(name) == m->named_decls.end())
         m->named_decls[name] = Wide::Memory::MakeUnique<ModuleOverloadSet<TemplateType>>();
-    auto&& overset = boost::get<ModuleOverloadSet<TemplateType>>(&m->named_decls[name]);
+    auto&& set = boost::get<std::unique_ptr<MultipleAccessContainer>>(&m->named_decls[name]);
+    auto&& overset = dynamic_cast<ModuleOverloadSet<TemplateType>*>(set->get());
     if (!overset)
         throw std::runtime_error("Tried to insert a template type into a module but already found something there that was not a template overload set.");
-    (*overset).funcs[specifier].insert(std::make_shared<TemplateType>(where, std::move(t), std::move(args)));
+    overset->funcs[specifier].insert(std::make_shared<TemplateType>(where, std::move(t), std::move(args)));
 }
 Module* Parser::CreateModule(std::string name, Module* m, Lexer::Range where, Parse::Access access) {
     if (m->named_decls.find(name) != m->named_decls.end()) {

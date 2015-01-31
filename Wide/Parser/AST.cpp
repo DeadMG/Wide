@@ -31,7 +31,7 @@ void Module::unify(const Module& with) {
                 } else
                     throw std::runtime_error("Bad AST.");
             }
-            if (auto&& multi = boost::get<std::unique_ptr<const Parse::MultipleAccessContainer>>(&decl.second)) {
+            if (auto&& multi = boost::get<std::unique_ptr<Parse::MultipleAccessContainer>>(&decl.second)) {
                 if (named_decls.find(decl.first) == named_decls.end()) {
                     named_decls.insert(std::make_pair(decl.first, (*multi)->clone()));
                     unified_multiple.insert(std::make_pair(decl.first, (*multi).get()));

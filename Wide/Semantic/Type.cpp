@@ -154,8 +154,7 @@ bool Type::IsEmpty() {
 }
 
 Type* Type::GetVirtualPointerType() {
-    assert(false && "Called GetVirtualPointerType on a type with no virtual functions.");
-    throw "ICE";
+    return nullptr;
 }
 
 std::vector<Type*> Type::GetBases() { 
@@ -194,7 +193,10 @@ std::vector<std::pair<Type*, unsigned>> Type::GetBasesAndOffsets() {
 }
 
 std::shared_ptr<Expression> Type::GetVirtualPointer(std::shared_ptr<Expression> self) { 
-    return CreateResultExpression([=](Expression::InstanceKey key) {
+    return CreateResultExpression([=](Expression::InstanceKey key) -> std::shared_ptr<Expression> {
+        auto selfty = self->GetType(key)->Decay();
+        if (!selfty->GetVirtualPointerType())
+            return nullptr;
         return self->GetType(key)->Decay()->AccessVirtualPointer(key, self);
     });
 }
@@ -295,7 +297,7 @@ OverloadSet* Type::AccessMember(Parse::OperatorName type, Parse::Access access, 
 std::shared_ptr<Expression> Type::BuildInplaceConstruction(std::shared_ptr<Expression> self, std::vector<std::shared_ptr<Expression>> exprs, Context c) {
     exprs.insert(exprs.begin(), std::move(self));
     return CreateResultExpression([=](Expression::InstanceKey key) {
-        auto selfty = self->GetType(key);
+        auto selfty = exprs[0]->GetType(key);
         std::vector<Type*> types;
         for (auto&& arg : exprs)
             types.push_back(arg->GetType(key));
@@ -871,7 +873,7 @@ llvm::Function* Type::GetDestructorFunction(llvm::Module* module) {
 llvm::Function* Type::CreateDestructorFunction(llvm::Module* module) {
     auto fty = llvm::FunctionType::get(llvm::Type::getVoidTy(module->getContext()), { llvm::Type::getInt8PtrTy(module->getContext()) }, false);
     DestructorFunction = llvm::Function::Create(fty, llvm::GlobalValue::LinkageTypes::ExternalLinkage, analyzer.GetUniqueFunctionName(), module);
-    CodegenContext::EmitFunctionBody(DestructorFunction, [this](CodegenContext& c) {
+    CodegenContext::EmitFunctionBody(DestructorFunction, {}, [this](CodegenContext& c) {
         auto obj = CreatePrimGlobal(analyzer.GetLvalueType(this), [=](CodegenContext& con) {
             return con->CreateBitCast(DestructorFunction->arg_begin(), analyzer.GetLvalueType(this)->GetLLVMType(con));
         });

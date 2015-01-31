@@ -929,7 +929,7 @@ llvm::APInt Analyzer::EvaluateConstantIntegerExpression(std::shared_ptr<Expressi
         return integer->value;
     // BUG: Invoking MCJIT causes second MCJIT invocation to fail. This causes spurious test failures.
     auto evalfunc = llvm::Function::Create(llvm::FunctionType::get(e->GetType(key)->GetLLVMType(&ConstantModule), {}, false), llvm::GlobalValue::LinkageTypes::InternalLinkage, GetUniqueFunctionName(), &ConstantModule);
-    CodegenContext::EmitFunctionBody(evalfunc, [e](CodegenContext& con) {
+    CodegenContext::EmitFunctionBody(evalfunc, {}, [e](CodegenContext& con) {
         con->CreateRet(e->GetValue(con));
     });
     llvm::EngineBuilder b(&ConstantModule);

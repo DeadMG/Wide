@@ -150,7 +150,7 @@ llvm::Function* Function::EmitCode(llvm::Module* module) {
         return llvmfunc;
     }
     llvmfunc = llvm::Function::Create(llvm::dyn_cast<llvm::FunctionType>(llvmsig->getElementType()), llvm::GlobalValue::LinkageTypes::ExternalLinkage, llvmname, module);
-    CodegenContext::EmitFunctionBody(llvmfunc, [this](CodegenContext& c) {
+    CodegenContext::EmitFunctionBody(llvmfunc, GetArguments(), [this](CodegenContext& c) {
         for (auto&& stmt : skeleton->ComputeBody())
             if (!c.IsTerminated(c->GetInsertBlock()))
                 stmt->GenerateCode(c);

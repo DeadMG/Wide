@@ -333,7 +333,7 @@ llvm::Function* AggregateType::CreateDestructorFunction(llvm::Module* module) {
     auto functy = llvm::FunctionType::get(llvm::Type::getVoidTy(module->getContext()), { analyzer.GetLvalueType(this)->GetLLVMType(module) }, false);
     auto DestructorFunction = llvm::Function::Create(functy, llvm::GlobalValue::LinkageTypes::ExternalLinkage, DestructorName, module);
     this->DestructorFunction = DestructorFunction;
-    CodegenContext::EmitFunctionBody(DestructorFunction, [this](CodegenContext& newcon) {
+    CodegenContext::EmitFunctionBody(DestructorFunction, { analyzer.GetLvalueType(this) }, [this](CodegenContext& newcon) {
         for (auto des : destructors)
             des(newcon);
         newcon->CreateRetVoid();
@@ -656,7 +656,7 @@ void AggregateType::EmitMoveConstructor(llvm::Module* mod) {
     if (!MoveConstructorFunction && MoveConstructorInitializers) {
         auto functy = analyzer.GetFunctionType(analyzer.GetVoidType(), { analyzer.GetLvalueType(this), analyzer.GetRvalueType(this) }, false);
         MoveConstructorFunction = llvm::Function::Create(llvm::cast<llvm::FunctionType>(functy->GetLLVMType(mod)->getElementType()), llvm::GlobalValue::LinkageTypes::ExternalLinkage, MoveConstructorName, mod);
-        CodegenContext::EmitFunctionBody(MoveConstructorFunction, [this](CodegenContext& con) {
+        CodegenContext::EmitFunctionBody(MoveConstructorFunction, functy->GetArguments(), [this](CodegenContext& con) {
             EmitConstructor(con, *MoveConstructorInitializers);
         });
     }
@@ -665,7 +665,7 @@ void AggregateType::EmitCopyConstructor(llvm::Module* mod) {
     if (!CopyConstructorFunction && CopyConstructorInitializers) {
         auto functy = analyzer.GetFunctionType(analyzer.GetVoidType(), { analyzer.GetLvalueType(this), analyzer.GetLvalueType(this) }, false);
         CopyConstructorFunction = llvm::Function::Create(llvm::cast<llvm::FunctionType>(functy->GetLLVMType(mod)->getElementType()), llvm::GlobalValue::LinkageTypes::ExternalLinkage, CopyConstructorName, mod);
-        CodegenContext::EmitFunctionBody(CopyConstructorFunction, [this](CodegenContext& con) {
+        CodegenContext::EmitFunctionBody(CopyConstructorFunction, functy->GetArguments(), [this](CodegenContext& con) {
             EmitConstructor(con, *CopyConstructorInitializers);
         });
     }
@@ -674,7 +674,7 @@ void AggregateType::EmitDefaultConstructor(llvm::Module* mod) {
     if (!DefaultConstructorFunction && DefaultConstructorInitializers) {
         auto functy = analyzer.GetFunctionType(analyzer.GetVoidType(), { analyzer.GetLvalueType(this) }, false);
         DefaultConstructorFunction = llvm::Function::Create(llvm::cast<llvm::FunctionType>(functy->GetLLVMType(mod)->getElementType()), llvm::GlobalValue::LinkageTypes::ExternalLinkage, DefaultConstructorName, mod);
-        CodegenContext::EmitFunctionBody(DefaultConstructorFunction, [this](CodegenContext& con) {
+        CodegenContext::EmitFunctionBody(DefaultConstructorFunction, functy->GetArguments(), [this](CodegenContext& con) {
             EmitConstructor(con, *DefaultConstructorInitializers);
         });
     }
@@ -683,7 +683,7 @@ void AggregateType::EmitMoveAssignmentOperator(llvm::Module* mod) {
     if (!MoveAssignmentFunction && MoveAssignmentExpressions) {
         auto functy = analyzer.GetFunctionType(analyzer.GetLvalueType(this), { analyzer.GetLvalueType(this), analyzer.GetRvalueType(this) }, false);
         MoveAssignmentFunction = llvm::Function::Create(llvm::cast<llvm::FunctionType>(functy->GetLLVMType(mod)->getElementType()), llvm::GlobalValue::LinkageTypes::ExternalLinkage, MoveAssignmentName, mod);
-        CodegenContext::EmitFunctionBody(MoveAssignmentFunction, [this](CodegenContext& con) {
+        CodegenContext::EmitFunctionBody(MoveAssignmentFunction, functy->GetArguments(), [this](CodegenContext& con) {
             EmitAssignmentOperator(con, *MoveAssignmentExpressions);
         });
     }
@@ -692,7 +692,7 @@ void AggregateType::EmitCopyAssignmentOperator(llvm::Module* mod) {
     if (!CopyAssignmentFunction && CopyAssignmentExpressions) {
         auto functy = analyzer.GetFunctionType(analyzer.GetLvalueType(this), { analyzer.GetLvalueType(this), analyzer.GetLvalueType(this) }, false);
         CopyAssignmentFunction = llvm::Function::Create(llvm::cast<llvm::FunctionType>(functy->GetLLVMType(mod)->getElementType()), llvm::GlobalValue::LinkageTypes::ExternalLinkage, CopyAssignmentName, mod);
-        CodegenContext::EmitFunctionBody(CopyAssignmentFunction, [this](CodegenContext& con) {
+        CodegenContext::EmitFunctionBody(CopyAssignmentFunction, functy->GetArguments(), [this](CodegenContext& con) {
             EmitAssignmentOperator(con, *CopyAssignmentExpressions);
         });
     }

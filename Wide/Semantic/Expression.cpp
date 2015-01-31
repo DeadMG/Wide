@@ -41,7 +41,7 @@ llvm::Value* ImplicitStoreExpr::ComputeValue(CodegenContext& con) {
     return memory;
 }
 void Expression::Instantiate(Function* f) {
-    GetType(f->GetSignature()->GetArguments());
+    GetType(f->GetArguments());
 }
 
 LvalueCast::LvalueCast(std::shared_ptr<Expression> expr)
@@ -336,7 +336,7 @@ llvm::Value* CodegenContext::CreateStructGEP(llvm::Value* v, unsigned num) {
     }
     return insert_builder->CreateStructGEP(v, num);
 }
-void CodegenContext::EmitFunctionBody(llvm::Function* func, std::function<void(CodegenContext&)> body) {
+void CodegenContext::EmitFunctionBody(llvm::Function* func, std::vector<Type*> args, std::function<void(CodegenContext&)> body) {
     llvm::BasicBlock* allocas = llvm::BasicBlock::Create(func->getParent()->getContext(), "allocas", func);
     llvm::BasicBlock* geps = llvm::BasicBlock::Create(func->getParent()->getContext(), "geps", func);
     llvm::BasicBlock* entries = llvm::BasicBlock::Create(func->getParent()->getContext(), "entry", func);
@@ -345,13 +345,13 @@ void CodegenContext::EmitFunctionBody(llvm::Function* func, std::function<void(C
     llvm::IRBuilder<> gepbuilder(geps);
     gepbuilder.SetInsertPoint(gepbuilder.CreateBr(entries));
     llvm::IRBuilder<> insertbuilder(entries);
-    CodegenContext newcon(func->getParent(), allocabuilder, gepbuilder, insertbuilder);
+    CodegenContext newcon(func->getParent(), args, allocabuilder, gepbuilder, insertbuilder);
     body(newcon);
     if (llvm::verifyFunction(*func))
         throw std::runtime_error("Internal Compiler Error: An LLVM function failed verification.");
 }
-CodegenContext::CodegenContext(llvm::Module* mod, llvm::IRBuilder<>& alloc_builder, llvm::IRBuilder<>& gep_builder, llvm::IRBuilder<>& ir_builder)
-    : module(mod), alloca_builder(&alloc_builder), gep_builder(&gep_builder), insert_builder(&ir_builder)
+CodegenContext::CodegenContext(llvm::Module* mod, std::vector<Type*> args, llvm::IRBuilder<>& alloc_builder, llvm::IRBuilder<>& gep_builder, llvm::IRBuilder<>& ir_builder)
+    : module(mod), func(args), alloca_builder(&alloc_builder), gep_builder(&gep_builder), insert_builder(&ir_builder)
 {
     gep_map = std::make_shared<std::unordered_map<llvm::AllocaInst*, std::unordered_map<unsigned, llvm::Value*>>>();
 }
@@ -429,7 +429,6 @@ SourceExpression::SourceExpression(std::initializer_list<std::shared_ptr<Express
     };
     for (auto&& expr : init_exprs) { lambda(expr); }
     for (auto&& expr : args) { lambda(expr); }
-    GetType(Expression::NoInstance());
 }
 Type* SourceExpression::GetType(InstanceKey f) {
     // Check the cache first.
@@ -474,8 +473,10 @@ Type* ResultExpression::CalculateType(InstanceKey f) {
     return nullptr;
 }
 llvm::Value* ResultExpression::ComputeValue(CodegenContext& con) {
-    assert(results.find(con.func) != results.end());
-    return results[con.func].first->GetValue(con);
+    assert(results.find(con.func) != results.end() || (results.find(Expression::NoInstance()) != results.end() && results[Expression::NoInstance()].first));
+    if (results.find(con.func) != results.end())
+        return results[con.func].first->GetValue(con);
+    return results[Expression::NoInstance()].first->GetValue(con);
 }
 
 void Expression::AddDefaultHandlers(Analyzer& a) {
@@ -875,7 +876,9 @@ std::shared_ptr<Expression> Semantic::CreateResultExpression(std::function<std::
         }
     };
     // innit
-    return std::make_shared<FunctionalResultExpression>(func);
+    auto result = std::make_shared<FunctionalResultExpression>(func);
+    result->GetType(Expression::NoInstance());
+    return result;
 }
 std::shared_ptr<Expression> Semantic::CreatePrimGlobal(Analyzer& a, std::function<void(CodegenContext&)> func) {
     return CreatePrimGlobal(a.GetVoidType(), [=](CodegenContext& con) {

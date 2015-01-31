@@ -4,6 +4,7 @@
 #include <string>
 #include <memory>
 #include <Wide/Util/Hash.h>
+#include <assert.h>
 
 // Decorated name length exceeded
 #pragma warning(disable : 4503)
@@ -171,8 +172,13 @@ namespace Wide {
             const std::string* type;
             std::string value;
         public:
+            Token& operator=(const Token&) = default;
+            Token(const Token&) = default;
             Token(Range r, const std::string* t, std::string val)
-                : location(r), type(t), value(std::move(val)) {}
+                : location(r), type(t), value(std::move(val)) 
+            {
+                assert(value != "");
+            }
             Range GetLocation() const { return location; }
             const std::string* GetType() const { return type; }
             const std::string& GetValue() const { return value; }

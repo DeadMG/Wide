@@ -86,7 +86,9 @@ llvm::PointerType* WideFunctionType::GetLLVMType(llvm::Module* module) {
 
 std::shared_ptr<Expression> WideFunctionType::ConstructCall(Expression::InstanceKey key, std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c) {
     auto result_type = dynamic_cast<FunctionType*>(val->GetType(key)->Decay())->GetReturnType();
-    auto Ret = CreateTemporary(result_type, c);
+    auto Ret = result_type != analyzer.GetVoidType()
+        ? CreateTemporary(result_type, c)
+        : nullptr;
     auto Destructor = !result_type->IsTriviallyDestructible()
         ? result_type->BuildDestructorCall(key, Ret, c, true)
         : std::function<void(CodegenContext&)>();
@@ -208,7 +210,7 @@ std::function<void(llvm::Module*)> WideFunctionType::CreateThunk(std::function<l
         ret_expr = Type::BuildInplaceConstruction(arg(analyzer.GetLvalueType(GetReturnType()), [](llvm::Module* mod) { return 0; }), { call }, c);
     }
     return [this, src, ret_expr, call](llvm::Module* mod) {
-        CodegenContext::EmitFunctionBody(src(mod), [this, ret_expr, call](CodegenContext& con) {
+        CodegenContext::EmitFunctionBody(src(mod), GetArguments(), [this, ret_expr, call](CodegenContext& con) {
             if (!GetReturnType()->AlwaysKeepInMemory(con)) {
                 auto val = call->GetValue(con);
                 con.DestroyAll(false);
@@ -362,7 +364,7 @@ std::function<void(llvm::Module*)> ClangFunctionType::CreateThunk(std::function<
         ret_expr = Type::BuildInplaceConstruction(arg(analyzer.GetLvalueType(GetReturnType()), [](llvm::Module* mod) { return 0; }), { call }, c);
     return [src, ret_expr, decl, this, args, call](llvm::Module* mod) {
         auto func = src(mod);
-        CodegenContext::EmitFunctionBody(func, [ret_expr, func, decl, args, this, call](CodegenContext& con) {
+        CodegenContext::EmitFunctionBody(func, GetArguments(), [ret_expr, func, decl, args, this, call](CodegenContext& con) {
             clang::CodeGen::CodeGenFunction codegenfunc(from->GetCodegenModule(con), true);
             codegenfunc.AllocaInsertPt = con.GetAllocaInsertPoint();
             codegenfunc.Builder.SetInsertPoint(con->GetInsertBlock(), con->GetInsertBlock()->end());

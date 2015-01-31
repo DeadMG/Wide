@@ -108,7 +108,7 @@ namespace Wide {
             Wide::Util::optional<EHScope> EHHandler;
             Expression::InstanceKey func;
         private:
-            CodegenContext(llvm::Module* mod, llvm::IRBuilder<>& alloc_builder, llvm::IRBuilder<>& gep_builder, llvm::IRBuilder<>& ir_builder);
+            CodegenContext(llvm::Module* mod, std::vector<Type*>, llvm::IRBuilder<>& alloc_builder, llvm::IRBuilder<>& gep_builder, llvm::IRBuilder<>& ir_builder);
             std::list<std::pair<std::function<void(CodegenContext&)>, bool>> Destructors;
             llvm::IRBuilder<>* alloca_builder;
             llvm::IRBuilder<>* insert_builder;
@@ -120,7 +120,7 @@ namespace Wide {
             std::list<std::pair<std::function<void(CodegenContext&)>, bool>>::iterator AddExceptionOnlyDestructor(std::function<void(CodegenContext&)>);
             void EraseDestructor(std::list<std::pair<std::function<void(CodegenContext&)>, bool>>::iterator it);
             void AddDestructors(std::list<std::pair<std::function<void(CodegenContext&)>, bool>>);
-            static void EmitFunctionBody(llvm::Function* func, std::function<void(CodegenContext&)> body);
+            static void EmitFunctionBody(llvm::Function* func, std::vector<Type*> args, std::function<void(CodegenContext&)> body);
         };
         struct SourceExpression : public Expression {
             struct ExpressionData {

@@ -60,8 +60,8 @@ std::function<std::shared_ptr<Expression>(Wide::Parse::Name, Wide::Lexer::Range)
     };
 }
 std::function<std::shared_ptr<Expression>(Wide::Parse::Name, Wide::Lexer::Range)> UserDefinedType::GetNonstaticLookup(const Parse::FunctionBase* base, Parse::Name funcname) {
-    auto skel = GetWideFunction(base, funcname);
     return [=](Parse::Name name, Lexer::Range where) {
+        auto skel = GetWideFunction(base, funcname);
         return CreateResultExpression([=](Expression::InstanceKey key) -> std::shared_ptr<Expression> {
             if (!key) return nullptr;
             auto func = analyzer.GetWideFunction(skel, *key);
@@ -744,7 +744,7 @@ struct Wide::Semantic::UserDefinedType::ImportConstructorCallable : Callable {
     void EmitCode(llvm::Module* module) {
         if (thunk_function) return;
         thunk_function = llvm::Function::Create(llvm::cast<llvm::FunctionType>(GetFunctionType()->GetLLVMType(module)->getElementType()), llvm::GlobalValue::LinkageTypes::ExternalLinkage, self->analyzer.GetUniqueFunctionName(), module);
-        Wide::Semantic::CodegenContext::EmitFunctionBody(thunk_function, [this](Wide::Semantic::CodegenContext& con) {
+        Wide::Semantic::CodegenContext::EmitFunctionBody(thunk_function, arguments, [this](Wide::Semantic::CodegenContext& con) {
             assert(initializers);
             for (auto&&init : *initializers)
                 init->GetValue(con);
@@ -1297,7 +1297,7 @@ void UserDefinedType::Export(llvm::Module* mod) {
         auto fty = analyzer.GetFunctionType(Semantic::CollapseType(analyzer.GetLvalueType(this), memtype), { analyzer.GetLvalueType(this) }, false);
         llvm::Function* reffunc = llvm::Function::Create(llvm::cast<llvm::FunctionType>(fty->GetLLVMType(mod)->getElementType()), llvm::GlobalValue::LinkageTypes::ExternalLinkage, tuple.second.first, mod);
         auto location = GetLocation(GetMemberData().member_indices[tuple.first] + type->bases.size());
-        CodegenContext::EmitFunctionBody(reffunc, [&](CodegenContext& con) {
+        CodegenContext::EmitFunctionBody(reffunc, { analyzer.GetLvalueType(this) }, [&](CodegenContext& con) {
             auto val = con->GetInsertBlock()->getParent()->arg_begin();
             if (auto&& field = boost::get<Wide::Semantic::LLVMFieldIndex>(&location)) {
                 con->CreateRet(con->CreateStructGEP(val, field->index));
@@ -1313,7 +1313,7 @@ void UserDefinedType::Export(llvm::Module* mod) {
         auto self = CreatePrimGlobal(this, [valfunc](CodegenContext& con) { return ++valfunc->arg_begin(); });
         auto val = PrimitiveAccessMember(self, GetMemberData().member_indices[tuple.first] + type->bases.size());
         auto inplace = memtype->BuildInplaceConstruction(complexmem, { val }, { this, Wide::Lexer::Range(std::make_shared<std::string>("Analyzer internal function")) });
-        CodegenContext::EmitFunctionBody(valfunc, [&](CodegenContext& con) {
+        CodegenContext::EmitFunctionBody(valfunc, { this }, [&](CodegenContext& con) {
             if (AlwaysKeepInMemory(mod)) {
                 if (memtype->AlwaysKeepInMemory(mod)) {
                     inplace->GetValue(con);
