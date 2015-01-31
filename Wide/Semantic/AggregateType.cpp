@@ -468,37 +468,26 @@ std::vector<std::shared_ptr<Expression>> AggregateType::GetAssignmentOpExpressio
 }
 std::vector<std::shared_ptr<Expression>> AggregateType::GetConstructorInitializers(std::shared_ptr<Expression> self, Context c, std::function<std::vector<std::shared_ptr<Expression>>(unsigned)> initializers) {
     std::vector<std::shared_ptr<Expression>> exprs;
-    struct MemberConstructionAccess : Expression {
-        Type* member;
-        Lexer::Range where;
-        std::shared_ptr<Expression> Construction;
-        std::shared_ptr<Expression> memexpr;
-        std::function<void(CodegenContext&)> destructor;
-        llvm::Value* ComputeValue(CodegenContext& con) override final {
+    auto MemberConstructionAccess = [](Type* member, Lexer::Range where, std::shared_ptr<Expression> Construction, std::shared_ptr<Expression> memexpr) {
+        std::function<void(CodegenContext&)> destructor; 
+        if (!member->IsTriviallyDestructible())
+            destructor = member->BuildDestructorCall(Expression::NoInstance(), memexpr, { member, where }, true);
+        return CreatePrimGlobal(Construction->GetType(Expression::NoInstance()), [=](CodegenContext& con) {
             auto val = Construction->GetValue(con);
             if (destructor)
                 con.AddExceptionOnlyDestructor(destructor);
             return val;
-        }
-        Type* GetType(Expression::InstanceKey f) override final {
-            return Construction->GetType(f);
-        }
-        MemberConstructionAccess(Type* mem, Lexer::Range where, std::shared_ptr<Expression> expr, std::shared_ptr<Expression> memexpr)
-            : member(mem), where(where), Construction(std::move(expr)), memexpr(memexpr)
-        {
-            if (!member->IsTriviallyDestructible())
-                destructor = member->BuildDestructorCall(Expression::NoInstance(), memexpr, { member, where }, true);
-        }
+        });
     };
     for (std::size_t i = 0; i < GetBases().size(); ++i) {
         auto lhs = GetMemberFromThis(self, [this, i] { return GetLayout().Offsets[i].ByteOffset; }, analyzer.GetLvalueType(GetBases()[i]));
         auto init = Type::BuildInplaceConstruction(lhs, initializers(i), c);
-        exprs.push_back(std::make_shared<MemberConstructionAccess>(GetBases()[i], c.where, init, lhs));
+        exprs.push_back(MemberConstructionAccess(GetBases()[i], c.where, init, lhs));
     }
     for (std::size_t i = 0; i < GetMembers().size(); ++i) {
         auto lhs = GetMemberFromThis(self, [this, i] { return GetLayout().Offsets[i + GetBases().size()].ByteOffset; }, analyzer.GetLvalueType(GetMembers()[i]));
         auto init = Type::BuildInplaceConstruction(lhs, initializers(i), c);
-        exprs.push_back(std::make_shared<MemberConstructionAccess>(GetMembers()[i], c.where, init, lhs));
+        exprs.push_back(MemberConstructionAccess(GetMembers()[i], c.where, init, lhs));
     }
     exprs.push_back(Type::SetVirtualPointers(self));
     return exprs;

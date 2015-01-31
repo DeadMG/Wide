@@ -42,7 +42,7 @@ namespace Wide {
             static void AddDefaultHandlers(Analyzer& a);
             virtual Type* GetType(InstanceKey f) = 0; // If the type is unknown then nullptr
             llvm::Value* GetValue(CodegenContext& con);
-            virtual bool IsConstantExpression(InstanceKey) { return false; } // If not constant then false
+            virtual bool IsConstantExpression(InstanceKey) = 0; // If not constant then false
             boost::signals2::signal<void(Expression*, InstanceKey)> OnChanged;
         private:
             void Instantiate(Function* f);
@@ -200,15 +200,7 @@ namespace Wide {
             llvm::Value* ComputeValue(CodegenContext& con) override final;
             bool IsConstantExpression(InstanceKey) override final;
         };
-
-        struct DestructorCall : Expression {
-            DestructorCall(std::function<void(CodegenContext&)> destructor, Analyzer& a);
-            std::function<void(CodegenContext&)> destructor;
-            Analyzer* a;
-            Type* GetType(InstanceKey) override final;
-            llvm::Value* ComputeValue(CodegenContext& con) override final;
-        };
-
+        
         struct ConstantExpression : Expression {
             bool IsConstantExpression(InstanceKey) override final { return true; }
         };

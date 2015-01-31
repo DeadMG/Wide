@@ -102,26 +102,9 @@ llvm::Value* Boolean::ComputeValue(CodegenContext& con) {
 }
 
 std::shared_ptr<Expression> Semantic::CreatePrimUnOp(std::shared_ptr<Expression> self, Type* ret, std::function<llvm::Value*(llvm::Value*, CodegenContext& con)> func) {
-    struct PrimUnOp : Expression {
-        PrimUnOp(std::shared_ptr<Expression> expr, Type* r, std::function<llvm::Value*(llvm::Value*, CodegenContext& con)> func)
-        : src(std::move(expr)), ret(std::move(r)), action(std::move(func)) {}
-
-        std::shared_ptr<Expression> src;
-        Type* ret;
-        std::function<llvm::Value*(llvm::Value*, CodegenContext& con)> action;
-
-        Type* GetType(InstanceKey f) override final {
-            return ret;
-        }
-        llvm::Value* ComputeValue(CodegenContext& con) override final {
-            auto val = action(src->GetValue(con), con);
-            if (ret != ret->analyzer.GetVoidType())
-                assert(val);
-            return val;
-        }
-    };
-    assert(self);
-    return Wide::Memory::MakeUnique<PrimUnOp>(std::move(self), ret, func);
+    return CreatePrimGlobal(ret, [=](CodegenContext& con) {
+        return func(self->GetValue(con), con);
+    });
 }
 std::shared_ptr<Expression> Semantic::CreatePrimGlobal(Type* ret, std::function<llvm::Value*(CodegenContext& con)> func) {
     struct PrimGlobalOp : Expression {
@@ -139,6 +122,9 @@ std::shared_ptr<Expression> Semantic::CreatePrimGlobal(Type* ret, std::function<
             if (ret != ret->analyzer.GetVoidType())
                 assert(val);
             return val;
+        }
+        bool IsConstantExpression(Expression::InstanceKey key) override final {
+            return false;
         }
     };
     return Wide::Memory::MakeUnique<PrimGlobalOp>(ret, func);
@@ -355,15 +341,6 @@ CodegenContext::CodegenContext(llvm::Module* mod, std::vector<Type*> args, llvm:
 {
     gep_map = std::make_shared<std::unordered_map<llvm::AllocaInst*, std::unordered_map<unsigned, llvm::Value*>>>();
 }
-DestructorCall::DestructorCall(std::function<void(CodegenContext&)> destructor, Analyzer& a)
-    : destructor(destructor), a(&a) {}
-Type* DestructorCall::GetType(InstanceKey f)  {
-    return a->GetVoidType();
-}
-llvm::Value* DestructorCall::ComputeValue(CodegenContext& con) {
-    destructor(con);
-    return nullptr;
-}
 
 llvm::Instruction* CodegenContext::GetAllocaInsertPoint() {
     return alloca_builder->GetInsertPoint();
@@ -536,16 +513,14 @@ void Expression::AddDefaultHandlers(Analyzer& a) {
     AddHandler<const Parse::BinaryExpression>(a.ExpressionHandlers, [](const Parse::BinaryExpression* bin, Analyzer& a, Type* lookup, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup) {
         auto lhs = a.AnalyzeExpression(lookup, bin->lhs.get(), NonstaticLookup);
         auto rhs = a.AnalyzeExpression(lookup, bin->rhs.get(), NonstaticLookup);
-        return CreateResultExpression([=, &a](InstanceKey f) {
-            return Type::BuildBinaryExpression(std::move(lhs), std::move(rhs), bin->type, { lookup, bin->location });
-        });
+        return Type::BuildBinaryExpression(std::move(lhs), std::move(rhs), bin->type, { lookup, bin->location });
     });
 
     AddHandler<const Parse::UnaryExpression>(a.ExpressionHandlers, [](const Parse::UnaryExpression* unex, Analyzer& a, Type* lookup, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup) -> std::shared_ptr<Expression> {
         auto expr = a.AnalyzeExpression(lookup, unex->ex.get(), NonstaticLookup);
         if (unex->type == &Lexer::TokenTypes::And)
-            return CreateResultExpression([=, &a](InstanceKey f) { return CreateAddressOf(std::move(expr), Context(lookup, unex->location)); });
-        return CreateResultExpression([=, &a](InstanceKey f) { return Type::BuildUnaryExpression(std::move(expr), unex->type, { lookup, unex->location }); });
+            return CreateAddressOf(std::move(expr), Context(lookup, unex->location));
+        return Type::BuildUnaryExpression(std::move(expr), unex->type, { lookup, unex->location });
     });
 
 
@@ -558,7 +533,7 @@ void Expression::AddDefaultHandlers(Analyzer& a) {
                 return BuildChain(std::move(copy), BuildChain(std::move(result), copy));
             });
         }
-        return CreateResultExpression([=, &a](InstanceKey f) { return Type::BuildUnaryExpression(std::move(expr), &Lexer::TokenTypes::Increment, { lookup, inc->location }); });
+        return Type::BuildUnaryExpression(std::move(expr), &Lexer::TokenTypes::Increment, { lookup, inc->location });
     });
 
     AddHandler<const Parse::Tuple>(a.ExpressionHandlers, [](const Parse::Tuple* tup, Analyzer& a, Type* lookup, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup) {
@@ -597,57 +572,30 @@ void Expression::AddDefaultHandlers(Analyzer& a) {
             auto result = conty->analyzer.GetLvalueType(conty->GetConstructedType());
             // typeid(T)
             if (auto ty = dynamic_cast<ConstructorType*>(expr->GetType(f)->Decay())) {
-                struct RTTI : public Expression {
-                    RTTI(Type* ty, Type* result) : ty(ty), result(result) { rtti = ty->GetRTTI(); }
-                    Type* ty;
-                    Type* result;
-                    std::function<llvm::Constant*(llvm::Module*)> rtti;
-                    Type* GetType(InstanceKey f) override final { return result; }
-                    llvm::Value* ComputeValue(CodegenContext& con) override final {
-                        return con->CreateBitCast(rtti(con), result->GetLLVMType(con));
-                    }
-                };
-                return Wide::Memory::MakeUnique<RTTI>(ty->GetConstructedType(), result);
+                auto rtti = ty->GetRTTI();
+                return CreatePrimGlobal(ty->GetConstructedType(), rtti);
             }
-            // typeid(expr)
-            struct RTTI : public Expression {
-                RTTI(std::shared_ptr<Expression> arg, Type* result, InstanceKey f) : expr(std::move(arg)), result(result)
-                {
-                    // If we have a polymorphic type, find the RTTI entry, if applicable.
-                    ty = expr->GetType(f)->Decay();
-                    vtable = ty->GetVtableLayout();
-                    if (!vtable.layout.empty()) {
-                        expr = Type::GetVirtualPointer(std::move(expr));
-                        for (unsigned int i = 0; i < vtable.layout.size(); ++i) {
-                            if (auto spec = boost::get<Type::VTableLayout::SpecialMember>(&vtable.layout[i].func)) {
-                                if (*spec == Type::VTableLayout::SpecialMember::RTTIPointer) {
-                                    rtti_offset = i - vtable.offset;
-                                    break;
-                                }
-                            }
+            auto ty = expr->GetType(f)->Decay();
+            auto vtable = ty->GetVtableLayout();
+            if (!vtable.layout.empty()) {
+                auto vptr = Type::GetVirtualPointer(std::move(expr));
+                for (unsigned int i = 0; i < vtable.layout.size(); ++i) {
+                    if (auto spec = boost::get<Type::VTableLayout::SpecialMember>(&vtable.layout[i].func)) {
+                        if (*spec == Type::VTableLayout::SpecialMember::RTTIPointer) {
+                            auto rtti_offset = i - vtable.offset;
+                            return CreatePrimGlobal(result, [=](CodegenContext& con) {
+                                auto vtable_pointer = con->CreateLoad(vptr->GetValue(con));
+                                auto rtti_pointer = con->CreateLoad(con->CreateConstGEP1_32(vtable_pointer, rtti_offset));
+                                return con->CreateBitCast(rtti_pointer, result->GetLLVMType(con));
+                            });
                         }
                     }
-                    if (!rtti_offset)
-                        rtti = ty->GetRTTI();
                 }
-                std::function<llvm::Constant*(llvm::Module*)> rtti;
-                std::shared_ptr<Expression> expr;
-                Type::VTableLayout vtable;
-                Wide::Util::optional<unsigned> rtti_offset;
-                Type* result;
-                Type* ty;
-                Type* GetType(InstanceKey f) override final { return result; }
-                llvm::Value* ComputeValue(CodegenContext& con) override final {
-                    // Do we have a vtable offset? If so, use the RTTI entry there. The expr will already be a pointer to the vtable pointer.
-                    if (rtti_offset) {
-                        auto vtable_pointer = con->CreateLoad(expr->GetValue(con));
-                        auto rtti_pointer = con->CreateLoad(con->CreateConstGEP1_32(vtable_pointer, *rtti_offset));
-                        return con->CreateBitCast(rtti_pointer, result->GetLLVMType(con));
-                    }
-                    return con->CreateBitCast(rtti(con), result->GetLLVMType(con));
-                }
-            };
-            return Wide::Memory::MakeUnique<RTTI>(std::move(expr), result, f);
+            }
+            auto rtti = ty->GetRTTI();
+            return CreatePrimGlobal(result, [=](CodegenContext& con) {
+                return con->CreateBitCast(rtti(con), result->GetLLVMType(con));
+            });
         });
     });
 
@@ -723,36 +671,24 @@ void Expression::AddDefaultHandlers(Analyzer& a) {
                     if (*spec == Type::VTableLayout::SpecialMember::OffsetToTop) {
                         auto offset = i - layout.offset;
                         auto vtable = Type::GetVirtualPointer(object);
-                        struct DynamicCastToVoidPointer : Expression {
-                            DynamicCastToVoidPointer(unsigned off, std::shared_ptr<Expression> obj, std::shared_ptr<Expression> vtable)
-                                : vtable_offset(off), vtable(std::move(vtable)), object(std::move(obj)) {}
-                            unsigned vtable_offset;
-                            std::shared_ptr<Expression> vtable;
-                            std::shared_ptr<Expression> object;
-                            llvm::Value* ComputeValue(CodegenContext& con) override final {
-                                auto obj_ptr = object->GetValue(con);
-                                llvm::BasicBlock* source_bb = con->GetInsertBlock();
-                                llvm::BasicBlock* nonnull_bb = llvm::BasicBlock::Create(con, "nonnull_bb", source_bb->getParent());
-                                llvm::BasicBlock* continue_bb = llvm::BasicBlock::Create(con, "continue_bb", source_bb->getParent());
-                                con->CreateCondBr(con->CreateIsNull(obj_ptr), continue_bb, nonnull_bb);
-                                con->SetInsertPoint(nonnull_bb);
-                                auto vtable_ptr = con->CreateLoad(vtable->GetValue(con));
-                                auto ptr_to_offset = con->CreateConstGEP1_32(vtable_ptr, vtable_offset);
-                                auto offset = con->CreateLoad(ptr_to_offset);
-                                auto result = con->CreateGEP(con->CreateBitCast(obj_ptr, con.GetInt8PtrTy()), offset);
-                                con->CreateBr(continue_bb);
-                                con->SetInsertPoint(continue_bb);
-                                auto phi = con->CreatePHI(con.GetInt8PtrTy(), 2);
-                                phi->addIncoming(llvm::Constant::getNullValue(con.GetInt8PtrTy()), source_bb);
-                                phi->addIncoming(result, nonnull_bb);
-                                return phi;
-                            }
-                            Type* GetType(InstanceKey f) override final {
-                                auto&& a = object->GetType(f)->analyzer;
-                                return a.GetPointerType(a.GetVoidType());
-                            }
-                        };
-                        return Wide::Memory::MakeUnique<DynamicCastToVoidPointer>(offset, std::move(object), std::move(vtable));
+                        return CreatePrimGlobal(a.GetPointerType(a.GetVoidType()), [=](CodegenContext& con) {
+                            auto obj_ptr = object->GetValue(con);
+                            llvm::BasicBlock* source_bb = con->GetInsertBlock();
+                            llvm::BasicBlock* nonnull_bb = llvm::BasicBlock::Create(con, "nonnull_bb", source_bb->getParent());
+                            llvm::BasicBlock* continue_bb = llvm::BasicBlock::Create(con, "continue_bb", source_bb->getParent());
+                            con->CreateCondBr(con->CreateIsNull(obj_ptr), continue_bb, nonnull_bb);
+                            con->SetInsertPoint(nonnull_bb);
+                            auto vtable_ptr = con->CreateLoad(vtable->GetValue(con));
+                            auto ptr_to_offset = con->CreateConstGEP1_32(vtable_ptr, offset);
+                            auto offset = con->CreateLoad(ptr_to_offset);
+                            auto result = con->CreateGEP(con->CreateBitCast(obj_ptr, con.GetInt8PtrTy()), offset);
+                            con->CreateBr(continue_bb);
+                            con->SetInsertPoint(continue_bb);
+                            auto phi = con->CreatePHI(con.GetInt8PtrTy(), 2);
+                            phi->addIncoming(llvm::Constant::getNullValue(con.GetInt8PtrTy()), source_bb);
+                            phi->addIncoming(result, nonnull_bb);
+                            return phi;
+                        });
                     }
                 }
             }
@@ -760,46 +696,31 @@ void Expression::AddDefaultHandlers(Analyzer& a) {
         };
 
         auto polymorphic_dynamic_cast = [&](PointerType* basety, PointerType* derty, InstanceKey f) -> std::shared_ptr<Expression> {
-            struct PolymorphicDynamicCast : Expression {
-                PolymorphicDynamicCast(Type* basety, Type* derty, std::shared_ptr<Expression> object)
-                    : basety(basety), derty(derty), object(std::move(object))
-                {
-                    basertti = basety->GetRTTI();
-                    derrtti = derty->GetRTTI();
+            auto basertti = basety->GetPointee()->GetRTTI();
+            auto derrtti = derty->GetPointee()->GetRTTI();
+            return CreatePrimGlobal(derty, [=](CodegenContext& con) {
+                auto obj_ptr = object->GetValue(con);
+                llvm::BasicBlock* source_bb = con->GetInsertBlock();
+                llvm::BasicBlock* nonnull_bb = llvm::BasicBlock::Create(con, "nonnull_bb", source_bb->getParent());
+                llvm::BasicBlock* continue_bb = llvm::BasicBlock::Create(con, "continue_bb", source_bb->getParent());
+                con->CreateCondBr(con->CreateIsNull(obj_ptr), continue_bb, nonnull_bb);
+                con->SetInsertPoint(nonnull_bb);
+                auto dynamic_cast_func = con.module->getFunction("__dynamic_cast");
+                auto ptrdiffty = llvm::IntegerType::get(con, basety->analyzer.GetDataLayout().getPointerSize());
+                if (!dynamic_cast_func) {
+                    llvm::Type* args[] = { con.GetInt8PtrTy(), con.GetInt8PtrTy(), con.GetInt8PtrTy(), ptrdiffty };
+                    auto functy = llvm::FunctionType::get(llvm::Type::getVoidTy(con), args, false);
+                    dynamic_cast_func = llvm::Function::Create(functy, llvm::GlobalValue::LinkageTypes::ExternalLinkage, "__dynamic_cast", con);
                 }
-                std::shared_ptr<Expression> object;
-                Type* basety;
-                Type* derty;
-                std::function<llvm::Constant*(llvm::Module*)> basertti;
-                std::function<llvm::Constant*(llvm::Module*)> derrtti;
-                Type* GetType(InstanceKey f) override final {
-                    return derty->analyzer.GetPointerType(derty);
-                }
-                llvm::Value* ComputeValue(CodegenContext& con) override final {
-                    auto obj_ptr = object->GetValue(con);
-                    llvm::BasicBlock* source_bb = con->GetInsertBlock();
-                    llvm::BasicBlock* nonnull_bb = llvm::BasicBlock::Create(con, "nonnull_bb", source_bb->getParent());
-                    llvm::BasicBlock* continue_bb = llvm::BasicBlock::Create(con, "continue_bb", source_bb->getParent());
-                    con->CreateCondBr(con->CreateIsNull(obj_ptr), continue_bb, nonnull_bb);
-                    con->SetInsertPoint(nonnull_bb);
-                    auto dynamic_cast_func = con.module->getFunction("__dynamic_cast");
-                    auto ptrdiffty = llvm::IntegerType::get(con, basety->analyzer.GetDataLayout().getPointerSize());
-                    if (!dynamic_cast_func) {
-                        llvm::Type* args[] = { con.GetInt8PtrTy(), con.GetInt8PtrTy(), con.GetInt8PtrTy(), ptrdiffty };
-                        auto functy = llvm::FunctionType::get(llvm::Type::getVoidTy(con), args, false);
-                        dynamic_cast_func = llvm::Function::Create(functy, llvm::GlobalValue::LinkageTypes::ExternalLinkage, "__dynamic_cast", con);
-                    }
-                    llvm::Value* args[] = { obj_ptr, basertti(con), derrtti(con), llvm::ConstantInt::get(ptrdiffty, (uint64_t)-1, true) };
-                    auto result = con->CreateCall(dynamic_cast_func, args, "");
-                    con->CreateBr(continue_bb);
-                    con->SetInsertPoint(continue_bb);
-                    auto phi = con->CreatePHI(con.GetInt8PtrTy(), 2);
-                    phi->addIncoming(llvm::Constant::getNullValue(derty->GetLLVMType(con)), source_bb);
-                    phi->addIncoming(result, nonnull_bb);
-                    return con->CreatePointerCast(phi, GetType(nullptr)->GetLLVMType(con));
-                }
-            };
-            return Wide::Memory::MakeUnique<PolymorphicDynamicCast>(basety->GetPointee(), derty->GetPointee(), std::move(object));
+                llvm::Value* args[] = { obj_ptr, basertti(con), derrtti(con), llvm::ConstantInt::get(ptrdiffty, (uint64_t)-1, true) };
+                auto result = con->CreateCall(dynamic_cast_func, args, "");
+                con->CreateBr(continue_bb);
+                con->SetInsertPoint(continue_bb);
+                auto phi = con->CreatePHI(con.GetInt8PtrTy(), 2);
+                phi->addIncoming(llvm::Constant::getNullValue(derty->GetLLVMType(con)), source_bb);
+                phi->addIncoming(result, nonnull_bb);
+                return con->CreatePointerCast(phi, derty->GetLLVMType(con));
+            });
         };
 
         return CreateResultExpression([=](InstanceKey f) {
@@ -842,7 +763,8 @@ void Expression::AddDefaultHandlers(Analyzer& a) {
         auto object = a.AnalyzeExpression(lookup, des->expr.get(), NonstaticLookup);
         return CreateResultExpression([=, &a](InstanceKey f) {
             auto ty = object->GetType(f);
-            return std::make_shared<DestructorCall>(ty->Decay()->BuildDestructorCall(f, std::move(object), { lookup, des->location }, false), a);
+            auto destructor = ty->Decay()->BuildDestructorCall(f, std::move(object), { lookup, des->location }, false);
+            return CreatePrimGlobal(a, destructor);
         });
     });
 
