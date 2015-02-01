@@ -1022,16 +1022,16 @@ std::shared_ptr<Expression> Semantic::LookupIdentifier(Type* context, Parse::Nam
 void Semantic::AddDefaultContextHandlers(Analyzer& a) {
     AddHandler<Semantic::Module>(a.ContextLookupHandlers, [](Module* mod, Parse::Name name, Lexer::Range where) {
         auto local_mod_instance = mod->BuildValueConstruction({}, Context{ mod, where });
-        auto result = Type::AccessMember(local_mod_instance, name, { mod, where });
-        if (!result) return LookupFromContext(mod, name, where);
-        if (!dynamic_cast<OverloadSet*>(result->GetType(nullptr)))
-            return result;
-        auto lookup2 = LookupFromContext(mod, name, where);
-        if (!lookup2)
-            return result;
-        if (!dynamic_cast<OverloadSet*>(lookup2->GetType(nullptr)))
-            return result;
-        return mod->analyzer.GetOverloadSet(dynamic_cast<OverloadSet*>(result->GetType(nullptr)), dynamic_cast<OverloadSet*>(lookup2->GetType(nullptr)))->BuildValueConstruction({}, Context{ mod, where });
+        return Type::AccessMember(local_mod_instance, name, { mod, where });
+        //if (!result) return LookupFromContext(mod, name, where);
+        //if (!dynamic_cast<OverloadSet*>(result->GetType(nullptr)))
+        //    return result;
+        //auto lookup2 = LookupFromContext(mod, name, where);
+        //if (!lookup2)
+        //    return result;
+        //if (!dynamic_cast<OverloadSet*>(lookup2->GetType(nullptr)))
+        //    return result;
+        //return mod->analyzer.GetOverloadSet(dynamic_cast<OverloadSet*>(result->GetType(nullptr)), dynamic_cast<OverloadSet*>(lookup2->GetType(nullptr)))->BuildValueConstruction({}, Context{ mod, where });
     });
 
     AddHandler<Semantic::UserDefinedType>(a.ContextLookupHandlers, [](UserDefinedType* udt, Parse::Name name, Lexer::Range where) -> std::shared_ptr<Expression> {
