@@ -769,7 +769,13 @@ bool Semantic::IsMultiTyped(const Parse::FunctionBase* f) {
         ret = ret || IsMultiTyped(var);
     return ret;
 }
-
+std::shared_ptr<Expression> Analyzer::AnalyzeExpression(Type* lookup, const Parse::Expression* e, Scope* current, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup) {
+    return AnalyzeExpression(lookup, e, [=](Parse::Name name, Lexer::Range where) {
+        if (auto local = current->LookupLocal(GetNameAsString(name)))
+            return local;
+        return NonstaticLookup(name, where);
+    });
+}
 std::shared_ptr<Expression> Analyzer::AnalyzeExpression(Type* lookup, const Parse::Expression* e, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup) {
     static_assert(std::is_polymorphic<Parse::Expression>::value, "Expression must be polymorphic.");
     auto&& type_info = typeid(*e);

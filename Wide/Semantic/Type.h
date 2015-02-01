@@ -108,8 +108,7 @@ namespace Wide {
             static std::shared_ptr<Expression> SetVirtualPointers(Expression::InstanceKey key, std::shared_ptr<Expression> self, std::vector<std::pair<Type*, unsigned>> path);
             virtual VTableLayout ComputePrimaryVTableLayout();
             virtual std::shared_ptr<Expression> ConstructCall(Expression::InstanceKey key, std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c);
-            virtual std::shared_ptr<Expression> AccessVirtualPointer(Expression::InstanceKey key, std::shared_ptr<Expression> self);
-        protected:
+                    protected:
             virtual std::function<void(CodegenContext&)> BuildDestruction(Expression::InstanceKey key, std::shared_ptr<Expression> self, Context c, bool devirtualize);
             virtual std::shared_ptr<Expression> AccessNamedMember(Expression::InstanceKey key, std::shared_ptr<Expression> t, std::string name, Context c);
             llvm::Function* DestructorFunction = nullptr;
@@ -118,6 +117,7 @@ namespace Wide {
             virtual OverloadSet* CreateADLOverloadSet(Parse::OperatorName name, Parse::Access access);
             virtual OverloadSet* CreateConstructorOverloadSet(Parse::Access access) = 0;
         public:
+            virtual std::shared_ptr<Expression> AccessVirtualPointer(Expression::InstanceKey key, std::shared_ptr<Expression> self);
             virtual std::pair<FunctionType*, std::function<llvm::Function*(llvm::Module*)>> VirtualEntryFor(VTableLayout::VirtualFunctionEntry entry) { assert(false); throw std::runtime_error("ICE"); }
             Type(Analyzer& a) : analyzer(a) {}
 

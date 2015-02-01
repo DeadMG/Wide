@@ -195,7 +195,7 @@ Scope* FunctionSkeleton::ComputeBody() {
                 };
                 if (is_delegating()) {
                     Context c{ GetContext(), con->initializers.front().where };
-                    auto expr = analyzer.AnalyzeExpression(GetContext(), con->initializers.front().initializer.get(), NonstaticLookup);
+                    auto expr = analyzer.AnalyzeExpression(GetContext(), con->initializers.front().initializer.get(), root_scope.get(), NonstaticLookup);
                     auto conty = dynamic_cast<Type*>(*ConstructorContext);
                     auto conoverset = conty->GetConstructorOverloadSet(Parse::Access::Private);
                     root_scope->active.push_back(CreateResultExpression(Range::Elements(expr), [=](Expression::InstanceKey key) {
@@ -257,9 +257,9 @@ Scope* FunctionSkeleton::ComputeBody() {
                                 std::vector<std::shared_ptr<Expression>> exprs;
                                 if (auto tup = dynamic_cast<const Parse::Tuple*>(init->initializer.get())) {
                                     for (auto&& expr : tup->expressions)
-                                        exprs.push_back(analyzer.AnalyzeExpression(GetContext(), expr.get(), NonstaticLookup));
+                                        exprs.push_back(analyzer.AnalyzeExpression(GetContext(), expr.get(), root_scope.get(), NonstaticLookup));
                                 } else
-                                    exprs.push_back(analyzer.AnalyzeExpression(GetContext(), init->initializer.get(), NonstaticLookup));
+                                    exprs.push_back(analyzer.AnalyzeExpression(GetContext(), init->initializer.get(), root_scope.get(), NonstaticLookup));
                                 root_scope->active.push_back(make_member_initializer(std::move(exprs), init->where));
                             } else
                                 root_scope->active.push_back(make_member_initializer({}, init->where));
@@ -276,7 +276,7 @@ Scope* FunctionSkeleton::ComputeBody() {
                         if (used_initializers.find(&x) == used_initializers.end()) {
                             if (auto ident = dynamic_cast<const Parse::Identifier*>(x.initialized.get()))
                                 throw NoMemberToInitialize(context->Decay(), ident->val, x.where);
-                            auto expr = analyzer.AnalyzeExpression(GetContext(), x.initializer.get(), NonstaticLookup);
+                            auto expr = analyzer.AnalyzeExpression(GetContext(), x.initializer.get(), root_scope.get(), NonstaticLookup);
                             auto conty = dynamic_cast<ConstructorType*>(expr->GetType(Expression::NoInstance()));
                             throw NoMemberToInitialize(context->Decay(), conty->GetConstructedType()->explain(), x.where);
                         }
@@ -351,7 +351,7 @@ std::shared_ptr<Expression> FunctionSkeleton::LookupLocal(Parse::Name name) {
 
 void FunctionSkeleton::AddDefaultHandlers(Analyzer& a) {
     AddHandler<const Parse::Return>(a.StatementHandlers, [](const Parse::Return* ret, FunctionSkeleton* skel, Analyzer& analyzer, Type* self, Scope* current, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> nonstatic) {
-        auto ret_expr = ret->RetExpr ? analyzer.AnalyzeExpression(self, ret->RetExpr.get(), nonstatic) : nullptr;
+        auto ret_expr = ret->RetExpr ? analyzer.AnalyzeExpression(self, ret->RetExpr.get(), current, nonstatic) : nullptr;
         return CreateResultExpression(Range::Elements(ret_expr), [=, &analyzer](Expression::InstanceKey key) -> std::shared_ptr<Expression> {
             if (!key) return nullptr;
             auto func = analyzer.GetWideFunction(skel, *key);
@@ -425,8 +425,8 @@ void FunctionSkeleton::AddDefaultHandlers(Analyzer& a) {
     });
 
     AddHandler<const Parse::Variable>(a.StatementHandlers, [](const Parse::Variable* var, FunctionSkeleton* skel, Analyzer& analyzer, Type* self, Scope* current, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> nonstatic) {
-        auto init_expr = analyzer.AnalyzeExpression(self, var->initializer.get(), nonstatic);
-        auto var_type_expr = var->type ? analyzer.AnalyzeExpression(self, var->type.get(), nonstatic) : nullptr;
+        auto init_expr = analyzer.AnalyzeExpression(self, var->initializer.get(), current, nonstatic);
+        auto var_type_expr = var->type ? analyzer.AnalyzeExpression(self, var->type.get(), current, nonstatic) : nullptr;
         if (var->name.size() == 1) {
             auto&& name = var->name.front();
             if (current->named_variables.find(var->name.front().name) != current->named_variables.end())
@@ -439,8 +439,13 @@ void FunctionSkeleton::AddDefaultHandlers(Analyzer& a) {
                     var_type = conty->GetConstructedType();
                 } else
                     var_type = init_expr->GetType(key)->Decay();
-                //if (var_type == init_expr->GetType(key))
-                //    return init_expr;
+                if (var_type == init_expr->GetType(key))
+                    return CreatePrimGlobal(Range::Elements(init_expr), analyzer.GetLvalueType(var_type), [=](CodegenContext& con) -> llvm::Value* {
+                        if (init_expr->GetType(con.func)->AlwaysKeepInMemory(con) || var_type->IsReference()) return init_expr->GetValue(con);
+                        auto alloc = con.CreateAlloca(var_type);
+                        con->CreateStore(init_expr->GetValue(con), alloc);
+                        return alloc;
+                    });
                 auto temp = CreateTemporary(var_type, { self, name.where });
                 auto construct = Type::BuildInplaceConstruction(temp, { init_expr }, { self, name.where });
                 auto des = var_type->BuildDestructorCall(key, temp, { self, name.where }, true);
@@ -553,7 +558,7 @@ void FunctionSkeleton::AddDefaultHandlers(Analyzer& a) {
             }
             void Instantiate(Function* f) override final {
                 body->Instantiate(f);
-                boolconvert->GetType(f->GetSignature()->GetArguments());
+                boolconvert->GetType(f->GetArguments());
             }
         };
         auto condscope = new Scope(current);
@@ -564,7 +569,7 @@ void FunctionSkeleton::AddDefaultHandlers(Analyzer& a) {
                 condscope->active.push_back(AnalyzeStatement(analyzer, skel, whil->var_condition.get(), self, condscope, nonstatic));
                 return condscope->named_variables.begin()->second.first;
             }
-            return analyzer.AnalyzeExpression(self, whil->condition.get(), nonstatic);
+            return analyzer.AnalyzeExpression(self, whil->condition.get(), current, nonstatic);
         };
         auto cond = get_expr();
         auto while_stmt = std::make_shared<WhileStatement>(cond, whil->location, self);
@@ -603,7 +608,7 @@ void FunctionSkeleton::AddDefaultHandlers(Analyzer& a) {
                 condscope->active.push_back(AnalyzeStatement(analyzer, skel, if_stmt->var_condition.get(), self, condscope, nonstatic));
                 return condscope->named_variables.begin()->second.first;
             }
-            return analyzer.AnalyzeExpression(self, if_stmt->condition.get(), nonstatic);
+            return analyzer.AnalyzeExpression(self, if_stmt->condition.get(), current, nonstatic);
         };
         auto cond = Type::BuildBooleanConversion(get_expr(), { self, if_stmt->location });
         condscope->active.push_back(cond);
@@ -654,7 +659,7 @@ void FunctionSkeleton::AddDefaultHandlers(Analyzer& a) {
             else
                 con->CreateCall(con.GetCXARethrow());
         });
-        auto expr = analyzer.AnalyzeExpression(self, thro->expr.get(), nonstatic);
+        auto expr = analyzer.AnalyzeExpression(self, thro->expr.get(), current, nonstatic);
         return CreatePrimGlobal(Range::Elements(expr), analyzer, Semantic::ThrowObject(expr, { self, thro->location }));
     });
 
@@ -681,7 +686,7 @@ void FunctionSkeleton::AddDefaultHandlers(Analyzer& a) {
                 catches.push_back(Catch{ std::move(stmts) });
                 break;
             }
-            auto type = analyzer.AnalyzeExpression(self, catch_.type.get(), nonstatic);
+            auto type = analyzer.AnalyzeExpression(self, catch_.type.get(), catchscope, nonstatic);
             auto param = std::make_shared<llvm::Value*>();
             auto catch_param = CreateResultExpression(Range::Elements(type), [=](Expression::InstanceKey key) {
                 auto con = dynamic_cast<ConstructorType*>(type->GetType(key));

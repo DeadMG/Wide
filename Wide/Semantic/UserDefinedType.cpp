@@ -880,7 +880,7 @@ OverloadSet* UserDefinedType::CreateOperatorOverloadSet(Parse::OperatorName name
 std::function<void(CodegenContext&)> UserDefinedType::BuildDestruction(Expression::InstanceKey key, std::shared_ptr<Expression> self, Context c, bool devirtualize) {
     if (type->destructor_decl) {
         std::unordered_set<OverloadResolvable*> resolvables;
-        resolvables.insert(analyzer.GetCallableForFunction(type->destructor_decl.get(), this, "~type", this, GetNonstaticLookup(self)));
+        resolvables.insert(analyzer.GetCallableForFunction(type->destructor_decl.get(), this, "~type", this, GetNonstaticLookup(type->destructor_decl.get(), "~type")));
         auto desset = analyzer.GetOverloadSet(resolvables, analyzer.GetLvalueType(this));
         auto callable = dynamic_cast<Wide::Semantic::Function*>(desset->Resolve({ analyzer.GetLvalueType(this) }, c.from));
         auto call = callable->Call(key, { self }, { this, c.where });

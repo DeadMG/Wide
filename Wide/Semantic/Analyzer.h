@@ -226,6 +226,7 @@ namespace Wide {
                 std::function<std::shared_ptr<Expression>(Type* context, Parse::Name name, Lexer::Range where)>>
             ContextLookupHandlers;
 
+            std::shared_ptr<Expression> AnalyzeExpression(Type* lookup, const Parse::Expression* e, Scope* current, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup);
             std::shared_ptr<Expression> AnalyzeExpression(Type* lookup, const Parse::Expression* e, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup);
 
             Analyzer(const Options::Clang&, const Parse::Module*, llvm::LLVMContext& con, const std::unordered_map<std::string, std::string>& = std::unordered_map<std::string, std::string>());

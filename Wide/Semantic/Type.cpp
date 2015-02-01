@@ -249,7 +249,6 @@ std::function<void(CodegenContext&)> Type::BuildDestruction(Expression::Instance
     return [](CodegenContext&) {};
 }
 std::shared_ptr<Expression> Type::AccessVirtualPointer(Expression::InstanceKey key, std::shared_ptr<Expression> self) {
-    assert(false && "Attempted to access the virtual pointer of a type with no virtual functions.");
     return nullptr;
 }
 
@@ -800,16 +799,14 @@ std::shared_ptr<Expression> Type::SetVirtualPointers(std::shared_ptr<Expression>
 std::shared_ptr<Expression> Type::SetVirtualPointers(Expression::InstanceKey key, std::shared_ptr<Expression> self, std::vector<std::pair<Type*, unsigned>> path) {
     // Set the base vptrs first, because some Clang types share vtables with their base.
     auto selfty = self->GetType(key)->Decay();
-    if (!selfty->GetVirtualPointerType())
-        return CreatePrimGlobal(Range::Elements(self), selfty->analyzer, [](CodegenContext&) {});
     std::vector<std::shared_ptr<Expression>> BasePointerInitializers;
     for (auto base : selfty->GetBasesAndOffsets()) {
         path.push_back(std::make_pair(selfty, base.second));
         BasePointerInitializers.push_back(Type::SetVirtualPointers(key, Type::AccessBase(self, base.first), path));
         path.pop_back();
     }
-    // If we actually have a vptr, then set it; else just set the bases.
-    auto vptr = Type::GetVirtualPointer(self);
+    // If we actually have a vptr, then set it; else just set the bases.   
+    auto vptr = selfty->AccessVirtualPointer(key, self);
     if (vptr) {
         path.push_back(std::make_pair(selfty, 0));
         BasePointerInitializers.push_back(Wide::Memory::MakeUnique<ImplicitStoreExpr>(std::move(vptr), selfty->GetVTablePointer(path)));

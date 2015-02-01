@@ -149,9 +149,11 @@ std::shared_ptr<Expression> Semantic::CreatePrimOp(std::shared_ptr<Expression> l
     });
 }
 std::shared_ptr<Expression> Semantic::BuildValue(std::shared_ptr<Expression> e) {
-    if (e->GetType(nullptr)->IsReference())
-        return Wide::Memory::MakeUnique<ImplicitLoadExpr>(std::move(e));
-    return std::move(e);
+    return CreateResultExpression(Range::Elements(e), [=](Expression::InstanceKey key) -> std::shared_ptr<Expression> {
+        if (e->GetType(key)->IsReference())
+            return std::make_shared<ImplicitLoadExpr>(std::move(e));
+        return e;
+    });
 }
 Chain::Chain(std::shared_ptr<Expression> effect, std::shared_ptr<Expression> result)
     : SourceExpression(Range::Elements(effect, result)), SideEffect(std::move(effect)), result(std::move(result)) {}
@@ -418,7 +420,7 @@ Type* SourceExpression::GetType(InstanceKey f) {
             arg.second.types[f] = arg.first->GetType(f);
         if (arg.second.types[f] == nullptr) {
             dont = true;
-            break;
+            //break;
         }
     };
     if (dont) return nullptr;
