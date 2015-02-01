@@ -383,10 +383,11 @@ Parser::Parser(std::function<Wide::Util::optional<Lexer::Token>()> l)
         auto&& tok = p.lex(expected);
         if (tok.GetType() == &Lexer::TokenTypes::CloseBracket) {
             p.lex(&Lexer::TokenTypes::Lambda);
-            auto&& expr = p.ParseExpression(imp);
+            auto expr = p.ParseExpression(imp);
             std::vector<std::unique_ptr<Statement>> stmts;
-            stmts.push_back({ Wide::Memory::MakeUnique<Return>(std::move(expr), expr->location) });
-            return Wide::Memory::MakeUnique<Lambda>(std::move(stmts), std::vector<FunctionArgument>(), t.GetLocation() + expr->location, false, std::vector<Variable>());
+            auto loc = expr->location;
+            stmts.push_back({ Wide::Memory::MakeUnique<Return>(std::move(expr), loc) });
+            return Wide::Memory::MakeUnique<Lambda>(std::move(stmts), std::vector<FunctionArgument>(), t.GetLocation() + loc, false, std::vector<Variable>());
         }
         p.lex(tok);
         auto&& expr = p.ParseExpression(imp);
