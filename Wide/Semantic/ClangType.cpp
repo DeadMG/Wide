@@ -50,7 +50,7 @@ std::shared_ptr<Expression> GetOverloadSet(clang::NamedDecl* d, ClangTU* from, s
     std::unordered_set<clang::NamedDecl*> decls;
     if (d)
         decls.insert(d);
-    return CreateResultExpression([=, &a](Expression::InstanceKey f) {
+    return CreateResultExpression(Range::Elements(self), [=, &a](Expression::InstanceKey f) {
         return a.GetOverloadSet(std::move(decls), from, self->GetType(f))->BuildValueConstruction({ self }, c);
     });
 }
@@ -337,7 +337,7 @@ std::shared_ptr<Expression> ClangType::PrimitiveAccessMember(std::shared_ptr<Exp
     } else {
         resty = std::next(type->getAsCXXRecordDecl()->bases_begin(), num)->getType();
     }
-    return CreateResultExpression([=](Expression::InstanceKey f) {
+    return CreateResultExpression(Range::Elements(self), [=](Expression::InstanceKey f) {
         auto source_type = self->GetType(f);
         auto root_type = analyzer.GetClangType(*from, resty);
         auto result_type = Semantic::CollapseType(source_type, root_type);
@@ -610,7 +610,7 @@ std::shared_ptr<Expression> ClangType::AccessStaticMember(std::string name, Cont
             return analyzer.GetConstructorType(analyzer.GetClangType(*from, from->GetASTContext().getTypeDeclType(ty)))->BuildValueConstruction({}, c);
         if (auto vardecl = llvm::dyn_cast<clang::VarDecl>(lr.getFoundDecl())) {
             auto var = from->GetObject(analyzer, vardecl);
-            return CreatePrimGlobal(analyzer.GetLvalueType(analyzer.GetClangType(*from, vardecl->getType())), [var](CodegenContext& con) {
+            return CreatePrimGlobal(Range::Empty(), analyzer.GetLvalueType(analyzer.GetClangType(*from, vardecl->getType())), [var](CodegenContext& con) {
                 return var(con);
             });
         }

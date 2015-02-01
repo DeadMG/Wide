@@ -25,7 +25,6 @@ namespace Wide {
 
             void ComputeReturnType();
         public:
-            void SetReturnType(Expression*);
             Function(Analyzer& a, FunctionSkeleton*, std::vector<Type*> args);
 
             llvm::Function* EmitCode(llvm::Module* module);

@@ -140,7 +140,7 @@ std::shared_ptr<Expression> Semantic::InterpretExpression(clang::Expr* expr, Cla
         }
         if (auto vardecl = llvm::dyn_cast<clang::VarDecl>(decl)) {
             auto var = tu.GetObject(a, vardecl);
-            return CreatePrimGlobal(a.GetLvalueType(a.GetClangType(tu, vardecl->getType())), [var](CodegenContext& con) {
+            return CreatePrimGlobal(Range::Empty(), a.GetLvalueType(a.GetClangType(tu, vardecl->getType())), [var](CodegenContext& con) {
                 return var(con);
             });
         }

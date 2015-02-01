@@ -39,7 +39,7 @@ std::shared_ptr<Expression> LambdaType::BuildLambdaFromCaptures(std::vector<std:
     auto self = CreateTemporary(this, c);
     if (contents.size() == 0)
         return std::make_shared<ImplicitLoadExpr>(std::move(self));
-    return CreateResultExpression([=](Expression::InstanceKey f) {
+    return CreateResultExpression(Range::Elements(self), [=](Expression::InstanceKey f) {
         std::vector<std::shared_ptr<Expression>> initializers;
         for (std::size_t i = 0; i < exprs.size(); ++i) {
             std::vector<Type*> types;
@@ -56,7 +56,7 @@ std::shared_ptr<Expression> LambdaType::BuildLambdaFromCaptures(std::vector<std:
         }
 
         auto destructor = BuildDestructorCall(f, self, c, true);
-        return CreatePrimGlobal(this, [=](CodegenContext& con) -> llvm::Value* {
+        return CreatePrimGlobal(Range::Container(initializers), this, [=](CodegenContext& con) -> llvm::Value* {
             for (auto&& init : initializers)
                 init->GetValue(con);
             if (AlwaysKeepInMemory(con)) {

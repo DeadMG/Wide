@@ -62,7 +62,7 @@ std::function<std::shared_ptr<Expression>(Wide::Parse::Name, Wide::Lexer::Range)
 std::function<std::shared_ptr<Expression>(Wide::Parse::Name, Wide::Lexer::Range)> UserDefinedType::GetNonstaticLookup(const Parse::FunctionBase* base, Parse::Name funcname) {
     return [=](Parse::Name name, Lexer::Range where) {
         auto skel = GetWideFunction(base, funcname);
-        return CreateResultExpression([=](Expression::InstanceKey key) -> std::shared_ptr<Expression> {
+        return CreateResultExpression(Range::Empty(), [=](Expression::InstanceKey key) -> std::shared_ptr<Expression> {
             if (!key) return nullptr;
             auto func = analyzer.GetWideFunction(skel, *key);
             return Type::AccessMember(func->GetThis(), name, { this, where });
@@ -285,7 +285,7 @@ std::shared_ptr<Expression> UserDefinedType::AccessNamedMember(Expression::Insta
                 }
             }
             if (!resolvables.empty() || imports != analyzer.GetOverloadSet())
-                return CreateResultExpression([=](Expression::InstanceKey key) {
+                return CreateResultExpression(Range::Elements(self), [=](Expression::InstanceKey key) {
                     return analyzer.GetOverloadSet(imports, analyzer.GetOverloadSet(resolvables), analyzer.GetRvalueType(self->GetType(key)))->BuildValueConstruction({ self }, c);
                 });
         } else {
@@ -303,7 +303,7 @@ std::shared_ptr<Expression> UserDefinedType::AccessNamedMember(Expression::Insta
             basemembers.push_back(member);
     }
     if (basemembers.empty()) return nullptr;
-    return CreateResultExpression([=](Expression::InstanceKey key) -> std::shared_ptr<Expression> {
+    return CreateResultExpression(Range::Container(basemembers), [=](Expression::InstanceKey key) -> std::shared_ptr<Expression> {
         if (basemembers.size() == 1) return basemembers[0];
         OverloadSet* BaseOverloadSet = analyzer.GetOverloadSet();
         for (auto&& member : basemembers) {
@@ -688,7 +688,7 @@ struct Wide::Semantic::UserDefinedType::ImportConstructorCallable : Callable {
     }
     std::shared_ptr<Expression> CallFunction(Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c) override final {
         CreateInitializers(c);
-        return Type::BuildCall(CreatePrimGlobal(GetFunctionType(), [this](CodegenContext& con) {
+        return Type::BuildCall(CreatePrimGlobal(Range::Empty(), GetFunctionType(), [this](CodegenContext& con) {
             EmitCode(con);
             return thunk_function;
         }), args, c);
@@ -696,7 +696,7 @@ struct Wide::Semantic::UserDefinedType::ImportConstructorCallable : Callable {
     void CreateInitializers(Context c) {
         if (initializers) return;       
         auto Argument = [=](unsigned num) {
-            return CreatePrimGlobal(arguments[num], [=](CodegenContext& con) {
+            return CreatePrimGlobal(Range::Empty(), arguments[num], [=](CodegenContext& con) {
                 return std::next(thunk_function->arg_begin(), num);
             });
         };
@@ -704,7 +704,7 @@ struct Wide::Semantic::UserDefinedType::ImportConstructorCallable : Callable {
             std::function<void(CodegenContext&)> destructor;
             if (!member->IsTriviallyDestructible())
                 destructor = member->BuildDestructorCall(key, memexpr, { member, where }, true);
-            return CreatePrimGlobal(Construction->GetType(key), [=](CodegenContext& con) {
+            return CreatePrimGlobal(Range::Elements(Construction), Construction->GetType(key), [=](CodegenContext& con) {
                 auto val = Construction->GetValue(con);
                 if (destructor)
                     con.AddExceptionOnlyDestructor(destructor);
@@ -1309,8 +1309,8 @@ void UserDefinedType::Export(llvm::Module* mod) {
         });
         fty = analyzer.GetFunctionType(memtype, { this }, false);
         llvm::Function* valfunc = llvm::Function::Create(llvm::cast<llvm::FunctionType>(fty->GetLLVMType(mod)->getElementType()), llvm::GlobalValue::LinkageTypes::ExternalLinkage, tuple.second.second, mod);
-        auto complexmem = CreatePrimGlobal(analyzer.GetLvalueType(memtype), [valfunc](CodegenContext& con) { return valfunc->arg_begin(); });
-        auto self = CreatePrimGlobal(this, [valfunc](CodegenContext& con) { return ++valfunc->arg_begin(); });
+        auto complexmem = CreatePrimGlobal(Range::Empty(), analyzer.GetLvalueType(memtype), [valfunc](CodegenContext& con) { return valfunc->arg_begin(); });
+        auto self = CreatePrimGlobal(Range::Empty(), this, [valfunc](CodegenContext& con) { return ++valfunc->arg_begin(); });
         auto val = PrimitiveAccessMember(self, GetMemberData().member_indices[tuple.first] + type->bases.size());
         auto inplace = memtype->BuildInplaceConstruction(complexmem, { val }, { this, Wide::Lexer::Range(std::make_shared<std::string>("Analyzer internal function")) });
         CodegenContext::EmitFunctionBody(valfunc, { this }, [&](CodegenContext& con) {

@@ -35,13 +35,13 @@ std::string ArrayType::explain() {
 }
 std::shared_ptr<Expression> ArrayType::PrimitiveAccessMember(std::shared_ptr<Expression> self, unsigned num) {
     assert(num < count);
-    return CreateResultExpression([=](Expression::InstanceKey f) {
+    return CreateResultExpression(Range::Elements(self), [=](Expression::InstanceKey f) {
         auto result_ty = IsLvalueType(self->GetType(f))
             ? t->analyzer.GetLvalueType(t)
             : IsRvalueType(self->GetType(f))
             ? t->analyzer.GetRvalueType(t)
             : t;
-        return CreatePrimGlobal(result_ty, [=](CodegenContext& con) {
+        return CreatePrimGlobal(Range::Elements(self), result_ty, [=](CodegenContext& con) {
             auto val = self->GetValue(con);
             return con.CreateStructGEP(val, num);
         });

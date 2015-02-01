@@ -96,7 +96,7 @@ Analyzer::Analyzer(const Options::Clang& opts, const Parse::Module* GlobalModule
         Callable* GetCallableForResolution(std::vector<Type*>, Type*, Analyzer& a) override final { return this; }
         std::shared_ptr<Expression> CallFunction(Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c) override final {
             auto conty = dynamic_cast<ConstructorType*>(args[0]->GetType(key)->Decay());
-            return CreatePrimGlobal(conty, [=](CodegenContext& con) {
+            return CreatePrimGlobal(Range::Container(args), conty, [=](CodegenContext& con) {
                 args[0]->GetValue(con);
                 auto val = args[1]->GetValue(con);
                 return con->CreatePointerCast(val, conty->GetLLVMType(con));
@@ -862,7 +862,7 @@ std::function<void(CodegenContext&)> Semantic::ThrowObject(std::shared_ptr<Expre
         auto RTTI = ty->GetRTTI();
         auto memty = ty->analyzer.GetLvalueType(ty);
         auto destructor = std::make_shared<std::list<std::pair<std::function<void(CodegenContext&)>, bool>>::iterator>();
-        auto except_memory = CreatePrimGlobal(memty, [=](CodegenContext& con) {
+        auto except_memory = CreatePrimGlobal(Range::Elements(expr), memty, [=](CodegenContext& con) {
             auto except_memory = con->CreateCall(con.GetCXAAllocateException(), { llvm::ConstantInt::get(con.GetPointerSizedIntegerType(), ty->size(), false) });
             *destructor = con.AddDestructor([except_memory](CodegenContext& con) {
                 auto free_exception = con.GetCXAFreeException();

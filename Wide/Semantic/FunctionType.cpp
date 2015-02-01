@@ -93,7 +93,7 @@ std::shared_ptr<Expression> WideFunctionType::ConstructCall(Expression::Instance
         ? result_type->BuildDestructorCall(key, Ret, c, true)
         : std::function<void(CodegenContext&)>();
     
-    return CreatePrimGlobal(result_type, [=](CodegenContext& con) {
+    return CreatePrimGlobal(Range::Elements(val) | Range::Concat(Range::Container(args)), result_type, [=](CodegenContext& con) {
         llvm::Value* llvmfunc = val->GetValue(con);
         std::vector<llvm::Value*> llvmargs;
         if (result_type->AlwaysKeepInMemory(con))
@@ -158,7 +158,7 @@ Wide::Util::optional<clang::QualType> WideFunctionType::GetClangType(ClangTU& fr
     return from.GetASTContext().getFunctionType(*retty, types, protoinfo);
 }
 std::shared_ptr<Expression> WideFunctionType::CreateThunkFrom(std::shared_ptr<Expression> to, Type* context) {
-    return CreateResultExpression([=](Expression::InstanceKey f) -> std::shared_ptr<Expression>{
+    return CreateResultExpression(Range::Elements(to), [=](Expression::InstanceKey f) -> std::shared_ptr<Expression>{
         auto dest = this;
         if (to->GetType(f) == dest) return to;
         auto name = dest->analyzer.GetUniqueFunctionName();
@@ -166,7 +166,7 @@ std::shared_ptr<Expression> WideFunctionType::CreateThunkFrom(std::shared_ptr<Ex
         if (!functy) throw std::runtime_error("Cannot thunk from a non-function-type.");
         auto func = [name](llvm::Module* mod) { return mod->getFunction(name); };
         auto emit = dest->CreateThunk(func, to, context);
-        return CreatePrimGlobal(dest, [=](CodegenContext& con) {
+        return CreatePrimGlobal(Range::Elements(to), dest, [=](CodegenContext& con) {
             auto func = llvm::Function::Create(llvm::cast<llvm::FunctionType>(dest->GetLLVMType(con)->getElementType()), llvm::GlobalValue::LinkageTypes::ExternalLinkage, name, con);
             emit(con);
             return func;
@@ -181,7 +181,7 @@ std::function<void(llvm::Module*)> WideFunctionType::CreateThunk(std::function<l
     Context c{ context, std::make_shared<std::string>("Analyzer internal thunk") };
     // For the zeroth argument, if the rhs is derived from the lhs, force a cast for vthunks.
     auto arg = [](Type* ty, std::function<unsigned(llvm::Module* mod)> i) {
-        return CreatePrimGlobal(ty, [=](CodegenContext& con) {
+        return CreatePrimGlobal(Range::Empty(), ty, [=](CodegenContext& con) {
             return std::next(con->GetInsertBlock()->getParent()->arg_begin(), i(con));
         });
     };
@@ -192,7 +192,7 @@ std::function<void(llvm::Module*)> WideFunctionType::CreateThunk(std::function<l
             if (derthis->IsDerivedFrom(basethis) == InheritanceRelationship::UnambiguouslyDerived && IsLvalueType(derthis) == IsLvalueType(basethis)) {
                 auto resultty = destty->GetArguments()[0];
                 auto offset = derthis->GetOffsetToBase(basethis);
-                conversion_exprs.push_back(CreatePrimGlobal(resultty, [=](CodegenContext& con) {
+                conversion_exprs.push_back(CreatePrimGlobal(Range::Empty(), resultty, [=](CodegenContext& con) {
                     auto src = std::next(con->GetInsertBlock()->getParent()->arg_begin(), GetReturnType()->AlwaysKeepInMemory(con));
                     auto cast = con->CreateBitCast(src, con.GetInt8PtrTy());
                     auto adjusted = con->CreateGEP(cast, llvm::ConstantInt::get(llvm::IntegerType::getInt32Ty(con), -offset, true));
@@ -259,7 +259,7 @@ std::shared_ptr<Expression> ClangFunctionType::ConstructCall(Expression::Instanc
         Destructor = RetType->BuildDestructorCall(key, Ret, c, true);
     else
         Destructor = {};
-    return CreatePrimGlobal(RetType, [=](CodegenContext& con) -> llvm::Value* {
+    return CreatePrimGlobal(Range::Elements(val) | Range::Concat(Range::Container(args)), RetType, [=](CodegenContext& con) -> llvm::Value* {
         llvm::Value* llvmfunc = val->GetValue(con);
         clang::CodeGen::CodeGenFunction codegenfunc(clangfuncty->from->GetCodegenModule(con), true);
         codegenfunc.AllocaInsertPt = con.GetAllocaInsertPoint();
@@ -328,7 +328,7 @@ std::function<void(llvm::Module*)> ClangFunctionType::CreateThunk(std::function<
     // For the zeroth argument, if the rhs is derived from the lhs, force a cast for vthunks.
     auto args = std::make_shared<std::vector<llvm::Value*>>();
     auto arg = [](Type* ty, std::function<unsigned(llvm::Module* mod)> i) {
-        return CreatePrimGlobal(ty, [=](CodegenContext& con) {
+        return CreatePrimGlobal(Range::Empty(), ty, [=](CodegenContext& con) {
             return std::next(con->GetInsertBlock()->getParent()->arg_begin(), i(con));
         });
     };
@@ -340,7 +340,7 @@ std::function<void(llvm::Module*)> ClangFunctionType::CreateThunk(std::function<
             if (derthis->IsDerivedFrom(basethis) == InheritanceRelationship::UnambiguouslyDerived && IsLvalueType(derthis) == IsLvalueType(basethis)) {
                 auto resultty = destty->GetArguments()[0];
                 auto offset = derthis->GetOffsetToBase(basethis);
-                conversion_exprs.push_back(CreatePrimGlobal(resultty, [=](CodegenContext& con) {
+                conversion_exprs.push_back(CreatePrimGlobal(Range::Empty(), resultty, [=](CodegenContext& con) {
                     auto src = std::next(con->GetInsertBlock()->getParent()->arg_begin(), GetReturnType()->AlwaysKeepInMemory(con));
                     auto cast = con->CreateBitCast(src, con.GetInt8PtrTy());
                     auto adjusted = con->CreateGEP(cast, llvm::ConstantInt::get(llvm::IntegerType::getInt32Ty(con), -offset, true));
@@ -354,7 +354,7 @@ std::function<void(llvm::Module*)> ClangFunctionType::CreateThunk(std::function<
     auto call = Type::BuildCall(dest, conversion_exprs, c);
     std::shared_ptr<Expression> ret_expr;
     if (dynamic_cast<StringType*>(destty->GetReturnType())) {
-        call = CreatePrimGlobal(context->analyzer.GetPointerType(context->analyzer.GetIntegralType(8, true)), [=](CodegenContext& con) {
+        call = CreatePrimGlobal(Range::Elements(call), context->analyzer.GetPointerType(context->analyzer.GetIntegralType(8, true)), [=](CodegenContext& con) {
             return call->GetValue(con);
         }); 
     } else
@@ -462,7 +462,7 @@ std::shared_ptr<Expression> ClangFunctionType::CreateThunkFrom(std::shared_ptr<E
     }
     auto create = from->GetObject(analyzer, decl);
     auto emit = CreateThunk(create, dest, decl, context);
-    return CreatePrimGlobal(this, [=](CodegenContext& con) {
+    return CreatePrimGlobal(Range::Elements(dest), this, [=](CodegenContext& con) {
         auto func = create(con);
         emit(con);
         return func;

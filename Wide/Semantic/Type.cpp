@@ -193,7 +193,7 @@ std::vector<std::pair<Type*, unsigned>> Type::GetBasesAndOffsets() {
 }
 
 std::shared_ptr<Expression> Type::GetVirtualPointer(std::shared_ptr<Expression> self) { 
-    return CreateResultExpression([=](Expression::InstanceKey key) -> std::shared_ptr<Expression> {
+    return CreateResultExpression(Range::Elements(self), [=](Expression::InstanceKey key) -> std::shared_ptr<Expression> {
         auto selfty = self->GetType(key)->Decay();
         if (!selfty->GetVirtualPointerType())
             return nullptr;
@@ -211,7 +211,7 @@ std::shared_ptr<Expression> Type::AccessNamedMember(Expression::InstanceKey key,
     return nullptr;
 }
 std::shared_ptr<Expression> Type::AccessMember(std::shared_ptr<Expression> t, Parse::Name name, Context c) {
-    return CreateResultExpression([=](Expression::InstanceKey key) {
+    return CreateResultExpression(Range::Elements(t), [=](Expression::InstanceKey key) {
         auto ty = t->GetType(key);
         if (auto string = boost::get<std::string>(&name))
             return ty->Decay()->AccessNamedMember(key, t, *string, c);
@@ -228,7 +228,7 @@ std::shared_ptr<Expression> Type::AccessStaticMember(Parse::Name name, Context c
 }
 
 std::shared_ptr<Expression> Type::BuildCall(std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c) {
-    return CreateResultExpression([=](Expression::InstanceKey key) {
+    return CreateResultExpression(Range::Elements(val) | Range::Concat(Range::Container(args)), [=](Expression::InstanceKey key) {
         auto ty = val->GetType(key);
         if (ty->IsReference())
             ty = ty->Decay();
@@ -254,7 +254,7 @@ std::shared_ptr<Expression> Type::AccessVirtualPointer(Expression::InstanceKey k
 }
 
 std::shared_ptr<Expression> Type::BuildBooleanConversion(std::shared_ptr<Expression> val, Context c) {
-    return CreateResultExpression([=](Expression::InstanceKey key) {
+    return CreateResultExpression(Range::Elements(val), [=](Expression::InstanceKey key) {
         auto set = val->GetType(key)->Decay()->AccessMember({ &Lexer::TokenTypes::QuestionMark }, GetAccessSpecifier(c.from, val->GetType(key)), OperatorAccess::Implicit);
         std::vector<std::shared_ptr<Expression>> args;
         args.push_back(std::move(val));
@@ -296,7 +296,7 @@ OverloadSet* Type::AccessMember(Parse::OperatorName type, Parse::Access access, 
 
 std::shared_ptr<Expression> Type::BuildInplaceConstruction(std::shared_ptr<Expression> self, std::vector<std::shared_ptr<Expression>> exprs, Context c) {
     exprs.insert(exprs.begin(), std::move(self));
-    return CreateResultExpression([=](Expression::InstanceKey key) {
+    return CreateResultExpression(Range::Container(exprs), [=](Expression::InstanceKey key) {
         auto selfty = exprs[0]->GetType(key);
         std::vector<Type*> types;
         for (auto&& arg : exprs)
@@ -384,7 +384,7 @@ std::shared_ptr<Expression> Type::BuildRvalueConstruction(std::vector<std::share
     auto temporary = CreateTemporary(this, c);
     auto InplaceConstruction = Type::BuildInplaceConstruction(temporary, std::move(args), c);
     auto destructor = BuildDestructorCall(Expression::NoInstance(), temporary, c, true);
-    return CreatePrimGlobal(analyzer.GetRvalueType(this), [=](CodegenContext& con) {
+    return CreatePrimGlobal(Range::Elements(InplaceConstruction), analyzer.GetRvalueType(this), [=](CodegenContext& con) {
         InplaceConstruction->GetValue(con);
         if (!IsTriviallyDestructible())
             con.AddDestructor(destructor);
@@ -428,7 +428,7 @@ Type::VTableLayout Type::GetPrimaryVTable() {
 }
 
 std::shared_ptr<Expression> Type::AccessBase(std::shared_ptr<Expression> self, Type* other) {
-    return CreateResultExpression([=](Expression::InstanceKey key) {
+    return CreateResultExpression(Range::Elements(self), [=](Expression::InstanceKey key) {
         auto selfty = self->GetType(key)->Decay();
         assert(selfty->IsDerivedFrom(other) == InheritanceRelationship::UnambiguouslyDerived);
         assert(!other->IsReference());
@@ -437,7 +437,7 @@ std::shared_ptr<Expression> Type::AccessBase(std::shared_ptr<Expression> self, T
             : dynamic_cast<PointerType*>(self->GetType(key))
             ? selfty->analyzer.GetPointerType(other)
             : other;
-        return CreatePrimGlobal(result, [=](CodegenContext& con) -> llvm::Value* {
+        return CreatePrimGlobal(Range::Elements(self), result, [=](CodegenContext& con) -> llvm::Value* {
             // Must succeed because we know we're unambiguously derived.
             unsigned offset;
             for (auto base : selfty->GetBasesAndOffsets()) {
@@ -495,7 +495,7 @@ bool Type::InheritsFromAtOffsetZero(Type* other) {
 }
 
 std::shared_ptr<Expression> Type::BuildUnaryExpression(std::shared_ptr<Expression> self, Lexer::TokenType type, Context c) {
-    return CreateResultExpression([=](Expression::InstanceKey key) {
+    return CreateResultExpression(Range::Elements(self), [=](Expression::InstanceKey key) {
         auto selfty = self->GetType(key)->Decay();
         auto opset = selfty->AccessMember({ type }, GetAccessSpecifier(c.from, selfty), OperatorAccess::Implicit);
         auto callable = opset->Resolve({ self->GetType(key) }, c.from);
@@ -511,7 +511,7 @@ std::shared_ptr<Expression> Type::BuildUnaryExpression(std::shared_ptr<Expressio
 }
 
 std::shared_ptr<Expression> Type::BuildBinaryExpression(std::shared_ptr<Expression> lhs, std::shared_ptr<Expression> rhs, Lexer::TokenType type, Context c) {
-    return CreateResultExpression([=](Expression::InstanceKey key) -> std::shared_ptr<Expression> {
+    return CreateResultExpression(Range::Elements(lhs, rhs), [=](Expression::InstanceKey key) -> std::shared_ptr<Expression> {
         auto&& analyzer = lhs->GetType(key)->analyzer;
         auto lhsaccess = GetAccessSpecifier(c.from, lhs->GetType(key));
         auto rhsaccess = GetAccessSpecifier(c.from, rhs->GetType(key));
@@ -701,7 +701,7 @@ OverloadSet* TupleInitializable::CreateConstructorOverloadSet(Parse::Access acce
                 initializers.push_back(Type::BuildInplaceConstruction(std::move(memory), { std::move(argument) }, c));
             }
 
-            return CreatePrimGlobal(self->GetSelfAsType()->analyzer.GetLvalueType(self->GetSelfAsType()), [=](CodegenContext& con) {
+            return CreatePrimGlobal(Range::Container(initializers), self->GetSelfAsType()->analyzer.GetLvalueType(self->GetSelfAsType()), [=](CodegenContext& con) {
                 for (auto&& init : initializers)
                     init->GetValue(con);
                 return args[0]->GetValue(con);
@@ -731,7 +731,7 @@ std::shared_ptr<Expression> Type::CreateVTable(std::vector<std::pair<Type*, unsi
             if (*mem == VTableLayout::SpecialMember::RTTIPointer) {
                 auto type = path.front().first;
                 auto rtti = type->GetRTTI();
-                entries.push_back(CreatePrimGlobal(type->analyzer.GetPointerType(type->analyzer.GetIntegralType(8, true)), [=](CodegenContext& con) {
+                entries.push_back(CreatePrimGlobal(Range::Empty(), type->analyzer.GetPointerType(type->analyzer.GetIntegralType(8, true)), [=](CodegenContext& con) {
                     return con->CreateBitCast(rtti(con), con.GetInt8PtrTy());
                 }));
                 continue;
@@ -740,7 +740,7 @@ std::shared_ptr<Expression> Type::CreateVTable(std::vector<std::pair<Type*, unsi
         bool found = false;
         for (auto more_derived : path) {
             auto expr = more_derived.first->VirtualEntryFor(func);
-            auto thunk = CreatePrimGlobal(expr.first, [=](CodegenContext& con) {
+            auto thunk = CreatePrimGlobal(Range::Empty(), expr.first, [=](CodegenContext& con) {
                 return expr.second(con);
             });
             if (expr.first) {
@@ -761,7 +761,7 @@ std::shared_ptr<Expression> Type::CreateVTable(std::vector<std::pair<Type*, unsi
         } else
             assert(found);
     }
-    return CreatePrimGlobal(analyzer.GetPointerType(GetVirtualPointerType()), [=](CodegenContext& con) {
+    return CreatePrimGlobal(Range::Container(entries), analyzer.GetPointerType(GetVirtualPointerType()), [=](CodegenContext& con) {
         auto vfuncty = GetVirtualPointerType()->GetLLVMType(con);
         std::vector<llvm::Constant*> constants;
         for (auto&& init : entries) {
@@ -792,7 +792,7 @@ std::shared_ptr<Expression> Type::GetVTablePointer(std::vector<std::pair<Type*, 
 }
 
 std::shared_ptr<Expression> Type::SetVirtualPointers(std::shared_ptr<Expression> self) {
-    return CreateResultExpression([=](Expression::InstanceKey key) {
+    return CreateResultExpression(Range::Elements(self), [=](Expression::InstanceKey key) {
         return Type::SetVirtualPointers(key, std::move(self), {});
     });
 }
@@ -800,6 +800,8 @@ std::shared_ptr<Expression> Type::SetVirtualPointers(std::shared_ptr<Expression>
 std::shared_ptr<Expression> Type::SetVirtualPointers(Expression::InstanceKey key, std::shared_ptr<Expression> self, std::vector<std::pair<Type*, unsigned>> path) {
     // Set the base vptrs first, because some Clang types share vtables with their base.
     auto selfty = self->GetType(key)->Decay();
+    if (!selfty->GetVirtualPointerType())
+        return CreatePrimGlobal(Range::Elements(self), selfty->analyzer, [](CodegenContext&) {});
     std::vector<std::shared_ptr<Expression>> BasePointerInitializers;
     for (auto base : selfty->GetBasesAndOffsets()) {
         path.push_back(std::make_pair(selfty, base.second));
@@ -813,7 +815,7 @@ std::shared_ptr<Expression> Type::SetVirtualPointers(Expression::InstanceKey key
         BasePointerInitializers.push_back(Wide::Memory::MakeUnique<ImplicitStoreExpr>(std::move(vptr), selfty->GetVTablePointer(path)));
     }
 
-    return CreatePrimGlobal(self->GetType(key), [=](CodegenContext& con) {
+    return CreatePrimGlobal(Range::Container(BasePointerInitializers), self->GetType(key), [=](CodegenContext& con) {
         for (auto&& init : BasePointerInitializers)
             init->GetValue(con);
         return self->GetValue(con);
@@ -874,7 +876,7 @@ llvm::Function* Type::CreateDestructorFunction(llvm::Module* module) {
     auto fty = llvm::FunctionType::get(llvm::Type::getVoidTy(module->getContext()), { llvm::Type::getInt8PtrTy(module->getContext()) }, false);
     DestructorFunction = llvm::Function::Create(fty, llvm::GlobalValue::LinkageTypes::ExternalLinkage, analyzer.GetUniqueFunctionName(), module);
     CodegenContext::EmitFunctionBody(DestructorFunction, {}, [this](CodegenContext& c) {
-        auto obj = CreatePrimGlobal(analyzer.GetLvalueType(this), [=](CodegenContext& con) {
+        auto obj = CreatePrimGlobal(Range::Empty(), analyzer.GetLvalueType(this), [=](CodegenContext& con) {
             return con->CreateBitCast(DestructorFunction->arg_begin(), analyzer.GetLvalueType(this)->GetLLVMType(con));
         });
         BuildDestructorCall(Expression::NoInstance(), obj, { this, Lexer::Range(nullptr) }, true)(c);
@@ -884,7 +886,7 @@ llvm::Function* Type::CreateDestructorFunction(llvm::Module* module) {
 }
 
 std::shared_ptr<Expression> Type::BuildIndex(std::shared_ptr<Expression> val, std::shared_ptr<Expression> arg, Context c) {
-    return CreateResultExpression([=](Expression::InstanceKey key) {
+    return CreateResultExpression(Range::Elements(val, arg), [=](Expression::InstanceKey key) {
         auto set = val->GetType(key)->AccessMember({ &Lexer::TokenTypes::OpenSquareBracket, &Lexer::TokenTypes::CloseSquareBracket }, GetAccessSpecifier(c.from, val->GetType(key)), OperatorAccess::Implicit);
         std::vector<std::shared_ptr<Expression>> args;
         args.push_back(std::move(val));

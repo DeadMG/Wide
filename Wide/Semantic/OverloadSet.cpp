@@ -86,7 +86,7 @@ struct cppcallable : public Callable {
                 }
             }
         }
-        return CreatePrimGlobal(fty, [=](CodegenContext& con)-> llvm::Value* {
+        return CreatePrimGlobal(Range::Container(args), fty, [=](CodegenContext& con)-> llvm::Value* {
             if (vtable)
                 return con->CreateBitCast(con->CreateLoad(con->CreateConstGEP1_32(con->CreateLoad(vtable->GetValue(con)), from->GetVirtualFunctionOffset(llvm::dyn_cast<clang::CXXMethodDecl>(fun), con))), fty->GetLLVMType(con));
             auto llvmfunc = object(con);
@@ -125,7 +125,7 @@ struct cppcallable : public Callable {
         // so do the conversion ourselves if lvalues were not involved.
         std::vector<std::shared_ptr<Expression>> out;
         for (std::size_t i = 0; i < types.size(); ++i) {
-            out.push_back(CreateResultExpression([=](Expression::InstanceKey f) {
+            out.push_back(CreateResultExpression(Range::Elements(args[i]), [=](Expression::InstanceKey f) {
                 if (types[i].first == args[i]->GetType(f))
                     return std::move(args[i]);
 
@@ -139,7 +139,7 @@ struct cppcallable : public Callable {
                 // Just pretend that the argument was an int8*.
 
                 auto ImplicitStringDecay = [this](std::shared_ptr<Expression> expr) {
-                    return CreatePrimGlobal(source->analyzer.GetPointerType(source->analyzer.GetIntegralType(8, true)), [=](CodegenContext& con) {
+                    return CreatePrimGlobal(Range::Elements(expr), source->analyzer.GetPointerType(source->analyzer.GetIntegralType(8, true)), [=](CodegenContext& con) {
                         return expr->GetValue(con);
                     });
                 };

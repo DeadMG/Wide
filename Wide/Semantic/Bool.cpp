@@ -66,7 +66,7 @@ OverloadSet* Bool::CreateOperatorOverloadSet(Parse::OperatorName opname, Parse::
         return analyzer.GetOverloadSet(XorAssignOperator.get());
     } else if (name == &Lexer::TokenTypes::Or) {
         OrOperator = MakeResolvable([this](std::vector<std::shared_ptr<Expression>> args, Context c) -> std::shared_ptr<Expression> {
-            return CreatePrimGlobal(this, [=](CodegenContext& con) {
+            return CreatePrimGlobal(Range::Container(args), this, [=](CodegenContext& con) {
                 auto val = con->CreateTrunc(args[0]->GetValue(con), llvm::Type::getInt1Ty(con));
                 auto cur_block = con->GetInsertBlock();
                 auto false_br = llvm::BasicBlock::Create(con, "false", con->GetInsertBlock()->getParent());
@@ -101,7 +101,7 @@ OverloadSet* Bool::CreateOperatorOverloadSet(Parse::OperatorName opname, Parse::
         return analyzer.GetOverloadSet(OrOperator.get());
     } else if (name == &Lexer::TokenTypes::And) {
         AndOperator = MakeResolvable([this](std::vector<std::shared_ptr<Expression>> args, Context c) -> std::shared_ptr<Expression> {
-            return CreatePrimGlobal(this, [=](CodegenContext& con) {
+            return CreatePrimGlobal(Range::Container(args), this, [=](CodegenContext& con) {
                 auto val = con->CreateTrunc(args[0]->GetValue(con), llvm::Type::getInt1Ty(con));
                 auto cur_block = con->GetInsertBlock();
                 auto false_br = llvm::BasicBlock::Create(con, "true", con->GetInsertBlock()->getParent());

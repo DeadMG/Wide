@@ -28,7 +28,7 @@ std::shared_ptr<Expression> TupleType::ConstructFromLiteral(std::vector<std::sha
     }
 
     auto destructor = BuildDestructorCall(Expression::NoInstance(), self, c, true);
-    return CreatePrimGlobal(this, [=](CodegenContext& con) -> llvm::Value* {
+    return CreatePrimGlobal(Range::Container(initializers), this, [=](CodegenContext& con) -> llvm::Value* {
         for (auto&& init : initializers)
             init->GetValue(con);
         if (destructor)

@@ -69,7 +69,7 @@ FunctionSkeleton::FunctionSkeleton(const Parse::FunctionBase* astfun, Analyzer& 
     unsigned num = 0;
     // We might still be a member function if we're exported as one later.         
     auto Parameter = [&a](unsigned num, Lexer::Range where) {
-        return CreateResultExpression([=, &a](Expression::InstanceKey key) -> std::shared_ptr<Expression> {
+        return CreateResultExpression(Range::Empty(), [=, &a](Expression::InstanceKey key) -> std::shared_ptr<Expression> {
             if (!key) return nullptr;
             auto get_new_ty = [&]() -> Type* {
                 auto root_ty = Expression::GetArgumentType(key, num);
@@ -77,7 +77,7 @@ FunctionSkeleton::FunctionSkeleton(const Parse::FunctionBase* astfun, Analyzer& 
                     return a.GetLvalueType(root_ty->Decay()); // Is this wrong in the case of named rvalue reference?
                 return a.GetLvalueType(root_ty);
             };
-            return CreatePrimGlobal(get_new_ty(), [=](CodegenContext& con) -> llvm::Value* {
+            return CreatePrimGlobal(Range::Empty(), get_new_ty(), [=](CodegenContext& con) -> llvm::Value* {
                 auto argnum = num;
                 // We have an extra argument for the return type if we have 1 more argument than the number in the key.
                 if (con->GetInsertBlock()->getParent()->arg_size() == key->size() + 1)
@@ -129,7 +129,7 @@ Type* FunctionSkeleton::GetExplicitReturn(Expression::InstanceKey key) {
     return nullptr;
 }
 
-std::vector<Statement*> FunctionSkeleton::ComputeBody() {
+Scope* FunctionSkeleton::ComputeBody() {
     if (current_state == State::NotYetAnalyzed) {
         current_state = State::AnalyzeInProgress;
         // Initializers first, if we are a constructor, then set virtual pointers.        
@@ -198,13 +198,13 @@ std::vector<Statement*> FunctionSkeleton::ComputeBody() {
                     auto expr = analyzer.AnalyzeExpression(GetContext(), con->initializers.front().initializer.get(), NonstaticLookup);
                     auto conty = dynamic_cast<Type*>(*ConstructorContext);
                     auto conoverset = conty->GetConstructorOverloadSet(Parse::Access::Private);
-                    root_scope->active.push_back(CreateResultExpression([=](Expression::InstanceKey key) {
+                    root_scope->active.push_back(CreateResultExpression(Range::Elements(expr), [=](Expression::InstanceKey key) {
                         auto destructor = conty->BuildDestructorCall(key, LookupLocal("this"), c, true);
                         auto self = LookupLocal("this");
                         auto callable = conoverset->Resolve({ self->GetType(key), expr->GetType(key) }, GetContext());
                         if (!callable) throw std::runtime_error("Couldn't resolve delegating constructor call.");
                         auto call = callable->Call(key, { LookupLocal("this"), expr }, c);
-                        return BuildChain(call, CreatePrimGlobal(analyzer.GetVoidType(), [=](CodegenContext& con) {
+                        return BuildChain(call, CreatePrimGlobal(Range::Elements(self, expr), analyzer.GetVoidType(), [=](CodegenContext& con) {
                             if (!self->GetType(key)->Decay()->IsTriviallyDestructible())
                                 con.AddExceptionOnlyDestructor(destructor);
                             return nullptr;
@@ -241,7 +241,7 @@ std::vector<Statement*> FunctionSkeleton::ComputeBody() {
                             auto destructor = x.t->IsTriviallyDestructible()
                                 ? std::function<void(CodegenContext&)>()
                                 : x.t->BuildDestructorCall(Expression::NoInstance(), construction, { GetContext(), where }, true);
-                            return CreatePrimGlobal(analyzer.GetVoidType(), [=](CodegenContext& con) {
+                            return CreatePrimGlobal(Range::Elements(construction) | Range::Concat(Range::Container(init)), analyzer.GetVoidType(), [=](CodegenContext& con) {
                                 construction->GetValue(con);
                                 if (destructor)
                                     con.AddExceptionOnlyDestructor(destructor);
@@ -331,17 +331,13 @@ std::vector<Statement*> FunctionSkeleton::ComputeBody() {
                     return con->CreatePointerCast(self, result->GetLLVMType(con));
                 });
                 auto destructor = rit->t->BuildDestructorCall(Expression::NoInstance(), member, { GetContext(), fun->where }, true);
-                root_scope->active.push_back(CreatePrimGlobal(analyzer.GetVoidType(), [=](CodegenContext& con) {
+                root_scope->active.push_back(CreatePrimGlobal(Range::Empty(), analyzer, [=](CodegenContext& con) {
                     destructor(con);
-                    return nullptr;
                 }));
             }
         }
     }
-    std::vector<Statement*> ret;
-    for (auto&& stmt : root_scope->active)
-        ret.push_back(stmt.get());
-    return ret;
+    return root_scope.get();
 }
 
 std::shared_ptr<Expression> FunctionSkeleton::LookupLocal(Parse::Name name) {
@@ -356,7 +352,7 @@ std::shared_ptr<Expression> FunctionSkeleton::LookupLocal(Parse::Name name) {
 void FunctionSkeleton::AddDefaultHandlers(Analyzer& a) {
     AddHandler<const Parse::Return>(a.StatementHandlers, [](const Parse::Return* ret, FunctionSkeleton* skel, Analyzer& analyzer, Type* self, Scope* current, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> nonstatic) {
         auto ret_expr = ret->RetExpr ? analyzer.AnalyzeExpression(self, ret->RetExpr.get(), nonstatic) : nullptr;
-        return CreateResultExpression([=, &analyzer](Expression::InstanceKey key) -> std::shared_ptr<Expression> {
+        return CreateResultExpression(Range::Elements(ret_expr), [=, &analyzer](Expression::InstanceKey key) -> std::shared_ptr<Expression> {
             if (!key) return nullptr;
             auto func = analyzer.GetWideFunction(skel, *key);
             func->AddReturnExpression(ret_expr.get());
@@ -364,12 +360,12 @@ void FunctionSkeleton::AddDefaultHandlers(Analyzer& a) {
             func->ReturnTypeChanged.connect([=, &analyzer](Type* t) {
                 if (t != analyzer.GetVoidType() && t) {
                     *build = Type::BuildInplaceConstruction(
-                        CreatePrimGlobal(analyzer.GetLvalueType(t), [](CodegenContext& con) { return con->GetInsertBlock()->getParent()->arg_begin(); }),
+                        CreatePrimGlobal(Range::Elements(ret_expr), analyzer.GetLvalueType(t), [](CodegenContext& con) { return con->GetInsertBlock()->getParent()->arg_begin(); }),
                         { ret_expr }, { self, ret->location }
                     );
                 }
             });
-            return CreatePrimGlobal(analyzer, [=, &analyzer](CodegenContext& con) {
+            return CreatePrimGlobal(Range::Elements(ret_expr), analyzer, [=, &analyzer](CodegenContext& con) {
                 if (func->GetSignature()->GetReturnType() == analyzer.GetVoidType()) {
                     // If we have a void-returning expression, evaluate it, destroy it, then return.
                     if (ret_expr) {
@@ -420,7 +416,7 @@ void FunctionSkeleton::AddDefaultHandlers(Analyzer& a) {
         auto compound = new Scope(current);
         for (auto&& stmt : comp->stmts)
             compound->active.push_back(AnalyzeStatement(analyzer, skel, stmt.get(), self, compound, nonstatic));
-        return CreatePrimGlobal(analyzer.GetVoidType(), [=](CodegenContext& con) {
+        return CreatePrimGlobal(Range::Empty(), analyzer.GetVoidType(), [=](CodegenContext& con) {
             for (auto&& stmt : compound->active)
                 if (!con.IsTerminated(con->GetInsertBlock()))
                     stmt->GenerateCode(con);
@@ -435,7 +431,7 @@ void FunctionSkeleton::AddDefaultHandlers(Analyzer& a) {
             auto&& name = var->name.front();
             if (current->named_variables.find(var->name.front().name) != current->named_variables.end())
                 throw VariableShadowing(name.name, current->named_variables.at(name.name).second, name.where);
-            auto var = CreateResultExpression([=](Expression::InstanceKey key) {
+            auto var = CreateResultExpression(Range::Elements(init_expr, var_type_expr), [=, &analyzer](Expression::InstanceKey key) {
                 Type* var_type = nullptr;
                 if (var_type_expr) {
                     auto conty = dynamic_cast<ConstructorType*>(var_type_expr->GetType(key)->Decay());
@@ -443,12 +439,12 @@ void FunctionSkeleton::AddDefaultHandlers(Analyzer& a) {
                     var_type = conty->GetConstructedType();
                 } else
                     var_type = init_expr->GetType(key)->Decay();
-                if (var_type == init_expr->GetType(key))
-                    return init_expr;
+                //if (var_type == init_expr->GetType(key))
+                //    return init_expr;
                 auto temp = CreateTemporary(var_type, { self, name.where });
                 auto construct = Type::BuildInplaceConstruction(temp, { init_expr }, { self, name.where });
                 auto des = var_type->BuildDestructorCall(key, temp, { self, name.where }, true);
-                return CreatePrimGlobal(var_type, [=](CodegenContext& con) {
+                return CreatePrimGlobal(Range::Elements(construct), analyzer.GetLvalueType(var_type), [=](CodegenContext& con) {
                     construct->GetValue(con);
                     con.AddDestructor(des);
                     return temp->GetValue(con);
@@ -459,28 +455,31 @@ void FunctionSkeleton::AddDefaultHandlers(Analyzer& a) {
         }
         std::vector<std::shared_ptr<Expression>> exprs;
         for (auto&& name : var->name) {
-            auto&& name = var->name.front();
-            if (current->named_variables.find(var->name.front().name) != current->named_variables.end())
+            auto offset = &name - &var->name[0];
+            if (current->named_variables.find(name.name) != current->named_variables.end())
                 throw VariableShadowing(name.name, current->named_variables.at(name.name).second, name.where);
-            auto local = CreateResultExpression([=](Expression::InstanceKey key) {
+            auto local = CreateResultExpression(Range::Elements(init_expr, var_type_expr), [=, &analyzer](Expression::InstanceKey key) {
                 Type* var_type = nullptr;
+                std::shared_ptr<Expression> local_init;
                 if (var_type_expr) {
                     auto conty = dynamic_cast<ConstructorType*>(var_type_expr->GetType(key)->Decay());
                     if (!conty) throw std::runtime_error("Local variable type was not a type.");
                     auto tup = dynamic_cast<TupleType*>(conty->GetConstructedType());
                     if (!tup || tup->GetMembers().size() != var->name.size())
                         throw std::runtime_error("Tuple size and name number mismatch.");
-                    var_type = tup->GetMembers()[&name - &var->name[0]];
+                    var_type = tup->GetMembers()[offset];
+                    local_init = tup->PrimitiveAccessMember(init_expr, offset);
                 } else {
                     auto tup = dynamic_cast<TupleType*>(init_expr->GetType(key)->Decay());
                     if (!tup || tup->GetMembers().size() != var->name.size())
                         throw std::runtime_error("Tuple size and name number mismatch.");
-                    var_type = tup->GetMembers()[&name - &var->name[0]]->Decay();
+                    var_type = tup->GetMembers()[offset]->Decay();
+                    local_init = tup->PrimitiveAccessMember(init_expr, offset);
                 }
                 auto temp = CreateTemporary(var_type, { self, name.where });
-                auto construct = Type::BuildInplaceConstruction(temp, { init_expr }, { self, name.where });
+                auto construct = Type::BuildInplaceConstruction(temp, { local_init }, { self, name.where });
                 auto des = var_type->BuildDestructorCall(key, temp, { self, name.where }, true);
-                return CreatePrimGlobal(var_type, [=](CodegenContext& con) {
+                return CreatePrimGlobal(Range::Elements(construct), analyzer.GetLvalueType(var_type), [=](CodegenContext& con) {
                     construct->GetValue(con);
                     con.AddDestructor(des);
                     return temp->GetValue(con);
@@ -489,10 +488,8 @@ void FunctionSkeleton::AddDefaultHandlers(Analyzer& a) {
             current->named_variables.insert(std::make_pair(name.name, std::make_pair(local, name.where)));
             exprs.push_back(local);
         }
-        return CreateResultExpression([=, &analyzer](Expression::InstanceKey key) {
-            for (auto&& var : exprs)
-                var->GetType(key);
-            return CreatePrimGlobal(analyzer, [=](CodegenContext& con) {
+        return CreateResultExpression(Range::Elements(init_expr, var_type_expr) | Range::Concat(Range::Container(exprs)), [=, &analyzer](Expression::InstanceKey key) {
+            return CreatePrimGlobal(Range::Container(exprs), analyzer, [=](CodegenContext& con) {
                 for (auto&& var : exprs)
                     var->GetValue(con);
             });
@@ -583,7 +580,7 @@ void FunctionSkeleton::AddDefaultHandlers(Analyzer& a) {
         auto flow = current->GetCurrentControlFlow();
         if (!flow)
             throw NoControlFlowStatement(continue_stmt->location);
-        return CreatePrimGlobal(analyzer, [=](CodegenContext& con) {
+        return CreatePrimGlobal(Range::Empty(), analyzer, [=](CodegenContext& con) {
             flow->JumpForContinue(con);
         });
     });
@@ -592,7 +589,7 @@ void FunctionSkeleton::AddDefaultHandlers(Analyzer& a) {
         auto flow = current->GetCurrentControlFlow();
         if (!flow)
             throw NoControlFlowStatement(break_stmt->location);
-        return CreatePrimGlobal(analyzer, [=](CodegenContext& con) {
+        return CreatePrimGlobal(Range::Empty(), analyzer, [=](CodegenContext& con) {
             flow->JumpForBreak(con);
         });
     });
@@ -622,7 +619,7 @@ void FunctionSkeleton::AddDefaultHandlers(Analyzer& a) {
             falsescope->active.push_back(AnalyzeStatement(analyzer, skel, if_stmt->false_statement.get(), self, falsescope, nonstatic));
             false_br = falsescope->active.back().get();
         }
-        return CreatePrimGlobal(analyzer, [=](CodegenContext& con) {
+        return CreatePrimGlobal(Range::Elements(cond), analyzer, [=](CodegenContext& con) {
             auto true_bb = llvm::BasicBlock::Create(con, "true_bb", con->GetInsertBlock()->getParent());
             auto continue_bb = llvm::BasicBlock::Create(con, "continue_bb", con->GetInsertBlock()->getParent());
             auto else_bb = false_br ? llvm::BasicBlock::Create(con->getContext(), "false_bb", con->GetInsertBlock()->getParent()) : continue_bb;
@@ -651,13 +648,14 @@ void FunctionSkeleton::AddDefaultHandlers(Analyzer& a) {
     });
 
     AddHandler<const Parse::Throw>(a.StatementHandlers, [](const Parse::Throw* thro, FunctionSkeleton* skel, Analyzer& analyzer, Type* self, Scope* current, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> nonstatic) {
-        if (!thro->expr) return CreatePrimGlobal(analyzer, [=](CodegenContext& con) {
+        if (!thro->expr) return CreatePrimGlobal(Range::Empty(), analyzer, [=](CodegenContext& con) {
             if (con.HasDestructors() || con.EHHandler)
                 con->CreateInvoke(con.GetCXARethrow(), con.GetUnreachableBlock(), con.CreateLandingpadForEH());
             else
                 con->CreateCall(con.GetCXARethrow());
         });
-        return CreatePrimGlobal(analyzer, Semantic::ThrowObject(analyzer.AnalyzeExpression(self, thro->expr.get(), nonstatic), { self, thro->location }));
+        auto expr = analyzer.AnalyzeExpression(self, thro->expr.get(), nonstatic);
+        return CreatePrimGlobal(Range::Elements(expr), analyzer, Semantic::ThrowObject(expr, { self, thro->location }));
     });
 
     AddHandler<const Parse::TryCatch>(a.StatementHandlers, [](const Parse::TryCatch* try_, FunctionSkeleton* skel, Analyzer& analyzer, Type* self, Scope* current, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> nonstatic) {
@@ -685,7 +683,7 @@ void FunctionSkeleton::AddDefaultHandlers(Analyzer& a) {
             }
             auto type = analyzer.AnalyzeExpression(self, catch_.type.get(), nonstatic);
             auto param = std::make_shared<llvm::Value*>();
-            auto catch_param = CreateResultExpression([=](Expression::InstanceKey key) {
+            auto catch_param = CreateResultExpression(Range::Elements(type), [=](Expression::InstanceKey key) {
                 auto con = dynamic_cast<ConstructorType*>(type->GetType(key));
                 if (!con) throw std::runtime_error("Catch parameter type was not a type.");
                 auto catch_type = con->GetConstructedType();
@@ -694,7 +692,7 @@ void FunctionSkeleton::AddDefaultHandlers(Analyzer& a) {
                 auto target_type = IsLvalueType(catch_type)
                     ? catch_type->Decay()
                     : dynamic_cast<PointerType*>(catch_type)->GetPointee();
-                return CreatePrimGlobal(target_type, [=](CodegenContext& con) {
+                return CreatePrimGlobal(Range::Elements(type), target_type, [=](CodegenContext& con) {
                     return con->CreatePointerCast(*param, target_type->GetLLVMType(con));
                 });
             });
@@ -704,7 +702,7 @@ void FunctionSkeleton::AddDefaultHandlers(Analyzer& a) {
                 stmts.push_back(AnalyzeStatement(analyzer, skel, stmt.get(), self, catchscope, nonstatic));
             catches.push_back(Catch{ std::move(stmts), param, type });
         }
-        return CreateResultExpression([=, &analyzer](Expression::InstanceKey key) {
+        return CreateResultExpression(Range::Container(catches) | Range::Map([](Catch cat) { return cat.type; }), [=, &analyzer](Expression::InstanceKey key) {
             auto catch_blocks = catches;
             for (auto&& catch_ : catch_blocks) {
                 auto con = dynamic_cast<ConstructorType*>(catch_.type->GetType(key));
@@ -717,7 +715,7 @@ void FunctionSkeleton::AddDefaultHandlers(Analyzer& a) {
                     : dynamic_cast<PointerType*>(catch_type)->GetPointee();
                 catch_.RTTI = target_type->GetRTTI();
             }
-            return CreatePrimGlobal(analyzer, [=](CodegenContext& con) {
+            return CreatePrimGlobal(Range::Empty(), analyzer, [=](CodegenContext& con) {
                 auto source_block = con->GetInsertBlock();
 
                 auto try_con = con;

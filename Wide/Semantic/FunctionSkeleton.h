@@ -72,7 +72,7 @@ namespace Wide {
 
             Type* GetContext() { return context; }
             const Parse::FunctionBase* GetASTFunction() { return fun; }
-            std::vector<Statement*> ComputeBody();
+            Scope* ComputeBody();
             Type* GetExplicitReturn(Expression::InstanceKey key);
         };
     }

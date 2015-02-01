@@ -56,10 +56,17 @@ Function::Function(Analyzer& a, FunctionSkeleton* skel, std::vector<Type*> args)
     }
 }
 
-void Function::ComputeBody() {
-    for (auto&& stmt : skeleton->ComputeBody()) {
-        stmt->Instantiate(this);
+namespace {
+    void Instantiate(Scope* current, Function* self) {
+        for (auto&& stmt : current->active)
+            stmt->Instantiate(self);
+        for (auto&& scope : current->children)
+            Instantiate(scope.get(), self);
     }
+}
+
+void Function::ComputeBody() {
+    Instantiate(skeleton->ComputeBody(), this);    
     if (ReturnType) return;
     if (!skeleton->GetExplicitReturn(Args)) {
         if (return_expressions.size() == 0) {
@@ -106,7 +113,7 @@ void Function::ComputeBody() {
     for (auto pair : clang_exports) {
         if (!FunctionType::CanThunkFromFirstToSecond(std::get<1>(pair), GetSignature(), skeleton->GetContext(), false))
             throw std::runtime_error("Tried to export to a function decl, but the signatures were incompatible.");
-        trampoline.push_back(std::get<1>(pair)->CreateThunk(std::get<0>(pair), CreatePrimGlobal(GetSignature(), [this](CodegenContext& con) { return EmitCode(con); }), std::get<2>(pair), skeleton->GetContext()));
+        trampoline.push_back(std::get<1>(pair)->CreateThunk(std::get<0>(pair), CreatePrimGlobal(Range::Empty(), GetSignature(), [this](CodegenContext& con) { return EmitCode(con); }), std::get<2>(pair), skeleton->GetContext()));
     }
 }
 std::string Function::GetExportBody() {
@@ -151,7 +158,7 @@ llvm::Function* Function::EmitCode(llvm::Module* module) {
     }
     llvmfunc = llvm::Function::Create(llvm::dyn_cast<llvm::FunctionType>(llvmsig->getElementType()), llvm::GlobalValue::LinkageTypes::ExternalLinkage, llvmname, module);
     CodegenContext::EmitFunctionBody(llvmfunc, GetArguments(), [this](CodegenContext& c) {
-        for (auto&& stmt : skeleton->ComputeBody())
+        for (auto&& stmt : skeleton->ComputeBody()->active)
             if (!c.IsTerminated(c->GetInsertBlock()))
                 stmt->GenerateCode(c);
 
@@ -192,7 +199,7 @@ std::shared_ptr<Expression> Function::CallFunction(Expression::InstanceKey key, 
     ComputeBody();
 
     // Figure out if we need to do a dynamic dispatch.
-    auto self = CreatePrimGlobal(GetSignature(), [=](CodegenContext& con) -> llvm::Value* {
+    auto self = CreatePrimGlobal(Range::Container(args), GetSignature(), [=](CodegenContext& con) -> llvm::Value* {
         if (!llvmfunc)
             EmitCode(con);
 
@@ -221,7 +228,7 @@ std::shared_ptr<Expression> Function::GetThis() {
     return skeleton->GetParameter(0);
 }
 std::shared_ptr<Expression> Function::GetStaticSelf() {
-    return CreatePrimGlobal(GetSignature(), [=](CodegenContext& con) -> llvm::Value* {
+    return CreatePrimGlobal(Range::Empty(), GetSignature(), [=](CodegenContext& con) -> llvm::Value* {
         if (!llvmfunc)
             EmitCode(con);
         

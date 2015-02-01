@@ -1,7 +1,7 @@
 #pragma once 
 
 #include <Wide/Lexer/Token.h>
-#include <Wide/Util/Ranges/Optional.h>
+#include <Wide/Util/Ranges/Range.h>
 #include <Wide/Semantic/SemanticError.h>
 #include <Wide/Semantic/Hashers.h>
 #include <vector>
@@ -140,10 +140,10 @@ namespace Wide {
             std::unordered_map<Expression*, ExpressionData> exprs;
             std::unordered_map<InstanceKey, Type*> curr_type;
         public:
-            SourceExpression(std::initializer_list<std::shared_ptr<Expression>> exprs);
-            SourceExpression(std::initializer_list<std::shared_ptr<Expression>> exprs, const std::vector<std::shared_ptr<Expression>>& args);
+            SourceExpression(Wide::Range::Erased<std::shared_ptr<Expression>> exprs);
             SourceExpression(const SourceExpression&) = delete;
             Type* GetType(InstanceKey f) override final;
+            bool IsConstantExpression(InstanceKey) override final;
 
             virtual Type* CalculateType(InstanceKey) = 0;
         };
@@ -151,11 +151,9 @@ namespace Wide {
         private:
             std::unordered_map<InstanceKey, std::pair<std::shared_ptr<Expression>, boost::signals2::scoped_connection>> results;
         public:
-            ResultExpression(std::initializer_list<std::shared_ptr<Expression>> exprs);
-            ResultExpression(std::initializer_list<std::shared_ptr<Expression>> exprs, const std::vector<std::shared_ptr<Expression>>& args);
+            ResultExpression(Wide::Range::Erased<std::shared_ptr<Expression>> exprs);
             virtual std::shared_ptr<Expression> CalculateResult(InstanceKey f) = 0;
             Type* CalculateType(InstanceKey) override final;
-            bool IsConstantExpression(InstanceKey) override final;
             llvm::Value* ComputeValue(CodegenContext&) override final;
         };
 
@@ -164,7 +162,6 @@ namespace Wide {
             std::shared_ptr<Expression> src;
             Type* CalculateType(InstanceKey) override final;
             llvm::Value* ComputeValue(CodegenContext& con) override final;
-            bool IsConstantExpression(InstanceKey f) override final { return src->IsConstantExpression(f); }
         };
 
         struct ImplicitStoreExpr : public SourceExpression {
@@ -172,7 +169,6 @@ namespace Wide {
             std::shared_ptr<Expression> mem, val;
             Type* CalculateType(InstanceKey) override final;
             llvm::Value* ComputeValue(CodegenContext& con) override final;
-            bool IsConstantExpression(InstanceKey f) override final { return mem->IsConstantExpression(f) && val->IsConstantExpression(f); }
         };
         
         struct LvalueCast : public SourceExpression {
@@ -180,7 +176,6 @@ namespace Wide {
             std::shared_ptr<Expression> expr;
             Type* CalculateType(InstanceKey) override final;
             llvm::Value* ComputeValue(CodegenContext& con) override final;
-            bool IsConstantExpression(InstanceKey f) override final { return expr->IsConstantExpression(f); }
         };
 
         struct RvalueCast : public SourceExpression {
@@ -188,7 +183,6 @@ namespace Wide {
             std::shared_ptr<Expression> expr;
             Type* CalculateType(InstanceKey) override final;
             llvm::Value* ComputeValue(CodegenContext& con) override final;
-            bool IsConstantExpression(InstanceKey f) override final { return expr->IsConstantExpression(f); }
         };
 
         
@@ -198,7 +192,6 @@ namespace Wide {
             std::shared_ptr<Expression> result;
             Type* CalculateType(InstanceKey) override final;
             llvm::Value* ComputeValue(CodegenContext& con) override final;
-            bool IsConstantExpression(InstanceKey) override final;
         };
         
         struct ConstantExpression : Expression {
@@ -229,13 +222,13 @@ namespace Wide {
             llvm::Value* ComputeValue(CodegenContext& con) override final;
         };
 
-        std::shared_ptr<Expression> CreateResultExpression(std::function<std::shared_ptr<Expression>(Expression::InstanceKey f)> func);
+        std::shared_ptr<Expression> CreateResultExpression(Wide::Range::Erased<std::shared_ptr<Expression>> dependents, std::function<std::shared_ptr<Expression>(Expression::InstanceKey f)> func);
         std::shared_ptr<Expression> CreatePrimUnOp(std::shared_ptr<Expression> self, Type* ret, std::function<llvm::Value*(llvm::Value*, CodegenContext&)>);
         std::shared_ptr<Expression> CreatePrimOp(std::shared_ptr<Expression> lhs, std::shared_ptr<Expression> rhs, std::function<llvm::Value*(llvm::Value*, llvm::Value*, CodegenContext&)>);
         std::shared_ptr<Expression> CreatePrimAssOp(std::shared_ptr<Expression> lhs, std::shared_ptr<Expression> rhs, std::function<llvm::Value*(llvm::Value*, llvm::Value*, CodegenContext&)>);
         std::shared_ptr<Expression> CreatePrimOp(std::shared_ptr<Expression> lhs, std::shared_ptr<Expression> rhs, Type* ret, std::function<llvm::Value*(llvm::Value*, llvm::Value*, CodegenContext&)>);
-        std::shared_ptr<Expression> CreatePrimGlobal(Type* ret, std::function<llvm::Value*(CodegenContext&)>);
-        std::shared_ptr<Expression> CreatePrimGlobal(Analyzer& a, std::function<void(CodegenContext&)>);
+        std::shared_ptr<Expression> CreatePrimGlobal(Wide::Range::Erased<std::shared_ptr<Expression>> dependents, Type* ret, std::function<llvm::Value*(CodegenContext&)>);
+        std::shared_ptr<Expression> CreatePrimGlobal(Wide::Range::Erased<std::shared_ptr<Expression>> dependents, Analyzer& a, std::function<void(CodegenContext&)>);
         std::shared_ptr<Expression> BuildValue(std::shared_ptr<Expression>);
         std::shared_ptr<Expression> BuildChain(std::shared_ptr<Expression>, std::shared_ptr<Expression>);
         std::shared_ptr<Expression> CreateTemporary(Type* t, Context c);
