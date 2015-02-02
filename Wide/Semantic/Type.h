@@ -204,7 +204,7 @@ namespace Wide {
         };
 
         std::vector<std::shared_ptr<Expression>> AdjustArgumentsForTypes(Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, std::vector<Type*> types, Context c);
-        std::unique_ptr<OverloadResolvable> MakeResolvable(std::function<std::shared_ptr<Expression>(std::vector<std::shared_ptr<Expression>>, Context)> f, std::vector<Type*> types);
+        std::unique_ptr<OverloadResolvable> MakeResolvable(std::function<std::shared_ptr<Expression>(Expression::InstanceKey, std::vector<std::shared_ptr<Expression>>, Context)> f, std::vector<Type*> types);
 
         struct TupleInitializable {
         private:

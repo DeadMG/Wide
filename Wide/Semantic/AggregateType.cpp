@@ -349,7 +349,7 @@ OverloadSet* AggregateType::GetCopyAssignmentOperator() {
     return MaybeCreateSet(CopyAssignmentOperator,
         [this](Type* ty, unsigned i) { return ty->IsCopyAssignable(GetAccessSpecifier(this, ty)); },
         [this] {
-            return MakeResolvable([this](std::vector<std::shared_ptr<Expression>> args, Context c) -> std::shared_ptr < Expression > {
+            return MakeResolvable([this](Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c) -> std::shared_ptr < Expression > {
                 if (GetLayout().Offsets.size() == 0)
                     return BuildChain(std::move(args[0]), std::move(args[1]));
                 CreateCopyAssignmentExpressions();
@@ -364,7 +364,7 @@ OverloadSet* AggregateType::GetMoveAssignmentOperator() {
     return MaybeCreateSet(MoveAssignmentOperator, 
         [this](Type* ty, unsigned i) { return ty->IsMoveAssignable(GetAccessSpecifier(this, ty)); },
         [this] {
-            return MakeResolvable([this](std::vector<std::shared_ptr<Expression>> args, Context c) -> std::shared_ptr < Expression > {
+            return MakeResolvable([this](Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c) -> std::shared_ptr < Expression > {
                 if (GetLayout().Offsets.size() == 0)
                     return BuildChain(std::move(args[0]), std::move(args[1]));
                 CreateMoveAssignmentExpressions();
@@ -379,7 +379,7 @@ OverloadSet* AggregateType::GetMoveConstructor() {
     return MaybeCreateSet(MoveConstructor, 
         [this](Type* ty, unsigned i) { return ty->IsMoveConstructible(GetAccessSpecifier(this, ty)); },
         [this] {
-            return MakeResolvable([this](std::vector<std::shared_ptr<Expression>> args, Context c) -> std::shared_ptr < Expression > {  
+            return MakeResolvable([this](Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c) -> std::shared_ptr < Expression > {  
                 CreateMoveConstructorInitializers();
             
                 auto functy = analyzer.GetFunctionType(analyzer.GetVoidType(), { analyzer.GetLvalueType(this), analyzer.GetRvalueType(this) }, false);
@@ -392,7 +392,7 @@ OverloadSet* AggregateType::GetCopyConstructor() {
     return MaybeCreateSet(CopyConstructor,
         [this](Type* ty, unsigned i) { return ty->IsCopyConstructible(GetAccessSpecifier(this, ty)); },
         [this] {
-            return MakeResolvable([this](std::vector<std::shared_ptr<Expression>> args, Context c) -> std::shared_ptr<Expression> {     
+            return MakeResolvable([this](Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c) -> std::shared_ptr<Expression> {     
                 CreateCopyConstructorInitializers();
         
                 auto functy = analyzer.GetFunctionType(analyzer.GetVoidType(), { analyzer.GetLvalueType(this), analyzer.GetLvalueType(this) }, false);
@@ -504,7 +504,7 @@ OverloadSet* AggregateType::GetDefaultConstructor() {
     };
     // If we shouldn't generate, give back an empty set and set the cache for future use.
     auto create = [this] {
-        return MakeResolvable([this](std::vector<std::shared_ptr<Expression>> args, Context c) -> std::shared_ptr < Expression > {
+        return MakeResolvable([this](Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c) -> std::shared_ptr < Expression > {
             CreateDefaultConstructorInitializers();
 
             auto functy = analyzer.GetFunctionType(analyzer.GetVoidType(), { analyzer.GetLvalueType(this) }, false);

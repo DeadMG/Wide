@@ -109,13 +109,13 @@ OverloadSet* IntegralType::CreateADLOverloadSet(Parse::OperatorName opname, Pars
     if (opname.size() != 1) return CreateADLOverloadSet(opname, Parse::Access::Public);
     auto name = opname.front();
     auto CreateAssOp = [this](std::function<llvm::Value*(llvm::Value*, llvm::Value*, CodegenContext& con)> func) {
-        return MakeResolvable([this, func](std::vector<std::shared_ptr<Expression>> args, Context c) {
-            return CreatePrimAssOp(std::move(args[0]), std::move(args[1]), func);
+        return MakeResolvable([this, func](Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c) {
+            return CreatePrimAssOp(key, std::move(args[0]), std::move(args[1]), func);
         }, { analyzer.GetLvalueType(this), this });
     };
     auto CreateOp = [this](std::function<llvm::Value*(llvm::Value*, llvm::Value*, CodegenContext& con)> func) {
-        return MakeResolvable([this, func](std::vector<std::shared_ptr<Expression>> args, Context c) {
-            return CreatePrimOp(std::move(args[0]), std::move(args[1]), func);
+        return MakeResolvable([this, func](Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c) {
+            return CreatePrimOp(key, std::move(args[0]), std::move(args[1]), func);
         }, { this, this });
     };
     if (name == &Lexer::TokenTypes::RightShiftAssign) {
@@ -231,7 +231,7 @@ OverloadSet* IntegralType::CreateADLOverloadSet(Parse::OperatorName opname, Pars
         });
         return analyzer.GetOverloadSet(Div.get());
     } else if (name == &Lexer::TokenTypes::LT) {
-        LT = MakeResolvable([this](std::vector<std::shared_ptr<Expression>> args, Context c) {
+        LT = MakeResolvable([this](Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c) {
             return CreatePrimOp(std::move(args[0]), std::move(args[1]), c.from->analyzer.GetBooleanType(), [this](llvm::Value* lhs, llvm::Value* rhs, CodegenContext& con) {
                 llvm::Value* result = is_signed ? con->CreateICmpSLT(lhs, rhs) : con->CreateICmpULT(lhs, rhs);
                 return con->CreateZExt(result, llvm::Type::getInt8Ty(con));
@@ -239,14 +239,14 @@ OverloadSet* IntegralType::CreateADLOverloadSet(Parse::OperatorName opname, Pars
         }, { this, this });
         return analyzer.GetOverloadSet(LT.get());
     } else if (name == &Lexer::TokenTypes::EqCmp) {
-        EQ = MakeResolvable([](std::vector<std::shared_ptr<Expression>> args, Context c) {
+        EQ = MakeResolvable([](Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c) {
             return CreatePrimOp(std::move(args[0]), std::move(args[1]), c.from->analyzer.GetBooleanType(), [](llvm::Value* lhs, llvm::Value* rhs, CodegenContext& con) {
                 return con->CreateZExt(con->CreateICmpEQ(lhs, rhs), llvm::Type::getInt8Ty(con));
             });
         }, { this, this });
         return analyzer.GetOverloadSet(EQ.get());
     } else if (name == &Lexer::TokenTypes::Increment) {
-        Increment = MakeResolvable([this](std::vector<std::shared_ptr<Expression>> args, Context c) {
+        Increment = MakeResolvable([this](Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c) {
             return CreatePrimUnOp(std::move(args[0]), analyzer.GetLvalueType(this), [](llvm::Value* val, CodegenContext& con) {
                 con->CreateStore(con->CreateAdd(con->CreateLoad(val), llvm::ConstantInt::get(val->getType(), llvm::APInt(64, 1, false))), val);
                 return val;
@@ -278,7 +278,7 @@ OverloadSet* IntegralType::CreateOperatorOverloadSet(Parse::OperatorName name, P
     if (name.size() == 1) {
         auto what = name.front();
         if (what == &Lexer::TokenTypes::Increment) {
-            Increment = MakeResolvable([this](std::vector<std::shared_ptr<Expression>> args, Context c) {
+            Increment = MakeResolvable([this](Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c) {
                 return CreatePrimUnOp(std::move(args[0]), analyzer.GetLvalueType(this), [this](llvm::Value* self, CodegenContext& con) {
                     con->CreateStore(con->CreateAdd(con->CreateLoad(self), llvm::ConstantInt::get(GetLLVMType(con), 1, is_signed)), self);
                     return self;

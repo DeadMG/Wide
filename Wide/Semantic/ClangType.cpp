@@ -218,7 +218,7 @@ OverloadSet* ClangType::CreateOperatorOverloadSet(Parse::OperatorName opname, Pa
             // We have some expression. Try to interpret it.
             
             auto base = p.get();
-            return MakeResolvable([this, ope, base](std::vector<std::shared_ptr<Expression>> exprs, Context c) {
+            return MakeResolvable([this, ope, base](Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> exprs, Context c) {
                 return InterpretExpression(base, *from, c, analyzer, { { ope.get(), exprs[0] } });
             }, { t });
         };

@@ -61,7 +61,7 @@ OverloadSet* PointerType::CreateConstructorOverloadSet(Parse::Access access) {
         Callable* GetCallableForResolution(std::vector<Type*>, Type*, Analyzer& a) override final { return this; }
     };
     auto usual = PrimitiveType::CreateConstructorOverloadSet(Parse::Access::Public);
-    NullConstructor = MakeResolvable([this](std::vector<std::shared_ptr<Expression>> args, Context c) {
+    NullConstructor = MakeResolvable([this](Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c) {
         return CreatePrimOp(std::move(args[0]), std::move(args[1]), analyzer.GetLvalueType(this), [this](llvm::Value* lhs, llvm::Value* rhs, CodegenContext& con) {
             con->CreateStore(llvm::Constant::getNullValue(GetLLVMType(con)), lhs);
             return lhs;
@@ -95,14 +95,14 @@ OverloadSet* PointerType::CreateOperatorOverloadSet(Parse::OperatorName name, Pa
     if (name.size() != 1) return AccessMember(name, Parse::Access::Public, kind);
     auto what = name.front();
     if (what == &Lexer::TokenTypes::Star) {
-        DereferenceOperator = MakeResolvable([this](std::vector<std::shared_ptr<Expression>> args, Context c) {
+        DereferenceOperator = MakeResolvable([this](Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c) {
             return CreatePrimUnOp(std::move(args[0]), analyzer.GetLvalueType(pointee), [](llvm::Value* val, CodegenContext& con) {
                 return val;
             });
         }, { this });
         return analyzer.GetOverloadSet(DereferenceOperator.get());
     } else if (what == &Lexer::TokenTypes::QuestionMark) {
-        BooleanOperator = MakeResolvable([this](std::vector<std::shared_ptr<Expression>> args, Context c) {
+        BooleanOperator = MakeResolvable([this](Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c) {
             return CreatePrimUnOp(BuildValue(std::move(args[0])), analyzer.GetBooleanType(), [](llvm::Value* v, CodegenContext& con) {
                 return con->CreateZExt(con->CreateIsNotNull(v), llvm::Type::getInt8Ty(con));
             });

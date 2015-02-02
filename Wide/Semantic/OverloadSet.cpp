@@ -373,8 +373,8 @@ OverloadSet* OverloadSet::CreateConstructorOverloadSet(Parse::Access access) {
     if (access != Parse::Access::Public) return GetConstructorOverloadSet(Parse::Access::Public);
     if (nonstatic) {
         std::unordered_set<OverloadResolvable*> constructors;
-        ReferenceConstructor = MakeResolvable([this](std::vector<std::shared_ptr<Expression>> args, Context c) {
-            return CreatePrimAssOp(std::move(args[0]), std::move(args[1]), [this](llvm::Value* lhs, llvm::Value* rhs, CodegenContext& con) {
+        ReferenceConstructor = MakeResolvable([this](Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c) {
+            return CreatePrimAssOp(key, std::move(args[0]), std::move(args[1]), [this](llvm::Value* lhs, llvm::Value* rhs, CodegenContext& con) {
                 auto agg = llvm::ConstantAggregateZero::get(GetLLVMType(con));
                 return con->CreateInsertValue(agg, rhs, { 0 });
             });

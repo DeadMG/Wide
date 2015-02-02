@@ -132,13 +132,14 @@ std::shared_ptr<Expression> Semantic::CreatePrimGlobal(Wide::Range::Erased<std::
     };
     return Wide::Memory::MakeUnique<PrimGlobalOp>(deps, ret, func);
 }
-std::shared_ptr<Expression> Semantic::CreatePrimOp(std::shared_ptr<Expression> lhs, std::shared_ptr<Expression> rhs, std::function<llvm::Value*(llvm::Value*, llvm::Value*, CodegenContext& con)> func) {
-    return CreatePrimOp(std::move(lhs), std::move(rhs), lhs->GetType(nullptr), func);
+std::shared_ptr<Expression> Semantic::CreatePrimOp(Expression::InstanceKey key, std::shared_ptr<Expression> lhs, std::shared_ptr<Expression> rhs, std::function<llvm::Value*(llvm::Value*, llvm::Value*, CodegenContext& con)> func) {
+    return CreatePrimOp(std::move(lhs), std::move(rhs), lhs->GetType(key), func);
 }
-std::shared_ptr<Expression> Semantic::CreatePrimAssOp(std::shared_ptr<Expression> lhs, std::shared_ptr<Expression> rhs, std::function<llvm::Value*(llvm::Value*, llvm::Value*, CodegenContext& con)> func) {
-    return Wide::Memory::MakeUnique<ImplicitStoreExpr>(lhs, CreatePrimOp(Wide::Memory::MakeUnique<ImplicitLoadExpr>(lhs), std::move(rhs), func));
+std::shared_ptr<Expression> Semantic::CreatePrimAssOp(Expression::InstanceKey key, std::shared_ptr<Expression> lhs, std::shared_ptr<Expression> rhs, std::function<llvm::Value*(llvm::Value*, llvm::Value*, CodegenContext& con)> func) {
+    return Wide::Memory::MakeUnique<ImplicitStoreExpr>(lhs, CreatePrimOp(key, Wide::Memory::MakeUnique<ImplicitLoadExpr>(lhs), std::move(rhs), func));
 }
 std::shared_ptr<Expression> Semantic::CreatePrimOp(std::shared_ptr<Expression> lhs, std::shared_ptr<Expression> rhs, Type* ret, std::function<llvm::Value*(llvm::Value*, llvm::Value*, CodegenContext& con)> func) {
+    assert(ret != nullptr);
     return CreatePrimGlobal(Range::Elements(lhs, rhs), ret, [=](CodegenContext& con) {
         auto left = lhs->GetValue(con);
         auto right = rhs->GetValue(con);

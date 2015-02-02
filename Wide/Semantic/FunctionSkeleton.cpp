@@ -416,11 +416,12 @@ void FunctionSkeleton::AddDefaultHandlers(Analyzer& a) {
         auto compound = new Scope(current);
         for (auto&& stmt : comp->stmts)
             compound->active.push_back(AnalyzeStatement(analyzer, skel, stmt.get(), self, compound, nonstatic));
-        return CreatePrimGlobal(Range::Empty(), analyzer.GetVoidType(), [=](CodegenContext& con) {
-            for (auto&& stmt : compound->active)
-                if (!con.IsTerminated(con->GetInsertBlock()))
-                    stmt->GenerateCode(con);
-            return nullptr;
+        return CreatePrimGlobal(Range::Empty(), analyzer, [=](CodegenContext& con) {
+            con.GenerateCodeAndDestroyLocals([=](CodegenContext& con) {
+                for (auto&& stmt : compound->active)
+                    if (!con.IsTerminated(con->GetInsertBlock()))
+                        stmt->GenerateCode(con);
+            });
         });
     });
 

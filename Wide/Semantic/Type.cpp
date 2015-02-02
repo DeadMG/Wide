@@ -552,12 +552,12 @@ std::shared_ptr<Expression> Type::BuildBinaryExpression(std::shared_ptr<Expressi
 
 OverloadSet* PrimitiveType::CreateConstructorOverloadSet(Parse::Access access) {
     if (access != Parse::Access::Public) return GetConstructorOverloadSet(Parse::Access::Public);
-    auto construct_from_ref = [](std::vector<std::shared_ptr<Expression>> args, Context c) {
+    auto construct_from_ref = [](Expression::InstanceKey key,  std::vector<std::shared_ptr<Expression>> args, Context c) {
         return Wide::Memory::MakeUnique<ImplicitStoreExpr>(std::move(args[0]), BuildValue(std::move(args[1])));
     };
     CopyConstructor = MakeResolvable(construct_from_ref, { analyzer.GetLvalueType(this), analyzer.GetLvalueType(this) });
     MoveConstructor = MakeResolvable(construct_from_ref, { analyzer.GetLvalueType(this), analyzer.GetRvalueType(this) });
-    ValueConstructor = MakeResolvable([](std::vector<std::shared_ptr<Expression>> args, Context c) {
+    ValueConstructor = MakeResolvable([](Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c) {
         return Wide::Memory::MakeUnique<ImplicitStoreExpr>(std::move(args[0]), std::move(args[1]));
     }, { analyzer.GetLvalueType(this), this });
     std::unordered_set<OverloadResolvable*> callables;
@@ -571,7 +571,7 @@ OverloadSet* PrimitiveType::CreateOperatorOverloadSet(Parse::OperatorName what, 
     if (what != Parse::OperatorName({ &Lexer::TokenTypes::Assignment }))
         return Type::CreateOperatorOverloadSet(what, access, kind);
     
-    AssignmentOperator = MakeResolvable([](std::vector<std::shared_ptr<Expression>> args, Context c) {
+    AssignmentOperator = MakeResolvable([](Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c) {
         return Wide::Memory::MakeUnique<ImplicitStoreExpr>(std::move(args[0]), std::move(args[1]));
     }, { analyzer.GetLvalueType(this), this });
     return analyzer.GetOverloadSet(AssignmentOperator.get());
@@ -596,7 +596,7 @@ Type* MetaType::GetConstantContext() {
 
 OverloadSet* MetaType::CreateConstructorOverloadSet(Parse::Access access) {
     if (access != Parse::Access::Public) return GetConstructorOverloadSet(Parse::Access::Public);
-    DefaultConstructor = MakeResolvable([](std::vector<std::shared_ptr<Expression>> args, Context c) {
+    DefaultConstructor = MakeResolvable([](Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c) {
         return std::move(args[0]);
     }, { analyzer.GetLvalueType(this) });
     return analyzer.GetOverloadSet(PrimitiveType::CreateConstructorOverloadSet(access), analyzer.GetOverloadSet(DefaultConstructor.get()));
@@ -623,9 +623,9 @@ std::vector<std::shared_ptr<Expression>> Semantic::AdjustArgumentsForTypes(Expre
 
 struct Resolvable : OverloadResolvable, Callable {
     std::vector<Type*> types;
-    std::function<std::shared_ptr<Expression>(std::vector<std::shared_ptr<Expression>>, Context)> action;
+    std::function<std::shared_ptr<Expression>(Expression::InstanceKey, std::vector<std::shared_ptr<Expression>>, Context)> action;
 
-    Resolvable(std::vector<Type*> tys, std::function<std::shared_ptr<Expression>(std::vector<std::shared_ptr<Expression>>, Context)> func)
+    Resolvable(std::vector<Type*> tys, std::function<std::shared_ptr<Expression>(Expression::InstanceKey, std::vector<std::shared_ptr<Expression>>, Context)> func)
         : types(std::move(tys)), action(std::move(func)) {}
 
     Util::optional<std::vector<Type*>> MatchParameter(std::vector<Type*> args, Analyzer& a, Type* source) override final {
@@ -645,14 +645,14 @@ struct Resolvable : OverloadResolvable, Callable {
         assert(types.size() == args.size());
         for (std::size_t num = 0; num < types.size(); ++num)
             assert(types[num] == args[num]->GetType(key));
-        return action(std::move(args), c);
+        return action(key, std::move(args), c);
     }
     std::vector<std::shared_ptr<Expression>> AdjustArguments(Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c) override final {
         return AdjustArgumentsForTypes(key, std::move(args), types, c);
     }
 };
 
-std::unique_ptr<OverloadResolvable> Semantic::MakeResolvable(std::function<std::shared_ptr<Expression>(std::vector<std::shared_ptr<Expression>>, Context)> f, std::vector<Type*> types) {
+std::unique_ptr<OverloadResolvable> Semantic::MakeResolvable(std::function<std::shared_ptr<Expression>(Expression::InstanceKey, std::vector<std::shared_ptr<Expression>>, Context)> f, std::vector<Type*> types) {
     return Wide::Memory::MakeUnique<Resolvable>(types, std::move(f));
 }
 
