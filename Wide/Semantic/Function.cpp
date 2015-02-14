@@ -66,6 +66,7 @@ namespace {
 }
 
 void Function::ComputeBody() {
+    if (analyzed) return;
     Instantiate(skeleton->ComputeBody(), this);    
     if (ReturnType) return;
     if (!skeleton->GetExplicitReturn(Args)) {
@@ -115,6 +116,7 @@ void Function::ComputeBody() {
             throw std::runtime_error("Tried to export to a function decl, but the signatures were incompatible.");
         trampoline.push_back(std::get<1>(pair)->CreateThunk(std::get<0>(pair), CreatePrimGlobal(Range::Empty(), GetSignature(), [this](CodegenContext& con) { return EmitCode(con); }), std::get<2>(pair), skeleton->GetContext()));
     }
+    analyzed = true;
 }
 std::string Function::GetExportBody() {
     auto sig = GetSignature();
@@ -186,7 +188,7 @@ std::vector<std::shared_ptr<Expression>> Function::AdjustArguments(Expression::I
         if (argty == analyzer.GetRvalueType(skeleton->GetNonstaticMemberContext())) {
             args[0] = std::make_shared<LvalueCast>(args[0]);
         } else if (argty != analyzer.GetLvalueType(skeleton->GetNonstaticMemberContext())) {
-            args[0] = std::make_shared<LvalueCast>(analyzer.GetRvalueType(skeleton->GetNonstaticMemberContext())->BuildValueConstruction({ args[0] }, c));
+            args[0] = std::make_shared<LvalueCast>(analyzer.GetRvalueType(skeleton->GetNonstaticMemberContext())->BuildValueConstruction(key, { args[0] }, c));
         }
     }
     return AdjustArgumentsForTypes(key, std::move(args), Args, c);
@@ -211,11 +213,11 @@ std::shared_ptr<Expression> Function::CallFunction(Expression::InstanceKey key, 
         if (!func || !udt) return llvmfunc;
         auto vindex = udt->GetVirtualFunctionIndex(func);
         if (!vindex) return llvmfunc;
-        auto obj = Type::GetVirtualPointer(args[0]);
+        auto obj = Type::GetVirtualPointer(key, args[0]);
         auto vptr = con->CreateLoad(obj->GetValue(con));
         return con->CreatePointerCast(con->CreateLoad(con->CreateConstGEP1_32(vptr, *vindex)), GetSignature()->GetLLVMType(con));
     });
-    return Type::BuildCall(self, args, c);
+    return Type::BuildCall(key, self, args, c);
 }
 void Function::AddExportName(std::function<void(llvm::Module*)> func) {
     trampoline.push_back(func);

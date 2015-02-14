@@ -67,14 +67,14 @@ OverloadSet* ArrayType::CreateOperatorOverloadSet(Parse::OperatorName what, Pars
         ArrayType* array;
         std::shared_ptr<Expression> CallFunction(Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c) override final {
             args[1] = BuildValue(std::move(args[1]));
-            auto globmod = c.from->analyzer.GetGlobalModule()->BuildValueConstruction({}, c);
-            auto stdmod = Type::AccessMember(globmod, "Standard", c);
+            auto globmod = c.from->analyzer.GetGlobalModule()->BuildValueConstruction(key, {}, c);
+            auto stdmod = Type::AccessMember(key, globmod, "Standard", c);
             if (!stdmod) throw std::runtime_error("No Standard module found!");
-            auto errmod = Type::AccessMember(stdmod, "Error", c);
+            auto errmod = Type::AccessMember(key, stdmod, "Error", c);
             if (!errmod) throw std::runtime_error("Standard.Error module not found!");
-            auto array_bounds_exception = Type::AccessMember(errmod, "ArrayIndexOutOfBounds", c);
+            auto array_bounds_exception = Type::AccessMember(key, errmod, "ArrayIndexOutOfBounds", c);
             if (!array_bounds_exception) throw std::runtime_error("Could not find Standard.Error.ArrayIndexOutOfBounds.");
-            auto throw_ = Semantic::ThrowObject(Type::BuildCall(array_bounds_exception, {}, c), c);
+            auto throw_ = Semantic::ThrowObject(key, Type::BuildCall(key, array_bounds_exception, {}, c), c);
             auto intty = dynamic_cast<IntegralType*>(args[1]->GetType(key));
             auto argty = args[0]->GetType(key);
             return CreatePrimOp(std::move(args[0]), std::move(args[1]), Semantic::CollapseType(argty, array->t), [this, argty, throw_, intty](llvm::Value* arr, llvm::Value* index, CodegenContext& con) -> llvm::Value* {

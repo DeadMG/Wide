@@ -82,7 +82,7 @@ struct cppcallable : public Callable {
                 auto selfty = self->GetType(key);
                 if (selfty->IsReference()) {
                     auto clangty = dynamic_cast<ClangType*>(selfty->Decay());
-                    vtable = Type::GetVirtualPointer(self);
+                    vtable = Type::GetVirtualPointer(key, self);
                 }
             }
         }
@@ -125,15 +125,15 @@ struct cppcallable : public Callable {
         // so do the conversion ourselves if lvalues were not involved.
         std::vector<std::shared_ptr<Expression>> out;
         for (std::size_t i = 0; i < types.size(); ++i) {
-            out.push_back(CreateResultExpression(Range::Elements(args[i]), [=](Expression::InstanceKey f) {
-                if (types[i].first == args[i]->GetType(f))
+            auto get_expr = [=] {
+                if (types[i].first == args[i]->GetType(key))
                     return std::move(args[i]);
 
                 // Handle base type mismatches first because else they are mishandled by the next check.
-                auto derived = args[i]->GetType(f)->Decay();
+                auto derived = args[i]->GetType(key)->Decay();
                 auto base = types[i].first->Decay();
                 if (derived->IsDerivedFrom(types[i].first->Decay()) == Type::InheritanceRelationship::UnambiguouslyDerived)
-                    return types[i].first->BuildValueConstruction({ std::move(args[i]) }, c);
+                    return types[i].first->BuildValueConstruction(key, { std::move(args[i]) }, c);
 
                 // Clang may ask us to build an int8* from a string literal.
                 // Just pretend that the argument was an int8*.
@@ -151,24 +151,25 @@ struct cppcallable : public Callable {
                 // This section handles stuff like const i32& i = int64() and similar implicit conversions that Wide accepts explicitly.
                 // where C++ accepts the result by rvalue reference or const reference.
                 // As per usual, careful of infinite recursion. Took quite a few tries to get this piece apparently functional.
-                if ((types[i].second || IsRvalueType(types[i].first)) && !IsLvalueType(args[i]->GetType(f))) {
-                    if (types[i].first->Decay() == args[i]->GetType(f)->Decay())
-                        return types[i].first->analyzer.GetRvalueType(types[i].first->Decay())->BuildValueConstruction({ std::move(args[i]) }, c);
+                if ((types[i].second || IsRvalueType(types[i].first)) && !IsLvalueType(args[i]->GetType(key))) {
+                    if (types[i].first->Decay() == args[i]->GetType(key)->Decay())
+                        return types[i].first->analyzer.GetRvalueType(types[i].first->Decay())->BuildValueConstruction(key, { std::move(args[i]) }, c);
                     else {
-                        if (types[i].first->Decay() == source->analyzer.GetPointerType(source->analyzer.GetIntegralType(8, true)) && dynamic_cast<StringType*>(args[i]->GetType(f)->Decay()))
-                            return types[i].first->Decay()->BuildRvalueConstruction({ ImplicitStringDecay(BuildValue(std::move(args[i]))) }, c);
+                        if (types[i].first->Decay() == source->analyzer.GetPointerType(source->analyzer.GetIntegralType(8, true)) && dynamic_cast<StringType*>(args[i]->GetType(key)->Decay()))
+                            return types[i].first->Decay()->BuildRvalueConstruction(key, { ImplicitStringDecay(BuildValue(std::move(args[i]))) }, c);
                         else
-                            return types[i].first->Decay()->BuildRvalueConstruction({ std::move(args[i]) }, c);
+                            return types[i].first->Decay()->BuildRvalueConstruction(key, { std::move(args[i]) }, c);
                     }
                 }
 
                 // Clang may ask us to build an int8* from a string literal.
                 // Just pretend that the argument was an int8*.
-                if (types[i].first->Decay() == source->analyzer.GetPointerType(source->analyzer.GetIntegralType(8, true)) && dynamic_cast<StringType*>(args[i]->GetType(f)->Decay()))
-                    return types[i].first->BuildValueConstruction({ ImplicitStringDecay(BuildValue(std::move(args[i]))) }, c);
+                if (types[i].first->Decay() == source->analyzer.GetPointerType(source->analyzer.GetIntegralType(8, true)) && dynamic_cast<StringType*>(args[i]->GetType(key)->Decay()))
+                    return types[i].first->BuildValueConstruction(key, { ImplicitStringDecay(BuildValue(std::move(args[i]))) }, c);
 
-                return types[i].first->BuildValueConstruction({ std::move(args[i]) }, c);
-            }));
+                return types[i].first->BuildValueConstruction(key, { std::move(args[i]) }, c);
+            };
+            out.push_back(get_expr());
         }
         return out;
     }
@@ -388,9 +389,9 @@ OverloadSet* OverloadSet::CreateConstructorOverloadSet(Parse::Access access) {
 }
 std::shared_ptr<Expression> OverloadSet::AccessNamedMember(Expression::InstanceKey key, std::shared_ptr<Expression> t, std::string name, Context c) {
     if (name != "resolve")
-        return Type::AccessMember(std::move(t), name, c);
+        return Type::AccessMember(key, std::move(t), name, c);
     if (ResolveType)
-        return ResolveType->BuildValueConstruction({}, Context( this, c.where ));
+        return ResolveType->BuildValueConstruction(key, {}, Context( this, c.where ));
     struct ResolveCallable : public MetaType 
     {
         ResolveCallable(OverloadSet* f, Analyzer& a)
@@ -408,14 +409,14 @@ std::shared_ptr<Expression> OverloadSet::AccessNamedMember(Expression::InstanceK
             auto clangfunc = dynamic_cast<cppcallable*>(call);
             std::unordered_set<clang::NamedDecl*> decls;
             decls.insert(clangfunc->fun);
-            return analyzer.GetOverloadSet(decls, clangfunc->from, nullptr)->BuildValueConstruction({}, c);
+            return analyzer.GetOverloadSet(decls, clangfunc->from, nullptr)->BuildValueConstruction(key, {}, c);
         }
         std::string explain() override final {
             return from->explain() + ".resolve";
         }
     };
     if (!ResolveType) ResolveType = Wide::Memory::MakeUnique<ResolveCallable>(this, analyzer);
-    return ResolveType->BuildValueConstruction({}, Context( this, c.where ));
+    return ResolveType->BuildValueConstruction(key, {}, Context( this, c.where ));
 }
 std::string OverloadSet::explain() {
     std::stringstream strstr;

@@ -63,16 +63,16 @@ void Module::AddDefaultHandlers(Analyzer& a) {
     AddHandler<const Parse::Using>(a.SharedObjectHandlers, [](const Parse::Using* usedecl, Analyzer& analyzer, Module* lookup, std::string name) {
         auto expr = analyzer.AnalyzeExpression(lookup, usedecl->expr.get(), [](Wide::Parse::Name, Wide::Lexer::Range) { return nullptr; });
         if (auto constant = expr->GetType(nullptr)->Decay()->GetConstantContext())
-            return constant->BuildValueConstruction({}, { lookup, usedecl->location });
+            return constant->BuildValueConstruction(Expression::NoInstance(), {}, { lookup, usedecl->location });
         throw BadUsingTarget(expr->GetType(nullptr)->Decay(), usedecl->expr->location);
     });
 
     AddHandler<const Parse::Type>(a.SharedObjectHandlers, [](const Parse::Type* type, Analyzer& analyzer, Module* lookup, std::string name) {
-        return analyzer.GetConstructorType(analyzer.GetUDT(type, lookup, name))->BuildValueConstruction({}, { lookup, type->location });
+        return analyzer.GetConstructorType(analyzer.GetUDT(type, lookup, name))->BuildValueConstruction(Expression::NoInstance(), {}, { lookup, type->location });
     });
 
     AddHandler<const Parse::Module>(a.UniqueObjectHandlers, [](const Parse::Module* mod, Analyzer& analyzer, Module* lookup, std::string name) {
-        return analyzer.GetWideModule(mod, lookup, name)->BuildValueConstruction({}, { lookup, *mod->locations.begin() });
+        return analyzer.GetWideModule(mod, lookup, name)->BuildValueConstruction(Expression::NoInstance(), {}, { lookup, *mod->locations.begin() });
     });
 
     AddHandler<const Parse::ModuleOverloadSet<Parse::Function>>(a.MultiObjectHandlers, [](const Parse::ModuleOverloadSet<Parse::Function>* overset, Analyzer& analyzer, Module* lookup, Parse::Access access, std::string name, Lexer::Range where) -> std::shared_ptr<Expression> {
@@ -84,7 +84,7 @@ void Module::AddDefaultHandlers(Analyzer& a) {
                 resolvable.insert(analyzer.GetCallableForFunction(func.get(), lookup, name, nullptr, [](Wide::Parse::Name, Wide::Lexer::Range) { return nullptr; }));
         }
         if (resolvable.empty()) return nullptr;
-        return analyzer.GetOverloadSet(resolvable)->BuildValueConstruction({}, { lookup, where });
+        return analyzer.GetOverloadSet(resolvable)->BuildValueConstruction(Expression::NoInstance(), {}, { lookup, where });
     });
 
     AddHandler<const Parse::ModuleOverloadSet<Parse::TemplateType>>(a.MultiObjectHandlers, [](const Parse::ModuleOverloadSet<Parse::TemplateType>* overset, Analyzer& analyzer, Module* lookup, Parse::Access access, std::string name, Lexer::Range where) -> std::shared_ptr<Expression> {
@@ -96,6 +96,6 @@ void Module::AddDefaultHandlers(Analyzer& a) {
                 resolvable.insert(analyzer.GetCallableForTemplateType(func.get(), lookup));
         }
         if (resolvable.empty()) return nullptr;
-        return analyzer.GetOverloadSet(resolvable)->BuildValueConstruction({}, { lookup, where });
+        return analyzer.GetOverloadSet(resolvable)->BuildValueConstruction(Expression::NoInstance(), {}, { lookup, where });
     });
 }

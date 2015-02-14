@@ -175,7 +175,7 @@ std::shared_ptr<Expression> WideFunctionType::CreateThunkFrom(std::shared_ptr<Ex
 }
 std::function<void(llvm::Module*)> WideFunctionType::CreateThunk(std::function<llvm::Function*(llvm::Module*)> src, std::shared_ptr<Expression> dest, Type* context) {
     std::vector<std::shared_ptr<Expression>> conversion_exprs;
-    auto destty = dynamic_cast<WideFunctionType*>(dest->GetType(nullptr));
+    auto destty = dynamic_cast<WideFunctionType*>(dest->GetType(Expression::NoInstance()));
     assert(destty);
     assert(destty != this);
     Context c{ context, std::make_shared<std::string>("Analyzer internal thunk") };
@@ -201,13 +201,13 @@ std::function<void(llvm::Module*)> WideFunctionType::CreateThunk(std::function<l
                 continue;
             }
         }
-        conversion_exprs.push_back(destty->GetArguments()[i]->BuildValueConstruction({ arg(GetArguments()[i], [this, i](llvm::Module* mod) { return i + GetReturnType()->AlwaysKeepInMemory(mod); }) }, c));
+        conversion_exprs.push_back(destty->GetArguments()[i]->BuildValueConstruction(Expression::NoInstance(), { arg(GetArguments()[i], [this, i](llvm::Module* mod) { return i + GetReturnType()->AlwaysKeepInMemory(mod); }) }, c));
     }
-    auto call = Type::BuildCall(dest, conversion_exprs, c);
+    auto call = Type::BuildCall(Expression::NoInstance(), dest, conversion_exprs, c);
     std::shared_ptr<Expression> ret_expr = call;
     if (GetReturnType() != analyzer.GetVoidType()) {
-        call = GetReturnType()->BuildValueConstruction({ call }, c);
-        ret_expr = Type::BuildInplaceConstruction(arg(analyzer.GetLvalueType(GetReturnType()), [](llvm::Module* mod) { return 0; }), { call }, c);
+        call = GetReturnType()->BuildValueConstruction(Expression::NoInstance(), { call }, c);
+        ret_expr = Type::BuildInplaceConstruction(Expression::NoInstance(), arg(analyzer.GetLvalueType(GetReturnType()), [](llvm::Module* mod) { return 0; }), { call }, c);
     }
     return [this, src, ret_expr, call](llvm::Module* mod) {
         CodegenContext::EmitFunctionBody(src(mod), GetArguments(), [this, ret_expr, call](CodegenContext& con) {
@@ -349,9 +349,9 @@ std::function<void(llvm::Module*)> ClangFunctionType::CreateThunk(std::function<
                 continue;
             }
         }
-        conversion_exprs.push_back(destty->GetArguments()[i]->BuildValueConstruction({ arg(GetArguments()[i], [this, i](llvm::Module* mod) { return i + GetReturnType()->AlwaysKeepInMemory(mod); }) }, c));
+        conversion_exprs.push_back(destty->GetArguments()[i]->BuildValueConstruction(Expression::NoInstance(), { arg(GetArguments()[i], [this, i](llvm::Module* mod) { return i + GetReturnType()->AlwaysKeepInMemory(mod); }) }, c));
     }
-    auto call = Type::BuildCall(dest, conversion_exprs, c);
+    auto call = Type::BuildCall(Expression::NoInstance(), dest, conversion_exprs, c);
     std::shared_ptr<Expression> ret_expr;
     if (dynamic_cast<StringType*>(destty->GetReturnType())) {
         call = CreatePrimGlobal(Range::Elements(call), context->analyzer.GetPointerType(context->analyzer.GetIntegralType(8, true)), [=](CodegenContext& con) {
@@ -359,9 +359,9 @@ std::function<void(llvm::Module*)> ClangFunctionType::CreateThunk(std::function<
         }); 
     } else
         if (GetReturnType() != analyzer.GetVoidType())
-            call = GetReturnType()->BuildValueConstruction({ call }, c);
+            call = GetReturnType()->BuildValueConstruction(Expression::NoInstance(), { call }, c);
     if (GetReturnType() != analyzer.GetVoidType())
-        ret_expr = Type::BuildInplaceConstruction(arg(analyzer.GetLvalueType(GetReturnType()), [](llvm::Module* mod) { return 0; }), { call }, c);
+        ret_expr = Type::BuildInplaceConstruction(Expression::NoInstance(), arg(analyzer.GetLvalueType(GetReturnType()), [](llvm::Module* mod) { return 0; }), { call }, c);
     return [src, ret_expr, decl, this, args, call](llvm::Module* mod) {
         auto func = src(mod);
         CodegenContext::EmitFunctionBody(func, GetArguments(), [ret_expr, func, decl, args, this, call](CodegenContext& con) {

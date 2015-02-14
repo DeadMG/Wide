@@ -133,31 +133,31 @@ Analyzer::Analyzer(const Options::Clang& opts, const Parse::Module* GlobalModule
     Move = Wide::Memory::MakeUnique<MoveType>();
 
     auto context = Context{ global, Lexer::Range(std::make_shared<std::string>("Analyzer internal.")) };
-    global->AddSpecialMember("cpp", ClangInclude->BuildValueConstruction({}, context));
-    global->AddSpecialMember("void", GetConstructorType(Void.get())->BuildValueConstruction({}, context));
-    global->AddSpecialMember("global", global->BuildValueConstruction({}, context));
-    global->AddSpecialMember("int8", GetConstructorType(GetIntegralType(8, true))->BuildValueConstruction({}, context));
-    global->AddSpecialMember("uint8", GetConstructorType(GetIntegralType(8, false))->BuildValueConstruction({}, context));
-    global->AddSpecialMember("int16", GetConstructorType(GetIntegralType(16, true))->BuildValueConstruction({}, context));
-    global->AddSpecialMember("uint16", GetConstructorType(GetIntegralType(16, false))->BuildValueConstruction({}, context));
-    global->AddSpecialMember("int32", GetConstructorType(GetIntegralType(32, true))->BuildValueConstruction({}, context));
-    global->AddSpecialMember("uint32", GetConstructorType(GetIntegralType(32, false))->BuildValueConstruction({}, context));
-    global->AddSpecialMember("int64", GetConstructorType(GetIntegralType(64, true))->BuildValueConstruction({}, context));
-    global->AddSpecialMember("uint64", GetConstructorType(GetIntegralType(64, false))->BuildValueConstruction({}, context));
-    global->AddSpecialMember("float32", GetConstructorType(GetFloatType(32))->BuildValueConstruction({}, context));
-    global->AddSpecialMember("float64", GetConstructorType(GetFloatType(64))->BuildValueConstruction({}, context));
-    global->AddSpecialMember("bool", GetConstructorType(Boolean.get())->BuildValueConstruction({}, context));
+    global->AddSpecialMember("cpp", ClangInclude->BuildValueConstruction(Expression::NoInstance(), {}, context));
+    global->AddSpecialMember("void", GetConstructorType(Void.get())->BuildValueConstruction(Expression::NoInstance(), {}, context));
+    global->AddSpecialMember("global", global->BuildValueConstruction(Expression::NoInstance(), {}, context));
+    global->AddSpecialMember("int8", GetConstructorType(GetIntegralType(8, true))->BuildValueConstruction(Expression::NoInstance(), {}, context));
+    global->AddSpecialMember("uint8", GetConstructorType(GetIntegralType(8, false))->BuildValueConstruction(Expression::NoInstance(), {}, context));
+    global->AddSpecialMember("int16", GetConstructorType(GetIntegralType(16, true))->BuildValueConstruction(Expression::NoInstance(), {}, context));
+    global->AddSpecialMember("uint16", GetConstructorType(GetIntegralType(16, false))->BuildValueConstruction(Expression::NoInstance(), {}, context));
+    global->AddSpecialMember("int32", GetConstructorType(GetIntegralType(32, true))->BuildValueConstruction(Expression::NoInstance(), {}, context));
+    global->AddSpecialMember("uint32", GetConstructorType(GetIntegralType(32, false))->BuildValueConstruction(Expression::NoInstance(), {}, context));
+    global->AddSpecialMember("int64", GetConstructorType(GetIntegralType(64, true))->BuildValueConstruction(Expression::NoInstance(), {}, context));
+    global->AddSpecialMember("uint64", GetConstructorType(GetIntegralType(64, false))->BuildValueConstruction(Expression::NoInstance(), {}, context));
+    global->AddSpecialMember("float32", GetConstructorType(GetFloatType(32))->BuildValueConstruction(Expression::NoInstance(), {}, context));
+    global->AddSpecialMember("float64", GetConstructorType(GetFloatType(64))->BuildValueConstruction(Expression::NoInstance(), {}, context));
+    global->AddSpecialMember("bool", GetConstructorType(Boolean.get())->BuildValueConstruction(Expression::NoInstance(), {}, context));
 
-    global->AddSpecialMember("byte", GetConstructorType(GetIntegralType(8, false))->BuildValueConstruction({}, context));
-    global->AddSpecialMember("int", GetConstructorType(GetIntegralType(32, true))->BuildValueConstruction({}, context));
-    global->AddSpecialMember("short", GetConstructorType(GetIntegralType(16, true))->BuildValueConstruction({}, context));
-    global->AddSpecialMember("long", GetConstructorType(GetIntegralType(64, true))->BuildValueConstruction({}, context));
-    global->AddSpecialMember("float", GetConstructorType(GetFloatType(32))->BuildValueConstruction({}, context));
-    global->AddSpecialMember("double", GetConstructorType(GetFloatType(64))->BuildValueConstruction({}, context));
+    global->AddSpecialMember("byte", GetConstructorType(GetIntegralType(8, false))->BuildValueConstruction(Expression::NoInstance(), {}, context));
+    global->AddSpecialMember("int", GetConstructorType(GetIntegralType(32, true))->BuildValueConstruction(Expression::NoInstance(), {}, context));
+    global->AddSpecialMember("short", GetConstructorType(GetIntegralType(16, true))->BuildValueConstruction(Expression::NoInstance(), {}, context));
+    global->AddSpecialMember("long", GetConstructorType(GetIntegralType(64, true))->BuildValueConstruction(Expression::NoInstance(), {}, context));
+    global->AddSpecialMember("float", GetConstructorType(GetFloatType(32))->BuildValueConstruction(Expression::NoInstance(), {}, context));
+    global->AddSpecialMember("double", GetConstructorType(GetFloatType(64))->BuildValueConstruction(Expression::NoInstance(), {}, context));
 
-    global->AddSpecialMember("null", GetNullType()->BuildValueConstruction({}, context));
-    global->AddSpecialMember("reinterpret_cast", GetOverloadSet(PointerCast.get())->BuildValueConstruction({}, context));
-    global->AddSpecialMember("move", GetOverloadSet(Move.get())->BuildValueConstruction({}, context));
+    global->AddSpecialMember("null", GetNullType()->BuildValueConstruction(Expression::NoInstance(), {}, context));
+    global->AddSpecialMember("reinterpret_cast", GetOverloadSet(PointerCast.get())->BuildValueConstruction(Expression::NoInstance(), {}, context));
+    global->AddSpecialMember("move", GetOverloadSet(Move.get())->BuildValueConstruction(Expression::NoInstance(), {}, context));
 
     Module::AddDefaultHandlers(*this);
     Expression::AddDefaultHandlers(*this);
@@ -682,7 +682,7 @@ OverloadResolvable* Analyzer::GetCallableForTemplateType(const Parse::TemplateTy
         std::vector<Type*> types;
         std::vector<std::shared_ptr<Expression>> AdjustArguments(Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c) override final { return args; }
         std::shared_ptr<Expression> CallFunction(Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c) override final {
-            return context->analyzer.GetConstructorType(context->analyzer.GetTemplateType(templatetype, context, types, ""))->BuildValueConstruction({}, c);
+            return context->analyzer.GetConstructorType(context->analyzer.GetTemplateType(templatetype, context, types, ""))->BuildValueConstruction(key, {}, c);
         }
     };
 
@@ -859,13 +859,12 @@ llvm::Value* Semantic::CollapseMember(Type* source, std::pair<llvm::Value*, Type
         return con->CreateLoad(member.first);
     return member.first;
 }
-std::function<void(CodegenContext&)> Semantic::ThrowObject(std::shared_ptr<Expression> expr, Context c) {
-
+std::function<void(CodegenContext&)> Semantic::ThrowObject(Expression::InstanceKey key, std::shared_ptr<Expression> expr, Context c) {
     // http://mentorembedded.github.io/cxx-abi/abi-eh.html
     // 2.4.2
+    auto ty = expr->GetType(key)->Decay();
+    auto RTTI = ty->GetRTTI();
     return [=](CodegenContext& con) {
-        auto ty = expr->GetType(con.func)->Decay();
-        auto RTTI = ty->GetRTTI();
         auto memty = ty->analyzer.GetLvalueType(ty);
         auto destructor = std::make_shared<std::list<std::pair<std::function<void(CodegenContext&)>, bool>>::iterator>();
         auto except_memory = CreatePrimGlobal(Range::Elements(expr), memty, [=](CodegenContext& con) {
@@ -879,7 +878,7 @@ std::function<void(CodegenContext&)> Semantic::ThrowObject(std::shared_ptr<Expre
         // There is no longer a guarantee thas, as an argument, except_memory will be in the same CodegenContext
         // and the iterator could be invalidated. Strictly get the value in the original CodegenContext that ThrowStatement::GenerateCode
         // is called with so that we can erase the destructor later.
-        auto exception = BuildChain(BuildChain(except_memory, Type::BuildInplaceConstruction(except_memory, { std::move(expr) }, c)), except_memory);
+        auto exception = BuildChain(BuildChain(except_memory, Type::BuildInplaceConstruction(con.func, except_memory, { std::move(expr) }, c)), except_memory);
         auto value = exception->GetValue(con);
         auto cxa_throw = con.GetCXAThrow();
         // Throw this shit.
@@ -971,13 +970,13 @@ std::shared_ptr<Expression> Semantic::LookupFromImport(Type* context, Wide::Pars
         if (std::find(imp->names.begin(), imp->names.end(), name) == imp->names.end())
             return propagate();
     auto con = context->analyzer.AnalyzeExpression(context->analyzer.GetGlobalModule(), imp->from.get(), [](Parse::Name, Lexer::Range) { return nullptr; });
-    if (auto result = Type::AccessMember(con, name, { context, where })) {
+    if (auto result = Type::AccessMember(Expression::NoInstance(), con, name, { context, where })) {
         auto subresult = propagate();
         if (!subresult) return result;
         auto over1 = dynamic_cast<OverloadSet*>(result->GetType(nullptr));
         auto over2 = dynamic_cast<OverloadSet*>(subresult->GetType(nullptr));
         if (over1 && over2)
-            return context->analyzer.GetOverloadSet(over1, over2)->BuildValueConstruction({}, { context, where });
+            return context->analyzer.GetOverloadSet(over1, over2)->BuildValueConstruction(Expression::NoInstance(), {}, { context, where });
         throw std::runtime_error("Ambiguous lookup of name " + Semantic::GetNameAsString(name));
     }
     return propagate();
@@ -991,14 +990,14 @@ std::shared_ptr<Expression> Semantic::LookupFromContext(Type* context, Parse::Na
             return result;
         return LookupFromContext(context->GetContext(), name, where);
     }
-    if (auto result = Type::AccessMember(context->BuildValueConstruction({}, { context, where }), name, { context, where }))
+    if (auto result = Type::AccessMember(Expression::NoInstance(), context->BuildValueConstruction(Expression::NoInstance(), {}, { context, where }), name, { context, where }))
         return result;
     return LookupFromContext(context->GetContext(), name, where);
 
     if (auto udt = dynamic_cast<UserDefinedType*>(context))
         return LookupFromContext(context, name, where);
-    if (auto self = Type::AccessMember(context->BuildValueConstruction({}, { context, where }), "this", { context, where })) {
-        if (auto result = Type::AccessMember(self, name, { context, where }))
+    if (auto self = Type::AccessMember(Expression::NoInstance(), context->BuildValueConstruction(Expression::NoInstance(), {}, { context, where }), "this", { context, where })) {
+        if (auto result = Type::AccessMember(Expression::NoInstance(), self, name, { context, where }))
             return result;
     }
     return LookupFromContext(context, name, where);
@@ -1016,18 +1015,18 @@ std::shared_ptr<Expression> Semantic::LookupIdentifier(Type* context, Parse::Nam
     auto over1 = dynamic_cast<OverloadSet*>(result->GetType(nullptr));
     auto over2 = dynamic_cast<OverloadSet*>(result2->GetType(nullptr));
     if (over1 && over2)
-        return context->analyzer.GetOverloadSet(over1, over2)->BuildValueConstruction({}, { context, where });
+        return context->analyzer.GetOverloadSet(over1, over2)->BuildValueConstruction(Expression::NoInstance(), {}, { context, where });
     throw std::runtime_error("Ambiguous lookup of name " + Semantic::GetNameAsString(name));
 }
 void Semantic::AddDefaultContextHandlers(Analyzer& a) {
     AddHandler<Semantic::Module>(a.ContextLookupHandlers, [](Module* mod, Parse::Name name, Lexer::Range where) {
-        auto local_mod_instance = mod->BuildValueConstruction({}, Context{ mod, where });
+        auto local_mod_instance = mod->BuildValueConstruction(Expression::NoInstance(), {}, Context{ mod, where });
         if (auto string = boost::get<std::string>(&name))
             return mod->AccessNamedMember(Expression::NoInstance(), local_mod_instance, *string, { mod, where });
         auto set = mod->AccessMember(boost::get<Parse::OperatorName>(name), GetAccessSpecifier(mod, mod), OperatorAccess::Explicit);
         if (mod->IsLookupContext())
-            return mod->analyzer.GetOverloadSet(set, mod->analyzer.GetOverloadSet())->BuildValueConstruction({}, { mod, where });
-        return mod->analyzer.GetOverloadSet(set, mod->analyzer.GetOverloadSet(), mod)->BuildValueConstruction({ local_mod_instance }, { mod, where });
+            return mod->analyzer.GetOverloadSet(set, mod->analyzer.GetOverloadSet())->BuildValueConstruction(Expression::NoInstance(), {}, { mod, where });
+        return mod->analyzer.GetOverloadSet(set, mod->analyzer.GetOverloadSet(), mod)->BuildValueConstruction(Expression::NoInstance(), { local_mod_instance }, { mod, where });
     });
 
     AddHandler<Semantic::UserDefinedType>(a.ContextLookupHandlers, [](UserDefinedType* udt, Parse::Name name, Lexer::Range where) -> std::shared_ptr<Expression> {

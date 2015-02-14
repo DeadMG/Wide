@@ -266,7 +266,7 @@ namespace Wide {
         std::string GetNameAsString(Parse::Name name);
         Type* CollapseType(Type* source, Type* member);
         llvm::Value* CollapseMember(Type* source, std::pair<llvm::Value*, Type*> member, CodegenContext& con);
-        std::function<void(CodegenContext&)> ThrowObject(std::shared_ptr<Expression> expr, Context c);
+        std::function<void(CodegenContext&)> ThrowObject(Expression::InstanceKey key, std::shared_ptr<Expression> expr, Context c);
         std::shared_ptr<Expression> LookupFromImport(Type* context, Parse::Name name, Lexer::Range where, Parse::Import* imp);
         std::shared_ptr<Expression> LookupFromContext(Type* context, Parse::Name name, Lexer::Range where);
         std::shared_ptr<Expression> LookupIdentifier(Type* context, Parse::Name name, Lexer::Range where, Parse::Import* imp, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup);

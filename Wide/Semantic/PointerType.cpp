@@ -56,7 +56,7 @@ OverloadSet* PointerType::CreateConstructorOverloadSet(Parse::Access access) {
         std::vector<std::shared_ptr<Expression>> AdjustArguments(Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c) override final { return args; }
         std::shared_ptr<Expression> CallFunction(Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c) override final {
             auto other = BuildValue(std::move(args[1]));
-            return Wide::Memory::MakeUnique<ImplicitStoreExpr>(std::move(args[0]), Type::AccessBase(std::move(other), self->pointee));
+            return Wide::Memory::MakeUnique<ImplicitStoreExpr>(std::move(args[0]), Type::AccessBase(key, std::move(other), self->pointee));
         }
         Callable* GetCallableForResolution(std::vector<Type*>, Type*, Analyzer& a) override final { return this; }
     };
@@ -118,5 +118,5 @@ std::shared_ptr<Expression> PointerType::AccessVirtualPointer(Expression::Instan
     auto deref = CreatePrimUnOp(std::move(self), analyzer.GetLvalueType(pointee), [](llvm::Value* val, CodegenContext& con) {
         return val;
     });
-    return Type::GetVirtualPointer(deref);
+    return Type::GetVirtualPointer(key, deref);
 }

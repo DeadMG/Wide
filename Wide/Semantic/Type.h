@@ -161,8 +161,8 @@ namespace Wide {
             virtual bool IsSourceATarget(Type* source, Type* target, Type* context) { return false; }
             virtual std::shared_ptr<Expression> AccessStaticMember(std::string name, Context c);
 
-            std::shared_ptr<Expression> BuildValueConstruction(std::vector<std::shared_ptr<Expression>> args, Context c);
-            std::shared_ptr<Expression> BuildRvalueConstruction(std::vector<std::shared_ptr<Expression>> exprs, Context c);
+            std::shared_ptr<Expression> BuildValueConstruction(Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c);
+            std::shared_ptr<Expression> BuildRvalueConstruction(Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> exprs, Context c);
 
             virtual ~Type() {}
 
@@ -179,16 +179,16 @@ namespace Wide {
             unsigned GetOffsetToBase(Type* base);
 
             std::function<void(CodegenContext&)> BuildDestructorCall(Expression::InstanceKey key, std::shared_ptr<Expression> self, Context c, bool devirtualize);
-            static std::shared_ptr<Expression> GetVirtualPointer(std::shared_ptr<Expression> self);
-            static std::shared_ptr<Expression> BuildCall(std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c);
-            static std::shared_ptr<Expression> AccessMember(std::shared_ptr<Expression> t, Parse::Name name, Context c);
-            static std::shared_ptr<Expression> BuildBooleanConversion(std::shared_ptr<Expression>, Context);
-            static std::shared_ptr<Expression> AccessBase(std::shared_ptr<Expression> self, Type* other);
-            static std::shared_ptr<Expression> BuildInplaceConstruction(std::shared_ptr<Expression> self, std::vector<std::shared_ptr<Expression>> exprs, Context c);
-            static std::shared_ptr<Expression> BuildUnaryExpression(std::shared_ptr<Expression> self, Lexer::TokenType type, Context c);
-            static std::shared_ptr<Expression> BuildBinaryExpression(std::shared_ptr<Expression> lhs, std::shared_ptr<Expression> rhs, Lexer::TokenType type, Context c);
-            static std::shared_ptr<Expression> SetVirtualPointers(std::shared_ptr<Expression>);
-            static std::shared_ptr<Expression> BuildIndex(std::shared_ptr<Expression> obj, std::shared_ptr<Expression> arg, Context c);           
+            static std::shared_ptr<Expression> GetVirtualPointer(Expression::InstanceKey key, std::shared_ptr<Expression> self);
+            static std::shared_ptr<Expression> BuildCall(Expression::InstanceKey key, std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c);
+            static std::shared_ptr<Expression> AccessMember(Expression::InstanceKey key, std::shared_ptr<Expression> t, Parse::Name name, Context c);
+            static std::shared_ptr<Expression> BuildBooleanConversion(Expression::InstanceKey key, std::shared_ptr<Expression>, Context);
+            static std::shared_ptr<Expression> AccessBase(Expression::InstanceKey key, std::shared_ptr<Expression> self, Type* other);
+            static std::shared_ptr<Expression> BuildInplaceConstruction(Expression::InstanceKey key, std::shared_ptr<Expression> self, std::vector<std::shared_ptr<Expression>> exprs, Context c);
+            static std::shared_ptr<Expression> BuildUnaryExpression(Expression::InstanceKey key, std::shared_ptr<Expression> self, Lexer::TokenType type, Context c);
+            static std::shared_ptr<Expression> BuildBinaryExpression(Expression::InstanceKey key, std::shared_ptr<Expression> lhs, std::shared_ptr<Expression> rhs, Lexer::TokenType type, Context c);
+            static std::shared_ptr<Expression> SetVirtualPointers(Expression::InstanceKey key, std::shared_ptr<Expression>);
+            static std::shared_ptr<Expression> BuildIndex(Expression::InstanceKey key, std::shared_ptr<Expression> obj, std::shared_ptr<Expression> arg, Context c);
             static bool IsFirstASecond(Type* first, Type* second, Type* context);
         };
 

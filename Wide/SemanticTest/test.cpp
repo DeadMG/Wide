@@ -134,7 +134,7 @@ void Wide::Driver::Jit(Wide::Options::Clang& copts, std::string file) {
     llvm::Function* main = nullptr;
     Wide::Driver::Compile(copts, files, con, [&](Wide::Semantic::Analyzer& a, const Wide::Parse::Module* root) {
         Wide::Semantic::AnalyzeExportedFunctions(a);
-        auto m = Wide::Semantic::Type::AccessMember(a.GetGlobalModule()->BuildValueConstruction({}, { a.GetGlobalModule(), loc }), std::string("Main"), { a.GetGlobalModule(), loc });
+        auto m = Wide::Semantic::Type::AccessMember(Wide::Semantic::Expression::NoInstance(), a.GetGlobalModule()->BuildValueConstruction(Wide::Semantic::Expression::NoInstance(), {}, { a.GetGlobalModule(), loc }), std::string("Main"), { a.GetGlobalModule(), loc });
         if (!m)
             throw std::runtime_error("No Main() found for test!");
         auto func = dynamic_cast<Wide::Semantic::OverloadSet*>(m->GetType(Wide::Semantic::Expression::NoInstance())->Decay());
@@ -241,8 +241,8 @@ void Wide::Driver::Compile(Wide::Options::Clang& copts, std::string file) {
     copts.HeaderSearchOptions->AddPath("../WideLibrary", clang::frontend::IncludeDirGroup::System, false, false);
     files.push_back(file);
     Wide::Driver::Compile(copts, files, con, [&](Wide::Semantic::Analyzer& a, const Wide::Parse::Module* root) {
-        auto global = a.GetGlobalModule()->BuildValueConstruction({}, { a.GetGlobalModule(), loc });
-        auto failure = Wide::Semantic::Type::AccessMember(global, std::string("ExpectedFailure"), { a.GetGlobalModule(), loc });
+        auto global = a.GetGlobalModule()->BuildValueConstruction(Wide::Semantic::Expression::NoInstance(), {}, { a.GetGlobalModule(), loc });
+        auto failure = Wide::Semantic::Type::AccessMember(Wide::Semantic::Expression::NoInstance(), global, std::string("ExpectedFailure"), { a.GetGlobalModule(), loc });
         if (!failure)
             throw std::runtime_error("Did not find a function indicating what failure was to be expected.");
         auto failureos = dynamic_cast<Wide::Semantic::OverloadSet*>(failure->GetType(Wide::Semantic::Expression::NoInstance())->Decay());
@@ -294,7 +294,7 @@ void Wide::Driver::Compile(Wide::Options::Clang& copts, std::string file) {
             error_string = val;
         });
 
-        auto m = Wide::Semantic::Type::AccessMember(global, std::string("Main"), { a.GetGlobalModule(), loc });
+        auto m = Wide::Semantic::Type::AccessMember(Wide::Semantic::Expression::NoInstance(), global, std::string("Main"), { a.GetGlobalModule(), loc });
         if (!m)
             throw std::runtime_error("No Main() found for test!");
         auto func = dynamic_cast<Wide::Semantic::OverloadSet*>(m->GetType(Wide::Semantic::Expression::NoInstance())->Decay());

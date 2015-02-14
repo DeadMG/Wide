@@ -12,8 +12,8 @@ struct TemplateType::TemplateTypeLookupContext : MetaType {
     std::unordered_map<std::string, Type*> arguments;
     std::shared_ptr<Expression> AccessNamedMember(Expression::InstanceKey key, std::shared_ptr<Expression> self, std::string name, Context c) override final {
         if (arguments.find(name) != arguments.end())
-            return arguments[name]->BuildValueConstruction({}, c);
-        return Type::AccessMember(templatecontext->BuildValueConstruction({}, c), name, c);
+            return arguments[name]->BuildValueConstruction(Expression::NoInstance(), {}, c);
+        return Type::AccessMember(Expression::NoInstance(), templatecontext->BuildValueConstruction(Expression::NoInstance(), {}, c), name, c);
     }
     std::string explain() override final {
         return templatecontext->explain();

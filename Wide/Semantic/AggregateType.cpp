@@ -205,7 +205,7 @@ bool AggregateType::IsCopyConstructible(Parse::Access access) {
     return GetProperties().copyconstructible;
 }
 std::shared_ptr<Expression> AggregateType::AccessVirtualPointer(Expression::InstanceKey key, std::shared_ptr<Expression> self) {
-    if (GetPrimaryBase()) return Type::AccessVirtualPointer(key, Type::AccessBase(std::move(self), GetPrimaryBase()));
+    if (GetPrimaryBase()) return Type::AccessVirtualPointer(key, Type::AccessBase(key, std::move(self), GetPrimaryBase()));
     if (!HasDeclaredDynamicFunctions()) return nullptr;
     auto vptrty = analyzer.GetPointerType(GetVirtualPointerType());
     assert(self->GetType(key)->IsReference(this) || dynamic_cast<PointerType*>(self->GetType(key))->GetPointee() == this);
@@ -355,7 +355,7 @@ OverloadSet* AggregateType::GetCopyAssignmentOperator() {
                 CreateCopyAssignmentExpressions();
         
                 auto functy = analyzer.GetFunctionType(analyzer.GetLvalueType(this), { analyzer.GetLvalueType(this), analyzer.GetLvalueType(this) }, false);
-                return Type::BuildCall(CreatePrimGlobal(Range::Container(args), functy, [this](CodegenContext& con) { EmitCopyAssignmentOperator(con); return CopyAssignmentFunction; }), { args[0], args[1] }, c);
+                return Type::BuildCall(key, CreatePrimGlobal(Range::Container(args), functy, [this](CodegenContext& con) { EmitCopyAssignmentOperator(con); return CopyAssignmentFunction; }), { args[0], args[1] }, c);
             }, { analyzer.GetLvalueType(this), analyzer.GetLvalueType(this) });
         }
     );
@@ -370,7 +370,7 @@ OverloadSet* AggregateType::GetMoveAssignmentOperator() {
                 CreateMoveAssignmentExpressions();
             
                 auto functy = analyzer.GetFunctionType(analyzer.GetLvalueType(this), { analyzer.GetLvalueType(this), analyzer.GetRvalueType(this) }, false);
-                return Type::BuildCall(CreatePrimGlobal(Range::Container(args), functy, [this](CodegenContext& con) { EmitMoveAssignmentOperator(con); return MoveAssignmentFunction; }), { args[0], args[1] }, c);
+                return Type::BuildCall(key, CreatePrimGlobal(Range::Container(args), functy, [this](CodegenContext& con) { EmitMoveAssignmentOperator(con); return MoveAssignmentFunction; }), { args[0], args[1] }, c);
             }, { analyzer.GetLvalueType(this), analyzer.GetRvalueType(this) });            
         }
     );
@@ -383,7 +383,7 @@ OverloadSet* AggregateType::GetMoveConstructor() {
                 CreateMoveConstructorInitializers();
             
                 auto functy = analyzer.GetFunctionType(analyzer.GetVoidType(), { analyzer.GetLvalueType(this), analyzer.GetRvalueType(this) }, false);
-                return Type::BuildCall(CreatePrimGlobal(Range::Container(args), functy, [this](CodegenContext& con) { EmitMoveConstructor(con); return MoveConstructorFunction; }), { args[0], args[1] }, c);
+                return Type::BuildCall(key, CreatePrimGlobal(Range::Container(args), functy, [this](CodegenContext& con) { EmitMoveConstructor(con); return MoveConstructorFunction; }), { args[0], args[1] }, c);
             }, { analyzer.GetLvalueType(this), analyzer.GetRvalueType(this) });
         }
     );
@@ -396,7 +396,7 @@ OverloadSet* AggregateType::GetCopyConstructor() {
                 CreateCopyConstructorInitializers();
         
                 auto functy = analyzer.GetFunctionType(analyzer.GetVoidType(), { analyzer.GetLvalueType(this), analyzer.GetLvalueType(this) }, false);
-                return Type::BuildCall(CreatePrimGlobal(Range::Container(args), functy, [this](CodegenContext& con) { EmitCopyConstructor(con); return CopyConstructorFunction; }), { args[0], args[1] }, c);
+                return Type::BuildCall(key, CreatePrimGlobal(Range::Container(args), functy, [this](CodegenContext& con) { EmitCopyConstructor(con); return CopyConstructorFunction; }), { args[0], args[1] }, c);
             }, { analyzer.GetLvalueType(this), analyzer.GetLvalueType(this) });
         }
     );
@@ -458,11 +458,11 @@ std::vector<std::shared_ptr<Expression>> AggregateType::GetAssignmentOpExpressio
     std::vector<std::shared_ptr<Expression>> exprs;
     for (std::size_t i = 0; i < GetBases().size(); ++i) {
         auto lhs = GetMemberFromThis(self, [this, i] { return GetLayout().Offsets[i].ByteOffset; }, analyzer.GetLvalueType(GetBases()[i]));
-        exprs.push_back(Type::BuildBinaryExpression(lhs, initializers(i), &Lexer::TokenTypes::Assignment, c));
+        exprs.push_back(Type::BuildBinaryExpression(Expression::NoInstance(), lhs, initializers(i), &Lexer::TokenTypes::Assignment, c));
     }
     for (std::size_t i = 0; i < GetMembers().size(); ++i) {
         auto lhs = GetMemberFromThis(self, [this, i] { return GetLayout().Offsets[i + GetBases().size()].ByteOffset; }, analyzer.GetLvalueType(GetMembers()[i]));
-        exprs.push_back(Type::BuildBinaryExpression(lhs, initializers(i), &Lexer::TokenTypes::Assignment, c));
+        exprs.push_back(Type::BuildBinaryExpression(Expression::NoInstance(), lhs, initializers(i), &Lexer::TokenTypes::Assignment, c));
     }
     return exprs;
 }
@@ -481,15 +481,15 @@ std::vector<std::shared_ptr<Expression>> AggregateType::GetConstructorInitialize
     };
     for (std::size_t i = 0; i < GetBases().size(); ++i) {
         auto lhs = GetMemberFromThis(self, [this, i] { return GetLayout().Offsets[i].ByteOffset; }, analyzer.GetLvalueType(GetBases()[i]));
-        auto init = Type::BuildInplaceConstruction(lhs, initializers(i), c);
+        auto init = Type::BuildInplaceConstruction(Expression::NoInstance(), lhs, initializers(i), c);
         exprs.push_back(MemberConstructionAccess(GetBases()[i], c.where, init, lhs));
     }
     for (std::size_t i = 0; i < GetMembers().size(); ++i) {
         auto lhs = GetMemberFromThis(self, [this, i] { return GetLayout().Offsets[i + GetBases().size()].ByteOffset; }, analyzer.GetLvalueType(GetMembers()[i]));
-        auto init = Type::BuildInplaceConstruction(lhs, initializers(i), c);
+        auto init = Type::BuildInplaceConstruction(Expression::NoInstance(), lhs, initializers(i), c);
         exprs.push_back(MemberConstructionAccess(GetMembers()[i], c.where, init, lhs));
     }
-    exprs.push_back(Type::SetVirtualPointers(self));
+    exprs.push_back(Type::SetVirtualPointers(Expression::NoInstance(), self));
     return exprs;
 }
 OverloadSet* AggregateType::GetDefaultConstructor() {
@@ -508,7 +508,7 @@ OverloadSet* AggregateType::GetDefaultConstructor() {
             CreateDefaultConstructorInitializers();
 
             auto functy = analyzer.GetFunctionType(analyzer.GetVoidType(), { analyzer.GetLvalueType(this) }, false);
-            return Type::BuildCall(CreatePrimGlobal(Range::Container(args), functy, [this](CodegenContext& con) { EmitDefaultConstructor(con); return DefaultConstructorFunction; }), { args[0] }, c);
+            return Type::BuildCall(key, CreatePrimGlobal(Range::Container(args), functy, [this](CodegenContext& con) { EmitDefaultConstructor(con); return DefaultConstructorFunction; }), { args[0] }, c);
         }, { analyzer.GetLvalueType(this) });
     };
     return MaybeCreateSet(DefaultConstructor, is_default_constructible, create);

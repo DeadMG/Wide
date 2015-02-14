@@ -22,6 +22,7 @@ namespace Wide {
             Wide::Util::optional<std::string> import_name;
             std::vector<std::tuple<std::function<llvm::Function*(llvm::Module*)>, ClangFunctionType*, clang::FunctionDecl*>> clang_exports;
             std::unordered_set<Expression*> return_expressions;
+            bool analyzed = false;
 
             void ComputeReturnType();
         public:
