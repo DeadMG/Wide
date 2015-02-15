@@ -696,17 +696,14 @@ void FunctionSkeleton::AddDefaultHandlers(Analyzer& a) {
 
     AddHandler<const Parse::TryCatch>(a.StatementHandlers, [](const Parse::TryCatch* try_, FunctionSkeleton* skel, Analyzer& analyzer, Type* self, Scope* current, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> nonstatic) {
         struct Catch {
-            std::vector<std::shared_ptr<Statement>> stmts;
+            Scope* cscope;
             std::shared_ptr<llvm::Value*> val;
             std::shared_ptr<Expression> type;
             std::function<llvm::Constant*(llvm::Module*)> RTTI;
         };
-        std::vector<std::shared_ptr<Statement>> try_stmts;
-        {
-            auto tryscope = new Scope(current);
-            for (auto&& stmt : try_->statements->stmts)
-                try_stmts.push_back(AnalyzeStatement(analyzer, skel, stmt.get(), self, tryscope, nonstatic));
-        }
+        auto tryscope = new Scope(current);
+        for (auto&& stmt : try_->statements->stmts)
+            tryscope->active.push_back(AnalyzeStatement(analyzer, skel, stmt.get(), self, tryscope, nonstatic));
         std::vector<Catch> catches;
         for (auto&& catch_ : try_->catches) {
             auto catchscope = new Scope(current);
@@ -714,7 +711,8 @@ void FunctionSkeleton::AddDefaultHandlers(Analyzer& a) {
                 std::vector<std::shared_ptr<Statement>> stmts;
                 for (auto&& stmt : catch_.statements)
                     stmts.push_back(AnalyzeStatement(analyzer, skel, stmt.get(), self, catchscope, nonstatic));
-                catches.push_back(Catch{ std::move(stmts) });
+                catchscope->active = std::move(stmts);
+                catches.push_back(Catch{ catchscope });
                 break;
             }
             auto type = analyzer.AnalyzeExpression(self, catch_.type.get(), catchscope, nonstatic);
@@ -736,7 +734,8 @@ void FunctionSkeleton::AddDefaultHandlers(Analyzer& a) {
             std::vector<std::shared_ptr<Statement>> stmts;
             for (auto&& stmt : catch_.statements)
                 stmts.push_back(AnalyzeStatement(analyzer, skel, stmt.get(), self, catchscope, nonstatic));
-            catches.push_back(Catch{ std::move(stmts), param, type });
+            catchscope->active = std::move(stmts);
+            catches.push_back(Catch{ catchscope, param, type });
         }
         return CreateResultExpression(Range::Container(catches) | Range::Map([](Catch cat) { return cat.type; }), [=, &analyzer](Expression::InstanceKey key) {
             auto catch_blocks = catches;
@@ -750,6 +749,7 @@ void FunctionSkeleton::AddDefaultHandlers(Analyzer& a) {
                     ? catch_type->Decay()
                     : dynamic_cast<PointerType*>(catch_type)->GetPointee();
                 catch_.RTTI = target_type->GetRTTI();
+                assert(catch_.RTTI);
             }
             return CreatePrimGlobal(Range::Empty(), analyzer, [=](CodegenContext& con) {
                 auto source_block = con->GetInsertBlock();
@@ -761,14 +761,14 @@ void FunctionSkeleton::AddDefaultHandlers(Analyzer& a) {
                 con->SetInsertPoint(catch_block);
                 auto phi = con->CreatePHI(con.GetLpadType(), 0);
                 std::vector<llvm::Constant*> rttis;
-                for (auto&& catch_ : catches) {
+                for (auto&& catch_ : catch_blocks) {
                     if (catch_.val)
                         rttis.push_back(llvm::cast<llvm::Constant>(con->CreatePointerCast(catch_.RTTI(con), con.GetInt8PtrTy())));
                 }
                 try_con.EHHandler = CodegenContext::EHScope{ &con, catch_block, phi, rttis };
                 try_con->SetInsertPoint(source_block);
 
-                for (auto&& stmt : try_stmts)
+                for (auto&& stmt : tryscope->active)
                     if (!try_con.IsTerminated(try_con->GetInsertBlock()))
                         stmt->GenerateCode(try_con);
                 if (!try_con.IsTerminated(try_con->GetInsertBlock()))
@@ -790,10 +790,10 @@ void FunctionSkeleton::AddDefaultHandlers(Analyzer& a) {
                 auto catch_ender = [](CodegenContext& con) {
                     con->CreateCall(con.GetCXAEndCatch());
                 };
-                for (auto&& catch_ : catches) {
+                for (auto&& catch_ : catch_blocks) {
                     CodegenContext catch_block_con(catch_con);
                     if (!catch_.val) {
-                        for (auto&& stmt : catch_.stmts)
+                        for (auto&& stmt : catch_.cscope->active)
                             if (!catch_block_con.IsTerminated(catch_block_con->GetInsertBlock()))
                                 stmt->GenerateCode(catch_block_con);
                         if (!catch_block_con.IsTerminated(catch_block_con->GetInsertBlock())) {
@@ -813,7 +813,7 @@ void FunctionSkeleton::AddDefaultHandlers(Analyzer& a) {
                     // Ensure __cxa_end_catch is called.
                     catch_block_con.AddDestructor(catch_ender);
 
-                    for (auto&& stmt : catch_.stmts)
+                    for (auto&& stmt : catch_.cscope->active)
                         if (!catch_block_con.IsTerminated(catch_block_con->GetInsertBlock()))
                             stmt->GenerateCode(catch_block_con);
                     if (!catch_block_con.IsTerminated(catch_block_con->GetInsertBlock())) {
@@ -823,7 +823,7 @@ void FunctionSkeleton::AddDefaultHandlers(Analyzer& a) {
                     catch_con->SetInsertPoint(catch_continue);
                 }
                 // If we had no catch all, then we need to clean up and rethrow to the next try.
-                if (catches.back().val) {
+                if (catch_blocks.back().val) {
                     auto except = catch_con->CreateCall(catch_con.GetCXABeginCatch(), { except_object });
                     catch_con.AddDestructor(catch_ender);
                     catch_con->CreateInvoke(catch_con.GetCXARethrow(), catch_con.GetUnreachableBlock(), catch_con.CreateLandingpadForEH());
