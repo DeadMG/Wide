@@ -248,15 +248,18 @@ Scope* FunctionSkeleton::ComputeBody() {
                         // Gotta get the correct this pointer.
                         auto make_member_initializer = [&, this](std::vector<std::shared_ptr<Expression>> init, Lexer::Range where) {
                             auto member = make_member(analyzer.GetLvalueType(x.t), x.num, LookupLocal("this"));
-                            auto construction = BuildInplaceConstruction(member, std::move(init), { GetContext(), where });
-                            auto destructor = x.t->IsTriviallyDestructible()
-                                ? std::function<void(CodegenContext&)>()
-                                : x.t->BuildDestructorCall(Expression::NoInstance(), construction, { GetContext(), where }, true);
-                            return CreatePrimGlobal(Range::Elements(construction) | Range::Concat(Range::Container(init)), analyzer.GetVoidType(), [=](CodegenContext& con) {
-                                construction->GetValue(con);
-                                if (destructor)
-                                    con.AddExceptionOnlyDestructor(destructor);
-                                return nullptr;
+                            auto t = x.t;
+                            return CreateResultExpression(Range::Elements(member) | Range::Concat(Range::Container(init)), [=](Expression::InstanceKey key) {
+                                auto construction = Type::BuildInplaceConstruction(key, member, std::move(init), { GetContext(), where });
+                                auto destructor = t->IsTriviallyDestructible()
+                                    ? std::function<void(CodegenContext&)>()
+                                    : t->BuildDestructorCall(key, member, { GetContext(), where }, true);
+                                return CreatePrimGlobal(Range::Elements(construction) | Range::Concat(Range::Container(init)), analyzer.GetVoidType(), [=](CodegenContext& con) {
+                                    construction->GetValue(con);
+                                    if (destructor)
+                                        con.AddExceptionOnlyDestructor(destructor);
+                                    return nullptr;
+                                });
                             });
                         };
                         if (auto init = has_initializer()) {
@@ -372,6 +375,7 @@ void FunctionSkeleton::AddDefaultHandlers(Analyzer& a) {
             if (!key) return nullptr;
             auto func = analyzer.GetWideFunction(skel, *key);
             func->AddReturnExpression(ret_expr.get());
+            if (!ret_expr) return CreatePrimGlobal(Range::Empty(), analyzer, [](CodegenContext& con) {});
             std::shared_ptr<std::shared_ptr<Expression>> build = std::make_shared<std::shared_ptr<Expression>>();
             func->ReturnTypeChanged.connect([=, &analyzer](Type* t) {
                 if (t != analyzer.GetVoidType() && t) {

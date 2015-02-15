@@ -1038,4 +1038,8 @@ void Semantic::AddDefaultContextHandlers(Analyzer& a) {
     AddHandler<Semantic::TemplateType>(a.ContextLookupHandlers, [](TemplateType* udt, Parse::Name name, Lexer::Range where) -> std::shared_ptr<Expression> {
         return udt->analyzer.ContextLookupHandlers[typeid(UserDefinedType)](udt, name, where);
     });
+
+    AddHandler<Semantic::LambdaType>(a.ContextLookupHandlers, [](LambdaType* lambda, Parse::Name, Lexer::Range where) -> std::shared_ptr < Expression > {
+        return nullptr;
+    });
 }

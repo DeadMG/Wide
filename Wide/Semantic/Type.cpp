@@ -231,7 +231,7 @@ std::shared_ptr<Expression> Type::BuildCall(Expression::InstanceKey key, std::sh
 }
 std::shared_ptr<Expression> Type::ConstructCall(Expression::InstanceKey key, std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c) {
     args.insert(args.begin(), std::move(val));
-    auto set = val->GetType(key)->AccessMember({ &Lexer::TokenTypes::OpenBracket, &Lexer::TokenTypes::CloseBracket }, GetAccessSpecifier(c.from, this), OperatorAccess::Implicit);
+    auto set = args[0]->GetType(key)->AccessMember({ &Lexer::TokenTypes::OpenBracket, &Lexer::TokenTypes::CloseBracket }, GetAccessSpecifier(c.from, this), OperatorAccess::Implicit);
     std::vector<Type*> types;
     for (auto&& arg : args)
         types.push_back(arg->GetType(key));

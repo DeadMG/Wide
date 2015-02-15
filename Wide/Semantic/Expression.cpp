@@ -120,6 +120,8 @@ std::shared_ptr<Expression> Semantic::CreatePrimGlobal(Wide::Range::Erased<std::
             deps | Range::Copy([this](std::shared_ptr<Expression> dep) {
                 exprs.insert(dep.get());
             });
+            for (auto&& expr : exprs)
+                assert(expr);
         }
 
         std::unordered_set<Expression*> exprs;
@@ -628,8 +630,9 @@ void Expression::AddDefaultHandlers(Analyzer& a) {
             explicit_captures.insert(cap.name.front().name);
         }
         auto skeleton = a.GetWideFunction(lam, lookup, "lambda at " + to_string(lam->where), nullptr, [&](Parse::Name name, Lexer::Range where) -> std::shared_ptr<Expression> {
-            auto access = [&] {
+            auto access = [&]() -> std::shared_ptr<Expression> {
                 auto self = NonstaticLookup("this", where);
+                if (!self) return nullptr;
                 return CreateResultExpression(Range::Elements(self), [=](Expression::InstanceKey f) {
                     return Type::AccessMember(f, self, name, { lookup, where });
                 });

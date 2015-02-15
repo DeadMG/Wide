@@ -77,6 +77,10 @@ void Function::ComputeBody() {
 
         std::unordered_set<Type*> ret_types;
         for (auto ret : return_expressions) {
+            if (!ret) {
+                ret_types.insert(analyzer.GetVoidType());
+                continue;
+            }
             if (!ret->GetType(Args)) continue;
             ret_types.insert(ret->GetType(Args)->Decay());
         }

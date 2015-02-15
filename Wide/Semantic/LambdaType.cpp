@@ -29,7 +29,7 @@ std::shared_ptr<Expression> LambdaType::ConstructCall(Expression::InstanceKey ke
     for (auto&& arg : args)
         types.push_back(arg->GetType(key));
     auto overset = analyzer.GetOverloadSet(analyzer.GetCallableForFunction(lam, args[0]->GetType(key), "operator()", args[0]->GetType(key), [=](Wide::Parse::Name name, Lexer::Range where) {
-        return Type::AccessMember(key, args[0], name, { this, where }); 
+        return LookupCapture(args[0], name); 
     }));
     auto call = overset->Resolve(types, c.from);
     if (!call) overset->IssueResolutionError(types, c);
@@ -39,7 +39,7 @@ std::shared_ptr<Expression> LambdaType::BuildLambdaFromCaptures(std::vector<std:
     auto self = CreateTemporary(this, c);
     if (contents.size() == 0)
         return std::make_shared<ImplicitLoadExpr>(std::move(self));
-    return CreateResultExpression(Range::Elements(self), [=](Expression::InstanceKey f) {
+    return CreateResultExpression(Range::Elements(self) | Range::Concat(Range::Container(exprs)), [=](Expression::InstanceKey f) {
         std::vector<std::shared_ptr<Expression>> initializers;
         for (std::size_t i = 0; i < exprs.size(); ++i) {
             std::vector<Type*> types;
