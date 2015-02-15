@@ -27,7 +27,7 @@ OverloadSet* Module::CreateOperatorOverloadSet(Parse::OperatorName ty, Parse::Ac
                 for (auto func : set.second) {
                     if (set.first > access)
                         continue;
-                    resolvable.insert(analyzer.GetCallableForFunction(func.get(), this, GetOperatorName(ty), nullptr, [](Wide::Parse::Name, Wide::Lexer::Range) { return nullptr; }));
+                    resolvable.insert(analyzer.GetCallableForFunction(analyzer.GetWideFunction(func.get(), this, GetOperatorName(ty), nullptr, [](Wide::Parse::Name, Wide::Lexer::Range) { return nullptr; })));
                 }
             }
             return analyzer.GetOverloadSet(resolvable);
@@ -81,7 +81,7 @@ void Module::AddDefaultHandlers(Analyzer& a) {
             if (map.first > access)
                 continue;
             for (auto&& func : map.second)
-                resolvable.insert(analyzer.GetCallableForFunction(func.get(), lookup, name, nullptr, [](Wide::Parse::Name, Wide::Lexer::Range) { return nullptr; }));
+                resolvable.insert(analyzer.GetCallableForFunction(analyzer.GetWideFunction(func.get(), lookup, name, nullptr, [](Wide::Parse::Name, Wide::Lexer::Range) { return nullptr; })));
         }
         if (resolvable.empty()) return nullptr;
         return analyzer.GetOverloadSet(resolvable)->BuildValueConstruction(Expression::NoInstance(), {}, { lookup, where });

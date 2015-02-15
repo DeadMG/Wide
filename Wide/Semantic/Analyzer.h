@@ -116,10 +116,10 @@ namespace Wide {
             std::unordered_map<unsigned, std::unordered_map<bool, std::unique_ptr<IntegralType>>> integers;
             std::unordered_map<Type*, std::unique_ptr<PointerType>> Pointers;
             std::unordered_map<std::pair<OverloadSet*, OverloadSet*>, std::unordered_map<Type*, std::unique_ptr<OverloadSet>>, PairTypeHasher, PairTypeEquality> CombinedOverloadSets;
-            std::unordered_map<const Parse::FunctionBase*, std::unique_ptr<OverloadResolvable>> FunctionCallables;
+            std::unordered_map<FunctionSkeleton*, std::unique_ptr<OverloadResolvable>> FunctionCallables;
             std::unordered_map<const Parse::TemplateType*, std::unique_ptr<OverloadResolvable>> TemplateTypeCallables;
             std::unordered_map<std::vector<Type*>, std::unique_ptr<TupleType>, VectorTypeHasher> tupletypes;
-            std::unordered_map<const Parse::Lambda*, std::unordered_map<std::vector<std::pair<Parse::Name, Type*>>, std::unique_ptr<LambdaType>, VectorTypeHasher>> LambdaTypes;
+            std::unordered_map<FunctionSkeleton*, std::unordered_map<std::vector<std::pair<Parse::Name, Type*>>, std::unique_ptr<LambdaType>, VectorTypeHasher>> LambdaTypes;
             std::unordered_map<Type*, std::unordered_map<unsigned, std::unique_ptr<ArrayType>>> ArrayTypes;
             std::unordered_map<Type*, std::unordered_map<Type*, std::unique_ptr<MemberDataPointer>>> MemberDataPointers;
             std::unordered_map<Type*, std::unordered_map<FunctionType*, std::unique_ptr<MemberFunctionPointer>>> MemberFunctionPointers;
@@ -176,6 +176,7 @@ namespace Wide {
             ClangFunctionType* GetFunctionType(const clang::FunctionProtoType*, Wide::Util::optional<clang::QualType>, ClangTU&);
             Module* GetWideModule(const Parse::Module* m, Module* higher, std::string name);
             FunctionSkeleton* GetWideFunction(const Parse::FunctionBase* p, Type* context, std::string name, Type* nonstatic_context, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup);
+            FunctionSkeleton* GetWideFunction(const Parse::FunctionBase* p, Type* context, std::string name, std::function<Type*(Expression::InstanceKey)> nonstatic_context, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup);
             Function* GetWideFunction(FunctionSkeleton* skeleton, const std::vector<Type*>&);
             Function* GetWideFunction(FunctionSkeleton* skeleton);
             LvalueType* GetLvalueType(Type* t);
@@ -193,10 +194,10 @@ namespace Wide {
             FloatType* GetFloatType(unsigned);
             Module* GetGlobalModule();
             TupleType* GetTupleType(std::vector<Type*> types);
-            OverloadResolvable* GetCallableForFunction(const Parse::FunctionBase* f, Type* context, std::string name, Type* nonstatic_context, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup);
+            OverloadResolvable* GetCallableForFunction(FunctionSkeleton*);
             OverloadResolvable* GetCallableForTemplateType(const Parse::TemplateType* t, Type* context);
             TemplateType* GetTemplateType(const Parse::TemplateType* t, Type* context, std::vector<Type*> arguments, std::string name);
-            LambdaType* GetLambdaType(const Parse::Lambda* funcbase, std::vector<std::pair<Parse::Name, Type*>> types, Type* context);
+            LambdaType* GetLambdaType(FunctionSkeleton*, std::vector<std::pair<Parse::Name, Type*>> types);
             ArrayType* GetArrayType(Type* t, unsigned num);
             MemberDataPointer* GetMemberDataPointer(Type* source, Type* dest);
             MemberFunctionPointer* GetMemberFunctionPointer(Type* source, FunctionType* dest);

@@ -185,14 +185,16 @@ llvm::Function* Function::EmitCode(llvm::Module* module) {
 std::vector<std::shared_ptr<Expression>> Function::AdjustArguments(Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c) {
     // May need to perform conversion on "this" that isn't handled by the usual machinery.
     // But check first, because e.g. Derived& to Base& is fine.
-    if (analyzer.HasImplicitThis(skeleton->GetASTFunction(), skeleton->GetContext()) && !Type::IsFirstASecond(args[0]->GetType(key), Args[0], c.from)) {
-        auto argty = args[0]->GetType(key);
-        // If T&&, cast.
-        // Else, build a T&& from the U then cast that. Use this instead of BuildRvalueConstruction because we may need to preserve derived semantics.
-        if (argty == analyzer.GetRvalueType(skeleton->GetNonstaticMemberContext())) {
-            args[0] = std::make_shared<LvalueCast>(args[0]);
-        } else if (argty != analyzer.GetLvalueType(skeleton->GetNonstaticMemberContext())) {
-            args[0] = std::make_shared<LvalueCast>(analyzer.GetRvalueType(skeleton->GetNonstaticMemberContext())->BuildValueConstruction(key, { args[0] }, c));
+    if (Args.size() > 0) {
+        if (analyzer.HasImplicitThis(skeleton->GetASTFunction(), Args[0]->Decay()) && !Type::IsFirstASecond(args[0]->GetType(key), Args[0], c.from)) {
+            auto argty = args[0]->GetType(key);
+            // If T&&, cast.
+            // Else, build a T&& from the U then cast that. Use this instead of BuildRvalueConstruction because we may need to preserve derived semantics.
+            if (argty == analyzer.GetRvalueType(skeleton->GetNonstaticMemberContext(Args))) {
+                args[0] = std::make_shared<LvalueCast>(args[0]);
+            } else if (argty != analyzer.GetLvalueType(skeleton->GetNonstaticMemberContext(Args))) {
+                args[0] = std::make_shared<LvalueCast>(analyzer.GetRvalueType(skeleton->GetNonstaticMemberContext(Args))->BuildValueConstruction(Args, { args[0] }, c));
+            }
         }
     }
     return AdjustArgumentsForTypes(key, std::move(args), Args, c);
@@ -230,7 +232,7 @@ void Function::AddReturnExpression(Expression* expr) {
     return_expressions.insert(expr);
 }
 std::shared_ptr<Expression> Function::GetThis() {
-    assert(skeleton->GetNonstaticMemberContext());
+    assert(skeleton->GetNonstaticMemberContext(Args));
     return skeleton->GetParameter(0);
 }
 std::shared_ptr<Expression> Function::GetStaticSelf() {

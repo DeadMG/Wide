@@ -3,6 +3,7 @@
 #include <Wide/Semantic/OverloadSet.h>
 #include <Wide/Semantic/Reference.h>
 #include <Wide/Semantic/Expression.h>
+#include <Wide/Semantic/FunctionSkeleton.h>
 #include <sstream>
 #include <Wide/Parser/AST.h>
 
@@ -15,8 +16,8 @@ std::vector<Type*> GetTypesFrom(std::vector<std::pair<Parse::Name, Type*>>& vec)
         out.push_back(cap.second);
     return out;
 }
-LambdaType::LambdaType(std::vector<std::pair<Parse::Name, Type*>> capturetypes, const Parse::Lambda* l, Type* con, Analyzer& a)
-: contents(GetTypesFrom(capturetypes)), lam(l), AggregateType(a), context(con)
+LambdaType::LambdaType(std::vector<std::pair<Parse::Name, Type*>> capturetypes, FunctionSkeleton* skel, Analyzer& a)
+: contents(GetTypesFrom(capturetypes)), skeleton(skel), AggregateType(a)
 {
     std::size_t i = 0;
     for (auto pair : capturetypes)
@@ -28,9 +29,7 @@ std::shared_ptr<Expression> LambdaType::ConstructCall(Expression::InstanceKey ke
     std::vector<Type*> types;
     for (auto&& arg : args)
         types.push_back(arg->GetType(key));
-    auto overset = analyzer.GetOverloadSet(analyzer.GetCallableForFunction(lam, args[0]->GetType(key), "operator()", args[0]->GetType(key), [=](Wide::Parse::Name name, Lexer::Range where) {
-        return LookupCapture(args[0], name); 
-    }));
+    auto overset = analyzer.GetOverloadSet(analyzer.GetCallableForFunction(skeleton));
     auto call = overset->Resolve(types, c.from);
     if (!call) overset->IssueResolutionError(types, c);
     return call->Call(key, std::move(args), c);
@@ -77,5 +76,9 @@ std::shared_ptr<Expression> LambdaType::LookupCapture(std::shared_ptr<Expression
 std::string LambdaType::explain() {
     std::stringstream strstream;
     strstream << this;
+    auto lam = dynamic_cast<const Parse::Lambda*>(skeleton->GetASTFunction());
     return "(lambda instantiation " + strstream.str() + " at location " + lam->location + ")";
+}
+Type* LambdaType::GetContext() {
+    return skeleton->GetContext();
 }

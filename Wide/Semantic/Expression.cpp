@@ -628,30 +628,39 @@ void Expression::AddDefaultHandlers(Analyzer& a) {
     });
 
     AddHandler<const Parse::Lambda>(a.ExpressionHandlers, [](const Parse::Lambda* lam, Analyzer& a, Type* lookup, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup) {
-        std::unordered_map<Parse::Name, std::shared_ptr<Expression>> implicit_captures;
-        std::unordered_set<Parse::Name> explicit_captures;
-        for (auto&& cap : lam->Captures) {
-            explicit_captures.insert(cap.name.front().name);
+        std::unordered_map<Parse::Name, std::shared_ptr<Expression>> outer_implicit_captures;
+        std::unordered_map<Parse::Name, std::shared_ptr<Expression>> inner_implicit_captures;
+        std::unordered_map<Parse::Name, std::shared_ptr<Expression>> explicit_captures;
+        for (auto&& arg : lam->Captures) {
+            explicit_captures.insert(std::make_pair(arg.name.front().name, a.AnalyzeExpression(lookup, arg.initializer.get(), NonstaticLookup)));
         }
-        auto skeleton = a.GetWideFunction(lam, lookup, "lambda at " + to_string(lam->where), nullptr, [&](Parse::Name name, Lexer::Range where) -> std::shared_ptr<Expression> {
-            auto access = [&]() -> std::shared_ptr<Expression> {
-                auto self = NonstaticLookup("this", where);
-                if (!self) return nullptr;
-                return CreateResultExpression(Range::Elements(self), [=](Expression::InstanceKey f) {
-                    return Type::AccessMember(f, self, name, { lookup, where });
-                });
-            };
-            if (explicit_captures.find(name) != explicit_captures.end()) {
-                return access();
+        FunctionSkeleton* skeleton;
+        skeleton = a.GetWideFunction(lam, lookup, "lambda at " + to_string(lam->where), 
+            [](Expression::InstanceKey key) -> Type* {
+                if (!key) return nullptr;
+                auto lambda = dynamic_cast<LambdaType*>((*key)[0]->Decay());
+                assert(lambda);
+                return lambda;
+            },
+            [&](Parse::Name name, Lexer::Range where) -> std::shared_ptr < Expression > {
+                auto local_skeleton = skeleton;
+                if (explicit_captures.find(name) != explicit_captures.end())
+                    return explicit_captures[name];
+                if (outer_implicit_captures.find(name) != outer_implicit_captures.end())
+                    return outer_implicit_captures[name];
+                if (auto result = NonstaticLookup(name, where)) {
+                    outer_implicit_captures[name] = result;
+                    inner_implicit_captures[name] = CreateResultExpression(Range::Empty(), [=, &a, &skeleton](Expression::InstanceKey key) -> std::shared_ptr<Expression> {
+                        if (key == Expression::NoInstance()) return nullptr;
+                        auto func = a.GetWideFunction(local_skeleton, *key);
+                        auto lambda = dynamic_cast<LambdaType*>((*key)[0]->Decay());
+                        return lambda->LookupCapture(func->GetThis(), name);
+                    });
+                    return inner_implicit_captures[name];
+                }
+                return nullptr;
             }
-            if (implicit_captures.find(name) != implicit_captures.end())
-                return implicit_captures[name];
-            if (auto result = NonstaticLookup(name, where)) {
-                implicit_captures[name] = result;
-                return access();
-            }
-            return nullptr;
-        }); 
+        ); 
         skeleton->ComputeBody();
         
         Context c(lookup, lam->location);
@@ -659,7 +668,7 @@ void Expression::AddDefaultHandlers(Analyzer& a) {
         for (auto&& arg : lam->Captures) {
             cap_expressions.push_back(std::make_pair(arg.name.front().name, a.AnalyzeExpression(lookup, arg.initializer.get(), NonstaticLookup)));
         }
-        for (auto&& name : implicit_captures) {
+        for (auto&& name : outer_implicit_captures) {
             cap_expressions.push_back(std::make_pair(name.first, name.second));
         }
         
@@ -672,7 +681,7 @@ void Expression::AddDefaultHandlers(Analyzer& a) {
                     if (!lam->defaultref)
                         types.push_back(std::make_pair(cap.first, cap.second->GetType(f)->Decay()));
                     else {
-                        if (implicit_captures.find(cap.first) != implicit_captures.end()) {
+                        if (outer_implicit_captures.find(cap.first) != outer_implicit_captures.end()) {
                             if (!cap.second->GetType(f)->IsReference())
                                 assert(false); // how the fuck
                             types.push_back(std::make_pair(cap.first, cap.second->GetType(f)));
@@ -682,7 +691,7 @@ void Expression::AddDefaultHandlers(Analyzer& a) {
                     }
                     expressions.push_back(std::move(cap.second));
                 }
-                auto type = a.GetLambdaType(lam, types, lookup);
+                auto type = a.GetLambdaType(skeleton, types);
                 return type->BuildLambdaFromCaptures(std::move(expressions), c);
             }
         );

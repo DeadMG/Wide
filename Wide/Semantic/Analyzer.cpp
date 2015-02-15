@@ -310,6 +310,7 @@ Module* Analyzer::GetWideModule(const Parse::Module* p, Module* higher, std::str
 }
 
 LvalueType* Analyzer::GetLvalueType(Type* t) {
+    assert(t);
     if (t == Void.get())
         assert(false);
 
@@ -319,7 +320,8 @@ LvalueType* Analyzer::GetLvalueType(Type* t) {
     return LvalueTypes[t].get();
 }
 
-Type* Analyzer::GetRvalueType(Type* t) {    
+Type* Analyzer::GetRvalueType(Type* t) {
+    assert(t);
     if (t == Void.get())
         assert(false);
     
@@ -383,6 +385,7 @@ IntegralType* Analyzer::GetIntegralType(unsigned bits, bool sign) {
     return integers[bits][sign].get();
 }
 PointerType* Analyzer::GetPointerType(Type* to) {
+    assert(to);
     if (Pointers.find(to) == Pointers.end())
         Pointers[to] = Wide::Memory::MakeUnique<PointerType>(to, *this);
     return Pointers[to].get();
@@ -544,37 +547,46 @@ Type* Analyzer::GetNonstaticContext(const Parse::FunctionBase* p, Type* context)
     }
     return nullptr;
 }
-OverloadResolvable* Analyzer::GetCallableForFunction(const Parse::FunctionBase* f, Type* context, std::string name, Type* nonstatic_context, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup) {
-    if (FunctionCallables.find(f) != FunctionCallables.end())
-        return FunctionCallables.at(f).get();
+FunctionSkeleton* Analyzer::GetWideFunction(const Parse::FunctionBase* p, Type* context, std::string name, Type* nonstatic_context, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup) {
+    if (nonstatic_context == nullptr)
+        return GetWideFunction(p, context, name, std::function<Type*(Expression::InstanceKey)>(), NonstaticLookup);
+    return GetWideFunction(p, context, name, [=](Expression::InstanceKey key) { return nonstatic_context; }, NonstaticLookup);
+}
+
+OverloadResolvable* Analyzer::GetCallableForFunction(FunctionSkeleton* skel) {
+    if (FunctionCallables.find(skel) != FunctionCallables.end())
+        return FunctionCallables.at(skel).get();
 
     struct FunctionCallable : public OverloadResolvable {
-        FunctionCallable(const Parse::FunctionBase* f, Type* con, std::string str, Type* n_con, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup)
-            : func(f), context(con), name(str), nonstatic(NonstaticLookup), nonstatic_context(n_con)
+        FunctionCallable(FunctionSkeleton* skel)
+            : skeleton(skel)
         {}
-
-        const Parse::FunctionBase* func;
-        Type* context;
-        std::string name;
-        std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> nonstatic;
-        Type* nonstatic_context;
+        
+        FunctionSkeleton* skeleton;
 
         Util::optional<std::vector<Type*>> MatchParameter(std::vector<Type*> types, Analyzer& a, Type* source) override final {
             // If we are a member and we have an explicit this then treat the first normally.
             // Else if we are a member, blindly accept whatever is given for argument 0 as long as it's the member type.
             // Else, treat the first argument normally.
-            auto parameters = a.GetFunctionParameters(func, context);
+            auto context = types.size() > 0 && dynamic_cast<LambdaType*>(types[0]->Decay())
+                ? types[0]->Decay()
+                : skeleton->GetContext();
+            auto parameters = a.GetFunctionParameters(skeleton->GetASTFunction(), context);
+            //if (dynamic_cast<const Parse::Lambda*>(skeleton->GetASTFunction()))
+            //    if (dynamic_cast<LambdaType*>(types[0]->Decay()))
+            //        if (types.size() == parameters.size() + 1)
+            //            parameters.insert(parameters.begin(), types[0]);
             if (types.size() != parameters.size()) return Util::none;
             std::vector<Type*> result;
             for (unsigned i = 0; i < types.size(); ++i) {
-                if (a.HasImplicitThis(func, context) && i == 0) {
+                if (a.HasImplicitThis(skeleton->GetASTFunction(), context) && i == 0) {
                     // First, if no conversion is necessary.
                     if (Type::IsFirstASecond(types[i], parameters[i], source)) {
                         result.push_back(parameters[i]);
                         continue;
                     }
                     // If the parameter is-a nonstatic-context&&, then we're good. Let Function::AdjustArguments handle the adjustment, if necessary.
-                    if (Type::IsFirstASecond(types[i], a.GetRvalueType(a.GetNonstaticContext(func, context)), source)) {
+                    if (Type::IsFirstASecond(types[i], a.GetRvalueType(a.GetNonstaticContext(skeleton->GetASTFunction(), context)), source)) {
                         result.push_back(parameters[i]);
                         continue;
                     }
@@ -590,17 +602,17 @@ OverloadResolvable* Analyzer::GetCallableForFunction(const Parse::FunctionBase* 
         }
 
         Callable* GetCallableForResolution(std::vector<Type*> types, Type*, Analyzer& a) override final {
-            if (auto function = dynamic_cast<const Parse::Function*>(func))
+            if (auto function = dynamic_cast<const Parse::Function*>(skeleton->GetASTFunction()))
                 if (function->deleted)
                     return nullptr;
-            if (auto con = dynamic_cast<const Parse::Constructor*>(func))
+            if (auto con = dynamic_cast<const Parse::Constructor*>(skeleton->GetASTFunction()))
                 if (con->deleted)
                     return nullptr;
-            return a.GetWideFunction(a.GetWideFunction(func, context, name, context->IsNonstaticMemberContext() ? context : nullptr, nonstatic), std::move(types));
+            return a.GetWideFunction(skeleton, types);
         }
     };
-    FunctionCallables[f] = Wide::Memory::MakeUnique<FunctionCallable>(f, context->Decay(), name, nonstatic_context, NonstaticLookup);
-    return FunctionCallables.at(f).get();
+    FunctionCallables[skel] = Wide::Memory::MakeUnique<FunctionCallable>(skel);
+    return FunctionCallables.at(skel).get();
 }
 
 Parse::Access Semantic::GetAccessSpecifier(Type* from, Type* to) {
@@ -609,11 +621,6 @@ Parse::Access Semantic::GetAccessSpecifier(Type* from, Type* to) {
     if (source == target) return Parse::Access::Private; 
     if (source->IsDerivedFrom(target) == Type::InheritanceRelationship::UnambiguouslyDerived)
         return Parse::Access::Protected;
-    if (auto func = dynamic_cast<FunctionSkeleton*>(from)) {
-        if (func->GetNonstaticMemberContext()) {
-            return std::max(GetAccessSpecifier(func->GetContext(), target), GetAccessSpecifier(func->GetNonstaticMemberContext(), target));
-        }
-    }
     if (auto context = source->GetContext())
         return GetAccessSpecifier(context, target);
     return Parse::Access::Public;
@@ -754,11 +761,11 @@ Type* Analyzer::GetLiteralStringType() {
         LiteralStringType = Wide::Memory::MakeUnique<StringType>(*this);
     return LiteralStringType.get();
 }
-LambdaType* Analyzer::GetLambdaType(const Parse::Lambda* lam, std::vector<std::pair<Parse::Name, Type*>> types, Type* context) {
-    if (LambdaTypes.find(lam) == LambdaTypes.end()
-     || LambdaTypes[lam].find(types) == LambdaTypes[lam].end())
-        LambdaTypes[lam][types] = Wide::Memory::MakeUnique<LambdaType>(types, lam, context, *this);
-    return LambdaTypes[lam][types].get();
+LambdaType* Analyzer::GetLambdaType(FunctionSkeleton* skel, std::vector<std::pair<Parse::Name, Type*>> types) {
+    if (LambdaTypes.find(skel) == LambdaTypes.end()
+     || LambdaTypes[skel].find(types) == LambdaTypes[skel].end())
+        LambdaTypes[skel][types] = Wide::Memory::MakeUnique<LambdaType>(types, skel, *this);
+    return LambdaTypes[skel][types].get();
 }
 bool Semantic::IsMultiTyped(const Parse::FunctionArgument& f) {
     return !f.type;
@@ -920,7 +927,7 @@ std::string Analyzer::GetTypeExports() {
         exports += pair.second;
     return exports;
 }
-FunctionSkeleton* Analyzer::GetWideFunction(const Parse::FunctionBase* p, Type* context, std::string name, Type* nonstatic_context, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup) {
+FunctionSkeleton* Analyzer::GetWideFunction(const Parse::FunctionBase* p, Type* context, std::string name, std::function<Type*(Expression::InstanceKey)> nonstatic_context, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup) {
     if (FunctionSkeletons.find(p) == FunctionSkeletons.end()
      || FunctionSkeletons[p].find(context) == FunctionSkeletons[p].end())
         FunctionSkeletons[p][context] = Wide::Memory::MakeUnique<FunctionSkeleton>(p, *this, context, name, nonstatic_context, NonstaticLookup);

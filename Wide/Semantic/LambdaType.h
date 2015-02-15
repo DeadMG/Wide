@@ -7,16 +7,16 @@ namespace Wide {
         struct Lambda;
     }
     namespace Semantic {
+        class FunctionSkeleton;
         class LambdaType : public AggregateType {
-            const Parse::Lambda* lam;
+            FunctionSkeleton* skeleton;
             std::unordered_map<Parse::Name, std::size_t> names;
             std::vector<Type*> contents;
-            Type* context;
             std::vector<Type*> GetMembers() { return contents; }
             bool IsNonstaticMemberContext() override final { return true; }
         public:
-            Type* GetContext() { return context; }
-            LambdaType(std::vector<std::pair<Parse::Name, Type*>> capturetypes, const Parse::Lambda* l, Type* context, Analyzer& a);
+            Type* GetContext();
+            LambdaType(std::vector<std::pair<Parse::Name, Type*>> capturetypes, FunctionSkeleton* skel, Analyzer& a);
             std::shared_ptr<Expression> ConstructCall(Expression::InstanceKey key, std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c) override final;
             std::shared_ptr<Expression> BuildLambdaFromCaptures(std::vector<std::shared_ptr<Expression>> exprs, Context c);
 

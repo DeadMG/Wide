@@ -52,7 +52,10 @@ namespace {
     }
 }
 FunctionSkeleton* UserDefinedType::GetWideFunction(const Parse::FunctionBase* base, Parse::Name funcname) {
-    return analyzer.GetWideFunction(base, this, GetNameAsString(funcname), this, GetNonstaticLookup(base, funcname));
+    return analyzer.GetWideFunction(base, this, GetNameAsString(funcname), [](Expression::InstanceKey key) -> Type* {
+        if (!key) return nullptr;
+        return Expression::GetArgumentType(key, 0);
+    }, GetNonstaticLookup(base, funcname));
 }
 std::function<std::shared_ptr<Expression>(Wide::Parse::Name, Wide::Lexer::Range)> UserDefinedType::GetNonstaticLookup(Expression::InstanceKey key, std::shared_ptr<Expression> self) {
     return [=](Parse::Name name, Lexer::Range where) {
@@ -271,7 +274,7 @@ std::shared_ptr<Expression> UserDefinedType::AccessNamedMember(Expression::Insta
             for (auto&& access : *set) {
                 if (spec >= access.first)
                     for (auto&& func : access.second)
-                        resolvables.insert(analyzer.GetCallableForFunction(func.get(), this, GetNameAsString(name), this, GetNonstaticLookup(func.get(), name)));
+                        resolvables.insert(analyzer.GetCallableForFunction(analyzer.GetWideFunction(func.get(), this, GetNameAsString(name), this, GetNonstaticLookup(func.get(), name))));
             }
             // Check for imports.
             OverloadSet* imports = analyzer.GetOverloadSet();
@@ -799,7 +802,7 @@ OverloadSet* UserDefinedType::CreateConstructorOverloadSet(Parse::Access access)
         for (auto&&f : type->constructor_decls) {
             if (f.first <= access)
                 for (auto&& func : f.second)
-                    resolvables.insert(analyzer.GetCallableForFunction(func.get(), this, "type", this, GetNonstaticLookup(func.get(), "type")));
+                    resolvables.insert(analyzer.GetCallableForFunction(analyzer.GetWideFunction(func.get(), this, "type", this, GetNonstaticLookup(func.get(), "type"))));
         }
         return analyzer.GetOverloadSet(resolvables, GetContext());
     };
@@ -859,7 +862,7 @@ OverloadSet* UserDefinedType::CreateOperatorOverloadSet(Parse::OperatorName name
                 for (auto&& f : *set) {
                     if (f.first <= access)
                         for (auto&& func : f.second)
-                            resolvable.insert(analyzer.GetCallableForFunction(func.get(), this, GetNameAsString(name), this, GetNonstaticLookup(func.get(), name)));
+                            resolvable.insert(analyzer.GetCallableForFunction(analyzer.GetWideFunction(func.get(), this, GetNameAsString(name), this, GetNonstaticLookup(func.get(), name))));
                 }
             }
         }
@@ -881,7 +884,7 @@ OverloadSet* UserDefinedType::CreateOperatorOverloadSet(Parse::OperatorName name
 std::function<void(CodegenContext&)> UserDefinedType::BuildDestruction(Expression::InstanceKey key, std::shared_ptr<Expression> self, Context c, bool devirtualize) {
     if (type->destructor_decl) {
         std::unordered_set<OverloadResolvable*> resolvables;
-        resolvables.insert(analyzer.GetCallableForFunction(type->destructor_decl.get(), this, "~type", this, GetNonstaticLookup(type->destructor_decl.get(), "~type")));
+        resolvables.insert(analyzer.GetCallableForFunction(analyzer.GetWideFunction(type->destructor_decl.get(), this, "~type", this, GetNonstaticLookup(type->destructor_decl.get(), "~type"))));
         auto desset = analyzer.GetOverloadSet(resolvables, analyzer.GetLvalueType(this));
         auto callable = dynamic_cast<Wide::Semantic::Function*>(desset->Resolve({ analyzer.GetLvalueType(this) }, c.from));
         auto call = callable->Call(key, { self }, { this, c.where });
@@ -1143,7 +1146,7 @@ bool UserDefinedType::IsTriviallyCopyConstructible() {
         std::unordered_set<OverloadResolvable*> resolvables;
         for (auto&& f : type->constructor_decls) {
             for (auto&& func : f.second)
-                resolvables.insert(analyzer.GetCallableForFunction(func.get(), this, "type", this, GetNonstaticLookup(func.get(), "type")));
+                resolvables.insert(analyzer.GetCallableForFunction(analyzer.GetWideFunction(func.get(), this, "type", this, GetNonstaticLookup(func.get(), "type"))));
         }
         return analyzer.GetOverloadSet(resolvables, analyzer.GetLvalueType(this));
     };
@@ -1182,7 +1185,7 @@ std::shared_ptr<Expression> UserDefinedType::AccessStaticMember(std::string name
             for (auto&& access : *nonvar) {
                 if (spec >= access.first)
                     for (auto&& func : access.second)
-                        resolvables.insert(analyzer.GetCallableForFunction(func.get(), this, GetNameAsString(name), this, GetNonstaticLookup(func.get(), name)));
+                        resolvables.insert(analyzer.GetCallableForFunction(analyzer.GetWideFunction(func.get(), this, GetNameAsString(name), this, GetNonstaticLookup(func.get(), name))));
             }
             if (!resolvables.empty())
                 return analyzer.GetOverloadSet(resolvables, nullptr)->BuildValueConstruction(Expression::NoInstance(), {}, c);

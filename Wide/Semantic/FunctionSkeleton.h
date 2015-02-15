@@ -53,8 +53,7 @@ namespace Wide {
             std::vector<std::shared_ptr<Expression>> parameters;
 
             // You can only be exported as constructors of one, or nonstatic member of one, class.
-            Wide::Util::optional<Semantic::ConstructorContext*> ConstructorContext;
-            Wide::Util::optional<Type*> NonstaticMemberContext;
+            std::function<Type*(Expression::InstanceKey)> NonstaticMemberContext;
             State current_state;
             std::unique_ptr<Scope> root_scope;
             const Parse::FunctionBase* fun;
@@ -62,9 +61,11 @@ namespace Wide {
         public:
             std::shared_ptr<Expression> GetParameter(unsigned num) { return parameters[num]; }
             static void AddDefaultHandlers(Analyzer& a);
-            FunctionSkeleton(const Parse::FunctionBase* astfun, Analyzer& a, Type* container, std::string name, Type* nonstatic_context, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup);
+            FunctionSkeleton(const Parse::FunctionBase* astfun, Analyzer& a, Type* container, std::string name, std::function<Type*(Expression::InstanceKey)>, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup);
+            FunctionSkeleton(const Parse::FunctionBase* astfun, Analyzer& a, Type* container, std::string name, Type*, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup);
+            FunctionSkeleton(const Parse::FunctionBase* astfun, Analyzer& a, Type* container, std::string name, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup);
 
-            Type* GetNonstaticMemberContext() { if (NonstaticMemberContext) return *NonstaticMemberContext; return nullptr; }
+            Type* GetNonstaticMemberContext(Expression::InstanceKey key);
 
             std::shared_ptr<Expression> LookupLocal(Parse::Name name);
             std::string GetSourceName() { return source_name; }
