@@ -538,9 +538,7 @@ void FunctionSkeleton::AddDefaultHandlers(Analyzer& a) {
             WhileStatement(std::shared_ptr<Expression> ex, Lexer::Range where, Type* s)
                 : where(where), self(s)
             {
-                boolconvert = ex;/* CreateResultExpression(Range::Elements(ex), [=](Expression::InstanceKey key) {
-                    return Type::BuildBooleanConversion(key, ex, Context(self, where));
-                });*/
+                boolconvert = ex;
             }
             void GenerateCode(CodegenContext& con) override final {
                 source_con = &con;
@@ -596,7 +594,10 @@ void FunctionSkeleton::AddDefaultHandlers(Analyzer& a) {
             }
             return analyzer.AnalyzeExpression(self, whil->condition.get(), current, nonstatic);
         };
-        auto cond = get_expr();
+        auto ex = get_expr();
+        auto cond = CreateResultExpression(Range::Elements(ex), [=](Expression::InstanceKey key) {
+            return Type::BuildBooleanConversion(key, ex, Context(self, whil->location));
+        });
         auto while_stmt = std::make_shared<WhileStatement>(cond, whil->location, self);
         condscope->active.push_back(std::move(cond));
         condscope->control_flow = while_stmt.get();
