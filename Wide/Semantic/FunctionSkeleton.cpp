@@ -727,11 +727,8 @@ void FunctionSkeleton::AddDefaultHandlers(Analyzer& a) {
                 auto catch_type = con->GetConstructedType();
                 if (!IsLvalueType(catch_type) && !dynamic_cast<PointerType*>(catch_type))
                     throw std::runtime_error("Attempted to catch by non-lvalue and nonpointer.");
-                auto target_type = IsLvalueType(catch_type)
-                    ? catch_type->Decay()
-                    : dynamic_cast<PointerType*>(catch_type)->GetPointee();
-                return CreatePrimGlobal(Range::Elements(type), target_type, [=](CodegenContext& con) {
-                    return con->CreatePointerCast(*param, target_type->GetLLVMType(con));
+                return CreatePrimGlobal(Range::Elements(type), catch_type, [=](CodegenContext& con) {
+                    return con->CreatePointerCast(*param, catch_type->GetLLVMType(con));
                 });
             });
             catchscope->named_variables.insert(std::make_pair(catch_.name, std::make_pair(catch_param, catch_.type->location)));
@@ -773,9 +770,11 @@ void FunctionSkeleton::AddDefaultHandlers(Analyzer& a) {
                 try_con.EHHandler = CodegenContext::EHScope{ &con, catch_block, phi, rttis };
                 try_con->SetInsertPoint(source_block);
 
-                for (auto&& stmt : tryscope->active)
-                    if (!try_con.IsTerminated(try_con->GetInsertBlock()))
-                        stmt->GenerateCode(try_con);
+                try_con.GenerateCodeAndDestroyLocals([&](CodegenContext& trycon) {
+                    for (auto&& stmt : tryscope->active)
+                        if (!trycon.IsTerminated(trycon->GetInsertBlock()))
+                            stmt->GenerateCode(trycon);
+                });
                 if (!try_con.IsTerminated(try_con->GetInsertBlock()))
                     try_con->CreateBr(dest_block);
                 if (phi->getNumIncomingValues() == 0) {
@@ -796,35 +795,33 @@ void FunctionSkeleton::AddDefaultHandlers(Analyzer& a) {
                     con->CreateCall(con.GetCXAEndCatch());
                 };
                 for (auto&& catch_ : catch_blocks) {
-                    CodegenContext catch_block_con(catch_con);
                     if (!catch_.val) {
+                        catch_con.GenerateCodeAndDestroyLocals([&](CodegenContext& catch_block_con) {
+                            for (auto&& stmt : catch_.cscope->active)
+                                if (!catch_block_con.IsTerminated(catch_block_con->GetInsertBlock()))
+                                    stmt->GenerateCode(catch_block_con);
+                        });
+                        if (!catch_con.IsTerminated(catch_con->GetInsertBlock()))
+                            catch_con->CreateBr(dest_block);
+                    }
+                    auto catch_target = llvm::BasicBlock::Create(con, "catch_target", catch_con->GetInsertBlock()->getParent());
+                    auto catch_continue = llvm::BasicBlock::Create(con, "catch_continue", catch_con->GetInsertBlock()->getParent());
+                    auto target_selector = catch_con->CreateCall(for_, { con->CreatePointerCast(catch_.RTTI(con), con.GetInt8PtrTy()) });
+                    auto result = catch_con->CreateICmpEQ(selector, target_selector);
+                    catch_con->CreateCondBr(result, catch_target, catch_continue);
+                    catch_con->SetInsertPoint(catch_target);
+                    // Call __cxa_begin_catch and get our result. We don't need __cxa_get_exception_ptr as Wide cannot catch by value.
+                    *catch_.val = catch_con->CreateCall(catch_con.GetCXABeginCatch(), { except_object });
+                    // Ensure __cxa_end_catch is called.
+                    catch_con.AddDestructor(catch_ender);
+
+                    catch_con.GenerateCodeAndDestroyLocals([&](CodegenContext& catch_block_con) {
                         for (auto&& stmt : catch_.cscope->active)
                             if (!catch_block_con.IsTerminated(catch_block_con->GetInsertBlock()))
                                 stmt->GenerateCode(catch_block_con);
-                        if (!catch_block_con.IsTerminated(catch_block_con->GetInsertBlock())) {
-                            con.DestroyDifference(catch_block_con, false);
-                            catch_block_con->CreateBr(dest_block);
-                        }
-                        break;
-                    }
-                    auto catch_target = llvm::BasicBlock::Create(con, "catch_target", catch_block_con->GetInsertBlock()->getParent());
-                    auto catch_continue = llvm::BasicBlock::Create(con, "catch_continue", catch_block_con->GetInsertBlock()->getParent());
-                    auto target_selector = catch_block_con->CreateCall(for_, { con->CreatePointerCast(catch_.RTTI(con), con.GetInt8PtrTy()) });
-                    auto result = catch_block_con->CreateICmpEQ(selector, target_selector);
-                    catch_block_con->CreateCondBr(result, catch_target, catch_continue);
-                    catch_block_con->SetInsertPoint(catch_target);
-                    // Call __cxa_begin_catch and get our result. We don't need __cxa_get_exception_ptr as Wide cannot catch by value.
-                    *catch_.val = catch_block_con->CreateCall(catch_block_con.GetCXABeginCatch(), { except_object });
-                    // Ensure __cxa_end_catch is called.
-                    catch_block_con.AddDestructor(catch_ender);
-
-                    for (auto&& stmt : catch_.cscope->active)
-                        if (!catch_block_con.IsTerminated(catch_block_con->GetInsertBlock()))
-                            stmt->GenerateCode(catch_block_con);
-                    if (!catch_block_con.IsTerminated(catch_block_con->GetInsertBlock())) {
-                        con.DestroyDifference(catch_block_con, false);
-                        catch_block_con->CreateBr(dest_block);
-                    }
+                    });
+                    if (!catch_con.IsTerminated(catch_con->GetInsertBlock()))
+                        catch_con->CreateBr(dest_block);
                     catch_con->SetInsertPoint(catch_continue);
                 }
                 // If we had no catch all, then we need to clean up and rethrow to the next try.

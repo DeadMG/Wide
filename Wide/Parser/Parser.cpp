@@ -630,7 +630,7 @@ Parser::Parser(std::function<Wide::Util::optional<Lexer::Token>()> l)
                 catch_ = p.lex(catch_expected);
                 break;
             }
-            auto&& name = next.GetValue();
+            auto name = next.GetValue();
             p.lex(&Lexer::TokenTypes::Colon);
             auto&& type = p.ParseExpression(imp);
             p.lex(&Lexer::TokenTypes::CloseBracket);
