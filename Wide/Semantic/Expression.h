@@ -137,7 +137,7 @@ namespace Wide {
                 }
             };
         private:
-            std::unordered_map<Expression*, ExpressionData> exprs;
+            std::unordered_map<std::shared_ptr<Expression>, ExpressionData> exprs;
             std::unordered_map<InstanceKey, Type*> curr_type;
         public:
             SourceExpression(Wide::Range::Erased<std::shared_ptr<Expression>> exprs);

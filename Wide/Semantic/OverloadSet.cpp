@@ -86,7 +86,7 @@ struct cppcallable : public Callable {
                 }
             }
         }
-        return CreatePrimGlobal(Range::Container(args), fty, [=](CodegenContext& con)-> llvm::Value* {
+        auto func = CreatePrimGlobal(Range::Empty(), fty, [=](CodegenContext& con)-> llvm::Value* {
             if (vtable)
                 return con->CreateBitCast(con->CreateLoad(con->CreateConstGEP1_32(con->CreateLoad(vtable->GetValue(con)), from->GetVirtualFunctionOffset(llvm::dyn_cast<clang::CXXMethodDecl>(fun), con))), fty->GetLLVMType(con));
             auto llvmfunc = object(con);
@@ -97,6 +97,7 @@ struct cppcallable : public Callable {
                 return con->CreateBitCast(llvmfunc, fty->GetLLVMType(con));
             return llvmfunc;
         });
+        return Type::BuildCall(key, func, args, c);
     }
     std::vector<std::shared_ptr<Expression>> AdjustArguments(Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c) override final {
         // Clang may resolve a static function. Drop "this" if it did.

@@ -118,13 +118,13 @@ std::shared_ptr<Expression> Semantic::CreatePrimGlobal(Wide::Range::Erased<std::
         : ret(std::move(r)), action(std::move(func)) 
         {
             deps | Range::Copy([this](std::shared_ptr<Expression> dep) {
-                exprs.insert(dep.get());
+                exprs.insert(dep);
             });
             for (auto&& expr : exprs)
                 assert(expr);
         }
 
-        std::unordered_set<Expression*> exprs;
+        std::unordered_set<std::shared_ptr<Expression>> exprs;
 
         Type* ret;
         std::function<llvm::Value*(CodegenContext& con)> action;
@@ -403,11 +403,13 @@ llvm::IntegerType* CodegenContext::GetPointerSizedIntegerType() {
 SourceExpression::SourceExpression(Wide::Range::Erased<std::shared_ptr<Expression>> range) {
     range | Range::Copy([this](std::shared_ptr<Expression> expr) {
         if (expr == nullptr) return;
-        exprs.insert(std::make_pair(expr.get(), ExpressionData{
+        exprs.insert(std::make_pair(expr, ExpressionData{
             {},
             expr->OnChanged.connect([this](Expression* e, InstanceKey f) {
                 auto newtype = e->GetType(f);
-                exprs.at(e).types[f] = newtype;
+                for (auto&& expr : exprs)
+                    if (expr.first.get() == e)
+                        expr.second.types[f] = newtype;
                 if (curr_type.find(f) == curr_type.end()) return;
                 bool recalc = false;
                 for (auto&& arg : exprs) {

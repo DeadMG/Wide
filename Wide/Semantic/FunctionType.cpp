@@ -253,7 +253,7 @@ std::vector<Type*> ClangFunctionType::GetArguments() {
 std::shared_ptr<Expression> ClangFunctionType::ConstructCall(Expression::InstanceKey key, std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c) {
     auto clangfuncty = dynamic_cast<ClangFunctionType*>(val->GetType(key)->Decay());
     auto RetType = clangfuncty->GetReturnType();
-    auto Ret = CreateTemporary(RetType, c);
+    auto Ret = RetType == analyzer.GetVoidType() ? nullptr : CreateTemporary(RetType, c);
     std::function<void(CodegenContext&)> Destructor;
     if (!RetType->IsTriviallyDestructible())
         Destructor = RetType->BuildDestructorCall(key, Ret, c, true);
