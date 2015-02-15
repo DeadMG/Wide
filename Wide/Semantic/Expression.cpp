@@ -504,7 +504,9 @@ void Expression::AddDefaultHandlers(Analyzer& a) {
     });
 
     AddHandler<const Parse::Identifier>(a.ExpressionHandlers, [](const Parse::Identifier* ident, Analyzer& a, Type* lookup, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup) -> std::shared_ptr<Expression> {
-        return LookupIdentifier(lookup, ident->val, ident->location, ident->imp.get(), NonstaticLookup);
+        auto val = LookupIdentifier(lookup, ident->val, ident->location, ident->imp.get(), NonstaticLookup);
+        if (!val) throw std::runtime_error("Fuck");
+        return val;
     });
 
     AddHandler<const Parse::True>(a.ExpressionHandlers, [](const Parse::True* tru, Analyzer& a, Type* lookup, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup) {
