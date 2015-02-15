@@ -598,8 +598,10 @@ void Expression::AddDefaultHandlers(Analyzer& a) {
             auto result = conty->analyzer.GetLvalueType(conty->GetConstructedType());
             // typeid(T)
             if (auto ty = dynamic_cast<ConstructorType*>(expr->GetType(f)->Decay())) {
-                auto rtti = ty->GetRTTI();
-                return CreatePrimGlobal(Range::Elements(expr), ty->GetConstructedType(), rtti);
+                auto rtti = ty->GetConstructedType()->GetRTTI();
+                return CreatePrimGlobal(Range::Elements(expr), result, [=](CodegenContext& con) {
+                    return con->CreateBitCast(rtti(con), result->GetLLVMType(con));
+                });
             }
             auto ty = expr->GetType(f)->Decay();
             auto vtable = ty->GetVtableLayout();
