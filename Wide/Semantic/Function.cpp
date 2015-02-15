@@ -213,7 +213,7 @@ std::shared_ptr<Expression> Function::CallFunction(Expression::InstanceKey key, 
             return llvmfunc;
 
         auto func = dynamic_cast<const Parse::DynamicFunction*>(skeleton->GetASTFunction());
-        auto udt = dynamic_cast<UserDefinedType*>(args[0]->GetType(Args)->Decay());
+        auto udt = dynamic_cast<UserDefinedType*>(args[0]->GetType(key)->Decay());
         if (!func || !udt) return llvmfunc;
         auto vindex = udt->GetVirtualFunctionIndex(func);
         if (!vindex) return llvmfunc;
