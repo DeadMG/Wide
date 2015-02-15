@@ -462,9 +462,13 @@ void FunctionSkeleton::AddDefaultHandlers(Analyzer& a) {
                     var_type = conty->GetConstructedType();
                 } else
                     var_type = init_expr->GetType(key)->Decay();
+                if (var_type == init_expr->GetType(key) && var_type->IsReference())
+                    return CreatePrimGlobal(Range::Elements(init_expr), var_type, [=](CodegenContext& con) -> llvm::Value* {
+                        return init_expr->GetValue(con);
+                    });
                 if (var_type == init_expr->GetType(key))
                     return CreatePrimGlobal(Range::Elements(init_expr), analyzer.GetLvalueType(var_type), [=](CodegenContext& con) -> llvm::Value* {
-                        if (init_expr->GetType(con.func)->AlwaysKeepInMemory(con) || var_type->IsReference()) return init_expr->GetValue(con);
+                        if (init_expr->GetType(con.func)->AlwaysKeepInMemory(con)) return init_expr->GetValue(con);
                         auto alloc = con.CreateAlloca(var_type);
                         con->CreateStore(init_expr->GetValue(con), alloc);
                         return alloc;
