@@ -27,7 +27,7 @@ namespace Wide {
             void ComputeReturnType();
         public:
             Function(Analyzer& a, FunctionSkeleton*, std::vector<Type*> args);
-
+            
             llvm::Function* EmitCode(llvm::Module* module);
             WideFunctionType* GetSignature();
 

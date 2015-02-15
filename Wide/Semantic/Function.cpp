@@ -65,9 +65,7 @@ namespace {
     }
 }
 
-void Function::ComputeBody() {
-    if (analyzed) return;
-    Instantiate(skeleton->ComputeBody(), this);    
+void Function::ComputeReturnType() {
     if (ReturnType) return;
     if (!skeleton->GetExplicitReturn(Args)) {
         if (return_expressions.size() == 0) {
@@ -109,18 +107,22 @@ void Function::ComputeBody() {
         if (isa_rets.size() == 1) {
             ReturnType = *isa_rets.begin();
             ReturnTypeChanged(ReturnType);
-            return;
-        }
-        throw std::runtime_error("Fuck");
+        } else
+            throw std::runtime_error("Fuck");
     } else {
         ReturnType = skeleton->GetExplicitReturn(Args);
     }
+}
+void Function::ComputeBody() {
+    if (analyzed) return;
+    Instantiate(skeleton->ComputeBody(), this);    
+    ComputeReturnType();
+    analyzed = true;
     for (auto pair : clang_exports) {
         if (!FunctionType::CanThunkFromFirstToSecond(std::get<1>(pair), GetSignature(), skeleton->GetContext(), false))
             throw std::runtime_error("Tried to export to a function decl, but the signatures were incompatible.");
         trampoline.push_back(std::get<1>(pair)->CreateThunk(std::get<0>(pair), CreatePrimGlobal(Range::Empty(), GetSignature(), [this](CodegenContext& con) { return EmitCode(con); }), std::get<2>(pair), skeleton->GetContext()));
     }
-    analyzed = true;
 }
 std::string Function::GetExportBody() {
     auto sig = GetSignature();

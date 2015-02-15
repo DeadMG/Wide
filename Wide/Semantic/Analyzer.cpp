@@ -661,9 +661,10 @@ void AnalyzeExportedFunctionsInModule(Analyzer& a, Module* m, std::function<void
         }
     }
     for (auto&& decl : mod->named_decls) {
-        if (auto overset = boost::get<Parse::ModuleOverloadSet<Parse::Function>>(&decl.second)) {
-            for (auto access : overset->funcs)
-                ProcessOverloadSet(access.second, a, m, decl.first, callback);
+        if (auto overset = boost::get<std::unique_ptr<Parse::MultipleAccessContainer>>(&decl.second)) {
+            if (auto funcs = dynamic_cast<Parse::ModuleOverloadSet<Parse::Function>*>(overset->get()))
+                for (auto access : funcs->funcs)
+                    ProcessOverloadSet(access.second, a, m, decl.first, callback);
         }
     }
 }
