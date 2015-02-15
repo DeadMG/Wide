@@ -239,8 +239,8 @@ Scope* FunctionSkeleton::ComputeBody() {
                                                 return &init;
                                     } else {
                                         // Match if it's a type and the one we were looking for.
-                                        auto ty = analyzer.AnalyzeExpression(GetContext(), init.initialized.get(), [](Parse::Name, Lexer::Range) { return nullptr; });
-                                        if (auto conty = dynamic_cast<ConstructorType*>(ty->GetType(Expression::NoInstance()))) {
+                                        auto ty = analyzer.AnalyzeExpression(GetContext(), init.initialized.get(), NonstaticLookup);
+                                        if (auto conty = dynamic_cast<ConstructorType*>(ty->GetType(key))) {
                                             if (conty->GetConstructedType() == x.t)
                                                 return &init;
                                         }
@@ -321,14 +321,16 @@ Scope* FunctionSkeleton::ComputeBody() {
                 auto members = member->GetConstructionMembers();
                 if (func->args.size() != 1)
                     throw std::runtime_error("Bad defaulted function.");
-                auto argty = analyzer.AnalyzeExpression(GetContext(), func->args[0].type.get(), [](Parse::Name, Lexer::Range) { return nullptr; })->GetType(Expression::NoInstance());
-                if (argty == analyzer.GetLvalueType(GetContext())) {
+                auto argty = dynamic_cast<ConstructorType*>(analyzer.AnalyzeExpression(GetContext(), func->args[0].type.get(), [](Parse::Name, Lexer::Range) { return nullptr; })->GetType(Expression::NoInstance()));
+                if (!argty)
+                    throw std::runtime_error("Bad defaulted function.");
+                if (argty->GetConstructedType() == analyzer.GetLvalueType(GetContext())) {
                     // Copy assignment- copy all.
                     unsigned i = 0;
                     for (auto&& x : members) {
                         root_scope->active.push_back(BuildBinaryExpression(member->PrimitiveAccessMember(LookupLocal("this"), i), member->PrimitiveAccessMember(parameters[1], i), &Lexer::TokenTypes::Assignment, { GetContext(), fun->where }));
                     }
-                } else if (argty == analyzer.GetRvalueType(GetContext())) {
+                } else if (argty->GetConstructedType() == analyzer.GetRvalueType(GetContext())) {
                     // move assignment- move all.
                     unsigned i = 0;
                     for (auto&& x : members) {

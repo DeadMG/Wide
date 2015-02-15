@@ -205,7 +205,7 @@ bool AggregateType::IsCopyConstructible(Parse::Access access) {
     return GetProperties().copyconstructible;
 }
 std::shared_ptr<Expression> AggregateType::AccessVirtualPointer(Expression::InstanceKey key, std::shared_ptr<Expression> self) {
-    if (GetPrimaryBase()) return Type::AccessVirtualPointer(key, Type::AccessBase(key, std::move(self), GetPrimaryBase()));
+    if (GetPrimaryBase()) return Type::GetVirtualPointer(key, Type::AccessBase(key, std::move(self), GetPrimaryBase()));
     if (!HasDeclaredDynamicFunctions()) return nullptr;
     auto vptrty = analyzer.GetPointerType(GetVirtualPointerType());
     assert(self->GetType(key)->IsReference(this) || dynamic_cast<PointerType*>(self->GetType(key))->GetPointee() == this);
