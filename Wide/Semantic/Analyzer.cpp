@@ -96,10 +96,10 @@ Analyzer::Analyzer(const Options::Clang& opts, const Parse::Module* GlobalModule
         Callable* GetCallableForResolution(std::vector<Type*>, Type*, Analyzer& a) override final { return this; }
         std::shared_ptr<Expression> CallFunction(Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c) override final {
             auto conty = dynamic_cast<ConstructorType*>(args[0]->GetType(key)->Decay());
-            return CreatePrimGlobal(Range::Container(args), conty, [=](CodegenContext& con) {
+            return CreatePrimGlobal(Range::Container(args), conty->GetConstructedType(), [=](CodegenContext& con) {
                 args[0]->GetValue(con);
                 auto val = args[1]->GetValue(con);
-                return con->CreatePointerCast(val, conty->GetLLVMType(con));
+                return con->CreatePointerCast(val, conty->GetConstructedType()->GetLLVMType(con));
             });
         }
         std::vector<std::shared_ptr<Expression>> AdjustArguments(Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c) override final {

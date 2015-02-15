@@ -143,7 +143,7 @@ Scope* FunctionSkeleton::ComputeBody() {
             root_scope->active.push_back(CreateResultExpression(Range::Empty(), [this, con](Expression::InstanceKey key) -> std::shared_ptr<Expression> {
                 if (!key) return nullptr;
                 auto local_scope = root_scope.get();
-                auto ConstructorContext = dynamic_cast<Semantic::ConstructorContext*>(GetNonstaticMemberContext(key));
+                auto ConstructorContext = dynamic_cast<Semantic::ConstructorContext*>(GetNonstaticMemberContext(key)->Decay());
                 if (!ConstructorContext) return CreatePrimGlobal(Range::Empty(), analyzer, [](CodegenContext& con) {});
                 auto members = ConstructorContext->GetConstructionMembers();
                 auto make_member = [this](Type* result, std::function<unsigned()> offset, std::shared_ptr<Expression> self) {
@@ -349,7 +349,7 @@ Scope* FunctionSkeleton::ComputeBody() {
             root_scope->active.push_back(CreateResultExpression(Range::Empty(), [this](Expression::InstanceKey key) -> std::shared_ptr<Expression> { 
                 if (!key) return nullptr;
                 std::vector<std::shared_ptr<Expression>> root_scope;
-                auto ConstructorContext = dynamic_cast<Semantic::ConstructorContext*>(GetNonstaticMemberContext(key));
+                auto ConstructorContext = dynamic_cast<Semantic::ConstructorContext*>(GetNonstaticMemberContext(key)->Decay());
                 if (!ConstructorContext) throw std::runtime_error("fuck");
                 auto members = ConstructorContext->GetConstructionMembers();
                 for (auto rit = members.rbegin(); rit != members.rend(); ++rit) {
@@ -819,6 +819,7 @@ void FunctionSkeleton::AddDefaultHandlers(Analyzer& a) {
                         });
                         if (!catch_con.IsTerminated(catch_con->GetInsertBlock()))
                             catch_con->CreateBr(dest_block);
+                        continue;
                     }
                     auto catch_target = llvm::BasicBlock::Create(con, "catch_target", catch_con->GetInsertBlock()->getParent());
                     auto catch_continue = llvm::BasicBlock::Create(con, "catch_continue", catch_con->GetInsertBlock()->getParent());
