@@ -740,6 +740,7 @@ void FunctionSkeleton::AddDefaultHandlers(Analyzer& a) {
         return CreateResultExpression(Range::Container(catches) | Range::Map([](Catch cat) { return cat.type; }), [=, &analyzer](Expression::InstanceKey key) {
             auto catch_blocks = catches;
             for (auto&& catch_ : catch_blocks) {
+                if (!catch_.type) continue;
                 auto con = dynamic_cast<ConstructorType*>(catch_.type->GetType(key));
                 if (!con) throw std::runtime_error("Catch parameter type was not a type.");
                 auto catch_type = con->GetConstructedType();
