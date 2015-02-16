@@ -20,40 +20,6 @@ Function::Function(Analyzer& a, FunctionSkeleton* skel, std::vector<Type*> args)
 {
     llvmname = a.GetUniqueFunctionName();
 
-    // Deal with the exports first, if any
-    if (auto fun = dynamic_cast<const Parse::AttributeFunctionBase*>(skeleton->GetASTFunction())) {
-        for (auto&& attr : fun->attributes) {
-            if (auto name = dynamic_cast<const Parse::Identifier*>(attr.initialized.get())) {
-                if (auto string = boost::get<std::string>(&name->val)) {
-                    if (*string == "export") {
-                        auto expr = a.AnalyzeExpression(skeleton->GetContext(), attr.initializer.get(), [](Parse::Name, Lexer::Range) { return nullptr; });
-                        auto overset = dynamic_cast<OverloadSet*>(expr->GetType(Expression::NoInstance())->Decay());
-                        if (!overset)
-                            continue;
-                        //throw NotAType(expr->GetType()->Decay(), attr.initializer->location);
-                        auto tuanddecl = overset->GetSingleFunction();
-                        if (!tuanddecl.second) throw NotAType(expr->GetType(Expression::NoInstance())->Decay(), attr.initializer->location);
-                        auto tu = tuanddecl.first;
-                        auto decl = tuanddecl.second;
-                        std::function<llvm::Function*(llvm::Module*)> source;
-
-                        if (auto des = llvm::dyn_cast<clang::CXXDestructorDecl>(decl))
-                            source = tu->GetObject(a, des, clang::CXXDtorType::Dtor_Complete);
-                        else if (auto con = llvm::dyn_cast<clang::CXXConstructorDecl>(decl))
-                            source = tu->GetObject(a, con, clang::CXXCtorType::Ctor_Complete);
-                        else
-                            source = tu->GetObject(a, decl);
-                        clang_exports.push_back(std::make_tuple(source, GetFunctionType(decl, *tu, a), decl));
-                    }
-                    //if (*string == "import_name") {
-                    //    auto expr = a.AnalyzeExpression(GetContext(), attr.initializer.get());
-                    //    auto string = dynamic_cast<String*>(expr.get());
-                    //    import_name = string->str;
-                    //}
-                }
-            }
-        }
-    }
 }
 
 namespace {
@@ -118,7 +84,7 @@ void Function::ComputeBody() {
     Instantiate(skeleton->ComputeBody(), this);    
     ComputeReturnType();
     analyzed = true;
-    for (auto pair : clang_exports) {
+    for (auto pair : skeleton->GetClangExports()) {
         if (!FunctionType::CanThunkFromFirstToSecond(std::get<1>(pair), GetSignature(), skeleton->GetContext(), false))
             throw std::runtime_error("Tried to export to a function decl, but the signatures were incompatible.");
         trampoline.push_back(std::get<1>(pair)->CreateThunk(std::get<0>(pair), CreatePrimGlobal(Range::Empty(), GetSignature(), [this](CodegenContext& con) { return EmitCode(con); }), std::get<2>(pair), skeleton->GetContext()));

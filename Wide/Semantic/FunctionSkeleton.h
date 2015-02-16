@@ -58,6 +58,7 @@ namespace Wide {
             std::unique_ptr<Scope> root_scope;
             const Parse::FunctionBase* fun;
             std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup;
+            std::vector<std::tuple<std::function<llvm::Function*(llvm::Module*)>, ClangFunctionType*, clang::FunctionDecl*>> clang_exports;
         public:
             std::shared_ptr<Expression> GetParameter(unsigned num) { return parameters[num]; }
             static void AddDefaultHandlers(Analyzer& a);
@@ -75,6 +76,7 @@ namespace Wide {
             const Parse::FunctionBase* GetASTFunction() { return fun; }
             Scope* ComputeBody();
             Type* GetExplicitReturn(Expression::InstanceKey key);
+            std::vector<std::tuple<std::function<llvm::Function*(llvm::Module*)>, ClangFunctionType*, clang::FunctionDecl*>>& GetClangExports();
         };
     }
 }

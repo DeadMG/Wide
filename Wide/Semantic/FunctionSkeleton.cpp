@@ -65,18 +65,62 @@ FunctionSkeleton::FunctionSkeleton(const Parse::FunctionBase* astfun, Analyzer& 
     , root_scope(nullptr)
     , source_name(src_name)
     , analyzer(a)
-    , NonstaticLookup(NonstaticLookup) {
+    , NonstaticLookup(NonstaticLookup) 
+{
+    // Deal with the exports first, if any
+    if (auto fun = dynamic_cast<const Parse::AttributeFunctionBase*>(this->fun)) {
+        for (auto&& attr : fun->attributes) {
+            if (auto name = dynamic_cast<const Parse::Identifier*>(attr.initialized.get())) {
+                if (auto string = boost::get<std::string>(&name->val)) {
+                    if (*string == "export") {
+                        auto expr = a.AnalyzeExpression(context, attr.initializer.get(), [](Parse::Name, Lexer::Range) { return nullptr; });
+                        auto overset = dynamic_cast<OverloadSet*>(expr->GetType(Expression::NoInstance())->Decay());
+                        if (!overset)
+                            continue;
+                        //throw NotAType(expr->GetType()->Decay(), attr.initializer->location);
+                        auto tuanddecl = overset->GetSingleFunction();
+                        if (!tuanddecl.second) throw NotAType(expr->GetType(Expression::NoInstance())->Decay(), attr.initializer->location);
+                        auto tu = tuanddecl.first;
+                        auto decl = tuanddecl.second;
+                        std::function<llvm::Function*(llvm::Module*)> source;
+
+                        if (auto des = llvm::dyn_cast<clang::CXXDestructorDecl>(decl))
+                            source = tu->GetObject(a, des, clang::CXXDtorType::Dtor_Complete);
+                        else if (auto con = llvm::dyn_cast<clang::CXXConstructorDecl>(decl))
+                            source = tu->GetObject(a, con, clang::CXXCtorType::Ctor_Complete);
+                        else
+                            source = tu->GetObject(a, decl);
+                        if (auto mem = llvm::dyn_cast<clang::CXXMethodDecl>(decl)) {
+                            nonstatic_context = [=](Expression::InstanceKey key) {
+                                return analyzer.GetClangType(*tu, tu->GetASTContext().getRecordType(mem->getParent()));
+                            };
+                            this->NonstaticLookup = [=](Parse::Name name, Lexer::Range where) {
+                                if (auto result = NonstaticLookup(name, where))
+                                    return result;
+                                return Type::AccessMember(Expression::NoInstance(), LookupLocal("this"), name, { GetNonstaticMemberContext(Expression::NoInstance()), where });
+                            };
+                        }
+                        clang_exports.push_back(std::make_tuple(source, GetFunctionType(decl, *tu, a), decl));
+                    }
+                }
+            }
+        }
+    }
+
+
     assert(mem);
     // Only match the non-concrete arguments.
     root_scope = Wide::Memory::MakeUnique<Scope>(nullptr);
     unsigned num = 0;
     // We might still be a member function if we're exported as one later.         
-    auto Parameter = [&a](unsigned num, Lexer::Range where) {
+    auto Parameter = [this, &a](unsigned num, Lexer::Range where) {
         return CreateResultExpression(Range::Empty(), [=, &a](Expression::InstanceKey key) -> std::shared_ptr<Expression> {
-            if (!key) return nullptr;
-            assert(num < key->size());
+            if (!key && !(num == 0 && GetNonstaticMemberContext(key))) return nullptr;
+            Type* root_ty = key
+                ? Expression::GetArgumentType(key, num)
+                : analyzer.GetLvalueType(GetNonstaticMemberContext(key));
+            assert(!key || num < key->size());
             auto get_new_ty = [&]() -> Type* {
-                auto root_ty = Expression::GetArgumentType(key, num);
                 if (root_ty->IsReference())
                     return a.GetLvalueType(root_ty->Decay()); // Is this wrong in the case of named rvalue reference?
                 return a.GetLvalueType(root_ty);
@@ -84,14 +128,14 @@ FunctionSkeleton::FunctionSkeleton(const Parse::FunctionBase* astfun, Analyzer& 
             return CreatePrimGlobal(Range::Empty(), get_new_ty(), [=](CodegenContext& con) -> llvm::Value* {
                 auto argnum = num;
                 // We have an extra argument for the return type if we have 1 more argument than the number in the key.
-                if (con->GetInsertBlock()->getParent()->arg_size() == key->size() + 1)
+                if (key && con->GetInsertBlock()->getParent()->arg_size() == key->size() + 1)
                     ++argnum;
                 auto llvm_argument = std::next(con->GetInsertBlock()->getParent()->arg_begin(), argnum);
 
-                if (Expression::GetArgumentType(key, num)->AlwaysKeepInMemory(con) || Expression::GetArgumentType(key, num)->IsReference())
+                if (root_ty->AlwaysKeepInMemory(con) || root_ty->IsReference())
                     return llvm_argument;
 
-                auto alloc = con.CreateAlloca(Expression::GetArgumentType(key, num));
+                auto alloc = con.CreateAlloca(root_ty);
                 con->CreateStore(llvm_argument, alloc);
                 return alloc;
             });
@@ -855,3 +899,6 @@ void FunctionSkeleton::AddDefaultHandlers(Analyzer& a) {
     });
 }
 FunctionSkeleton::~FunctionSkeleton() {}
+std::vector<std::tuple<std::function<llvm::Function*(llvm::Module*)>, ClangFunctionType*, clang::FunctionDecl*>>& FunctionSkeleton::GetClangExports() {
+    return clang_exports;
+}
