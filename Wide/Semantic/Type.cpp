@@ -728,7 +728,7 @@ std::shared_ptr<Expression> Type::CreateVTable(std::vector<std::pair<Type*, unsi
             });
             if (expr.first) {
                 if (func.type != expr.first)
-                    entries.push_back(func.type->CreateThunkFrom(thunk, this));
+                    entries.push_back(func.type->CreateThunkFrom(Expression::NoInstance(), thunk, this));
                 else
                     entries.push_back(thunk);
                 found = true;

@@ -32,7 +32,7 @@ namespace Wide {
             std::string explain() override final;
             // RHS is most derived type.
             static bool CanThunkFromFirstToSecond(FunctionType* lhs, FunctionType* rhs, Type* context, bool adjust);
-            virtual std::shared_ptr<Expression> CreateThunkFrom(std::shared_ptr<Expression> self, Type* context) = 0;
+            virtual std::shared_ptr<Expression> CreateThunkFrom(Expression::InstanceKey key, std::shared_ptr<Expression> self, Type* context) = 0;
         };
         class WideFunctionType : public FunctionType {
             Type* ReturnType;
@@ -47,7 +47,7 @@ namespace Wide {
             Type* GetReturnType() override final;
             std::vector<Type*> GetArguments() override final;
             Wide::Util::optional<clang::QualType> GetClangType(ClangTU& from) override final;
-            std::shared_ptr<Expression> CreateThunkFrom(std::shared_ptr<Expression> self, Type* context) override final;
+            std::shared_ptr<Expression> CreateThunkFrom(Expression::InstanceKey key, std::shared_ptr<Expression> self, Type* context) override final;
             std::function<void(llvm::Module*)> CreateThunk(std::function<llvm::Function*(llvm::Module*)> src, std::shared_ptr<Expression> dest, Type* context);
         };
         class ClangFunctionType : public FunctionType {
@@ -62,7 +62,7 @@ namespace Wide {
             Wide::Util::optional<clang::QualType> GetClangType(ClangTU& from) override final;
             Type* GetReturnType() override final;
             std::vector<Type*> GetArguments() override final;
-            std::shared_ptr<Expression> CreateThunkFrom(std::shared_ptr<Expression> self, Type* context) override final;
+            std::shared_ptr<Expression> CreateThunkFrom(Expression::InstanceKey key, std::shared_ptr<Expression> self, Type* context) override final;
             std::shared_ptr<Expression> ConstructCall(Expression::InstanceKey key, std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c) override final;
             std::function<void(llvm::Module*)> CreateThunk(std::function<llvm::Function*(llvm::Module*)> src, std::shared_ptr<Expression> dest, clang::FunctionDecl* decl, Type* context);
        };

@@ -472,7 +472,7 @@ void FunctionSkeleton::AddDefaultHandlers(Analyzer& a) {
             auto&& name = var->name.front();
             if (current->named_variables.find(var->name.front().name) != current->named_variables.end())
                 throw VariableShadowing(name.name, current->named_variables.at(name.name).second, name.where);
-            auto var = CreateResultExpression(Range::Elements(init_expr, var_type_expr), [=, &analyzer](Expression::InstanceKey key) {
+            auto var_init = CreateResultExpression(Range::Elements(init_expr, var_type_expr), [=, &analyzer](Expression::InstanceKey key) {
                 Type* var_type = nullptr;
                 if (var_type_expr) {
                     auto conty = dynamic_cast<ConstructorType*>(var_type_expr->GetType(key)->Decay());
@@ -492,7 +492,7 @@ void FunctionSkeleton::AddDefaultHandlers(Analyzer& a) {
                         return alloc;
                     });
                 auto temp = CreateTemporary(var_type, { self, name.where });
-                auto construct = Type::BuildInplaceConstruction(key, temp, { init_expr }, { self, name.where });
+                auto construct = Type::BuildInplaceConstruction(key, temp, { init_expr }, { self, var->initializer.get()->location });
                 auto des = var_type->BuildDestructorCall(key, temp, { self, name.where }, true);
                 return CreatePrimGlobal(Range::Elements(construct), analyzer.GetLvalueType(var_type), [=](CodegenContext& con) {
                     construct->GetValue(con);
@@ -500,8 +500,8 @@ void FunctionSkeleton::AddDefaultHandlers(Analyzer& a) {
                     return temp->GetValue(con);
                 });
             });
-            current->named_variables.insert(std::make_pair(name.name, std::make_pair(var, name.where)));
-            return var;
+            current->named_variables.insert(std::make_pair(name.name, std::make_pair(var_init, name.where)));
+            return var_init;
         }
         std::vector<std::shared_ptr<Expression>> exprs;
         for (auto&& name : var->name) {
@@ -832,9 +832,9 @@ void FunctionSkeleton::AddDefaultHandlers(Analyzer& a) {
                     // Call __cxa_begin_catch and get our result. We don't need __cxa_get_exception_ptr as Wide cannot catch by value.
                     *catch_.val = catch_con->CreateCall(catch_con.GetCXABeginCatch(), { except_object });
                     // Ensure __cxa_end_catch is called.
-                    catch_con.AddDestructor(catch_ender);
 
                     catch_con.GenerateCodeAndDestroyLocals([&](CodegenContext& catch_block_con) {
+                        catch_block_con.AddDestructor(catch_ender);
                         for (auto&& stmt : catch_.cscope->active)
                             if (!catch_block_con.IsTerminated(catch_block_con->GetInsertBlock()))
                                 stmt->GenerateCode(catch_block_con);

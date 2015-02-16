@@ -192,7 +192,7 @@ std::vector<std::shared_ptr<Expression>> Function::AdjustArguments(Expression::I
             auto argty = args[0]->GetType(key);
             // If T&&, cast.
             // Else, build a T&& from the U then cast that. Use this instead of BuildRvalueConstruction because we may need to preserve derived semantics.
-            if (argty == analyzer.GetRvalueType(skeleton->GetNonstaticMemberContext(Args))) {
+            if (argty == analyzer.GetRvalueType(skeleton->GetNonstaticMemberContext(Args)->Decay())) {
                 args[0] = std::make_shared<LvalueCast>(args[0]);
             } else if (argty != analyzer.GetLvalueType(skeleton->GetNonstaticMemberContext(Args))) {
                 args[0] = std::make_shared<LvalueCast>(analyzer.GetRvalueType(skeleton->GetNonstaticMemberContext(Args))->BuildValueConstruction(Args, { args[0] }, c));

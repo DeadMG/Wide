@@ -157,20 +157,19 @@ Wide::Util::optional<clang::QualType> WideFunctionType::GetClangType(ClangTU& fr
     protoinfo.ExtInfo = protoinfo.ExtInfo.withCallingConv(convconverter.at(convention));
     return from.GetASTContext().getFunctionType(*retty, types, protoinfo);
 }
-std::shared_ptr<Expression> WideFunctionType::CreateThunkFrom(std::shared_ptr<Expression> to, Type* context) {
-    return CreateResultExpression(Range::Elements(to), [=](Expression::InstanceKey f) -> std::shared_ptr<Expression>{
-        auto dest = this;
-        if (to->GetType(f) == dest) return to;
-        auto name = dest->analyzer.GetUniqueFunctionName();
-        auto functy = dynamic_cast<FunctionType*>(to->GetType(f));
-        if (!functy) throw std::runtime_error("Cannot thunk from a non-function-type.");
-        auto func = [name](llvm::Module* mod) { return mod->getFunction(name); };
-        auto emit = dest->CreateThunk(func, to, context);
-        return CreatePrimGlobal(Range::Elements(to), dest, [=](CodegenContext& con) {
-            auto func = llvm::Function::Create(llvm::cast<llvm::FunctionType>(dest->GetLLVMType(con)->getElementType()), llvm::GlobalValue::LinkageTypes::ExternalLinkage, name, con);
-            emit(con);
-            return func;
-        });
+std::shared_ptr<Expression> WideFunctionType::CreateThunkFrom(Expression::InstanceKey key, std::shared_ptr<Expression> to, Type* context) {
+    auto dest = this;
+    if (to->GetType(key) == dest) return to;
+    auto name = dest->analyzer.GetUniqueFunctionName();
+    auto functy = dynamic_cast<FunctionType*>(to->GetType(key));
+    if (!functy) throw std::runtime_error("Cannot thunk from a non-function-type.");
+    auto func = [name](llvm::Module* mod) { return mod->getFunction(name); };
+    auto emit = dest->CreateThunk(func, to, context);
+    return CreatePrimGlobal(Range::Elements(to), dest, [=](CodegenContext& con) {
+        if (con.module->getFunction(name)) return con.module->getFunction(name);
+        auto func = llvm::Function::Create(llvm::cast<llvm::FunctionType>(dest->GetLLVMType(con)->getElementType()), llvm::GlobalValue::LinkageTypes::ExternalLinkage, name, con);
+        emit(con);
+        return func;
     });
 }
 std::function<void(llvm::Module*)> WideFunctionType::CreateThunk(std::function<llvm::Function*(llvm::Module*)> src, std::shared_ptr<Expression> dest, Type* context) {
@@ -409,7 +408,7 @@ std::function<void(llvm::Module*)> ClangFunctionType::CreateThunk(std::function<
         });
     };
 }
-std::shared_ptr<Expression> ClangFunctionType::CreateThunkFrom(std::shared_ptr<Expression> dest, Type* context) {
+std::shared_ptr<Expression> ClangFunctionType::CreateThunkFrom(Expression::InstanceKey key, std::shared_ptr<Expression> dest, Type* context) {
     auto qualty = from->GetASTContext().getFunctionType(type->getReturnType(), type->getParamTypes(), type->getExtProtoInfo());
     clang::FunctionDecl* decl;
     std::string name = analyzer.GetUniqueFunctionName();
