@@ -24,8 +24,8 @@ extern "C" DLLEXPORT Wide::Options::Clang* CreateClangOptions(const char* triple
     auto p = new Wide::Options::Clang();
     p->TargetOptions.Triple = triple;
     p->LanguageOptions.MicrosoftExt = true;
-    p->LanguageOptions.MicrosoftMode = true;
-    p->LanguageOptions.MSCVersion = 1800;
+    p->LanguageOptions.MSVCCompat = 1800;
+    p->LanguageOptions.MSCompatibilityVersion = 1800;
     validopts.insert(p);
     return p;
 }

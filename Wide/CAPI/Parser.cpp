@@ -30,11 +30,10 @@ extern "C" DLLEXPORT CEquivalents::Builder* ParseWide(
     void* context,
     std::add_pointer<CEquivalents::LexerResult(void*)>::type TokenCallback,
     std::add_pointer<void(CEquivalents::Range, Wide::Parse::OutliningType, void*)>::type OutliningCallback,
-    std::add_pointer<void(unsigned count, CEquivalents::Range*, Wide::Parse::Error, void*)>::type ErrorCallback,
-    std::add_pointer<void(CEquivalents::Range, Wide::Parse::Warning, void*)>::type WarningCallback,
+    std::add_pointer<void(unsigned count, CEquivalents::Range*, const char*, void*)>::type ErrorCallback,
     const char* filename
 ) {
-    auto onerror = [=](const std::vector<Wide::Lexer::Range>& where, Wide::Parse::Error what) {
+    auto onerror = [=](const std::vector<Wide::Lexer::Range>& where, const char* what) {
         std::vector<CEquivalents::Range> locs;
         for(auto x : where)
             locs.push_back(CEquivalents::Range(x));
@@ -59,13 +58,14 @@ extern "C" DLLEXPORT CEquivalents::Builder* ParseWide(
             }
         }
     };
-    ret->builder.error = [=](std::vector<Wide::Lexer::Range> where, Wide::Parse::Error what) { onerror(where, what); };
-    ret->builder.warning = [=](Wide::Lexer::Range where, Wide::Parse::Warning what) { return WarningCallback(where, what, context); };
     ret->builder.outlining = [=](Wide::Lexer::Range r, Wide::Parse::OutliningType t) { return OutliningCallback(r, t, context); };
     try {
         ret->builder.ParseGlobalModuleContents(&ret->builder.GlobalModule);
-    } catch(Wide::Parse::ParserError& e) {
-        onerror(e.where(), e.error());
+    } catch(Wide::Parse::Error& e) {
+        if (auto tok = e.GetInvalidToken())
+            onerror({ tok->GetLocation() }, e.what());
+        else
+            onerror({ e.GetLastValidToken().GetLocation() }, e.what());
     } catch(...) {
     }
     return ret;
@@ -98,16 +98,4 @@ extern "C" DLLEXPORT void AddParser(CEquivalents::Combiner* c, CEquivalents::Bui
         modules.insert(&x->builder.GlobalModule);
     }
     c->combiner.SetModules(std::move(modules));
-}
-
-extern "C" DLLEXPORT const char* GetParserErrorString(Wide::Parse::Error err) {
-    if (Wide::Parse::ErrorStrings.find(err) == Wide::Parse::ErrorStrings.end())
-        return "ICE: Failed to retrieve error string: unknown error.";
-    return Wide::Parse::ErrorStrings.at(err).c_str();
-}
-
-extern "C" DLLEXPORT const char* GetParserWarningString(Wide::Parse::Warning err) {
-    if (Wide::Parse::WarningStrings.find(err) == Wide::Parse::WarningStrings.end())
-        return "ICE: Failed to retrieve warning string: unknown warning.";
-    return Wide::Parse::WarningStrings.at(err).c_str();
 }
