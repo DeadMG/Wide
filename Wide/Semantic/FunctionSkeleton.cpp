@@ -67,6 +67,7 @@ FunctionSkeleton::FunctionSkeleton(const Parse::FunctionBase* astfun, Analyzer& 
     , analyzer(a)
     , NonstaticLookup(NonstaticLookup) 
 {
+    bool exported_this = false;
     // Deal with the exports first, if any
     if (auto fun = dynamic_cast<const Parse::AttributeFunctionBase*>(this->fun)) {
         for (auto&& attr : fun->attributes) {
@@ -99,6 +100,7 @@ FunctionSkeleton::FunctionSkeleton(const Parse::FunctionBase* astfun, Analyzer& 
                                     return result;
                                 return Type::AccessMember(Expression::NoInstance(), LookupLocal("this"), name, { GetNonstaticMemberContext(Expression::NoInstance()), where });
                             };
+                            exported_this = true;
                         }
                         clang_exports.push_back(std::make_tuple(source, GetFunctionType(decl, *tu, a), decl));
                     }
@@ -113,9 +115,10 @@ FunctionSkeleton::FunctionSkeleton(const Parse::FunctionBase* astfun, Analyzer& 
     root_scope = Wide::Memory::MakeUnique<Scope>(nullptr);
     unsigned num = 0;
     // We might still be a member function if we're exported as one later.         
-    auto Parameter = [this, &a](unsigned num, Lexer::Range where) {
+    auto Parameter = [this, &a, exported_this](unsigned num, Lexer::Range where) {
         return CreateResultExpression(Range::Empty(), [=, &a](Expression::InstanceKey key) -> std::shared_ptr<Expression> {
-            if (!key && !(num == 0 && GetNonstaticMemberContext(key))) return nullptr;
+            // Did we have an exported this?
+            if (!key && !(num == 0 && exported_this)) return nullptr;
             Type* root_ty = key
                 ? Expression::GetArgumentType(key, num)
                 : analyzer.GetLvalueType(GetNonstaticMemberContext(key));

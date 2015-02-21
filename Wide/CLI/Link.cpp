@@ -53,15 +53,15 @@ void Driver::Link(llvm::LLVMContext& con, llvm::Module* mod, std::vector<std::st
             }
         }
     }
-    Wide::Driver::Compile(ClangOpts, files, imports, imported_headers, [&](Wide::Semantic::Analyzer& a, const Wide::Parse::Module* root) {
+    Wide::Driver::Compile(ClangOpts, files, con, imports, imported_headers, [&](Wide::Semantic::Analyzer& a, const Wide::Parse::Module* root) {
         Wide::Semantic::AnalyzeExportedFunctions(a);
         static const Wide::Lexer::Range location = std::make_shared<std::string>("Analyzer entry point");
         Wide::Semantic::Context c(a.GetGlobalModule(), location);
-        auto global = a.GetGlobalModule()->BuildValueConstruction({}, c);
-        auto main = Wide::Semantic::Type::AccessMember(std::move(global), std::string("Main"), c);
+        auto global = a.GetGlobalModule()->BuildValueConstruction(Wide::Semantic::Expression::NoInstance(), {}, c);
+        auto main = Wide::Semantic::Type::AccessMember(Wide::Semantic::Expression::NoInstance(), std::move(global), std::string("Main"), c);
         if (!main)
             throw std::runtime_error("Could not find Main in global namespace.");
-        auto overset = dynamic_cast<Wide::Semantic::OverloadSet*>(main->GetType()->Decay());
+        auto overset = dynamic_cast<Wide::Semantic::OverloadSet*>(main->GetType(Wide::Semantic::Expression::NoInstance())->Decay());
         if (!overset)
             throw std::runtime_error("Main in global namespace was not an overload set.");
         auto f = overset->Resolve({}, c.from);

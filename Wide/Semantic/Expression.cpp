@@ -354,8 +354,12 @@ void CodegenContext::EmitFunctionBody(llvm::Function* func, std::vector<Type*> a
     llvm::IRBuilder<> insertbuilder(entries);
     CodegenContext newcon(func->getParent(), args, allocabuilder, gepbuilder, insertbuilder);
     body(newcon);
-    if (llvm::verifyFunction(*func))
+    std::string err;
+    llvm::raw_string_ostream strostream(err);
+    if (llvm::verifyFunction(*func, &strostream)) {
+        strostream.flush();
         throw std::runtime_error("Internal Compiler Error: An LLVM function failed verification.");
+    }
 }
 CodegenContext::CodegenContext(llvm::Module* mod, std::vector<Type*> args, llvm::IRBuilder<>& alloc_builder, llvm::IRBuilder<>& gep_builder, llvm::IRBuilder<>& ir_builder)
     : module(mod), func(args), alloca_builder(&alloc_builder), gep_builder(&gep_builder), insert_builder(&ir_builder)

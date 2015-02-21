@@ -10,7 +10,6 @@
 #include <iterator>
 #include <istream>
 #include <boost/program_options.hpp>
-#include <Wide/Semantic/Warnings/GetFunctionName.h>
 #include <Wide/Util/Archive.h>
 #include <Wide/Semantic/FunctionType.h>
 
@@ -93,10 +92,10 @@ void Driver::Export(llvm::LLVMContext& con, llvm::Module* mod, std::vector<std::
         }
     }
     std::string exports;
-    Wide::Driver::Compile(ClangOpts, files, [&](Wide::Semantic::Analyzer& a, const Wide::Parse::Module* root) {
+    Wide::Driver::Compile(ClangOpts, files, con, [&](Wide::Semantic::Analyzer& a, const Wide::Parse::Module* root) {
         Wide::Semantic::AnalyzeExportedFunctions(a, [&](const Parse::AttributeFunctionBase* func, std::string name, Wide::Semantic::Module* mod) {
-            auto semfunc = a.GetWideFunction(func, mod, name);
-            a.GetTypeExport(semfunc);
+            auto semfunc = a.GetWideFunction(func, mod, name, nullptr, [](Parse::Name, Lexer::Range) { return nullptr; });
+            //a.GetTypeExport(semfunc);
         });
 
         exports = a.GetTypeExports();

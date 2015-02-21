@@ -260,10 +260,6 @@ std::shared_ptr<Expression> ClangFunctionType::ConstructCall(Expression::Instanc
         Destructor = {};
     return CreatePrimGlobal(Range::Elements(val) | Range::Concat(Range::Container(args)), RetType, [=](CodegenContext& con) -> llvm::Value* {
         llvm::Value* llvmfunc = val->GetValue(con);
-        clang::CodeGen::CodeGenFunction codegenfunc(clangfuncty->from->GetCodegenModule(con), true);
-        codegenfunc.AllocaInsertPt = con.GetAllocaInsertPoint();
-        codegenfunc.Builder.SetInsertPoint(con->GetInsertBlock(), con->GetInsertBlock()->end());
-        codegenfunc.CurCodeDecl = nullptr;
         clang::CodeGen::CallArgList list;
         for (auto&& arg : args) {
             auto val = arg->GetValue(con);
@@ -280,6 +276,12 @@ std::shared_ptr<Expression> ClangFunctionType::ConstructCall(Expression::Instanc
         if (clangfuncty->GetReturnType()->AlwaysKeepInMemory(con)) {
             slot = clang::CodeGen::ReturnValueSlot(Ret->GetValue(con), false);
         }
+        clang::CodeGen::CodeGenFunction codegenfunc(clangfuncty->from->GetCodegenModule(con), true);
+        codegenfunc.AllocaInsertPt = con.GetAllocaInsertPoint();
+        codegenfunc.Builder.SetInsertPoint(con->GetInsertBlock(), con->GetInsertBlock()->end());
+        codegenfunc.Builder.SetInsertPoint(con->GetInsertBlock());
+        codegenfunc.CurCodeDecl = nullptr;
+        llvm::CallInst* callinst = nullptr;
         auto result = codegenfunc.EmitCall(clangfuncty->GetCGFunctionInfo(con), llvmfunc, slot, list, nullptr, &call_or_invoke);
         // We need to invoke if we're not destructing, and we have something to destroy OR a catch block we may need to jump to, and the function may throw.
         if (!con.destructing && (con.HasDestructors() || con.EHHandler) && clangfuncty->type->getNoexceptSpec(clangfuncty->from->GetASTContext()) != clang::FunctionProtoType::NoexceptResult::NR_Nothrow) {
@@ -289,16 +291,24 @@ std::shared_ptr<Expression> ClangFunctionType::ConstructCall(Expression::Instanc
             if (auto invokeinst = llvm::dyn_cast<llvm::InvokeInst>(call_or_invoke)) {
                 invokeinst->setUnwindDest(con.CreateLandingpadForEH());
             } else {
-                auto callinst = llvm::cast<llvm::CallInst>(call_or_invoke);
+                callinst = llvm::cast<llvm::CallInst>(call_or_invoke);
                 std::vector<llvm::Value*> args;
                 for (unsigned i = 0; i < callinst->getNumArgOperands(); ++i)
                     args.push_back(callinst->getArgOperand(i));
-                invokeinst = con->CreateInvoke(llvmfunc, continueblock, con.CreateLandingpadForEH(), args);
+                invokeinst = llvm::InvokeInst::Create(llvmfunc, continueblock, con.CreateLandingpadForEH(), args, "", callinst);
                 invokeinst->setAttributes(callinst->getAttributes());
                 call_or_invoke = invokeinst;
                 callinst->replaceAllUsesWith(invokeinst);
+                llvm::Instruction* node = callinst->getNextNode();
+                while (node != callinst->getParent()->getInstList().end()) {
+                    auto oldNext = node->getNextNode();
+                    node->removeFromParent();
+                    continueblock->getInstList().push_back(node);
+                    node = oldNext;
+                }
                 callinst->eraseFromParent();
             }
+            con->SetInsertPoint(continueblock, continueblock->end());
             con->SetInsertPoint(continueblock);
         }
         if (!clangfuncty->GetReturnType()->IsTriviallyDestructible())
@@ -307,6 +317,7 @@ std::shared_ptr<Expression> ClangFunctionType::ConstructCall(Expression::Instanc
             return call_or_invoke;
         if (result.isScalar()) {
             auto val = result.getScalarVal();
+            if (val == callinst) val = call_or_invoke;
             if (val->getType() == llvm::IntegerType::getInt1Ty(con))
                 return con->CreateZExt(val, llvm::IntegerType::getInt8Ty(con));
             return val;
@@ -326,9 +337,15 @@ std::function<void(llvm::Module*)> ClangFunctionType::CreateThunk(std::function<
     Context c{ context, std::make_shared<std::string>("Analyzer internal thunk") };
     // For the zeroth argument, if the rhs is derived from the lhs, force a cast for vthunks.
     auto args = std::make_shared<std::vector<llvm::Value*>>();
-    auto arg = [](Type* ty, std::function<unsigned(llvm::Module* mod)> i) {
-        return CreatePrimGlobal(Range::Empty(), ty, [=](CodegenContext& con) {
-            return std::next(con->GetInsertBlock()->getParent()->arg_begin(), i(con));
+    auto arg = [args](Type* ty, std::function<unsigned(llvm::Module* mod)> i) {
+        // If we encounter a boolean it will be a Clang boolean so patch it up.
+        return CreatePrimGlobal(Range::Empty(), ty, [=](CodegenContext& con) -> llvm::Value* {
+            auto val = args->at(i(con));
+            if (val->getType() == llvm::IntegerType::getInt1Ty(con))
+                val = con->CreateZExt(val, llvm::IntegerType::getInt8Ty(con));
+            if (val->getType() == ty->GetLLVMType(con)->getPointerTo())
+                return con->CreateLoad(val);
+            return val;
         });
     };
 
