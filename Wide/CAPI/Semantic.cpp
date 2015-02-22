@@ -13,6 +13,7 @@
 #include <Wide/Util/DebugBreak.h>
 #pragma warning(push, 0)
 #include <llvm/Support/TargetSelect.h>
+
 #include <llvm/Target/TargetOptions.h>
 #include <llvm/Target/TargetMachine.h>
 #include <llvm/Support/TargetRegistry.h>
@@ -40,49 +41,19 @@ extern "C" DLLEXPORT void DestroyClangOptions(Wide::Options::Clang* p) {
 extern "C" DLLEXPORT void AddHeaderPath(Wide::Options::Clang* p, const char* path, bool angled) {
     p->HeaderSearchOptions->AddPath(path, angled ? clang::frontend::IncludeDirGroup::Angled : clang::frontend::IncludeDirGroup::Quoted, false, false);
 }
-
-enum class ContextType {
-    Unknown,
-    Module,
-    Type,
-    OverloadSet
-};
-
 extern "C" DLLEXPORT void AnalyzeWide(
     CEquivalents::Combiner* comb,
     Wide::Options::Clang* clangopts,
     std::add_pointer<void(CEquivalents::Range, const char* what, void* context)>::type error,
-    std::add_pointer<void(CEquivalents::Range, const char* what, ContextType type, void* context)>::type quickinfo,
+    std::add_pointer<void(CEquivalents::Range, const char* what, void* context)>::type quickinfo,
     std::add_pointer<void(CEquivalents::Range, void* context)>::type paramhighlight,
     void* context
 ) {
-    Wide::Semantic::Analyzer a(*clangopts, comb->combiner.GetGlobalModule());
+    llvm::LLVMContext con;
+    Wide::Semantic::Analyzer a(*clangopts, comb->combiner.GetGlobalModule(), con);
     a.QuickInfo = [&](Wide::Lexer::Range r, Wide::Semantic::Type* t) {
         std::string content = t->explain();
-        ContextType cty = ContextType::Unknown;
-        if (dynamic_cast<Wide::Semantic::Module*>(t->Decay()))
-            cty = ContextType::Module;
-        if (dynamic_cast<Wide::Semantic::ConstructorType*>(t->Decay()))
-            cty = ContextType::Type;
-        if (dynamic_cast<Wide::Semantic::OverloadSet*>(t->Decay()))
-            cty = ContextType::OverloadSet;
-        if (auto func = dynamic_cast<Wide::Semantic::Function*>(t->Decay())) {
-            cty = ContextType::OverloadSet;
-            if (func->GetContext() != a.GetGlobalModule())
-                content = func->GetContext()->explain() + ".";
-            else
-                content = "";
-            content += func->GetSourceName();
-            auto args = func->GetSignature()->GetArguments();
-            content += "(";
-            for (auto arg : args) {
-                content += arg->explain();
-                if (arg != args.back())
-                    content += ", ";
-            }
-            content += ")";
-        }
-        quickinfo(r, content.c_str(), cty, context);
+        quickinfo(r, content.c_str(), context);
     };
     a.ParameterHighlight = [&](Wide::Lexer::Range r) {
         paramhighlight(r, context);

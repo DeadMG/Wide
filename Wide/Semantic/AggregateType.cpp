@@ -50,6 +50,7 @@ AggregateType::Layout::Layout(AggregateType* agg, Wide::Semantic::Analyzer& a)
 : allocsize(0)
 , align(1)
 {
+    // Originally meeting Itanium but no longer required.
     auto bases_size = agg->GetBases().size();
     auto members_size = agg->GetMembers().size();
     Offsets.resize(bases_size + members_size);
@@ -162,15 +163,15 @@ AggregateType::Layout::Layout(AggregateType* agg, Wide::Semantic::Analyzer& a)
     // Check our size and alignment overrides.
     auto size_override = agg->SizeOverride();
     if (size_override) {
-        if (*size_override < sizec)
-            throw std::runtime_error("Size override was too small.");
-        sizec = *size_override;
+        if (size_override->first < sizec)
+            throw Semantic::Error(size_override->second, "The size override was smaller than the required size.");
+        sizec = size_override->first;
     }
     auto align_override = agg->AlignOverride();
     if (align_override) {
-        if (*align_override < alignc)
-            throw std::runtime_error("Alignment override was too small.");
-        alignc = *align_override;
+        if (align_override->first < alignc)
+            throw Semantic::Error(size_override->second, "The alignment override was smaller than the required alignment.");
+        alignc = align_override->first;
     }
 
     // Round sizeof(C) up to a non-zero multiple of align(C). If C is a POD, but not a POD for the purpose of layout, set nvsize(C) = sizeof(C). 

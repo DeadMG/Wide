@@ -36,3 +36,7 @@ extern "C" DLLEXPORT void LexWide(
 extern "C" DLLEXPORT bool IsKeywordType(Wide::Lexer::TokenType ty) {
     return Wide::Lexer::default_keyword_types.find(ty) != Wide::Lexer::default_keyword_types.end();
 }
+
+extern "C" DLLEXPORT const char* GetTokenTypeString(Wide::Lexer::TokenType ty) {
+    return ty->c_str();
+}

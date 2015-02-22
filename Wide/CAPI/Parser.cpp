@@ -7,18 +7,6 @@ namespace CEquivalents {
         char* value;
         bool exists;
     };
-    enum class DeclType : int {
-        Function,
-        Using,
-        Type,
-        Module,
-    };
-    struct CombinedError {
-        CombinedError(CEquivalents::Range f, DeclType s)
-            : where(std::move(f)), type(s) {}
-        CEquivalents::Range where;
-        DeclType type;
-    };
     struct Combiner;
     struct Builder {
         std::unordered_set<Combiner*> combiners;
@@ -66,7 +54,8 @@ extern "C" DLLEXPORT CEquivalents::Builder* ParseWide(
             onerror({ tok->GetLocation() }, e.what());
         else
             onerror({ e.GetLastValidToken().GetLocation() }, e.what());
-    } catch(...) {
+    } catch(std::runtime_error& e) {
+
     }
     return ret;
 }

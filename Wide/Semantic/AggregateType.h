@@ -9,8 +9,8 @@ namespace Wide {
             virtual std::vector<Type*> GetMembers() = 0;
             virtual std::vector<std::shared_ptr<Expression>> GetDefaultInitializerForMember(unsigned) { return {}; }
             virtual bool HasDeclaredDynamicFunctions() { return false; }
-            virtual Wide::Util::optional<unsigned> SizeOverride() { return Wide::Util::none; }
-            virtual Wide::Util::optional<unsigned> AlignOverride() { return Wide::Util::none; }
+            virtual Wide::Util::optional<std::pair<unsigned, Lexer::Range>> SizeOverride() { return Wide::Util::none; }
+            virtual Wide::Util::optional<std::pair<unsigned, Lexer::Range>> AlignOverride() { return Wide::Util::none; }
             virtual std::string GetLLVMTypeName();
             void EmitConstructor(CodegenContext& con, std::vector<std::shared_ptr<Expression>> inits);
             void EmitAssignmentOperator(CodegenContext& con, std::vector<std::shared_ptr<Expression>> exprs);
