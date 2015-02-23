@@ -1,1 +1,1 @@
-premake4.exe premake4.lua --llvm-path="C:\Code\LLVM" --boost-path="C:\Code\boost_1_57_0" --zlib-path="C:\Code\zlib128" --libarchive-path="C:\Code\libarchive"
+premake4.exe --llvm-path="C:\Code\LLVM" --boost-path="C:\Code\boost_1_57_0" --zlib-path="C:\Code\zlib128" --libarchive-path="C:\Code\libarchive" vs2010

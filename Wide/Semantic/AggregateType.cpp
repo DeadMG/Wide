@@ -177,14 +177,6 @@ AggregateType::Layout::Layout(AggregateType* agg, Wide::Semantic::Analyzer& a)
     // Round sizeof(C) up to a non-zero multiple of align(C). If C is a POD, but not a POD for the purpose of layout, set nvsize(C) = sizeof(C). 
     if (sizec % alignc != 0 || sizec == 0)
         sizec += alignc - (sizec % alignc);
-
-    auto destructor_self = CreatePrimGlobal(Range::Empty(), a.GetLvalueType(agg), [=](CodegenContext& con) {
-        return agg->DestructorFunction->arg_begin();
-    });
-    for (int i = Offsets.size() - 1; i >= 0; --i) {
-        auto member = Offsets[i].ty;
-        agg->destructors.push_back(member->BuildDestructorCall(Expression::NoInstance(), agg->PrimitiveAccessMember(destructor_self, i), { agg, Lexer::Range(std::make_shared<std::string>("AggregateDestructor")) }, true));
-    }
 }
 std::size_t AggregateType::size() {
     return GetLayout().allocsize;
@@ -330,20 +322,40 @@ OverloadSet* AggregateType::CreateOperatorOverloadSet(Parse::OperatorName type, 
     return CreateAssignmentOperatorOverloadSet({ true, true });
 }
 
-llvm::Function* AggregateType::CreateDestructorFunction(llvm::Module* module) {    
-    auto functy = llvm::FunctionType::get(llvm::Type::getVoidTy(module->getContext()), { analyzer.GetLvalueType(this)->GetLLVMType(module) }, false);
-    auto DestructorFunction = llvm::Function::Create(functy, llvm::GlobalValue::LinkageTypes::ExternalLinkage, DestructorName, module);
-    this->DestructorFunction = DestructorFunction;
-    CodegenContext::EmitFunctionBody(DestructorFunction, { analyzer.GetLvalueType(this) }, [this](CodegenContext& newcon) {
-        for (auto des : destructors)
-            des(newcon);
-        newcon->CreateRetVoid();
-    });
-    return DestructorFunction;
+std::function<llvm::Function*(llvm::Module*)> AggregateType::CreateDestructorFunction() {
+    // May only run once according to the laws of Type::GetDestructorFunction
+    // but let's be careful anyway.
+    if (destructors.empty()) {
+        std::vector<std::function<void(CodegenContext&)>> destructors;
+        auto destructor_self = CreatePrimGlobal(Range::Empty(), analyzer.GetLvalueType(this), [this](CodegenContext& con) {
+            return con->GetInsertBlock()->getParent()->arg_begin();
+        });
+        int i = 0;
+        for (auto member : GetBases()) {
+            destructors.push_back(member->BuildDestructorCall(Expression::NoInstance(), PrimitiveAccessMember(destructor_self, i), { this, Lexer::Range(std::make_shared<std::string>("AggregateDestructor")) }, true));
+            ++i;
+        }
+        for (auto member : GetMembers()) {
+            destructors.push_back(member->BuildDestructorCall(Expression::NoInstance(), PrimitiveAccessMember(destructor_self, i), { this, Lexer::Range(std::make_shared<std::string>("AggregateDestructor")) }, true));
+            ++i;
+        }
+        this->destructors = destructors;
+    }
+    return[this](llvm::Module* module) {
+        auto functy = llvm::FunctionType::get(llvm::Type::getVoidTy(module->getContext()), { analyzer.GetLvalueType(this)->GetLLVMType(module) }, false);
+        auto desfunc = llvm::Function::Create(functy, llvm::GlobalValue::LinkageTypes::ExternalLinkage, DestructorName, module);
+        CodegenContext::EmitFunctionBody(desfunc, { analyzer.GetLvalueType(this) }, [this](CodegenContext& newcon) {
+            for (auto des : destructors)
+                des(newcon);
+            newcon->CreateRetVoid();
+        });
+        return desfunc;
+    };
 }
 std::function<void(CodegenContext&)> AggregateType::BuildDestruction(Expression::InstanceKey, std::shared_ptr<Expression> self, Context c, bool devirtualize) {
-    return [this, self](CodegenContext& con) {
-        con->CreateCall(GetDestructorFunction(con), self->GetValue(con));
+    auto destructor = GetDestructorFunction();
+    return [this, destructor, self](CodegenContext& con) {
+        con->CreateCall(destructor(con), self->GetValue(con));
     };
 }
 OverloadSet* AggregateType::GetCopyAssignmentOperator() {
@@ -701,7 +713,7 @@ void AggregateType::Export(llvm::Module* mod) {
     EmitMoveAssignmentOperator(mod);
     EmitCopyAssignmentOperator(mod);
     EmitDefaultConstructor(mod);
-    GetDestructorFunction(mod);
+    if (!destructors.empty()) GetDestructorFunction()(mod);
 }
 std::string AggregateType::GetLLVMTypeName() {
     std::stringstream strstr;

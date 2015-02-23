@@ -125,9 +125,9 @@ namespace Wide {
             std::vector<std::pair<Type*, unsigned>> GetBasesAndOffsets() override final;
             std::vector<member> GetConstructionMembers() override final;
             Type* GetPrimaryBase() override final { return GetBaseData().PrimaryBase; }
-            Wide::Util::optional<unsigned> SizeOverride() override final;
-            Wide::Util::optional<unsigned> AlignOverride() override final; 
-            llvm::Function* CreateDestructorFunction(llvm::Module* module) override final;
+            Wide::Util::optional<std::pair<unsigned, Lexer::Range>> SizeOverride() override final;
+            Wide::Util::optional<std::pair<unsigned, Lexer::Range>> AlignOverride() override final;
+            std::function<llvm::Function*(llvm::Module*)> CreateDestructorFunction() override final;
             bool HasVirtualDestructor() override final;
             bool IsNonstaticMemberContext() override final { return true; }
             std::string GetLLVMTypeName() override final;

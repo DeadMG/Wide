@@ -872,6 +872,7 @@ std::function<void(CodegenContext&)> Semantic::ThrowObject(Expression::InstanceK
     // 2.4.2
     auto ty = expr->GetType(key)->Decay();
     auto RTTI = ty->GetRTTI();
+    auto destructor_func = ty->GetDestructorFunction();
     return [=](CodegenContext& con) {
         auto memty = ty->analyzer.GetLvalueType(ty);
         auto destructor = std::make_shared<std::list<std::pair<std::function<void(CodegenContext&)>, bool>>::iterator>();
@@ -896,7 +897,7 @@ std::function<void(CodegenContext&)> Semantic::ThrowObject(Expression::InstanceK
         if (ty->IsTriviallyDestructible()) {
             llvmdestructor = llvm::Constant::getNullValue(con.GetInt8PtrTy());
         } else
-            llvmdestructor = con->CreatePointerCast(ty->GetDestructorFunction(con), con.GetInt8PtrTy());
+            llvmdestructor = con->CreatePointerCast(destructor_func(con), con.GetInt8PtrTy());
         llvm::Value* args[] = { con->CreatePointerCast(value, con.GetInt8PtrTy()), con->CreatePointerCast(RTTI(con), con.GetInt8PtrTy()), llvmdestructor };
         // Do we have an existing handler to go to? If we do, then first land, then branch directly to it.
         // Else, kill everything and GTFO this function and let the EH routines worry about it.

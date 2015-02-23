@@ -847,21 +847,26 @@ Type::VTableLayout Type::ComputeVTableLayout() {
     }
     return playout;
 }
-llvm::Function* Type::GetDestructorFunction(llvm::Module* module) {
-    if (!DestructorFunction) DestructorFunction = CreateDestructorFunction(module);
-    return DestructorFunction;
+std::function<llvm::Function*(llvm::Module*)> Type::GetDestructorFunction() {
+    if (!GetDestructorFunctionCache) GetDestructorFunctionCache = CreateDestructorFunction();
+    return[=](llvm::Module* mod) {
+        if (!DestructorFunction) DestructorFunction = (*GetDestructorFunctionCache)(mod);
+        return DestructorFunction;
+    };
 }
-llvm::Function* Type::CreateDestructorFunction(llvm::Module* module) {
-    auto fty = llvm::FunctionType::get(llvm::Type::getVoidTy(module->getContext()), { llvm::Type::getInt8PtrTy(module->getContext()) }, false);
-    DestructorFunction = llvm::Function::Create(fty, llvm::GlobalValue::LinkageTypes::ExternalLinkage, analyzer.GetUniqueFunctionName(), module);
-    CodegenContext::EmitFunctionBody(DestructorFunction, {}, [this](CodegenContext& c) {
-        auto obj = CreatePrimGlobal(Range::Empty(), analyzer.GetLvalueType(this), [=](CodegenContext& con) {
-            return con->CreateBitCast(DestructorFunction->arg_begin(), analyzer.GetLvalueType(this)->GetLLVMType(con));
+std::function<llvm::Function*(llvm::Module*)> Type::CreateDestructorFunction() {
+    return [this](llvm::Module* module) {
+        auto fty = llvm::FunctionType::get(llvm::Type::getVoidTy(module->getContext()), { llvm::Type::getInt8PtrTy(module->getContext()) }, false);
+        auto desfunc = llvm::Function::Create(fty, llvm::GlobalValue::LinkageTypes::ExternalLinkage, analyzer.GetUniqueFunctionName(), module);
+        CodegenContext::EmitFunctionBody(desfunc, {}, [this, desfunc](CodegenContext& c) {
+            auto obj = CreatePrimGlobal(Range::Empty(), analyzer.GetLvalueType(this), [=](CodegenContext& con) {
+                return con->CreateBitCast(desfunc->arg_begin(), analyzer.GetLvalueType(this)->GetLLVMType(con));
+            });
+            BuildDestructorCall(Expression::NoInstance(), obj, { this, Lexer::Range(nullptr) }, true)(c);
+            c->CreateRetVoid();
         });
-        BuildDestructorCall(Expression::NoInstance(), obj, { this, Lexer::Range(nullptr) }, true)(c);
-        c->CreateRetVoid();
-    });
-    return DestructorFunction;
+        return desfunc;
+    };
 }
 
 std::shared_ptr<Expression> Type::BuildIndex(Expression::InstanceKey key, std::shared_ptr<Expression> val, std::shared_ptr<Expression> arg, Context c) {

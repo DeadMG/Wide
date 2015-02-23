@@ -945,17 +945,19 @@ std::string UserDefinedType::explain() {
 Type::VTableLayout UserDefinedType::ComputePrimaryVTableLayout() {
     return GetVtableData().funcs;
 }
-llvm::Function* UserDefinedType::CreateDestructorFunction(llvm::Module* module) {
-    if (!type->destructor_decl) return AggregateType::CreateDestructorFunction(module);
+std::function<llvm::Function*(llvm::Module*)> UserDefinedType::CreateDestructorFunction() {
+    if (!type->destructor_decl) return AggregateType::CreateDestructorFunction();
     auto desfunc = analyzer.GetWideFunction(GetWideFunction(type->destructor_decl.get(), "~type"));
-    return desfunc->EmitCode(module);
+    desfunc->ComputeBody();
+    return[=](llvm::Module* mod) {
+        return desfunc->EmitCode(mod);
+    };
 }
 
 std::pair<FunctionType*, std::function<llvm::Function*(llvm::Module*)>> UserDefinedType::VirtualEntryFor(VTableLayout::VirtualFunctionEntry entry) {
     if (auto&& special = boost::get<VTableLayout::SpecialMember>(&entry.func)) {
-        if (type->destructor_decl)
-            analyzer.GetWideFunction(GetWideFunction(type->destructor_decl.get(), "~type"))->ComputeBody();
-        return { analyzer.GetFunctionType(analyzer.GetVoidType(), { analyzer.GetLvalueType(this) }, false), [this](llvm::Module* mod) { return GetDestructorFunction(mod); } };
+        auto desfunc = GetDestructorFunction();
+        return { analyzer.GetFunctionType(analyzer.GetVoidType(), { analyzer.GetLvalueType(this) }, false), [=](llvm::Module* mod) { return desfunc(mod); } };
     }
     auto vfunc = boost::get<VTableLayout::VirtualFunction>(entry.func);
     auto name = vfunc.name;
@@ -1109,7 +1111,7 @@ Type* UserDefinedType::GetConstantContext() {
         return nullptr;
     return AggregateType::GetConstantContext();
 }
-Wide::Util::optional<unsigned> UserDefinedType::SizeOverride() {
+Wide::Util::optional<std::pair<unsigned, Lexer::Range>> UserDefinedType::SizeOverride() {
     for (auto&& attr : type->attributes) {
         if (auto&& ident = dynamic_cast<const Parse::Identifier*>(attr.initialized.get())) {
             if (auto&& string = boost::get<std::string>(&ident->val)) {
@@ -1117,14 +1119,14 @@ Wide::Util::optional<unsigned> UserDefinedType::SizeOverride() {
                     auto expr = analyzer.AnalyzeExpression(GetContext(), attr.initializer.get(), [](Parse::Name, Lexer::Range) { return nullptr; });
                     if (!dynamic_cast<IntegralType*>(expr->GetType(nullptr)))
                         throw std::runtime_error("size attribute was not initialized with a constant integer.");
-                    return analyzer.EvaluateConstantIntegerExpression(expr, Expression::NoInstance()).getLimitedValue();
+                    return std::pair<unsigned, Lexer::Range>{ analyzer.EvaluateConstantIntegerExpression(expr, Expression::NoInstance()).getLimitedValue(), attr.initializer->location };
                 }
             }
         }
     }
     return Util::none;
 }
-Wide::Util::optional<unsigned> UserDefinedType::AlignOverride() {
+Wide::Util::optional<std::pair<unsigned, Lexer::Range>> UserDefinedType::AlignOverride() {
     for (auto&& attr : type->attributes) {
         if (auto&& ident = dynamic_cast<const Parse::Identifier*>(attr.initialized.get())) {
             if (auto&& string = boost::get<std::string>(&ident->val)) {
@@ -1132,7 +1134,7 @@ Wide::Util::optional<unsigned> UserDefinedType::AlignOverride() {
                     auto expr = analyzer.AnalyzeExpression(GetContext(), attr.initializer.get(), [](Parse::Name, Lexer::Range) { return nullptr; });
                     if (!dynamic_cast<IntegralType*>(expr->GetType(nullptr)))
                         throw std::runtime_error("size attribute was not initialized with a constant integer.");
-                    return analyzer.EvaluateConstantIntegerExpression(expr, Expression::NoInstance()).getLimitedValue();
+                    return std::pair<unsigned, Lexer::Range>{ analyzer.EvaluateConstantIntegerExpression(expr, Expression::NoInstance()).getLimitedValue(), attr.initializer->location };
                 }
             }
         }
