@@ -26,7 +26,6 @@ using namespace Semantic;
 
 std::shared_ptr<Expression> ClangIncludeEntity::AccessNamedMember(Expression::InstanceKey key, std::shared_ptr<Expression> t, std::string name, Context c) {
     if (name == "literal") {
-        if (LiteralOverloadSet) return BuildChain(std::move(t), LiteralOverloadSet->BuildValueConstruction(key, {}, { this, c.where }));
         struct LiteralIncluder : OverloadResolvable, Callable {
             Util::optional<std::vector<Type*>> MatchParameter(std::vector<Type*> types, Analyzer& a, Type* source) override final {
                 if (types.size() != 1) return Util::none;
@@ -49,12 +48,10 @@ std::shared_ptr<Expression> ClangIncludeEntity::AccessNamedMember(Expression::In
                 return args[0]->GetType(key)->analyzer.GetClangNamespace(*clangtu, clangtu->GetDeclContext())->BuildValueConstruction(key, {}, c);
             }            
         };
-        LiteralHandler = Wide::Memory::MakeUnique<LiteralIncluder>();
-        LiteralOverloadSet = analyzer.GetOverloadSet(LiteralHandler.get());
-        return BuildChain(std::move(t), LiteralOverloadSet->BuildValueConstruction(key, {}, { this, c.where }));
+        if (!LiteralHandler) LiteralHandler = Wide::Memory::MakeUnique<LiteralIncluder>();
+        return BuildChain(std::move(t), analyzer.GetOverloadSet(LiteralHandler.get())->BuildValueConstruction(key, {}, { this, c.where }));
     }
     if (name == "macro") {
-        if (MacroOverloadSet) return BuildChain(std::move(t), MacroOverloadSet->BuildValueConstruction(key, {}, { this, c.where }));
         struct ClangMacroHandler : public OverloadResolvable, Callable {
             Util::optional<std::vector<Type*>> MatchParameter(std::vector<Type*> types, Analyzer& a, Type* source) override final {
                 if (types.size() != 2) return Util::none;
@@ -68,17 +65,15 @@ std::shared_ptr<Expression> ClangIncludeEntity::AccessNamedMember(Expression::In
                 auto gnamespace = dynamic_cast<ClangNamespace*>(args[0]->GetType(key)->Decay());
                 auto str = dynamic_cast<String*>(args[1].get());
                 assert(gnamespace && "Overload resolution picked bad candidate.");
-                if (!str) throw std::runtime_error("Failed to evaluate macro: name was not a constant expression.");
+                if (!str) throw Error(c.where, "Failed to evaluate macro: name was not a constant expression.");
                 auto tu = gnamespace->GetTU();
                 return InterpretExpression(tu->ParseMacro(str->str, c.where), *tu, c, c.from->analyzer);
             }
         };
-        MacroHandler = Wide::Memory::MakeUnique<ClangMacroHandler>();
-        MacroOverloadSet = analyzer.GetOverloadSet(MacroHandler.get());
-        return BuildChain(std::move(t), MacroOverloadSet->BuildValueConstruction(key, {}, { this, c.where }));
+        if (!MacroHandler) MacroHandler = Wide::Memory::MakeUnique<ClangMacroHandler>();
+        return BuildChain(std::move(t), analyzer.GetOverloadSet(MacroHandler.get())->BuildValueConstruction(key, {}, { this, c.where }));
     }
     if (name == "header") {
-        if (HeaderOverloadSet) return HeaderOverloadSet->BuildValueConstruction(key, {}, { this, c.where });
         struct ClangHeaderHandler : OverloadResolvable, Callable {
             Util::optional<std::vector<Type*>> MatchParameter(std::vector<Type*> types, Analyzer& a, Type* source) override final {
                 if (types.size() != 1) return Util::none;
@@ -98,18 +93,17 @@ std::shared_ptr<Expression> ClangIncludeEntity::AccessNamedMember(Expression::In
                 return c.from->analyzer.GetClangNamespace(*clangtu, clangtu->GetDeclContext())->BuildValueConstruction(key, {}, c);
             }
         };
-        HeaderIncluder = Wide::Memory::MakeUnique<ClangHeaderHandler>();
-        HeaderOverloadSet = analyzer.GetOverloadSet(HeaderIncluder.get());
-        return BuildChain(std::move(t), HeaderOverloadSet->BuildValueConstruction(key, {}, { this, c.where }));
+        if (!HeaderIncluder) HeaderIncluder = Wide::Memory::MakeUnique<ClangHeaderHandler>();
+        return BuildChain(std::move(t), analyzer.GetOverloadSet(HeaderIncluder.get())->BuildValueConstruction(key, {}, { this, c.where }));
     }
     return nullptr;
 }
 
 std::shared_ptr<Expression> ClangIncludeEntity::ConstructCall(Expression::InstanceKey key, std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c) {
     if (!dynamic_cast<String*>(args[0].get()))
-        throw std::runtime_error("fuck");
+        throw Error(c.where, "First argument to cpp must be a string.");
     if (args.size() != 1)
-        throw std::runtime_error("fuck");
+        throw Error(c.where, "cpp accepts only one argument.");
     auto str = dynamic_cast<String*>(args[0].get());
     auto name = str->str;
     if (name.size() > 1 && name[0] == '<')
