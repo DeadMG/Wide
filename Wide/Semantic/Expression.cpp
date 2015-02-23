@@ -711,7 +711,7 @@ void Expression::AddDefaultHandlers(Analyzer& a) {
             // Load it from the vtable if it actually has one.
             auto layout = baseptrty->GetPointee()->GetVtableLayout();
             if (layout.layout.size() == 0) {
-                throw std::runtime_error("dynamic_casted to void* a non-polymorphic type.");
+                throw Error(dyn_cast->location, "dynamic_casted to void* a non-polymorphic type.");
             }
             for (unsigned int i = 0; i < layout.layout.size(); ++i) {
                 if (auto spec = boost::get<Type::VTableLayout::SpecialMember>(&layout.layout[i].func)) {
@@ -739,7 +739,7 @@ void Expression::AddDefaultHandlers(Analyzer& a) {
                     }
                 }
             }
-            throw std::runtime_error("Attempted to cast to void*, but the object's vtable did not carry an offset to top member.");
+            throw Error(dyn_cast->location, "Attempted to cast to void*, but the object's vtable did not carry an offset to top member.");
         };
 
         auto polymorphic_dynamic_cast = [&](PointerType* basety, PointerType* derty, InstanceKey f) -> std::shared_ptr<Expression> {
@@ -787,13 +787,13 @@ void Expression::AddDefaultHandlers(Analyzer& a) {
 
                         // polymorphic
                         if (baseptrty->GetPointee()->GetVtableLayout().layout.empty())
-                            throw std::runtime_error("Attempted dynamic_cast on non-polymorphic base.");
+                            throw Error(dyn_cast->location, "Attempted dynamic_cast on non-polymorphic base.");
 
                         return polymorphic_dynamic_cast(baseptrty, derptrty, f);
                     }
                 }
             }
-            throw std::runtime_error("Used unimplemented dynamic_cast functionality.");
+            throw Error(dyn_cast->location, "Used unimplemented dynamic_cast functionality.");
         });
     });
 
