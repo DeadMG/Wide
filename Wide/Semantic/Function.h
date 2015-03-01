@@ -12,6 +12,7 @@ namespace Wide {
         class ClangFunctionType;
         class WideFunctionType;
         class Function : public Callable {
+            std::vector<std::unique_ptr<Semantic::Error>> trampoline_errors;
             FunctionSkeleton* skeleton;
             std::string llvmname;
             llvm::Function* llvmfunc = nullptr;
@@ -24,6 +25,7 @@ namespace Wide {
             bool analyzed = false;
 
             void ComputeReturnType();
+            
         public:
             Function(Analyzer& a, FunctionSkeleton*, std::vector<Type*> args);
             

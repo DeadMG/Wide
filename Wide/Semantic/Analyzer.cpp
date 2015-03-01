@@ -454,9 +454,9 @@ std::vector<Type*> Analyzer::GetFunctionParameters(const Parse::FunctionBase* fu
                             auto expr = context->analyzer.AnalyzeExpression(context, attr.initializer.get(), [](Parse::Name, Lexer::Range) { return nullptr; });
                             auto overset = dynamic_cast<OverloadSet*>(expr->GetType(Expression::NoInstance())->Decay());
                             if (!overset)
-                                throw NotAType(expr->GetType(Expression::NoInstance())->Decay(), attr.initializer->location);
+                                throw SpecificError<ExportNonOverloadSet>(*this, attr.initializer->location, "Attempted to export as a non-overload set.");
                             auto tuanddecl = overset->GetSingleFunction();
-                            if (!tuanddecl.second) throw NotAType(expr->GetType(Expression::NoInstance())->Decay(), attr.initializer->location);
+                            if (!tuanddecl.second) throw SpecificError<ExportNotSingleFunction>(*this, attr.initializer->location, "The overload set was not a single C++ function.");
                             auto tu = tuanddecl.first;
                             auto decl = tuanddecl.second;
                             if (auto meth = llvm::dyn_cast<clang::CXXMethodDecl>(decl)) {
@@ -494,13 +494,15 @@ std::vector<Type*> Analyzer::GetFunctionParameters(const Parse::FunctionBase* fu
         auto p_type = expr->GetType(Expression::NoInstance())->Decay();
         auto con_type = dynamic_cast<ConstructorType*>(p_type);
         if (!con_type)
-            throw Wide::Semantic::NotAType(p_type, arg.type->location);
+            throw SpecificError<FunctionArgumentNotType>(*this, arg.type->location, "Function argument type was not a type.");
         if (arg.name == "this") {
             if (&arg == &func->args[0]) {
-                if (!GetNonstaticContext(func, context) || GetNonstaticContext(func, context) != con_type->GetConstructedType()->Decay())
-                    throw std::runtime_error("Bad explicit this argument.");
+                if (!GetNonstaticContext(func, context))
+                    throw SpecificError<ExplicitThisNoMember>(*this, arg.location, "Explicit this in a non-member function.");
+                if (GetNonstaticContext(func, context) != con_type->GetConstructedType()->Decay())
+                    throw SpecificError<ExplicitThisDoesntMatchMember>(*this, arg.location, "Explicit this's type did not match member type.");
             } else
-                throw std::runtime_error("Bad explicit this argument.");
+                throw SpecificError<ExplicitThisNotFirstArgument>(*this, arg.location, "Explicit this was not the first argument.");
         }
         QuickInfo(arg.location, con_type->GetConstructedType());
         ParameterHighlight(arg.location);
@@ -531,10 +533,9 @@ Type* Analyzer::GetNonstaticContext(const Parse::FunctionBase* p, Type* context)
                         auto expr = context->analyzer.AnalyzeExpression(context, attr.initializer.get(), [](Parse::Name, Lexer::Range) { return nullptr; });
                         auto overset = dynamic_cast<OverloadSet*>(expr->GetType(Expression::NoInstance())->Decay());
                         if (!overset)
-                            //throw NotAType(expr->GetType()->Decay(), attr.initializer->location);
                             continue;
                         auto tuanddecl = overset->GetSingleFunction();
-                        if (!tuanddecl.second) throw NotAType(expr->GetType(Expression::NoInstance())->Decay(), attr.initializer->location);
+                        if (!tuanddecl.second) throw SpecificError<ExportNotSingleFunction>(*this, attr.initializer->location, "The overload set was not a single C++ function.");
                         auto tu = tuanddecl.first;
                         auto decl = tuanddecl.second;
                         if (auto meth = llvm::dyn_cast<clang::CXXMethodDecl>(decl)) {
@@ -715,7 +716,7 @@ OverloadResolvable* Analyzer::GetCallableForTemplateType(const Parse::TemplateTy
                 auto p_type = a.AnalyzeExpression(context, templatetype->arguments[num].type.get(), [](Parse::Name, Lexer::Range) { return nullptr; })->GetType(Expression::NoInstance())->Decay();
                 auto con_type = dynamic_cast<ConstructorType*>(p_type);
                 if (!con_type)
-                    throw Wide::Semantic::NotAType(p_type, templatetype->arguments[num].location);
+                    throw SpecificError<TemplateArgumentNotAType>(a, templatetype->arguments[num].type->location, "Template argument type was not a type.");
                 a.QuickInfo(templatetype->arguments[num].location, con_type->GetConstructedType());
                 a.ParameterHighlight(templatetype->arguments[num].location);
                 if (Type::IsFirstASecond(arg, con_type->GetConstructedType(), source))
@@ -986,7 +987,7 @@ std::shared_ptr<Expression> Semantic::LookupFromImport(Type* context, Wide::Pars
         auto over2 = dynamic_cast<OverloadSet*>(subresult->GetType(nullptr));
         if (over1 && over2)
             return context->analyzer.GetOverloadSet(over1, over2)->BuildValueConstruction(Expression::NoInstance(), {}, { context, where });
-        throw std::runtime_error("Ambiguous lookup of name " + Semantic::GetNameAsString(name));
+        throw SpecificError<ImportIdentifierLookupAmbiguous>(context->analyzer, where, "Ambiguous lookup of name " + Semantic::GetNameAsString(name));
     }
     return propagate();
 }
@@ -1025,7 +1026,7 @@ std::shared_ptr<Expression> Semantic::LookupIdentifier(Type* context, Parse::Nam
     auto over2 = dynamic_cast<OverloadSet*>(result2->GetType(nullptr));
     if (over1 && over2)
         return context->analyzer.GetOverloadSet(over1, over2)->BuildValueConstruction(Expression::NoInstance(), {}, { context, where });
-    throw std::runtime_error("Ambiguous lookup of name " + Semantic::GetNameAsString(name));
+    throw SpecificError<IdentifierLookupAmbiguous>(context->analyzer, where, "Ambiguous lookup of name " + Semantic::GetNameAsString(name));
 }
 void Semantic::AddDefaultContextHandlers(Analyzer& a) {
     AddHandler<Semantic::Module>(a.ContextLookupHandlers, [](Module* mod, Parse::Name name, Lexer::Range where) {

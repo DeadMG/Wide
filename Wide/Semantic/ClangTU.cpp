@@ -219,11 +219,11 @@ public:
         if (!entry)
             entry = CheckImportedHeader(file, a);
         if (!entry)
-            throw CantFindHeader(file, paths, where);
+            throw SpecificError<CouldNotFindCPPFile>(a, where, "Could not find file.");
         
         auto fileid = sm.createFileID(entry, clang::SourceLocation(), clang::SrcMgr::CharacteristicKind::C_User);
         if (fileid.isInvalid())
-            throw CannotTranslateFile(file, where);
+            throw SpecificError<CouldNotTranslateCPPFile>(a, where, "Could not translate file.");
         AbsoluteToRelativeFileMapping[entry->getName()] = file;
 
 
@@ -246,7 +246,7 @@ public:
         for (auto diag : DiagnosticConsumer.diagnostics)
             errors += diag;
         if (engine.hasFatalErrorOccurred())
-            throw ClangFileParseError(file, errors, where);
+            throw SpecificError<CPPFileContainedErrors>(a, where, "Clang reported errors in file.");
         if (!errors.empty()) Options->OnDiagnostic(errors);
         errors.clear();
     }
@@ -270,11 +270,11 @@ public:
         if (!entry)
             entry = CheckImportedHeader(filename, a);
         if (!entry)
-            throw CantFindHeader(filename, paths, where);
+            throw SpecificError<CouldNotFindCPPFile>(a, where, "Could not find C++ file " + filename);
 
         auto fileid = sm.createFileID(entry, sm.getLocForEndOfFile(sm.getMainFileID()), clang::SrcMgr::CharacteristicKind::C_User);
         if (fileid.isInvalid())
-            throw CannotTranslateFile(filename, where);
+            throw SpecificError<CouldNotTranslateCPPFile>(a, where, "Could not translate C++ file " + filename);
         // Partially a re-working of clang::ParseAST's implementation
 
         preproc.EnterSourceFile(fileid, preproc.GetCurDirLookup(), sm.getLocForEndOfFile(sm.getMainFileID()));
@@ -293,7 +293,7 @@ public:
         for (auto diag : DiagnosticConsumer.diagnostics)
             errors += diag;
         if (engine.hasFatalErrorOccurred())
-            throw ClangFileParseError(filename, errors, where);
+            throw SpecificError<CPPFileContainedErrors>(a, where, "Clang reported errors in file.");
         if (!errors.empty()) Options->OnDiagnostic(errors);
         errors.clear();
     }
@@ -498,7 +498,7 @@ clang::Expr* ClangTU::ParseMacro(std::string macro, Lexer::Range where) {
     auto&& pp = GetSema().getPreprocessor();
     auto info = pp.getMacroInfo(GetIdentifierInfo(macro));
     if (!info)
-        throw Error(where, "Could not find macro of name " + macro);
+        throw SpecificError<CouldNotFindMacro>(a, where, "Could not find macro of name " + macro);
     auto&& s = impl->sema;
     auto&& p = impl->p;
     std::vector<clang::Token> tokens;
@@ -520,7 +520,7 @@ clang::Expr* ClangTU::ParseMacro(std::string macro, Lexer::Range where) {
     auto begin = GetSema().getSourceManager().getCharacterData(info->getDefinitionLoc()) + macro.size() + 1;
     auto end = begin + info->getDefinitionLength(GetSema().getSourceManager());
     auto macrodata = std::string(begin, end);
-    throw MacroNotValidExpression(macrodata, macro, where);
+    throw SpecificError<MacroNotValidExpression>(a, where, "Macro was not a valid expression.");
 }
 unsigned int ClangTU::GetVirtualFunctionOffset(clang::CXXMethodDecl* meth, llvm::Module* module) {
     if (auto des = llvm::dyn_cast<clang::CXXDestructorDecl>(meth)) {

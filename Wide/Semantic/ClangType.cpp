@@ -122,7 +122,7 @@ std::shared_ptr<Expression> ClangType::AccessNamedMember(Expression::InstanceKey
     if (!from->GetSema().LookupQualifiedName(lr, type.getCanonicalType()->getAs<clang::TagType>()->getDecl()))
         return nullptr;
     if (lr.isAmbiguous())
-        throw ClangLookupAmbiguous(name, this, c.where);
+        throw SpecificError<AmbiguousCPPLookup>(analyzer, c.where, "C++ lookup was ambiguous.");
     if (lr.isSingleResult()) {
         auto declaccess = AccessMapping.at(lr.getFoundDecl()->getAccess());
         if (access < declaccess)
@@ -144,7 +144,7 @@ std::shared_ptr<Expression> ClangType::AccessNamedMember(Expression::InstanceKey
         }
         if (auto tempdecl = llvm::dyn_cast<clang::ClassTemplateDecl>(lr.getFoundDecl()))
             return BuildChain(val, analyzer.GetClangTemplateClass(*from, tempdecl)->BuildValueConstruction(key, {}, c));
-        throw ClangUnknownDecl(name, this, c.where);
+        throw SpecificError<UnknownCPPDecl>(analyzer, c.where, "Could not interpret C++ declaration.");
     }        
     std::unordered_set<clang::NamedDecl*> decls;
     for (auto decl : lr) {
@@ -593,7 +593,7 @@ std::shared_ptr<Expression> ClangType::AccessStaticMember(std::string name, Cont
     if (!from->GetSema().LookupQualifiedName(lr, type.getCanonicalType()->getAs<clang::TagType>()->getDecl()))
         return nullptr;
     if (lr.isAmbiguous())
-        throw ClangLookupAmbiguous(name, this, c.where);
+        throw SpecificError<AmbiguousCPPLookup>(analyzer, c.where, "C++ lookup was ambiguous.");
     if (lr.isSingleResult()) {
         auto declaccess = AccessMapping.at(lr.getFoundDecl()->getAccess());
         if (access < declaccess)
@@ -616,7 +616,7 @@ std::shared_ptr<Expression> ClangType::AccessStaticMember(std::string name, Cont
         }
         if (auto tempdecl = llvm::dyn_cast<clang::ClassTemplateDecl>(lr.getFoundDecl()))
             return analyzer.GetClangTemplateClass(*from, tempdecl)->BuildValueConstruction(Expression::NoInstance(), {}, c);
-        throw ClangUnknownDecl(name, this, c.where);
+        throw SpecificError<UnknownCPPDecl>(analyzer, c.where, "Could not interpret C++ declaration.");
     }
     std::unordered_set<clang::NamedDecl*> decls(lr.begin(), lr.end());
     return analyzer.GetOverloadSet(decls, from, nullptr)->BuildValueConstruction(Expression::NoInstance(), {}, c);

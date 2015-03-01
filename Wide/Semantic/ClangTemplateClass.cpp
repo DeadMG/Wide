@@ -24,7 +24,7 @@ std::shared_ptr<Expression> ClangTemplateClass::ConstructCall(Expression::Instan
     for (auto&& x : args) {
         if (auto con = dynamic_cast<ConstructorType*>(x->GetType(key))) {
             auto clangty = con->GetConstructedType()->GetClangType(*from);
-            if (!clangty) throw InvalidTemplateArgument(x->GetType(key), c.where);
+            if (!clangty) throw SpecificError<TemplateTypeNoCPPConversion>(analyzer, c.where, "Template argument type has no C++ equivalent type.");
             auto tysrcinfo = from->GetASTContext().getTrivialTypeSourceInfo(*clangty);
 
             tl.addArgument(clang::TemplateArgumentLoc(clang::TemplateArgument(*clangty), tysrcinfo));
@@ -37,12 +37,12 @@ std::shared_ptr<Expression> ClangTemplateClass::ConstructCall(Expression::Instan
             types.push_back(x->GetType(key));
             continue;
         }
-        throw InvalidTemplateArgument(x->GetType(key), c.where);
+        throw SpecificError<TemplateArgumentNoConversion>(analyzer, c.where, "Template argument was not a type or integer.");
     }
 
     llvm::SmallVector<clang::TemplateArgument, 10> tempargs;
     if (from->GetSema().CheckTemplateArgumentList(tempdecl, tempdecl->getLocation(), tl, false, tempargs))
-        throw UnresolvableTemplate(this, types, from->PopLastDiagnostic(), c.where);
+        throw SpecificError<CouldNotInstantiateTemplate>(analyzer, c.where, "Could not instantiate C++ template.");
 
     void* pos = 0;
     auto spec = tempdecl->findSpecialization(tempargs, pos);
@@ -69,7 +69,7 @@ std::shared_ptr<Expression> ClangTemplateClass::ConstructCall(Expression::Instan
 
     if (!spec->getDefinition())
         if (from->GetSema().InstantiateClassTemplateSpecialization(loc, spec, tsk))
-            throw UninstantiableTemplate(c.where);
+            throw SpecificError<CouldNotInstantiateTemplate>(analyzer, c.where, "Could not instantiate C++ template.");
 
     return BuildChain(std::move(val), analyzer.GetConstructorType(analyzer.GetClangType(*from, from->GetASTContext().getRecordType(spec)))->BuildValueConstruction(key, {}, { this, c.where }));
 }

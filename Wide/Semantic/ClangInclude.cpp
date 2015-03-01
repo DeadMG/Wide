@@ -38,7 +38,7 @@ std::shared_ptr<Expression> ClangIncludeEntity::AccessNamedMember(Expression::In
                 auto str = dynamic_cast<String*>(args[0].get());
                 llvm::SmallVector<char, 30> fuck_out_parameters;
                 auto error = llvm::sys::fs::createTemporaryFile("", "", fuck_out_parameters);
-                if (error) throw CannotCreateTemporaryFile(c.where);
+                if (error) throw SpecificError<CouldNotCreateTemporaryFile>(str->a, c.where, "Could not create temporary file.");
                 std::string path(fuck_out_parameters.begin(), fuck_out_parameters.end());
                 std::ofstream file(path, std::ios::out);
                 file << str->str;
@@ -65,7 +65,7 @@ std::shared_ptr<Expression> ClangIncludeEntity::AccessNamedMember(Expression::In
                 auto gnamespace = dynamic_cast<ClangNamespace*>(args[0]->GetType(key)->Decay());
                 auto str = dynamic_cast<String*>(args[1].get());
                 assert(gnamespace && "Overload resolution picked bad candidate.");
-                if (!str) throw Error(c.where, "Failed to evaluate macro: name was not a constant expression.");
+                if (!str) throw SpecificError<MacroNameNotConstant>(str->a, c.where, "Failed to evaluate macro: name was not a constant expression.");
                 auto tu = gnamespace->GetTU();
                 return InterpretExpression(tu->ParseMacro(str->str, c.where), *tu, c, c.from->analyzer);
             }
@@ -101,9 +101,9 @@ std::shared_ptr<Expression> ClangIncludeEntity::AccessNamedMember(Expression::In
 
 std::shared_ptr<Expression> ClangIncludeEntity::ConstructCall(Expression::InstanceKey key, std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c) {
     if (!dynamic_cast<String*>(args[0].get()))
-        throw Error(c.where, "First argument to cpp must be a string.");
+        throw SpecificError<FileNameNotConstant>(analyzer, c.where, "First argument to cpp must be a string.");
     if (args.size() != 1)
-        throw Error(c.where, "cpp accepts only one argument.");
+        throw SpecificError<CPPWrongArgumentNumber>(analyzer, c.where, "cpp accepts only one argument.");
     auto str = dynamic_cast<String*>(args[0].get());
     auto name = str->str;
     if (name.size() > 1 && name[0] == '<')

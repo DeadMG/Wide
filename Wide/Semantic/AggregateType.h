@@ -37,7 +37,8 @@ namespace Wide {
                     llvm::Type* GetLLVMType(AggregateType* agg, llvm::Module* module);
                 };
                 Layout(AggregateType* agg, Analyzer& a);
-
+                Layout(Layout&& other);
+                Layout& operator=(Layout&& other);
                 std::size_t allocsize;
                 std::size_t align;
 
@@ -58,6 +59,8 @@ namespace Wide {
                     if (!codegen) codegen = CodeGen(self, *this, module);
                     return *codegen;
                 }
+                std::unique_ptr<Semantic::Error> AlignOverrideError;
+                std::unique_ptr<Semantic::Error> SizeOverrideError;
             };
             std::shared_ptr<Expression> GetConstructorSelf(llvm::Function*& func);
             std::shared_ptr<Expression> GetMemberFromThis(std::shared_ptr<Expression> self, std::function<unsigned()> offset, Type* result);

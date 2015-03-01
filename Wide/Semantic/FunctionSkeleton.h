@@ -41,6 +41,10 @@ namespace Wide {
             virtual Type* GetReturnType(Expression::InstanceKey key) = 0;
         };
         class FunctionSkeleton {
+            std::unordered_map<const Parse::Expression*, std::unique_ptr<Semantic::Error>> ExportErrors;
+            std::unique_ptr<Semantic::Error> ExplicitReturnError;
+            std::unordered_map<const Parse::VariableInitializer*, std::unique_ptr<Semantic::Error>> InitializerErrors;
+
             enum class State {
                 NotYetAnalyzed,
                 AnalyzeInProgress,
@@ -58,7 +62,7 @@ namespace Wide {
             std::unique_ptr<Scope> root_scope;
             const Parse::FunctionBase* fun;
             std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup;
-            std::vector<std::tuple<std::function<llvm::Function*(llvm::Module*)>, ClangFunctionType*, clang::FunctionDecl*>> clang_exports;
+            std::vector<std::tuple<std::function<llvm::Function*(llvm::Module*)>, ClangFunctionType*, clang::FunctionDecl*, Lexer::Range>> clang_exports;
         public:
             std::shared_ptr<Expression> GetParameter(unsigned num) { return parameters[num]; }
             static void AddDefaultHandlers(Analyzer& a);
@@ -76,7 +80,7 @@ namespace Wide {
             const Parse::FunctionBase* GetASTFunction() { return fun; }
             Scope* ComputeBody();
             Type* GetExplicitReturn(Expression::InstanceKey key);
-            std::vector<std::tuple<std::function<llvm::Function*(llvm::Module*)>, ClangFunctionType*, clang::FunctionDecl*>>& GetClangExports();
+            std::vector<std::tuple<std::function<llvm::Function*(llvm::Module*)>, ClangFunctionType*, clang::FunctionDecl*, Lexer::Range>>& GetClangExports();
         };
     }
 }

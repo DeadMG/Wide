@@ -99,7 +99,7 @@ std::shared_ptr<Expression> Semantic::InterpretExpression(clang::Expr* expr, Cla
         std::string str;
         llvm::raw_string_ostream ostr(str);
         expr->dump(ostr, tu.GetASTContext().getSourceManager());
-        throw BadMacroExpression(c.where, str);
+        throw SpecificError<UnsupportedBinaryExpression>(a, c.where, str);
     }
     if (auto call = llvm::dyn_cast<clang::CallExpr>(expr)) {
         auto func = InterpretExpression(call->getCallee(), tu, c, a, exprmap);
@@ -147,7 +147,7 @@ std::shared_ptr<Expression> Semantic::InterpretExpression(clang::Expr* expr, Cla
         std::string str;
         llvm::raw_string_ostream ostr(str);
         expr->dump(ostr, tu.GetASTContext().getSourceManager());
-        throw BadMacroExpression(c.where, str);
+        throw SpecificError<UnsupportedDeclarationExpression>(a, c.where, str);
     }
     if (auto temp = llvm::dyn_cast<clang::MaterializeTemporaryExpr>(expr)) {
         return InterpretExpression(temp->GetTemporaryExpr(), tu, c, a, exprmap);
@@ -188,7 +188,7 @@ std::shared_ptr<Expression> Semantic::InterpretExpression(clang::Expr* expr, Cla
     llvm::raw_string_ostream ostr(str);
     expr->dump(ostr, tu.GetASTContext().getSourceManager());
     ostr.flush();
-    throw BadMacroExpression(c.where, str);
+    throw SpecificError<UnsupportedMacroExpression>(a, c.where, str);
 }
 std::shared_ptr<Expression> Semantic::InterpretExpression(clang::Expr* expr, ClangTU& tu, Context c, Analyzer& a) {
     return InterpretExpression(expr, tu, c, a, std::unordered_map<clang::Expr*, std::shared_ptr<Expression>>());

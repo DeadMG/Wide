@@ -31,7 +31,7 @@ std::shared_ptr<Expression> ClangNamespace::AccessNamedMember(Expression::Instan
     if (!from->GetSema().LookupQualifiedName(lr, con))
         return nullptr;
     if (lr.isAmbiguous())
-        throw ClangLookupAmbiguous(name, this, c.where);
+        throw SpecificError<AmbiguousCPPLookup>(analyzer, c.where, "Ambiguous C++ lookup");
     if (lr.isSingleResult()) {
         auto result = lr.getFoundDecl()->getCanonicalDecl();
         // If result is a function, namespace, or variable decl, we're good. Else, cry like a little girl. A LITTLE GIRL.
@@ -55,7 +55,7 @@ std::shared_ptr<Expression> ClangNamespace::AccessNamedMember(Expression::Instan
         if (auto tempdecl = llvm::dyn_cast<clang::ClassTemplateDecl>(result)) {
             return BuildChain(std::move(t), analyzer.GetClangTemplateClass(*from, tempdecl)->BuildValueConstruction(key, {}, { this, c.where }));
         }
-        throw ClangUnknownDecl(name, this, c.where); 
+        throw SpecificError<UnknownCPPDecl>(analyzer, c.where, "Could not interpret C++ declaration.");
     }
     std::unordered_set<clang::NamedDecl*> decls;
     decls.insert(lr.begin(), lr.end());

@@ -76,11 +76,15 @@ FunctionSkeleton::FunctionSkeleton(const Parse::FunctionBase* astfun, Analyzer& 
                     if (*string == "export") {
                         auto expr = a.AnalyzeExpression(context, attr.initializer.get(), [](Parse::Name, Lexer::Range) { return nullptr; });
                         auto overset = dynamic_cast<OverloadSet*>(expr->GetType(Expression::NoInstance())->Decay());
-                        if (!overset)
+                        if (!overset) {
+                            ExportErrors[attr.initializer.get()] = Wide::Memory::MakeUnique<Semantic::SpecificError<ExportNonOverloadSet>>(analyzer, attr.initializer->location, "Export initializer not an overload set.");
                             continue;
-                        //throw NotAType(expr->GetType()->Decay(), attr.initializer->location);
+                        }
                         auto tuanddecl = overset->GetSingleFunction();
-                        if (!tuanddecl.second) throw NotAType(expr->GetType(Expression::NoInstance())->Decay(), attr.initializer->location);
+                        if (!tuanddecl.second) {
+                            ExportErrors[attr.initializer.get()] = Wide::Memory::MakeUnique<Semantic::SpecificError<ExportNonOverloadSet>>(analyzer, attr.initializer->location, "Export initializer not a function.");
+                            continue;
+                        }
                         auto tu = tuanddecl.first;
                         auto decl = tuanddecl.second;
                         std::function<llvm::Function*(llvm::Module*)> source;
@@ -102,7 +106,7 @@ FunctionSkeleton::FunctionSkeleton(const Parse::FunctionBase* astfun, Analyzer& 
                             };
                             exported_this = true;
                         }
-                        clang_exports.push_back(std::make_tuple(source, GetFunctionType(decl, *tu, a), decl));
+                        clang_exports.push_back(std::make_tuple(source, GetFunctionType(decl, *tu, a), decl, attr.initializer->location));
                     }
                 }
             }
@@ -171,8 +175,10 @@ Type* FunctionSkeleton::GetExplicitReturn(Expression::InstanceKey key) {
             auto expr = analyzer.AnalyzeExpression(GetContext(), fun->explicit_return.get(), [](Parse::Name, Lexer::Range) { return nullptr; });
             if (auto con = dynamic_cast<ConstructorType*>(expr->GetType(Expression::NoInstance())->Decay())) {
                 return con->GetConstructedType();
-            } else
-                throw NotAType(expr->GetType(Expression::NoInstance()), fun->explicit_return->location);
+            } else {
+                // Try and let function return type inference handle it.
+                ExplicitReturnError = Wide::Memory::MakeUnique<Semantic::SpecificError<ExplicitReturnNoType>>(analyzer, fun->explicit_return->location, "Explicit return type was not a type.");
+            }
         }
     }
     // Constructors and destructors, we know in advance to return void.
@@ -339,11 +345,18 @@ Scope* FunctionSkeleton::ComputeBody() {
                         }
                         for (auto&& x : con->initializers) {
                             if (used_initializers.find(&x) == used_initializers.end()) {
-                                if (auto ident = dynamic_cast<const Parse::Identifier*>(x.initialized.get()))
-                                    throw NoMemberToInitialize(context->Decay(), ident->val, x.where);
+                                if (auto ident = dynamic_cast<const Parse::Identifier*>(x.initialized.get())) {
+                                    InitializerErrors[&x] = Wide::Memory::MakeUnique<Semantic::SpecificError<NoMemberToInitialize>>(analyzer, x.where, "Identifier " + Semantic::GetNameAsString(ident->val) + " was not a member.");
+                                    continue;
+                                }
                                 auto expr = analyzer.AnalyzeExpression(GetContext(), x.initializer.get(), local_scope, NonstaticLookup);
+                                auto ty = expr->GetType(Expression::NoInstance());
                                 auto conty = dynamic_cast<ConstructorType*>(expr->GetType(Expression::NoInstance()));
-                                throw NoMemberToInitialize(context->Decay(), conty->GetConstructedType()->explain(), x.where);
+                                if (!conty) {
+                                    InitializerErrors[&x] = Wide::Memory::MakeUnique<Semantic::SpecificError<InitializerNotType>>(analyzer, x.where, "Initializer did not resolve to a type.");
+                                    continue;
+                                }
+                                InitializerErrors[&x] = Wide::Memory::MakeUnique<Semantic::SpecificError<NoBaseToInitialize>>(analyzer, x.where, "Initialized type was not a direct base class.");
                             }
                         }
                         root_scope.push_back(SetVirtualPointers());
@@ -518,7 +531,7 @@ void FunctionSkeleton::AddDefaultHandlers(Analyzer& a) {
         if (var->name.size() == 1) {
             auto&& name = var->name.front();
             if (current->named_variables.find(var->name.front().name) != current->named_variables.end())
-                throw VariableShadowing(name.name, current->named_variables.at(name.name).second, name.where);
+                Semantic::AddError<VariableAlreadyDefined>(analyzer, var, name.where, "Variable has same name as another in current scope.");
             auto var_init = CreateResultExpression(Range::Elements(init_expr, var_type_expr), [=, &analyzer](Expression::InstanceKey key) {
                 Type* var_type = nullptr;
                 if (var_type_expr) {
@@ -554,7 +567,7 @@ void FunctionSkeleton::AddDefaultHandlers(Analyzer& a) {
         for (auto&& name : var->name) {
             auto offset = &name - &var->name[0];
             if (current->named_variables.find(name.name) != current->named_variables.end())
-                throw VariableShadowing(name.name, current->named_variables.at(name.name).second, name.where);
+                Semantic::AddError<VariableAlreadyDefined>(analyzer, var, name.where, "Variable has same name as another in current scope.");
             auto local = CreateResultExpression(Range::Elements(init_expr, var_type_expr), [=, &analyzer](Expression::InstanceKey key) {
                 Type* var_type = nullptr;
                 std::shared_ptr<Expression> local_init;
@@ -679,7 +692,7 @@ void FunctionSkeleton::AddDefaultHandlers(Analyzer& a) {
     AddHandler<const Parse::Continue>(a.StatementHandlers, [](const Parse::Continue* continue_stmt, FunctionSkeleton* skel, Analyzer& analyzer, Type* self, Scope* current, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> nonstatic) {
         auto flow = current->GetCurrentControlFlow();
         if (!flow)
-            throw NoControlFlowStatement(continue_stmt->location);
+            Semantic::AddError<ContinueNoControlFlowStatement>(analyzer, continue_stmt, "Continue statement with no control flow statement to continue.");
         return CreatePrimGlobal(Range::Empty(), analyzer, [=](CodegenContext& con) {
             flow->JumpForContinue(con);
         });
@@ -688,7 +701,7 @@ void FunctionSkeleton::AddDefaultHandlers(Analyzer& a) {
     AddHandler<const Parse::Break>(a.StatementHandlers, [](const Parse::Break* break_stmt, FunctionSkeleton* skel, Analyzer& analyzer, Type* self, Scope* current, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> nonstatic) {
         auto flow = current->GetCurrentControlFlow();
         if (!flow)
-            throw NoControlFlowStatement(break_stmt->location);
+            Semantic::AddError<BreakNoControlFlowStatement>(analyzer, break_stmt, "Continue statement with no control flow statement to continue.");
         return CreatePrimGlobal(Range::Empty(), analyzer, [=](CodegenContext& con) {
             flow->JumpForBreak(con);
         });
@@ -902,6 +915,6 @@ void FunctionSkeleton::AddDefaultHandlers(Analyzer& a) {
     });
 }
 FunctionSkeleton::~FunctionSkeleton() {}
-std::vector<std::tuple<std::function<llvm::Function*(llvm::Module*)>, ClangFunctionType*, clang::FunctionDecl*>>& FunctionSkeleton::GetClangExports() {
+std::vector<std::tuple<std::function<llvm::Function*(llvm::Module*)>, ClangFunctionType*, clang::FunctionDecl*, Lexer::Range>>& FunctionSkeleton::GetClangExports() {
     return clang_exports;
 }

@@ -227,6 +227,9 @@ namespace Wide {
                 std::function<std::shared_ptr<Expression>(Type* context, Parse::Name name, Lexer::Range where)>>
             ContextLookupHandlers;
 
+            std::unordered_set<Error*> errors;
+            std::unordered_map<const Parse::Statement*, std::vector<std::unique_ptr<Semantic::Error>>> StatementErrors;
+
             std::shared_ptr<Expression> AnalyzeExpression(Type* lookup, const Parse::Expression* e, Scope* current, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup);
             std::shared_ptr<Expression> AnalyzeExpression(Type* lookup, const Parse::Expression* e, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup);
 
@@ -246,6 +249,7 @@ namespace Wide {
             std::string GetUniqueFunctionName();
 
             llvm::APInt EvaluateConstantIntegerExpression(std::shared_ptr<Expression> e, Expression::InstanceKey key);
+
         };
         template<typename T> struct base_pointer; template<typename T> struct base_pointer<const T*> { typedef T type; };
         template<typename T> struct base_pointer; template<typename T> struct base_pointer<T*> { typedef T type; };
@@ -254,6 +258,12 @@ namespace Wide {
             map[typeid(T)] = [f](First farg, Args... args) {
                 return f(static_cast<T*>(farg), std::forward<Args>(args)...);
             };
+        }
+        template<typename T>  void AddError(Analyzer& a, const Parse::Statement* stmt, std::string msg) {
+            AddError<T>(a, stmt, stmt->location, msg);
+        }
+        template<typename T> void AddError(Analyzer& a, const Parse::Statement* stmt, Lexer::Range where, std::string msg) {
+            a.StatementErrors[stmt].push_back(Wide::Memory::MakeUnique<Semantic::SpecificError<T>>(a, where, msg));
         }
         std::shared_ptr<Statement> AnalyzeStatement(Analyzer& a, FunctionSkeleton* skel, const Parse::Statement* stmt, Type* parent, Scope* current, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)>);
         bool IsRvalueType(Type* t);

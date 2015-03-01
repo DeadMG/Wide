@@ -426,7 +426,7 @@ std::string OverloadSet::explain() {
 }
 
 void OverloadSet::IssueResolutionError(std::vector<Type*> types, Context c) {
-    throw OverloadResolutionFailure(c.where);
+    throw SpecificError<OverloadResolutionFailed>(analyzer, c.where, "Overload resolution failed.");
 }
 std::pair<ClangTU*, clang::FunctionDecl*> OverloadSet::GetSingleFunction() {
     if (clangfuncs.size() == 1) {

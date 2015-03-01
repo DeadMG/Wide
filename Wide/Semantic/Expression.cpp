@@ -485,7 +485,7 @@ void Expression::AddDefaultHandlers(Analyzer& a) {
         auto object = a.AnalyzeExpression(lookup, memaccess->expr.get(), NonstaticLookup);
         return CreateResultExpression(Range::Elements(object), [=, &a](InstanceKey f) {
             auto access = Type::AccessMember(f, object, memaccess->mem, Context{ lookup, memaccess->location });
-            if (!access) throw NoMember(object->GetType(f), lookup, memaccess->mem, memaccess->location);
+            if (!access) throw SpecificError<NoMemberFound>(a, memaccess->location, "Could not find member.");
             return access;
         });
     });
@@ -509,7 +509,7 @@ void Expression::AddDefaultHandlers(Analyzer& a) {
 
     AddHandler<const Parse::Identifier>(a.ExpressionHandlers, [](const Parse::Identifier* ident, Analyzer& a, Type* lookup, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup) -> std::shared_ptr<Expression> {
         auto val = LookupIdentifier(lookup, ident->val, ident->location, ident->imp.get(), NonstaticLookup);
-        if (!val) throw NoMember(lookup, lookup, ident->val, ident->location);
+        if (!val) throw SpecificError<IdentifierLookupFailed>(a, ident->location, "Could not find identifier.");
         return val;
     });
 
@@ -711,7 +711,7 @@ void Expression::AddDefaultHandlers(Analyzer& a) {
             // Load it from the vtable if it actually has one.
             auto layout = baseptrty->GetPointee()->GetVtableLayout();
             if (layout.layout.size() == 0) {
-                throw Error(dyn_cast->location, "dynamic_casted to void* a non-polymorphic type.");
+                throw SpecificError<DynamicCastNotPolymorphicType>(a, dyn_cast->location, "dynamic_casted to void* a non-polymorphic type.");
             }
             for (unsigned int i = 0; i < layout.layout.size(); ++i) {
                 if (auto spec = boost::get<Type::VTableLayout::SpecialMember>(&layout.layout[i].func)) {
@@ -739,7 +739,7 @@ void Expression::AddDefaultHandlers(Analyzer& a) {
                     }
                 }
             }
-            throw Error(dyn_cast->location, "Attempted to cast to void*, but the object's vtable did not carry an offset to top member.");
+            throw SpecificError<VTableLayoutIncompatible>(a, dyn_cast->location, "Attempted to cast to void*, but the object's vtable did not carry an offset to top member.");
         };
 
         auto polymorphic_dynamic_cast = [&](PointerType* basety, PointerType* derty, InstanceKey f) -> std::shared_ptr<Expression> {
@@ -770,7 +770,7 @@ void Expression::AddDefaultHandlers(Analyzer& a) {
             });
         };
 
-        return CreateResultExpression(Range::Elements(type, object), [=](InstanceKey f) {
+        return CreateResultExpression(Range::Elements(type, object), [=, &a](InstanceKey f) {
             if (auto con = dynamic_cast<ConstructorType*>(type->GetType(f)->Decay())) {
                 // Only support pointers right now
                 if (auto derptrty = dynamic_cast<PointerType*>(con->GetConstructedType())) {
@@ -787,13 +787,13 @@ void Expression::AddDefaultHandlers(Analyzer& a) {
 
                         // polymorphic
                         if (baseptrty->GetPointee()->GetVtableLayout().layout.empty())
-                            throw Error(dyn_cast->location, "Attempted dynamic_cast on non-polymorphic base.");
+                            throw SpecificError<DynamicCastNotPolymorphicType>(a, dyn_cast->location, "Attempted dynamic_cast on non-polymorphic base.");
 
                         return polymorphic_dynamic_cast(baseptrty, derptrty, f);
                     }
                 }
             }
-            throw Error(dyn_cast->location, "Used unimplemented dynamic_cast functionality.");
+            throw SpecificError<UnimplementedDynamicCast>(a, dyn_cast->location, "Used unimplemented dynamic_cast functionality.");
         });
     });
 
@@ -827,7 +827,7 @@ std::shared_ptr<Expression> Semantic::CreateTemporary(Type* t, Context c) {
 std::shared_ptr<Expression> Semantic::CreateAddressOf(std::shared_ptr<Expression> expr, Context c) {
     return CreateResultExpression(Range::Elements(expr), [=](Expression::InstanceKey key) {
         auto ty = expr->GetType(key);
-        if (!IsLvalueType(ty)) throw AddressOfNonLvalue(ty, c.where);
+        if (!IsLvalueType(ty)) throw SpecificError<AddressOfNonLvalue>(ty->analyzer, c.where, "Attempted to take the address of a non-lvalue.");
         auto result = ty->analyzer.GetPointerType(ty->Decay());
         return CreatePrimGlobal(Range::Elements(expr), result, [=](CodegenContext& con) {
             return expr->GetValue(con);

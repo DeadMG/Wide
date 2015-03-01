@@ -1213,7 +1213,7 @@ std::shared_ptr<Expression> UserDefinedType::AccessStaticMember(std::string name
                 BaseType = base;
                 continue;
             }
-            throw AmbiguousLookup(GetNameAsString(name), base, BaseType, c.where);
+            throw Error(analyzer, c.where, "Member lookup was ambiguous.");
         }
     }
     if (BaseOverloadSet)

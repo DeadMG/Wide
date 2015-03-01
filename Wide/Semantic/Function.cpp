@@ -33,61 +33,64 @@ namespace {
 
 void Function::ComputeReturnType() {
     if (ReturnType) return;
-    if (!skeleton->GetExplicitReturn(Args)) {
-        if (return_expressions.size() == 0) {
-            ReturnType = analyzer.GetVoidType();
-            return;
-        }
-
-        std::unordered_set<Type*> ret_types;
-        for (auto ret : return_expressions) {
-            if (!ret) {
-                ret_types.insert(analyzer.GetVoidType());
-                continue;
-            }
-            if (!ret->GetType(Args)) continue;
-            ret_types.insert(ret->GetType(Args)->Decay());
-        }
-
-        if (ret_types.size() == 1) {
-            ReturnType = *ret_types.begin();
-            ReturnTypeChanged(ReturnType);
-            return;
-        }
-
-        // If there are multiple return types, there should be a single return type where the rest all is-a that one.
-        std::unordered_set<Type*> isa_rets;
-        for (auto ret : ret_types) {
-            auto the_rest = ret_types;
-            the_rest.erase(ret);
-            auto all_isa = [&] {
-                for (auto other : the_rest) {
-                    if (!Type::IsFirstASecond(other, ret, skeleton->GetContext()))
-                        return false;
-                }
-                return true;
-            };
-            if (all_isa())
-                isa_rets.insert(ret);
-        }
-        if (isa_rets.size() == 1) {
-            ReturnType = *isa_rets.begin();
-            ReturnTypeChanged(ReturnType);
-        } else
-            throw std::runtime_error("Fuck");
-    } else {
-        ReturnType = skeleton->GetExplicitReturn(Args);
+    if (auto ret = skeleton->GetExplicitReturn(Args)) {
+        ReturnType = ret;
+        return;
     }
+    if (return_expressions.size() == 0) {
+        ReturnType = analyzer.GetVoidType();
+        return;
+    }
+
+    std::unordered_set<Type*> ret_types;
+    for (auto ret : return_expressions) {
+        if (!ret) {
+            ret_types.insert(analyzer.GetVoidType());
+            continue;
+        }
+        if (!ret->GetType(Args)) continue;
+        ret_types.insert(ret->GetType(Args)->Decay());
+    }
+
+    if (ret_types.size() == 1) {
+        ReturnType = *ret_types.begin();
+        ReturnTypeChanged(ReturnType);
+        return;
+    }
+
+    // If there are multiple return types, there should be a single return type where the rest all is-a that one.
+    std::unordered_set<Type*> isa_rets;
+    for (auto ret : ret_types) {
+        auto the_rest = ret_types;
+        the_rest.erase(ret);
+        auto all_isa = [&] {
+            for (auto other : the_rest) {
+                if (!Type::IsFirstASecond(other, ret, skeleton->GetContext()))
+                    return false;
+            }
+            return true;
+        };
+        if (all_isa())
+            isa_rets.insert(ret);
+    }
+    if (isa_rets.size() == 1) {
+        ReturnType = *isa_rets.begin();
+        ReturnTypeChanged(ReturnType);
+    } else
+        throw SpecificError<CouldNotInferReturnType>(analyzer, skeleton->GetASTFunction()->where, "Could not infer return type.");
 }
 void Function::ComputeBody() {
     if (analyzed) return;
+    trampoline_errors.clear();
     Instantiate(skeleton->ComputeBody(), this);    
     ComputeReturnType();
     analyzed = true;
+    
     for (auto pair : skeleton->GetClangExports()) {
         if (!FunctionType::CanThunkFromFirstToSecond(std::get<1>(pair), GetSignature(), skeleton->GetContext(), false))
-            throw std::runtime_error("Tried to export to a function decl, but the signatures were incompatible.");
-        trampoline.push_back(std::get<1>(pair)->CreateThunk(std::get<0>(pair), CreatePrimGlobal(Range::Empty(), GetSignature(), [this](CodegenContext& con) { return EmitCode(con); }), std::get<2>(pair), skeleton->GetContext()));
+            trampoline_errors.push_back(Wide::Memory::MakeUnique<Semantic::SpecificError<InvalidExportSignature>>(analyzer, std::get<3>(pair), "Function types are incompatible."));
+        else
+            trampoline.push_back(std::get<1>(pair)->CreateThunk(std::get<0>(pair), CreatePrimGlobal(Range::Empty(), GetSignature(), [this](CodegenContext& con) { return EmitCode(con); }), std::get<2>(pair), skeleton->GetContext()));
     }
 }
 std::string Function::GetExportBody() {
