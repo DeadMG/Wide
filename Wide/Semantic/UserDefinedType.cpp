@@ -79,10 +79,10 @@ UserDefinedType::BaseData::BaseData(UserDefinedType* self) {
     for (auto&& expr : self->type->bases) {
         auto base = self->analyzer.AnalyzeExpression(self->context, expr.get(), [](Parse::Name, Lexer::Range) { return nullptr; });
         auto con = dynamic_cast<ConstructorType*>(base->GetType(nullptr)->Decay());
-        if (!con) throw NotAType(base->GetType(nullptr), expr->location);
+        if (!con) throw SpecificError<BaseNotAType>(self->analyzer, expr->location, "Base expression not a type.");
         auto udt = con->GetConstructedType();
-        if (udt == self) throw InvalidBase(con->GetConstructedType(), expr->location);
-        if (udt->IsFinal()) throw InvalidBase(con->GetConstructedType(), expr->location);
+        if (udt == self) throw SpecificError<RecursiveBase>(self->analyzer, expr->location, "Cannot inherit from self.");
+        if (udt->IsFinal()) throw SpecificError<BaseFinal>(self->analyzer, expr->location, "Base is final.");
         bases.push_back(udt);
         if (!PrimaryBase && !udt->GetVtableLayout().layout.empty())
             PrimaryBase = udt;
@@ -191,7 +191,7 @@ UserDefinedType::MemberData::MemberData(UserDefinedType* self) {
             if (auto&& con = dynamic_cast<ConstructorType*>(expr->GetType(Expression::NoInstance())->Decay()))
                 members.push_back(explicit_type = con->GetConstructedType());
             else
-                throw NotAType(expr->GetType(Expression::NoInstance()), var.type->location);
+                throw SpecificError<MemberNotAType>(self->analyzer, var.type->location, "Member type not a type.");
         }
         if (var.initializer) {
             auto expr = self->analyzer.AnalyzeExpression(self->context, var.initializer.get(), [](Parse::Name, Lexer::Range) { return nullptr; });
@@ -203,7 +203,7 @@ UserDefinedType::MemberData::MemberData(UserDefinedType* self) {
             NSDMIs.push_back(nullptr);
         if (auto&& agg = dynamic_cast<AggregateType*>(members.back())) {
             if (agg == self || agg->HasMemberOfType(self))
-                throw RecursiveMember(self, var.type ? var.type->location : var.initializer->location);
+                throw SpecificError<RecursiveMember>(self->analyzer, var.type ? var.type->location : var.initializer->location, "Member is recursive.");
         }
     }
     for (auto&& tuple : self->type->imports) {
@@ -1213,7 +1213,7 @@ std::shared_ptr<Expression> UserDefinedType::AccessStaticMember(std::string name
                 BaseType = base;
                 continue;
             }
-            throw Error(analyzer, c.where, "Member lookup was ambiguous.");
+            throw SpecificError<AmbiguousMemberLookup>(analyzer, c.where, "Member lookup was ambiguous.");
         }
     }
     if (BaseOverloadSet)

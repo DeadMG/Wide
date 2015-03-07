@@ -22,7 +22,7 @@ namespace Wide {
         class UserDefinedType;
         class OverloadSet : public AggregateType {
             std::unique_ptr<OverloadResolvable> ReferenceConstructor;
-            std::unique_ptr<MetaType> ResolveType;
+            std::unique_ptr<OverloadResolvable> ResolveResolvable;
 
             std::unordered_set<OverloadResolvable*> callables;
             std::unordered_set<clang::NamedDecl*> clangfuncs;

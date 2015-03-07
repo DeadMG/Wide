@@ -310,7 +310,7 @@ std::pair<Callable*, std::vector<Type*>> OverloadSet::ResolveWithArguments(std::
         }
         auto wide_result = get_wide_or_result();
         if (wide_result.first)
-            throw std::runtime_error("Attempted to resolve an overload set, but both Wide and C++ provided viable results.");
+            return std::make_pair(nullptr, std::vector<Type*>());
         auto fun = best->Function;
         auto p = new cppcallable();
         p->fun = fun;
@@ -391,18 +391,30 @@ OverloadSet* OverloadSet::CreateConstructorOverloadSet(Parse::Access access) {
 std::shared_ptr<Expression> OverloadSet::AccessNamedMember(Expression::InstanceKey key, std::shared_ptr<Expression> t, std::string name, Context c) {
     if (name != "resolve")
         return Type::AccessMember(key, std::move(t), name, c);
-    if (ResolveType)
-        return ResolveType->BuildValueConstruction(key, {}, Context( this, c.where ));
-    struct ResolveCallable : public MetaType 
+    if (ResolveResolvable)
+        return analyzer.GetOverloadSet(ResolveResolvable.get())->BuildValueConstruction(key, {}, c);
+    struct ResolveCallable : public OverloadResolvable, public Callable
     {
         ResolveCallable(OverloadSet* f, Analyzer& a)
-        : from(f), MetaType(a) {}
+        : from(f) {}
         OverloadSet* from;
-        std::shared_ptr<Expression> ConstructCall(Expression::InstanceKey key, std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c) override final {
+        Wide::Util::optional<std::vector<Type*>> MatchParameter(std::vector<Type*> types, Analyzer& a, Type* source) override final {
+            for (auto ty : types)
+                if (!dynamic_cast<ConstructorType*>(ty))
+                    return Wide::Util::none;
+            return types;
+        }
+        Callable* GetCallableForResolution(std::vector<Type*>, Type*, Analyzer& a) override final {
+            return this;
+        }
+        std::vector<std::shared_ptr<Expression>> AdjustArguments(Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c) override final {
+            return args;
+        }
+        std::shared_ptr<Expression> CallFunction(Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c) override final {
             std::vector<Type*> types;
             for (auto&& arg : args) {
                 auto con = dynamic_cast<ConstructorType*>(arg->GetType(key)->Decay());
-                if (!con) throw std::runtime_error("Attempted to resolve but an argument was not a type.");
+                assert(con && "Called CallFunction with conditions OR should have prevented.");
                 types.push_back(con->GetConstructedType());
             }
             auto call = from->Resolve(types, c.from);
@@ -410,14 +422,11 @@ std::shared_ptr<Expression> OverloadSet::AccessNamedMember(Expression::InstanceK
             auto clangfunc = dynamic_cast<cppcallable*>(call);
             std::unordered_set<clang::NamedDecl*> decls;
             decls.insert(clangfunc->fun);
-            return analyzer.GetOverloadSet(decls, clangfunc->from, nullptr)->BuildValueConstruction(key, {}, c);
-        }
-        std::string explain() override final {
-            return from->explain() + ".resolve";
+            return from->analyzer.GetOverloadSet(decls, clangfunc->from, nullptr)->BuildValueConstruction(key, {}, c);
         }
     };
-    if (!ResolveType) ResolveType = Wide::Memory::MakeUnique<ResolveCallable>(this, analyzer);
-    return ResolveType->BuildValueConstruction(key, {}, Context( this, c.where ));
+    if (!ResolveResolvable) ResolveResolvable = Wide::Memory::MakeUnique<ResolveCallable>(this, analyzer);
+    return analyzer.GetOverloadSet(ResolveResolvable.get())->BuildValueConstruction(key, {}, c);
 }
 std::string OverloadSet::explain() {
     std::stringstream strstr;

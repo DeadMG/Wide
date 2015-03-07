@@ -86,5 +86,12 @@ namespace Wide {
         struct UnsupportedBinaryExpression {};
         struct UnsupportedDeclarationExpression {};
         struct UnsupportedMacroExpression {};
+        struct BaseNotAType {};
+        struct RecursiveBase {};
+        struct BaseFinal {};
+        struct MemberNotAType {};
+        struct RecursiveMember {};
+        struct AmbiguousMemberLookup {};
+        struct ExportNotSingleFunction {};
     }
 }

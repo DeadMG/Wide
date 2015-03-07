@@ -82,7 +82,7 @@ FunctionSkeleton::FunctionSkeleton(const Parse::FunctionBase* astfun, Analyzer& 
                         }
                         auto tuanddecl = overset->GetSingleFunction();
                         if (!tuanddecl.second) {
-                            ExportErrors[attr.initializer.get()] = Wide::Memory::MakeUnique<Semantic::SpecificError<ExportNonOverloadSet>>(analyzer, attr.initializer->location, "Export initializer not a function.");
+                            ExportErrors[attr.initializer.get()] = Wide::Memory::MakeUnique<Semantic::SpecificError<ExportNotSingleFunction>>(analyzer, attr.initializer->location, "Export initializer not a function.");
                             continue;
                         }
                         auto tu = tuanddecl.first;

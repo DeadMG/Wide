@@ -119,7 +119,9 @@ namespace Wide {
             virtual OverloadSet* CreateConstructorOverloadSet(Parse::Access access) = 0;
         public:
             virtual std::shared_ptr<Expression> AccessVirtualPointer(Expression::InstanceKey key, std::shared_ptr<Expression> self);
-            virtual std::pair<FunctionType*, std::function<llvm::Function*(llvm::Module*)>> VirtualEntryFor(VTableLayout::VirtualFunctionEntry entry) { assert(false); throw std::runtime_error("ICE"); }
+            virtual std::pair<FunctionType*, std::function<llvm::Function*(llvm::Module*)>> VirtualEntryFor(VTableLayout::VirtualFunctionEntry entry) {
+                assert(false); return{ {}, {} };
+            }
             Type(Analyzer& a) : analyzer(a), DestructorFunction(nullptr) {}
 
             Analyzer& analyzer;
