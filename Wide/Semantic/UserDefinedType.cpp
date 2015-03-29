@@ -116,7 +116,7 @@ UserDefinedType::VTableData::VTableData(UserDefinedType* self) {
                             matches.insert(function.get());
                     }
                 }
-                if (matches.size() > 1) throw std::runtime_error("Too many valid matches for dynamic function override.");
+                if (matches.size() > 1) throw SpecificError<VirtualOverrideAmbiguous>(analyzer, (*matches.begin())->where, "Virtual override is ambiguous.");
                 if (matches.empty()) {
                     if (vfunc->abstract)
                         is_abstract = true;
@@ -209,10 +209,12 @@ UserDefinedType::MemberData::MemberData(UserDefinedType* self) {
     for (auto&& tuple : self->type->imports) {
         auto expr = self->analyzer.AnalyzeExpression(self->context, std::get<0>(tuple).get(), [](Parse::Name, Lexer::Range) { return nullptr; });
         auto conty = dynamic_cast<ConstructorType*>(expr->GetType(Expression::NoInstance())->Decay());
-        if (!conty) throw std::runtime_error("Bad import type name.");
+        if (!conty) {
+            ImportErrors.push_back(Wide::Memory::MakeUnique<SpecificError<ImportNotAType>>(self->analyzer, std::get<0>(tuple)->location, "Import expression was not a type."));
+        }
         auto basety = conty->GetConstructedType();
         for (auto&& name : std::get<1>(tuple))
-            BaseImports[name].insert(basety);
+            BaseImports[name].insert(std::make_pair(basety, std::get<0>(tuple)->location));
         if (std::get<2>(tuple))
             imported_constructors[basety] = nullptr;
     }
@@ -280,13 +282,22 @@ std::shared_ptr<Expression> UserDefinedType::AccessNamedMember(Expression::Insta
             OverloadSet* imports = analyzer.GetOverloadSet();
             if (GetMemberData().BaseImports.find(name) != GetMemberData().BaseImports.end()) {
                 for (auto&&base : GetMemberData().BaseImports.at(name)) {
-                    if (IsDerivedFrom(base) != InheritanceRelationship::UnambiguouslyDerived)
-                        throw std::runtime_error("Tried to import from a non-base.");
-                    auto baseobj = Type::AccessBase(key, self, base);
+                    if (IsDerivedFrom(base.first) != InheritanceRelationship::UnambiguouslyDerived) {
+                        if (FunctionImportErrors.find(name) == FunctionImportErrors.end()
+                         || FunctionImportErrors[name].find(base.first) == FunctionImportErrors[name].end())
+                            FunctionImportErrors[name][base.first] = Wide::Memory::MakeUnique<SpecificError<ImportNotUnambiguousBase>>(analyzer, base.second, "Import type was not an unambiguous base.");
+                        continue;
+                    }
+                    auto baseobj = Type::AccessBase(key, self, base.first);
                     auto member = Type::AccessMember(key, baseobj, name, c);
                     if (!member) continue;
                     auto os = dynamic_cast<OverloadSet*>(member->GetType(Expression::NoInstance())->Decay());
-                    if (!os) throw std::runtime_error("Type import from base marked a non-overload-set.");
+                    if (!os){
+                        if (FunctionImportErrors.find(name) == FunctionImportErrors.end()
+                         || FunctionImportErrors[name].find(base.first) == FunctionImportErrors[name].end())
+                         FunctionImportErrors[name][base.first] = Wide::Memory::MakeUnique<SpecificError<ImportNotOverloadSet>>(analyzer, base.second, "Import did not name an overload set.");
+                        continue;
+                    }
                     imports = analyzer.GetOverloadSet(imports, os);
                 }
             }
@@ -320,7 +331,7 @@ std::shared_ptr<Expression> UserDefinedType::AccessNamedMember(Expression::Insta
                 BaseOverloadSet = otheros;
             continue;
         }
-        throw std::runtime_error("Ambiguous lookup.");
+        throw SpecificError<AmbiguousMemberLookup>(analyzer, c.where, "Member lookup was ambiguous in base classes.");
     }
     if (BaseOverloadSet)
         return BaseOverloadSet->BuildValueConstruction(key, { std::move(self) }, c);
@@ -366,7 +377,7 @@ Wide::Util::optional<clang::QualType> UserDefinedType::GetClangType(ClangTU& TU)
         }
     };
     info.Complete = [this, recdecl, &TU] {
-        auto Access = [](Parse::Access access) {
+        auto Access = [](Parse::Access access) -> clang::AccessSpecifier {
             switch (access) {
             case Parse::Access::Private:
                 return clang::AccessSpecifier::AS_private;
@@ -374,8 +385,6 @@ Wide::Util::optional<clang::QualType> UserDefinedType::GetClangType(ClangTU& TU)
                 return clang::AccessSpecifier::AS_public;
             case Parse::Access::Protected:
                 return clang::AccessSpecifier::AS_protected;
-            default:
-                throw std::runtime_error("Wat- new access specifier?");
             }
         };
         
@@ -844,14 +853,18 @@ OverloadSet* UserDefinedType::CreateOperatorOverloadSet(Parse::OperatorName name
         OverloadSet* imports = analyzer.GetOverloadSet();
         if (GetMemberData().BaseImports.find(name) != GetMemberData().BaseImports.end()) {
             for (auto&&base : GetMemberData().BaseImports.at(name)) {
-                if (IsDerivedFrom(base) != InheritanceRelationship::UnambiguouslyDerived)
-                    throw std::runtime_error("Tried to import from a non-base.");
-                auto base_set = base->AccessMember(name, access == Parse::Access::Private ? Parse::Access::Protected : access, kind);
+                if (IsDerivedFrom(base.first) != InheritanceRelationship::UnambiguouslyDerived) {
+                    if (FunctionImportErrors.find(name) == FunctionImportErrors.end()
+                     || FunctionImportErrors[name].find(base.first) == FunctionImportErrors[name].end())
+                        FunctionImportErrors[name][base.first] = Wide::Memory::MakeUnique<SpecificError<ImportNotUnambiguousBase>>(analyzer, base.second, "Import type was not an unambiguous base.");
+                    continue;
+                }
+                auto base_set = base.first->AccessMember(name, access == Parse::Access::Private ? Parse::Access::Protected : access, kind);
                 if (name == Parse::OperatorName{ &Lexer::TokenTypes::Assignment }) {
-                    if (AssignmentOperatorImportResolvables.find(base) == AssignmentOperatorImportResolvables.end()) {
-                        AssignmentOperatorImportResolvables[base] = Wide::Memory::MakeUnique<ImportAssignmentResolvable>(base, base_set);
+                    if (AssignmentOperatorImportResolvables.find(base.first) == AssignmentOperatorImportResolvables.end()) {
+                        AssignmentOperatorImportResolvables[base.first] = Wide::Memory::MakeUnique<ImportAssignmentResolvable>(base.first, base_set);
                     }
-                    imports = analyzer.GetOverloadSet(imports, analyzer.GetOverloadSet(AssignmentOperatorImportResolvables[base].get()));
+                    imports = analyzer.GetOverloadSet(imports, analyzer.GetOverloadSet(AssignmentOperatorImportResolvables[base.first].get()));
                 } else
                     imports = analyzer.GetOverloadSet(base_set, imports);
             }
@@ -1117,8 +1130,14 @@ Wide::Util::optional<std::pair<unsigned, Lexer::Range>> UserDefinedType::SizeOve
             if (auto&& string = boost::get<std::string>(&ident->val)) {
                 if (*string == "size") {
                     auto expr = analyzer.AnalyzeExpression(GetContext(), attr.initializer.get(), [](Parse::Name, Lexer::Range) { return nullptr; });
-                    if (!dynamic_cast<IntegralType*>(expr->GetType(nullptr)))
-                        throw std::runtime_error("size attribute was not initialized with a constant integer.");
+                    if (!dynamic_cast<IntegralType*>(expr->GetType(nullptr))) {
+                        SizeOverrideError = Wide::Memory::MakeUnique<SpecificError<SizeOverrideNotInteger>>(analyzer, attr.initializer->location, "Alignment override not an integer.");
+                        return Util::none;
+                    }
+                    if (!expr->IsConstantExpression(Expression::NoInstance())) {
+                        SizeOverrideError = Wide::Memory::MakeUnique<SpecificError<SizeOverrideNotConstant>>(analyzer, attr.initializer->location, "Alignment override not constant.");
+                        return Util::none;
+                    }
                     return std::pair<unsigned, Lexer::Range>{ analyzer.EvaluateConstantIntegerExpression(expr, Expression::NoInstance()).getLimitedValue(), attr.initializer->location };
                 }
             }
@@ -1132,8 +1151,14 @@ Wide::Util::optional<std::pair<unsigned, Lexer::Range>> UserDefinedType::AlignOv
             if (auto&& string = boost::get<std::string>(&ident->val)) {
                 if (*string == "alignment") {
                     auto expr = analyzer.AnalyzeExpression(GetContext(), attr.initializer.get(), [](Parse::Name, Lexer::Range) { return nullptr; });
-                    if (!dynamic_cast<IntegralType*>(expr->GetType(nullptr)))
-                        throw std::runtime_error("size attribute was not initialized with a constant integer.");
+                    if (!dynamic_cast<IntegralType*>(expr->GetType(nullptr))) {
+                        AlignOverrideError = Wide::Memory::MakeUnique<SpecificError<AlignmentOverrideNotInteger>>(analyzer, attr.initializer->location, "Alignment override not an integer.");
+                        return Util::none;
+                    }
+                    if (!expr->IsConstantExpression(Expression::NoInstance())) {
+                        AlignOverrideError = Wide::Memory::MakeUnique<SpecificError<AlignmentOverrideNotConstant>>(analyzer, attr.initializer->location, "Alignment override not constant.");
+                        return Util::none;
+                    }
                     return std::pair<unsigned, Lexer::Range>{ analyzer.EvaluateConstantIntegerExpression(expr, Expression::NoInstance()).getLimitedValue(), attr.initializer->location };
                 }
             }

@@ -23,6 +23,10 @@ namespace Wide {
         class Module;
         class FunctionSkeleton;
         class UserDefinedType : public AggregateType, public TupleInitializable, public ConstructorContext {
+            std::unique_ptr<Semantic::Error> AlignOverrideError;
+            std::unique_ptr<Semantic::Error> SizeOverrideError;
+            std::unordered_map<Parse::Name, std::unordered_map<Type*, std::unique_ptr<Semantic::Error>>> FunctionImportErrors;
+
             struct ImportConstructorCallable;
             struct ImportConstructorResolvable;
             FunctionSkeleton* GetWideFunction(const Parse::FunctionBase* base, Parse::Name name);
@@ -75,8 +79,9 @@ namespace Wide {
                 std::vector<const Parse::Expression*> NSDMIs;
                 bool HasNSDMI = false;
                 std::vector<Type*> members;
-                std::unordered_map<Parse::Name, std::unordered_set<Type*>> BaseImports;
+                std::unordered_map<Parse::Name, std::unordered_map<Type*, Lexer::Range>> BaseImports;
                 std::unordered_map<Type*, std::unique_ptr<OverloadResolvable>> imported_constructors;
+                std::vector<std::unique_ptr<Semantic::Error>> ImportErrors;
             };
             Wide::Util::optional<MemberData> Members;
             MemberData& GetMemberData() {

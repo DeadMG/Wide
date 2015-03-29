@@ -25,7 +25,7 @@ namespace Wide {
             Error(const Error&);
             Error(Error&&);
         public:
-            Lexer::Range location();
+            Lexer::Range location() { return where; }
             const char* what() const WIDE_NOEXCEPT {
                 return msg.c_str();
             }
@@ -40,6 +40,7 @@ namespace Wide {
             SpecificError(SpecificError&& other)
                 : Error(std::move(other)) {}
         };
+
         struct SizeOverrideTooSmall {};
         struct AlignOverrideTooSmall {};
         struct ExportNonOverloadSet {};
@@ -93,5 +94,13 @@ namespace Wide {
         struct RecursiveMember {};
         struct AmbiguousMemberLookup {};
         struct ExportNotSingleFunction {};
+        struct AlignmentOverrideNotInteger {};
+        struct AlignmentOverrideNotConstant {};
+        struct SizeOverrideNotInteger {};
+        struct SizeOverrideNotConstant {};
+        struct ImportNotUnambiguousBase {};
+        struct ImportNotOverloadSet {};
+        struct ImportNotAType {};
+        struct VirtualOverrideAmbiguous {};
     }
 }

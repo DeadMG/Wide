@@ -46,6 +46,29 @@ AggregateType::Properties::Properties(AggregateType* self)
     for (auto mem : self->GetMembers())
         UpdatePropertiesForMember(mem);
 }
+AggregateType::Layout::Layout(Layout&& other)
+    : align(other.align)
+    , allocsize(other.allocsize)
+    , EmptyTypes(std::move(other.EmptyTypes))
+    , Offsets(std::move(other.Offsets))
+    , codegen(std::move(other.codegen))
+    , AlignOverrideError(std::move(other.AlignOverrideError))
+    , SizeOverrideError(std::move(other.SizeOverrideError))
+    , hasvptr(other.hasvptr)
+{}
+
+AggregateType::Layout& AggregateType::Layout::operator=(Layout&& other) {
+    allocsize = other.allocsize;
+    align = other.align;
+    EmptyTypes = std::move(other.EmptyTypes);
+    Offsets = std::move(other.Offsets);
+    codegen = std::move(other.codegen);
+    AlignOverrideError = std::move(other.AlignOverrideError);
+    SizeOverrideError = std::move(other.SizeOverrideError);
+    hasvptr = other.hasvptr;
+    return *this;
+}
+
 AggregateType::Layout::Layout(AggregateType* agg, Wide::Semantic::Analyzer& a)
 : allocsize(0)
 , align(1)
