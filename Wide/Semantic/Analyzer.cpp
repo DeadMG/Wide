@@ -201,24 +201,6 @@ void Analyzer::GenerateCode(llvm::Module* module) {
     if (llvm::Linker::LinkModules(module, &ConstantModule, llvm::Linker::PreserveSource, &err))
         throw std::runtime_error("Internal compiler error: LLVM Linking failed\n" + err);    
 }
-WideFunctionType* Analyzer::GetFunctionType(Type* ret, const std::vector<Type*>& t, bool variadic, clang::CallingConv conv) {
-    std::map<clang::CallingConv, llvm::CallingConv::ID> convconverter = {
-        { clang::CallingConv::CC_C, llvm::CallingConv::C },
-        { clang::CallingConv::CC_X86StdCall, llvm::CallingConv::X86_StdCall },
-        { clang::CallingConv::CC_X86FastCall, llvm::CallingConv::X86_FastCall },
-        { clang::CallingConv::CC_X86ThisCall, llvm::CallingConv::X86_ThisCall },
-        //{ clang::CallingConv::CC_X86Pascal, },
-        { clang::CallingConv::CC_X86_64Win64, llvm::CallingConv::X86_64_Win64 },
-        { clang::CallingConv::CC_X86_64SysV, llvm::CallingConv::X86_64_SysV },
-        { clang::CallingConv::CC_AAPCS, llvm::CallingConv::ARM_AAPCS },
-        { clang::CallingConv::CC_AAPCS_VFP, llvm::CallingConv::ARM_AAPCS_VFP },
-        //{ clang::CallingConv::CC_PnaclCall, },
-        { clang::CallingConv::CC_IntelOclBicc, llvm::CallingConv::Intel_OCL_BI },
-    };
-    if (convconverter.find(conv) == convconverter.end())
-        throw std::runtime_error("Attempt to convert a Clang type, but the calling convention was not supported.");
-    return GetFunctionType(ret, t, variadic, convconverter[conv]);
-}
 
 Type* Analyzer::GetClangType(ClangTU& from, clang::QualType t) {
     t = t.getCanonicalType();
