@@ -95,6 +95,11 @@ namespace Wide {
             )> Layout;
         };
         class Analyzer {
+        public:
+            // Other people remove things from here on destruction, so it needs to be destructed last.
+            std::unordered_set<Error*> errors;
+
+        private:
             std::unique_ptr<ClangTU> AggregateTU;
             Module* global;
             boost::uuids::random_generator uuid_generator;
@@ -227,7 +232,6 @@ namespace Wide {
                 std::function<std::shared_ptr<Expression>(Type* context, Parse::Name name, Lexer::Range where)>>
             ContextLookupHandlers;
 
-            std::unordered_set<Error*> errors;
             std::unordered_map<const Parse::Statement*, std::vector<std::unique_ptr<Semantic::Error>>> StatementErrors;
 
             std::shared_ptr<Expression> AnalyzeExpression(Type* lookup, const Parse::Expression* e, Scope* current, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup);
