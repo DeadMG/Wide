@@ -477,9 +477,11 @@ void AggregateType::EmitAssignmentOperator(CodegenContext& con, std::vector<std:
 }
 void AggregateType::EmitConstructor(CodegenContext& con, std::vector<std::shared_ptr<Expression>> inits) {
     // Should be members + bases + 1.
-    assert(inits.size() == GetMembers().size() + GetBases().size() + 1);
-    for (unsigned i = 0; i < GetMembers().size() + GetBases().size(); ++i)
-        inits[i]->GetValue(con);
+    // assert(inits.size() == GetMembers().size() + GetBases().size() + 1);
+    for (auto init : inits)
+        init->GetValue(con);
+    //for (unsigned i = 0; i < GetMembers().size() + GetBases().size(); ++i)
+    //    inits[i]->GetValue(con);
     inits.back()->GetValue(con);
     con.DestroyAll(false);
     con->CreateRetVoid();
@@ -635,9 +637,20 @@ void AggregateType::CreateMoveConstructorInitializers() {
         auto rhs = CreatePrimGlobal(Range::Empty(), analyzer.GetLvalueType(this), [this](CodegenContext& con) {
             return ++MoveConstructorFunction->arg_begin();
         });
-        MoveConstructorInitializers = GetConstructorInitializers(GetConstructorSelf(MoveConstructorFunction), { this, Wide::Lexer::Range(std::make_shared<std::string>("Analyzer Internal Function")) }, [this, rhs](unsigned i) -> std::vector<std::shared_ptr<Expression>> {
+        auto self = GetConstructorSelf(MoveConstructorFunction);
+        auto initializers = GetConstructorInitializers(self, { this, Wide::Lexer::Range(std::make_shared<std::string>("Analyzer Internal Function")) }, [this, rhs](unsigned i) -> std::vector<std::shared_ptr<Expression>> {
             return{ PrimitiveAccessMember(rhs, i) };
         });
+        MoveConstructorInitializers = std::vector<std::shared_ptr<Expression>> {
+            Type::SetVirtualPointers(Expression::NoInstance(), self),
+            CreatePrimGlobal(Wide::Range::Container(initializers), analyzer, [=](CodegenContext& con) {
+                if (AlwaysKeepInMemory(con)) {
+                    for (auto&& init : initializers)
+                        init->GetValue(con);
+                } else
+                    con->CreateStore(con->CreateLoad(rhs->GetValue(con)), self->GetValue(con));
+            })
+        };
     }
 
 }
@@ -646,9 +659,14 @@ void AggregateType::CreateCopyConstructorInitializers() {
         auto rhs = CreatePrimGlobal(Range::Empty(), analyzer.GetLvalueType(this), [this](CodegenContext& con) {
             return ++CopyConstructorFunction->arg_begin();
         });
-        CopyConstructorInitializers = GetConstructorInitializers(GetConstructorSelf(CopyConstructorFunction), { this, Wide::Lexer::Range(std::make_shared<std::string>("Analyzer Internal Function")) }, [this, rhs](unsigned i) -> std::vector<std::shared_ptr<Expression>> {
-            return{ PrimitiveAccessMember(rhs, i) };
-        });
+        if (IsTriviallyCopyConstructible()) {
+            CopyConstructorInitializers = std::vector<std::shared_ptr<Expression>> {
+                Wide::Memory::MakeUnique<ImplicitStoreExpr>(GetConstructorSelf(CopyConstructorFunction), Wide::Memory::MakeUnique<ImplicitLoadExpr>(rhs))
+            };
+        } else
+            CopyConstructorInitializers = GetConstructorInitializers(GetConstructorSelf(CopyConstructorFunction), { this, Wide::Lexer::Range(std::make_shared<std::string>("Analyzer Internal Function")) }, [this, rhs](unsigned i) -> std::vector<std::shared_ptr<Expression>> {
+                return{ PrimitiveAccessMember(rhs, i) };
+            });
     }
 }
 void AggregateType::CreateMoveAssignmentExpressions() {

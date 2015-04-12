@@ -289,45 +289,69 @@ void Wide::Driver::Compile(Wide::Options::Clang& copts, std::string file) {
         auto tupty = dynamic_cast<Wide::Semantic::TupleType*>(failfunc->GetSignature()->GetReturnType());
         if (!tupty)
             throw std::runtime_error("ExpectedFailure's result was not a tuple!");
-        auto str = dynamic_cast<Wide::Semantic::StringType*>(tupty->GetMembers()[0]);
-        if (!str)
-            throw std::runtime_error("Result of ExpectedFailure's first member was not a string.");
-
-        a.GenerateCode(module.get());
-
-        // JIT cannot handle aggregate returns so make a trampline.
-        std::vector<llvm::Type*> types = { 
-            llvm::PointerType::get(llvm::IntegerType::getInt8PtrTy(con), 0),
-            llvm::Type::getInt64PtrTy(con), 
-            llvm::Type::getInt64PtrTy(con), 
-            llvm::Type::getInt64PtrTy(con), 
-            llvm::Type::getInt64PtrTy(con) 
+        struct ExpectedFailure {
+            std::string type;
+            int beginline;
+            int begincolumn;
+            int endline;
+            int endcolumn;
         };
-        auto tramp = llvm::Function::Create(llvm::FunctionType::get(llvm::Type::getVoidTy(con), types, false), llvm::GlobalValue::LinkageTypes::ExternalLinkage, "tramp", module.get());
-        auto bb = llvm::BasicBlock::Create(con, "entry", tramp);
-        auto builder = llvm::IRBuilder<>(bb);
-        auto call = builder.CreateCall(failfunc->EmitCode(module.get()));
-        auto current = tramp->arg_begin();
-        builder.CreateStore(builder.CreateExtractValue(call, { boost::get<Wide::Semantic::LLVMFieldIndex>(tupty->GetLocation(0)).index }), current++);
-        builder.CreateStore(builder.CreateExtractValue(call, { boost::get<Wide::Semantic::LLVMFieldIndex>(tupty->GetLocation(1)).index }), current++);
-        builder.CreateStore(builder.CreateExtractValue(call, { boost::get<Wide::Semantic::LLVMFieldIndex>(tupty->GetLocation(2)).index }), current++);
-        builder.CreateStore(builder.CreateExtractValue(call, { boost::get<Wide::Semantic::LLVMFieldIndex>(tupty->GetLocation(3)).index }), current++);
-        builder.CreateStore(builder.CreateExtractValue(call, { boost::get<Wide::Semantic::LLVMFieldIndex>(tupty->GetLocation(4)).index }), current++);
-        builder.CreateRetVoid();
-        int64_t beginline, begincolumn, endline, endcolumn;
-        std::string error_string;
-        if (llvm::verifyFunction(*tramp))
-            throw std::runtime_error("Internal Compiler Error: An LLVM function failed verification.");
-        if (llvm::verifyModule(*module))
-            throw std::runtime_error("An LLVM module failed verification.");
+        std::vector<ExpectedFailure> expected_failures;
+        auto push_back_lambda = [](std::vector<ExpectedFailure>* vec, const char* type, int bline, int bcolumn, int eline, int ecolumn) {
+            vec->push_back({ type, bline, bcolumn, eline, ecolumn });
+        };
+
+        // JIT cannot handle aggregate returns so make a trampoline.
+        auto tramp = llvm::Function::Create(llvm::FunctionType::get(llvm::Type::getVoidTy(con), {}, false), llvm::GlobalValue::LinkageTypes::ExternalLinkage, "tramp", module.get());
+        auto call = Wide::Semantic::CreatePrimGlobal(Wide::Range::Empty(), failfunc->GetSignature()->GetReturnType(), [&](Wide::Semantic::CodegenContext& con) {
+            return con->CreateCall(failfunc->EmitCode(module.get()));
+        });
+        std::vector<std::shared_ptr<Wide::Semantic::Expression>> calls;
+        for (auto ty : tupty->GetMembers()) {
+            auto nested_tupty = dynamic_cast<Wide::Semantic::TupleType*>(ty);
+            auto error = tupty->PrimitiveAccessMember(call, calls.size());
+            calls.push_back(Wide::Semantic::CreatePrimGlobal(Wide::Range::Empty(), a.GetVoidType(), [&, error](Wide::Semantic::CodegenContext& con) {
+                std::vector<llvm::Value*> args;
+                args.push_back(con->CreateIntToPtr(
+                    llvm::ConstantInt::get(
+                        llvm::IntegerType::get(con, sizeof(void*) * 8),
+                        (intptr_t)&expected_failures,
+                        false), 
+                    con.GetInt8PtrTy()));
+                for (auto ty : nested_tupty->GetMembers()) {
+                    auto member = nested_tupty->PrimitiveAccessMember(error, args.size() - 1)->GetValue(con);
+                    if (member->getType() == llvm::IntegerType::get(con, 64))
+                        member = con->CreateTrunc(member, llvm::IntegerType::get(con, 32));
+                    args.push_back(member);
+                }
+                std::vector<llvm::Type*> argtypes = { con.GetInt8PtrTy(), con.GetInt8PtrTy(), con->getInt32Ty(), con->getInt32Ty(), con->getInt32Ty(), con->getInt32Ty() };
+                return con->CreateCall(
+                    con->CreateIntToPtr(
+                        llvm::ConstantInt::get(
+                        llvm::IntegerType::get(con, sizeof(void*) * 8),
+                        (intptr_t)(void(*)(std::vector<ExpectedFailure>*, const char*, int, int, int, int))push_back_lambda,
+                        false),
+                        llvm::FunctionType::get(con->getVoidTy(), argtypes, false)->getPointerTo()
+                    ), 
+                    args);
+            }));
+        }
+        Wide::Semantic::CodegenContext::EmitFunctionBody(tramp, {}, [&](Wide::Semantic::CodegenContext& con) {
+            for (auto call : calls)
+                call->GetValue(con);
+            con->CreateRetVoid();
+        });
         GenerateCode(module.get(), [&](llvm::ExecutionEngine* ee) {
             ee->finalizeObject();
-            const char* val;
-            auto fptr = (void(*)(const char**, int64_t*, int64_t*, int64_t*, int64_t*))ee->getPointerToFunction(tramp);
-            fptr(&val, &beginline, &begincolumn, &endline, &endcolumn);
-            error_string = val;
+            auto fptr = (void(*)())ee->getPointerToFunction(tramp);
+            fptr();
         });
-
+        if (expected_failures.empty())
+            throw std::runtime_error("CompileFail did not expect any failures.");
+        for (auto&& expected_err : expected_failures) {
+            if (error_type_strings.find(expected_err.type) == error_type_strings.end())
+                throw std::runtime_error("CompileFail declared an expected failure of unknown type.");
+        }
         auto m = Wide::Semantic::Type::AccessMember(Wide::Semantic::Expression::NoInstance(), global, std::string("Main"), { a.GetGlobalModule(), loc });
         if (!m)
             throw std::runtime_error("No Main() found for test!");
@@ -336,24 +360,27 @@ void Wide::Driver::Compile(Wide::Options::Clang& copts, std::string file) {
             throw std::runtime_error("Main was not an overload set.");
         auto f = dynamic_cast<Wide::Semantic::Function*>(func->Resolve({}, a.GetGlobalModule()));
         if (!f)
-            throw std::runtime_error("Could not resolve Main to a function.");
-        try {
-            f->ComputeBody();
+        throw std::runtime_error("Could not resolve Main to a function.");
+        f->ComputeBody();
+        if (a.errors.empty())
             throw std::runtime_error("CompileFail did not fail.");
-        } catch (Wide::Semantic::Error& err) {
-            if (error_type_strings.find(error_string) == error_type_strings.end())
-                throw std::runtime_error("Could not find error type string.");
-            if (!error_type_strings.at(error_string)(err))
-                throw std::runtime_error("The error type string was incorrect.");
-            if (err.location().begin.line != beginline)
-                throw std::runtime_error("Exception location did not match return from ExpectedFailure!" + to_string(err.location()));
-            if (err.location().begin.column != begincolumn)
-                throw std::runtime_error("Exception location did not match return from ExpectedFailure!" + to_string(err.location()));
-            if (err.location().end.line != endline)
-                throw std::runtime_error("Exception location did not match return from ExpectedFailure!" + to_string(err.location()));
-            if (err.location().end.column != endcolumn)
-                throw std::runtime_error("Exception location did not match return from ExpectedFailure!" + to_string(err.location()));
+        for (auto&& err : a.errors) {
+            auto loc = err->location();
+            for (auto it = expected_failures.begin(); it != expected_failures.end(); ++it) {
+                auto&& expected_err = *it;
+                if (error_type_strings.at(expected_err.type)(*err)
+                    && loc.begin.line == expected_err.beginline
+                    && loc.end.line == expected_err.endline
+                    && loc.begin.column == expected_err.begincolumn
+                    && loc.end.column == expected_err.endcolumn) 
+                {
+                    expected_failures.erase(it);
+                    break;
+                }
+            }
         }
+        if (!expected_failures.empty())
+            throw std::runtime_error("Expected failure was not found.");
     });
 }
 

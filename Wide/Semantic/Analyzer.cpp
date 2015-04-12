@@ -70,7 +70,11 @@ namespace {
 }
 
 // After definition of type
-Analyzer::~Analyzer() {}
+Analyzer::~Analyzer() {
+    auto copy = errors;
+    for (auto&& err : copy)
+        err->disconnect();
+}
 
 Analyzer::Analyzer(const Options::Clang& opts, const Parse::Module* GlobalModule, llvm::LLVMContext& con, const std::unordered_map<std::string, std::string>& headers)
     : clangopts(&opts)

@@ -39,7 +39,7 @@ int main(int argc, char** argv) {
             try {
                 Wide::Driver::Compile(clangopts, input["input"].as<std::string>());
                 return 0;
-            } catch (std::runtime_error& e) {
+            } catch (std::exception& e) {
                 std::cout << e.what() << "\n";
                 return 1;
             }

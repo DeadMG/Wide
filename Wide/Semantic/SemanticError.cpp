@@ -18,5 +18,11 @@ Error::Error(Error&& other)
     a->errors.insert(this);
 }
 Error::~Error() {
-    a->errors.erase(this);
+    disconnect();
+}
+void Error::disconnect() {
+    if (a) {
+        a->errors.erase(this);
+        a = nullptr;
+    }
 }

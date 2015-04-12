@@ -31,7 +31,7 @@ std::shared_ptr<Expression> TupleType::ConstructFromLiteral(std::vector<std::sha
     return CreatePrimGlobal(Range::Container(initializers), this, [=](CodegenContext& con) -> llvm::Value* {
         for (auto&& init : initializers)
             init->GetValue(con);
-        if (destructor)
+        if (AlwaysKeepInMemory(con))
             con.AddDestructor(destructor);
         if (AlwaysKeepInMemory(con))
             return self->GetValue(con);

@@ -29,6 +29,7 @@ namespace Wide {
             const char* what() const WIDE_NOEXCEPT {
                 return msg.c_str();
             }
+            void disconnect();
             ~Error();
         };
         template<typename T> class SpecificError : public Error {

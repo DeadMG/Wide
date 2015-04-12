@@ -1,8 +1,8 @@
-ExpectedFailure() { return { "InvalidBase", 5, 10, 5, 21 }; }
+ExpectedFailure() { return { { "BaseNotAType", 5, 10, 5, 11 } }; }
 f() {
     return false;
 }
-type t : decltype(f) {
+type t : f {
     g() { return false; }
 }
 Main() {

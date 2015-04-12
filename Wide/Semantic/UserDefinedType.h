@@ -45,6 +45,7 @@ namespace Wide {
                 BaseData(UserDefinedType* self);
                 BaseData(BaseData&& other);
                 BaseData& operator=(BaseData&& other);
+                std::vector<std::unique_ptr<Error>> base_errors;
                 std::vector<Type*> bases;
                 Type* PrimaryBase = nullptr;
             };

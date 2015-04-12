@@ -79,10 +79,19 @@ UserDefinedType::BaseData::BaseData(UserDefinedType* self) {
     for (auto&& expr : self->type->bases) {
         auto base = self->analyzer.AnalyzeExpression(self->context, expr.get(), [](Parse::Name, Lexer::Range) { return nullptr; });
         auto con = dynamic_cast<ConstructorType*>(base->GetType(nullptr)->Decay());
-        if (!con) throw SpecificError<BaseNotAType>(self->analyzer, expr->location, "Base expression not a type.");
+        if (!con) {
+            base_errors.push_back(Wide::Memory::MakeUnique<SpecificError<BaseNotAType>>(self->analyzer, expr->location, "Base expression not a type."));
+            continue;
+        }
         auto udt = con->GetConstructedType();
-        if (udt == self) throw SpecificError<RecursiveBase>(self->analyzer, expr->location, "Cannot inherit from self.");
-        if (udt->IsFinal()) throw SpecificError<BaseFinal>(self->analyzer, expr->location, "Base is final.");
+        if (udt == self) {
+            base_errors.push_back(Wide::Memory::MakeUnique<SpecificError<RecursiveBase>>(self->analyzer, expr->location, "Cannot inherit from self."));
+            continue;
+        }
+        if (udt->IsFinal()) {
+            base_errors.push_back(Wide::Memory::MakeUnique<SpecificError<BaseFinal>>(self->analyzer, expr->location, "Base is final."));
+            continue;
+        }
         bases.push_back(udt);
         if (!PrimaryBase && !udt->GetVtableLayout().layout.empty())
             PrimaryBase = udt;
@@ -1006,7 +1015,7 @@ Type* UserDefinedType::GetVirtualPointerType() {
 
 std::vector<std::pair<Type*, unsigned>> UserDefinedType::GetBasesAndOffsets() {
     std::vector<std::pair<Type*, unsigned>> out;
-    for (unsigned i = 0; i < type->bases.size(); ++i) {
+    for (unsigned i = 0; i < GetBaseData().bases.size(); ++i) {
         out.push_back(std::make_pair(GetBaseData().bases[i], GetOffset(i)));
     }
     return out;
@@ -1112,11 +1121,12 @@ bool UserDefinedType::HasDeclaredDynamicFunctions() {
     return false;
 }
 UserDefinedType::BaseData::BaseData(BaseData&& other)
-: bases(std::move(other.bases)), PrimaryBase(other.PrimaryBase) {}
+: bases(std::move(other.bases)), PrimaryBase(other.PrimaryBase), base_errors(std::move(other.base_errors)) {}
 
 UserDefinedType::BaseData& UserDefinedType::BaseData::operator=(BaseData&& other) {
     bases = std::move(other.bases);
     PrimaryBase = other.PrimaryBase;
+    base_errors = std::move(other.base_errors);
     return *this;
 }
 Type* UserDefinedType::GetConstantContext() {

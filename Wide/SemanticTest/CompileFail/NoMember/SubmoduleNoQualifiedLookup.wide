@@ -1,4 +1,4 @@
-ExpectedFailure() { return { "NoMember", 5, 5, 5, 24 }; }
+ExpectedFailure() { return { { "NoMember", 5, 5, 5, 24 } }; }
 module Submodule {
 }
 Main() {

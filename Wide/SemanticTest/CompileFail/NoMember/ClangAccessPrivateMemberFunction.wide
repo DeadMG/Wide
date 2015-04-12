@@ -1,4 +1,4 @@
-ExpectedFailure() { return { "NoMember", 3, 12, 3, 78 }; }
+ExpectedFailure() { return { { "NoMember", 3, 12, 3, 78 } }; }
 Main() {
     return cpp("CompileFail/NoMember/AccessPrivateMemberFunction.h").test().f();
 }
