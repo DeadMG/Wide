@@ -78,7 +78,7 @@ std::function<std::shared_ptr<Expression>(Wide::Parse::Name, Wide::Lexer::Range)
 UserDefinedType::BaseData::BaseData(UserDefinedType* self) {
     for (auto&& expr : self->type->bases) {
         auto base = self->analyzer.AnalyzeExpression(self->context, expr.get(), [](Parse::Name, Lexer::Range) { return nullptr; });
-        auto con = dynamic_cast<ConstructorType*>(base->GetType(nullptr)->Decay());
+        auto con = dynamic_cast<ConstructorType*>(base->GetType(Expression::NoInstance())->Decay());
         if (!con) {
             base_errors.push_back(Wide::Memory::MakeUnique<SpecificError<BaseNotAType>>(self->analyzer, expr->location, "Base expression not a type."));
             continue;
@@ -1140,7 +1140,7 @@ Wide::Util::optional<std::pair<unsigned, Lexer::Range>> UserDefinedType::SizeOve
             if (auto&& string = boost::get<std::string>(&ident->val)) {
                 if (*string == "size") {
                     auto expr = analyzer.AnalyzeExpression(GetContext(), attr.initializer.get(), [](Parse::Name, Lexer::Range) { return nullptr; });
-                    if (!dynamic_cast<IntegralType*>(expr->GetType(nullptr))) {
+                    if (!dynamic_cast<IntegralType*>(expr->GetType(Expression::NoInstance()))) {
                         SizeOverrideError = Wide::Memory::MakeUnique<SpecificError<SizeOverrideNotInteger>>(analyzer, attr.initializer->location, "Alignment override not an integer.");
                         return Util::none;
                     }
@@ -1161,7 +1161,7 @@ Wide::Util::optional<std::pair<unsigned, Lexer::Range>> UserDefinedType::AlignOv
             if (auto&& string = boost::get<std::string>(&ident->val)) {
                 if (*string == "alignment") {
                     auto expr = analyzer.AnalyzeExpression(GetContext(), attr.initializer.get(), [](Parse::Name, Lexer::Range) { return nullptr; });
-                    if (!dynamic_cast<IntegralType*>(expr->GetType(nullptr))) {
+                    if (!dynamic_cast<IntegralType*>(expr->GetType(Expression::NoInstance()))) {
                         AlignOverrideError = Wide::Memory::MakeUnique<SpecificError<AlignmentOverrideNotInteger>>(analyzer, attr.initializer->location, "Alignment override not an integer.");
                         return Util::none;
                     }
@@ -1236,7 +1236,7 @@ std::shared_ptr<Expression> UserDefinedType::AccessStaticMember(std::string name
             // If there's nothing there, we win.
             // If we're an OS and the existing is an OS, we win by unifying.
             // Else we lose.
-            auto otheros = dynamic_cast<OverloadSet*>(member->GetType(nullptr)->Decay());
+            auto otheros = dynamic_cast<OverloadSet*>(member->GetType(Expression::NoInstance())->Decay());
             if (!BaseType) {
                 if (otheros) {
                     if (BaseOverloadSet)

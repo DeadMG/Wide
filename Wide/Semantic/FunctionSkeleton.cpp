@@ -847,8 +847,7 @@ void FunctionSkeleton::AddDefaultHandlers(Analyzer& a) {
                 }
                 try_con.EHHandler = CodegenContext::EHScope{ &con, catch_block, phi, rttis };
                 try_con->SetInsertPoint(source_block);
-
-                try_con.GenerateCodeAndDestroyLocals([&](CodegenContext& trycon) {
+                try_con.GenerateCodeAndDestroyLocals([=](CodegenContext& trycon) {
                     for (auto&& stmt : tryscope->active)
                         if (!trycon.IsTerminated(trycon->GetInsertBlock()))
                             stmt->GenerateCode(trycon);

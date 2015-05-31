@@ -59,10 +59,10 @@ namespace Wide {
             ClangFunctionType(Analyzer& a, const clang::FunctionProtoType* type, ClangTU* from, Wide::Util::optional<clang::QualType> self) : type(type), FunctionType(a), self(self), from(from) {}
 
             llvm::PointerType* GetLLVMType(llvm::Module* module) override final;
-            Wide::Util::optional<clang::QualType> GetClangType(ClangTU& from) override final;
+            Wide::Util::optional<clang::QualType> GetClangType(ClangTU& fromtu) override final;
             Type* GetReturnType() override final;
             std::vector<Type*> GetArguments() override final;
-            std::shared_ptr<Expression> CreateThunkFrom(Expression::InstanceKey key, std::shared_ptr<Expression> self, Type* context) override final;
+            std::shared_ptr<Expression> CreateThunkFrom(Expression::InstanceKey key, std::shared_ptr<Expression> selfex, Type* context) override final;
             std::shared_ptr<Expression> ConstructCall(Expression::InstanceKey key, std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c) override final;
             std::function<void(llvm::Module*)> CreateThunk(std::function<llvm::Function*(llvm::Module*)> src, std::shared_ptr<Expression> dest, clang::FunctionDecl* decl, Type* context);
        };

@@ -15,6 +15,7 @@
 #include <Wide/Util/Codegen/CreateModule.h>
 #include <Wide/Parser/AST.h>
 #include <Wide/Util/Driver/StdlibDirectorySearch.h>
+#include <Wide/Util/Driver/Process.h>
 
 #pragma warning(push, 0)
 #include <llvm/ExecutionEngine/GenericValue.h>
@@ -35,20 +36,13 @@ void Wide::Driver::TestDirectory(std::string path, std::string mode, std::string
         std::string arguments = "--input=" + file;
         const char* args[] = { program.c_str(), arguments.c_str(), modearg.c_str(), nullptr };
         std::string err = "";
-        bool failed = false;
-        auto timeout = debugbreak ? 0 : 10;
-        auto ret = llvm::sys::ExecuteAndWait(
-            args[0],
-            args,
-            nullptr,
-            nullptr,
-            timeout,
-            0,
-            &err,
-            &failed
-        );
-
-        return failed || ret;
+		Wide::Util::optional<unsigned> timeout;
+		if (debugbreak) timeout = 1000000;
+		return Wide::Driver::StartAndWaitForProcess(
+			program,
+			{ "--input=" + file, "--mode=" + mode },
+			timeout
+	    );
     };
 
     auto end = llvm::sys::fs::directory_iterator();

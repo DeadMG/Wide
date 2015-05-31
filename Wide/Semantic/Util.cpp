@@ -156,7 +156,7 @@ std::shared_ptr<Expression> Semantic::InterpretExpression(clang::Expr* expr, Cla
         // C++ treats string lits as pointer to character so we need to special-case here.
         auto castty = a.GetClangType(tu, cast->getType());
         auto castexpr = InterpretExpression(cast->getSubExpr(), tu, c, a, exprmap);
-        if (castty == a.GetPointerType(a.GetIntegralType(8, true)) && dynamic_cast<StringType*>(castexpr->GetType(nullptr)->Decay()))
+        if (castty == a.GetPointerType(a.GetIntegralType(8, true)) && dynamic_cast<StringType*>(castexpr->GetType(Expression::NoInstance())->Decay()))
             return castexpr;
         if (castty == a.GetBooleanType()) {
             return Type::BuildBooleanConversion(Expression::NoInstance(), castexpr, c);

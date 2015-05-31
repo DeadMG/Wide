@@ -329,7 +329,7 @@ std::function<void(llvm::Module*)> ClangFunctionType::CreateThunk(std::function<
     // Emit thunk from from to to, with functiontypes source and dest.
     // Beware of ABI demons.
     std::vector<std::shared_ptr<Expression>> conversion_exprs;
-    auto destty = dynamic_cast<WideFunctionType*>(dest->GetType(nullptr));
+    auto destty = dynamic_cast<WideFunctionType*>(dest->GetType(Expression::NoInstance()));
     assert(destty);
     Context c{ context, std::make_shared<std::string>("Analyzer internal thunk") };
     // For the zeroth argument, if the rhs is derived from the lhs, force a cast for vthunks.

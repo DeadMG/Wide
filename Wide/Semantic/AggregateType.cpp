@@ -539,7 +539,7 @@ OverloadSet* AggregateType::GetDefaultConstructor() {
             return ty->GetConstructorOverloadSet(GetAccessSpecifier(this, ty))->Resolve({ analyzer.GetLvalueType(ty) }, this);
         auto inits = GetDefaultInitializerForMember(i - GetBases().size());
         std::vector<Type*> types = { analyzer.GetLvalueType(ty) };
-        for (auto init : inits) types.push_back(init->GetType(nullptr));
+        for (auto init : inits) types.push_back(init->GetType(Expression::NoInstance()));
         return ty->GetConstructorOverloadSet(GetAccessSpecifier(this, ty))->Resolve(types, this);
     };
     // If we shouldn't generate, give back an empty set and set the cache for future use.

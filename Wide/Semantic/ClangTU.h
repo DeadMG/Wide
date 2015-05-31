@@ -74,13 +74,13 @@ namespace Wide {
             void AddFile(std::string filename, Lexer::Range where);
             clang::Expr* ParseMacro(std::string macro, Lexer::Range where);
 
-            std::function<llvm::Function*(llvm::Module*)> GetObject(Analyzer& a, clang::CXXDestructorDecl*, clang::CXXDtorType);
-            std::function<llvm::Function*(llvm::Module*)> GetObject(Analyzer& a, clang::CXXConstructorDecl*, clang::CXXCtorType);
-            std::function<llvm::Function*(llvm::Module*)> GetObject(Analyzer& a, clang::CXXConstructorDecl*) = delete;
-            std::function<llvm::Function*(llvm::Module*)> GetObject(Analyzer& a, clang::CXXDestructorDecl*) = delete;
+            std::function<llvm::Function*(llvm::Module*)> GetObject(Analyzer& ana, clang::CXXDestructorDecl*, clang::CXXDtorType);
+            std::function<llvm::Function*(llvm::Module*)> GetObject(Analyzer& ana, clang::CXXConstructorDecl*, clang::CXXCtorType);
+            std::function<llvm::Function*(llvm::Module*)> GetObject(Analyzer& ana, clang::CXXConstructorDecl*) = delete;
+            std::function<llvm::Function*(llvm::Module*)> GetObject(Analyzer& ana, clang::CXXDestructorDecl*) = delete;
 
-            std::function<llvm::GlobalVariable*(llvm::Module*)> GetObject(Analyzer& a, clang::VarDecl*);
-            std::function<llvm::Function*(llvm::Module*)> GetObject(Analyzer& a, clang::FunctionDecl*);
+            std::function<llvm::GlobalVariable*(llvm::Module*)> GetObject(Analyzer& ana, clang::VarDecl*);
+            std::function<llvm::Function*(llvm::Module*)> GetObject(Analyzer& ana, clang::FunctionDecl*);
 
             bool IsComplexType(clang::CXXRecordDecl* decl, llvm::Module* module);
             std::function<unsigned(llvm::Module*)> GetFieldNumber(clang::FieldDecl*);

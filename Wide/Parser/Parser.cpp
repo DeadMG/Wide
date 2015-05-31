@@ -1214,11 +1214,12 @@ void Parser::AddTemplateTypeToModule(Module* m, std::string name, Lexer::Range w
 }
 Module* Parser::CreateModule(std::string name, Module* m, Lexer::Range where, Parse::Access access) {
     if (m->named_decls.find(name) != m->named_decls.end()) {
-        auto&& mod = boost::get<std::pair<Parse::Access, Module*>>(&m->named_decls[name]);
+        auto&& mod_pair = boost::get<std::pair<Parse::Access, std::unique_ptr<UniqueAccessContainer>>>(&m->named_decls[name]);
+		auto&& mod = dynamic_cast<Module*>(mod_pair->second.get());
         if (!mod)
             throw std::runtime_error("Tried to insert a module into a module but already found something there that was not a module.");
-        mod->second->locations.insert(where);
-        return mod->second;
+        mod->locations.insert(where);
+        return mod;
     }
     auto&& newmod = Wide::Memory::MakeUnique<Module>();
     auto modptr = newmod.get();

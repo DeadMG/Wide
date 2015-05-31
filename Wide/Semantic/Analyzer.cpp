@@ -969,8 +969,8 @@ std::shared_ptr<Expression> Semantic::LookupFromImport(Type* context, Wide::Pars
     if (auto result = Type::AccessMember(Expression::NoInstance(), con, name, { context, where })) {
         auto subresult = propagate();
         if (!subresult) return result;
-        auto over1 = dynamic_cast<OverloadSet*>(result->GetType(nullptr));
-        auto over2 = dynamic_cast<OverloadSet*>(subresult->GetType(nullptr));
+        auto over1 = dynamic_cast<OverloadSet*>(result->GetType(Expression::NoInstance()));
+        auto over2 = dynamic_cast<OverloadSet*>(subresult->GetType(Expression::NoInstance()));
         if (over1 && over2)
             return context->analyzer.GetOverloadSet(over1, over2)->BuildValueConstruction(Expression::NoInstance(), {}, { context, where });
         throw SpecificError<ImportIdentifierLookupAmbiguous>(context->analyzer, where, "Ambiguous lookup of name " + Semantic::GetNameAsString(name));
@@ -1008,8 +1008,8 @@ std::shared_ptr<Expression> Semantic::LookupIdentifier(Type* context, Parse::Nam
     auto result2 = imports ? LookupFromImport(context, name, where, imports) : nullptr;
     if (!result) return result2;
     if (!result2) return result;
-    auto over1 = dynamic_cast<OverloadSet*>(result->GetType(nullptr));
-    auto over2 = dynamic_cast<OverloadSet*>(result2->GetType(nullptr));
+    auto over1 = dynamic_cast<OverloadSet*>(result->GetType(Expression::NoInstance()));
+    auto over2 = dynamic_cast<OverloadSet*>(result2->GetType(Expression::NoInstance()));
     if (over1 && over2)
         return context->analyzer.GetOverloadSet(over1, over2)->BuildValueConstruction(Expression::NoInstance(), {}, { context, where });
     throw SpecificError<IdentifierLookupAmbiguous>(context->analyzer, where, "Ambiguous lookup of name " + Semantic::GetNameAsString(name));
