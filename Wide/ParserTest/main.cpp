@@ -133,22 +133,22 @@ bool operator!=(const Wide::Parse::Expression* e, const TestExpression& rhs) {
 bool operator==(const Wide::Parse::Function* func, const TestFunction& testfunc) {
     if (func->attributes.size() != testfunc.attrs.attributes.size()) return false;
     for (unsigned i = 0; i < func->attributes.size(); ++i) {
-        if (func->attributes[i].initialized != *testfunc.attrs.attributes[i].initialized)
+        if (func->attributes[i].initialized.get() != *testfunc.attrs.attributes[i].initialized)
             return false;
-        if (func->attributes[i].initializer != *testfunc.attrs.attributes[i].initializer)
+        if (func->attributes[i].initializer.get() != *testfunc.attrs.attributes[i].initializer)
             return false;
     }
     return true;
 }
-bool operator==(const std::unordered_set<Wide::Parse::Function*>& overset, const TestOverloadSet& testoverset) {
+bool operator==(const std::unordered_set<std::shared_ptr<Wide::Parse::Function>>& overset, const TestOverloadSet& testoverset) {
     std::unordered_map<const Wide::Parse::Function*, const TestFunction*> mapping;
     for (auto func : overset) {
         // Every function should have a 1:1 correspondence with some function in the test overset.
         for (auto&& testfunc : testoverset.functions) {
-            if (func == *testfunc) {
-                if (mapping.find(func) != mapping.end())
+            if (func.get() == *testfunc) {
+                if (mapping.find(func.get()) != mapping.end())
                     return false;
-                mapping[func] = testfunc.get();
+                mapping[func.get()] = testfunc.get();
             }
         }
     }
@@ -157,21 +157,29 @@ bool operator==(const std::unordered_set<Wide::Parse::Function*>& overset, const
 bool operator==(const Wide::Parse::Module* m, const TestModule& rhs) {
     auto result = true;
 
-    for(auto decl : m->named_decls) {
-        if (auto mod = boost::get<std::pair<Wide::Parse::Access, Wide::Parse::Module*>>(&decl.second)) {
+    for(auto&& decl : m->named_decls) {
+        if (auto mod = boost::get<std::pair<Wide::Parse::Access, std::unique_ptr<Wide::Parse::UniqueAccessContainer>>>(&decl.second)) {
             if(rhs.modules.find(decl.first) == rhs.modules.end())
                 return false;
-            result = result && mod->second == *rhs.modules.at(decl.first);
+            auto underlying_mod = dynamic_cast<Wide::Parse::Module*>(mod->second.get());
+            if (!underlying_mod) return false;
+            result = result && underlying_mod == *rhs.modules.at(decl.first);
         }
-        if (auto overset = boost::get<std::unordered_map<Wide::Parse::Access, std::unordered_set<Wide::Parse::Function*>>>(&decl.second)) {
+        if (auto overset = boost::get<std::unique_ptr<Wide::Parse::MultipleAccessContainer>>(&decl.second)) {
             if (rhs.overloadsets.find(decl.first) == rhs.overloadsets.end())
                 return false;
-            result = result && overset->at(Wide::Parse::Access::Public) == *rhs.overloadsets.at(decl.first);
+            auto set = dynamic_cast<Wide::Parse::ModuleOverloadSet<Wide::Parse::Function>*>(overset->get());
+            if (!set) return false;
+            result = result && set->funcs.at(Wide::Parse::Access::Public) == *rhs.overloadsets.at(decl.first);
         }
     }
-    for(auto&& mod : rhs.modules)
-        if (m->named_decls.find(mod.first) == m->named_decls.end() || !boost::get<std::pair<Wide::Parse::Access, Wide::Parse::Module*>>(&m->named_decls.at(mod.first)))
+    for (auto&& mod : rhs.modules) {
+        if (m->named_decls.find(mod.first) == m->named_decls.end())
             return false;
+        auto modptr = boost::get<std::pair<Wide::Parse::Access, std::unique_ptr<Wide::Parse::UniqueAccessContainer>>>(&m->named_decls.at(mod.first));
+        auto underlying_mod = dynamic_cast<Wide::Parse::Module*>(modptr->second.get());
+        if (!underlying_mod) return false;
+    }
     
     return result;
 }
@@ -183,7 +191,7 @@ bool operator==(const Wide::Parse::Tuple* t, const TestTuple& rhs) {
 
     auto result = true;
     for (std::size_t i = 0; i < t->expressions.size(); ++i)
-        result = result && t->expressions[i] == *rhs.expressions[i].get();
+        result = result && t->expressions[i].get() == *rhs.expressions[i].get();
     return result;
 }
 
@@ -285,7 +293,7 @@ int main() {
     testsfailed += module_test_results.failed;
 
     auto expression_test_results = test(expression_tests, [](Wide::Parse::Parser& parser, const std::pair<std::string, std::unique_ptr<TestExpression>>& test) -> bool {
-        return parser.ParseExpression() == *test.second.get();
+        return parser.ParseExpression(nullptr).get() == *test.second.get();
     });
 
     testssucceeded += expression_test_results.passed;
