@@ -1,4 +1,4 @@
-ExpectedFailure() { return { { "OverloadResolutionFailure", 10, 13, 10, 16 } }; }
+ExpectedFailure() { return { { "OverloadResolutionFailed", 10, 13, 10, 16 } }; }
 type t {
     type() {}
     type(r : t.rvalue) {}

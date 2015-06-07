@@ -41,7 +41,7 @@ std::shared_ptr<Expression> OverloadSet::ConstructCall(Expression::InstanceKey k
     for (auto&& x : argscopy)
         targs.push_back(x->GetType(key));
     auto call = Resolve(targs, c.from);
-    if (!call) IssueResolutionError(targs, c);
+    if (!call) return IssueResolutionError(targs, c);
 
     if (nonstatic)
         argscopy.insert(argscopy.begin(), CreatePrimUnOp(BuildValue(std::move(val)), nonstatic, [](llvm::Value* self, CodegenContext& con) {
@@ -418,7 +418,7 @@ std::shared_ptr<Expression> OverloadSet::AccessNamedMember(Expression::InstanceK
                 types.push_back(con->GetConstructedType());
             }
             auto call = from->Resolve(types, c.from);
-            if (!call) from->IssueResolutionError(types, c);
+            if (!call) return from->IssueResolutionError(types, c);
             auto clangfunc = dynamic_cast<cppcallable*>(call);
             std::unordered_set<clang::NamedDecl*> decls;
             decls.insert(clangfunc->fun);
@@ -434,8 +434,8 @@ std::string OverloadSet::explain() {
     return "OverloadSet " + strstr.str();
 }
 
-void OverloadSet::IssueResolutionError(std::vector<Type*> types, Context c) {
-    throw SpecificError<OverloadResolutionFailed>(analyzer, c.where, "Overload resolution failed.");
+std::shared_ptr<Expression> OverloadSet::IssueResolutionError(std::vector<Type*> types, Context c) {
+    return CreateErrorExpression(Memory::MakeUnique<SpecificError<OverloadResolutionFailed>>(analyzer, c.where, "Overload resolution failed."));
 }
 std::pair<ClangTU*, clang::FunctionDecl*> OverloadSet::GetSingleFunction() {
     if (clangfuncs.size() == 1) {

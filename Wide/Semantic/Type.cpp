@@ -236,7 +236,7 @@ std::shared_ptr<Expression> Type::ConstructCall(Expression::InstanceKey key, std
     for (auto&& arg : args)
         types.push_back(arg->GetType(key));
     auto call = set->Resolve(types, c.from);
-    if (!call) set->IssueResolutionError(types, c);
+    if (!call) return set->IssueResolutionError(types, c);
     return call->Call(key, std::move(args), c);
 }
 std::function<void(CodegenContext&)> Type::BuildDestruction(Expression::InstanceKey, std::shared_ptr<Expression> self, Context c, bool devirtualize) {
@@ -254,7 +254,7 @@ std::shared_ptr<Expression> Type::BuildBooleanConversion(Expression::InstanceKey
     for (auto&& arg : args)
         types.push_back(arg->GetType(key));
     auto call = set->Resolve(types, c.from);
-    if (!call) set->IssueResolutionError(types, c);
+    if (!call) return set->IssueResolutionError(types, c);
     return call->Call(key, std::move(args), c);
 }
 
@@ -294,7 +294,7 @@ std::shared_ptr<Expression> Type::BuildInplaceConstruction(Expression::InstanceK
     auto conset = selfty->Decay()->GetConstructorOverloadSet(GetAccessSpecifier(c.from, selfty));
     auto callable = conset->Resolve(types, c.from);
     if (!callable)
-        conset->IssueResolutionError(types, c);
+        return conset->IssueResolutionError(types, c);
     return callable->Call(key, std::move(exprs), c);
 }
 
@@ -490,7 +490,7 @@ std::shared_ptr<Expression> Type::BuildUnaryExpression(Expression::InstanceKey k
             if (auto self_as_bool = Type::BuildBooleanConversion(key, self, c))
                 return Type::BuildUnaryExpression(key, self_as_bool, &Lexer::TokenTypes::Negate, c);
         }
-        opset->IssueResolutionError({ self->GetType(key) }, c);
+        return opset->IssueResolutionError({ self->GetType(key) }, c);
     }
     return callable->Call(key, { std::move(self) }, c);
 }
@@ -530,8 +530,7 @@ std::shared_ptr<Expression> Type::BuildBinaryExpression(Expression::InstanceKey 
         return Type::BuildUnaryExpression(key, std::move(subexpr), &Lexer::TokenTypes::Negate, c);
     }
     
-    finalset->IssueResolutionError(arguments, c);
-    return nullptr;
+    return finalset->IssueResolutionError(arguments, c);
 }
 
 OverloadSet* PrimitiveType::CreateConstructorOverloadSet(Parse::Access access) {
@@ -878,7 +877,7 @@ std::shared_ptr<Expression> Type::BuildIndex(Expression::InstanceKey key, std::s
     for (auto&& arg : args)
         types.push_back(arg->GetType(key));
     auto call = set->Resolve(types, c.from);
-    if (!call) set->IssueResolutionError(types, c);
+    if (!call) return set->IssueResolutionError(types, c);
     return call->Call(key, std::move(args), c);
 }
 std::string Type::Export() {

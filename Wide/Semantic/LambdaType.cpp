@@ -31,7 +31,7 @@ std::shared_ptr<Expression> LambdaType::ConstructCall(Expression::InstanceKey ke
         types.push_back(arg->GetType(key));
     auto overset = analyzer.GetOverloadSet(analyzer.GetCallableForFunction(skeleton));
     auto call = overset->Resolve(types, c.from);
-    if (!call) overset->IssueResolutionError(types, c);
+    if (!call) return overset->IssueResolutionError(types, c);
     return call->Call(key, std::move(args), c);
 }
 std::shared_ptr<Expression> LambdaType::BuildLambdaFromCaptures(std::vector<std::shared_ptr<Expression>> exprs, Context c) {
@@ -46,7 +46,7 @@ std::shared_ptr<Expression> LambdaType::BuildLambdaFromCaptures(std::vector<std:
             types.push_back(exprs[i]->GetType(f));
             auto conset = GetMembers()[i]->GetConstructorOverloadSet(GetAccessSpecifier(c.from, GetMembers()[i]));
             auto call = conset->Resolve(types, c.from);
-            if (!call) conset->IssueResolutionError(types, c);
+            if (!call) return conset->IssueResolutionError(types, c);
             // Don't PrimAccessMember because it collapses references, and DO NOT WANT
             auto obj = CreatePrimUnOp(self, types[0], [this, i](llvm::Value* val, CodegenContext& con) {
                 return con.CreateStructGEP(val, boost::get<LLVMFieldIndex>(GetLocation(i)).index);
