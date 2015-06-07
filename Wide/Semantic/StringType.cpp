@@ -29,3 +29,6 @@ std::size_t StringType::alignment() {
 std::string StringType::explain() {
     return "string";
 }
+bool StringType::IsConstant() {
+    return true;
+}

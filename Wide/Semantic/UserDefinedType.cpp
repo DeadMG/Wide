@@ -1139,10 +1139,8 @@ UserDefinedType::BaseData& UserDefinedType::BaseData::operator=(BaseData&& other
     base_errors = std::move(other.base_errors);
     return *this;
 }
-Type* UserDefinedType::GetConstantContext() {
-    if (type->destructor_decl)
-        return nullptr;
-    return AggregateType::GetConstantContext();
+bool UserDefinedType::IsConstant() {
+    return !type->destructor_decl && AggregateType::IsConstant();
 }
 Wide::Util::optional<std::pair<unsigned, Lexer::Range>> UserDefinedType::SizeOverride() {
     for (auto&& attr : type->attributes) {
@@ -1154,7 +1152,7 @@ Wide::Util::optional<std::pair<unsigned, Lexer::Range>> UserDefinedType::SizeOve
                         SizeOverrideError = Wide::Memory::MakeUnique<SpecificError<SizeOverrideNotInteger>>(analyzer, attr.initializer->location, "Alignment override not an integer.");
                         return Util::none;
                     }
-                    if (!expr->IsConstantExpression(Expression::NoInstance())) {
+                    if (!expr->IsConstant(Expression::NoInstance())) {
                         SizeOverrideError = Wide::Memory::MakeUnique<SpecificError<SizeOverrideNotConstant>>(analyzer, attr.initializer->location, "Alignment override not constant.");
                         return Util::none;
                     }
@@ -1175,7 +1173,7 @@ Wide::Util::optional<std::pair<unsigned, Lexer::Range>> UserDefinedType::AlignOv
                         AlignOverrideError = Wide::Memory::MakeUnique<SpecificError<AlignmentOverrideNotInteger>>(analyzer, attr.initializer->location, "Alignment override not an integer.");
                         return Util::none;
                     }
-                    if (!expr->IsConstantExpression(Expression::NoInstance())) {
+                    if (!expr->IsConstant(Expression::NoInstance())) {
                         AlignOverrideError = Wide::Memory::MakeUnique<SpecificError<AlignmentOverrideNotConstant>>(analyzer, attr.initializer->location, "Alignment override not constant.");
                         return Util::none;
                     }

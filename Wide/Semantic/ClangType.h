@@ -47,7 +47,7 @@ namespace Wide {
             Wide::Util::optional<clang::QualType> GetClangType(ClangTU& tu) override final;
             std::shared_ptr<Expression> AccessNamedMember(Expression::InstanceKey key, std::shared_ptr<Expression> t, std::string name, Context c) override final;
             std::function<void(CodegenContext&)> BuildDestruction(Expression::InstanceKey, std::shared_ptr<Expression> self, Context c, bool devirtualize) override final;
-            Type* GetConstantContext() override final; 
+            bool IsConstant() override final; 
 
             bool IsSourceATarget(Type* first, Type* second, Type* context) override final;
             bool IsEmpty() override final;

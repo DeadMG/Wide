@@ -62,9 +62,9 @@ std::string Module::explain() {
 void Module::AddDefaultHandlers(Analyzer& a) {
     AddHandler<const Parse::Using>(a.SharedObjectHandlers, [](const Parse::Using* usedecl, Analyzer& analyzer, Module* lookup, std::string name) {
         auto expr = analyzer.AnalyzeExpression(lookup, usedecl->expr.get(), [](Wide::Parse::Name, Wide::Lexer::Range) { return nullptr; });
-        if (auto constant = expr->GetType(Expression::NoInstance())->Decay()->GetConstantContext())
-            return constant->BuildValueConstruction(Expression::NoInstance(), {}, { lookup, usedecl->location });
-        throw SpecificError<UsingTargetNotConstant>(analyzer, usedecl->expr->location, "Using target not a constant.");
+        if (!expr->IsConstant(Expression::NoInstance()))
+            return CreateErrorExpression(Memory::MakeUnique<SpecificError<UsingTargetNotConstant>>(analyzer, usedecl->expr->location, "Using target not a constant expression."));
+        return expr;
     });
 
     AddHandler<const Parse::Type>(a.SharedObjectHandlers, [](const Parse::Type* type, Analyzer& analyzer, Module* lookup, std::string name) {

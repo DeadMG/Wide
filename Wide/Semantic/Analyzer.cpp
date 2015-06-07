@@ -692,8 +692,9 @@ OverloadResolvable* Analyzer::GetCallableForTemplateType(const Parse::TemplateTy
             if (types.size() != templatetype->arguments.size()) return Util::none;
             std::vector<Type*> valid;
             for (unsigned num = 0; num < types.size(); ++num) {
-                auto arg = types[num]->Decay()->GetConstantContext();
-                if (!arg) return Util::none;
+                auto arg = types[num]->Decay();
+                if (!arg->IsConstant())
+                    return Util::none;
                 if (!templatetype->arguments[num].type) {
                     a.ParameterHighlight(templatetype->arguments[num].location); 
                     valid.push_back(arg);
@@ -925,7 +926,7 @@ FunctionSkeleton* Analyzer::GetWideFunction(const Parse::FunctionBase* p, Type* 
 
 llvm::APInt Analyzer::EvaluateConstantIntegerExpression(std::shared_ptr<Expression> e, Expression::InstanceKey key) {
     assert(dynamic_cast<IntegralType*>(e->GetType(key)));
-    assert(e->IsConstantExpression(key));
+    assert(e->IsConstant(key));
     if (auto integer = dynamic_cast<Integer*>(e.get()))
         return integer->value;
     // BUG: Invoking MCJIT causes second MCJIT invocation to fail. This causes spurious test failures.

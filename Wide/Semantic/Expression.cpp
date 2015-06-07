@@ -109,7 +109,7 @@ std::shared_ptr<Expression> Semantic::CreatePrimUnOp(std::shared_ptr<Expression>
 }
 bool SourceExpression::IsConstantExpression(InstanceKey f) {
     for (auto&& expr : exprs)
-        if (!expr.first->IsConstantExpression(f))
+        if (!expr.first->IsConstant(f))
             return false;
     return true;
 }
@@ -144,7 +144,7 @@ std::shared_ptr<Expression> Semantic::CreatePrimGlobal(Wide::Range::Erased<std::
         bool IsConstantExpression(InstanceKey f) override final {
             bool is = true;
             for (auto expr : exprs)
-                if (!expr->IsConstantExpression(f))
+                if (!expr->IsConstant(f))
                     is = false;
             return is;
         }
@@ -527,7 +527,7 @@ void Expression::AddDefaultHandlers(Analyzer& a) {
     });
 
     AddHandler<const Parse::Type>(a.ExpressionHandlers, [](const Parse::Type* ty, Analyzer& a, Type* lookup, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup) {
-        auto udt = a.GetUDT(ty, lookup->GetConstantContext() ? lookup->GetConstantContext() : lookup->GetContext(), "anonymous");
+        auto udt = a.GetUDT(ty, lookup->IsConstant() ? lookup : lookup->GetContext(), "anonymous");
         return a.GetConstructorType(udt)->BuildValueConstruction(Expression::NoInstance(), {}, { lookup, ty->location });
     });
 
@@ -881,4 +881,7 @@ std::shared_ptr<Expression> Semantic::CreateErrorExpression(std::unique_ptr<Wide
         }
     };
     return std::make_shared<ErrorExpression>(std::move(err));
+}
+bool Expression::IsConstant(InstanceKey key) {
+    return GetType(key) && GetType(key)->IsConstant() && IsConstantExpression(key);
 }

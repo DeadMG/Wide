@@ -300,3 +300,6 @@ bool IntegralType::IsSigned() {
 unsigned IntegralType::GetBitness() {
     return bits;
 }
+bool IntegralType::IsConstant() {
+    return true;
+}

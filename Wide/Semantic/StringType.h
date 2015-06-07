@@ -13,6 +13,7 @@ namespace Wide {
             std::size_t size() override final;
             std::size_t alignment() override final;
             std::string explain() override final;
+            bool IsConstant() override final;
         }; 
     }
 }

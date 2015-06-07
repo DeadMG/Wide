@@ -145,7 +145,7 @@ namespace Wide {
             virtual bool IsCopyConstructible(Parse::Access access);
             virtual bool IsMoveAssignable(Parse::Access access);
             virtual bool IsCopyAssignable(Parse::Access access);
-            virtual Type* GetConstantContext();
+            virtual bool IsConstant();
             virtual bool IsEmpty();
             virtual Type* GetVirtualPointerType();
             virtual std::vector<Type*> GetBases();
@@ -270,7 +270,7 @@ namespace Wide {
             llvm::Type* GetLLVMType(llvm::Module* module) override;
             std::size_t size() override;
             std::size_t alignment() override;
-            Type* GetConstantContext() override;
+            bool IsConstant() override;
             OverloadSet* CreateConstructorOverloadSet(Parse::Access access) override final; 
             using Type::AccessMember;
         };

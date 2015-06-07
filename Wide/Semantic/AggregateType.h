@@ -151,7 +151,7 @@ namespace Wide {
             std::size_t size() override;
             std::size_t alignment() override;
             llvm::Type* GetLLVMType(llvm::Module* module) override;
-            Type* GetConstantContext() override;
+            bool IsConstant() override;
 
             OverloadSet* CreateOperatorOverloadSet(Parse::OperatorName type, Parse::Access access, OperatorAccess) override;
             OverloadSet* CreateConstructorOverloadSet(Parse::Access access) override; 

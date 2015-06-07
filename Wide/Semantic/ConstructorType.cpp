@@ -22,7 +22,7 @@ namespace {
             if (args.size() != 1)
                 throw SpecificError<ArrayWrongArgumentNumber>(analyzer, c.where, "Attempted to make an array with wrong number of arguments.");
             auto constructed = t->GetConstructedType();
-            if (!args[0]->IsConstantExpression(key))
+            if (!args[0]->IsConstant(key))
                 throw SpecificError<ArrayNotConstantSize>(analyzer, c.where, "Attempted to make an array but the size was not a constant integer.");
             auto integer = analyzer.EvaluateConstantIntegerExpression(args[0], key);
             return BuildChain(std::move(self), analyzer.GetConstructorType(analyzer.GetArrayType(t->GetConstructedType(), integer.getLimitedValue()))->BuildValueConstruction(Expression::NoInstance(), {}, { this, c.where }));

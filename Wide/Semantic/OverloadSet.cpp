@@ -452,3 +452,7 @@ std::vector<Type*> OverloadSet::GetMembers() {
     }
     return contents;
 }
+
+bool OverloadSet::IsConstant() {
+    return !IsNonstatic();
+}

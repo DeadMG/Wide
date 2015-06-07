@@ -149,7 +149,7 @@ namespace Wide {
             std::function<void(CodegenContext&)> BuildDestruction(Expression::InstanceKey key, std::shared_ptr<Expression> self, Context c, bool devirtualize) override final;
             OverloadSet* CreateConstructorOverloadSet(Parse::Access access) override final;
             OverloadSet* CreateOperatorOverloadSet(Parse::OperatorName member, Parse::Access access, OperatorAccess) override final;
-            Type* GetConstantContext() override final;
+            bool IsConstant() override final;
 
             bool IsCopyConstructible(Parse::Access access) override final;
             bool IsMoveConstructible(Parse::Access access) override final;

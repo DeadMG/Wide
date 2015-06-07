@@ -42,7 +42,7 @@ namespace Wide {
             static void AddDefaultHandlers(Analyzer& a);
             virtual Type* GetType(InstanceKey f) = 0; // If the type is unknown then nullptr
             llvm::Value* GetValue(CodegenContext& con);
-            virtual bool IsConstantExpression(InstanceKey) = 0; // If not constant then false
+            bool IsConstant(InstanceKey key);
             boost::signals2::signal<void(Expression*, InstanceKey)> OnChanged;
         private:
             void Instantiate(Function* f);
@@ -50,6 +50,7 @@ namespace Wide {
             void GenerateCode(CodegenContext& con) override final {
                 GetValue(con);
             }
+            virtual bool IsConstantExpression(InstanceKey) = 0; // If not constant then false
             virtual llvm::Value* ComputeValue(CodegenContext& con) = 0;
         };
     }

@@ -33,7 +33,7 @@ AggregateType::Properties::Properties(AggregateType* self)
     , constant(true)
 {
     auto UpdatePropertiesForMember = [this, self](Type* D) {
-        constant &= D->GetConstantContext() == D;
+        constant &= D->IsConstant();
         moveconstructible &= D->IsMoveConstructible(GetAccessSpecifier(self, D));
         copyconstructible &= D->IsCopyConstructible(GetAccessSpecifier(self, D));
         moveassignable &= D->IsMoveAssignable(GetAccessSpecifier(self, D));
@@ -45,6 +45,7 @@ AggregateType::Properties::Properties(AggregateType* self)
         UpdatePropertiesForMember(base);
     for (auto mem : self->GetMembers())
         UpdatePropertiesForMember(mem);
+    constant &= self->GetLayout().hasvptr;
 }
 AggregateType::Layout::Layout(Layout&& other)
     : align(other.align)
@@ -292,16 +293,8 @@ llvm::Type* AggregateType::Layout::CodeGen::GetLLVMType(AggregateType* self, llv
 llvm::Type* AggregateType::GetLLVMType(llvm::Module* module) {
     return GetLayout().GetCodegen(this, module).GetLLVMType(this, module);
 }
-Type* AggregateType::GetConstantContext() {
-    for (auto ty : GetBases())
-        if (!ty->GetConstantContext())
-            return nullptr;
-    for (auto ty : GetMembers())
-        if (!ty->GetConstantContext())
-            return nullptr;
-    if (GetLayout().hasvptr)
-        return nullptr;
-    return this;
+bool AggregateType::IsConstant() {
+    return GetProperties().constant;
 }
 
 std::shared_ptr<Expression> AggregateType::PrimitiveAccessMember(std::shared_ptr<Expression> source, unsigned num) {

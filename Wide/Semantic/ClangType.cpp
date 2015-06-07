@@ -511,10 +511,8 @@ std::pair<FunctionType*, std::function<llvm::Function*(llvm::Module*)>> ClangTyp
 bool ClangType::IsEmpty() {
     return type->getAsCXXRecordDecl()->isEmpty();
 }
-Type* ClangType::GetConstantContext() {
-    if (type->getAsCXXRecordDecl()->isEmpty() && type->getAsCXXRecordDecl()->hasTrivialDefaultConstructor())
-        return this;
-    return nullptr;
+bool ClangType::IsConstant() {
+    return type->getAsCXXRecordDecl()->isEmpty() && type->getAsCXXRecordDecl()->hasTrivialDefaultConstructor();
 }
 bool ClangType::IsSourceATarget(Type* first, Type* second, Type* context) {
     auto firstclangty = first->GetClangType(*from);

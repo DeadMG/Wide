@@ -134,8 +134,8 @@ bool Type::IsFirstASecond(Type* source, Type* target, Type* context) {
     return false;
 }
 
-Type* Type::GetConstantContext() {
-    return nullptr;
+bool Type::IsConstant() {
+    return false;
 }
 unsigned Type::GetOffsetToBase(Type* base) {
     assert(IsDerivedFrom(base) == InheritanceRelationship::UnambiguouslyDerived);
@@ -319,17 +319,17 @@ struct ValueConstruction : Expression {
     bool no_args = false;
     Type* self;
     bool IsConstantExpression(Expression::InstanceKey key) override final {
-        if (self->GetConstantContext() == self && no_args) return true;
+        if (self->IsConstant() && no_args) return true;
         if (single_arg) {
             auto otherty = single_arg->GetType(key);
             if (single_arg->GetType(key)->Decay() == self->Decay()) {
-                if (single_arg->GetType(key) == self && single_arg->IsConstantExpression(key))
+                if (single_arg->GetType(key) == self && single_arg->IsConstant(key))
                     return true;
-                if (single_arg->GetType(key)->IsReference(self) && single_arg->IsConstantExpression(key))
+                if (single_arg->GetType(key)->IsReference(self) && single_arg->IsConstant(key))
                     return true;
             }
         }
-        return InplaceConstruction->IsConstantExpression(key);
+        return InplaceConstruction->IsConstant(key);
     }
     Type* GetType(Expression::InstanceKey key) override final {
         return self;
@@ -342,7 +342,7 @@ struct ValueConstruction : Expression {
                     return implicitstore->val->GetValue(con);
                 }
             }
-            if (self->GetConstantContext() == self && no_args)
+            if (self->IsConstant() && no_args)
                 return llvm::UndefValue::get(self->GetLLVMType(con));
             if (single_arg) {
                 auto otherty = single_arg->GetType(con.func);
@@ -573,8 +573,8 @@ llvm::Type* MetaType::GetLLVMType(llvm::Module* module) {
 }
 #pragma warning(disable : 4800)
 
-Type* MetaType::GetConstantContext() {
-    return this;
+bool MetaType::IsConstant() {
+    return true;
 }
 
 OverloadSet* MetaType::CreateConstructorOverloadSet(Parse::Access access) {

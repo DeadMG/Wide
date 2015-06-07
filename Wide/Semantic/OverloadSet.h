@@ -45,6 +45,7 @@ namespace Wide {
 
             std::string explain() override final;
             bool IsNonstatic() { return nonstatic; }
+            bool IsConstant() override final;
 
             std::shared_ptr<Expression> IssueResolutionError(std::vector<Type*> types, Context c);
             std::pair<ClangTU*, clang::FunctionDecl*> GetSingleFunction();
