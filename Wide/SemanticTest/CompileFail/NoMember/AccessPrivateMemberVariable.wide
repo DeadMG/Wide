@@ -1,4 +1,4 @@
-ExpectedFailure() { return { { "NoMember", 8, 12, 8, 19 } }; }
+ExpectedFailure() { return { { "NoMemberFound", 8, 12, 8, 19 } }; }
 type t {
     type() : val := false {}
 private:

@@ -486,7 +486,7 @@ void Expression::AddDefaultHandlers(Analyzer& a) {
         auto object = a.AnalyzeExpression(lookup, memaccess->expr.get(), NonstaticLookup);
         return CreateResultExpression(Range::Elements(object), [=, &a](InstanceKey f) {
             auto access = Type::AccessMember(f, object, memaccess->mem, Context{ lookup, memaccess->location });
-            if (!access) throw SpecificError<NoMemberFound>(a, memaccess->location, "Could not find member.");
+            if (!access) return CreateErrorExpression(Memory::MakeUnique<SpecificError<NoMemberFound>>(a, memaccess->location, "Could not find member."));
             return access;
         });
     });
