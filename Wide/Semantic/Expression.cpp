@@ -14,6 +14,7 @@
 #include <Wide/Semantic/LambdaType.h>
 #include <Wide/Semantic/Function.h>
 #include <Wide/Semantic/FunctionType.h>
+#include <Wide/Util/DebugBreak.h>
 
 using namespace Wide;
 using namespace Semantic;
@@ -827,7 +828,8 @@ std::shared_ptr<Expression> Semantic::CreateTemporary(Type* t, Context c) {
 std::shared_ptr<Expression> Semantic::CreateAddressOf(std::shared_ptr<Expression> expr, Context c) {
     return CreateResultExpression(Range::Elements(expr), [=](Expression::InstanceKey key) {
         auto ty = expr->GetType(key);
-        if (!IsLvalueType(ty)) throw SpecificError<AddressOfNonLvalue>(ty->analyzer, c.where, "Attempted to take the address of a non-lvalue.");
+        if (!IsLvalueType(ty)) 
+            return Semantic::CreateErrorExpression(Wide::Memory::MakeUnique<SpecificError<AddressOfNonLvalue>>(ty->analyzer, c.where, "Attempted to take the address of a non-lvalue."));
         auto result = ty->analyzer.GetPointerType(ty->Decay());
         return CreatePrimGlobal(Range::Elements(expr), result, [=](CodegenContext& con) {
             return expr->GetValue(con);
@@ -861,4 +863,22 @@ std::size_t std::hash<Expression::InstanceKey>::operator()(const Wide::Semantic:
 Type* Expression::GetArgumentType(InstanceKey key, int num) {
     if (!key) return nullptr;
     return (*key)[num];
+}
+std::shared_ptr<Expression> Semantic::CreateErrorExpression(std::unique_ptr<Wide::Semantic::Error> err) {
+    struct ErrorExpression : Expression {
+        ErrorExpression(std::unique_ptr<Wide::Semantic::Error> e)
+            : error(std::move(e)) {}
+        std::unique_ptr<Wide::Semantic::Error> error;
+        Type* GetType(InstanceKey f) override final {
+            return nullptr;
+        }
+        bool IsConstantExpression(InstanceKey) override final {
+            return false;
+        }
+        llvm::Value* ComputeValue(CodegenContext& con) override final {
+            Wide::Util::DebugBreak();
+            return nullptr;
+        }
+    };
+    return std::make_shared<ErrorExpression>(std::move(err));
 }

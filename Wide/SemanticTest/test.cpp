@@ -105,7 +105,7 @@ void Wide::Driver::Jit(Wide::Options::Clang& copts, std::string file) {
     auto AddStdlibLink = [&](llvm::ExecutionEngine* ee, llvm::Module* m) {
 #ifdef _MSC_VER
         std::string err;
-        auto libpath = MinGWInstallPath + "mingw32-dw2/bin/";
+        auto libpath = MinGWInstallPath + "bin/";
         for (auto lib : { "libgcc_s_dw2-1.dll", "libstdc++-6.dll" }) {
             if (llvm::sys::DynamicLibrary::LoadLibraryPermanently((libpath + lib).c_str(), &err))
                 __debugbreak();

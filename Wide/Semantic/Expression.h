@@ -233,5 +233,6 @@ namespace Wide {
         std::shared_ptr<Expression> BuildChain(std::shared_ptr<Expression>, std::shared_ptr<Expression>);
         std::shared_ptr<Expression> CreateTemporary(Type* t, Context c);
         std::shared_ptr<Expression> CreateAddressOf(std::shared_ptr<Expression> expr, Context c);
+        std::shared_ptr<Expression> CreateErrorExpression(std::unique_ptr<Wide::Semantic::Error> err);
     }
 }

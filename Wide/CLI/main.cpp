@@ -18,6 +18,7 @@
 #include <Wide/Util/Driver/StdlibDirectorySearch.h>
 #include <Wide/CLI/Link.h>
 #include <Wide/CLI/Export.h>
+#include <Wide/Util/Paths/Exists.h>
 
 #pragma warning(push, 0)
 #include <llvm/Support/FileSystem.h>
@@ -62,8 +63,6 @@ int main(int argc, char** argv)
         ("help", "Print all available options")
 #ifdef _MSC_VER
         ("mingw", boost::program_options::value<std::string>(), "The location of MinGW. Defaulted to \".\\MinGW\\\".")
-#else
-        ("gcc", boost::program_options::value<std::string>(), "The GCC version involved.")
 #endif
         ("triple", boost::program_options::value<std::string>(), "The target triple. Defaulted to "
 #ifdef _MSC_VER
@@ -115,20 +114,17 @@ int main(int argc, char** argv)
 
     ClangOpts.FrontendOptions.OutputFile = input.count("output") ? input["output"].as<std::string>() : "a.o";
     ClangOpts.LanguageOptions.CPlusPlus1y = true;
+    try {
 #ifdef _MSC_VER
-    Wide::Driver::AddMinGWIncludePaths(ClangOpts, input.count("mingw") ? input["mingw"].as<std::string>() : ".\\MinGW\\");
+        Wide::Driver::AddMinGWIncludePaths(ClangOpts, input.count("mingw") ? input["mingw"].as<std::string>() : ".\\MinGW\\");
 #else
-    if (input.count("gcc"))
-        Wide::Driver::AddLinuxIncludePaths(ClangOpts,  input["gcc"].as<std::string>());
-    else {
-        try {
-            Wide::Driver::AddLinuxIncludePaths(ClangOpts);
-        } catch(std::exception& e) {
-            std::cout << e.what();
-            return 1;
-        }
-    }
+        Wide::Driver::AddLinuxIncludePaths(ClangOpts);
 #endif
+    }
+    catch (std::exception& e) {
+        std::cout << e.what();
+        return 1;
+    }
 
     std::unordered_set<std::string> files;
     if (input.count("input")) {
@@ -141,7 +137,10 @@ int main(int argc, char** argv)
 
     if (input.count("include")) {
         for(auto path : input["include"].as<std::vector<std::string>>()) {
-            //std::cout << "Added include path: " << path << "\n";
+            if (!Wide::Paths::Exists(path)) {
+                std::cout << "Could not find include path " + path;
+                return 1;
+            }
             ClangOpts.HeaderSearchOptions->AddPath(path, clang::frontend::IncludeDirGroup::CXXSystem, false, false);
         }
     }

@@ -200,7 +200,10 @@ public:
         // CAN'T YOU READ YOUR OWN CONSTRUCTOR PARAMETERS AND OPTIONS STRUCTS?
         std::vector<clang::DirectoryLookup> lookups;
         for (auto entry : opts.HeaderSearchOptions->UserEntries) {
-            lookups.push_back(clang::DirectoryLookup(FileManager.getDirectory(entry.Path), clang::SrcMgr::CharacteristicKind::C_System, false));
+            auto lookup = clang::DirectoryLookup(FileManager.getDirectory(entry.Path), clang::SrcMgr::CharacteristicKind::C_System, false);
+            if (!lookup.getDir())
+                throw SpecificError<ClangCouldNotInterpretPath>(a, where, "Clang could not interpret path " + entry.Path);
+            lookups.push_back(lookup);
         }
         hs.SetSearchPaths(lookups, 0, 0, true);
 
@@ -212,8 +215,9 @@ public:
         clang::InitializePreprocessor(preproc, *Options->PreprocessorOptions, Options->FrontendOptions);
         preproc.getBuiltinInfo().InitializeBuiltins(preproc.getIdentifierTable(), Options->LanguageOptions);
         std::vector<std::string> paths;
-        for (auto it = hs.search_dir_begin(); it != hs.search_dir_end(); ++it)
+        for (auto it = hs.search_dir_begin(); it != hs.search_dir_end(); ++it) {
             paths.push_back(it->getDir()->getName());
+        }
         const clang::DirectoryLookup* directlookup = nullptr;
         auto entry = hs.LookupFile(file, clang::SourceLocation(), true, nullptr, directlookup, nullptr, nullptr, nullptr, nullptr);
         if (!entry)

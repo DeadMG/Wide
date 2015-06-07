@@ -103,5 +103,6 @@ namespace Wide {
         struct ImportNotOverloadSet {};
         struct ImportNotAType {};
         struct VirtualOverrideAmbiguous {};
+        struct ClangCouldNotInterpretPath {};
     }
 }
