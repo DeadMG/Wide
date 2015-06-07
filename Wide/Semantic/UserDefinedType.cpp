@@ -200,7 +200,7 @@ UserDefinedType::MemberData::MemberData(UserDefinedType* self) {
             if (auto&& con = dynamic_cast<ConstructorType*>(expr->GetType(Expression::NoInstance())->Decay()))
                 members.push_back(explicit_type = con->GetConstructedType());
             else
-                throw SpecificError<MemberNotAType>(self->analyzer, var.type->location, "Member type not a type.");
+                MemberErrors.push_back(Memory::MakeUnique<SpecificError<MemberNotAType>>(self->analyzer, var.type->location, "Member type not a type."));
         }
         if (var.initializer) {
             auto expr = self->analyzer.AnalyzeExpression(self->context, var.initializer.get(), [](Parse::Name, Lexer::Range) { return nullptr; });
@@ -211,8 +211,10 @@ UserDefinedType::MemberData::MemberData(UserDefinedType* self) {
         } else
             NSDMIs.push_back(nullptr);
         if (auto&& agg = dynamic_cast<AggregateType*>(members.back())) {
-            if (agg == self || agg->HasMemberOfType(self))
-                throw SpecificError<RecursiveMember>(self->analyzer, var.type ? var.type->location : var.initializer->location, "Member is recursive.");
+            if (agg == self || agg->HasMemberOfType(self)) {
+                MemberErrors.push_back(Memory::MakeUnique<SpecificError<RecursiveMember>>(self->analyzer, var.type ? var.type->location : var.initializer->location, "Member is recursive."));
+                members.pop_back();
+            }
         }
     }
     for (auto&& tuple : self->type->imports) {
@@ -228,19 +230,27 @@ UserDefinedType::MemberData::MemberData(UserDefinedType* self) {
             imported_constructors[basety] = nullptr;
     }
 }
+
 UserDefinedType::MemberData::MemberData(MemberData&& other)
     : members(std::move(other.members))
     , NSDMIs(std::move(other.NSDMIs))
     , HasNSDMI(other.HasNSDMI)
     , member_indices(std::move(other.member_indices))
     , BaseImports(std::move(other.BaseImports))
-    , imported_constructors(std::move(other.imported_constructors)) {}
+    , imported_constructors(std::move(other.imported_constructors))
+    , ImportErrors(std::move(other.ImportErrors))
+    , MemberErrors(std::move(other.MemberErrors)) {}
 
 UserDefinedType::MemberData& UserDefinedType::MemberData::operator=(MemberData&& other) {
     members = std::move(other.members);
     NSDMIs = std::move(other.NSDMIs);
     HasNSDMI = other.HasNSDMI;
     member_indices = std::move(other.member_indices);
+    BaseImports = std::move(other.BaseImports);
+    imported_constructors = std::move(other.imported_constructors);
+    ImportErrors = std::move(other.ImportErrors);
+    MemberErrors = std::move(other.MemberErrors);
+
     return *this;
 }
 

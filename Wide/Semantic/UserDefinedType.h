@@ -83,6 +83,7 @@ namespace Wide {
                 std::unordered_map<Parse::Name, std::unordered_map<Type*, Lexer::Range>> BaseImports;
                 std::unordered_map<Type*, std::unique_ptr<OverloadResolvable>> imported_constructors;
                 std::vector<std::unique_ptr<Semantic::Error>> ImportErrors;
+                std::vector<std::unique_ptr<Semantic::Error>> MemberErrors;
             };
             Wide::Util::optional<MemberData> Members;
             MemberData& GetMemberData() {
