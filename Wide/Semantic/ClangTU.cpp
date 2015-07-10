@@ -83,8 +83,8 @@ public:
 
 class ClangTU::Impl {
 public:    
-    std::set<std::pair<clang::CXXDestructorDecl*, clang::CXXDtorType>> destructors;
-    std::set<std::pair<clang::CXXConstructorDecl*, clang::CXXCtorType>> constructors;
+    std::set<std::pair<clang::CXXDestructorDecl*, clang::CodeGen::StructorType>> destructors;
+    std::set<std::pair<clang::CXXConstructorDecl*, clang::CodeGen::StructorType>> constructors;
     std::set<clang::VarDecl*> globals;
     std::set<clang::FunctionDecl*> functions;
 
@@ -219,7 +219,7 @@ public:
             paths.push_back(it->getDir()->getName());
         }
         const clang::DirectoryLookup* directlookup = nullptr;
-        auto entry = hs.LookupFile(file, clang::SourceLocation(), true, nullptr, directlookup, nullptr, nullptr, nullptr, nullptr);
+        auto entry = hs.LookupFile(file, clang::SourceLocation(), true, nullptr, directlookup, {}, nullptr, nullptr, nullptr);
         if (!entry)
             entry = CheckImportedHeader(file, a);
         if (!entry)
@@ -270,7 +270,7 @@ public:
         for (auto it = hs.search_dir_begin(); it != hs.search_dir_end(); ++it)
             paths.push_back(it->getDir()->getName());
         const clang::DirectoryLookup* directlookup = nullptr;
-        auto entry = hs.LookupFile(filename, clang::SourceLocation(), true, nullptr, directlookup, nullptr, nullptr, nullptr, nullptr);
+        auto entry = hs.LookupFile(filename, clang::SourceLocation(), true, nullptr, directlookup, {}, nullptr, nullptr, nullptr);
         if (!entry)
             entry = CheckImportedHeader(filename, a);
         if (!entry)
@@ -327,9 +327,9 @@ void ClangTU::GenerateCodeAndLinkModule(llvm::Module* module, llvm::DataLayout& 
     impl->CreateCodegen(*module, layout);
     // Cause all the side effects. Fuck you, Clang.
     for (auto x : impl->destructors)
-        impl->GetCodegenModule(module).GetAddrOfCXXDestructor(x.first, x.second);
+        impl->GetCodegenModule(module).getAddrOfCXXStructor(x.first, x.second);
     for (auto x : impl->constructors)
-        impl->GetCodegenModule(module).GetAddrOfCXXConstructor(x.first, x.second);
+        impl->GetCodegenModule(module).getAddrOfCXXStructor(x.first, x.second);
     for (auto x : impl->functions)
         impl->GetCodegenModule(module).GetAddrOfFunction(x, GetFunctionType(x, *this, a)->GetLLVMType(module)->getElementType());
     for (auto x : impl->globals)
@@ -398,7 +398,7 @@ bool ClangTU::IsComplexType(clang::CXXRecordDecl* decl, llvm::Module* module) {
 
 void ClangTU::MarkDecl(clang::NamedDecl* D) {
     if (auto funcdecl = llvm::dyn_cast<clang::CXXMethodDecl>(D)) {
-        if (funcdecl->getType()->getAs<clang::FunctionProtoType>()->getExtProtoInfo().ExceptionSpecType == clang::ExceptionSpecificationType::EST_Unevaluated) {
+        if (funcdecl->getType()->getAs<clang::FunctionProtoType>()->getExtProtoInfo().ExceptionSpec.Type == clang::ExceptionSpecificationType::EST_Unevaluated) {
             GetSema().EvaluateImplicitExceptionSpec(clang::SourceLocation(), funcdecl);
         }
     }/*
@@ -411,22 +411,22 @@ void ClangTU::MarkDecl(clang::NamedDecl* D) {
     }*/
     impl->sema.MarkAnyDeclReferenced(clang::SourceLocation(), D, true);
 }
-std::function<llvm::Function*(llvm::Module*)> ClangTU::GetObject(Analyzer& a, clang::CXXDestructorDecl* D, clang::CXXDtorType d) {
+std::function<llvm::Function*(llvm::Module*)> ClangTU::GetObject(Analyzer& a, clang::CXXDestructorDecl* D, clang::CodeGen::StructorType d) {
     MarkDecl(D);
     impl->destructors.insert(std::make_pair(D, d));
     return [this, D, d](llvm::Module* module) {
-        auto val = impl->GetCodegenModule(module).GetAddrOfCXXDestructor(D, d);
+        auto val = impl->GetCodegenModule(module).getAddrOfCXXStructor(D, d);
         assert(val);
         auto func = llvm::dyn_cast<llvm::Function>(val);
         assert(func);
         return func;
     };
 }
-std::function<llvm::Function*(llvm::Module*)> ClangTU::GetObject(Analyzer& a, clang::CXXConstructorDecl* D, clang::CXXCtorType d) {
+std::function<llvm::Function*(llvm::Module*)> ClangTU::GetObject(Analyzer& a, clang::CXXConstructorDecl* D, clang::CodeGen::StructorType d) {
     MarkDecl(D);
     impl->constructors.insert(std::make_pair(D, d));
     return [this, D, d](llvm::Module* module) {
-        auto val = impl->GetCodegenModule(module).GetAddrOfCXXConstructor(D, d);
+        auto val = impl->GetCodegenModule(module).getAddrOfCXXStructor(D, d);
         assert(val);
         auto func = llvm::dyn_cast<llvm::Function>(val);
         assert(func);

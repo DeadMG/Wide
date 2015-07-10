@@ -71,9 +71,9 @@ struct cppcallable : public Callable {
         auto self = args.size() > 0 ? args[0] : nullptr;
         std::function<llvm::Function*(llvm::Module*)> object;
         if (auto con = llvm::dyn_cast<clang::CXXConstructorDecl>(fun))
-            object = from->GetObject(fty->analyzer, con, clang::CXXCtorType::Ctor_Complete);
+            object = from->GetObject(fty->analyzer, con, clang::CodeGen::StructorType::Complete);
         else if (auto des = llvm::dyn_cast<clang::CXXDestructorDecl>(fun))
-            object = from->GetObject(fty->analyzer, des, clang::CXXDtorType::Dtor_Complete);
+            object = from->GetObject(fty->analyzer, des, clang::CodeGen::StructorType::Complete);
         else
             object = from->GetObject(fty->analyzer, fun);
         std::shared_ptr<Expression> vtable;

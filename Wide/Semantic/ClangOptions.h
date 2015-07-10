@@ -32,7 +32,8 @@ namespace Wide {
                 LanguageOptions.WChar = true;
                 LanguageOptions.CPlusPlus = true;
                 LanguageOptions.CPlusPlus11 = true;
-                LanguageOptions.CPlusPlus1y = true;
+                LanguageOptions.CPlusPlus14 = true;
+				LanguageOptions.CPlusPlus1z = true;
                 LanguageOptions.Bool = true;
                 LanguageOptions.GNUKeywords = true;
                 LanguageOptions.Exceptions = true;

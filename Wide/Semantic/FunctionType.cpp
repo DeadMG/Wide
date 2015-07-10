@@ -437,7 +437,7 @@ std::shared_ptr<Expression> ClangFunctionType::CreateThunkFrom(Expression::Insta
                 nullptr,
                 qualty,
                 TU.GetASTContext().getTrivialTypeSourceInfo(qualty),
-                clang::VarDecl::StorageClass::SC_None,
+                clang::StorageClass::SC_None,
                 nullptr
                 ));
         }
@@ -452,7 +452,7 @@ std::shared_ptr<Expression> ClangFunctionType::CreateThunkFrom(Expression::Insta
             clang::DeclarationNameInfo(from->GetIdentifierInfo(name), clang::SourceLocation()),
             qualty,
             from->GetASTContext().getTrivialTypeSourceInfo(qualty),
-            clang::FunctionDecl::StorageClass::SC_Auto,
+            clang::StorageClass::SC_Auto,
             false,
             false,
             clang::SourceLocation()
@@ -467,7 +467,7 @@ std::shared_ptr<Expression> ClangFunctionType::CreateThunkFrom(Expression::Insta
             clang::DeclarationNameInfo(from->GetIdentifierInfo(name), clang::SourceLocation()),
             qualty,
             from->GetASTContext().getTrivialTypeSourceInfo(qualty),
-            clang::FunctionDecl::StorageClass::SC_Static,
+            clang::StorageClass::SC_Static,
             false,
             false
             );

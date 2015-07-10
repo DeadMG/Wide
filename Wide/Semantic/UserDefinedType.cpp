@@ -435,7 +435,7 @@ Wide::Util::optional<clang::QualType> UserDefinedType::GetClangType(ClangTU& TU)
                     nullptr,
                     qualty,
                     TU.GetASTContext().getTrivialTypeSourceInfo(qualty),
-                    clang::VarDecl::StorageClass::SC_None,
+                    clang::StorageClass::SC_None,
                     nullptr
                 ));
             }
@@ -495,7 +495,7 @@ Wide::Util::optional<clang::QualType> UserDefinedType::GetClangType(ClangTU& TU)
                 des->setVirtualAsWritten(true);
             auto widedes = analyzer.GetWideFunction(GetWideFunction(type->destructor_decl.get(), "~type"), { analyzer.GetLvalueType(this) });
             widedes->ComputeBody();
-            widedes->AddExportName(GetFunctionType(des, TU, analyzer)->CreateThunk(TU.GetObject(analyzer, des, clang::CXXDtorType::Dtor_Complete), widedes->GetStaticSelf(), des, this));
+            widedes->AddExportName(GetFunctionType(des, TU, analyzer)->CreateThunk(TU.GetObject(analyzer, des, clang::CodeGen::StructorType::Complete), widedes->GetStaticSelf(), des, this));
         }
 
         std::vector<clang::CXXConstructorDecl*> cons;
@@ -525,7 +525,7 @@ Wide::Util::optional<clang::QualType> UserDefinedType::GetClangType(ClangTU& TU)
                 if (!func->deleted) {
                     auto mfunc = analyzer.GetWideFunction(GetWideFunction(func.get(), "type"), types);
                     mfunc->ComputeBody();
-                    mfunc->AddExportName(GetFunctionType(con, TU, analyzer)->CreateThunk(TU.GetObject(analyzer, con, clang::CXXCtorType::Ctor_Complete), mfunc->GetStaticSelf(), con, this));
+                    mfunc->AddExportName(GetFunctionType(con, TU, analyzer)->CreateThunk(TU.GetObject(analyzer, con, clang::CodeGen::StructorType::Complete), mfunc->GetStaticSelf(), con, this));
                 } else
                     con->setDeletedAsWritten(true);
             }
@@ -591,7 +591,7 @@ Wide::Util::optional<clang::QualType> UserDefinedType::GetClangType(ClangTU& TU)
                         clang::DeclarationNameInfo(name, clang::SourceLocation()),
                         fty,
                         TU.GetASTContext().getTrivialTypeSourceInfo(fty),
-                        clang::FunctionDecl::StorageClass::SC_None,
+                        clang::StorageClass::SC_None,
                         false,
                         false,
                         clang::SourceLocation()

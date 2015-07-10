@@ -37,6 +37,9 @@
 #include <boost/uuid/uuid_io.hpp>
 #include <Wide/Util/Codegen/GetMCJITProcessTriple.h>
 #include <Wide/Semantic/FunctionSkeleton.h>
+#include <llvm/Transforms/Utils/Cloning.h>
+#include <Wide/Util/Codegen/CreateModule.h>
+#include <Wide/Util/Codegen/CloneFunctionIntoModule.h>
 
 #pragma warning(push, 0)
 #include <clang/AST/Type.h>
@@ -52,6 +55,8 @@
 // Gotta include the header or creating JIT won't work... fucking LLVM.
 #include <llvm/ExecutionEngine/MCJIT.h>
 #include <llvm/ExecutionEngine/ExecutionEngine.h>
+#include <llvm/Target/TargetSubtargetInfo.h>
+#include <llvm/IR/DiagnosticPrinter.h>
 #pragma warning(pop)
 
 using namespace Wide;
@@ -65,7 +70,8 @@ namespace {
         const llvm::Target& target = *llvm::TargetRegistry::lookupTarget(triple, err);
         llvm::TargetOptions targetopts;
         targetmachine = std::unique_ptr<llvm::TargetMachine>(target.createTargetMachine(triple, llvm::Triple(triple).getArchName(), "", targetopts));
-        return llvm::DataLayout(targetmachine->getDataLayout()->getStringRepresentation());
+		auto info = std::unique_ptr<llvm::MCSubtargetInfo>(target.createMCSubtargetInfo(triple, "", ""));
+        return llvm::DataLayout(targetmachine->getSubtargetImpl()->getDataLayout()->getStringRepresentation());
     }
 }
 
@@ -82,10 +88,8 @@ Analyzer::Analyzer(const Options::Clang& opts, const Parse::Module* GlobalModule
     , QuickInfo([](Lexer::Range, Type*) {})
     , ParameterHighlight([](Lexer::Range){})
     , layout(::GetDataLayout(opts.TargetOptions.Triple))
-    , ConstantModule("Wide Constant Expression Module", con)
+    , ConstantModule(Wide::Util::CreateModuleForTriple(Wide::Util::GetMCJITProcessTriple(), con))
 {
-    ConstantModule.setTargetTriple(Wide::Util::GetMCJITProcessTriple());
-    ConstantModule.setDataLayout(::GetDataLayout(ConstantModule.getTargetTriple()).getStringRepresentation());
     assert(opts.LanguageOptions.CXXExceptions);
     assert(opts.LanguageOptions.RTTI);
     struct PointerCastType : OverloadResolvable, Callable {
@@ -192,17 +196,24 @@ void Analyzer::GenerateCode(llvm::Module* module) {
         for (auto&& pair : udt.second)
             pair.second->size();
     if (AggregateTU)
-        AggregateTU->GenerateCodeAndLinkModule(&ConstantModule, layout, *this);
+        AggregateTU->GenerateCodeAndLinkModule(ConstantModule.get(), layout, *this);
     for (auto&& tu : headers)
-        tu.second.GenerateCodeAndLinkModule(&ConstantModule, layout, *this);
+        tu.second.GenerateCodeAndLinkModule(ConstantModule.get(), layout, *this);
 
     for (auto&& set : WideFunctions)
         for (auto&& signature : set.second)
-            signature.second->EmitCode(&ConstantModule);
+            signature.second->EmitCode(ConstantModule.get());
     for (auto&& pair : ExportedTypes)
-        pair.first->Export(&ConstantModule);
+        pair.first->Export(ConstantModule.get());
     std::string err;
-    if (llvm::Linker::LinkModules(module, &ConstantModule, llvm::Linker::PreserveSource, &err))
+	auto copy = std::unique_ptr<llvm::Module>(llvm::CloneModule(ConstantModule.get()));
+    llvm::DiagnosticInfo* info;
+    if (llvm::Linker::LinkModules(module, copy.get(), [&](const llvm::DiagnosticInfo& info) {
+        llvm::raw_string_ostream stream(err);
+        llvm::DiagnosticPrinterRawOStream printer(stream);
+        info.print(printer);
+        stream.flush();
+    }))
         throw std::runtime_error("Internal compiler error: LLVM Linking failed\n" + err);    
 }
 
@@ -930,20 +941,18 @@ llvm::APInt Analyzer::EvaluateConstantIntegerExpression(std::shared_ptr<Expressi
     if (auto integer = dynamic_cast<Integer*>(e.get()))
         return integer->value;
     // BUG: Invoking MCJIT causes second MCJIT invocation to fail. This causes spurious test failures.
-    auto evalfunc = llvm::Function::Create(llvm::FunctionType::get(e->GetType(key)->GetLLVMType(&ConstantModule), {}, false), llvm::GlobalValue::LinkageTypes::InternalLinkage, GetUniqueFunctionName(), &ConstantModule);
+    auto evalfunc = llvm::Function::Create(llvm::FunctionType::get(e->GetType(key)->GetLLVMType(ConstantModule.get()), {}, false), llvm::GlobalValue::LinkageTypes::InternalLinkage, GetUniqueFunctionName(), ConstantModule.get());
     CodegenContext::EmitFunctionBody(evalfunc, {}, [e](CodegenContext& con) {
         con->CreateRet(e->GetValue(con));
     });
-    llvm::EngineBuilder b(&ConstantModule);
-    b.setAllocateGVsWithCode(false);
-    b.setUseMCJIT(true);
+	auto mod = Wide::Util::CreateModuleForTriple(ConstantModule->getTargetTriple(), ConstantModule->getContext());
+	evalfunc = Wide::Util::CloneFunctionIntoModule(evalfunc, mod.get());
+    llvm::EngineBuilder b(std::move(mod));
     b.setEngineKind(llvm::EngineKind::JIT);
     std::unique_ptr<llvm::ExecutionEngine> ee(b.create());
     ee->finalizeObject();
     auto result = ee->runFunction(evalfunc, std::vector<llvm::GenericValue>());
-    ee->removeModule(&ConstantModule);
     evalfunc->eraseFromParent();
-    //evalfunc->removeFromParent();
     return result.IntVal;
 }
 std::shared_ptr<Statement> Semantic::AnalyzeStatement(Analyzer& analyzer, FunctionSkeleton* skel, const Parse::Statement* s, Type* parent, Scope* current, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> nonstatic) {

@@ -29,6 +29,7 @@
 #include <clang/AST/Type.h>
 #include <clang/AST/ASTContext.h>
 #include <clang/AST/DeclCXX.h>
+#include <CodeGen/CodeGenTypes.h>
 #pragma warning(pop)
 
 using namespace Wide;
@@ -90,9 +91,9 @@ FunctionSkeleton::FunctionSkeleton(const Parse::FunctionBase* astfun, Analyzer& 
                         std::function<llvm::Function*(llvm::Module*)> source;
 
                         if (auto des = llvm::dyn_cast<clang::CXXDestructorDecl>(decl))
-                            source = tu->GetObject(a, des, clang::CXXDtorType::Dtor_Complete);
+                            source = tu->GetObject(a, des, clang::CodeGen::StructorType::Complete);
                         else if (auto con = llvm::dyn_cast<clang::CXXConstructorDecl>(decl))
-                            source = tu->GetObject(a, con, clang::CXXCtorType::Ctor_Complete);
+                            source = tu->GetObject(a, con, clang::CodeGen::StructorType::Complete);
                         else
                             source = tu->GetObject(a, decl);
                         if (auto mem = llvm::dyn_cast<clang::CXXMethodDecl>(decl)) {

@@ -13,6 +13,7 @@
 #pragma warning(push, 0)
 #include <clang/AST/Type.h>
 #include <clang/Basic/ABI.h>
+#include <CodeGen/CodeGenTypes.h>
 #pragma warning(pop)
 
 namespace llvm {
@@ -42,6 +43,7 @@ namespace clang {
     namespace CodeGen {
         class CodeGenModule;
         class CGFunctionInfo;
+        enum class StructorType : int;
     }
 }
 
@@ -74,8 +76,8 @@ namespace Wide {
             void AddFile(std::string filename, Lexer::Range where);
             clang::Expr* ParseMacro(std::string macro, Lexer::Range where);
 
-            std::function<llvm::Function*(llvm::Module*)> GetObject(Analyzer& ana, clang::CXXDestructorDecl*, clang::CXXDtorType);
-            std::function<llvm::Function*(llvm::Module*)> GetObject(Analyzer& ana, clang::CXXConstructorDecl*, clang::CXXCtorType);
+            std::function<llvm::Function*(llvm::Module*)> GetObject(Analyzer& ana, clang::CXXDestructorDecl*, clang::CodeGen::StructorType);
+            std::function<llvm::Function*(llvm::Module*)> GetObject(Analyzer& ana, clang::CXXConstructorDecl*, clang::CodeGen::StructorType);
             std::function<llvm::Function*(llvm::Module*)> GetObject(Analyzer& ana, clang::CXXConstructorDecl*) = delete;
             std::function<llvm::Function*(llvm::Module*)> GetObject(Analyzer& ana, clang::CXXDestructorDecl*) = delete;
 

@@ -148,7 +148,7 @@ namespace Wide {
             std::unordered_map<const Parse::Expression*, std::unordered_map<Type*, std::shared_ptr<Expression>>> ExpressionCache;
             std::unordered_map<Type*, std::string> ExportedTypes;
             std::unordered_map<std::string, std::string> ImportHeaders;
-            llvm::Module ConstantModule;
+            std::unique_ptr<llvm::Module> ConstantModule;
         public:
             const std::unordered_map<std::string, std::string>& GetImportHeaders() { return ImportHeaders; }
             std::string GetTypeExports();

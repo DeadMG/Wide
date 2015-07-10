@@ -16,6 +16,7 @@
 #include <Wide/Parser/AST.h>
 #include <Wide/Util/Driver/StdlibDirectorySearch.h>
 #include <Wide/Util/Driver/Process.h>
+#include <Wide/Util/Codegen/CloneModule.h>
 
 #pragma warning(push, 0)
 #include <llvm/ExecutionEngine/GenericValue.h>
@@ -73,10 +74,7 @@ void Wide::Driver::TestDirectory(std::string path, std::string mode, std::string
 }
 
 template<typename F> auto GenerateCode(llvm::Module* mod, F f) -> decltype(f(nullptr)) {
-    llvm::EngineBuilder b(mod);
-    b.setAllocateGVsWithCode(false);
-    b.setEngineKind(llvm::EngineKind::JIT);
-    b.setUseMCJIT(true);
+    llvm::EngineBuilder b(Wide::Util::CloneModule(*mod));
     std::string errstring;
     b.setErrorStr(&errstring);
     auto ee = b.create();
@@ -151,15 +149,13 @@ void Wide::Driver::Jit(Wide::Options::Clang& copts, std::string file) {
         if (llvm::verifyModule(*module, &errstream))
             throw std::runtime_error("An LLVM module failed verification.");
     });
-    llvm::EngineBuilder b(module.get());
     auto mod = module.get();
+	llvm::EngineBuilder b(std::move(module));
     // MCJIT simplifies the code even if you don't ask it to so dump before it's invoked
     std::string mod_ir;
     llvm::raw_string_ostream stream(mod_ir);
     module->print(stream, nullptr);
     stream.flush();
-    b.setAllocateGVsWithCode(false);
-    b.setUseMCJIT(true);
     b.setEngineKind(llvm::EngineKind::JIT);
     std::string errstring;
     b.setErrorStr(&errstring);

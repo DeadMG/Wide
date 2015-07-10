@@ -79,7 +79,7 @@ void ClangType::ProcessImplicitSpecialMember(std::function<bool()> needs, std::f
     else {
         auto decl = lookup();
         if (decl && decl->isDefaulted() && !decl->isDeleted()) {
-            if (decl->getType()->getAs<clang::FunctionProtoType>()->getExtProtoInfo().ExceptionSpecType == clang::ExceptionSpecificationType::EST_Unevaluated) {
+            if (decl->getType()->getAs<clang::FunctionProtoType>()->getExtProtoInfo().ExceptionSpec.Type == clang::ExceptionSpecificationType::EST_Unevaluated) {
                 from->GetSema().EvaluateImplicitExceptionSpec(clang::SourceLocation(), decl);
             }
             if (!decl->doesThisDeclarationHaveABody()) {
@@ -303,7 +303,7 @@ std::function<void(CodegenContext&)> ClangType::BuildDestruction(Expression::Ins
             call->GetValue(con);
         };
     }
-    auto obj = from->GetObject(analyzer, des, clang::CXXDtorType::Dtor_Complete);
+    auto obj = from->GetObject(analyzer, des, clang::CodeGen::StructorType::Complete);
     return [=](CodegenContext& con) {
         auto val = self->GetValue(con);
         con->CreateCall(obj(con), { val });
@@ -476,10 +476,10 @@ std::pair<FunctionType*, std::function<llvm::Function*(llvm::Module*)>> ClangTyp
     if (auto mem = boost::get<VTableLayout::SpecialMember>(&entry.func)) {
         auto conv = GetCallingConvention(type->getAsCXXRecordDecl()->getDestructor());
         if (*mem == VTableLayout::SpecialMember::Destructor) {
-            return{ GetFunctionType(type->getAsCXXRecordDecl()->getDestructor(), *from, analyzer), from->GetObject(analyzer, type->getAsCXXRecordDecl()->getDestructor(), clang::CXXDtorType::Dtor_Complete) };
+            return{ GetFunctionType(type->getAsCXXRecordDecl()->getDestructor(), *from, analyzer), from->GetObject(analyzer, type->getAsCXXRecordDecl()->getDestructor(), clang::CodeGen::StructorType::Complete) };
         }
         if (*mem == VTableLayout::SpecialMember::ItaniumABIDeletingDestructor) {
-            return{ GetFunctionType(type->getAsCXXRecordDecl()->getDestructor(), *from, analyzer), from->GetObject(analyzer, type->getAsCXXRecordDecl()->getDestructor(), clang::CXXDtorType::Dtor_Deleting) };
+            return{ GetFunctionType(type->getAsCXXRecordDecl()->getDestructor(), *from, analyzer), from->GetObject(analyzer, type->getAsCXXRecordDecl()->getDestructor(), clang::CodeGen::StructorType::Complete) };
         }
         return {};
     }
