@@ -56,7 +56,7 @@ void Wide::Driver::AddLinuxIncludePaths(Options::Clang& ClangOpts) {
     }
 }
 void Wide::Driver::AddMinGWIncludePaths(Options::Clang& ClangOpts, std::string MinGWInstallPath) {
-    AddPath(ClangOpts, Wide::Paths::Append(MinGWInstallPath, "include\\c++\\4.6.3"));
-    AddPath(ClangOpts, Wide::Paths::Append(MinGWInstallPath, "include\\c++\\4.6.3\\i686-w64-mingw32"));
+    AddPath(ClangOpts, Wide::Paths::Append(MinGWInstallPath, "include\\c++\\4.8.0"));
+    AddPath(ClangOpts, Wide::Paths::Append(MinGWInstallPath, "include\\c++\\4.8.0\\i686-w64-mingw32"));
     AddPath(ClangOpts, Wide::Paths::Append(MinGWInstallPath, "i686-w64-mingw32\\include"));
 }

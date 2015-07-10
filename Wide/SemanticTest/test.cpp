@@ -154,7 +154,7 @@ void Wide::Driver::Jit(Wide::Options::Clang& copts, std::string file) {
     // MCJIT simplifies the code even if you don't ask it to so dump before it's invoked
     std::string mod_ir;
     llvm::raw_string_ostream stream(mod_ir);
-    module->print(stream, nullptr);
+    mod->print(stream, nullptr);
     stream.flush();
     b.setEngineKind(llvm::EngineKind::JIT);
     std::string errstring;
@@ -168,14 +168,12 @@ void Wide::Driver::Jit(Wide::Options::Clang& copts, std::string file) {
 #endif
     std::string jit_ir;
     llvm::raw_string_ostream jitstream(jit_ir);
-    module->print(jitstream, nullptr);
+    mod->print(jitstream, nullptr);
     jitstream.flush();
     auto result = ee->runFunction(main, std::vector<llvm::GenericValue>());
 #ifdef _MSC_VER
     ee->runStaticConstructorsDestructors(true);
 #endif
-    if (ee)
-        module.release();
     auto intval = result.IntVal.getLimitedValue();
     if (!intval)
         throw std::runtime_error("Test returned false.");
