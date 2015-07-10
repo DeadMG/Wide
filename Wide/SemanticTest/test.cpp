@@ -73,8 +73,8 @@ void Wide::Driver::TestDirectory(std::string path, std::string mode, std::string
     }
 }
 
-template<typename F> auto GenerateCode(llvm::Module* mod, F f) -> decltype(f(nullptr)) {
-    llvm::EngineBuilder b(Wide::Util::CloneModule(*mod));
+template<typename F> auto GenerateCode(std::unique_ptr<llvm::Module> mod, F f) -> decltype(f(nullptr)) {
+    llvm::EngineBuilder b(std::move(mod));
     std::string errstring;
     b.setErrorStr(&errstring);
     auto ee = b.create();
@@ -88,7 +88,7 @@ template<typename F> auto GenerateCode(llvm::Module* mod, F f) -> decltype(f(nul
             ee->removeModule(mod);
         }
     };
-    help h{ ee, mod };
+    help h{ ee, mod.get() };
     return f(ee);
 }
 
@@ -329,7 +329,7 @@ void Wide::Driver::Compile(Wide::Options::Clang& copts, std::string file) {
                 call->GetValue(con);
             con->CreateRetVoid();
         });
-        GenerateCode(module.get(), [&](llvm::ExecutionEngine* ee) {
+        GenerateCode(std::move(module), [&](llvm::ExecutionEngine* ee) {
             ee->finalizeObject();
             auto fptr = (void(*)())ee->getPointerToFunction(tramp);
             fptr();
