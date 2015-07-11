@@ -304,9 +304,13 @@ std::function<void(CodegenContext&)> ClangType::BuildDestruction(Expression::Ins
         };
     }
     auto obj = from->GetObject(analyzer, des, clang::CodeGen::StructorType::Complete);
+    auto ty = GetFunctionType(des, *from, analyzer);
+    auto desCall = CreatePrimGlobal(Wide::Range::EmptyRange(), ty, [=](CodegenContext& con) {
+        return obj(con);
+    });
+    auto call = Type::BuildCall(key, std::move(desCall), { self }, c);
     return [=](CodegenContext& con) {
-        auto val = self->GetValue(con);
-        con->CreateCall(obj(con), { val });
+        call->GetValue(con);
     };
 }
 

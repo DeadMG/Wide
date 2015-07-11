@@ -6,15 +6,8 @@
 #pragma warning(pop)
 
 std::string Wide::Util::GetMCJITProcessTriple() {
-    auto triple = llvm::Triple(llvm::sys::getProcessTriple());
 #ifdef _MSC_VER
-    //triple.setOS(llvm::Triple::OSType::MinGW32);
-    triple.setEnvironment(llvm::Triple::EnvironmentType::Itanium);
+    return "i686-w64-windows-gnu-elf";
 #endif
-    auto stringtrip = triple.getTriple();
-#ifdef _MSC_VER
-    // MCJIT can't handle non-ELF on Windows for some reason.
-    stringtrip += "-elf";
-#endif
-    return stringtrip;
+    return llvm::sys::getProcessTriple();
 }

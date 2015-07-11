@@ -294,6 +294,7 @@ std::shared_ptr<Expression> ClangFunctionType::ConstructCall(Expression::Instanc
                     args.push_back(callinst->getArgOperand(i));
                 invokeinst = llvm::InvokeInst::Create(llvmfunc, continueblock, con.CreateLandingpadForEH(), args, "", callinst);
                 invokeinst->setAttributes(callinst->getAttributes());
+                invokeinst->setCallingConv(callinst->getCallingConv());
                 call_or_invoke = invokeinst;
                 callinst->replaceAllUsesWith(invokeinst);
                 llvm::Instruction* node = callinst->getNextNode();

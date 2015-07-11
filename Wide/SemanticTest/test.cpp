@@ -94,7 +94,7 @@ template<typename F> auto GenerateCode(std::unique_ptr<llvm::Module> mod, F f) -
 
 void Wide::Driver::Jit(Wide::Options::Clang& copts, std::string file) {
 #ifdef _MSC_VER
-    const std::string MinGWInstallPath = "../Deployment/MinGW/";
+    const std::string MinGWInstallPath = "..\\Deployment\\MinGW\\";
     Wide::Driver::AddMinGWIncludePaths(copts, MinGWInstallPath);
 #else
     Wide::Driver::AddLinuxIncludePaths(copts);

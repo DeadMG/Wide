@@ -15,6 +15,11 @@
 
 int main(int argc, char** argv) {
     Wide::Options::Clang clangopts;
+    clangopts.LanguageOptions.CPlusPlus14 = true;
+    clangopts.LanguageOptions.CPlusPlus1z = true;
+    clangopts.LanguageOptions.MSCompatibilityVersion = 0;
+    clangopts.LanguageOptions.MSVCCompat = 0;
+    clangopts.LanguageOptions.MicrosoftExt = 0;
     clangopts.OnDiagnostic = [](std::string err) {};
     clangopts.TargetOptions.Triple = Wide::Util::GetMCJITProcessTriple();
     // Enabling RTTI requires a Standard Library to be linked.

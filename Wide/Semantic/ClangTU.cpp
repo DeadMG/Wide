@@ -248,7 +248,7 @@ public:
 
         std::string errors;
         for (auto diag : DiagnosticConsumer.diagnostics)
-            errors += diag;
+            errors += diag + "\n";
         if (engine.hasFatalErrorOccurred())
             throw SpecificError<CPPFileContainedErrors>(a, where, "Clang reported errors in file.");
         if (!errors.empty()) Options->OnDiagnostic(errors);
