@@ -40,6 +40,7 @@
 #include <llvm/Transforms/Utils/Cloning.h>
 #include <Wide/Util/Codegen/CreateModule.h>
 #include <Wide/Util/Codegen/CloneFunctionIntoModule.h>
+#include <Wide/Util/Codegen/CloneModule.h>
 
 #pragma warning(push, 0)
 #include <clang/AST/Type.h>
@@ -57,6 +58,7 @@
 #include <llvm/ExecutionEngine/ExecutionEngine.h>
 #include <llvm/Target/TargetSubtargetInfo.h>
 #include <llvm/IR/DiagnosticPrinter.h>
+#include <llvm/IR/Verifier.h>
 #pragma warning(pop)
 
 using namespace Wide;
@@ -945,13 +947,13 @@ llvm::APInt Analyzer::EvaluateConstantIntegerExpression(std::shared_ptr<Expressi
     CodegenContext::EmitFunctionBody(evalfunc, {}, [e](CodegenContext& con) {
         con->CreateRet(e->GetValue(con));
     });
-	auto mod = Wide::Util::CreateModuleForTriple(ConstantModule->getTargetTriple(), ConstantModule->getContext());
-	evalfunc = Wide::Util::CloneFunctionIntoModule(evalfunc, mod.get());
+    auto mod = Wide::Util::CloneModule(*ConstantModule);
+    auto modptr = mod.get();
     llvm::EngineBuilder b(std::move(mod));
     b.setEngineKind(llvm::EngineKind::JIT);
     std::unique_ptr<llvm::ExecutionEngine> ee(b.create());
     ee->finalizeObject();
-    auto result = ee->runFunction(evalfunc, std::vector<llvm::GenericValue>());
+    auto result = ee->runFunction(modptr->getFunction(evalfunc->getName()), std::vector<llvm::GenericValue>());
     evalfunc->eraseFromParent();
     return result.IntVal;
 }
