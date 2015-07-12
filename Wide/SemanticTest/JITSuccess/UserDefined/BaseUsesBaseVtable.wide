@@ -6,5 +6,6 @@ type Derived : Base {
 }
 Main() {
     local := Base();
-    return local.g();
+    local2 := Derived();
+    return local.g() && !local2.g();
 }
