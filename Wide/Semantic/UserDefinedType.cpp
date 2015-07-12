@@ -1069,7 +1069,7 @@ std::function<llvm::Constant*(llvm::Module*)> UserDefinedType::GetRTTI() {
         return[this, basertti](llvm::Module* module) {
             std::stringstream stream;
             stream << "struct.__" << this;
-            if (auto&& existing = module->getGlobalVariable(stream.str())) {
+            if (auto&& existing = module->getGlobalVariable(stream.str() + "_rtti")) {
                 return existing;
             }
             auto mangledname = GetGlobalString(stream.str(), module);
@@ -1079,7 +1079,7 @@ std::function<llvm::Constant*(llvm::Module*)> UserDefinedType::GetRTTI() {
             vtable = llvm::ConstantExpr::getBitCast(vtable, llvm::Type::getInt8PtrTy(module->getContext()));
             std::vector<llvm::Constant*> inits = { vtable, mangledname, basertti(module) };
             auto ty = llvm::ConstantStruct::getTypeForElements(inits);
-            auto rtti = new llvm::GlobalVariable(*module, ty, true, llvm::GlobalValue::LinkageTypes::LinkOnceODRLinkage, llvm::ConstantStruct::get(ty, inits), stream.str());
+            auto rtti = new llvm::GlobalVariable(*module, ty, true, llvm::GlobalValue::LinkageTypes::LinkOnceODRLinkage, llvm::ConstantStruct::get(ty, inits), stream.str() + "_rtti");
             return rtti;
         };
     }
@@ -1089,8 +1089,8 @@ std::function<llvm::Constant*(llvm::Module*)> UserDefinedType::GetRTTI() {
         basedata.push_back({ base.first->GetRTTI(), base.second });
     return [basedata, this](llvm::Module* module) {
         std::stringstream stream;
-        stream << "struct.__" << this << "_rtti";
-        if (auto&& existing = module->getGlobalVariable(stream.str())) {
+        stream << "struct.__" << this;
+        if (auto&& existing = module->getGlobalVariable(stream.str() + "_rtti")) {
             return existing;
         }
         auto mangledname = GetGlobalString(stream.str(), module);

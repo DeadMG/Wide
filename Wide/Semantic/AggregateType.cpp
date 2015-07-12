@@ -586,8 +586,8 @@ std::function<llvm::Constant*(llvm::Module*)> AggregateType::GetRTTI() {
     // Else, nope. Aggregate types are user-defined types with no bases by default.
     return [this](llvm::Module* module) {
         std::stringstream stream;
-        stream << "struct.__" << this << "_rtti";
-        if (auto existing = module->getGlobalVariable(stream.str())) {
+        stream << "struct.__" << this;
+        if (auto existing = module->getGlobalVariable(stream.str() + "_rtti")) {
             return existing;
         }
         auto mangledname = GetGlobalString(stream.str(), module);
@@ -597,7 +597,7 @@ std::function<llvm::Constant*(llvm::Module*)> AggregateType::GetRTTI() {
         vtable = llvm::ConstantExpr::getBitCast(vtable, llvm::Type::getInt8PtrTy(module->getContext()));
         std::vector<llvm::Constant*> inits = { vtable, mangledname };
         auto ty = llvm::ConstantStruct::getTypeForElements(inits);
-        auto rtti = new llvm::GlobalVariable(*module, ty, true, llvm::GlobalValue::LinkageTypes::LinkOnceODRLinkage, llvm::ConstantStruct::get(ty, inits), stream.str());
+        auto rtti = new llvm::GlobalVariable(*module, ty, true, llvm::GlobalValue::LinkageTypes::LinkOnceODRLinkage, llvm::ConstantStruct::get(ty, inits), stream.str() + "_rtti");
         return rtti;
     };
 }

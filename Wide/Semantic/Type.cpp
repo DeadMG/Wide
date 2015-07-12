@@ -342,7 +342,7 @@ struct ValueConstruction : Expression {
                     return implicitstore->val->GetValue(con);
                 }
             }
-            if (self->IsConstant() && no_args)
+            if (self->IsConstant() && no_args && self->GetPrimaryVTable().layout.size() == 0)
                 return llvm::UndefValue::get(self->GetLLVMType(con));
             if (single_arg) {
                 auto otherty = single_arg->GetType(con.func);
@@ -743,6 +743,12 @@ std::shared_ptr<Expression> Type::CreateVTable(std::vector<std::pair<Type*, unsi
         } else
             assert(found);
     }
+    std::string vtableid;
+    for (auto type : path) {
+        std::stringstream strstream;
+        strstream << type.first;
+        vtableid += strstream.str() + "__";
+    }
     return CreatePrimGlobal(Range::Container(entries), analyzer.GetPointerType(GetVirtualPointerType()), [=](CodegenContext& con) {
         auto vfuncty = GetVirtualPointerType()->GetLLVMType(con);
         std::vector<llvm::Constant*> constants;
@@ -757,9 +763,7 @@ std::shared_ptr<Expression> Type::CreateVTable(std::vector<std::pair<Type*, unsi
         }
         auto vtablety = llvm::ConstantStruct::getTypeForElements(constants);
         auto vtable = llvm::ConstantStruct::get(vtablety, constants);
-        std::stringstream strstr;
-        strstr << this;
-        auto global = llvm::dyn_cast<llvm::GlobalVariable>(con.module->getOrInsertGlobal(strstr.str(), vtablety));
+        auto global = llvm::dyn_cast<llvm::GlobalVariable>(con.module->getOrInsertGlobal(vtableid, vtablety));
         global->setInitializer(vtable);
         global->setLinkage(llvm::GlobalValue::LinkageTypes::InternalLinkage);
         global->setConstant(true);
@@ -786,9 +790,9 @@ std::shared_ptr<Expression> Type::SetVirtualPointers(Expression::InstanceKey key
         BasePointerInitializers.push_back(Type::SetVirtualPointers(key, Type::AccessBase(key, self, base.first), path));
         path.pop_back();
     }
-    // If we actually have a vptr, then set it; else just set the bases.   
+    // If we actually have a vptr, and we don't share it, then set it; else just set the bases.   
     auto vptr = selfty->AccessVirtualPointer(key, self);
-    if (vptr) {
+    if (vptr && !selfty->GetPrimaryBase()) {
         path.push_back(std::make_pair(selfty, 0));
         BasePointerInitializers.push_back(Wide::Memory::MakeUnique<ImplicitStoreExpr>(std::move(vptr), selfty->GetVTablePointer(path)));
     }
@@ -820,7 +824,7 @@ std::function<llvm::Constant*(llvm::Module*)> Type::GetRTTI() {
         vtable = llvm::ConstantExpr::getBitCast(vtable, llvm::Type::getInt8PtrTy(module->getContext()));
         std::vector<llvm::Constant*> inits = { vtable, name };
         auto ty = llvm::ConstantStruct::getTypeForElements(inits);
-        auto rtti = new llvm::GlobalVariable(*module, ty, true, llvm::GlobalValue::LinkageTypes::LinkOnceODRLinkage, llvm::ConstantStruct::get(ty, inits), stream.str());
+        auto rtti = new llvm::GlobalVariable(*module, ty, true, llvm::GlobalValue::LinkageTypes::LinkOnceODRLinkage, llvm::ConstantStruct::get(ty, inits), stream.str() + "_rtti");
         return rtti;
     };
 }

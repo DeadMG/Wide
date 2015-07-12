@@ -1,0 +1,10 @@
+type Base {
+    dynamic g() { return true; }
+}
+type Derived : Base {
+    dynamic g() { return false; }
+}
+Main() {
+    local := Base();
+    return local.g();
+}
