@@ -308,9 +308,9 @@ std::function<void(CodegenContext&)> ClangType::BuildDestruction(Expression::Ins
     auto desCall = CreatePrimGlobal(Wide::Range::EmptyRange(), ty, [=](CodegenContext& con) {
         return obj(con);
     });
-    auto call = Type::BuildCall(key, std::move(desCall), { self }, c);
+    auto call = Type::BuildCall(key, desCall, { self }, c);
     return [=](CodegenContext& con) {
-        call->GetValue(con);
+        Type::BuildCall(key, desCall, { self }, c)->GetValue(con);
     };
 }
 
