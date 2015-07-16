@@ -409,6 +409,7 @@ Type* ClangType::GetVirtualPointerType() {
 }
 
 Type::VTableLayout ClangType::ComputePrimaryVTableLayout() {
+    if (!type->getAsCXXRecordDecl()->isPolymorphic()) return Type::VTableLayout();
     // ITANIUM ABI SPECIFIC
     auto CreateVFuncFromMethod = [&](clang::CXXMethodDecl* methit) {
         VTableLayout::VirtualFunctionEntry vfunc;

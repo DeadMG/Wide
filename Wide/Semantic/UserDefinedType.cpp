@@ -176,7 +176,7 @@ UserDefinedType::VTableData::VTableData(UserDefinedType* self) {
             funcs.layout.push_back({ vfunc, fty });
             continue;
         }
-        VTableIndices[func.first] = primary_dynamic_functions[func.first] - funcs.offset;
+        VTableIndices[func.first] = primary_dynamic_functions[func.first];
         funcs.layout[primary_dynamic_functions[func.first]] = { vfunc, fty };
     }
     // If I have a dynamic destructor, that isn't primary, then add it.

@@ -342,7 +342,7 @@ struct ValueConstruction : Expression {
                     return implicitstore->val->GetValue(con);
                 }
             }
-            if (self->IsConstant() && no_args && self->GetPrimaryVTable().layout.size() == 0)
+            if (self->IsConstant() && no_args && self->GetVirtualPointerType() == nullptr)
                 return llvm::UndefValue::get(self->GetLLVMType(con));
             if (single_arg) {
                 auto otherty = single_arg->GetType(con.func);
@@ -855,6 +855,23 @@ std::function<llvm::Function*(llvm::Module*)> Type::GetDestructorFunction() {
     return[=](llvm::Module* mod) {
         if (!DestructorFunction) DestructorFunction = (*GetDestructorFunctionCache)(mod);
         return DestructorFunction;
+    };
+}
+std::function<llvm::Function*(llvm::Module*)> Wide::Semantic::Type::GetDestructorFunctionForEH()
+{
+    auto func = CreateDestructorFunction();
+    return [this, func](llvm::Module* module) {
+        auto f = func(module);
+        auto name = std::string(f->getName()) + "_for_eh";
+        if (module->getFunction(name))
+            return module->getFunction(name);
+        auto newfunc = llvm::Function::Create(llvm::cast<llvm::FunctionType>(f->getType()->getElementType()), f->getLinkage(), name, module);
+        newfunc->setCallingConv(llvm::CallingConv::X86_ThisCall);
+        CodegenContext::EmitFunctionBody(newfunc, {}, [f, newfunc](CodegenContext& c) {
+            c->CreateCall(f, newfunc->args().begin());
+            c->CreateRetVoid();
+        });
+        return newfunc;
     };
 }
 std::function<llvm::Function*(llvm::Module*)> Type::CreateDestructorFunction() {

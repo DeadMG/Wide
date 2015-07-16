@@ -170,6 +170,7 @@ namespace Wide {
             virtual ~Type() {}
 
             virtual std::function<llvm::Function*(llvm::Module*)> GetDestructorFunction();
+            std::function<llvm::Function*(llvm::Module*)> GetDestructorFunctionForEH();
             InheritanceRelationship IsDerivedFrom(Type* other);
             VTableLayout GetVtableLayout();
             VTableLayout GetPrimaryVTable();

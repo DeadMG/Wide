@@ -873,7 +873,7 @@ std::function<void(CodegenContext&)> Semantic::ThrowObject(Expression::InstanceK
     // 2.4.2
     auto ty = expr->GetType(key)->Decay();
     auto RTTI = ty->GetRTTI();
-    auto destructor_func = ty->GetDestructorFunction();
+    auto destructor_func = ty->GetDestructorFunctionForEH();
     return [=](CodegenContext& con) {
         auto memty = ty->analyzer.GetLvalueType(ty);
         auto destructor = std::make_shared<std::list<std::pair<std::function<void(CodegenContext&)>, bool>>::iterator>();
