@@ -11,5 +11,5 @@ type derived : primbase : base {
     g() { return true; }
 }
 Main() {
-    return derived().g();
+    return derived().f();
 }

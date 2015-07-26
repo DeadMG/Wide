@@ -695,6 +695,10 @@ OverloadSet* TupleInitializable::CreateConstructorOverloadSet(Parse::Access acce
 }
 
 std::shared_ptr<Expression> Type::CreateVTable(std::vector<std::pair<Type*, unsigned>> path) {
+    if (path.size() >= 2) {
+        if (path[path.size() - 2].first->GetPrimaryBase() == path.back().first)
+            return path.front().first->GetVTablePointer(std::vector<std::pair<Type*, unsigned>>(path.begin(), path.end() - 1));
+    }
     std::vector<std::shared_ptr<Expression>> entries;
     unsigned offset_total = 0;
     for (auto base : path)

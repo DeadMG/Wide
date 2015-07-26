@@ -1114,7 +1114,7 @@ std::function<llvm::Constant*(llvm::Module*)> UserDefinedType::GetRTTI() {
         }
 
         auto ty = llvm::ConstantStruct::getTypeForElements(inits);
-        auto rtti = new llvm::GlobalVariable(*module, ty, true, llvm::GlobalValue::LinkageTypes::LinkOnceODRLinkage, llvm::ConstantStruct::get(ty, inits), stream.str());
+        auto rtti = new llvm::GlobalVariable(*module, ty, true, llvm::GlobalValue::LinkageTypes::LinkOnceODRLinkage, llvm::ConstantStruct::get(ty, inits), stream.str() + "_rtti");
         return rtti;
     };
 }

@@ -193,10 +193,6 @@ ClangTU* Analyzer::AggregateCPPHeader(std::string file, Lexer::Range where) {
 }
 
 void Analyzer::GenerateCode(llvm::Module* module) {
-    // Ensure that all layout conversions are done before codegen
-    for (auto&& udt : UDTs)
-        for (auto&& pair : udt.second)
-            pair.second->size();
     if (AggregateTU)
         AggregateTU->GenerateCodeAndLinkModule(ConstantModule.get(), layout, *this);
     for (auto&& tu : headers)
@@ -207,6 +203,9 @@ void Analyzer::GenerateCode(llvm::Module* module) {
             signature.second->EmitCode(ConstantModule.get());
     for (auto&& pair : ExportedTypes)
         pair.first->Export(ConstantModule.get());
+    std::string ir;
+    llvm::raw_string_ostream stream(ir);
+    ConstantModule->print(stream, nullptr);
     std::string err;
 	auto copy = std::unique_ptr<llvm::Module>(llvm::CloneModule(ConstantModule.get()));
     llvm::DiagnosticInfo* info;
