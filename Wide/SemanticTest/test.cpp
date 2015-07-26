@@ -249,7 +249,7 @@ const std::unordered_map<std::string, std::function<bool(Wide::Semantic::Error& 
 
 void Wide::Driver::Compile(Wide::Options::Clang& copts, std::string file) {
 #ifdef _MSC_VER
-    const std::string MinGWInstallPath = "../Deployment/MinGW/";
+    const std::string MinGWInstallPath = "..\\Deployment\\MinGW\\";
     Wide::Driver::AddMinGWIncludePaths(copts, MinGWInstallPath);
 #else
     Wide::Driver::AddLinuxIncludePaths(copts);
