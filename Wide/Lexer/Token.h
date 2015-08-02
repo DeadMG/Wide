@@ -177,7 +177,8 @@ namespace Wide {
             Token(Range r, const std::string* t, std::string val)
                 : location(r), type(t), value(std::move(val)) 
             {
-                assert(value != "");
+                if (t != &Wide::Lexer::TokenTypes::String)
+                    assert(value != "");
             }
             Range GetLocation() const { return location; }
             const std::string* GetType() const { return type; }

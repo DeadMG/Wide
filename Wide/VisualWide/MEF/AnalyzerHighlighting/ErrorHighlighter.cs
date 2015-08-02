@@ -16,7 +16,7 @@ using System.Runtime.InteropServices;
 
 namespace VisualWide.AnalyzerHighlighting
 {
-    [Export(typeof(ITaggerProvider))]
+    //[Export(typeof(ITaggerProvider))]
     [ContentType("Wide")]
     [TagType(typeof(ErrorTag))]
     internal class AnalyzerErrorProviderProvider : ITaggerProvider

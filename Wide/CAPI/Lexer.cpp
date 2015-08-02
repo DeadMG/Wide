@@ -3,7 +3,7 @@
 extern "C" DLLEXPORT void LexWide(
     void* con,
     std::add_pointer<CEquivalents::OptionalChar(void*)>::type curr,
-    std::add_pointer<bool(CEquivalents::Range, const char*, Wide::Lexer::TokenType, void*)>::type token,
+    std::add_pointer<bool(CEquivalents::Range, const char*, Wide::Lexer::TokenType, Wide::Lexer::Invocation*, void*)>::type token,
     std::add_pointer<void(CEquivalents::Range, void*)>::type comment,
     std::add_pointer<bool(CEquivalents::Position, Wide::Lexer::Invocation::Failure, void*)>::type err,
     const char* filename
@@ -28,15 +28,31 @@ extern "C" DLLEXPORT void LexWide(
     };
         
     while(auto tok = p.inv()) { 
-        if (token(tok->GetLocation(), tok->GetValue().c_str(), tok->GetType(), con))
+        if (token(tok->GetLocation(), tok->GetValue().c_str(), tok->GetType(), &p.inv, con))
             break;
     }
 }
 
-extern "C" DLLEXPORT bool IsKeywordType(Wide::Lexer::TokenType ty) {
-    return Wide::Lexer::default_keyword_types.find(ty) != Wide::Lexer::default_keyword_types.end();
+extern "C" DLLEXPORT bool IsKeyword(Wide::Lexer::Invocation* inv, Wide::Lexer::TokenType ty) {
+    return inv->KeywordTypes.find(ty) != inv->KeywordTypes.end();
 }
-
-extern "C" DLLEXPORT const char* GetTokenTypeString(Wide::Lexer::TokenType ty) {
-    return ty->c_str();
+// TODO: Make these data structure lookups.
+extern "C" DLLEXPORT bool IsLiteral(Wide::Lexer::Invocation* inv, Wide::Lexer::TokenType ty) {
+    return ty == &Wide::Lexer::TokenTypes::String || ty == &Wide::Lexer::TokenTypes::Integer;
+}
+extern "C" DLLEXPORT CEquivalents::BracketType GetBracketType(Wide::Lexer::Invocation* inv, Wide::Lexer::TokenType ty) {
+    if (ty == &Wide::Lexer::TokenTypes::OpenBracket || ty == &Wide::Lexer::TokenTypes::OpenSquareBracket || ty == &Wide::Lexer::TokenTypes::OpenCurlyBracket)
+        return CEquivalents::BracketType::Open;
+    if (ty == &Wide::Lexer::TokenTypes::CloseBracket || ty == &Wide::Lexer::TokenTypes::CloseSquareBracket || ty == &Wide::Lexer::TokenTypes::CloseCurlyBracket)
+        return CEquivalents::BracketType::Close;
+    return CEquivalents::BracketType::None;
+}
+extern "C" DLLEXPORT int GetBracketNumber(Wide::Lexer::Invocation* inv, Wide::Lexer::TokenType ty) {
+    if (ty == &Wide::Lexer::TokenTypes::OpenBracket || ty == &Wide::Lexer::TokenTypes::CloseBracket)
+        return 0;
+    if (ty == &Wide::Lexer::TokenTypes::OpenCurlyBracket || ty == &Wide::Lexer::TokenTypes::CloseCurlyBracket)
+        return 1;
+    if (ty == &Wide::Lexer::TokenTypes::OpenSquareBracket || ty == &Wide::Lexer::TokenTypes::CloseSquareBracket)
+        return 2;
+    return 0;
 }

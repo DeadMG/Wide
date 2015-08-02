@@ -59,50 +59,27 @@ namespace VisualWide.ParserHighlighting
 
         void UpdateForNewPosition(CaretPosition p)
         {
-            Dictionary<int, int> Matches = new Dictionary<int, int>();
-            Dictionary<int, int> ReverseMatches = new Dictionary<int, int>();
-            List<int> CurlyStack = new List<int>();
-            List<int> SquareStack = new List<int>();
-            List<int> RoundStack = new List<int>();
-            foreach (var token in provider.GetTokens(p.BufferPosition.Snapshot))
+            var Matches = new Dictionary<int, int>();
+            var ReverseMatches = new Dictionary<int, int>();
+            var Stacks = new Dictionary<int, List<int>>();
+            foreach (var token in provider.GetTokens(p.BufferPosition.Snapshot).Where(token => token.BracketType != LexerProvider.BracketType.None))
             {
-                var offset = token.where.Start.Position;
-                switch (token.type)
+                var offset = token.SpanLocation.Start.Position;
+                switch (token.BracketType)
                 {
-                    case LexerProvider.TokenType.OpenBracket:
-                        RoundStack.Add(offset);
+                    case LexerProvider.BracketType.Open:
+                        if (!Stacks.ContainsKey(token.BracketNumber))
+                            Stacks[token.BracketNumber] = new List<int>();
+                        Stacks[token.BracketNumber].Add(offset);
                         break;
-                    case LexerProvider.TokenType.OpenSquareBracket:
-                        SquareStack.Add(offset);
-                        break;
-                    case LexerProvider.TokenType.OpenCurlyBracket:
-                        CurlyStack.Add(offset);
-                        break;
-                    case LexerProvider.TokenType.CloseBracket:
-                        // For now, just assume the closest open bracket is the match. Don't error on mismatched, i.e. (] brackets, and don't error if unmatched.
-                        if (RoundStack.Count != 0)
+                    case LexerProvider.BracketType.Close:
+                        if (!Stacks.ContainsKey(token.BracketNumber))
+                            Stacks[token.BracketNumber] = new List<int>();
+                        if (Stacks[token.BracketNumber].Count != 0)
                         {
-                            Matches[RoundStack.Last()] = offset;
-                            ReverseMatches[offset] = RoundStack.Last();
-                            RoundStack.RemoveAt(RoundStack.Count - 1);
-                        }
-                        break;
-                    case LexerProvider.TokenType.CloseSquareBracket:
-                        // For now, just assume the closest open bracket is the match. Don't error on mismatched, i.e. (] brackets, and don't error if unmatched.
-                        if (SquareStack.Count != 0)
-                        {
-                            Matches[SquareStack.Last()] = offset;
-                            ReverseMatches[offset] = SquareStack.Last();
-                            SquareStack.RemoveAt(SquareStack.Count - 1);
-                        }
-                        break;
-                    case LexerProvider.TokenType.CloseCurlyBracket:
-                        // For now, just assume the closest open bracket is the match. Don't error on mismatched, i.e. (] brackets, and don't error if unmatched.
-                        if (CurlyStack.Count != 0)
-                        {
-                            Matches[CurlyStack.Last()] = offset;
-                            ReverseMatches[offset] = CurlyStack.Last();
-                            CurlyStack.RemoveAt(CurlyStack.Count - 1);
+                            Matches[Stacks[token.BracketNumber].Last()] = offset;
+                            ReverseMatches[offset] = Stacks[token.BracketNumber].Last();
+                            Stacks[token.BracketNumber].RemoveAt(Stacks[token.BracketNumber].Count - 1);
                         }
                         break;
                 }                

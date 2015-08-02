@@ -20,12 +20,6 @@ namespace VisualWide
 {
     public class ProjectUtils
     {
-        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-        private delegate void ErrorCallback(int count, [MarshalAs(UnmanagedType.LPArray, SizeParamIndex = 0)]ParserProvider.CCombinedError[] what, System.IntPtr context);
-
-        [DllImport("CAPI.dll", CallingConvention = CallingConvention.Cdecl)]
-        private static extern void GetCombinerErrors(System.IntPtr combiner, ErrorCallback callback, System.IntPtr context);
-
         [DllImport("CAPI.dll", CallingConvention = CallingConvention.Cdecl)]
         private static extern System.IntPtr CreateCombiner();
 
@@ -134,17 +128,6 @@ namespace VisualWide
                     newparsers.Add(parser);
                 }
                 AddParser(combiner, newparsers.ToArray(), newparsers.Count);
-                List<List<ParserProvider.CCombinedError>> CombinedErrors = new List<List<ParserProvider.CCombinedError>>();
-                GetCombinerErrors(combiner, (count, array, context) =>
-                {
-                    CombinedErrors.Add(new List<ParserProvider.CCombinedError>(array));
-                }, System.IntPtr.Zero);
-                CombinerErrors = CombinedErrors.Select(list => list.Select(cerror =>
-                {
-                    var name = LexerProvider.RangeFromCRange(cerror.where).begin.location;
-                    var buffer = ProjectUtils.instance.GetBufferForFilename(name);
-                    return new ParserProvider.CombinedError(cerror.where, buffer.CurrentSnapshot, cerror.what);
-                }));
 
                 VCProject vcproj = (VCProject)project.Object;
                 var configs = vcproj.Configurations as IVCCollection;
@@ -170,31 +153,31 @@ namespace VisualWide
                 List<AnalyzerError> errors = new List<AnalyzerError>();
                 List<AnalyzerInfo> info = new List<AnalyzerInfo>();
                 List<SnapshotSpan> param = new List<SnapshotSpan>();
-                AnalyzeWide(
-                    combiner,
-                    opts,
-                    (where, what, context) =>
-                    {
-                        var span = LexerProvider.SpanFromLexer(where);
-                        var filename = Marshal.PtrToStringAnsi(where.begin.location);
-                        var snapshot = ProjectUtils.instance.GetBufferForFilename(filename).CurrentSnapshot;
-                        errors.Add(new AnalyzerError(new SnapshotSpan(snapshot, span), Marshal.PtrToStringAnsi(what)));
-                    },
-                    (where, what, type, context) =>
-                    {
-                        var span = LexerProvider.SpanFromLexer(where);
-                        var filename = Marshal.PtrToStringAnsi(where.begin.location);
-                        var snapshot = ProjectUtils.instance.GetBufferForFilename(filename).CurrentSnapshot;
-                        info.Add(new AnalyzerInfo(new SnapshotSpan(snapshot, span), Marshal.PtrToStringAnsi(what), type));
-                    },
-                    (where, context) => {
-                        var span = LexerProvider.SpanFromLexer(where);
-                        var filename = Marshal.PtrToStringAnsi(where.begin.location);
-                        var snapshot = ProjectUtils.instance.GetBufferForFilename(filename).CurrentSnapshot;
-                        param.Add(new SnapshotSpan(snapshot, span));
-                    },
-                    System.IntPtr.Zero
-                );
+                //AnalyzeWide(
+                //    combiner,
+                //    opts,
+                //    (where, what, context) =>
+                //    {
+                //        var span = LexerProvider.SpanFromLexer(where);
+                //        var filename = Marshal.PtrToStringAnsi(where.begin.location);
+                //        var snapshot = ProjectUtils.instance.GetBufferForFilename(filename).CurrentSnapshot;
+                //        errors.Add(new AnalyzerError(new SnapshotSpan(snapshot, span), Marshal.PtrToStringAnsi(what)));
+                //    },
+                //    (where, what, type, context) =>
+                //    {
+                //        var span = LexerProvider.SpanFromLexer(where);
+                //        var filename = Marshal.PtrToStringAnsi(where.begin.location);
+                //        var snapshot = ProjectUtils.instance.GetBufferForFilename(filename).CurrentSnapshot;
+                //        info.Add(new AnalyzerInfo(new SnapshotSpan(snapshot, span), Marshal.PtrToStringAnsi(what), type));
+                //    },
+                //    (where, context) => {
+                //        var span = LexerProvider.SpanFromLexer(where);
+                //        var filename = Marshal.PtrToStringAnsi(where.begin.location);
+                //        var snapshot = ProjectUtils.instance.GetBufferForFilename(filename).CurrentSnapshot;
+                //        param.Add(new SnapshotSpan(snapshot, span));
+                //    },
+                //    System.IntPtr.Zero
+                //);
                 AnalyzerQuickInfo = info;
                 AnalyzerErrors = errors;
                 AnalyzerParameterHighlights = param;
@@ -204,13 +187,7 @@ namespace VisualWide
 
             public delegate void UpdateCallback();
             public event UpdateCallback OnUpdate = delegate { };
-
-            public IEnumerable<IEnumerable<ParserProvider.CombinedError>> CombinerErrors
-            {
-                get;
-                private set;
-            }
-
+            
             public IEnumerable<AnalyzerError> AnalyzerErrors
             {
                 get;
@@ -239,7 +216,6 @@ namespace VisualWide
             VCProjectEngineEvents events;
             public Project(EnvDTE.Project proj)
             {
-                CombinerErrors = new List<List<ParserProvider.CombinedError>>();
                 AnalyzerErrors = new List<AnalyzerError>();
                 AnalyzerQuickInfo = new List<AnalyzerInfo>();
                 AnalyzerParameterHighlights = new List<SnapshotSpan>();
@@ -331,9 +307,10 @@ namespace VisualWide
 
         public IEnumerable<Project> GetProjectsFor(ITextBuffer buffer)
         {
-            foreach (var project in Projects)
-                if (project.ContainsFile(GetFileName(buffer)))
-                    yield return project;
+            yield break;
+            //foreach (var project in Projects)
+            //    if (project.ContainsFile(GetFileName(buffer)))
+            //        yield return project;
         }
 
         Dictionary<string, ITextBuffer> FileBuffers = new Dictionary<string, ITextBuffer>();

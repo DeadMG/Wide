@@ -14,7 +14,7 @@ using System.Runtime.InteropServices;
 
 namespace VisualWide.ParserHighlighting
 {
-    [Export(typeof(ITaggerProvider))]
+    //[Export(typeof(ITaggerProvider))]
     [ContentType("Wide")]
     [TagType(typeof(IOutliningRegionTag))]
     internal class OutliningProvider : ITaggerProvider
@@ -37,19 +37,14 @@ namespace VisualWide.ParserHighlighting
                 TagsChanged(this, new SnapshotSpanEventArgs(span));
             };
         }
+        TagSpan<OutliningRegionTag> CreateTag(ParserProvider.Outline outline)
+        {
+            var tag = new OutliningRegionTag(false, false, "{ ... }", "{ ... }");
+            return new TagSpan<OutliningRegionTag>(new SnapshotSpan(outline.where.Snapshot, outline.where.Start, outline.where.Length + 1), tag);
+        }
         public IEnumerable<ITagSpan<IOutliningRegionTag>> GetTags(NormalizedSnapshotSpanCollection spans)
         {
-            foreach (var outline in parser.Outlines)
-            {
-                foreach (var span in spans)
-                {
-                    if (outline.where.IntersectsWith(span))
-                    {
-                        var tag = new OutliningRegionTag(false, false, "{ ... }", "{ ... }");
-                        yield return new TagSpan<OutliningRegionTag>(new SnapshotSpan(outline.where.Snapshot, outline.where.Start, outline.where.Length + 1), tag);                        
-                    }
-                }
-            }
+            return parser.Outlines.SelectMany(outline => spans.Where(span => outline.where.IntersectsWith(span)).Select(span => CreateTag(outline)));
         }
 
         public event EventHandler<SnapshotSpanEventArgs> TagsChanged = delegate { };

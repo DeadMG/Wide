@@ -22,7 +22,7 @@ namespace VisualWide
         private struct MaybeToken        
         {
             public LexerProvider.CRange location;
-            public LexerProvider.TokenType type;
+            public System.IntPtr type;
             public System.IntPtr value;
             public byte exists;
         }
@@ -36,7 +36,6 @@ namespace VisualWide
             public List<Outline> outlining = new List<Outline>();
             public List<Error> errors = new List<Error>();
             public List<Warning> warnings = new List<Warning>();
-            public List<List<CombinedError>> combiner_errors = new List<List<CombinedError>>();
         }
 
         public enum ParserError
@@ -89,32 +88,6 @@ namespace VisualWide
             public SnapshotSpan where;
             public ParserError what;
         }
-        public enum DeclType {
-            Function,
-            Using,
-            Type,
-            Module,
-        };
-        public struct CCombinedError
-        {
-            public LexerProvider.CRange where;
-            public DeclType what;
-        };
-        public struct CombinedError
-        {
-            public CombinedError(LexerProvider.CRange range, ITextSnapshot shot, DeclType wha)
-            {
-                if (range.end.offset - range.begin.offset > 1)
-                    range.end.offset += 1;
-                range.end.offset = range.end.offset > shot.Length ? (uint)(shot.Length) : range.end.offset;
-                position = LexerProvider.RangeFromCRange(range);
-                where = new SnapshotSpan(shot, LexerProvider.SpanFromLexer(position));
-                what = wha;
-            }
-            public LexerProvider.Range position;
-            public SnapshotSpan where;
-            public DeclType what;
-        }
 
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
         private delegate MaybeToken TokenCallback(System.IntPtr con);
@@ -145,13 +118,7 @@ namespace VisualWide
         private static extern System.IntPtr GetParserErrorString(ParserError err);
         [DllImport("CAPI.dll", CallingConvention = CallingConvention.Cdecl)]
         private static extern System.IntPtr GetParserWarningString(ParserWarning err);
-
-        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-        private delegate void CombinedErrorCallback(int count, [MarshalAs(UnmanagedType.LPArray, SizeParamIndex = 0)]CCombinedError[] errs, System.IntPtr context);
-
-        [DllImport("CAPI.dll", CallingConvention = CallingConvention.Cdecl)]
-        private static extern void GetParserCombinedErrors(System.IntPtr parser, CombinedErrorCallback callback, System.IntPtr context);
-
+        
         public static string GetErrorString(ParserError err)
         {
             return Marshal.PtrToStringAnsi(GetParserErrorString(err));
@@ -198,15 +165,15 @@ namespace VisualWide
                     if (enumerator.MoveNext())
                     {
                         result.exists = 1;
-                        result.location.begin.location = result.location.end.location = PrevLocation = Marshal.StringToHGlobalAnsi(enumerator.Current.location.begin.location);
-                        result.location.begin.offset = enumerator.Current.location.begin.offset;
-                        result.location.begin.line = enumerator.Current.location.begin.line;
-                        result.location.begin.column = enumerator.Current.location.begin.column;
-                        result.location.end.offset = enumerator.Current.location.end.offset;
-                        result.location.end.line = enumerator.Current.location.end.line;
-                        result.location.end.column = enumerator.Current.location.end.column;
-                        result.type = enumerator.Current.type;
-                        result.value = PrevString = Marshal.StringToHGlobalAnsi(enumerator.Current.value);
+                        result.location.begin.location = result.location.end.location = PrevLocation = Marshal.StringToHGlobalAnsi(enumerator.Current.SourceLocation.begin.location);
+                        result.location.begin.offset = enumerator.Current.SourceLocation.begin.offset;
+                        result.location.begin.line = enumerator.Current.SourceLocation.begin.line;
+                        result.location.begin.column = enumerator.Current.SourceLocation.begin.column;
+                        result.location.end.offset = enumerator.Current.SourceLocation.end.offset;
+                        result.location.end.line = enumerator.Current.SourceLocation.end.line;
+                        result.location.end.column = enumerator.Current.SourceLocation.end.column;
+                        result.type = enumerator.Current.Type;
+                        result.value = PrevString = Marshal.StringToHGlobalAnsi(enumerator.Current.Value);
                         return result;
                     }
                     result.exists = 0;
@@ -234,18 +201,6 @@ namespace VisualWide
                 },
                 ProjectUtils.GetFileName(factory, shot.TextBuffer)
                 //utils.GetFileName(shot.TextBuffer)
-            );
-            GetParserCombinedErrors(currparser,
-                (count, array, context) =>
-                {
-                    var list = new List<CCombinedError>(array);
-                    var result = list.Select(orig =>
-                    {
-                        return new CombinedError(orig.where, shot, orig.what);
-                    });
-                    results.combiner_errors.Add(new List<CombinedError>(result));
-                },
-                System.IntPtr.Zero
             );
 
             var oldparser = parser;
@@ -280,14 +235,6 @@ namespace VisualWide
             {
                 ParseSnapshot();
                 return currentresults.errors;
-            }
-        }
-        public IEnumerable<IEnumerable<CombinedError>> CombinedErrors
-        {
-            get
-            {
-                ParseSnapshot();
-                return currentresults.combiner_errors;
             }
         }
         public IEnumerable<Warning> Warnings

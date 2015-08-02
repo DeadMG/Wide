@@ -26,54 +26,11 @@ namespace VisualWide
             UnlexableCharacter,
             UnterminatedComment
         };
-        public enum TokenType : int
+        public enum BracketType : int
         {
-            OpenBracket,
-            CloseBracket,
-            Dot,
-            Semicolon,
-            Identifier,
-            String,
-            LeftShift,
-            RightShift,
-            OpenCurlyBracket,
-            CloseCurlyBracket,
-            Return,
-            Assignment,
-            VarCreate,
-            Comma,
-            Integer,
-            Using,
-            Prolog,
-            Module,
-            If,
-            Else,
-            EqCmp,
-            Exclaim,
-            While,
-            NotEqCmp,
-            This,
-            Type,
-            Operator,
-            Function,
-            OpenSquareBracket,
-            CloseSquareBracket,
-            Colon,
-            Dereference,
-            PointerAccess,
-            Negate,
-            Plus,
-            Increment,
-            Decrement,
-            Minus,
-
-            LT,
-            LTE,
-            GT,
-            GTE,
-            Or,
-            And,
-            Xor
+            None,
+            Open,
+            Close
         }
 
         [StructLayout(LayoutKind.Sequential, Pack = 8)]
@@ -112,6 +69,25 @@ namespace VisualWide
             public Position end;
         }
         
+        [DllImport("CAPI.dll", CallingConvention = CallingConvention.Cdecl)]
+        private static extern int GetBracketNumber(System.IntPtr lexer, System.IntPtr type);
+
+        [DllImport("CAPI.dll", CallingConvention = CallingConvention.Cdecl)]
+        private static extern BracketType GetBracketType(System.IntPtr lexer, System.IntPtr type);
+
+        [DllImport("CAPI.dll", CallingConvention = CallingConvention.Cdecl)]
+        private static extern byte IsLiteral(System.IntPtr lexer, System.IntPtr type);
+
+        [DllImport("CAPI.dll", CallingConvention = CallingConvention.Cdecl)]
+        private static extern byte IsKeyword(System.IntPtr lexer, System.IntPtr type);
+
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        private delegate byte RawTokenCallback(CRange r, [MarshalAs(UnmanagedType.LPStr)]string s, System.IntPtr type, System.IntPtr lexer, System.IntPtr context);
+
+        private delegate bool TokenCallback(CRange loc, string s, System.IntPtr type, System.IntPtr lexer);
+        private delegate bool ErrorCallback(Position p, Failure f);
+        private delegate void CommentCallback(CRange arg);
+
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
         private delegate MaybeByte LexerCallback(System.IntPtr arg);
 
@@ -120,13 +96,6 @@ namespace VisualWide
 
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
         private delegate byte RawErrorCallback(Position p, Failure f, System.IntPtr con);
-
-        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-        private delegate byte RawTokenCallback(CRange r, [MarshalAs(UnmanagedType.LPStr)]string s, TokenType type, System.IntPtr context);
-
-        private delegate bool TokenCallback(CRange loc, string s, TokenType t);
-        private delegate bool ErrorCallback(Position p, Failure f);
-        private delegate void CommentCallback(CRange arg);
 
         [DllImport("CAPI.dll", CallingConvention = CallingConvention.Cdecl)]
         private static extern void LexWide(
@@ -137,15 +106,7 @@ namespace VisualWide
             [MarshalAs(UnmanagedType.FunctionPtr)]RawErrorCallback error,
             [MarshalAs(UnmanagedType.LPStr)]String filename
         );
-
-        [DllImport("CAPI.dll", CallingConvention = CallingConvention.Cdecl)]
-        private static extern byte IsKeywordType(TokenType type);
-
-        public static bool IsKeyword(TokenType t)
-        {
-            return IsKeywordType(t) == 1;
-        }
-
+        
         private static void Read(
             System.String contents,
             ErrorCallback err,
@@ -169,13 +130,9 @@ namespace VisualWide
                     }
                     return ret;
                 },
-                (where, value, type, context) =>
+                (where, value, type, lexer, context) =>
                 {
-                    var tok = new Token();
-                    tok.location = LexerProvider.RangeFromCRange(where);
-                    tok.value = value;
-                    tok.type = type;
-                    return token(where, value, type) ? (byte)1 : (byte)0;
+                    return token(where, value, type, lexer) ? (byte)1 : (byte)0;
                 },
                 (where, context) =>
                 {
@@ -196,23 +153,32 @@ namespace VisualWide
                 where = loc;
                 what = err;
             }
-            public SnapshotSpan where;
-            public Failure what;
+            public SnapshotSpan where { get; private set; }
+            public Failure what { get; private set; }
         }
 
         public struct Token
         {
-            public Token(SnapshotSpan span, Range r, string val, TokenType t)
+            public Token(SnapshotSpan span, Range r, string val, System.IntPtr type, System.IntPtr lexer)
             {
-                where = span;
-                location = r;
-                type = t;
-                value = val;
+                SpanLocation = span;
+                SourceLocation = r;
+                Type = type;
+                Value = val;
+
+                IsLiteral = LexerProvider.IsLiteral(lexer, type) == 1;
+                IsKeyword = LexerProvider.IsKeyword(lexer, type) == 1;
+                BracketNumber = GetBracketNumber(lexer, type);
+                BracketType = GetBracketType(lexer, type);                
             }
-            public SnapshotSpan where;
-            public Range location;
-            public TokenType type;
-            public string value;
+            public SnapshotSpan SpanLocation { get; private set; }
+            public Range SourceLocation { get; private set; }
+            public bool IsLiteral { get; private set; }
+            public bool IsKeyword { get; private set; }
+            public BracketType BracketType { get; private set; }
+            public string Value { get; private set; }
+            public int BracketNumber { get; private set; }
+            public System.IntPtr Type { get; private set; }
         }
 
         class ResultTypes
@@ -310,9 +276,9 @@ namespace VisualWide
                     where.end.offset = where.end.offset > shot.Length ? (uint)(shot.Length) : where.end.offset;
                     list.comments.Add(new SnapshotSpan(shot, SpanFromLexer(where)));
                 },
-                (where, what, type) =>
+                (where, value, type, lexer) =>
                 {
-                    list.tokens.Add(new Token(new SnapshotSpan(shot, SpanFromLexer(where)), LexerProvider.RangeFromCRange(where), what, type));
+                    list.tokens.Add(new Token(new SnapshotSpan(shot, SpanFromLexer(where)), RangeFromCRange(where), value, type, lexer));
                     return false;
                 },
                 ProjectUtils.GetFileName(factory, shot.TextBuffer)

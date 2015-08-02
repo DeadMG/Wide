@@ -17,7 +17,7 @@ using System.Runtime.InteropServices;
 
 namespace VisualWide.AnalyzerHighlighting
 {
-    [Export(typeof(IQuickInfoSourceProvider))]
+    //[Export(typeof(IQuickInfoSourceProvider))]
     [Name("Wide ToolTip QuickInfo Source")]
     [Order(Before = "Default Quick Info Presenter")]
     [ContentType("Wide")]
@@ -60,15 +60,7 @@ namespace VisualWide.AnalyzerHighlighting
             applicableToSpan = null;
         }
         
-        private bool m_isDisposed;
-        public void Dispose()
-        {
-            if (!m_isDisposed)
-            {
-                GC.SuppressFinalize(this);
-                m_isDisposed = true;
-            }
-        }
+        public void Dispose() {}
     }
 
     internal class QuickInfoController : IIntellisenseController
@@ -124,7 +116,7 @@ namespace VisualWide.AnalyzerHighlighting
         }
     }
     
-    [Export(typeof(IIntellisenseControllerProvider))]
+    //[Export(typeof(IIntellisenseControllerProvider))]
     [Name("Wide ToolTip QuickInfo Controller")]
     [ContentType("Wide")]
     internal class QuickInfoControllerProvider : IIntellisenseControllerProvider

@@ -37,30 +37,33 @@ namespace VisualWide.SourceHighlighting
             };
         }
 
+        ErrorTag ErrorFor(LexerProvider.Failure f)
+        {
+            switch(f)
+            {
+                case LexerProvider.Failure.UnlexableCharacter:
+                    return new ErrorTag(PredefinedErrorTypeNames.SyntaxError, "The Wide lexer could not recognize this character");
+                case LexerProvider.Failure.UnterminatedComment:
+                    return new ErrorTag(PredefinedErrorTypeNames.SyntaxError, "This comment is unterminated");
+                case LexerProvider.Failure.UnterminatedStringLiteral:
+                    return new ErrorTag(PredefinedErrorTypeNames.SyntaxError, "This string literal is unterminated");
+            }
+            return null;
+        }
+
+        SnapshotSpan AdjustSpan(SnapshotSpan span, LexerProvider.Failure failure)
+        {
+            if (failure == LexerProvider.Failure.UnlexableCharacter)
+                return span;
+            return new SnapshotSpan(span.Snapshot, new Span(span.Snapshot.Length - 1, 1));
+        }
         public IEnumerable<ITagSpan<ErrorTag>> GetTags(NormalizedSnapshotSpanCollection spans) 
         {
             var shot = spans[0].Snapshot;
-            foreach (var error in provider.GetErrors(shot))
-            {
-                foreach (var span in spans)
-                {
-                    if (error.where.IntersectsWith(span))
-                    {
-                        if (error.what == LexerProvider.Failure.UnlexableCharacter)
-                        {
-                            yield return new TagSpan<ErrorTag>(error.where, new ErrorTag("syntax error", "The Wide lexer could not recognize this character."));
-                        }
-                        if (error.what == LexerProvider.Failure.UnterminatedStringLiteral)
-                        {
-                            yield return new TagSpan<ErrorTag>(new SnapshotSpan(shot, new Span(shot.Length - 1, 1)), new ErrorTag("syntax error", "This string is unterminated."));
-                        }
-                        if (error.what == LexerProvider.Failure.UnterminatedComment)
-                        {
-                            yield return new TagSpan<ErrorTag>(new SnapshotSpan(shot, new Span(shot.Length - 1, 1)), new ErrorTag("syntax error", "This comment is unterminated."));
-                        }
-                    }
-                }
-            }
+            return provider.GetErrors(shot)
+                           .SelectMany(error => spans
+                                                    .Where(span => error.where.IntersectsWith(span))
+                                                    .Select(span => new TagSpan<ErrorTag>(AdjustSpan(error.where, error.what), ErrorFor(error.what))));
         }
 
         public event EventHandler<SnapshotSpanEventArgs> TagsChanged = delegate { };

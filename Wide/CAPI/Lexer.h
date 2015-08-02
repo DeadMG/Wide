@@ -50,4 +50,10 @@ namespace CEquivalents {
             : inv(r, std::move(what)) {}
         Wide::Lexer::Invocation inv;
     };
+    enum class BracketType : int
+    {
+        None,
+        Open,
+        Close
+    };
 }

@@ -15,7 +15,7 @@ using System.Runtime.InteropServices;
 
 namespace VisualWide.ParserHighlighting
 {
-    [Export(typeof(ITaggerProvider))]
+    //[Export(typeof(ITaggerProvider))]
     [ContentType("Wide")]
     [TagType(typeof(ErrorTag))]
     internal class ParserErrorProviderProvider : ITaggerProvider
@@ -58,22 +58,6 @@ namespace VisualWide.ParserHighlighting
                 TagsChanged(this, new SnapshotSpanEventArgs(span));
             };
         }
-
-        private string NameForDecltype(ParserProvider.DeclType type)
-        {
-            switch (type)
-            {
-                case ParserProvider.DeclType.Function:
-                    return "function";
-                case ParserProvider.DeclType.Module:
-                    return "module";
-                case ParserProvider.DeclType.Type:
-                    return "type";
-                case ParserProvider.DeclType.Using:
-                    return "using";
-            }
-            return "unknown";
-        }
         
         public IEnumerable<ITagSpan<ErrorTag>> GetTags(NormalizedSnapshotSpanCollection spans)
         {
@@ -86,7 +70,7 @@ namespace VisualWide.ParserHighlighting
                 {
                     if (error.where.IntersectsWith(span))
                     {
-                        yield return new TagSpan<ErrorTag>(error.where, new ErrorTag(Microsoft.VisualStudio.Text.Adornments.PredefinedErrorTypeNames.SyntaxError, ParserProvider.GetErrorString(error.what)));
+                        yield return new TagSpan<ErrorTag>(error.where, new ErrorTag(PredefinedErrorTypeNames.SyntaxError, ParserProvider.GetErrorString(error.what)));
                     }
                 }
             }
@@ -97,28 +81,6 @@ namespace VisualWide.ParserHighlighting
                     if (warning.where.IntersectsWith(span))
                     {
                         yield return new TagSpan<ErrorTag>(warning.where, new ErrorTag(ErrorType, ParserProvider.GetWarningString(warning.what)));
-                    }
-                }
-            }
-            foreach (var clash in provider.CombinedErrors.Concat(ProjectUtils.instance.GetProjectsFor(shot.TextBuffer).Select(proj => proj.CombinerErrors).Aggregate((x, y) => x.Concat(y))))
-            {
-                foreach (var loc in clash)
-                {
-                    string error = null;
-                    foreach (var span in spans)
-                    {
-                        if (loc.where.Snapshot == shot && loc.where.IntersectsWith(span))
-                        {
-                            if (error == null)
-                            {
-                                error = "Error: This " + NameForDecltype(loc.what) + " clashes with";
-                                foreach (var other in clash.Where(err => err.where.Snapshot != shot || !err.where.Equals(loc.where)))
-                                {
-                                    error += "\n    " + NameForDecltype(other.what) + " at file " + ProjectUtils.instance.GetFileName(other.where.Snapshot.TextBuffer) + " at line " + other.position.begin.line + ".";
-                                }
-                            }
-                            yield return new TagSpan<ErrorTag>(loc.where, new ErrorTag(Microsoft.VisualStudio.Text.Adornments.PredefinedErrorTypeNames.SyntaxError, error));
-                        }
                     }
                 }
             }

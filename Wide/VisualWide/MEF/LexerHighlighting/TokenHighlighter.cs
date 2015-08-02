@@ -108,36 +108,33 @@ namespace VisualWide
                 Literal = typeService.GetClassificationType("WideLiteral");
             }
 
+            private ClassificationTag TagForTokenType(LexerProvider.Token token)
+            {
+                if (token.IsLiteral)
+                    return new ClassificationTag(Literal);
+                if (token.IsKeyword)
+                    return new ClassificationTag(Keyword);
+                return null;
+            }
+            private ClassificationTag TagForErrorType(LexerProvider.Failure fail)
+            {
+                if (fail == LexerProvider.Failure.UnterminatedComment)
+                    return new ClassificationTag(Comment);
+                if (fail == LexerProvider.Failure.UnterminatedStringLiteral)
+                    return new ClassificationTag(Literal);
+                return null;
+            }
             public IEnumerable<ITagSpan<ClassificationTag>> GetTags(NormalizedSnapshotSpanCollection spans)
             {
-                foreach (var token in provider.GetTokens(spans[0].Snapshot))
-                {
-                    foreach (var span in spans)
-                    {
-                        if (token.where.IntersectsWith(span))
-                        {
-                            if (token.type == LexerProvider.TokenType.String || token.type == LexerProvider.TokenType.Integer)
-                            {
-                                yield return new TagSpan<ClassificationTag>(token.where, new ClassificationTag(Literal));
-                            }
-                            if (LexerProvider.IsKeyword(token.type))
-                            {
-                                yield return new TagSpan<ClassificationTag>(token.where, new ClassificationTag(Keyword));
-                            }
-                        }
-                    }
-                }
-                foreach (var comment in provider.GetComments(spans[0].Snapshot))
-                {
-                   yield return new TagSpan<ClassificationTag>(comment, new ClassificationTag(Comment));
-                }
-                foreach (var error in provider.GetErrors(spans[0].Snapshot))
-                {
-                    if (error.what == LexerProvider.Failure.UnterminatedComment)
-                        yield return new TagSpan<ClassificationTag>(error.where, new ClassificationTag(Comment));
-                    if (error.what == LexerProvider.Failure.UnterminatedStringLiteral)
-                        yield return new TagSpan<ClassificationTag>(error.where, new ClassificationTag(Literal));
-                }
+                return
+                    provider
+                        .GetTokens(spans[0].Snapshot)
+                        .Where(token => TagForTokenType(token) != null)
+                        .SelectMany(token => spans
+                                             .Where(span => token.SpanLocation.IntersectsWith(span))
+                                             .Select(span => new TagSpan<ClassificationTag>(token.SpanLocation, TagForTokenType(token))))
+                        .Concat(provider.GetComments(spans[0].Snapshot).Select(comment => new TagSpan<ClassificationTag>(comment, new ClassificationTag(Comment))))
+                        .Concat(provider.GetErrors(spans[0].Snapshot).Where(fail => TagForErrorType(fail.what) != null).Select(error => new TagSpan<ClassificationTag>(error.where, TagForErrorType(error.what))));
             }
             
             public event EventHandler<SnapshotSpanEventArgs> TagsChanged = delegate { };
