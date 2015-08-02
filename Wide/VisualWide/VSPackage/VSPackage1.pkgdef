@@ -1,0 +1,11 @@
+﻿[$RootKey$\InstalledProducts\VSPackage1Package]
+@="#110"
+"Package"="{27d97bf0-ec8c-466d-b1a0-df926943c05e}"
+"PID"="1.0"
+"ProductDetails"="#112"
+"LogoID"="#400"
+[$RootKey$\Packages\{27d97bf0-ec8c-466d-b1a0-df926943c05e}]
+@="VSPackage1Package"
+"InprocServer32"="$WinDir$\SYSTEM32\MSCOREE.DLL"
+"Class"="Microsoft.VSPackage1.VSPackage1Package"
+"CodeBase"="$PackageFolder$\VisualWide.dll"
