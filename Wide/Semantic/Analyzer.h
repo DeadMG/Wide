@@ -213,7 +213,7 @@ namespace Wide {
             ExpressionHandlers;
             std::unordered_map<
                 std::type_index, 
-                std::function<std::shared_ptr<Expression>(const Parse::SharedObjectTag* , Analyzer& a, Module* lookup, std::string name)>> 
+                std::function<std::shared_ptr<Expression>(const Parse::SharedObject* , Analyzer& a, Module* lookup, std::string name)>> 
             SharedObjectHandlers;
             std::unordered_map<
                 std::type_index, 

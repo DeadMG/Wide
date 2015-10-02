@@ -59,12 +59,10 @@ namespace VisualWide
 
         public struct Outline
         {
-            public Outline(SnapshotSpan loc, OutliningType t)
+            public Outline(SnapshotSpan loc)
             {
-                type = t;
                 where = loc;
             }
-            public OutliningType type;
             public SnapshotSpan where;
         }
 
@@ -93,7 +91,7 @@ namespace VisualWide
         private delegate MaybeToken TokenCallback(System.IntPtr con);
         
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-        private delegate void OutlineCallback(LexerProvider.CRange where, OutliningType what, System.IntPtr con);
+        private delegate void OutlineCallback(LexerProvider.CRange where, System.IntPtr con);
 
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
         private delegate void ErrorCallback(int count, [MarshalAs(UnmanagedType.LPArray, SizeParamIndex = 0)]LexerProvider.CRange[] where, ParserError what, System.IntPtr context);
@@ -179,9 +177,9 @@ namespace VisualWide
                     result.exists = 0;
                     return result;
                 },
-                (where, type, context) =>
+                (where, context) =>
                 {
-                    results.outlining.Add(new Outline(new SnapshotSpan(shot, LexerProvider.SpanFromLexer(where)), type));
+                    results.outlining.Add(new Outline(new SnapshotSpan(shot, LexerProvider.SpanFromLexer(where))));
                 },
                 (num, where, what, context) =>
                 {

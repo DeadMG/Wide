@@ -41,7 +41,7 @@ void Wide::Driver::Compile(const Wide::Options::Clang& copts,
     Wide::Concurrency::Vector<std::string> excepts;
     Wide::Concurrency::Vector<std::string> warnings;
     Wide::Parse::Combiner combiner;
-    Wide::Concurrency::Vector<std::shared_ptr<Wide::Parse::Parser>> builders;
+    Wide::Concurrency::Vector<std::unique_ptr<Wide::Parse::Module>> builders;
     auto errs = Wide::Concurrency::ParallelForEach(files.begin(), files.end(), [&](const std::string& filename) {
         std::ifstream inputfile(filename, std::ios::binary | std::ios::in);
         if (!inputfile) throw std::runtime_error("Could not open input file " + filename + "\n");
@@ -49,8 +49,11 @@ void Wide::Driver::Compile(const Wide::Options::Clang& copts,
         Wide::Lexer::Invocation lex(Wide::Range::IStreamRange(inputfile), std::make_shared<std::string>(filename));
         try {
             auto parser = std::make_shared<Wide::Parse::Parser>(lex);
-            parser->ParseGlobalModuleContents(&parser->GlobalModule);
-            builders.push_back(std::move(parser));
+            auto mod = Wide::Memory::MakeUnique<Wide::Parse::Module>(Wide::Util::none);
+            auto results = parser->ParseGlobalModuleContents();
+            for (auto&& member : results)
+                parser->AddMemberToModule(mod.get(), std::move(member));
+            builders.push_back(std::move(mod));
         } catch(Wide::Parse::Error& e) {
             excepts.push_back(e.what());
         } catch(std::exception& e) {
@@ -63,8 +66,10 @@ void Wide::Driver::Compile(const Wide::Options::Clang& copts,
         Wide::Lexer::Invocation lex(Wide::Range::StringRange(source.first), std::make_shared<std::string>(source.second));
         try {
             auto parser = std::make_shared<Wide::Parse::Parser>(lex);
-            parser->ParseGlobalModuleContents(&parser->GlobalModule);
-            builders.push_back(std::move(parser));
+            auto mod = Wide::Memory::MakeUnique<Wide::Parse::Module>(Wide::Util::none);
+            auto results = parser->ParseGlobalModuleContents();
+            for (auto&& member : results)
+                parser->AddMemberToModule(mod.get(), std::move(member));
         }
         catch (Wide::Parse::Error& e) {
             excepts.push_back(e.what());
@@ -95,7 +100,7 @@ void Wide::Driver::Compile(const Wide::Options::Clang& copts,
         std::cout << x << "\n";
 
     for(auto&& x : builders)
-        combiner.Add(&x->GlobalModule);
+        combiner.Add(x.get());
 
     if (excepts.empty()) {
         Wide::Semantic::Analyzer a(copts, combiner.GetGlobalModule(), con, import_headers);

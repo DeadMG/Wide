@@ -17,7 +17,6 @@ namespace CEquivalents {
 extern "C" DLLEXPORT CEquivalents::Builder* ParseWide(
     void* context,
     std::add_pointer<CEquivalents::LexerResult(void*)>::type TokenCallback,
-    std::add_pointer<void(CEquivalents::Range, Wide::Parse::OutliningType, void*)>::type OutliningCallback,
     std::add_pointer<void(unsigned count, CEquivalents::Range*, const char*, void*)>::type ErrorCallback,
     const char* filename
 ) {
@@ -46,7 +45,6 @@ extern "C" DLLEXPORT CEquivalents::Builder* ParseWide(
             }
         }
     };
-    ret->builder.outlining = [=](Wide::Lexer::Range r, Wide::Parse::OutliningType t) { return OutliningCallback(r, t, context); };
     try {
         ret->builder.ParseGlobalModuleContents(&ret->builder.GlobalModule);
     } catch(Wide::Parse::Error& e) {
@@ -87,4 +85,12 @@ extern "C" DLLEXPORT void AddParser(CEquivalents::Combiner* c, CEquivalents::Bui
         modules.insert(&x->builder.GlobalModule);
     }
     c->combiner.SetModules(std::move(modules));
+}
+
+extern "C" DLLEXPORT void GetOutlining(
+    CEquivalents::Builder* p, 
+    std::add_pointer<void(CEquivalents::Range, void*)>::type OutliningCallback,
+    void* context
+) {
+
 }

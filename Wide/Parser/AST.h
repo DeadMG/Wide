@@ -12,6 +12,7 @@
 #include <boost/variant.hpp>
 #include <boost/functional/hash.hpp>
 #include <Wide/Util/Memory/MakeUnique.h>
+#include <Wide/Util/Ranges/Optional.h>
 #include <boost/version.hpp>
 
 namespace Wide {
@@ -58,39 +59,13 @@ namespace std {
 }
 namespace Wide {
     namespace Parse {
-        // If the first boolean is true, this object represents a collection of subobjects that can be unified.
-        // If the second boolean is true, this object must be presented with the same access specifier everywhere.
-
-        // Indicates that this object can be shared between multiple modules.
-        // e.g., type, using.
-        //struct Traversable;
-        //struct Visitor {
-        //    std::unordered_map<std::type_index, std::function<bool(const Traversable*)>> VisitFunctions;
-        //    template<typename T, typename F> void AddVisitHandler(F f) {
-        //        VisitFunctions[typeid(const T)] = [f](const Traversable* arg) {
-        //            f(static_cast<const T*>(arg));
-        //        }
-        //    }
-        //};
-        //struct Traversable {
-        //    // Need dynamic_cast.
-        //    void Traverse(const Visitor& visitor) const {
-        //        if (visitor.VisitFunctions.find(typeid(*this)) != visitor.VisitFunctions.end()) {
-        //            if (visitor.VisitFunctions.at(typeid(*this))(this))
-        //                return;
-        //        }
-        //        return TraverseNode(visitor);
-        //    }
-        //private:
-        //    virtual void TraverseNode(const Visitor&) const = 0;
-        //};
-        struct SharedObjectTag {
+        // The whole container has one access level and cannot be unified, e.g. UDTs
+        struct SharedObject {
             virtual Wide::Lexer::Range GetLocation() = 0;
-            virtual ~SharedObjectTag() {}
+            virtual ~SharedObject() {}
         };
         // Indicates that this object is a container that contains multiple subobjects and must be unified.
         template<typename T> struct Container {
-            virtual std::unordered_set<Wide::Lexer::Range> GetLocations() = 0;
             virtual std::unique_ptr<T> clone() const = 0;
             // REQUIRED STRONG EXCEPTION SAFETY
             virtual void unify(const T&) = 0;
@@ -120,7 +95,7 @@ namespace Wide {
             }
         };
 
-        struct Statement /*: Traversable*/ {
+        struct Statement {
             Statement(Lexer::Range r)
                 : location(r) {}
             virtual ~Statement() {}
@@ -157,10 +132,6 @@ namespace Wide {
             Throw(Lexer::Range where)
                 : Statement(where), expr() {}
             std::unique_ptr<Expression> expr;
-            //void TraverseNode(const Visitor& visitor) const {
-            //    if (expr)
-            //        expr->Traverse(visitor);
-            //}
         };
         struct This : Expression {
             This(Lexer::Range r)
@@ -174,13 +145,6 @@ namespace Wide {
         struct Constructor;
         template<typename T> struct ModuleOverloadSet : ContainerBase<ModuleOverloadSet<T>, MultipleAccessContainer> {
             OverloadSet<std::shared_ptr<T>> funcs;
-            std::unordered_set<Wide::Lexer::Range> GetLocations() {
-                std::unordered_set<Wide::Lexer::Range> locations;
-                for (auto&& f : funcs)
-                    for (auto&& func : f.second)
-                        locations.insert(func->where);
-                return locations;
-            }
             void unify(const ModuleOverloadSet<T>& with) {
                 funcs.insert(with.funcs.begin(), with.funcs.end());
             }
@@ -204,7 +168,7 @@ namespace Wide {
 namespace boost {
     template<> struct is_nothrow_move_constructible<std::pair<Wide::Parse::Access, std::unique_ptr<Wide::Parse::Using>>> : public boost::true_type{};
     template<> struct is_nothrow_move_constructible<std::pair<Wide::Parse::Access, std::unique_ptr<Wide::Parse::UniqueAccessContainer>>> : public boost::true_type{};
-    template<> struct is_nothrow_move_constructible<std::pair<Wide::Parse::Access, std::shared_ptr<Wide::Parse::SharedObjectTag>>> : public boost::true_type{};
+    template<> struct is_nothrow_move_constructible<std::pair<Wide::Parse::Access, std::shared_ptr<Wide::Parse::SharedObject>>> : public boost::true_type{};
     template<> struct is_nothrow_move_constructible<std::unique_ptr<Wide::Parse::MultipleAccessContainer>> : public boost::true_type{};
 }
 #endif
@@ -212,8 +176,91 @@ namespace boost {
 #endif
 namespace Wide {
     namespace Parse {
+        struct ModuleLocation {
+            struct LongForm {
+                Lexer::Range Module;
+                Lexer::Range Name;
+                Lexer::Range OpenCurly;
+                Lexer::Range CloseCurly;
+            };
+            struct ShortForm {
+                ShortForm(Lexer::Range name)
+                    : Name(std::move(name)) {}
+                Lexer::Range Name;
+            };
+
+            ModuleLocation(LongForm longf)
+                : location(std::move(longf)) {}
+            ModuleLocation(ShortForm shortf)
+                : location(std::move(shortf)) {}
+
+            ModuleLocation(const ModuleLocation&) = default;
+            ModuleLocation(ModuleLocation&&) = default;
+            ModuleLocation& operator=(const ModuleLocation&) = default;
+            ModuleLocation& operator=(ModuleLocation&&) = default;
+
+            boost::variant<LongForm, ShortForm> location;
+            Lexer::Range GetKey() const {
+                if (auto lhslong = boost::get<ModuleLocation::LongForm>(&location))
+                    return lhslong->Module;
+                return boost::get<ModuleLocation::ShortForm>(location).Name;
+            }
+            Lexer::Range GetIdentifier() const {
+                if (auto lhslong = boost::get<ModuleLocation::LongForm>(&location))
+                    return lhslong->Name;
+                return boost::get<ModuleLocation::ShortForm>(location).Name;
+            }
+        };
+        inline bool operator==(const ModuleLocation& lhs, const ModuleLocation& rhs) {
+            return lhs.GetKey() == rhs.GetKey();
+        }
+    }
+}
+namespace std {
+    template<> struct hash<Wide::Parse::ModuleLocation> {
+        std::size_t operator()(const Wide::Parse::ModuleLocation& r) const {
+            return std::hash<Wide::Lexer::Range>()(r.GetKey());
+        }
+    };
+}
+namespace Wide {
+    namespace Parse {
+        struct ModuleMember {
+            ModuleMember() = default;
+            ModuleMember(const ModuleMember&) = delete;
+            ModuleMember(ModuleMember&&) = default;
+            ModuleMember& operator=(const ModuleMember&) = delete;
+            ModuleMember& operator=(ModuleMember&&) = default;
+            struct NamedMember {
+                NamedMember() = default;
+                NamedMember(const NamedMember&) = delete;
+                NamedMember(NamedMember&&) = default;
+                NamedMember& operator=(const NamedMember&) = delete;
+                NamedMember& operator=(NamedMember&&) = default;
+                std::string name;
+                typedef std::pair<Parse::Access, std::unique_ptr<UniqueAccessContainer>> UniqueMember;
+                typedef std::pair<Parse::Access, std::shared_ptr<SharedObject>> SharedMember;
+                typedef std::unique_ptr<MultipleAccessContainer> MultiAccessMember;
+                boost::variant<UniqueMember, SharedMember, MultiAccessMember> member;
+            };
+            struct OperatorOverload {
+                OperatorName name;
+                Parse::Access access;
+                std::shared_ptr<Function> function;
+            };
+            struct ConstructorDecl {
+                std::shared_ptr<Constructor> constructor;
+            };
+            struct DestructorDecl {
+                std::shared_ptr<Destructor> destructor;
+            };
+            boost::variant<NamedMember, OperatorOverload, ConstructorDecl, DestructorDecl> member;
+        };
         struct Module : ContainerBase<Module, UniqueAccessContainer> {
-            Module() {}
+            Module(Wide::Util::optional<ModuleLocation> loc) {
+                if (loc)
+                    locations.insert(*loc);
+            }
             Module(const Module& other) {
                 unify(other);
             }
@@ -221,17 +268,22 @@ namespace Wide {
                 std::string,
                 boost::variant<
                     std::pair<Parse::Access, std::unique_ptr<UniqueAccessContainer>>,
-                    std::pair<Parse::Access, std::shared_ptr<SharedObjectTag>>,
+                    std::pair<Parse::Access, std::shared_ptr<SharedObject>>,
                     std::unique_ptr<MultipleAccessContainer>
                 >
             > named_decls;
-            std::unordered_map<OperatorName, OverloadSet<std::shared_ptr<Function>>> OperatorOverloads;
 
+            std::unordered_map<OperatorName, OverloadSet<std::shared_ptr<Function>>> OperatorOverloads;
             std::unordered_set<std::shared_ptr<Constructor>> constructor_decls;
             std::unordered_set<std::shared_ptr<Destructor>> destructor_decls;
-            std::unordered_set<Lexer::Range> locations;
+            std::unordered_set<ModuleLocation> locations;
+
             std::unordered_set<Wide::Lexer::Range> GetLocations() {
-                return locations;
+                std::unordered_set<Wide::Lexer::Range> locs;
+                for (auto loc : locations) {
+                    locs.insert(loc.GetKey());
+                }
+                return locs;
             }
 
             void unify(const Module& with);
@@ -282,8 +334,10 @@ namespace Wide {
             Lexer::Range where;
             std::vector<FunctionArgument> args;
             std::vector<std::unique_ptr<Statement>> statements;
+
             virtual ~FunctionBase() {} // Need dynamic_cast.
         };
+
         struct AttributeFunctionBase : FunctionBase {
             AttributeFunctionBase(std::vector<std::unique_ptr<Statement>> b, Lexer::Range loc, std::vector<FunctionArgument> ar, std::vector<Attribute> attributes)
                 : FunctionBase(std::move(ar), std::move(b), loc), attributes(std::move(attributes)) {}
@@ -313,7 +367,7 @@ namespace boost {
 #endif
 namespace Wide {
     namespace Parse {
-        struct Type : Expression, SharedObjectTag {
+        struct Type : Expression, SharedObject {
             Type(const Type&) = delete;
             Type(Type&& other)
                 : Expression(std::move(other))
@@ -458,7 +512,7 @@ namespace Wide {
             std::unique_ptr<Expression> callee;
             std::vector<std::unique_ptr<Expression>> args;
         };
-        struct Using : SharedObjectTag {
+        struct Using : SharedObject {
             Using(std::unique_ptr<Expression> ex, Lexer::Range where)
                 :  location(where), expr(std::move(ex)) {}
             Lexer::Range location;
@@ -626,7 +680,7 @@ namespace Wide {
             
             Module root;            
         public:
-            Combiner() {}
+            Combiner() : root(Wide::Util::none) {}
 
             Module* GetGlobalModule() { return &root; }
 

@@ -25,12 +25,7 @@ Wide::Util::optional<Lexer::Token> PutbackLexer::operator()() {
     return std::move(val);
 }
 Lexer::Token PutbackLexer::operator()(Lexer::TokenType required) {
-    auto&& val = (*this)();
-    if (!val)
-        throw Error(tokens.back(), Wide::Util::none, { required });
-    if (val->GetType() != required)
-        throw Error(tokens[tokens.size() - 2], *val, { required });
-    return *val;
+    return (*this)(std::initializer_list<Lexer::TokenType>({ required }));
 }
 Lexer::Token PutbackLexer::operator()(std::unordered_set<Lexer::TokenType> required) {
     auto val = (*this)();
@@ -42,10 +37,8 @@ Lexer::Token PutbackLexer::operator()(std::unordered_set<Lexer::TokenType> requi
 }
 
 Parser::Parser(std::function<Wide::Util::optional<Lexer::Token>()> l)
-: lex(l), GlobalModule() 
+: lex(l)
 {
-    outlining = [](Lexer::Range r, Parse::OutliningType out) {};
-
     ModuleOverloadableOperators = std::initializer_list<Parse::OperatorName> {
        { { &Lexer::TokenTypes::LeftShift  } },
        { { &Lexer::TokenTypes::RightShift  } },
@@ -110,24 +103,41 @@ Parser::Parser(std::function<Wide::Util::optional<Lexer::Token>()> l)
         };
     }
 
-    ModuleTokens[&Lexer::TokenTypes::Private] = [](Parser& p, Module* m, Parse::Access a, std::shared_ptr<Parse::Import> imp, Lexer::Token& token) {
+    ModuleTokens[&Lexer::TokenTypes::Private] = [](Parser& p, ModuleParseState state, Lexer::Token& token) {
         p.lex(&Lexer::TokenTypes::Colon);
-        return Parse::Access::Private;
+        return ModuleParseResult{
+            ModuleParseState{
+                state.imp,
+                Parse::Access::Private
+            },
+            Wide::Util::none
+        };
     };
 
-    ModuleTokens[&Lexer::TokenTypes::Public] = [](Parser& p, Module* m, Parse::Access a, std::shared_ptr<Parse::Import> imp, Lexer::Token& token) {
+    ModuleTokens[&Lexer::TokenTypes::Public] = [](Parser& p, ModuleParseState state, Lexer::Token& token) {
         p.lex(&Lexer::TokenTypes::Colon);
-        return Parse::Access::Public;
+        return ModuleParseResult{
+            ModuleParseState {
+                state.imp,
+                Parse::Access::Public
+            },
+            Wide::Util::none
+        };
     };
     
-    GlobalModuleTokens[&Lexer::TokenTypes::Import] = [](Parser& p, Module* m, Parse::Access a, std::shared_ptr<Parse::Import> imp, Lexer::Token& token) {
+    GlobalModuleTokens[&Lexer::TokenTypes::Import] = [](Parser& p, ModuleParseState state, Lexer::Token& token) {
         // import y;
         // import y hiding x, y, z;
-        auto&& expr = p.ParseExpression(imp);
+        auto&& expr = p.ParseExpression(state.imp);
         auto&& semi = p.lex({ &Lexer::TokenTypes::Semicolon, &Lexer::TokenTypes::Hiding });
         std::vector<Parse::Name> hidings;
         if (semi.GetType() == &Lexer::TokenTypes::Semicolon)
-            return std::make_shared<Import>(std::move(expr), std::vector<Parse::Name>(), std::move(imp), hidings);
+            return ModuleParseResult{
+                ModuleParseState {
+                    std::make_shared<Import>(std::move(expr), std::vector<Parse::Name>(), std::move(state.imp), hidings),
+                    state.access
+                }
+            };
         // Hiding
         while (true) {
             Parse::Name name;
@@ -139,13 +149,18 @@ Parser::Parser(std::function<Wide::Util::optional<Lexer::Token>()> l)
             hidings.push_back(name);
             auto&& next = p.lex({ &Lexer::TokenTypes::Comma, &Lexer::TokenTypes::Semicolon });
             if (next.GetType() == &Lexer::TokenTypes::Semicolon)
-                return std::make_shared<Import>(std::move(expr), std::vector<Parse::Name>(), imp, hidings);
+                return ModuleParseResult{
+                    ModuleParseState{
+                        std::make_shared<Import>(std::move(expr), std::vector<Parse::Name>(), state.imp, hidings),
+                        state.access
+                    }
+                };
         }
     };
 
-    GlobalModuleTokens[&Lexer::TokenTypes::From] = [](Parser& p, Module* m, Parse::Access a, std::shared_ptr<Parse::Import> imp, Lexer::Token& token) {
+    GlobalModuleTokens[&Lexer::TokenTypes::From] = [](Parser& p, ModuleParseState state, Lexer::Token& token) {
         // from x import y, z;
-        auto&& expr = p.ParseExpression(imp);
+        auto&& expr = p.ParseExpression(state.imp);
         p.lex(&Lexer::TokenTypes::Import);
         // Import only these
         std::vector<Parse::Name> names;
@@ -159,100 +174,171 @@ Parser::Parser(std::function<Wide::Util::optional<Lexer::Token>()> l)
             names.push_back(name);
             auto&& next = p.lex({ &Lexer::TokenTypes::Comma, &Lexer::TokenTypes::Semicolon });
             if (next.GetType() == &Lexer::TokenTypes::Semicolon)
-                return std::make_shared<Import>(std::move(expr), names, imp, std::vector<Parse::Name>());
+                return ModuleParseResult{
+                    ModuleParseState{
+                        std::make_shared<Import>(std::move(expr), names, state.imp, std::vector<Parse::Name>()),
+                        state.access
+                    }
+                };
         }
     };
 
-    GlobalModuleTokens[&Lexer::TokenTypes::Module] = [](Parser& p, Module* m, Parse::Access a, std::shared_ptr<Parse::Import> imp, Lexer::Token& module) {
+    GlobalModuleTokens[&Lexer::TokenTypes::Module] = [](Parser& p, ModuleParseState state, Lexer::Token& module) {
         auto&& ident = p.lex(&Lexer::TokenTypes::Identifier);
-        auto&& maybedot = p.lex({ &Lexer::TokenTypes::Dot, &Lexer::TokenTypes::OpenCurlyBracket });
-        if (maybedot.GetType() == &Lexer::TokenTypes::Dot)
-            m = p.ParseQualifiedName(ident, m, a, { &Lexer::TokenTypes::Identifier }, { &Lexer::TokenTypes::OpenCurlyBracket });
-        else
-            p.lex(maybedot);
-        auto&& curly = p.lex(&Lexer::TokenTypes::OpenCurlyBracket);
-        auto&& mod = p.CreateModule(ident.GetValue(), m, module.GetLocation() + curly.GetLocation(), a);
-        p.ParseModuleContents(mod, curly.GetLocation(), imp);
-        return imp;
+        return ModuleParseResult {
+            state,
+            ModuleMember{
+                ModuleMember::NamedMember {
+                    ident.GetValue(),
+                    ModuleMember::NamedMember::UniqueMember {
+                        std::make_pair(state.access, p.ParseModule(ident.GetLocation(), state, module))
+                    }
+                }
+            }
+        };
     };
 
-    GlobalModuleTokens[&Lexer::TokenTypes::Template] = [](Parser& p, Module* m, Parse::Access a, std::shared_ptr<Parse::Import> imp, Lexer::Token& templat) {
+    GlobalModuleTokens[&Lexer::TokenTypes::Template] = [](Parser& p, ModuleParseState state, Lexer::Token& templat) {
         p.lex(&Lexer::TokenTypes::OpenBracket);
-        auto&& args = p.ParseFunctionDefinitionArguments(imp);
+        auto&& args = p.ParseFunctionDefinitionArguments(state.imp);
         auto&& attrs = std::vector<Attribute>();
         auto&& token = p.lex({ &Lexer::TokenTypes::OpenSquareBracket, &Lexer::TokenTypes::Type });
         while (token.GetType() == &Lexer::TokenTypes::OpenSquareBracket) {
-            attrs.push_back(p.ParseAttribute(token, imp));
+            attrs.push_back(p.ParseAttribute(token, state.imp));
             token = p.lex({ &Lexer::TokenTypes::OpenSquareBracket, &Lexer::TokenTypes::Type });
         }
         auto&& ident = p.lex(&Lexer::TokenTypes::Identifier);
-        auto&& ty = p.ParseTypeDeclaration(templat.GetLocation(), imp, ident, std::move(attrs));
-        p.AddTemplateTypeToModule(m, ident.GetValue(), templat.GetLocation() + ty->GetLocation(), std::move(args), std::move(ty), a);
-        return imp;
+        auto&& ty = p.ParseTypeDeclaration(templat.GetLocation(), state.imp, ident, std::move(attrs));
+        return ModuleParseResult {
+            state, 
+            ModuleMember{
+                ModuleMember::NamedMember {
+                    ident.GetValue(),
+                    ModuleMember::NamedMember::SharedMember {
+                        state.access,
+                        std::move(ty)
+                    }
+                }
+            }
+        };
     };
 
-    GlobalModuleTokens[&Lexer::TokenTypes::Using] = [](Parser& p, Module* m, Parse::Access a, std::shared_ptr<Parse::Import> imp, Lexer::Token& token) {
+    GlobalModuleTokens[&Lexer::TokenTypes::Using] = [](Parser& p, ModuleParseState state, Lexer::Token& token) {
         auto&& useloc = p.lex.GetLastToken().GetLocation();
         auto&& t = p.lex(&Lexer::TokenTypes::Identifier);
         auto&& var = p.lex(&Lexer::TokenTypes::VarCreate);
-        auto&& expr = p.ParseExpression(imp);
+        auto&& expr = p.ParseExpression(state.imp);
         auto&& semi = p.lex(&Lexer::TokenTypes::Semicolon);
         auto&& use = std::make_shared<Using>(std::move(expr), token.GetLocation() + semi.GetLocation());
-        p.AddUsingToModule(m, t.GetValue(), std::move(use), a);
-        return imp;
+        return ModuleParseResult{
+            state,
+            ModuleMember{
+                ModuleMember::NamedMember {
+                    t.GetValue(),
+                    ModuleMember::NamedMember::SharedMember {
+                        state.access,
+                        std::move(use)
+                    }
+                }
+            }
+        };
     };
 
-    GlobalModuleAttributeTokens[&Lexer::TokenTypes::OpenSquareBracket] = [](Parser& p, Module* m, Parse::Access a, std::shared_ptr<Parse::Import> imp, Lexer::Token& token, std::vector<Attribute> attributes) {
+    GlobalModuleAttributeTokens[&Lexer::TokenTypes::OpenSquareBracket] = [](Parser& p, ModuleParseState state, Lexer::Token& token, std::vector<Attribute> attributes) {
         // Another attribute, just add it to the list.
-        attributes.push_back(p.ParseAttribute(token, imp));
+        attributes.push_back(p.ParseAttribute(token, state.imp));
         auto&& next = p.lex(GetExpectedTokenTypesFromMap(p.GlobalModuleAttributeTokens));
-        return p.GlobalModuleAttributeTokens[next.GetType()](p, m, a, imp, next, std::move(attributes));
+        return p.GlobalModuleAttributeTokens[next.GetType()](p, state, next, std::move(attributes));
     };
 
-    GlobalModuleAttributeTokens[&Lexer::TokenTypes::Dot] = [](Parser& p, Module* m, Parse::Access a, std::shared_ptr<Parse::Import> imp, Lexer::Token& token, std::vector<Attribute> attributes) {
+    GlobalModuleAttributeTokens[&Lexer::TokenTypes::Dot] = [](Parser& p, ModuleParseState state, Lexer::Token& token, std::vector<Attribute> attributes) {
         auto&& next = p.lex(&Lexer::TokenTypes::Identifier);
-        return p.GlobalModuleAttributeTokens[&Lexer::TokenTypes::Identifier](p, m, a, imp, next, std::move(attributes));
+        return p.GlobalModuleAttributeTokens[&Lexer::TokenTypes::Identifier](p, state, next, std::move(attributes));
     };
 
-    GlobalModuleAttributeTokens[&Lexer::TokenTypes::Identifier] = [](Parser& p, Module* m, Parse::Access a, std::shared_ptr<Parse::Import> imp, Lexer::Token& ident, std::vector<Attribute> attributes) {
+    GlobalModuleAttributeTokens[&Lexer::TokenTypes::Identifier] = [](Parser& p, ModuleParseState state, Lexer::Token& ident, std::vector<Attribute> attributes) {
         auto&& maybedot = p.lex({ &Lexer::TokenTypes::Dot, &Lexer::TokenTypes::OpenBracket });
-        if (maybedot.GetType() == &Lexer::TokenTypes::Dot)
-            m = p.ParseQualifiedName(ident, m, a, { &Lexer::TokenTypes::Operator, &Lexer::TokenTypes::Identifier }, { &Lexer::TokenTypes::OpenBracket });
-        else
-            p.lex(maybedot);
-        if (ident.GetType() == &Lexer::TokenTypes::Identifier) {
-            auto&& t = p.lex(&Lexer::TokenTypes::OpenBracket);
-            auto&& func = p.ParseFunction(ident, imp, std::move(attributes));
-            p.AddFunctionToModule(m, ident.GetValue(), std::move(func), a);
-            return;
+        if (maybedot.GetType() == &Lexer::TokenTypes::OpenBracket) {
+            auto&& func = p.ParseFunction(ident, state.imp, std::move(attributes));
+            auto set = Wide::Memory::MakeUnique<ModuleOverloadSet<Wide::Parse::Function>>();
+            set->funcs[state.access].insert(std::move(func));
+            return ModuleParseResult{
+                state,
+                ModuleMember {
+                    ModuleMember::NamedMember {
+                        ident.GetValue(),
+                        ModuleMember::NamedMember::MultiAccessMember {
+                            std::move(set)
+                        }
+                    }
+                }
+            };
         }
-        auto&& name = p.ParseOperatorName(p.ModuleOverloadableOperators);
-        p.lex(&Lexer::TokenTypes::OpenBracket);
-        auto&& func = p.ParseFunction(ident, imp, std::move(attributes));
-        m->OperatorOverloads[name][a].insert(std::move(func));
+        return ModuleParseResult{
+            state,
+            ModuleMember {
+                ModuleMember::NamedMember {
+                    ident.GetValue(),
+                    ModuleMember::NamedMember::UniqueMember {
+                        state.access,
+                        p.ParseModuleFunction(ident.GetLocation(), state, std::move(attributes))
+                    }
+                }
+            }
+        };
     };
 
-    GlobalModuleAttributeTokens[&Lexer::TokenTypes::Type] = [](Parser& p, Module* m, Parse::Access a, std::shared_ptr<Parse::Import> imp, Lexer::Token& typ, std::vector<Attribute> attributes) {
+    GlobalModuleAttributeTokens[&Lexer::TokenTypes::Type] = [](Parser& p, ModuleParseState state, Lexer::Token& typ, std::vector<Attribute> attributes) {
         // Could be exported constructor.
         auto&& next = p.lex({ &Lexer::TokenTypes::OpenBracket, &Lexer::TokenTypes::Identifier });
         if (next.GetType() == &Lexer::TokenTypes::OpenBracket) {
-            auto&& func = p.ParseConstructor(typ, imp, std::move(attributes));
-            m->constructor_decls.insert(std::move(func));
-            return;
+            return ModuleParseResult{
+                state,
+                ModuleMember {
+                    ModuleMember::ConstructorDecl {
+                        p.ParseConstructor(typ, state.imp, std::move(attributes))
+                    }
+                }
+            };
         }
-        auto&& ty = p.ParseTypeDeclaration(typ.GetLocation(), imp, next, std::move(attributes));
-        p.AddTypeToModule(m, next.GetValue(), std::move(ty), a);
+        return ModuleParseResult{
+            state,
+            ModuleMember {
+                ModuleMember::NamedMember {
+                next.GetValue(),
+                    ModuleMember::NamedMember::SharedMember {
+                        std::make_pair(state.access, p.ParseTypeDeclaration(typ.GetLocation(), state.imp, next, std::move(attributes)))
+                    }
+                }
+            }
+        };
     };
 
-    GlobalModuleAttributeTokens[&Lexer::TokenTypes::Operator] = [](Parser& p, Module* m, Parse::Access a, std::shared_ptr<Parse::Import>imp, Lexer::Token& tok, std::vector<Attribute> attrs) {
+    GlobalModuleAttributeTokens[&Lexer::TokenTypes::Operator] = [](Parser& p, ModuleParseState state, Lexer::Token& tok, std::vector<Attribute> attrs) {
         auto&& name = p.ParseOperatorName(p.ModuleOverloadableOperators);
         p.lex(&Lexer::TokenTypes::OpenBracket);
-        auto&& func = p.ParseFunction(tok, imp, std::move(attrs));
-        m->OperatorOverloads[name][a].insert(std::move(func));
+        auto&& func = p.ParseFunction(tok, state.imp, std::move(attrs));
+        return ModuleParseResult{
+            state,
+            ModuleMember {
+                ModuleMember::OperatorOverload {
+                    name,
+                    state.access,
+                    std::move(func)
+                }
+            }
+        };
     };
 
-    GlobalModuleAttributeTokens[&Lexer::TokenTypes::Negate] = [](Parser& p, Module* m, Parse::Access a, std::shared_ptr<Parse::Import> imp, Lexer::Token& token, std::vector<Attribute> attributes) {
-        m->destructor_decls.insert(p.ParseDestructor(token, imp, std::move(attributes)));
+    GlobalModuleAttributeTokens[&Lexer::TokenTypes::Negate] = [](Parser& p, ModuleParseState state, Lexer::Token& token, std::vector<Attribute> attributes) {
+        return ModuleParseResult {
+            state,
+            ModuleMember{
+                ModuleMember::DestructorDecl {
+                    p.ParseDestructor(token, state.imp, std::move(attributes))
+                }
+            }
+        };
     };
     
     PostfixOperators[&Lexer::TokenTypes::OpenSquareBracket] = [](Parser& p, std::shared_ptr<Parse::Import> imp, std::unique_ptr<Expression> e, Lexer::Token& token) {
@@ -829,26 +915,6 @@ std::unordered_set<OperatorName> Parser::GetAllOperators() {
     valid.insert(MemberOverloadableOperators.begin(), MemberOverloadableOperators.end());
     return valid;
 }
-Module* Parser::ParseQualifiedName(Lexer::Token& first, Module* m, Parse::Access a, std::unordered_set<Lexer::TokenType> expected, std::unordered_set<Lexer::TokenType> final) {
-    // We have already seen identifier . to enter this method.
-    m = CreateModule(first.GetValue(), m, first.GetLocation(), a);
-    expected.insert(&Lexer::TokenTypes::Identifier);
-    final.insert(&Lexer::TokenTypes::Dot);
-    while (true) {
-        auto&& ident = lex(expected);
-        if (ident.GetType() != &Lexer::TokenTypes::Identifier) return m;
-        // If there's a dot, and it was not operator, keep going- else terminate.
-        // Don't act on the final whatever
-        auto&& dot = lex(final);
-        if (dot.GetType() != &Lexer::TokenTypes::Dot) {
-            lex(dot);
-            first = ident;
-            return m;
-        }
-        m = CreateModule(ident.GetValue(), m, ident.GetLocation(), a);
-    }
-}
-
 Attribute Parser::ParseAttribute(Lexer::Token& tok, std::shared_ptr<Parse::Import> imp) {
     auto&& initialized = ParseExpression(imp);
     lex(&Lexer::TokenTypes::VarCreate);
@@ -857,54 +923,57 @@ Attribute Parser::ParseAttribute(Lexer::Token& tok, std::shared_ptr<Parse::Impor
     return Attribute(std::move(initialized), std::move(initializer), tok.GetLocation() + end.GetLocation());
 }
 
-std::shared_ptr<Parse::Import> Parser::ParseGlobalModuleLevelDeclaration(Module* m, std::shared_ptr<Parse::Import> imp) {
+ModuleParseResult Parser::ParseGlobalModuleLevelDeclaration(std::shared_ptr<Parse::Import> imp) {
     // Can only get here if ParseGlobalModuleContents found a token, so we know we have at least one.
     auto t = *lex();
     if (GlobalModuleTokens.find(t.GetType()) != GlobalModuleTokens.end())
-        return GlobalModuleTokens[t.GetType()](*this, m, Parse::Access::Public, imp, t);
-    if (GlobalModuleAttributeTokens.find(t.GetType()) != GlobalModuleAttributeTokens.end()) {
-        GlobalModuleAttributeTokens[t.GetType()](*this, m, Parse::Access::Public, imp, t, std::vector<Attribute>());
-        return imp;
-    }
+        return GlobalModuleTokens[t.GetType()](*this, { imp, Parse::Access::Public }, t);
+    if (GlobalModuleAttributeTokens.find(t.GetType()) != GlobalModuleAttributeTokens.end())
+        return GlobalModuleAttributeTokens[t.GetType()](*this, { imp, Parse::Access::Public }, t, std::vector<Attribute>());
     std::unordered_set<Wide::Lexer::TokenType> expected;
     for (auto&& pair : GlobalModuleTokens)
         expected.insert(pair.first);
     throw Error(lex.GetLastToken(), t, expected);
 }
 
-void Parser::ParseGlobalModuleContents(Module* m, std::shared_ptr<Parse::Import> imp) {
-    auto&& t = lex();
-    if (t) {
+std::vector<ModuleMember> Parser::ParseGlobalModuleContents(std::shared_ptr<Parse::Import> imp) {
+    std::vector<ModuleMember> members;
+    auto t = lex();
+    while (t) {
         lex(*t);
-        imp = ParseGlobalModuleLevelDeclaration(m, imp);
-        return ParseGlobalModuleContents(m, imp);
+        auto result = ParseGlobalModuleLevelDeclaration(imp);
+        members.push_back(std::move(*result.member));
+        imp = result.newstate.imp;
+        t = lex();
     }
+    return members;
 }
-void Parser::ParseModuleContents(Module* m, Lexer::Range first, std::shared_ptr<Parse::Import> imp) {
+ModuleParse Parser::ParseModuleContents(std::shared_ptr<Parse::Import> imp) {
     auto&& access = Parse::Access::Public;
+    std::vector<ModuleMember> members;
     while (true) {
         auto&& expected = GetExpectedTokenTypesFromMap(ModuleTokens, GlobalModuleTokens, GlobalModuleAttributeTokens);
         expected.insert(&Lexer::TokenTypes::CloseCurlyBracket);
         auto&& t = lex(expected);
         if (t.GetType() == &Lexer::TokenTypes::CloseCurlyBracket) {
-            outlining(first + t.GetLocation(), OutliningType::Module);
-            return;
+            return ModuleParse { std::move(members), t.GetLocation() };
         }
         lex(t);
-        access = ParseModuleLevelDeclaration(m, access, imp);
+        auto result = ParseModuleLevelDeclaration({ imp, access });
+        if (result.member)
+            members.push_back(std::move(*result.member));
+        access = result.newstate.access;
+        imp = result.newstate.imp;
     }
 }
-Parse::Access Parser::ParseModuleLevelDeclaration(Module* m, Parse::Access a, std::shared_ptr<Parse::Import> imp) {
+ModuleParseResult Parser::ParseModuleLevelDeclaration(ModuleParseState state) {
     auto t = *lex();
     if (ModuleTokens.find(t.GetType()) != ModuleTokens.end())
-        return ModuleTokens[t.GetType()](*this, m, a, imp, t);
-    if (GlobalModuleTokens.find(t.GetType()) != GlobalModuleTokens.end()) {
-        GlobalModuleTokens[t.GetType()](*this, m, a, imp, t);
-        return a;
-    }
+        return ModuleTokens[t.GetType()](*this, state, t);
+    if (GlobalModuleTokens.find(t.GetType()) != GlobalModuleTokens.end()) 
+        return GlobalModuleTokens[t.GetType()](*this, state, t);
     assert(GlobalModuleAttributeTokens.find(t.GetType()) != GlobalModuleAttributeTokens.end());
-    GlobalModuleAttributeTokens[t.GetType()](*this, m, a, imp, t, std::vector<Attribute>());
-    return a;
+    return GlobalModuleAttributeTokens[t.GetType()](*this, state, t, std::vector<Attribute>());
 }
 std::unique_ptr<Expression> Parser::ParseExpression(std::shared_ptr<Parse::Import> imp) {
     return ParseAssignmentExpression(imp);
@@ -1079,7 +1148,6 @@ void Parser::ParseTypeBody(Type* ty, std::shared_ptr<Parse::Import> imp) {
             DynamicMemberFunctions[t.GetType()](*this, ty, access, imp, t, std::vector<Attribute>());
         t = lex(expected);
     }
-    outlining(loc + lex.GetLastToken().GetLocation(), OutliningType::Type);
 }
 std::unique_ptr<Function> Parser::ParseFunction(const Lexer::Token& first, std::shared_ptr<Parse::Import> imp, std::vector<Attribute> attrs) {
     auto&& args = ParseFunctionDefinitionArguments(imp);
@@ -1183,50 +1251,6 @@ std::unique_ptr<Destructor> Parser::ParseDestructor(const Lexer::Token& first, s
     }
     return Wide::Memory::MakeUnique<Destructor>(std::move(body), first.GetLocation() + t.GetLocation(), std::move(attrs), false);
 }
-
-void Parser::AddTypeToModule(Module* m, std::string name, std::shared_ptr<Type> t, Parse::Access specifier) {
-    if (m->named_decls.find(name) != m->named_decls.end())
-        throw std::runtime_error("Tried to insert a type into a module but already found something there.");
-    m->named_decls[name] = std::make_pair(specifier, t);
-}
-void Parser::AddUsingToModule(Module* m, std::string name, std::shared_ptr<Using> u, Parse::Access specifier) {
-    if (m->named_decls.find(name) != m->named_decls.end())
-        throw std::runtime_error("Tried to insert a using into a module but already found something there.");
-    m->named_decls[name] = std::make_pair(specifier, u);
-}
-void Parser::AddFunctionToModule(Module* m, std::string name, std::shared_ptr<Function> f, Parse::Access specifier) {
-    if (m->named_decls.find(name) == m->named_decls.end())
-        m->named_decls[name] = Wide::Memory::MakeUnique<ModuleOverloadSet<Function>>();
-    auto&& set = boost::get<std::unique_ptr<MultipleAccessContainer>>(&m->named_decls[name]);
-    auto&& overset = dynamic_cast<ModuleOverloadSet<Function>*>(set->get());
-    if (!overset)
-        throw std::runtime_error("Tried to insert a function into a module but already found something there that was not an overload set.");
-    overset->funcs[specifier].insert(f);
-}
-void Parser::AddTemplateTypeToModule(Module* m, std::string name, Lexer::Range where, std::vector<FunctionArgument> args, std::unique_ptr<Type> t, Parse::Access specifier) {
-    if (m->named_decls.find(name) == m->named_decls.end())
-        m->named_decls[name] = Wide::Memory::MakeUnique<ModuleOverloadSet<TemplateType>>();
-    auto&& set = boost::get<std::unique_ptr<MultipleAccessContainer>>(&m->named_decls[name]);
-    auto&& overset = dynamic_cast<ModuleOverloadSet<TemplateType>*>(set->get());
-    if (!overset)
-        throw std::runtime_error("Tried to insert a template type into a module but already found something there that was not a template overload set.");
-    overset->funcs[specifier].insert(std::make_shared<TemplateType>(where, std::move(t), std::move(args)));
-}
-Module* Parser::CreateModule(std::string name, Module* m, Lexer::Range where, Parse::Access access) {
-    if (m->named_decls.find(name) != m->named_decls.end()) {
-        auto&& mod_pair = boost::get<std::pair<Parse::Access, std::unique_ptr<UniqueAccessContainer>>>(&m->named_decls[name]);
-		auto&& mod = dynamic_cast<Module*>(mod_pair->second.get());
-        if (!mod)
-            throw std::runtime_error("Tried to insert a module into a module but already found something there that was not a module.");
-        mod->locations.insert(where);
-        return mod;
-    }
-    auto&& newmod = Wide::Memory::MakeUnique<Module>();
-    auto modptr = newmod.get();
-    newmod->locations.insert(where);
-    m->named_decls[name] = std::make_pair(access, std::unique_ptr<UniqueAccessContainer>(std::move(newmod)));
-    return modptr;
-}
 Wide::Lexer::Token Parse::Error::GetLastValidToken() {
     return previous;
 }
@@ -1265,4 +1289,50 @@ std::unordered_set<Lexer::TokenType> Parser::GetIdentifierFollowups() {
         for (auto&& tok : level)
             expected.insert(tok);
     return expected;
+}
+
+void Parser::AddMemberToModule(Module* m, ModuleMember member) {
+    Module temp(Wide::Util::none);
+    if (auto con = boost::get<ModuleMember::ConstructorDecl>(&member.member)) {
+        temp.constructor_decls.insert(std::move(con->constructor));
+    }
+    if (auto des = boost::get<ModuleMember::DestructorDecl>(&member.member)) {
+        temp.destructor_decls.insert(std::move(des->destructor));
+    }
+    if (auto op = boost::get<ModuleMember::OperatorOverload>(&member.member)) {
+        temp.OperatorOverloads[op->name][op->access].insert(std::move(op->function));
+    }
+    if (auto named = boost::get<ModuleMember::NamedMember>(&member.member)) {
+        temp.named_decls[named->name] = std::move(named->member);
+    }
+    m->unify(temp);
+}
+std::unique_ptr<Module> Parser::ParseModule(Lexer::Range where, ModuleParseState state, Lexer::Token& module) {
+    auto token = lex({ &Lexer::TokenTypes::OpenCurlyBracket, &Lexer::TokenTypes::Dot });
+    if (token.GetType() == &Lexer::TokenTypes::OpenCurlyBracket) {
+        auto contents = ParseModuleContents(state.imp);
+        auto mod = Wide::Memory::MakeUnique<Module>(ModuleLocation::LongForm{
+            module.GetLocation(),
+            where,
+            token.GetLocation(),
+            contents.CloseCurly
+        });
+        for (auto&& content : contents.results)
+            AddMemberToModule(mod.get(), std::move(content));
+        return mod;
+    }
+    auto next = lex({ &Lexer::TokenTypes::Identifier });
+    auto nested = ParseModule(next.GetLocation(), state, module);
+    auto mod = Wide::Memory::MakeUnique<Module>(ModuleLocation::ShortForm{ where });
+    mod->named_decls[next.GetValue()] = std::make_pair(Access::Public, std::move(nested));
+    return mod;
+}
+std::unique_ptr<Module> Parser::ParseModuleFunction(Lexer::Range where, ModuleParseState state, std::vector<Attribute> attributes)
+{
+    // When we got here, we found "identifier ." at module scope.
+    auto token = lex({ &Lexer::TokenTypes::Identifier, &Lexer::TokenTypes::Operator });
+    auto result = GlobalModuleAttributeTokens[token.GetType()](*this, state, token, std::move(attributes));
+    auto mod = std::make_unique<Module>(ModuleLocation::ShortForm{ where });
+    AddMemberToModule(mod.get(), std::move(*result.member));
+    return mod;
 }

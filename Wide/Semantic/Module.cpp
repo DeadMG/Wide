@@ -38,7 +38,7 @@ OverloadSet* Module::CreateOperatorOverloadSet(Parse::OperatorName ty, Parse::Ac
 std::shared_ptr<Expression> Module::AccessNamedMember(Expression::InstanceKey key, std::shared_ptr<Expression> val, std::string name, Context c)  {
     auto access = GetAccessSpecifier(c.from, this);
     if (m->named_decls.find(name) != m->named_decls.end()) {
-        if (auto shared = boost::get<std::pair<Parse::Access, std::shared_ptr<Parse::SharedObjectTag>>>(&m->named_decls.at(name))) {
+        if (auto shared = boost::get<std::pair<Parse::Access, std::shared_ptr<Parse::SharedObject>>>(&m->named_decls.at(name))) {
             if (shared->first > access) return nullptr;
             return BuildChain(std::move(val), analyzer.SharedObjectHandlers.at(typeid(*shared->second))(shared->second.get(), analyzer, this, name));
         }
@@ -72,7 +72,7 @@ void Module::AddDefaultHandlers(Analyzer& a) {
     });
 
     AddHandler<const Parse::Module>(a.UniqueObjectHandlers, [](const Parse::Module* mod, Analyzer& analyzer, Module* lookup, std::string name) {
-        return analyzer.GetWideModule(mod, lookup, name)->BuildValueConstruction(Expression::NoInstance(), {}, { lookup, *mod->locations.begin() });
+        return analyzer.GetWideModule(mod, lookup, name)->BuildValueConstruction(Expression::NoInstance(), {}, { lookup, mod->locations.begin()->GetIdentifier() });
     });
 
     AddHandler<const Parse::ModuleOverloadSet<Parse::Function>>(a.MultiObjectHandlers, [](const Parse::ModuleOverloadSet<Parse::Function>* overset, Analyzer& analyzer, Module* lookup, Parse::Access access, std::string name, Lexer::Range where) -> std::shared_ptr<Expression> {

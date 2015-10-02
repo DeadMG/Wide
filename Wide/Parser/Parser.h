@@ -28,11 +28,6 @@ namespace Wide {
             Wide::Util::optional<Wide::Lexer::Token> GetInvalidToken();
             std::unordered_set<Wide::Lexer::TokenType> GetExpectedTokenTypes();
         };
-        enum class OutliningType : int {
-            Module,
-            Function,
-            Type
-        };
         struct PutbackLexer {
             PutbackLexer(std::function<Wide::Util::optional<Lexer::Token>()> lex) : lex(std::move(lex)) {}
             
@@ -47,18 +42,36 @@ namespace Wide {
             Lexer::Token GetLastToken();
         };
         
+        struct ModuleParseState {
+            std::shared_ptr<Parse::Import> imp;
+            Parse::Access access;
+        };
+
+        struct ModuleParseResult {
+            ModuleParseState newstate;
+            Wide::Util::optional<ModuleMember> member;
+        };
+
+        struct ModuleParse {
+            ModuleParse() = default;
+            ModuleParse(const ModuleParse&) = delete;
+            ModuleParse(ModuleParse&&) = default;
+            ModuleParse& operator=(const ModuleParse&) = delete;
+            ModuleParse& operator=(ModuleParse&&) = default;
+            std::vector<ModuleMember> results;
+            Lexer::Range CloseCurly;
+        };
+
         struct Parser {
             PutbackLexer lex;
-            Module GlobalModule;
-            std::function<void(Lexer::Range, OutliningType)> outlining;
             
             // All the valid productions in the global module.
-            std::unordered_map<Lexer::TokenType, std::function<std::shared_ptr<Parse::Import>(Parser&, Module*, Parse::Access, std::shared_ptr<Parse::Import>, Lexer::Token& token)>> GlobalModuleTokens;
+            std::unordered_map<Lexer::TokenType, std::function<ModuleParseResult(Parser&, ModuleParseState, Lexer::Token& token)>> GlobalModuleTokens;
             // All the valid productions in global module with attributes.
-            std::unordered_map<Lexer::TokenType, std::function<void(Parser&, Module*, Parse::Access, std::shared_ptr<Parse::Import>, Lexer::Token& token, std::vector<Attribute> attributes)>> GlobalModuleAttributeTokens;
+            std::unordered_map<Lexer::TokenType, std::function<ModuleParseResult(Parser&, ModuleParseState, Lexer::Token& token, std::vector<Attribute> attributes)>> GlobalModuleAttributeTokens;
             // All the productions valid in non-global modules only.
-            std::unordered_map<Lexer::TokenType, std::function<Parse::Access(Parser&, Module*, Parse::Access, std::shared_ptr<Parse::Import>, Lexer::Token& token)>> ModuleTokens;
-            
+            std::unordered_map<Lexer::TokenType, std::function<ModuleParseResult(Parser&, ModuleParseState, Lexer::Token& token)>> ModuleTokens;
+
             // All user-defined overloadable operators that can be overloaded as free functions.
             std::unordered_set<OperatorName> ModuleOverloadableOperators;
             // All user-defined overloadable operators that can only be overloaded as members.
@@ -123,18 +136,13 @@ namespace Wide {
                         
             Attribute ParseAttribute(Lexer::Token& tok, std::shared_ptr<Parse::Import> imp);
 
-            void ParseGlobalModuleContents(Module* m, std::shared_ptr<Parse::Import> imp = nullptr);
-            std::shared_ptr<Parse::Import> ParseGlobalModuleLevelDeclaration(Module* m, std::shared_ptr<Parse::Import> imp);
-            void ParseModuleContents(Module* m, Lexer::Range where, std::shared_ptr<Parse::Import> imp);
+            std::vector<ModuleMember> ParseGlobalModuleContents(std::shared_ptr<Parse::Import> imp = nullptr);
+            ModuleParseResult ParseGlobalModuleLevelDeclaration(std::shared_ptr<Parse::Import> imp);
+            ModuleParseResult ParseModuleLevelDeclaration(ModuleParseState);
+            ModuleParse ParseModuleContents(std::shared_ptr<Parse::Import> imp);
 
-            void AddTypeToModule(Module* m, std::string name, std::shared_ptr<Type> t, Parse::Access specifier);
-            void AddFunctionToModule(Module* m, std::string name, std::shared_ptr<Function> f, Parse::Access specifier);
-            void AddUsingToModule(Module* m, std::string name, std::shared_ptr<Using> f, Parse::Access specifier);
-            void AddTemplateTypeToModule(Module* m, std::string name, Lexer::Range where, std::vector<FunctionArgument>, std::unique_ptr<Type> t, Parse::Access specifier);
-            Module* CreateModule(std::string name, Module* in, Lexer::Range where, Parse::Access access);
+            void AddMemberToModule(Module* m, ModuleMember member);
 
-            Using* CreateUsing(std::string val, Lexer::Range loc, Expression* expr, Module* p, Parse::Access a); 
-            Parse::Access ParseModuleLevelDeclaration(Module* m, Parse::Access a, std::shared_ptr<Parse::Import> imp);
             std::vector<Variable> ParseLambdaCaptures(std::shared_ptr<Parse::Import> imp);
             std::unique_ptr<Expression> ParsePrimaryExpression(std::shared_ptr<Parse::Import> imp);
             std::vector<std::unique_ptr<Expression>> ParseFunctionArguments(std::shared_ptr<Parse::Import> imp);
@@ -148,7 +156,8 @@ namespace Wide {
             std::unique_ptr<Function> ParseFunction(const Lexer::Token& first, std::shared_ptr<Parse::Import> imp, std::vector<Attribute> attrs);
             std::unique_ptr<Destructor> ParseDestructor(const Lexer::Token& first, std::shared_ptr<Parse::Import> imp, std::vector<Attribute> attrs);
             
-            Module* ParseQualifiedName(Lexer::Token& first, Module* m, Parse::Access a, std::unordered_set<Lexer::TokenType> admissible, std::unordered_set<Lexer::TokenType> final);
+            std::unique_ptr<Module> ParseModuleFunction(Lexer::Range where, ModuleParseState state, std::vector<Attribute> attributes);
+            std::unique_ptr<Module> ParseModule(Lexer::Range where, ModuleParseState state, Lexer::Token& module);
             void ParseTypeBody(Type* ty, std::shared_ptr<Parse::Import> imp);
             std::vector<std::unique_ptr<Expression>> ParseTypeBases(std::shared_ptr<Parse::Import> imp);
             std::unique_ptr<Type> ParseTypeDeclaration(Lexer::Range loc, std::shared_ptr<Parse::Import> imp, Lexer::Token& ident, std::vector<Attribute> attrs);

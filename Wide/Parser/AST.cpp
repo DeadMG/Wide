@@ -14,7 +14,7 @@ void Module::unify(const Module& with) {
 
     try {
         for (auto&& decl : with.named_decls) {
-            if (auto&& shared = boost::get<std::pair<Parse::Access, std::shared_ptr<SharedObjectTag>>>(&decl.second)) {
+            if (auto&& shared = boost::get<std::pair<Parse::Access, std::shared_ptr<SharedObject>>>(&decl.second)) {
                 if (named_decls.find(decl.first) == named_decls.end()) {
                     named_decls.insert(std::make_pair(decl.first, *shared));
                     inserted_shared.insert(decl.first);
@@ -94,7 +94,7 @@ bool Module::remove(const Module& with) {
     }
 
     for (auto&& decl : with.named_decls) {
-        if (boost::get<std::pair<Parse::Access, std::shared_ptr<SharedObjectTag>>>(&decl.second))
+        if (boost::get<std::pair<Parse::Access, std::shared_ptr<SharedObject>>>(&decl.second))
             named_decls.erase(decl.first);
         if (auto&& single = boost::get<std::pair<Parse::Access, std::unique_ptr<UniqueAccessContainer>>>(&decl.second))
             if (boost::get<std::pair<Parse::Access, std::unique_ptr<UniqueAccessContainer>>>(named_decls[decl.first]).second->remove(*single->second))
