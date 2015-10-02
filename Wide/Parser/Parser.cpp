@@ -942,7 +942,8 @@ std::vector<ModuleMember> Parser::ParseGlobalModuleContents(std::shared_ptr<Pars
     while (t) {
         lex(*t);
         auto result = ParseGlobalModuleLevelDeclaration(imp);
-        members.push_back(std::move(*result.member));
+        if (result.member)
+            members.push_back(std::move(*result.member));
         imp = result.newstate.imp;
         t = lex();
     }
