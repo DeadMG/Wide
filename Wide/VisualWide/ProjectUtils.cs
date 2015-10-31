@@ -122,7 +122,7 @@ namespace VisualWide
 
             void Update()
             {
-                HashSet<System.IntPtr> newparsers = new HashSet<IntPtr>();
+                /*HashSet<System.IntPtr> newparsers = new HashSet<IntPtr>();
                 foreach (var parser in FileCache.Select(filename => ParserProvider.GetProviderForBuffer(ProjectUtils.instance.GetBufferForFilename(filename)).GetCurrentParser()))
                 {
                     newparsers.Add(parser);
@@ -182,7 +182,7 @@ namespace VisualWide
                 AnalyzerErrors = errors;
                 AnalyzerParameterHighlights = param;
                 DestroyClangOptions(opts);
-                OnUpdate();
+                OnUpdate();*/
             }
 
             public delegate void UpdateCallback();

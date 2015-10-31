@@ -146,7 +146,8 @@ namespace Wide {
         template<typename T> struct ModuleOverloadSet : ContainerBase<ModuleOverloadSet<T>, MultipleAccessContainer> {
             OverloadSet<std::shared_ptr<T>> funcs;
             void unify(const ModuleOverloadSet<T>& with) {
-                funcs.insert(with.funcs.begin(), with.funcs.end());
+                for (auto&& set : with.funcs)
+                    funcs[set.first].insert(set.second.begin(), set.second.end());
             }
             bool remove(const ModuleOverloadSet<T>& with) {
                 for (auto&& item : with.funcs) {

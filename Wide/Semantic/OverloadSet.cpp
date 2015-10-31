@@ -41,7 +41,8 @@ std::shared_ptr<Expression> OverloadSet::ConstructCall(Expression::InstanceKey k
     for (auto&& x : argscopy)
         targs.push_back(x->GetType(key));
     auto call = Resolve(targs, c.from);
-    if (!call) return IssueResolutionError(targs, c);
+    if (!call)
+        return IssueResolutionError(targs, c);
 
     if (nonstatic)
         argscopy.insert(argscopy.begin(), CreatePrimUnOp(BuildValue(std::move(val)), nonstatic, [](llvm::Value* self, CodegenContext& con) {

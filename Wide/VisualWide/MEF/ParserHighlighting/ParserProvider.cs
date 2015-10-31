@@ -103,9 +103,7 @@ namespace VisualWide
         private static extern System.IntPtr ParseWide(
             System.IntPtr context,
             [MarshalAs(UnmanagedType.FunctionPtr)]TokenCallback tokencallback,
-            [MarshalAs(UnmanagedType.FunctionPtr)]OutlineCallback outlinecallback,
             [MarshalAs(UnmanagedType.FunctionPtr)]ErrorCallback errorcallback,
-            [MarshalAs(UnmanagedType.FunctionPtr)]WarningCallback warningcallback,
             [MarshalAs(UnmanagedType.LPStr)]String filename
         );
 
@@ -114,8 +112,12 @@ namespace VisualWide
 
         [DllImport("CAPI.dll", CallingConvention = CallingConvention.Cdecl)]
         private static extern System.IntPtr GetParserErrorString(ParserError err);
+
         [DllImport("CAPI.dll", CallingConvention = CallingConvention.Cdecl)]
         private static extern System.IntPtr GetParserWarningString(ParserWarning err);
+
+        [DllImport("CAPI.dll", CallingConvention = CallingConvention.Cdecl)]
+        private static extern void GetOutlining(System.IntPtr builder, OutlineCallback callback, System.IntPtr context);
         
         public static string GetErrorString(ParserError err)
         {
@@ -177,10 +179,6 @@ namespace VisualWide
                     result.exists = 0;
                     return result;
                 },
-                (where, context) =>
-                {
-                    results.outlining.Add(new Outline(new SnapshotSpan(shot, LexerProvider.SpanFromLexer(where))));
-                },
                 (num, where, what, context) =>
                 {
                     foreach (var loc in where)
@@ -193,14 +191,15 @@ namespace VisualWide
                         results.errors.Add(new Error(new SnapshotSpan(shot, LexerProvider.SpanFromLexer(copy)), what));
                     }
                 },
-                (where, what, context) =>
-                {
-                    results.warnings.Add(new Warning(new SnapshotSpan(shot, LexerProvider.SpanFromLexer(where)), what));
-                },
                 ProjectUtils.GetFileName(factory, shot.TextBuffer)
                 //utils.GetFileName(shot.TextBuffer)
             );
-
+            GetOutlining(
+                currparser, 
+                (where, con) => results.outlining.Add(new Outline(new SnapshotSpan(shot, LexerProvider.SpanFromLexer(where)))), 
+                System.IntPtr.Zero
+            );
+             
             var oldparser = parser;
             parser = currparser;
             if (oldparser != System.IntPtr.Zero)
@@ -216,6 +215,10 @@ namespace VisualWide
             textbuffer = buf;
             lexer = lp;
             ParseSnapshot();
+            lexer.TagsChanged += (span) =>
+            {
+                ParseSnapshot();
+            };
         }
 
         public IEnumerable<Outline> Outlines

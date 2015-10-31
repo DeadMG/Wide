@@ -14,7 +14,7 @@ using System.Runtime.InteropServices;
 
 namespace VisualWide.ParserHighlighting
 {
-    //[Export(typeof(ITaggerProvider))]
+    [Export(typeof(ITaggerProvider))]
     [ContentType("Wide")]
     [TagType(typeof(IOutliningRegionTag))]
     internal class OutliningProvider : ITaggerProvider
@@ -40,7 +40,7 @@ namespace VisualWide.ParserHighlighting
         TagSpan<OutliningRegionTag> CreateTag(ParserProvider.Outline outline)
         {
             var tag = new OutliningRegionTag(false, false, "{ ... }", "{ ... }");
-            return new TagSpan<OutliningRegionTag>(new SnapshotSpan(outline.where.Snapshot, outline.where.Start, outline.where.Length + 1), tag);
+            return new TagSpan<OutliningRegionTag>(new SnapshotSpan(outline.where.Snapshot, outline.where.Start, outline.where.Length), tag);
         }
         public IEnumerable<ITagSpan<IOutliningRegionTag>> GetTags(NormalizedSnapshotSpanCollection spans)
         {

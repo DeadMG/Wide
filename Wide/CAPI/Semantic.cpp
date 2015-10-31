@@ -19,6 +19,7 @@
 #include <llvm/Support/TargetRegistry.h>
 #pragma warning(pop)
 
+/*
 std::unordered_set<Wide::Options::Clang*> validopts;
 
 extern "C" DLLEXPORT Wide::Options::Clang* CreateClangOptions(const char* triple) {
@@ -59,4 +60,4 @@ extern "C" DLLEXPORT void AnalyzeWide(
         paramhighlight(r, context);
     };
     Wide::Semantic::AnalyzeExportedFunctions(a);
-}
+}*/
