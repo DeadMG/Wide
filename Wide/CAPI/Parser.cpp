@@ -61,7 +61,7 @@ extern "C" DLLEXPORT CEquivalents::Builder* ParseWide(
         auto contents = p.ParseGlobalModuleContents(nullptr);
         for (auto&& member : contents)
             p.AddMemberToModule(ret->GlobalModule.get(), std::move(member));
-    } catch(Wide::Parse::Error& e) {
+    } catch(Wide::Parse::Error& e) {        
         if (auto tok = e.GetInvalidToken())
             onerror({ tok->GetLocation() }, e.what());
         else

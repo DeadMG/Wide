@@ -34,7 +34,8 @@ namespace VisualWide.ParserHighlighting
             parser = pp;
             pp.TagsChanged += (span) =>
             {
-                TagsChanged(this, new SnapshotSpanEventArgs(span));
+                if (!pp.Errors.Any())
+                    TagsChanged(this, new SnapshotSpanEventArgs(span));
             };
         }
         TagSpan<OutliningRegionTag> CreateTag(ParserProvider.Outline outline)

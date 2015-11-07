@@ -36,8 +36,10 @@ namespace Wide {
             std::vector<Lexer::Token> tokens;
 
             Wide::Util::optional<Lexer::Token> operator()();
-            Lexer::Token operator()(Lexer::TokenType required);
-            Lexer::Token operator()(std::unordered_set<Lexer::TokenType> required);
+            Lexer::Range operator()(Lexer::TokenType required);
+            Lexer::Range operator()(std::unordered_set<Lexer::TokenType> required);
+            template<typename F> auto operator()(Lexer::TokenType required, F f) -> decltype(f(std::declval<Wide::Lexer::Token>()));
+            template<typename F> auto operator()(std::unordered_set<Lexer::TokenType> required, F f) -> decltype(f(std::declval<Wide::Lexer::Token>()));
             void operator()(Lexer::Token arg);
             Lexer::Token GetLastToken();
         };

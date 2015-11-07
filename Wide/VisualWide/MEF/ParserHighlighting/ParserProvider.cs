@@ -37,15 +37,6 @@ namespace VisualWide
             public List<Error> errors = new List<Error>();
             public List<Warning> warnings = new List<Warning>();
         }
-
-        public enum ParserError
-        {
-            ModuleScopeFunctionNoOpenBracket,
-            ModuleScopeOperatorNoOpenBracket,
-            UnrecognizedTokenModuleScope,
-            NonOverloadableOperator,
-            NoOperatorFound
-        }
         public enum ParserWarning
         {
             SemicolonAfterTypeDefinition
@@ -78,13 +69,13 @@ namespace VisualWide
         }
         public class Error
         {
-            public Error(SnapshotSpan whe, ParserError wha)
+            public Error(SnapshotSpan whe, string wha)
             {
                 where = whe;
                 what = wha;
             }
             public SnapshotSpan where;
-            public ParserError what;
+            public string what;
         }
 
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
@@ -94,7 +85,7 @@ namespace VisualWide
         private delegate void OutlineCallback(LexerProvider.CRange where, System.IntPtr con);
 
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-        private delegate void ErrorCallback(int count, [MarshalAs(UnmanagedType.LPArray, SizeParamIndex = 0)]LexerProvider.CRange[] where, ParserError what, System.IntPtr context);
+        private delegate void ErrorCallback(int count, [MarshalAs(UnmanagedType.LPArray, SizeParamIndex = 0)]LexerProvider.CRange[] where, [MarshalAs(UnmanagedType.LPStr)]string what, System.IntPtr context);
 
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
         private delegate void WarningCallback(LexerProvider.CRange where, ParserWarning what, System.IntPtr context);
@@ -109,20 +100,13 @@ namespace VisualWide
 
         [DllImport("CAPI.dll", CallingConvention = CallingConvention.Cdecl)]
         private static extern void DestroyParser(System.IntPtr parser);
-
-        [DllImport("CAPI.dll", CallingConvention = CallingConvention.Cdecl)]
-        private static extern System.IntPtr GetParserErrorString(ParserError err);
-
+        
         [DllImport("CAPI.dll", CallingConvention = CallingConvention.Cdecl)]
         private static extern System.IntPtr GetParserWarningString(ParserWarning err);
 
         [DllImport("CAPI.dll", CallingConvention = CallingConvention.Cdecl)]
         private static extern void GetOutlining(System.IntPtr builder, OutlineCallback callback, System.IntPtr context);
         
-        public static string GetErrorString(ParserError err)
-        {
-            return Marshal.PtrToStringAnsi(GetParserErrorString(err));
-        }
         public static string GetWarningString(ParserWarning war)
         {
             return Marshal.PtrToStringAnsi(GetParserWarningString(war));

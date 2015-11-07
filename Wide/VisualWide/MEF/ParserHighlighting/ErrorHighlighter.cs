@@ -15,7 +15,7 @@ using System.Runtime.InteropServices;
 
 namespace VisualWide.ParserHighlighting
 {
-    //[Export(typeof(ITaggerProvider))]
+    [Export(typeof(ITaggerProvider))]
     [ContentType("Wide")]
     [TagType(typeof(ErrorTag))]
     internal class ParserErrorProviderProvider : ITaggerProvider
@@ -70,7 +70,7 @@ namespace VisualWide.ParserHighlighting
                 {
                     if (error.where.IntersectsWith(span))
                     {
-                        yield return new TagSpan<ErrorTag>(error.where, new ErrorTag(PredefinedErrorTypeNames.SyntaxError, ParserProvider.GetErrorString(error.what)));
+                        yield return new TagSpan<ErrorTag>(error.where, new ErrorTag(PredefinedErrorTypeNames.SyntaxError, error.what));
                     }
                 }
             }
