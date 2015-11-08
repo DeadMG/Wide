@@ -12,7 +12,7 @@ void PutbackLexer::operator()(Lexer::Token arg) {
     putbacks.push_back(std::move(arg));
 }
 
-Wide::Util::optional<Lexer::Token> PutbackLexer::operator()() {
+boost::optional<Lexer::Token> PutbackLexer::operator()() {
     if (!putbacks.empty()) {
         auto val = std::move(putbacks.back());
         putbacks.pop_back();
@@ -20,38 +20,58 @@ Wide::Util::optional<Lexer::Token> PutbackLexer::operator()() {
         return val;
     }
     auto val = lex();
-    if (val)
+    if (val) {
         tokens.push_back(*val);
-    return std::move(val);
+        return *val;
+    }
+    return boost::none;
 }
-template<typename F> auto PutbackLexer::operator()(Lexer::TokenType required, F f) -> decltype(f(std::declval<Wide::Lexer::Token>())) {
+template<typename F> auto PutbackLexer::operator()(Lexer::TokenType required, F f) -> decltype(f(std::declval<Wide::Lexer::Token&>())) {
     return (*this)(std::initializer_list<Lexer::TokenType>({ required }), f);
 }
-template<typename F> auto PutbackLexer::operator()(std::unordered_set<Lexer::TokenType> required, F f) -> decltype(f(std::declval<Wide::Lexer::Token>())) {
+template<typename F> auto PutbackLexer::operator()(Lexer::TokenType required, Lexer::TokenType terminator, F f) -> decltype(f(std::declval<Wide::Lexer::Token&>())) {
+    return (*this)(std::initializer_list<Lexer::TokenType>({ required }), std::initializer_list<Lexer::TokenType>({ terminator }), f);
+}
+template<typename F> auto PutbackLexer::operator()(std::unordered_set<Lexer::TokenType> required, F f) -> decltype(f(std::declval<Wide::Lexer::Token&>())) {
+    return (*this)(required, std::unordered_set<Lexer::TokenType>(), f);
+}
+template<typename F> auto PutbackLexer::operator()(std::unordered_set<Lexer::TokenType> required, Lexer::TokenType terminator, F f) -> decltype(f(std::declval<Wide::Lexer::Token&>())) {
+    return (*this)(required, std::unordered_set<Lexer::TokenType>({ terminator }), f);
+}
+template<typename F> auto PutbackLexer::operator()(std::unordered_set<Lexer::TokenType> required, std::unordered_set<Lexer::TokenType> terminators, F f) -> decltype(f(std::declval<Wide::Lexer::Token&>())) {
     auto val = (*this)();
     if (!val)
         throw Error(tokens.back(), Wide::Util::none, required);
     if (required.find(val->GetType()) == required.end())
-        throw Error(tokens[tokens.size() - 2], *val, required );
+        throw Error(tokens[tokens.size() - 2], *val, required);
     try {
         return f(*val);
-    } catch (Error& e) {
+    }
+    catch (Error& e) {
         if (auto tok = e.GetInvalidToken()) {
-            if (required.find(tok->GetType()) != required.end())
-                return f(*tok);
+            //if (required.find(tok->GetType()) != required.end())
+            //    return f(*tok);
+            // Find the terminator. Before he kills John Connor.
+            if (!terminators.empty()) {
+                while (auto next = (*this)()) {
+                    if (terminators.find(next->GetType()) != terminators.end())
+                        return f(*next);
+                }
+            }
         }
+        
         throw;
     }
 }
 Lexer::Range PutbackLexer::operator()(Lexer::TokenType required) {
-    return (*this)({required});
+    return (*this)(std::unordered_set<Lexer::TokenType>({required}));
 }
 Lexer::Range PutbackLexer::operator()(std::unordered_set<Lexer::TokenType> required) {
     return (*this)(required, [](Lexer::Token& t) { return t.GetLocation(); });
 }
 namespace {
     template<typename Ret, typename F> Ret RecursiveWhile(F f) {
-        return f([&] {
+        return f([&]() -> Ret {
             return RecursiveWhile<Ret>(f);
         });
     }
@@ -237,7 +257,7 @@ Parser::Parser(std::function<Wide::Util::optional<Lexer::Token>()> l)
                     return continuation();
                 }
                 return p.lex(&Lexer::TokenTypes::Identifier, [&](Lexer::Token& ident) {
-                    auto&& ty = p.ParseTypeDeclaration(templat.GetLocation(), state.imp, ident, std::move(attrs));
+                    auto&& ty = p.ParseTypeDeclaration(tok.GetLocation(), state.imp, ident, std::move(attrs));
                     return ModuleParseResult{
                         state,
                         ModuleMember{
@@ -538,7 +558,6 @@ Parser::Parser(std::function<Wide::Util::optional<Lexer::Token>()> l)
         auto&& caps = std::vector<Variable>();
         bool defaultref = false;
         auto handlecurly = [&](Lexer::Token& tok) {
-            auto&& opencurly = tok.GetLocation();
             auto&& expected = p.GetStatementBeginnings();
             expected.insert(&Lexer::TokenTypes::CloseCurlyBracket);
             return RecursiveWhile<std::unique_ptr<Expression>>([&](auto continuation) {
@@ -553,7 +572,6 @@ Parser::Parser(std::function<Wide::Util::optional<Lexer::Token>()> l)
         };
         return p.lex({ &Lexer::TokenTypes::OpenSquareBracket, &Lexer::TokenTypes::OpenCurlyBracket }, [&](Lexer::Token& tok) {
             if (tok.GetType() == &Lexer::TokenTypes::OpenSquareBracket) {
-                auto&& opensquare = tok.GetLocation();
                 return p.lex({ &Lexer::TokenTypes::And, &Lexer::TokenTypes::Identifier }, [&](Lexer::Token& tok) {
                     if (tok.GetType() == &Lexer::TokenTypes::And) {
                         defaultref = true;
@@ -592,9 +610,10 @@ Parser::Parser(std::function<Wide::Util::optional<Lexer::Token>()> l)
 
     PrimaryExpressions[&Lexer::TokenTypes::Type] = [](Parser& p, std::shared_ptr<Parse::Import> imp, Lexer::Token& t) -> std::unique_ptr<Expression> {
         auto&& bases = p.ParseTypeBases(imp);
-        return p.lex(&Lexer::TokenTypes::OpenCurlyBracket, [&](Lexer::Token& semi) {
-            auto&& ty = Wide::Memory::MakeUnique<Type>(std::move(bases), semi.GetLocation(), std::vector<Attribute>());
-            p.ParseTypeBody(ty.get(), imp);
+        return p.lex(&Lexer::TokenTypes::OpenCurlyBracket, [&](Lexer::Token& open) {
+            TypeMembers members;
+            auto close = p.ParseTypeBody(&members, imp);
+            auto&& ty = Wide::Memory::MakeUnique<Type>(members, std::vector<Attribute>(), t.GetLocation(), open.GetLocation(), close, Wide::Util::none);
             return std::move(ty);
         });
     };
@@ -825,7 +844,7 @@ Parser::Parser(std::function<Wide::Util::optional<Lexer::Token>()> l)
                             return RecursiveWhile<std::unique_ptr<TryCatch>>([&](auto nested_continuation) {
                                 return p.lex(expected, [&](Lexer::Token& next) {
                                     if (next.GetType() == &Lexer::TokenTypes::CloseCurlyBracket) {
-                                        catches.push_back(Catch{ std::move(catch_stmts) });
+                                        catches.push_back(Catch{ std::move(catch_stmts), name, std::move(type) });
                                         return continuation();
                                     }
                                     p.lex(next);
@@ -840,19 +859,19 @@ Parser::Parser(std::function<Wide::Util::optional<Lexer::Token>()> l)
         });
     };
     
-    TypeTokens[&Lexer::TokenTypes::Public] = [](Parser& p, Type* t, Parse::Access access, std::shared_ptr<Parse::Import> imp, Lexer::Token& tok) {
+    TypeTokens[&Lexer::TokenTypes::Public] = [](Parser& p, TypeMembers* t, Parse::Access access, std::shared_ptr<Parse::Import> imp, Lexer::Token& tok) {
         p.lex(&Lexer::TokenTypes::Colon);
         return Parse::Access::Public;
     };
-    TypeTokens[&Lexer::TokenTypes::Private] = [](Parser& p, Type* t, Parse::Access access, std::shared_ptr<Parse::Import> imp, Lexer::Token& tok) {
+    TypeTokens[&Lexer::TokenTypes::Private] = [](Parser& p, TypeMembers* t, Parse::Access access, std::shared_ptr<Parse::Import> imp, Lexer::Token& tok) {
         p.lex(&Lexer::TokenTypes::Colon);
         return Parse::Access::Private;
     };
-    TypeTokens[&Lexer::TokenTypes::Protected] = [](Parser& p, Type* t, Parse::Access access, std::shared_ptr<Parse::Import> imp, Lexer::Token& tok) {
+    TypeTokens[&Lexer::TokenTypes::Protected] = [](Parser& p, TypeMembers* t, Parse::Access access, std::shared_ptr<Parse::Import> imp, Lexer::Token& tok) {
         p.lex(&Lexer::TokenTypes::Colon);
         return Parse::Access::Protected;
     };
-    TypeTokens[&Lexer::TokenTypes::Using] = [](Parser& p, Type* t, Parse::Access access, std::shared_ptr<Parse::Import> imp, Lexer::Token& tok) {
+    TypeTokens[&Lexer::TokenTypes::Using] = [](Parser& p, TypeMembers* t, Parse::Access access, std::shared_ptr<Parse::Import> imp, Lexer::Token& tok) {
         return p.lex(&Lexer::TokenTypes::Identifier, [&](Lexer::Token& ident) {
             p.lex(&Lexer::TokenTypes::VarCreate);
             auto&& expr = p.ParseExpression(imp);
@@ -866,7 +885,7 @@ Parser::Parser(std::function<Wide::Util::optional<Lexer::Token>()> l)
         });
     };
 
-    TypeTokens[&Lexer::TokenTypes::From] = [](Parser& p, Type* t, Parse::Access access, std::shared_ptr<Parse::Import> imp, Lexer::Token& tok) {
+    TypeTokens[&Lexer::TokenTypes::From] = [](Parser& p, TypeMembers* t, Parse::Access access, std::shared_ptr<Parse::Import> imp, Lexer::Token& tok) {
         auto&& expr = p.ParseExpression(imp);
         p.lex(&Lexer::TokenTypes::Import);
         std::vector<Parse::Name> names;
@@ -890,14 +909,14 @@ Parser::Parser(std::function<Wide::Util::optional<Lexer::Token>()> l)
         });
     };
 
-    TypeAttributeTokens[&Lexer::TokenTypes::OpenSquareBracket] = [](Parser& p, Type* t, Parse::Access access, std::shared_ptr<Parse::Import> imp, Lexer::Token& tok, std::vector<Attribute> attributes) {
+    TypeAttributeTokens[&Lexer::TokenTypes::OpenSquareBracket] = [](Parser& p, TypeMembers* t, Parse::Access access, std::shared_ptr<Parse::Import> imp, Lexer::Token& tok, std::vector<Attribute> attributes) {
         attributes.push_back(p.ParseAttribute(tok, imp));
         return p.lex(GetExpectedTokenTypesFromMap(p.TypeAttributeTokens), [&](Lexer::Token& next) {
             return p.TypeAttributeTokens[next.GetType()](p, t, access, imp, next, std::move(attributes));
         });
     };
 
-    TypeAttributeTokens[&Lexer::TokenTypes::Dynamic] = [](Parser& p, Type* t, Parse::Access access, std::shared_ptr<Parse::Import> imp, Lexer::Token& tok, std::vector<Attribute> attributes) {
+    TypeAttributeTokens[&Lexer::TokenTypes::Dynamic] = [](Parser& p, TypeMembers* t, Parse::Access access, std::shared_ptr<Parse::Import> imp, Lexer::Token& tok, std::vector<Attribute> attributes) {
         return p.lex(GetExpectedTokenTypesFromMap(p.DynamicMemberFunctions), [&](Lexer::Token& intro) {
             auto&& func = p.DynamicMemberFunctions[intro.GetType()](p, t, access, imp, intro, std::move(attributes));
             func->dynamic = true;
@@ -905,12 +924,13 @@ Parser::Parser(std::function<Wide::Util::optional<Lexer::Token>()> l)
         });
     };
 
-    TypeAttributeTokens[&Lexer::TokenTypes::Identifier] = [](Parser& p, Type* t, Parse::Access access, std::shared_ptr<Parse::Import> imp, Lexer::Token& tok, std::vector<Attribute> attributes) {
+    TypeAttributeTokens[&Lexer::TokenTypes::Identifier] = [](Parser& p, TypeMembers* t, Parse::Access access, std::shared_ptr<Parse::Import> imp, Lexer::Token& tok, std::vector<Attribute> attributes) {
         return p.lex({ &Lexer::TokenTypes::VarCreate, &Lexer::TokenTypes::Colon, &Lexer::TokenTypes::OpenBracket }, [&](Lexer::Token& next) {
             if (next.GetType() == &Lexer::TokenTypes::VarCreate) {
                 auto&& init = p.ParseExpression(imp);
                 auto&& semi = p.lex(&Lexer::TokenTypes::Semicolon);
                 t->variables.push_back(MemberVariable(tok.GetValue(), std::move(init), access, tok.GetLocation() + semi, std::move(attributes), nullptr));
+                return access;
             } else if (next.GetType() == &Lexer::TokenTypes::Colon) {
                 auto&& type = p.ParseExpression(imp);
                 return p.lex({ &Lexer::TokenTypes::Assignment, &Lexer::TokenTypes::Semicolon }, [&](Lexer::Token& ass) {
@@ -933,14 +953,14 @@ Parser::Parser(std::function<Wide::Util::optional<Lexer::Token>()> l)
         });
     };
     
-    TypeAttributeTokens[&Lexer::TokenTypes::Type] = [](Parser& p, Type* t, Parse::Access access, std::shared_ptr<Parse::Import> imp, Lexer::Token& tok, std::vector<Attribute> attributes) {
+    TypeAttributeTokens[&Lexer::TokenTypes::Type] = [](Parser& p, TypeMembers* t, Parse::Access access, std::shared_ptr<Parse::Import> imp, Lexer::Token& tok, std::vector<Attribute> attributes) {
         p.lex(&Lexer::TokenTypes::OpenBracket);
         auto&& con = p.ParseConstructor(tok, imp, std::move(attributes));
         t->constructor_decls[access].insert(std::move(con));
         return access;
     };
 
-    TypeAttributeTokens[&Lexer::TokenTypes::Operator] = [](Parser& p, Type* t, Parse::Access a, std::shared_ptr<Parse::Import> imp, Lexer::Token& tok, std::vector<Attribute> attrs) {
+    TypeAttributeTokens[&Lexer::TokenTypes::Operator] = [](Parser& p, TypeMembers* t, Parse::Access a, std::shared_ptr<Parse::Import> imp, Lexer::Token& tok, std::vector<Attribute> attrs) {
         auto&& valid_ops = p.ModuleOverloadableOperators;
         valid_ops.insert(p.MemberOverloadableOperators.begin(), p.MemberOverloadableOperators.end());
         auto&& name = p.ParseOperatorName(valid_ops);
@@ -952,13 +972,13 @@ Parser::Parser(std::function<Wide::Util::optional<Lexer::Token>()> l)
         return a;
     };
 
-    TypeAttributeTokens[&Lexer::TokenTypes::Negate] = [](Parser& p, Type* t, Parse::Access a, std::shared_ptr<Parse::Import> imp, Lexer::Token& tok, std::vector<Attribute> attrs) {
+    TypeAttributeTokens[&Lexer::TokenTypes::Negate] = [](Parser& p, TypeMembers* t, Parse::Access a, std::shared_ptr<Parse::Import> imp, Lexer::Token& tok, std::vector<Attribute> attrs) {
         t->destructor_decl = p.ParseDestructor(tok, imp, std::move(attrs));
         return a;
     };
 
 
-    DynamicMemberFunctions[&Lexer::TokenTypes::Identifier] = [](Parser& p, Type* t, Parse::Access a, std::shared_ptr<Parse::Import> imp, Lexer::Token& tok, std::vector<Attribute> attrs) {
+    DynamicMemberFunctions[&Lexer::TokenTypes::Identifier] = [](Parser& p, TypeMembers* t, Parse::Access a, std::shared_ptr<Parse::Import> imp, Lexer::Token& tok, std::vector<Attribute> attrs) {
         p.lex(&Lexer::TokenTypes::OpenBracket);
         auto&& func = p.ParseFunction(tok, imp, std::move(attrs));
         auto funcptr = func.get();
@@ -968,12 +988,12 @@ Parser::Parser(std::function<Wide::Util::optional<Lexer::Token>()> l)
         return funcptr;
     };
 
-    DynamicMemberFunctions[&Lexer::TokenTypes::Negate] = [](Parser& p, Type* t, Parse::Access a, std::shared_ptr<Parse::Import> imp, Lexer::Token& tok, std::vector<Attribute> attrs) {
+    DynamicMemberFunctions[&Lexer::TokenTypes::Negate] = [](Parser& p, TypeMembers* t, Parse::Access a, std::shared_ptr<Parse::Import> imp, Lexer::Token& tok, std::vector<Attribute> attrs) {
         t->destructor_decl = p.ParseDestructor(tok, imp, std::move(attrs));
         return t->destructor_decl.get();
     };
 
-    DynamicMemberFunctions[&Lexer::TokenTypes::Operator] = [](Parser& p, Type* t, Parse::Access a, std::shared_ptr<Parse::Import> imp, Lexer::Token& tok, std::vector<Attribute> attrs) -> Function* {
+    DynamicMemberFunctions[&Lexer::TokenTypes::Operator] = [](Parser& p, TypeMembers* t, Parse::Access a, std::shared_ptr<Parse::Import> imp, Lexer::Token& tok, std::vector<Attribute> attrs) -> Function* {
         auto&& valid_ops = p.ModuleOverloadableOperators;
         valid_ops.insert(p.MemberOverloadableOperators.begin(), p.MemberOverloadableOperators.end());
         auto&& name = p.ParseOperatorName(valid_ops);
@@ -1065,7 +1085,7 @@ std::vector<ModuleMember> Parser::ParseGlobalModuleContents(std::shared_ptr<Pars
 ModuleParse Parser::ParseModuleContents(std::shared_ptr<Parse::Import> imp) {
     auto&& access = Parse::Access::Public;
     std::vector<ModuleMember> members;
-    return RecursiveWhile<ModuleParse>([&](auto continuation) {
+    return RecursiveWhile<ModuleParse>([&](std::function<ModuleParse()> continuation) {
         auto expected = GetExpectedTokenTypesFromMap(ModuleTokens, GlobalModuleTokens, GlobalModuleAttributeTokens);
         expected.insert(&Lexer::TokenTypes::CloseCurlyBracket);
         return lex(expected, [&](Lexer::Token& t) {
@@ -1162,25 +1182,26 @@ std::vector<std::unique_ptr<Expression>> Parser::ParseFunctionArguments(std::sha
     std::vector<std::unique_ptr<Expression>> result;
     return lex(expected, [&](Wide::Lexer::Token& tok) {
         if (tok.GetType() == &Lexer::TokenTypes::CloseBracket)
-            return result;
+            return std::move(result);
         lex(tok);
         return RecursiveWhile<std::vector<std::unique_ptr<Expression>>>([&](auto continuation) {
             result.push_back(ParseExpression(imp));
-            tok = lex({ &Lexer::TokenTypes::Comma, &Lexer::TokenTypes::CloseBracket });
-            if (tok.GetType() == &Lexer::TokenTypes::CloseBracket)
-                return std::move(result);
-            return continuation();
+            return lex({ &Lexer::TokenTypes::Comma, &Lexer::TokenTypes::CloseBracket }, [&](Lexer::Token& tok) {
+                if (tok.GetType() == &Lexer::TokenTypes::CloseBracket)
+                    return std::move(result);
+                return continuation();
+            });
         });
     });
 }
 std::vector<Variable> Parser::ParseLambdaCaptures(std::shared_ptr<Parse::Import> imp) {
     std::vector<Variable> variables;
-    return RecursiveWhile<std::vector<Variable>>([&](auto continuation) {
-        return p.lex(&Lexer::TokenTypes::Identifier, [&](Lexer::Token& ident) {
+    return RecursiveWhile<std::vector<Variable>>([&](std::function<std::vector<Variable>()> continuation) {
+        return lex(&Lexer::TokenTypes::Identifier, [&](Lexer::Token& ident) {
             lex(&Lexer::TokenTypes::VarCreate);
             auto&& init = ParseExpression(imp);
-            variables.push_back(Variable(std::vector<Variable::Name>{ {name, ident.GetLocation() }}, std::move(init), tok.GetLocation() + init->location, nullptr));
             return lex({ &Lexer::TokenTypes::CloseSquareBracket, &Lexer::TokenTypes::Comma }, [&](Lexer::Token& tok) {
+                variables.push_back(Variable(std::vector<Variable::Name>{ { ident.GetValue(), ident.GetLocation() }}, std::move(init), tok.GetLocation() + init->location, nullptr));
                 if (tok.GetType() == &Lexer::TokenTypes::CloseSquareBracket)
                     return std::move(variables);
                 return continuation();
@@ -1201,7 +1222,7 @@ std::unique_ptr<Statement> Parser::ParseStatement(std::shared_ptr<Parse::Import>
 }
 std::vector<std::unique_ptr<Expression>> Parser::ParseTypeBases(std::shared_ptr<Parse::Import> imp) {
     auto group = std::vector<std::unique_ptr<Expression>>();
-    return RecursiveWhile<std::vector<std::unique_ptr<Expression>>>([&](auto continuation) {
+    return RecursiveWhile<std::vector<std::unique_ptr<Expression>>>([&](std::function<std::vector<std::unique_ptr<Expression>>()> continuation){
         return lex({ &Lexer::TokenTypes::Colon, &Lexer::TokenTypes::OpenCurlyBracket }, [&](Lexer::Token& colon) {
             if (colon.GetType() == &Lexer::TokenTypes::Colon) {
                 group.push_back(ParseExpression(imp));
@@ -1214,6 +1235,8 @@ std::vector<std::unique_ptr<Expression>> Parser::ParseTypeBases(std::shared_ptr<
 }
 std::vector<FunctionArgument> Parser::ParseFunctionDefinitionArguments(std::shared_ptr<Parse::Import> imp) {
     auto ret = std::vector<FunctionArgument>();
+    auto type = std::unique_ptr<Expression>();
+    auto default_value = std::unique_ptr<Expression>();
     return lex({ &Lexer::TokenTypes::CloseBracket, &Lexer::TokenTypes::Identifier, &Lexer::TokenTypes::This }, [&](Lexer::Token& t) {
         if (t.GetType() == &Lexer::TokenTypes::CloseBracket)
             return std::move(ret);
@@ -1221,7 +1244,7 @@ std::vector<FunctionArgument> Parser::ParseFunctionDefinitionArguments(std::shar
         // At least one argument.
         // The form is this or this : expr, then t, or t : expr
         bool first = true;
-        return RecursiveWhile<std::vector<FunctionArgument>>([&](auto continuation) {
+        return RecursiveWhile<std::vector<FunctionArgument>>([&](std::function<std::vector<FunctionArgument>()> continuation) {
             std::unordered_set<Lexer::TokenType> expected = { &Lexer::TokenTypes::Identifier };
             if (first)
                 expected.insert(&Lexer::TokenTypes::This);
@@ -1230,7 +1253,7 @@ std::vector<FunctionArgument> Parser::ParseFunctionDefinitionArguments(std::shar
                 auto handle_noncolon = [&](Lexer::Token& t2) {
                     if (t2.GetType() == &Lexer::TokenTypes::CloseBracket) {
                         ret.push_back(FunctionArgument(ident.GetLocation(), ident.GetValue(), std::move(type), std::move(default_value)));
-                        return std::move(lex);
+                        return std::move(ret);
                     }
                     if (t2.GetType() == &Lexer::TokenTypes::Comma) {
                         ret.push_back({ ident.GetLocation(), ident.GetValue(), std::move(type), std::move(default_value) });
@@ -1245,8 +1268,6 @@ std::vector<FunctionArgument> Parser::ParseFunctionDefinitionArguments(std::shar
                     });
                 };
                 return lex({ &Lexer::TokenTypes::VarCreate, &Lexer::TokenTypes::CloseBracket, &Lexer::TokenTypes::Comma, &Lexer::TokenTypes::Colon }, [&](Lexer::Token& t2) {
-                    std::unique_ptr<Expression> type = nullptr;
-                    std::unique_ptr<Expression> default_value = nullptr;
                     if (t2.GetType() == &Lexer::TokenTypes::Colon) {
                         type = ParseExpression(imp);
                         return lex({ &Lexer::TokenTypes::Comma, &Lexer::TokenTypes::CloseBracket, &Lexer::TokenTypes::VarCreate }, [&](Lexer::Token& t2) {
@@ -1259,23 +1280,23 @@ std::vector<FunctionArgument> Parser::ParseFunctionDefinitionArguments(std::shar
         });
     });
 }
-std::unique_ptr<Type> Parser::ParseTypeDeclaration(Lexer::Range loc, std::shared_ptr<Parse::Import> imp, Lexer::Token& ident, std::vector<Attribute> attrs) {
+std::unique_ptr<Type> Parser::ParseTypeDeclaration(Lexer::Range tloc, std::shared_ptr<Parse::Import> imp, Lexer::Token& ident, std::vector<Attribute> attrs) {
     auto&& bases = ParseTypeBases(imp);
     return lex(&Lexer::TokenTypes::OpenCurlyBracket, [&](Lexer::Token& t) {
-        auto&& ty = Wide::Memory::MakeUnique<Type>(std::move(bases), loc + t.GetLocation(), std::move(attrs));
-        ParseTypeBody(ty.get(), imp);
+        TypeMembers members;
+        auto close = ParseTypeBody(&members, imp);
+        auto&& ty = Wide::Memory::MakeUnique<Type>(members, std::move(attrs), tloc, t.GetLocation(), close, ident.GetLocation());
         return std::move(ty);
     });
 }
-void Parser::ParseTypeBody(Type* ty, std::shared_ptr<Parse::Import> imp) {
-    auto&& loc = lex.GetLastToken().GetLocation();
+Lexer::Range Parser::ParseTypeBody(TypeMembers* ty, std::shared_ptr<Parse::Import> imp) {
     auto&& access = Parse::Access::Public;
     auto&& expected = GetExpectedTokenTypesFromMap(TypeTokens, TypeAttributeTokens, DynamicMemberFunctions);
     expected.insert(&Lexer::TokenTypes::CloseCurlyBracket);
-    return RecursiveWhile<void>([&](auto continuation) {
+    return RecursiveWhile<Lexer::Range>([&](std::function<Lexer::Range()> continuation) {
         return lex(expected, [&](Lexer::Token& t) {
             if (t.GetType() == &Lexer::TokenTypes::CloseCurlyBracket)
-                return;
+                return t.GetLocation();
             if (TypeTokens.find(t.GetType()) != TypeTokens.end())
                 access = TypeTokens[t.GetType()](*this, ty, access, imp, t);
             else if (TypeAttributeTokens.find(t.GetType()) != TypeAttributeTokens.end())
@@ -1305,8 +1326,8 @@ std::unique_ptr<Function> Parser::ParseFunction(const Lexer::Token& first, std::
         auto&& expected = GetStatementBeginnings();
         expected.insert(&Lexer::TokenTypes::CloseCurlyBracket);
         std::vector<std::unique_ptr<Statement>> statements;
-        return RecursiveWhile<std::unique_ptr<Function>>([&](auto continuation) {
-            return lex(expected, [&](Lexer::Token& t) {
+        return RecursiveWhile<std::unique_ptr<Function>>([&](std::function<std::unique_ptr<Function>()> continuation) {
+            return lex(expected, &Lexer::TokenTypes::CloseCurlyBracket, [&](Lexer::Token& t) {
                 if (t.GetType() == &Lexer::TokenTypes::CloseCurlyBracket)
                     return Wide::Memory::MakeUnique<Function>(std::move(statements), first.GetLocation() + t.GetLocation(), std::move(args), std::move(explicit_return), std::move(attrs));
                 lex(t);
@@ -1346,7 +1367,7 @@ std::unique_ptr<Constructor> Parser::ParseConstructor(const Lexer::Token& first,
         }
         std::vector<VariableInitializer> initializers;
         lex(colon_or_open);
-        return RecursiveWhile<std::unique_ptr<Constructor>>([&](auto continuation) {
+        return RecursiveWhile<std::unique_ptr<Constructor>>([&](std::function<std::unique_ptr<Constructor>()> continuation) {
             return lex({ &Lexer::TokenTypes::OpenCurlyBracket, &Lexer::TokenTypes::Colon }, [&](Lexer::Token& colon_or_open) {
                 auto&& expected = GetExpressionBeginnings();
                 expected.insert(&Lexer::TokenTypes::Type);
@@ -1361,7 +1382,7 @@ std::unique_ptr<Constructor> Parser::ParseConstructor(const Lexer::Token& first,
                         std::vector<std::unique_ptr<Statement>> statements;
                         auto&& expected = GetStatementBeginnings();
                         expected.insert(&Lexer::TokenTypes::CloseCurlyBracket);
-                        return RecursiveWhile<std::unique_ptr<Constructor>>([&](auto continuation) {
+                        return RecursiveWhile<std::unique_ptr<Constructor>>([&](std::function<std::unique_ptr<Constructor>()> continuation) {
                             return lex(expected, [&](Lexer::Token& t) {
                                 if (t.GetType() != &Lexer::TokenTypes::CloseCurlyBracket) {
                                     lex(t);
@@ -1395,7 +1416,7 @@ std::unique_ptr<Destructor> Parser::ParseDestructor(const Lexer::Token& first, s
         std::vector<std::unique_ptr<Statement>> body;
         auto&& expected = GetStatementBeginnings();
         expected.insert(&Lexer::TokenTypes::CloseCurlyBracket);
-        return RecursiveWhile<std::unique_ptr<Destructor>>([&](auto continuation) {
+        return RecursiveWhile<std::unique_ptr<Destructor>>([&](std::function<std::unique_ptr<Destructor>()> continuation) {
             return lex(expected, [&](Lexer::Token& t) {
                 if (t.GetType() == &Lexer::TokenTypes::CloseBracket)
                     return Wide::Memory::MakeUnique<Destructor>(std::move(body), first.GetLocation() + t.GetLocation(), std::move(attrs), false);
@@ -1476,7 +1497,7 @@ std::unique_ptr<Module> Parser::ParseModule(Lexer::Range where, ModuleParseState
                 AddMemberToModule(mod.get(), std::move(content));
             return mod;
         }
-        return lex({ &Lexer::TokenTypes::Identifier }, [&](Lexer::Token& next) {
+        return lex(&Lexer::TokenTypes::Identifier, [&](Lexer::Token& next) {
             auto nested = ParseModule(next.GetLocation(), state, module);
             auto mod = Wide::Memory::MakeUnique<Module>(ModuleLocation::ShortForm{ where });
             mod->named_decls[next.GetValue()] = std::make_pair(Access::Public, std::move(nested));

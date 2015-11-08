@@ -177,7 +177,8 @@ namespace Wide {
             Token(Range r, const std::string* t, std::string val)
                 : location(r), type(t), value(std::move(val)) 
             {
-                if (t != &Wide::Lexer::TokenTypes::String)
+                // Identifier can occur with some malformed input, e.g. @0 causes the lexer to bail on parsing the identifier immediately.
+                if (t != &Wide::Lexer::TokenTypes::String && t != &Wide::Lexer::TokenTypes::Identifier)
                     assert(value != "");
             }
             Range GetLocation() const { return location; }

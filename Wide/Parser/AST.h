@@ -368,19 +368,42 @@ namespace boost {
 #endif
 namespace Wide {
     namespace Parse {
+        struct TypeMembers {
+            std::vector<MemberVariable> variables;
+            std::unordered_map<Name,
+                boost::variant<
+                OverloadSet<std::unique_ptr<Function>>,
+                std::pair<Parse::Access, std::unique_ptr<Using>>
+                >
+            > nonvariables;
+            OverloadSet<std::unique_ptr<Constructor>> constructor_decls;
+            std::unique_ptr<Destructor> destructor_decl;
+            std::vector<std::tuple<std::unique_ptr<Expression>, std::vector<Name>, bool>> imports;
+            std::vector<std::unique_ptr<Expression>> bases;
+        };
         struct Type : Expression, SharedObject {
             Type(const Type&) = delete;
-            Type(Type&& other)
-                : Expression(std::move(other))
-                , variables(std::move(other.variables))
-                , bases(std::move(other.bases))
-                , nonvariables(std::move(other.nonvariables))
-                , constructor_decls(std::move(other.constructor_decls))
-                , destructor_decl(std::move(other.destructor_decl))
-                , imports(std::move(other.imports))
-                , attributes(std::move(other.attributes)) {}
-            Type(std::vector<std::unique_ptr<Expression>> base, Lexer::Range loc, std::vector<Attribute> attributes)
-                : Expression(loc), bases(std::move(base)), attributes(std::move(attributes)), destructor_decl(nullptr) {}
+            Type(Type&& other) = default;
+            Type(TypeMembers& members, 
+                std::vector<Attribute> attributes, 
+                Lexer::Range tloc, 
+                Lexer::Range oloc, 
+                Lexer::Range cloc,
+                Wide::Util::optional<Lexer::Range> identloc
+            )
+                : Expression(tloc + cloc)
+                , bases(std::move(members.bases))
+                , attributes(std::move(attributes))
+                , destructor_decl(std::move(members.destructor_decl))
+                , TypeLocation(tloc)
+                , OpenCurlyLocation(oloc)
+                , CloseCurlyLocation(cloc)
+                , IdentifierLocation(identloc)
+                , variables(std::move(members.variables))
+                , nonvariables(std::move(members.nonvariables)) 
+                , constructor_decls(std::move(members.constructor_decls))
+                , imports(std::move(members.imports)) {}
+            
             std::vector<MemberVariable> variables;
             std::unordered_map<Name, 
                 boost::variant<
@@ -391,10 +414,18 @@ namespace Wide {
             OverloadSet<std::unique_ptr<Constructor>> constructor_decls;
             std::unique_ptr<Destructor> destructor_decl;
             std::vector<std::tuple<std::unique_ptr<Expression>, std::vector<Name>, bool>> imports;
+            std::vector<std::unique_ptr<Expression>> bases;
+
             Wide::Lexer::Range GetLocation() {
                 return location;
             }
-            std::vector<std::unique_ptr<Expression>> bases;
+
+            Lexer::Range TypeLocation;
+            Lexer::Range OpenCurlyLocation;
+            Lexer::Range CloseCurlyLocation;
+            // null for anonymous types
+            Wide::Util::optional<Lexer::Range> IdentifierLocation;
+
             std::vector<Attribute> attributes;
         };
         struct Identifier : Expression {

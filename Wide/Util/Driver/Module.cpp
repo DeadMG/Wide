@@ -122,7 +122,7 @@ Module Driver::ParseDefFile(std::string def, std::string filepath) {
     Wide::Parse::PutbackLexer lex(inv);
     lex(&Wide::Lexer::TokenTypes::OpenCurlyBracket);
 
-    while (true) {
+    /*while (true) {
         auto string = lex(&Wide::Lexer::TokenTypes::String);
         lex(&Wide::Lexer::TokenTypes::Colon);
         if (string.GetValue() == "version") {
@@ -149,7 +149,7 @@ Module Driver::ParseDefFile(std::string def, std::string filepath) {
         auto continuation = lex({ &Wide::Lexer::TokenTypes::Comma, &Wide::Lexer::TokenTypes::CloseCurlyBracket });
         if (continuation.GetType() == &Wide::Lexer::TokenTypes::CloseCurlyBracket)
             break;
-    }
+    }*/
     if (!guid) throw std::runtime_error("Didn't find a GUID in the module_def.txt file.");
     if (!version) throw std::runtime_error("Didn't find a version in the module_def.txt file.");
 

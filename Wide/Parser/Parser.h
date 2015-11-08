@@ -9,6 +9,7 @@
 #include <Wide/Lexer/Token.h>
 #include <Wide/Parser/AST.h>
 #include <Wide/Util/Ranges/Optional.h>
+#include <boost/optional.hpp>
 
 namespace Wide {
     namespace Parse {
@@ -29,17 +30,23 @@ namespace Wide {
             std::unordered_set<Wide::Lexer::TokenType> GetExpectedTokenTypes();
         };
         struct PutbackLexer {
+        private:
+            std::unordered_set<Lexer::TokenType> latest_terminators;
+        public:
             PutbackLexer(std::function<Wide::Util::optional<Lexer::Token>()> lex) : lex(std::move(lex)) {}
             
             std::function<Wide::Util::optional<Lexer::Token>()> lex;
             std::vector<Lexer::Token> putbacks;
             std::vector<Lexer::Token> tokens;
 
-            Wide::Util::optional<Lexer::Token> operator()();
+            boost::optional<Lexer::Token> operator()();
             Lexer::Range operator()(Lexer::TokenType required);
             Lexer::Range operator()(std::unordered_set<Lexer::TokenType> required);
-            template<typename F> auto operator()(Lexer::TokenType required, F f) -> decltype(f(std::declval<Wide::Lexer::Token>()));
-            template<typename F> auto operator()(std::unordered_set<Lexer::TokenType> required, F f) -> decltype(f(std::declval<Wide::Lexer::Token>()));
+            template<typename F> auto operator()(Lexer::TokenType required, F f) -> decltype(f(std::declval<Wide::Lexer::Token&>()));
+            template<typename F> auto operator()(Lexer::TokenType required, Lexer::TokenType terminators, F f) -> decltype(f(std::declval<Wide::Lexer::Token&>()));
+            template<typename F> auto operator()(std::unordered_set<Lexer::TokenType> required, F f) -> decltype(f(std::declval<Wide::Lexer::Token&>()));
+            template<typename F> auto operator()(std::unordered_set<Lexer::TokenType> required, Lexer::TokenType terminator, F f) -> decltype(f(std::declval<Wide::Lexer::Token&>()));
+            template<typename F> auto operator()(std::unordered_set<Lexer::TokenType> required, std::unordered_set<Lexer::TokenType> terminators, F f) -> decltype(f(std::declval<Wide::Lexer::Token&>()));
             void operator()(Lexer::Token arg);
             Lexer::Token GetLastToken();
         };
@@ -98,11 +105,11 @@ namespace Wide {
             std::unordered_map<Lexer::TokenType, std::function<std::unique_ptr<Statement>(Parser& p, std::shared_ptr<Parse::Import> imp, Lexer::Token& tok)>> Statements;
 
             // Type 
-            std::unordered_map<Lexer::TokenType, std::function<Parse::Access(Parser&, Type*, Parse::Access, std::shared_ptr<Parse::Import> imp, Lexer::Token&)>> TypeTokens;
+            std::unordered_map<Lexer::TokenType, std::function<Parse::Access(Parser&, TypeMembers*, Parse::Access, std::shared_ptr<Parse::Import> imp, Lexer::Token&)>> TypeTokens;
             // Type attribute
-            std::unordered_map<Lexer::TokenType, std::function<Parse::Access(Parser&, Type*, Parse::Access, std::shared_ptr<Parse::Import> imp, Lexer::Token&, std::vector<Attribute>)>> TypeAttributeTokens;
+            std::unordered_map<Lexer::TokenType, std::function<Parse::Access(Parser&, TypeMembers*, Parse::Access, std::shared_ptr<Parse::Import> imp, Lexer::Token&, std::vector<Attribute>)>> TypeAttributeTokens;
             // Dynamic members
-            std::unordered_map<Lexer::TokenType, std::function<DynamicFunction*(Parser&, Type*, Parse::Access, std::shared_ptr<Parse::Import> imp, Lexer::Token&, std::vector<Attribute>)>> DynamicMemberFunctions;
+            std::unordered_map<Lexer::TokenType, std::function<DynamicFunction*(Parser&, TypeMembers*, Parse::Access, std::shared_ptr<Parse::Import> imp, Lexer::Token&, std::vector<Attribute>)>> DynamicMemberFunctions;
 
             Parser(std::function<Wide::Util::optional<Lexer::Token>()> l);
 
@@ -160,7 +167,7 @@ namespace Wide {
             
             std::unique_ptr<Module> ParseModuleFunction(Lexer::Range where, ModuleParseState state, std::vector<Attribute> attributes);
             std::unique_ptr<Module> ParseModule(Lexer::Range where, ModuleParseState state, Lexer::Token& module);
-            void ParseTypeBody(Type* ty, std::shared_ptr<Parse::Import> imp);
+            Lexer::Range ParseTypeBody(TypeMembers* ty, std::shared_ptr<Parse::Import> imp);
             std::vector<std::unique_ptr<Expression>> ParseTypeBases(std::shared_ptr<Parse::Import> imp);
             std::unique_ptr<Type> ParseTypeDeclaration(Lexer::Range loc, std::shared_ptr<Parse::Import> imp, Lexer::Token& ident, std::vector<Attribute> attrs);
         };
