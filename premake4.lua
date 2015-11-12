@@ -41,27 +41,32 @@ path.join = function(first, second, ...)
 end
 
 function AddClangDependencies(plat, conf)
-    local llvmconf = (os.is("windows") and conf) or _OPTIONS["llvm-conf"] or "Release+Asserts"
-    local llvmbuild = (os.is("windows") and "build") or ""
-    local llvmincludes = {
-        "tools/clang/include", 
-        path.join(llvmbuild, "tools/clang/include"), 
-        "include", 
-        "tools/clang/lib",
-        path.join(llvmbuild, "include")
-    }
-    for k, v in pairs(llvmincludes) do
-        includedirs({ path.join(_OPTIONS["llvm-path"], v) })
-    end
-    if os.is("windows") then
-        if plat == 'x64' then
-            llvmbuild = path.join(llvmbuild, 'x64')
+    if _OPTIONS["llvm-path"] then
+        local llvmconf = (os.is("windows") and conf) or _OPTIONS["llvm-conf"] or "Release+Asserts"
+        local llvmbuild = (os.is("windows") and "build") or ""
+        local llvmincludes = {
+            "tools/clang/include", 
+            path.join(llvmbuild, "tools/clang/include"), 
+            "include", 
+            "tools/clang/lib",
+            path.join(llvmbuild, "include")
+        }
+        for k, v in pairs(llvmincludes) do
+            includedirs({ path.join(_OPTIONS["llvm-path"], v) })
         end
-    end
-    if os.is("windows") then
-        libdirs({ path.join(_OPTIONS["llvm-path"], llvmbuild, llvmconf, "lib") })
+        if os.is("windows") then
+            if plat == 'x64' then
+                llvmbuild = path.join(llvmbuild, 'x64')
+            end
+        end
+        if os.is("windows") then
+            libdirs({ path.join(_OPTIONS["llvm-path"], llvmbuild, llvmconf, "lib") })
+        else
+            libdirs({ path.join(_OPTIONS["llvm-path"], "Release+Asserts", "lib") })
+        end
     else
-        libdirs({ path.join(_OPTIONS["llvm-path"], "Release+Asserts", "lib") })
+        includedirs({ "Wide/clang-include", "/usr/include/llvm-3.6", "/usr/include/llvm-c-3.6" })
+        libdirs({ "/usr/lib/llvm-3.6/lib" })
     end
     local clanglibs = { 
         "clangFrontend",
@@ -241,11 +246,6 @@ function AddZlibDependency(plat, conf)
         links { "z" }
     end
 end
-if not _OPTIONS["llvm-path"] then
-    print("Error: llvm-path was not provided.\n")
-    return
-end
-
 if os.is("windows") then
     if not _OPTIONS["boost-path"] then
         print("Error: boost-path was not provided.\n")
@@ -257,6 +257,10 @@ if os.is("windows") then
     end
     if not _OPTIONS["zlib-path"] then
         print("Error: zlib-path was not provided.\n")
+        return
+    end
+    if not _OPTIONS["llvm-path"] then
+        print("Error: llvm-path was not provided.\n")
         return
     end
 end
@@ -366,7 +370,7 @@ if not os.is("Windows") then
     if _OPTIONS["TeamCity"] then
         defines { "TEAMCITY=" .. _OPTIONS["TeamCity"] }
     end
-    buildoptions  {"-std=c++1y", "-D __STDC_CONSTANT_MACROS", "-D __STDC_LIMIT_MACROS", "-fPIC" }
+    buildoptions  {"-std=c++1y", "-D __STDC_CONSTANT_MACROS", "-D __STDC_LIMIT_MACROS", "-fPIC", "-Wno-deprecated" }
 else
     defines { "_SCL_SECURE_NO_WARNINGS" }
     buildoptions  {"/wd4503" }

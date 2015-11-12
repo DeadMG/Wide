@@ -3,4 +3,4 @@ install: sudo ./InstallDependencies.sh
 script: 
     - ./Build.sh
     - ./RunTests.sh
-compiler: gcc
+compiler: clang
