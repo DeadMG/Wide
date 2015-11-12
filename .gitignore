@@ -191,3 +191,5 @@ FakesAssemblies/
 /cloc-1.58.exe
 /premake4.exe
 *.lib
+**/Makefile
+Tests

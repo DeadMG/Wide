@@ -1180,12 +1180,12 @@ std::vector<std::unique_ptr<Expression>> Parser::ParseFunctionArguments(std::sha
     auto&& expected = GetExpressionBeginnings();
     expected.insert(&Lexer::TokenTypes::CloseBracket);
     std::vector<std::unique_ptr<Expression>> result;
-    return lex(expected, [&](Wide::Lexer::Token& tok) {
+    return lex(expected, [&, this](Wide::Lexer::Token& tok) {
         if (tok.GetType() == &Lexer::TokenTypes::CloseBracket)
             return std::move(result);
         lex(tok);
-        return RecursiveWhile<std::vector<std::unique_ptr<Expression>>>([&](auto continuation) {
-            result.push_back(ParseExpression(imp));
+        return RecursiveWhile<std::vector<std::unique_ptr<Expression>>>([&, this](auto continuation) {
+            result.push_back(this->ParseExpression(imp));
             return lex({ &Lexer::TokenTypes::Comma, &Lexer::TokenTypes::CloseBracket }, [&](Lexer::Token& tok) {
                 if (tok.GetType() == &Lexer::TokenTypes::CloseBracket)
                     return std::move(result);
