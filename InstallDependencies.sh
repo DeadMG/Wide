@@ -5,6 +5,10 @@ sudo apt-get install -y libarchive-dev
 sudo apt-get install -y zlib1g-dev
 sudo apt-get install -y ncurses-dev
 
+sudo add-apt-repository ppa:ubuntu-toolchain-r/test -y
+sudo apt-get update -q
+sudo apt-get install gcc-4.8 -y
+
 if ! test -e "/opt/wide" ; then
     sudo mkdir /opt/wide
 fi
@@ -36,7 +40,7 @@ if ! test -e "/opt/wide/llvm.3.6.0" ; then
     mv clang llvm/tools
     sudo mv llvm /opt/wide/llvm.3.6.0
     cd /opt/wide/llvm.3.6.0
-    sudo ./configure --enable-optimized --enable-assertions --disable-compiler-version-checks
+    sudo ./configure --enable-optimized --enable-assertions
     sudo REQUIRES_RTTI=1 make
 else
     echo "LLVM 3.6.0 already found."
