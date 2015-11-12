@@ -1,10 +1,6 @@
 #!/usr/bin/env sh
-sudo apt-get update -qq
-sudo apt-get install -y libarchive-dev
-sudo apt-get install -y zlib1g-dev
-sudo apt-get install -y ncurses-dev
 sudo add-apt-repository 'deb http://llvm.org/apt/precise/ llvm-toolchain-precise main' -y
-sudo add-apt-repository 'deb-src http://llvm.org/apt/precise/ llvm-toolchain-precise main' -y
+sudo add-apt-repository 'deb http://llvm.org/apt/precise/ llvm-toolchain-precise-3.6 main' -y
 wget -O - http://llvm.org/apt/llvm-snapshot.gpg.key|sudo apt-key add -
 sudo add-apt-repository ppa:codegear/release -y
 sudo apt-get update -q
@@ -12,6 +8,9 @@ sudo apt-get install -y premake4
 sudo apt-get install -y llvm-3.6-dev
 sudo apt-get install -y libclang-3.6-dev
 sudo apt-get install -y clang-3.7
+sudo apt-get install -y libarchive-dev
+sudo apt-get install -y zlib1g-dev
+sudo apt-get install -y ncurses-dev
 
 if ! test -e "/opt/wide" ; then
     sudo mkdir /opt/wide
