@@ -36,7 +36,7 @@ if ! test -e "/opt/wide/llvm.3.6.0" ; then
     mv clang llvm/tools
     sudo mv llvm /opt/wide/llvm.3.6.0
     cd /opt/wide/llvm.3.6.0
-    sudo ./configure --enable-optimized --enable-assertions
+    sudo ./configure --enable-optimized --enable-assertions --disable-compiler-version-checks
     sudo REQUIRES_RTTI=1 make
 else
     echo "LLVM 3.6.0 already found."
