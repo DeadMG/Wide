@@ -8,8 +8,7 @@ wget -O - http://llvm.org/apt/llvm-snapshot.gpg.key|sudo apt-key add -
 sudo apt-get update -qq
 sudo apt-get install -y llvm-3.6-dev
 sudo apt-get install -y libclang-3.6-dev
-sudo apt-get install -y clang-3.6
-export CXX=clang-3.6
+sudo apt-get install -y clang-3.7
 sudo add-apt-repository ppa:codegear/release -y
 sudo apt-get update -q
 sudo apt-get install -y premake4 
