@@ -6,13 +6,12 @@ sudo apt-get install -y ncurses-dev
 sudo add-apt-repository 'deb http://llvm.org/apt/precise/ llvm-toolchain-precise main' -y
 sudo add-apt-repository 'deb-src http://llvm.org/apt/precise/ llvm-toolchain-precise main' -y
 wget -O - http://llvm.org/apt/llvm-snapshot.gpg.key|sudo apt-key add -
-sudo apt-get update -qq
-sudo apt-get install -y llvm-3.6-dev
-sudo apt-get install -y libclang-3.6-dev
-sudo apt-get install -y clang-3.7
 sudo add-apt-repository ppa:codegear/release -y
 sudo apt-get update -q
 sudo apt-get install -y premake4 
+sudo apt-get install -y llvm-3.6-dev
+sudo apt-get install -y libclang-3.6-dev
+sudo apt-get install -y clang-3.7
 
 if ! test -e "/opt/wide" ; then
     sudo mkdir /opt/wide
