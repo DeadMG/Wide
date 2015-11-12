@@ -8,6 +8,7 @@ sudo apt-get install -y ncurses-dev
 sudo add-apt-repository ppa:ubuntu-toolchain-r/test -y
 sudo apt-get update -q
 sudo apt-get install gcc-4.8 -y
+sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-4.8 50
 
 if ! test -e "/opt/wide" ; then
     sudo mkdir /opt/wide
