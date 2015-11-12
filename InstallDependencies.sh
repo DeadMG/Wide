@@ -10,7 +10,7 @@ sudo apt-get update -q
 sudo apt-get install gcc-4.8 -y
 
 if [ "$CXX" = "g++" ]; then export CXX="g++-4.8" CC="gcc-4.8"; fi
-echo $CXX --version 
+$CXX --version 
 
 if ! test -e "/opt/wide" ; then
     sudo mkdir /opt/wide
@@ -43,8 +43,8 @@ if ! test -e "/opt/wide/llvm.3.6.0" ; then
     mv clang llvm/tools
     sudo mv llvm /opt/wide/llvm.3.6.0
     cd /opt/wide/llvm.3.6.0
-    sudo ./configure --enable-optimized --enable-assertions
-    sudo REQUIRES_RTTI=1 make
+    sudo CXX = $CXX ./configure --enable-optimized --enable-assertions
+    sudo CXX = $CXX REQUIRES_RTTI=1 make
 else
     echo "LLVM 3.6.0 already found."
 fi
