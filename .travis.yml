@@ -1,6 +1,8 @@
 language: cpp
 install: sudo ./InstallDependencies.sh
 script: 
+    - if [ "$CXX" = "g++" ]; then export CXX="g++-4.8"; fi
+    - $CXX --version
     - ./Build.sh
     - ./RunTests.sh
 compiler: gcc
