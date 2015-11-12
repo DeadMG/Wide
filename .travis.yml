@@ -1,3 +1,5 @@
 language: cpp
-install: ./InstallDependencies.sh
-script: ./Build.sh
+install: sudo ./InstallDependencies.sh
+script: 
+    - ./Build.sh
+    - ./RunTests.sh
