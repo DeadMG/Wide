@@ -4,6 +4,7 @@ sudo apt-get install -y libarchive-dev
 sudo apt-get install -y zlib1g-dev
 sudo apt-get install -y ncurses-dev
 sudo add-apt-repository 'deb http://llvm.org/apt/precise/ llvm-toolchain-precise main' -y
+sudo add-apt-repository 'deb-src http://llvm.org/apt/precise/ llvm-toolchain-precise main' -y
 wget -O - http://llvm.org/apt/llvm-snapshot.gpg.key|sudo apt-key add -
 sudo apt-get update -qq
 sudo apt-get install -y llvm-3.6-dev
