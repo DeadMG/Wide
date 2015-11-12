@@ -16,10 +16,8 @@ if ! test -e "/opt/wide/boost_1_59_0" ; then
     tar --bzip2 -xf boost_1_59_0.tar.bz2
     rm boost_1_59_0.tar.bz2
     cd boost_1_59_0
-    ./bootstrap.sh
-    sudo ./b2 link=static threading=multi runtime-link=static --with-program_options
-    cd ..
-    sudo mv boost_1_59_0 /opt/wide/boost_1_59_0
+    ./bootstrap.sh --prefix=/usr/local
+    sudo ./b2 link=static threading=multi runtime-link=static --with-program_options install
 else
     echo "Boost 1.59 already found."
 fi
