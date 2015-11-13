@@ -1500,7 +1500,7 @@ std::unique_ptr<Module> Parser::ParseModule(Lexer::Range where, ModuleParseState
         return lex(&Lexer::TokenTypes::Identifier, [&](Lexer::Token& next) {
             auto nested = ParseModule(next.GetLocation(), state, module);
             auto mod = Wide::Memory::MakeUnique<Module>(ModuleLocation::ShortForm{ where });
-            mod->named_decls[next.GetValue()] = std::make_pair(Access::Public, std::move(nested));
+            mod->named_decls[next.GetValue()] = std::make_pair(Access::Public, std::unique_ptr<UniqueAccessContainer>(std::move(nested)));
             return mod;
         });
     });
