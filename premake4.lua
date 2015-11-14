@@ -65,8 +65,9 @@ function AddClangDependencies(plat, conf)
             libdirs({ path.join(_OPTIONS["llvm-path"], "Release+Asserts", "lib") })
         end
     else
-        includedirs({ "Wide/clang-include", "/usr/include/llvm-3.6", "/usr/include/llvm-c-3.6" })
-        libdirs({ "/usr/lib/llvm-3.6/lib" })
+        buildoptions({ "-I `llvm-config-3.6 --includedir`" })
+        linkoptions({ "-L `llvm-config-3.6 --libdir`" })
+        includedirs({ "Wide/clang-include" })
     end
     local clanglibs = { 
         "clangFrontend",
