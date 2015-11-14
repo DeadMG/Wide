@@ -1,10 +1,21 @@
 #!/usr/bin/env sh
 
+sudo add-apt-repository ppa:codegear/release -y
+wget -O - http://llvm.org/apt/llvm-snapshot.gpg.key|sudo apt-key add -
+sudo apt-add repository deb http://llvm.org/apt/precise/ llvm-toolchain-precise-3.6 main
 sudo apt-get update -qq
-sudo apt-get install -y libboost1.58-dev
 sudo apt-get install -y llvm-3.6-dev
 sudo apt-get install -y libclang-3.6-dev
 sudo apt-get install -y premake4 
 sudo apt-get install -y libarchive-dev
 sudo apt-get install -y zlib1g-dev
 sudo apt-get install -y ncurses-dev
+
+wget http://sourceforge.net/projects/boost/files/boost/1.59.0/boost_1_59_0.tar.bz2
+tar --bzip2 -xf boost_1_59_0.tar.bz2
+rm boost_1_59_0.tar.bz2
+cd boost_1_59_0
+./bootstrap.sh --prefix=/usr/local
+sudo ./b2 link=static threading=multi runtime-link=static --with-program_options -d0 install
+cd ..
+rm boost_1_59_0
