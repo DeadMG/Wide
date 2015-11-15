@@ -1,3 +1,10 @@
 language: cpp
 install: sudo Tools/Precise/install-deps
 script: Tools/Precise/build
+deploy:
+  skip_cleanup: true
+addons:
+  artifacts: true
+  s3_region: "eu-west-1"
+  paths: Wide/Build/x64/Release
+  upload-dir: builds/$TRAVIS_BUILD_NUMBER
