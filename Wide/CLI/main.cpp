@@ -11,6 +11,7 @@
 #include <Wide/Util/Driver/IncludePaths.h>
 #include <boost/program_options.hpp>
 #include <memory>
+#include <iterator>
 #include <fstream>
 #include <iostream>
 #include <unordered_map>
@@ -56,7 +57,7 @@ int main(int argc, char** argv)
     for (auto&& pair : actions) {
         pair.second.first(desc);
         modes += pair.first;
-        if (&pair != &*(--actions.end()))
+        if (&pair != &*std::prev(actions.end()))
             modes += ", ";
     }
     desc.add_options()
