@@ -266,7 +266,6 @@ end
 WideProjects = {
     CLI = { 
         action = function(plat, conf)
-            AddZlibDependency(plat, conf)
             links { "Util", "Lexer", "Parser", "Semantic" }
             kind ("ConsoleApp")
         end,
@@ -342,7 +341,6 @@ WideProjects = {
     },
     SemanticTest = {
         action = function(plat, conf)
-            AddZlibDependency(plat, conf)
             kind("ConsoleApp")
             links { "Util", "Lexer", "Parser", "Semantic" }
             files ({ "Wide/SemanticTest/**.wide" })
@@ -388,6 +386,7 @@ for name, proj in pairs(WideProjects) do
             AddClangDependencies(plat, conf)
             AddBoostDependencies(plat, conf)
             AddLibarchiveDependency(plat, conf)
+            AddZlibDependency(plat, conf)
             if proj.configure then proj.configure(plat, conf) end
             objdir(path.join("Wide/Obj", name))
             if conf == "Debug" then 

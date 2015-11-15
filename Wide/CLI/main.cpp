@@ -24,6 +24,7 @@
 #pragma warning(push, 0)
 #include <llvm/Support/FileSystem.h>
 #include <llvm/Support/Path.h>
+#include <llvm/Support/Host.h>
 #pragma warning(pop)
 
 int main(int argc, char** argv)
