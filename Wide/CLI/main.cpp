@@ -13,7 +13,7 @@
 #include <memory>
 #include <fstream>
 #include <iostream>
-#include <unordered_set>
+#include <unordered_map>
 #include <Wide/Util/Driver/Warnings.h>
 #include <Wide/Util/Driver/StdlibDirectorySearch.h>
 #include <Wide/CLI/Link.h>
