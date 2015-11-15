@@ -7,7 +7,7 @@ namespace Wide {
             __debugbreak();
 #else
 #ifdef __clang__
-            __builtin_debugger();
+            __builtin_debugtrap();
 #else
 #ifdef __GNUC__
             __asm__ volatile("int $0x03");

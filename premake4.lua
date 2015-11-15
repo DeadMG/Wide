@@ -24,16 +24,6 @@ newoption {
 }
 if not os.is("Windows") then
     newoption {
-        trigger = "llvm-conf",
-        value = "configuration",
-        description = "The configuration used to build LLVM, e.g. \"Release+Debug+Asserts\""
-    }
-    newoption {
-        trigger = "llvm-build",
-        value = "filepath",
-        description = "The build directory for LLVM",
-    }
-    newoption {
         trigger = "TeamCity",
         value = "teamcity build number",
         description = "If this build is being built on TeamCity"
@@ -51,24 +41,34 @@ path.join = function(first, second, ...)
 end
 
 function AddClangDependencies(plat, conf)
-    local llvmconf = (os.is("windows") and conf) or _OPTIONS["llvm-conf"] or conf
-    local llvmbuild = _OPTIONS["llvm-build"] or "build"
-    local llvmincludes = {
-        "tools/clang/include", 
-        path.join(llvmbuild, "tools/clang/include"), 
-        "include", 
-        "tools/clang/lib",
-        path.join(llvmbuild, "include")
-    }
-    for k, v in pairs(llvmincludes) do
-        includedirs({ path.join(_OPTIONS["llvm-path"], v) })
-    end
-    if os.is("windows") then
-        if plat == 'x64' then
-            llvmbuild = path.join(llvmbuild, 'x64')
+    if _OPTIONS["llvm-path"] then
+        local llvmconf = (os.is("windows") and conf) or _OPTIONS["llvm-conf"] or "Release+Asserts"
+        local llvmbuild = (os.is("windows") and "build") or ""
+        local llvmincludes = {
+            "tools/clang/include", 
+            path.join(llvmbuild, "tools/clang/include"), 
+            "include", 
+            "tools/clang/lib",
+            path.join(llvmbuild, "include")
+        }
+        for k, v in pairs(llvmincludes) do
+            includedirs({ path.join(_OPTIONS["llvm-path"], v) })
         end
+        if os.is("windows") then
+            if plat == 'x64' then
+                llvmbuild = path.join(llvmbuild, 'x64')
+            end
+        end
+        if os.is("windows") then
+            libdirs({ path.join(_OPTIONS["llvm-path"], llvmbuild, llvmconf, "lib") })
+        else
+            libdirs({ path.join(_OPTIONS["llvm-path"], "Release+Asserts", "lib") })
+        end
+    else
+        buildoptions({ "-I `llvm-config-3.6 --includedir`" })
+        linkoptions({ "-L `llvm-config-3.6 --libdir`" })
+        includedirs({ "Wide/clang-include" })
     end
-    libdirs({ path.join(_OPTIONS["llvm-path"], llvmbuild, llvmconf, "lib") })
     local clanglibs = { 
         "clangFrontend",
         "clangSerialization",
@@ -87,109 +87,108 @@ function AddClangDependencies(plat, conf)
     }
      
     local libs = {
-        "LLVMLTO",
-        "LLVMObjCARCOpts",
-        "LLVMLinker",
-        "LLVMipo",
-        "LLVMVectorize",
-        "LLVMBitWriter",
-        "LLVMIRReader",
-        "LLVMAsmParser",
-        "LLVMR600CodeGen",
-        "LLVMR600Desc",
-        "LLVMR600Info",
-        "LLVMR600AsmPrinter",
-        "LLVMSystemZDisassembler",
-        "LLVMSystemZCodeGen",
-        "LLVMSystemZAsmParser",
-        "LLVMSystemZDesc",
-        "LLVMSystemZInfo",
-        "LLVMSystemZAsmPrinter",
-        "LLVMHexagonCodeGen",
-        "LLVMHexagonAsmPrinter",
-        "LLVMHexagonDesc",
-        "LLVMHexagonInfo",
-        "LLVMNVPTXCodeGen",
-        "LLVMNVPTXDesc",
-        "LLVMNVPTXInfo",
-        "LLVMNVPTXAsmPrinter",
-        "LLVMCppBackendCodeGen",
-        "LLVMCppBackendInfo",
-        "LLVMMSP430CodeGen",
-        "LLVMMSP430Desc",
-        "LLVMMSP430Info",
-        "LLVMMSP430AsmPrinter",
-        "LLVMXCoreDisassembler",
-        "LLVMXCoreCodeGen",
-        "LLVMXCoreDesc",
-        "LLVMXCoreInfo",
-        "LLVMXCoreAsmPrinter",
-        "LLVMMipsDisassembler",
-        "LLVMMipsCodeGen",
-        "LLVMMipsAsmParser",
-        "LLVMMipsDesc",
-        "LLVMMipsInfo",
-        "LLVMMipsAsmPrinter",
-        "LLVMAArch64Disassembler",
-        "LLVMAArch64CodeGen",
-        "LLVMAArch64AsmParser",
-        "LLVMAArch64Desc",
-        "LLVMAArch64Info",
-        "LLVMAArch64AsmPrinter",
-        "LLVMAArch64Utils",
-        "LLVMARMDisassembler",
-        "LLVMARMCodeGen",
-        "LLVMARMAsmParser",
-        "LLVMARMDesc",
-        "LLVMARMInfo",
-        "LLVMARMAsmPrinter",
-        "LLVMPowerPCDisassembler",
-        "LLVMPowerPCCodeGen",
-        "LLVMPowerPCAsmParser",
-        "LLVMPowerPCDesc",
-        "LLVMPowerPCInfo",
-        "LLVMPowerPCAsmPrinter",
-         "LLVMSparcDisassembler",
-        "LLVMSparcCodeGen",
-        "LLVMSparcAsmParser",
-        "LLVMSparcDesc",
-        "LLVMSparcInfo",
-        "LLVMSparcAsmPrinter",
-        "LLVMTableGen",
-        "LLVMDebugInfo",
-        "LLVMOption",
-        "LLVMX86Disassembler",
-        "LLVMX86AsmParser",
-        "LLVMX86CodeGen",
-        "LLVMSelectionDAG",
-        "LLVMAsmPrinter",
-        "LLVMX86Desc",
-        "LLVMX86Info",
-        "LLVMX86AsmPrinter",
-        "LLVMX86Utils",
-        "LLVMJIT",
-        "LLVMLineEditor",
-        "LLVMMCAnalysis",
-        "LLVMMCDisassembler",
-        "LLVMInstrumentation",
-        "LLVMInterpreter",
-        "LLVMCodeGen",
-        "LLVMScalarOpts",
-        "LLVMInstCombine",
-        "LLVMTransformUtils",
-        "LLVMipa",
-        "LLVMAnalysis",
-        "LLVMProfileData",
-        "LLVMMCJIT",
-        "LLVMTarget",
-        "LLVMRuntimeDyld",
-        "LLVMObject",
-        "LLVMMCParser",
-        "LLVMBitReader",
-        "LLVMExecutionEngine",
-        "LLVMMC",
-        "LLVMCore",
-        "LLVMSupport"
+"LLVMLTO",
+"LLVMObjCARCOpts",
+"LLVMLinker",
+"LLVMBitWriter",
+"LLVMIRReader",
+"LLVMAsmParser",
+"LLVMR600CodeGen",
+"LLVMipo",
+"LLVMVectorize",
+"LLVMR600AsmParser",
+"LLVMR600Desc",
+"LLVMR600Info",
+"LLVMR600AsmPrinter",
+"LLVMSystemZDisassembler",
+"LLVMSystemZCodeGen",
+"LLVMSystemZAsmParser",
+"LLVMSystemZDesc",
+"LLVMSystemZInfo",
+"LLVMSystemZAsmPrinter",
+"LLVMHexagonDisassembler",
+"LLVMHexagonCodeGen",
+"LLVMHexagonDesc",
+"LLVMHexagonInfo",
+"LLVMNVPTXCodeGen",
+"LLVMNVPTXDesc",
+"LLVMNVPTXInfo",
+"LLVMNVPTXAsmPrinter",
+"LLVMCppBackendCodeGen",
+"LLVMCppBackendInfo",
+"LLVMMSP430CodeGen",
+"LLVMMSP430Desc",
+"LLVMMSP430Info",
+"LLVMMSP430AsmPrinter",
+"LLVMXCoreDisassembler",
+"LLVMXCoreCodeGen",
+"LLVMXCoreDesc",
+"LLVMXCoreInfo",
+"LLVMXCoreAsmPrinter",
+"LLVMMipsDisassembler",
+"LLVMMipsCodeGen",
+"LLVMMipsAsmParser",
+"LLVMMipsDesc",
+"LLVMMipsInfo",
+"LLVMMipsAsmPrinter",
+"LLVMAArch64Disassembler",
+"LLVMAArch64CodeGen",
+"LLVMAArch64AsmParser",
+"LLVMAArch64Desc",
+"LLVMAArch64Info",
+"LLVMAArch64AsmPrinter",
+"LLVMAArch64Utils",
+"LLVMARMDisassembler",
+"LLVMARMCodeGen",
+"LLVMARMAsmParser",
+"LLVMARMDesc",
+"LLVMARMInfo",
+"LLVMARMAsmPrinter",
+"LLVMPowerPCDisassembler",
+"LLVMPowerPCCodeGen",
+"LLVMPowerPCAsmParser",
+"LLVMPowerPCDesc",
+"LLVMPowerPCInfo",
+"LLVMPowerPCAsmPrinter",
+"LLVMSparcDisassembler",
+"LLVMSparcCodeGen",
+"LLVMSparcAsmParser",
+"LLVMSparcDesc",
+"LLVMSparcInfo",
+"LLVMSparcAsmPrinter",
+"LLVMTableGen",
+"LLVMDebugInfo",
+"LLVMOption",
+"LLVMX86Disassembler",
+"LLVMX86AsmParser",
+"LLVMX86CodeGen",
+"LLVMSelectionDAG",
+"LLVMAsmPrinter",
+"LLVMX86Desc",
+"LLVMMCDisassembler",
+"LLVMX86Info",
+"LLVMX86AsmPrinter",
+"LLVMX86Utils",
+"LLVMMCJIT",
+"LLVMLineEditor",
+"LLVMInstrumentation",
+"LLVMInterpreter",
+"LLVMExecutionEngine",
+"LLVMRuntimeDyld",
+"LLVMCodeGen",
+"LLVMScalarOpts",
+"LLVMProfileData",
+"LLVMObject",
+"LLVMMCParser",
+"LLVMBitReader",
+"LLVMInstCombine",
+"LLVMTransformUtils",
+"LLVMipa",
+"LLVMAnalysis",
+"LLVMTarget",
+"LLVMMC",
+"LLVMCore",
+"LLVMSupport"
     }
     for k, v in pairs(clanglibs) do
         links { v }
@@ -248,11 +247,6 @@ function AddZlibDependency(plat, conf)
         links { "z" }
     end
 end
-if not _OPTIONS["llvm-path"] then
-    print("Error: llvm-path was not provided.\n")
-    return
-end
-
 if os.is("windows") then
     if not _OPTIONS["boost-path"] then
         print("Error: boost-path was not provided.\n")
@@ -264,6 +258,10 @@ if os.is("windows") then
     end
     if not _OPTIONS["zlib-path"] then
         print("Error: zlib-path was not provided.\n")
+        return
+    end
+    if not _OPTIONS["llvm-path"] then
+        print("Error: llvm-path was not provided.\n")
         return
     end
 end
@@ -373,7 +371,7 @@ if not os.is("Windows") then
     if _OPTIONS["TeamCity"] then
         defines { "TEAMCITY=" .. _OPTIONS["TeamCity"] }
     end
-    buildoptions  {"-std=c++1y", "-D __STDC_CONSTANT_MACROS", "-D __STDC_LIMIT_MACROS", "-fPIC" }
+    buildoptions  {"-std=c++1y", "-D __STDC_CONSTANT_MACROS", "-D __STDC_LIMIT_MACROS", "-fPIC", "-Wno-deprecated" }
 else
     defines { "_SCL_SECURE_NO_WARNINGS" }
     buildoptions  {"/wd4503" }

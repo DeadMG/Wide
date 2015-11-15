@@ -1,0 +1,4 @@
+#!/usr/bin/env sh
+premake4 gmake 
+cd Wide
+make config=release64 SemanticTest

@@ -192,3 +192,5 @@ FakesAssemblies/
 /premake4.exe
 *.lib
 *.exe
+**/Makefile
+Tests

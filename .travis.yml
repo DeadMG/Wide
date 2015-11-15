@@ -1,0 +1,3 @@
+language: cpp
+install: sudo Tools/Precise/install-deps
+script: Tools/Precise/build

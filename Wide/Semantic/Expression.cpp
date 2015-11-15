@@ -409,7 +409,7 @@ SourceExpression::SourceExpression(Wide::Range::Erased<std::shared_ptr<Expressio
     range | Range::Copy([this](std::shared_ptr<Expression> expr) {
         if (expr == nullptr) return;
         exprs.insert(std::make_pair(expr, ExpressionData{
-            {},
+            std::unordered_map<InstanceKey, Type*>(),
             expr->OnChanged.connect([this](Expression* e, InstanceKey f) {
                 auto newtype = e->GetType(f);
                 for (auto&& expr : exprs)
