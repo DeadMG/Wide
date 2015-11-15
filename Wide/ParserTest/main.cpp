@@ -285,8 +285,11 @@ int main() {
     unsigned testssucceeded = 0;
 
     auto module_test_results = test(module_tests, [](Wide::Parse::Parser& parser, const std::pair<std::string, TestModule>& test) -> bool {
-        parser.ParseGlobalModuleContents(&parser.GlobalModule);
-        return &parser.GlobalModule == test.second;
+        auto mod = Wide::Memory::MakeUnique<Wide::Parse::Module>(Wide::Util::none);
+        auto results = parser.ParseGlobalModuleContents();
+        for (auto&& member : results)
+            parser.AddMemberToModule(mod.get(), std::move(member));
+        return mod.get() == test.second;
     });
 
     testssucceeded += module_test_results.passed;

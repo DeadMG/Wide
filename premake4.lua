@@ -224,7 +224,7 @@ end
 function AddLibarchiveDependency(plat, conf)
     if _OPTIONS["libarchive-path"] then
         includedirs({ path.join(_OPTIONS["libarchive-path"], 'libarchive' ) })
-        libdirs({ path.join(_OPTIONS["libarchive-path"], "build/libarchive", conf ) })
+        libdirs({ path.join(_OPTIONS["libarchive-path"], "lib/libarchive", conf ) })
     end
     if os.is("windows") then 
         links { "archive_static" }
@@ -268,7 +268,8 @@ end
 
 WideProjects = {
     CLI = { 
-        action = function()
+        action = function(plat, conf)
+            AddZlibDependency(plat, conf)
             links { "Util", "Lexer", "Parser", "Semantic" }
             kind ("ConsoleApp")
         end,
@@ -381,15 +382,14 @@ location("Wide")
 for name, proj in pairs(WideProjects) do
     project(name)
     location(path.join("Wide", name))
-    if proj.action then proj.action() end
     files( { path.join("Wide", name) .. "/**.cpp", path.join("Wide", name) .. "/**.h" })
     for k, plat in pairs(SupportedPlatforms) do
         for k, conf in pairs(SupportedConfigurations) do
             configuration { plat, conf }
+            if proj.action then proj.action(plat, conf) end
             AddClangDependencies(plat, conf)
             AddBoostDependencies(plat, conf)
             AddLibarchiveDependency(plat, conf)
-            AddZlibDependency(plat, conf)
             if plat == "x32" then plat = "x86" end
             if proj.configure then proj.configure(plat, conf) end
             objdir(path.join("Wide/Obj", name))
