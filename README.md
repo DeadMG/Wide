@@ -2,4 +2,4 @@
 
 Visit codepuppy.co.uk to learn about Wide.
 
-https://travis-ci.org/DeadMG/Wide.svg?branch=master
+[![Build Status](https://travis-ci.org/DeadMG/Wide.svg?branch=master)](https://travis-ci.org/DeadMG/Wide)
