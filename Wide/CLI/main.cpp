@@ -113,7 +113,6 @@ int main(int argc, char** argv)
     ClangOpts.OnDiagnostic = [](std::string) {};
 
     ClangOpts.FrontendOptions.OutputFile = input.count("output") ? input["output"].as<std::string>() : "a.o";
-    ClangOpts.LanguageOptions.CPlusPlus1y = true;
     try {
 #ifdef _MSC_VER
         Wide::Driver::AddMinGWIncludePaths(ClangOpts, input.count("mingw") ? input["mingw"].as<std::string>() : ".\\MinGW\\");

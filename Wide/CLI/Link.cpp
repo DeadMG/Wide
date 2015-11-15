@@ -88,13 +88,12 @@ void Driver::Link(llvm::LLVMContext& con, llvm::Module* mod, std::vector<std::st
             throw std::runtime_error("Internal compiler error: An LLVM module failed verification.");
     });
     for (auto bitcode : import_bitcodes) {
-        std::string err;
-        auto newmod = llvm::parseBitcodeFile(llvm::MemoryBuffer::getMemBuffer(bitcode), con);
+        auto newmod = llvm::parseBitcodeFile(llvm::MemoryBufferRef(bitcode, "Wide"), con);
         std::string mod_ir;
         llvm::raw_string_ostream stream(mod_ir);
         (*newmod)->print(stream, nullptr);
         stream.flush();
-        llvm::Linker::LinkModules(mod, *newmod, llvm::Linker::LinkerMode::DestroySource, &err);
+        llvm::Linker::LinkModules(mod, *newmod, [](const llvm::DiagnosticInfo& err) {});
     }
     if (llvm::verifyModule(*mod))
         throw std::runtime_error("Internal compiler error: An LLVM module failed verification.");

@@ -234,15 +234,12 @@ function AddLibarchiveDependency(plat, conf)
 end
 function AddZlibDependency(plat, conf)
     if _OPTIONS["zlib-path"] then
-        libdirs({ path.join(_OPTIONS["zlib-path"], "build", conf ) })
+        if plat == "x32" then plat = "x86" end
+        libdirs({ path.join(_OPTIONS["zlib-path"], "zlib/contrib/vstudio/vc11", plat, "ZlibStat" .. conf ) })
         includedirs({ _OPTIONS["zlib-path"] })
     end 
     if os.is("windows") then
-        local suffix = ""
-        if conf == "Debug" then
-            suffix = "d"
-        end
-        links { "zlibstatic" .. suffix }
+        links { "zlibstat" }
     else
         links { "z" }
     end
@@ -344,7 +341,8 @@ WideProjects = {
         end,
     },
     SemanticTest = {
-        action = function()
+        action = function(plat, conf)
+            AddZlibDependency(plat, conf)
             kind("ConsoleApp")
             links { "Util", "Lexer", "Parser", "Semantic" }
             files ({ "Wide/SemanticTest/**.wide" })
@@ -390,7 +388,6 @@ for name, proj in pairs(WideProjects) do
             AddClangDependencies(plat, conf)
             AddBoostDependencies(plat, conf)
             AddLibarchiveDependency(plat, conf)
-            if plat == "x32" then plat = "x86" end
             if proj.configure then proj.configure(plat, conf) end
             objdir(path.join("Wide/Obj", name))
             if conf == "Debug" then 
