@@ -194,3 +194,4 @@ FakesAssemblies/
 *.exe
 **/Makefile
 Tests
+boost_1_59_0
