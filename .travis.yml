@@ -4,6 +4,7 @@ script: Tools/Precise/build
 deploy:
   skip_cleanup: true
 addons:
+  provider: s3
   artifacts: true
   s3_region: "eu-west-1"
   paths: Wide/Build/x64/Release
