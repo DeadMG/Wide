@@ -6,7 +6,7 @@ deploy:
   provider: s3
   artifacts: true
   region: eu-west-1
-  paths: Wide/Build/x64/Release
+  local_dir: Wide/Build/x64/Release
   upload-dir: builds/$TRAVIS_BUILD_NUMBER
   access_key_id: $ARTIFACTS_KEY
   secret_access_key: $ARTIFACTS_SECRET
