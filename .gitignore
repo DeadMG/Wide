@@ -34,6 +34,7 @@ TestResult.xml
 [Rr]eleasePS/
 dlldata.c
 Deployment/
+Packages
 
 *_i.c
 *_p.c
