@@ -1,0 +1,13 @@
+#!/usr/bin/env sh
+
+if ! test -e "Tests" ; then
+    mkdir Tests
+fi
+cp Wide/Build/x64/Release/SemanticTest Tests
+cp -r Wide/SemanticTest/. Tests
+cd Tests
+./SemanticTest
+OUT=$?
+cd ..
+exit $OUT
+
