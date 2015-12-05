@@ -1284,6 +1284,7 @@ std::unique_ptr<Type> Parser::ParseTypeDeclaration(Lexer::Range tloc, std::share
     auto&& bases = ParseTypeBases(imp);
     return lex(&Lexer::TokenTypes::OpenCurlyBracket, [&](Lexer::Token& t) {
         TypeMembers members;
+        members.bases = std::move(bases);
         auto close = ParseTypeBody(&members, imp);
         auto&& ty = Wide::Memory::MakeUnique<Type>(members, std::move(attrs), tloc, t.GetLocation(), close, ident.GetLocation());
         return std::move(ty);

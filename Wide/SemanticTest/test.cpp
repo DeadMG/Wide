@@ -136,6 +136,8 @@ void Wide::Driver::Jit(Wide::Options::Clang& copts, std::string file) {
         if (!f)
             throw std::runtime_error("Could not resolve Main to a function.");
         f->ComputeBody();
+        if (a.errors.size() != 0)
+            throw std::runtime_error("Encountered error during analysis.");
         if (f->GetSignature()->GetReturnType() != a.GetBooleanType())
             throw std::runtime_error("Main did not return bool.");
         a.GenerateCode(module.get());
