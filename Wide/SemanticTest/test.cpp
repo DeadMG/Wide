@@ -247,6 +247,7 @@ const std::unordered_map<std::string, std::function<bool(Wide::Semantic::Error& 
     Handler<Wide::Semantic::ImportNotOverloadSet>("ImportNotOverloadSet"),
     Handler<Wide::Semantic::ImportNotAType>("ImportNotAType"),
     Handler<Wide::Semantic::VirtualOverrideAmbiguous>("VirtualOverrideAmbiguous"),
+    Handler<Wide::Semantic::FunctionArgumentNotType>("NotAType")
 };
 
 void Wide::Driver::Compile(Wide::Options::Clang& copts, std::string file) {
