@@ -57,9 +57,7 @@ int main(int argc, char** argv)
     std::string modes = "Sets the compiler mode. The default is link. The possible modes are: ";
     for (auto&& pair : actions) {
         pair.second.first(desc);
-        modes += pair.first;
-        if (&pair != &*std::prev(actions.end()))
-            modes += ", ";
+        modes += pair.first + ", ";
     }
     desc.add_options()
         ("help", "Print all available options")
