@@ -2,12 +2,15 @@
 
 if ! test -e "Tests" ; then
     mkdir Tests
+    mkdir Tests/Runner
+    mkdir Tests/WideLibrary
 fi
-cp Wide/Build/x64/Release/SemanticTest Tests
-cp -r Wide/SemanticTest/. Tests
-cd Tests
+cp Wide/Build/x64/Debug/SemanticTest Tests/Runner
+cp -r Wide/SemanticTest/. Tests/Runner
+cp -r Wide/WideLibrary/. Tests/WideLibrary
+cd Tests/Runner
 ./SemanticTest
 OUT=$?
-cd ..
+cd ../..
 exit $OUT
 
