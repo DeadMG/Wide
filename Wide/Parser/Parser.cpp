@@ -1404,7 +1404,8 @@ std::unique_ptr<Constructor> Parser::ParseConstructor(const Lexer::Token& first,
                     auto&& initialized = ParseExpression(imp);
                     lex(&Lexer::TokenTypes::VarCreate);
                     auto&& initializer = ParseExpression(imp);
-                    initializers.push_back({ std::move(initialized), std::move(initializer), colon_or_open.GetLocation() + initializer->location });
+                    auto initloc = initializer->location;
+                    initializers.push_back({ std::move(initialized), std::move(initializer), colon_or_open.GetLocation() + initloc });
                     return continuation();
                 });
             });
