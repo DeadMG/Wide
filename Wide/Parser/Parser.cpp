@@ -1418,7 +1418,7 @@ std::unique_ptr<Destructor> Parser::ParseDestructor(const Lexer::Token& first, s
         expected.insert(&Lexer::TokenTypes::CloseCurlyBracket);
         return RecursiveWhile<std::unique_ptr<Destructor>>([&](std::function<std::unique_ptr<Destructor>()> continuation) {
             return lex(expected, [&](Lexer::Token& t) {
-                if (t.GetType() == &Lexer::TokenTypes::CloseBracket)
+                if (t.GetType() == &Lexer::TokenTypes::CloseCurlyBracket)
                     return Wide::Memory::MakeUnique<Destructor>(std::move(body), first.GetLocation() + t.GetLocation(), std::move(attrs), false);
                 lex(t);
                 body.push_back(ParseStatement(imp));
