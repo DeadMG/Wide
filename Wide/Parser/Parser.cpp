@@ -258,14 +258,15 @@ Parser::Parser(std::function<Wide::Util::optional<Lexer::Token>()> l)
                 }
                 return p.lex(&Lexer::TokenTypes::Identifier, [&](Lexer::Token& ident) {
                     auto&& ty = p.ParseTypeDeclaration(tok.GetLocation(), state.imp, ident, std::move(attrs));
+                    auto set = Wide::Memory::MakeUnique<ModuleOverloadSet<Wide::Parse::TemplateType>>();
+                    set->funcs[state.access].insert(std::make_shared<Wide::Parse::TemplateType>(templat.GetLocation() + ty->GetLocation(), std::move(ty), std::move(args)));
                     return ModuleParseResult{
                         state,
                         ModuleMember{
                             ModuleMember::NamedMember{
                                 ident.GetValue(),
-                                ModuleMember::NamedMember::SharedMember{
-                                    state.access,
-                                    std::move(ty)
+                                ModuleMember::NamedMember::MultiAccessMember{
+                                    std::move(set)
                                 }
                             }
                         }
