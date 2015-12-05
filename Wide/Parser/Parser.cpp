@@ -1367,8 +1367,25 @@ std::unique_ptr<Constructor> Parser::ParseConstructor(const Lexer::Token& first,
         }
         std::vector<VariableInitializer> initializers;
         lex(colon_or_open);
+        auto handle_body = [&] {
+            std::vector<std::unique_ptr<Statement>> statements;
+            auto&& expected = GetStatementBeginnings();
+            expected.insert(&Lexer::TokenTypes::CloseCurlyBracket);
+            return RecursiveWhile<std::unique_ptr<Constructor>>([&](std::function<std::unique_ptr<Constructor>()> continuation) {
+                return lex(expected, [&](Lexer::Token& t) {
+                    if (t.GetType() != &Lexer::TokenTypes::CloseCurlyBracket) {
+                        lex(t);
+                        statements.push_back(ParseStatement(imp));
+                        return continuation();
+                    }
+                    return Wide::Memory::MakeUnique<Constructor>(std::move(statements), first.GetLocation() + t.GetLocation(), std::move(args), std::move(initializers), std::move(attrs));
+                });
+            });
+        };
         return RecursiveWhile<std::unique_ptr<Constructor>>([&](std::function<std::unique_ptr<Constructor>()> continuation) {
             return lex({ &Lexer::TokenTypes::OpenCurlyBracket, &Lexer::TokenTypes::Colon }, [&](Lexer::Token& colon_or_open) {
+                if (colon_or_open.GetType() == &Lexer::TokenTypes::OpenCurlyBracket)
+                    return handle_body();
                 auto&& expected = GetExpressionBeginnings();
                 expected.insert(&Lexer::TokenTypes::Type);
                 return lex(expected, [&](Lexer::Token& next) {
@@ -1379,19 +1396,7 @@ std::unique_ptr<Constructor> Parser::ParseConstructor(const Lexer::Token& first,
                         initializers.push_back({ Wide::Memory::MakeUnique<Identifier>("type", imp, next.GetLocation()), std::move(initializer), next.GetLocation() + initializer->location });
                         lex(&Lexer::TokenTypes::OpenCurlyBracket);
                         // Gotta be { by this point.
-                        std::vector<std::unique_ptr<Statement>> statements;
-                        auto&& expected = GetStatementBeginnings();
-                        expected.insert(&Lexer::TokenTypes::CloseCurlyBracket);
-                        return RecursiveWhile<std::unique_ptr<Constructor>>([&](std::function<std::unique_ptr<Constructor>()> continuation) {
-                            return lex(expected, [&](Lexer::Token& t) {
-                                if (t.GetType() != &Lexer::TokenTypes::CloseCurlyBracket) {
-                                    lex(t);
-                                    statements.push_back(ParseStatement(imp));
-                                    return continuation();
-                                }
-                                return Wide::Memory::MakeUnique<Constructor>(std::move(statements), first.GetLocation() + t.GetLocation(), std::move(args), std::move(initializers), std::move(attrs));
-                            });
-                        });
+                        return handle_body();
                     }
                     lex(next);
                     auto&& initialized = ParseExpression(imp);
