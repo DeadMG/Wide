@@ -10,8 +10,5 @@ std::string Wide::Util::GetMCJITProcessTriple() {
     return "i686-w64-windows-gnu-elf";
 #endif
     auto triple = llvm::sys::getProcessTriple();
-    // Bug with x86-64 systems where getProcessTriple returns x86_64 and it's not recognized as the subtarget x86-64.
-    if (triple[3] == '_')
-        triple[3] = '-';
     return triple;
 }
