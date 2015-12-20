@@ -391,8 +391,10 @@ for name, proj in pairs(WideProjects) do
             objdir(path.join("Wide/Obj", name))
             if conf == "Debug" then 
                 flags("Symbols")
+                defines { "NDEBUG" }
             else
                 flags("Optimize")
+                defines { "NDEBUG" }
             end
             targetdir(path.join("Wide/Build", plat, conf))
         end

@@ -1395,7 +1395,8 @@ std::unique_ptr<Constructor> Parser::ParseConstructor(const Lexer::Token& first,
                         // Delegating constructor.
                         lex(&Lexer::TokenTypes::VarCreate);
                         auto&& initializer = ParseExpression(imp);
-                        initializers.push_back({ Wide::Memory::MakeUnique<Identifier>("type", imp, next.GetLocation()), std::move(initializer), next.GetLocation() + initializer->location });
+                        auto initloc = initializer->location;
+                        initializers.push_back({ Wide::Memory::MakeUnique<Identifier>("type", imp, next.GetLocation()), std::move(initializer), next.GetLocation() + initloc });
                         lex(&Lexer::TokenTypes::OpenCurlyBracket);
                         // Gotta be { by this point.
                         return handle_body();

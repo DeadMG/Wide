@@ -92,7 +92,6 @@ std::shared_ptr<Expression> WideFunctionType::ConstructCall(Expression::Instance
     auto Destructor = !result_type->IsTriviallyDestructible()
         ? result_type->BuildDestructorCall(key, Ret, c, true)
         : std::function<void(CodegenContext&)>();
-    
     return CreatePrimGlobal(Range::Elements(val) | Range::Concat(Range::Container(args)), result_type, [=](CodegenContext& con) {
         llvm::Value* llvmfunc = val->GetValue(con);
         std::vector<llvm::Value*> llvmargs;
