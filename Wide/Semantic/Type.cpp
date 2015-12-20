@@ -332,6 +332,12 @@ struct ValueConstruction : Expression {
         return InplaceConstruction->IsConstant(key);
     }
     Type* GetType(Expression::InstanceKey key) override final {
+        if (temporary)
+            temporary->GetType(key);
+        if (InplaceConstruction)
+            InplaceConstruction->GetType(key);
+        if (single_arg)
+            single_arg->GetType(key);
         return self;
     }
     llvm::Value* ComputeValue(CodegenContext& con) override final {
