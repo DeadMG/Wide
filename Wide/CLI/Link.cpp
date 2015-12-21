@@ -69,6 +69,8 @@ void Driver::Link(llvm::LLVMContext& con, llvm::Module* mod, std::vector<std::st
         if (!func)
             throw std::runtime_error("Could not resolve a zero-arguments function from global Main overload set.");
         func->ComputeBody();
+        if (a.errors.size() != 0)
+            throw std::runtime_error("Encountered error during analysis.");
         a.GenerateCode(mod);
         // Create main trampoline.
         auto llvmfunc = llvm::Function::Create(llvm::FunctionType::get(llvm::IntegerType::get(con, 32), {}, false), llvm::GlobalValue::LinkageTypes::ExternalLinkage, "main", mod);
