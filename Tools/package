@@ -1,5 +1,6 @@
 #!/usr/bin/env sh
 
 mkdir Packages
-tar -cjvf Packages/CLI.tar.gz --transform='s,^Wide\/Deployment,,' Wide/Deployment/*
+mv Wide/Deployment/CLI Wide/Deployment/Wide
+tar -cjvf Packages/Wide.tar.gz --transform='s,^Wide\/Deployment,,' Wide/Deployment/*
 
