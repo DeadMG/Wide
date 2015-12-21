@@ -313,10 +313,10 @@ Scope* FunctionSkeleton::ComputeBody() {
                                         ? std::function<void(CodegenContext&)>()
                                         : t->BuildDestructorCall(key, member, { GetContext(), where }, true);
                                     return CreatePrimGlobal(Range::Elements(construction) | Range::Concat(Range::Container(init)), analyzer.GetVoidType(), [=](CodegenContext& con) {
-                                        auto val = construction->GetValue(con);
+                                        construction->GetValue(con);
                                         if (destructor)
                                             con.AddExceptionOnlyDestructor(destructor);
-                                        return val;
+                                        return nullptr;
                                     });
                                 });
                             };
