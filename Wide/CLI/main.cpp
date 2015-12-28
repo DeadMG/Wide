@@ -20,6 +20,9 @@
 #include <Wide/CLI/Link.h>
 #include <Wide/CLI/Export.h>
 #include <Wide/Util/Paths/Exists.h>
+#include <Wide/CLI/Options.h>
+#include <jsonpp/parser.hpp>
+#include <jsonpp/value.hpp>
 
 #pragma warning(push, 0)
 #include <llvm/Support/FileSystem.h>
@@ -29,6 +32,20 @@
 
 int main(int argc, char** argv)
 {
+    boost::program_options::options_description initial_desc;
+    initial_desc.add_options()
+        ("interface", boost::program_options::value<std::string>(), "Choose interface- command-line, JSON");
+    boost::program_options::variables_map initial_input;
+    try {
+        boost::program_options::store(boost::program_options::command_line_parser(argc, argv).options(initial_desc).allow_unregistered().run(), initial_input);
+    }
+    catch (std::exception& e) {
+        std::cout << "Malformed command line.\n" << e.what();
+        return 1;
+    }
+
+
+
     std::unordered_map<std::string, std::pair<std::function<void(boost::program_options::options_description&)>, std::function<void(llvm::LLVMContext&, llvm::Module*, std::vector<std::string>, const Wide::Options::Clang&, const boost::program_options::variables_map&)>>> actions = {
         {
             "link", 
@@ -74,6 +91,7 @@ int main(int argc, char** argv)
         ("stdlib", boost::program_options::value<std::string>(), "The Standard library path. Defaulted to \".\\WideLibrary\\\".")
         ("include", boost::program_options::value<std::vector<std::string>>(), "One include path. May be specified multiple times.")
         ("mode", boost::program_options::value<std::string>(), modes.c_str())
+        ("interface", boost::program_options::value<std::string>(), "Permits interface in JSON or text")
         ("version", "Outputs the build of Wide.")
     ;
 

@@ -271,9 +271,9 @@ WideProjects = {
         end,
         configure = function(plat, conf)
             if os.is("windows") then
-                postbuildcommands ({ "copy /Y \"$(TargetDir)$(TargetName).exe\" \"$(SolutionDir)Deployment/Wide.exe\"" })
+                postbuildcommands ({ "mkdir ../Deployment", "copy /Y \"$(TargetDir)$(TargetName).exe\" \"$(SolutionDir)Deployment/Wide.exe\"" })
             else
-                postbuildcommands ({ "mkdir -p ../Deployment" ,  "cp -f \"../Build/" .. plat .. "/" .. conf .. "/CLI\" \"../Deployment/CLI\"" })
+                postbuildcommands ({ "mkdir ../Deployment",  "cp -f \"../Build/" .. plat .. "/" .. conf .. "/CLI\" \"../Deployment/CLI\"" })
             end
         end,
     },
@@ -374,6 +374,7 @@ else
     buildoptions  {"/wd4503" }
 end
 includedirs("./")
+includedirs("./Wide/jsonpp/")
 location("Wide")
 for name, proj in pairs(WideProjects) do
     project(name)
