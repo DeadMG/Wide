@@ -1,7 +1,7 @@
 #include <Wide/Semantic/ClangOptions.h>
 #include <Wide/Util/DebugBreak.h>
 #include <boost/program_options.hpp>
-#include <Wide/SemanticTest/test.h>
+#include <Wide/IntegrationTests/test.h>
 #include <unordered_map>
 #include <string>
 #include <functional>

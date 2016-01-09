@@ -3,7 +3,7 @@
 #include <Wide/Semantic/ClangOptions.h>
 #include <Wide/Util/DebugBreak.h>
 #include <Wide/Util/Driver/IncludePaths.h>
-#include <Wide/SemanticTest/test.h>
+#include <Wide/IntegrationTests/test.h>
 #include <Wide/Semantic/Expression.h>
 #include <Wide/Semantic/Analyzer.h>
 #include <Wide/Semantic/Module.h>
