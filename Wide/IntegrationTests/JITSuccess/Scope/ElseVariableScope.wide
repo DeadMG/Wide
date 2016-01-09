@@ -1,0 +1,7 @@
+// Fails if the else cannot access the variable or it has the wrong value.
+Main() {
+    if (var := false)
+        return var;
+    else
+        return ~var;
+}

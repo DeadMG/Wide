@@ -1,0 +1,6 @@
+using header := cpp.literal("void f(bool(&ref)[1]) { ref[0] = true; }");
+Main() {
+    arr := bool.array(1)({false});
+    header.f(arr);
+    return arr[0];
+}

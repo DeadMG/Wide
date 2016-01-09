@@ -1,0 +1,5 @@
+// Check for bug where not having an else would crash the compiler.
+Main() {
+    if (true) return true;
+    return false;
+}

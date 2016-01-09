@@ -1,0 +1,11 @@
+f(arg : bool.lvalue, arg2 : bool) {
+    arg = arg2;
+    return false;
+}
+Main() {
+    ret := true;
+    false & f(ret, false);
+    ret2 := false;
+    true & f(ret2, true);
+    return ret & ret2;
+}

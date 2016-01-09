@@ -1,6 +1,0 @@
-type t {
-    operator()() { return true; }
-}
-Main() {
-    return t()();
-}

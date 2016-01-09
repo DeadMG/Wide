@@ -1,5 +1,0 @@
-Main() {
-    std.cout << cpp("stdlib.h").malloc(5);
-    return true;
-}
-    

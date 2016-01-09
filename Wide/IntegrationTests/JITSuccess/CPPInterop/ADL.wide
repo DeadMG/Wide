@@ -1,0 +1,4 @@
+// Fails if ADL does not find the operator.
+Main() {
+    return null == cpp.literal("namespace ClangADL { struct test {}; bool operator==(decltype(nullptr) lhs, test rhs) { return true; } }").ClangADL.test();
+}

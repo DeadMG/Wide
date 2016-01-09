@@ -1,6 +1,0 @@
-using header := cpp.literal("struct X { bool operator()(); }; bool f() { return X()(); }");
-[export := header.X.members.operator()]
-f() { return true; }
-Main() {
-    return header.f();
-}

@@ -1,0 +1,4 @@
+using header := cpp("JITSuccess/CPPInterop/BaseOnDerived.h");
+Main() {
+    return header.derived().f();
+}

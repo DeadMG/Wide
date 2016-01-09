@@ -1,6 +1,0 @@
-ExpectedFailure() { return { { "RecursiveBase", 2, 10, 2, 11 } }; }
-type t : t {}
-Main() {
-    t();
-    return false;
-}

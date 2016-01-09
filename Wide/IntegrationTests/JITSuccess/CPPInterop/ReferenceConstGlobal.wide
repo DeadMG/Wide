@@ -1,0 +1,4 @@
+using header := cpp.literal("const bool b = true;");
+Main() {
+    return header.b;
+}

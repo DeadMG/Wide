@@ -1,9 +1,0 @@
-type t {
-    val : bool;
-    type(var : bool) : val := var {}
-}
-Main() {
-    source := t(true);
-    copy := source;
-    return copy.val;    
-}

@@ -1,7 +1,0 @@
-type movable {
-    type(arg : movable.rvalue) {}
-    type() {}
-}
-Main() {
-    return ~movable.copy_constructible;
-}

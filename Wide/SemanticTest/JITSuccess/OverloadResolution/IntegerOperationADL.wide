@@ -1,3 +1,0 @@
-Main() {
-    return int32(0) == 0;
-}

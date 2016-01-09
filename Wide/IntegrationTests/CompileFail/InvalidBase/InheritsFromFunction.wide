@@ -1,0 +1,10 @@
+ExpectedFailure() { return { { "BaseNotAType", 5, 10, 5, 11 } }; }
+f() {
+    return false;
+}
+type t : f {
+    g() { return false; }
+}
+Main() {
+    return f() | t().g();
+}

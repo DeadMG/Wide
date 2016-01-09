@@ -1,0 +1,10 @@
+ExpectedFailure() { return { { "UsingTargetNotConstant", 7, 14, 7, 18 } }; }
+type t {
+    x: int;
+    type(i: int64) : x := i {}
+    ~type() {}
+}
+using arg := t(5);
+Main() {
+    return arg.x == 5;
+}

@@ -1,4 +1,0 @@
-Main() {
-    cpp("iostream").std.cout << true;
-    return true;
-}

@@ -1,7 +1,0 @@
-using tu := cpp.literal("template<typename T> bool f(T t) { return t.var; }");
-type x {
-    var := true;
-}
-Main() {
-    return tu.f(x());
-}

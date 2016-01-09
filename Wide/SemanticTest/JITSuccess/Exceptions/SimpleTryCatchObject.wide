@@ -1,7 +1,0 @@
-Main() {
-    try {
-        throw true;
-    } catch(var : bool.lvalue) {
-        return var;
-    }
-}

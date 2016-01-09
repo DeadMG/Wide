@@ -1,0 +1,5 @@
+Main() {
+    local := 6;
+    local2 := uint64(local);
+    return local == int64(local2);
+}

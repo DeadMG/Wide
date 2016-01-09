@@ -1,0 +1,8 @@
+f(x, y) { 
+    std.cout << y; 
+    return x; 
+}
+Main() {
+    f(f, "Hello")(f, ", ")(f, "World");
+    return true;
+}

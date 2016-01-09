@@ -1,0 +1,13 @@
+type t {
+    operator()() {
+    }
+}
+type t2 {
+    operator()(arg : bool) {
+        return arg;
+    }
+}
+Main() {
+    t()();
+    return t2()(true);
+}

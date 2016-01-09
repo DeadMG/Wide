@@ -1,0 +1,5 @@
+ExpectedFailure() { return { { "AddressOfNonLvalue", 4, 13, 4, 17 } }; }
+f() { return false; }
+Main() {
+    return *&f();
+}

@@ -1,8 +1,0 @@
-type y {
-    val : bool;
-    type(arg : bool) : val := arg {}
-    type() : type := true {}
-}
-Main() {
-    return y().val;
-}

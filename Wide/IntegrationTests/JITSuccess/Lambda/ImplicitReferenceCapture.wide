@@ -1,0 +1,8 @@
+f(arg : bool.lvalue) {
+    return function()[&] { arg = true; };
+}
+Main() {
+    ret := false;
+    f(ret)();
+    return ret;
+}

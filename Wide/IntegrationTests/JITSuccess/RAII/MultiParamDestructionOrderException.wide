@@ -1,0 +1,29 @@
+type t {
+    ptr : bool.pointer;
+    type(arg : bool.lvalue) : ptr := &arg {}
+    ~type() { *ptr = true; }
+}
+type g {
+    ptr : bool.pointer;
+    ptr2 : bool.pointer;
+    type(arg : bool.lvalue, arg2 : bool.lvalue) : ptr := &arg : ptr2 := &arg2 {}
+    ~type() { if (~*ptr) *ptr2 = true; }    
+}
+f(arg : t, arg2 : g, arg3 : bool) {}
+bar() {
+    throw true;
+    return true;
+}
+Main() {
+    arg1destroyed := false;
+    check := false;
+    except := false;
+    {
+        try {
+            f(t(arg1destroyed), g(arg1destroyed, check), bar());
+        } catch(param : bool.lvalue) {
+            except = param;
+        }
+    }
+    return check & except;
+}

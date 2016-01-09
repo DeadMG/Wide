@@ -1,3 +1,0 @@
-Main() {
-    return cpp("JITSuccess/CPPInterop/ImplicitConversionRvalueReference.h").test(5);
-}

@@ -1,8 +1,0 @@
-using header := cpp.literal("struct T { T(int* ptr) : ptr(ptr) {} int* ptr; ~T() { (*ptr)++; } }; void f(T t) {}");
-Main() {
-    result := int32(0);
-    {
-        header.f(header.T(&result));
-    }
-    return result == 1;
-}

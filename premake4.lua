@@ -339,11 +339,11 @@ WideProjects = {
             end
         end,
     },
-    SemanticTest = {
+    IntegrationTests = {
         action = function(plat, conf)
             kind("ConsoleApp")
             links { "Util", "Lexer", "Parser", "Semantic" }
-            files ({ "Wide/SemanticTest/**.wide" })
+            files ({ "Wide/IntegrationTests/**.wide" })
         end,
         configure = function(plat, conf)
             if _OPTIONS["test"] then

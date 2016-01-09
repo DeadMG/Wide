@@ -1,4 +1,0 @@
-using test := cpp.literal("struct t { template<typename T> T f(T arg) { return arg; } };");
-Main() {
-    return test.t().f(true);
-}

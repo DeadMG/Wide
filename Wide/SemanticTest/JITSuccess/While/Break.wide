@@ -1,6 +1,0 @@
-// Tests that break, well, breaks.
-Main() {
-    while(true)
-        break;
-    return true;
-}

@@ -1,0 +1,12 @@
+type t {
+    f(p : bool.pointer) {
+        return true;
+    }
+private:
+    f(t : decltype(null)) {
+        return false;
+    }
+}
+Main() {
+    return t().f(null);
+}

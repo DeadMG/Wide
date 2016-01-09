@@ -1,5 +1,0 @@
-// Fails if calling this C++ member operator fails.
-using test := cpp("JITSuccess/CPPInterop/MemberOperator.h").test;
-Main() {
-    return test() == test();
-}

@@ -1,0 +1,8 @@
+type base {}
+type derived : base {}
+type more_derived : derived {}
+f(arg : base) { return false; }
+f(arg : derived) { return true; }
+Main() {
+    return f(more_derived());
+}

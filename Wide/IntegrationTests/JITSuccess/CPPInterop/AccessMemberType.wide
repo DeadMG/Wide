@@ -1,0 +1,4 @@
+using header := cpp.literal("struct X { struct T { bool f() { return true; } }; };");
+Main() {
+    return header.X.members.T().f();
+}

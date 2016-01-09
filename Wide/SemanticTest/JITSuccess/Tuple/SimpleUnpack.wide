@@ -1,4 +1,0 @@
-Main() {
-    left, right := { true, true };
-    return left & right;
-} 

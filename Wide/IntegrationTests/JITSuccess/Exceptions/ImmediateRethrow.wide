@@ -1,0 +1,15 @@
+Main() {
+    try {
+        try {
+            throw true;
+            return false;
+        } catch(arg : bool.lvalue) {
+            throw;
+            return false;
+        }
+        return false;
+    } catch(arg : bool.lvalue) {
+        return arg;
+    }
+    return false;
+}

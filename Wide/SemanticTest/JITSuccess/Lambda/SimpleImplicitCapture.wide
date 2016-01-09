@@ -1,6 +1,0 @@
-f(arg) {
-    return () => arg;
-}
-Main() {
-    return f(true)();
-}

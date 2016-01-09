@@ -1,4 +1,0 @@
-Main() {
-   var := bool.array(1 + 1)({true, true});
-   return var[0] & var[1];
-}

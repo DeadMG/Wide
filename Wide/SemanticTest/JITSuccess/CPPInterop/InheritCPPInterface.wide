@@ -1,9 +1,0 @@
-using header := cpp("JITSuccess/CPPInterop/InheritCPPInterface.h");
-using test := header.test;
-type t : test {
-    f() { return true; }
-}
-Main() {
-    var := t();
-    return header.g(var);
-}

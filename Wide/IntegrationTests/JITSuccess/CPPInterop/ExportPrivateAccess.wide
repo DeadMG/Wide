@@ -1,0 +1,11 @@
+using header := cpp("JITSuccess/CPPInterop/ExportPrivateAccess.h");
+
+[export := header.test.members.f]
+func()
+{
+    return val;
+}
+
+Main() {
+    return header.test(true).f();
+}

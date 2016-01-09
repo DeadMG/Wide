@@ -1,6 +1,0 @@
-type t {
-    operator+(other : t) { return true; }
-}
-Main() {
-    return t() + t();
-}

@@ -1,0 +1,10 @@
+type t {
+    val : bool;
+    type() : val := false {}
+    type(other : t.lvalue) : val := true {}
+}
+Main() {
+    x := t();
+    y := x;
+    return y.val;
+}

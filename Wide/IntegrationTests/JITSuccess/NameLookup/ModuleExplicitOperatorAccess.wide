@@ -1,0 +1,8 @@
+module x {
+    operator+(y, z) {
+        return y & z;
+    }
+}
+Main() {
+    return x.operator+(true, true);
+}

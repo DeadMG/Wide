@@ -1,0 +1,9 @@
+ExpectedFailure() { return { { "NoMemberFound", 8, 12, 8, 19 } }; }
+type t {
+    type() : val := false {}
+private:
+    val : bool;
+}
+Main() {
+    return t().val;
+}

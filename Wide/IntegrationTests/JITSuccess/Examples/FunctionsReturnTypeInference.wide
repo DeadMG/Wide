@@ -1,0 +1,28 @@
+using header := cpp.literal("
+    #include <iostream>
+    struct x {}; 
+    typedef bool x::* none_t; 
+    none_t none; 
+    template<typename T> struct optional {
+        typedef T optional::*ptr;
+        T var;
+        T operator*() { return var; }
+        operator ptr() { if (var) return &optional::var; return nullptr; }
+        optional(T t) : var(t) {} 
+        optional(none_t) : var(nullptr) {} 
+    };
+    template<typename T> optional<T> make_optional(T t) {
+        return optional<T>(t);
+    }
+");
+f(x : bool) {
+    if (x) return header.make_optional("Hello, World!");
+    return header.none;
+}
+Main() {
+    if (var := f(true)) {
+        header.std.cout << *var;
+        return true;
+    }
+    return false;
+}

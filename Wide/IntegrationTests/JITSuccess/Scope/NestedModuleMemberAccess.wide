@@ -1,0 +1,12 @@
+module test {
+    module subtest {
+        f() {
+            return test.f();
+        }
+    }
+private:
+    f() { return true; }
+}
+Main() {
+    return test.subtest.f();
+}

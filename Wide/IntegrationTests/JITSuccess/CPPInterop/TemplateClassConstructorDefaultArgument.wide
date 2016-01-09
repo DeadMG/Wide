@@ -1,0 +1,4 @@
+using header := cpp.literal("template<typename T> struct C { C(T arg = true) : var(true) {} bool var; };");
+Main() {
+    return header.C(bool)().var;
+}

@@ -1,0 +1,8 @@
+type t {
+    operator+(val : int64.pointer) { return true; }
+private:
+    operator+(val : decltype(null)) { return false; }
+}
+Main() {
+    return t() + null;
+}

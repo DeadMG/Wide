@@ -1,0 +1,8 @@
+Main() {
+    local := false;
+    ref : bool.lvalue := local;
+    ref = true;    
+    if (local) 
+        std.cout << "Hello, World!";
+    return true;
+}

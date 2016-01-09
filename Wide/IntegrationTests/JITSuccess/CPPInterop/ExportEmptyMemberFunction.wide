@@ -1,0 +1,10 @@
+using header := cpp("JITSuccess/CPPInterop/ExportEmptyMemberFunction.h");
+
+[export := header.test.members.f]
+f() {
+    return true;
+}
+
+Main() {
+    return header.test().g();
+}

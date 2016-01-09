@@ -1,0 +1,7 @@
+f(x : std.ostream.lvalue) : void {
+    x << "Hello, World!";
+}
+Main() {
+    f(std.cout);
+    return true;
+}

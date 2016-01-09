@@ -1,0 +1,12 @@
+using test := cpp("JITSuccess/CPPInterop/ExportDestructor.h").test;
+
+[export := test.destructor]
+~type()
+{
+    *p = true;
+}
+Main() {
+    ret := false;
+    { test(ret); }
+    return ret;
+}

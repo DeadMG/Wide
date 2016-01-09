@@ -1,5 +1,0 @@
-using header := cpp.literal("struct T { bool f() { return val; } bool val; }; typedef bool(T::*memfuncptr)(); memfuncptr g() { return &T::f; } bool f(memfuncptr ptr, T& ref) { return (ref.*ptr)(); }");
-Main() {
-    val := header.T({true});
-    return header.f(header.g(), val);
-}

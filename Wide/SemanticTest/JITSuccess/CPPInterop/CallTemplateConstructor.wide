@@ -1,5 +1,0 @@
-using sample := cpp.literal("struct opt { template<typename U> opt(U&& u) : mem(u) {} bool mem; };");
-Main() {
-    var := sample.opt(true);
-    return var.mem;
-}

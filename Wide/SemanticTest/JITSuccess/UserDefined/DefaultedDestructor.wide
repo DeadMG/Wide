@@ -1,8 +1,0 @@
-type t {
-    local : bool;
-    ~type() default
-}
-Main() {
-    local := t({true});
-    return local.local;
-}

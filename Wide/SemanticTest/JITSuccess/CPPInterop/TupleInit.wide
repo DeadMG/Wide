@@ -1,4 +1,0 @@
-Main() {
-    x := cpp("JITSuccess/CPPInterop/TupleInit.h").test({true, true});
-    return x.b & x.b2;
-}

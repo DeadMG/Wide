@@ -1,9 +1,0 @@
-using cplusplus := cpp("JITSuccess/Examples/ExportedFunctionsDestructor.h");
-[export := cplusplus.t.destructor]
-~type() {
-    std.cout << "Hello, World!";
-}
-Main() {
-    cplusplus.g();
-    return true;
-}

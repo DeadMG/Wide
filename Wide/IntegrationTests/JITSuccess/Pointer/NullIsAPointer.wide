@@ -1,0 +1,9 @@
+f(p : bool.pointer) {
+    return true;
+}
+f(i : int64) {
+    return false;
+}
+Main() {
+    return f(null);
+}

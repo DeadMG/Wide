@@ -1,3 +1,0 @@
-Main() {
-    return type { f() { return true; } }().f();
-}

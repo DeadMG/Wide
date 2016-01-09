@@ -1,9 +1,0 @@
-using header := cpp("JITSuccess/CPPInterop/EvaluateTemplateClass.h");
-f(arg : bool.lvalue) {
-    arg = true;
-    return header.test(int)();
-}
-Main() {
-    ret := false;
-    return f(ret).value;
-}

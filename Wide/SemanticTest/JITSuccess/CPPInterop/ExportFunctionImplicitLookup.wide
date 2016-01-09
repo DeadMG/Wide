@@ -1,8 +1,0 @@
-using test := cpp("JITSuccess/CPPInterop/ExportFunctionImplicitLookup.h").test;
-[export := test.members.f]
-f() {
-    return val;
-}
-Main() {
-    return test().f();
-}

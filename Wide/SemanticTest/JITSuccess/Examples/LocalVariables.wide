@@ -1,5 +1,0 @@
-Main() {
-    local := "Hello, World!";
-    std.cout << local;
-    return true;
-}

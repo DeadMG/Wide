@@ -1,6 +1,0 @@
-Main() {
-    var := { true, true };
-    copy := var;
-    left, right := copy;
-    return left & right;
-}

@@ -1,7 +1,0 @@
-f(x : std.string) {
-    std.cout << x;
-}
-Main() {
-    f(std.string("Hello, World!", std.allocator(int8)()));
-    return true;
-}

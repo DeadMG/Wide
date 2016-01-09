@@ -1,7 +1,0 @@
-type t {
-    var := true;
-    type() {}
-}
-Main() {
-    return t().var;
-}

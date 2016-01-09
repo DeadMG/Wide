@@ -1,0 +1,7 @@
+Main() {
+    try {
+    } catch(...) {
+        return false;
+    }
+    return true;
+}

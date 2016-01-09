@@ -1,7 +1,0 @@
-type t {
-    result := true;
-    using name := result;
-}
-Main() {
-    return t().name;
-}

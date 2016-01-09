@@ -1,8 +1,0 @@
-type t1 {
-    operator()(this : t1.lvalue) { return true; }
-    operator()(this : t1.rvalue) { return true; }
-}
-Main() {
-    x := t1();
-    return x() & t1()();
-}

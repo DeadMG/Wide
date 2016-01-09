@@ -1,0 +1,12 @@
+ExpectedFailure() { return { { "OverloadResolutionFailed", 10, 5, 10, 15 } }; }
+type t {
+    val : bool;
+    type(arg : t.lvalue) { arg.val = false; }
+    type() : val := true {}
+}
+Main() {
+    arg := t();
+    arg2 := t();
+    arg = arg2;
+    return arg.val;
+}

@@ -1,0 +1,16 @@
+using header := cpp("JITSuccess/CPPInterop/ThrowDestructor.h");
+type hi {
+    ptr : bool.pointer;
+    type(arg : bool.lvalue) : ptr := &arg {}
+    ~type() { *ptr = true; }
+}
+[export := header.f]
+f(arg : bool.lvalue) {
+    val := hi(arg);
+    throw int32(1);
+}
+Main() {
+    ret := false;
+    ret2 := header.g(ret);
+    return ret & ret2;
+}

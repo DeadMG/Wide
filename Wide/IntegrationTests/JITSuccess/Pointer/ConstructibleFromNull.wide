@@ -1,0 +1,7 @@
+using test := bool.pointer;
+Main() {
+    var := test(null);
+    result := true;
+    var = &result;
+    return *var;
+}

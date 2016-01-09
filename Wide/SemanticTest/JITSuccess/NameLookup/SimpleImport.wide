@@ -1,7 +1,0 @@
-import x;
-module x {
-    f() { return true; }
-}
-Main() {
-    return f();
-}

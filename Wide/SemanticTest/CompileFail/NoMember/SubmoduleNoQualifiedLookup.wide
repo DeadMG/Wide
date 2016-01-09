@@ -1,7 +1,0 @@
-ExpectedFailure() { return { { "NoMemberFound", 5, 5, 5, 24 } }; }
-module Submodule {
-}
-Main() {
-    Submodule.Submodule.Submodule.Submodule;
-    return false;
-}

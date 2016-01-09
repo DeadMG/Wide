@@ -1,0 +1,14 @@
+using cplusplus := cpp.literal("#include <iostream>
+#include <string>
+namespace first { void f() { std::cout << \"Hello\"; } }
+struct second { static void f() { std::cout << \", \"; } }
+struct third { void f() { std::cout << \"World!\"; } }");
+f(x) {
+   x.f();
+}
+Main() {
+    f(cplusplus.first);
+    f(cplusplus.second());
+    f(cplusplus.third());
+    return true;
+}

@@ -1,0 +1,15 @@
+type t {
+    ptr : bool.pointer;
+    type(arg : bool.lvalue) : ptr := &arg {}
+    ~type() { *ptr = true; }
+}
+type outer {
+    inner : t;
+}
+Main() {
+    tup := { false };
+    {
+        var := outer(tup);
+    }
+    return *outer(tup).inner.ptr;
+}

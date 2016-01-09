@@ -1,0 +1,9 @@
+ExpectedFailure() { return { { "OverloadResolutionFailed", 8, 12, 8, 18 } }; }
+type t1 {
+    operator()(this : t1.lvalue) {
+        return false;
+    }
+}
+Main() {
+    return t1()();
+}

@@ -1,0 +1,8 @@
+[alignment := 64]
+type t {
+    arg : bool;
+}
+
+Main() {
+    return t.size == 64 & t.alignment == 64 & t({true}).arg;
+}

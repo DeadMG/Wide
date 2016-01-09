@@ -1,7 +1,0 @@
-Main() {
-    std.cout << "Hello";
-    local := std.vector(std.string)();
-    local.push_back("Hello, World!");
-    std.cout << local[0];
-    return true;
-}

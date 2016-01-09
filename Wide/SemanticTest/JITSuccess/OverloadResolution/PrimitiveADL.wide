@@ -1,9 +1,0 @@
-module Submodule {
-    type t {}
-    operator+(lhs, rhs) { return true; }        
-}
-Main() {
-    x := 5;
-    y := Submodule.t();
-    return x + y;
-}

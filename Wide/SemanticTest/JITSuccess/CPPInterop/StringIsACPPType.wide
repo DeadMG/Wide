@@ -1,7 +1,0 @@
-using header := cpp.literal("struct T { T(const char*) : val(true) {} bool val; };");
-f(arg : header.T) {
-    return arg.val;
-}
-Main() {
-    return f("Hello, World!");
-}

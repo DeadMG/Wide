@@ -1,0 +1,9 @@
+type base { dynamic f() {} }
+type derived : base { }
+f(arg : base.lvalue) : base.lvalue { 
+    return arg; 
+}
+Main() {
+    var := derived();
+    return typeid(f(var)) == typeid(derived);
+}

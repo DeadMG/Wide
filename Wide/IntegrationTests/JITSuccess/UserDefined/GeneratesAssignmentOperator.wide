@@ -1,0 +1,12 @@
+type t {
+    val : bool;
+    type() : val := false {}
+    operator=(i : int64) { val = true; }
+}
+Main() {
+    source := t();
+    copy := t();
+    source = 0;
+    copy = source;
+    return copy.val;
+}

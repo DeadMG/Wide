@@ -1,4 +1,0 @@
-using header := cpp.literal("struct T { static bool f() { return true; } };");
-Main() {
-    return header.T().f();
-}

@@ -1,9 +1,0 @@
-type t {
-    type() {}
-    ~type() {}
-    f() { return true; }
-}
-Main() {
-    while(t().f())
-        return true;
-}

@@ -1,0 +1,4 @@
+using header := cpp("JITSuccess/CPPInterop/DefaultArgumentConstRef.h");
+Main() {
+    return header.f();
+}

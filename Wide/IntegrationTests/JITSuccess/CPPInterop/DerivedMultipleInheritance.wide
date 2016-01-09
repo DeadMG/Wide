@@ -1,0 +1,4 @@
+using header := cpp("JITSuccess/CPPInterop/DerivedMultipleInheritance.h");
+Main() {
+    return header.y().f() & header.y().g();
+}

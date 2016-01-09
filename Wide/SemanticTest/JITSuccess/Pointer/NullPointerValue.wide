@@ -1,4 +1,0 @@
-Main() {
-    var := bool.pointer(null);
-    return ~var;
-}

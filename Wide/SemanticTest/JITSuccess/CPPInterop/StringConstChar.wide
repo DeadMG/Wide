@@ -1,4 +1,0 @@
-using header := cpp.literal("typedef const char* ty; bool f(const ty& x) { return x[0] == 'h'; }");
-Main() {
-    return header.f("h");
-}

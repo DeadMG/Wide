@@ -1,0 +1,16 @@
+// Fails if break destroys things from the wrong scope.
+type testty {
+    result : bool.pointer;
+    ~type() {
+         *result = false;
+    }
+    type(arg : bool.pointer)
+        : result := arg {}
+}
+Main() {
+    result := true;
+    var := testty(&result);
+    while(true)
+        break;
+    return result;
+}

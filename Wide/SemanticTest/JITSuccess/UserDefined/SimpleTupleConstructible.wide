@@ -1,7 +1,0 @@
-type t {
-    val : bool;
-}
-Main() {
-    var := t({true});
-    return var.val;
-}

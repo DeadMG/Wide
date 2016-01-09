@@ -1,9 +1,0 @@
-module f {
-private:
-    test(i : int32) { return false; }
-public:
-    test(i : int64) { return true; }
-}
-Main() {
-    return f.test(int32(0));
-}

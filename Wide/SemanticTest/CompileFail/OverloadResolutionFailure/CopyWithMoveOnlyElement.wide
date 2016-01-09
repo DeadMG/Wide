@@ -1,9 +1,0 @@
-ExpectedFailure() { return { { "OverloadResolutionFailed", 8, 13, 8, 16 } }; }
-type t {
-    type() {}
-    type(r : t.rvalue) {}
-}
-Main() {
-    var := { t(), t() };
-    copy := var;
-}

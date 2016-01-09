@@ -1,8 +1,0 @@
-using header := cpp("JITSuccess/CPPInterop/ThrowDestructorWideCatch.h");
-Main() {
-    try {
-        header.f();
-    } catch(param: header.t.lvalue) {
-        return param.f();
-    }
-}

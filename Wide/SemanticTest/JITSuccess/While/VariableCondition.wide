@@ -1,4 +1,0 @@
-Main() {
-    while(var := true)
-        return var;
-}

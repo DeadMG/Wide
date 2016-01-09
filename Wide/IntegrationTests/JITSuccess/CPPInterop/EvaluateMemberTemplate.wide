@@ -1,0 +1,10 @@
+using header := cpp.literal("struct T { template<typename T> struct F { T f(T t) { return t; } }; };");
+f(arg : bool.lvalue) {
+    arg = true;
+    return header.T();
+}
+Main() {
+    ret1 := false;
+    ret2 := f(ret1).F(bool)().f(true);
+    return ret1 & ret2;
+}

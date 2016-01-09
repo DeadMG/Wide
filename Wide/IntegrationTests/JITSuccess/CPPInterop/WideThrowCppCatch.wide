@@ -1,0 +1,8 @@
+using header := cpp("JITSuccess/CPPInterop/WideThrowCppCatch.h");
+[export := header.f]
+func() {
+    throw int32(1);
+}
+Main() {
+    return header.g();
+}

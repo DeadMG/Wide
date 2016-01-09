@@ -1,9 +1,0 @@
-type t {
-    local : bool;
-    type(arg : t.rvalue) default
-}
-Main() {
-    var := t({true});
-    copy := move(var);
-    return copy.local;
-}

@@ -1,0 +1,12 @@
+ExpectedFailure() { return { { "OverloadResolutionFailed", 10, 5, 10, 15 } }; }
+type t {
+    val : bool;
+    type() : val := true {}
+    operator=(other : t.rvalue) { val = false; }
+}
+Main() {
+    var := t();
+    copy := t();
+    var = copy;
+    return var.val;
+}

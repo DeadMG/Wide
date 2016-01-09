@@ -1,0 +1,8 @@
+using header := cpp("JITSuccess/CPPInterop/ExportFreeFunction.h");
+[export := header.f]
+f() {
+    return true;
+}
+Main() {
+    return header.g();
+}

@@ -1,0 +1,18 @@
+type testty {
+    result : bool.pointer;
+    ~type() {
+         *result = true;
+    }
+    f() {
+        return true;
+    }
+    type(arg : bool.pointer)
+        : result := arg {}
+}
+Main() {
+    result := false;
+    {
+        true & testty(&result).f();
+    }
+    return result;
+}

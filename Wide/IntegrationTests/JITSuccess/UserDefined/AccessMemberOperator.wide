@@ -1,0 +1,9 @@
+type t {
+    var : bool;
+}
+Main() {
+    local := t({false});
+    ass := local.operator=;
+    ass({true});
+    return local.var;
+}

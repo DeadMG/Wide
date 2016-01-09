@@ -1,3 +1,0 @@
-Main() {
-    return cpp("JITSuccess/CPPInterop/ConstexprCodeGeneration.h").f();
-}

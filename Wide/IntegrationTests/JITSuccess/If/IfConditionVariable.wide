@@ -1,0 +1,6 @@
+// Fails if the if statement can't access the condition variable or it has the wrong value
+Main() {
+    if (var := true)
+        return var;
+    return false;
+}

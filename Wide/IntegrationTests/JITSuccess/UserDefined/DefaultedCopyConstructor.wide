@@ -1,0 +1,9 @@
+type t {
+    local : bool;
+    type(arg : t.lvalue) default
+}
+Main() {
+    var := t({true});
+    copy := var;
+    return copy.local;
+}

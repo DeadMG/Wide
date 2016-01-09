@@ -1,9 +1,0 @@
-type t {
-    val : bool;
-    type(arg : int64.pointer) : val := true {}
-private:
-    type(arg : decltype(null)) : val := false {}
-}
-Main() {
-    return t(null).val;
-}

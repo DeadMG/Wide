@@ -1,7 +1,0 @@
-f() {
-    return { 1, 2 };
-}
-Main() {
-    left, right := f();
-    return left == 1 & right == 2;
-}

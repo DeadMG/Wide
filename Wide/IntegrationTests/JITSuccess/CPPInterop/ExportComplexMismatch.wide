@@ -1,0 +1,7 @@
+using header := cpp.literal("#include<string>\nstd::string f();\nbool g() { return f() == \"Hello\"; }");
+[export := header.f]
+f() { return "Hello"; }
+
+Main() {
+    return header.g();
+}

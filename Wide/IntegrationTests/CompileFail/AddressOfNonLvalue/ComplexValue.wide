@@ -1,0 +1,9 @@
+ExpectedFailure() { return { { "AddressOfNonLvalue", 8, 13, 8, 17 } }; }
+type t {
+    val := false;
+    type(other : t.lvalue) {}
+    type() {}
+}
+Main() {
+    return (&t())->val;
+}
