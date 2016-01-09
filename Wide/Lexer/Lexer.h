@@ -10,6 +10,7 @@
 
 namespace Wide {
     namespace Lexer {
+        struct Error;
         class Invocation {
             Position current_position;
             std::deque<std::pair<char, Position>> putback;
@@ -19,12 +20,7 @@ namespace Wide {
             Wide::Util::optional<char> get();
             Wide::Util::optional<Lexer::Token> ParseCComments(Position start);
         public:
-            enum class Failure {
-                UnterminatedStringLiteral,
-                UnlexableCharacter,
-                UnterminatedComment
-            };
-            std::function<Wide::Util::optional<Token>(Position, Failure, Invocation*)> OnError;
+            std::function<Wide::Util::optional<Token>(Error)> OnError;
             std::function<void(Range)> OnComment;
 
             std::unordered_map<char, Lexer::TokenType> singles;

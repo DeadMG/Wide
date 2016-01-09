@@ -19,7 +19,6 @@
 #include <Wide/Semantic/Function.h>
 #include <unordered_set>
 #include <sstream>
-#include <iostream>
 
 #pragma warning(push, 0)
 #include <llvm/IR/Function.h>

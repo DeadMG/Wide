@@ -1,0 +1,3 @@
+[submodule "Wide/jsonpp"]
+	path = Wide/jsonpp
+	url = http://github.com/DeadMG/jsonpp

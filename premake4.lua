@@ -271,7 +271,7 @@ WideProjects = {
         end,
         configure = function(plat, conf)
             if os.is("windows") then
-                postbuildcommands ({ "mkdir ../Deployment", "copy /Y \"$(TargetDir)$(TargetName).exe\" \"$(SolutionDir)Deployment/Wide.exe\"" })
+                postbuildcommands ({ "copy /Y \"$(TargetDir)$(TargetName).exe\" \"$(SolutionDir)Deployment/Wide.exe\"" })
             else
                 postbuildcommands ({ "mkdir ../Deployment",  "cp -f \"../Build/" .. plat .. "/" .. conf .. "/CLI\" \"../Deployment/CLI\"" })
             end

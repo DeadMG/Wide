@@ -1,4 +1,3 @@
-#include <Wide/Util/Driver/Compile.h>
 #include <Wide/Semantic/Analyzer.h>
 #include <Wide/Semantic/OverloadSet.h>
 #include <Wide/Semantic/ClangOptions.h>
@@ -17,6 +16,10 @@
 #include <Wide/Util/Driver/StdlibDirectorySearch.h>
 #include <Wide/Util/Driver/Process.h>
 #include <Wide/Util/Codegen/CloneModule.h>
+#include <Wide/Util/Paths/Exists.h>
+#include <Wide/Util/Driver/Options.h>
+#include <Wide/Util/Driver/Execute.h>
+#include <iostream>
 
 #pragma warning(push, 0)
 #include <llvm/ExecutionEngine/GenericValue.h>
@@ -95,7 +98,12 @@ template<typename F> auto GenerateCode(std::unique_ptr<llvm::Module> mod, F f) -
 void Wide::Driver::Jit(Wide::Options::Clang& copts, std::string file) {
 #ifdef _MSC_VER
     const std::string MinGWInstallPath = "..\\Deployment\\MinGW\\";
-    Wide::Driver::AddMinGWIncludePaths(copts, MinGWInstallPath);
+    auto paths = Wide::Driver::GetGCCIncludePaths(MinGWInstallPath + "bin/g++");
+    for (auto path : paths) {
+        if (!Wide::Paths::Exists(path))
+            throw std::runtime_error("Could not find include path " + path);
+        copts.HeaderSearchOptions->AddPath(path, clang::frontend::IncludeDirGroup::CXXSystem, false, false);
+    }
 #else
     Wide::Driver::AddLinuxIncludePaths(copts);
 #endif
@@ -253,7 +261,12 @@ const std::unordered_map<std::string, std::function<bool(Wide::Semantic::Error& 
 void Wide::Driver::Compile(Wide::Options::Clang& copts, std::string file) {
 #ifdef _MSC_VER
     const std::string MinGWInstallPath = "..\\Deployment\\MinGW\\";
-    Wide::Driver::AddMinGWIncludePaths(copts, MinGWInstallPath);
+    auto paths = Wide::Driver::GetGCCIncludePaths(MinGWInstallPath + "bin/g++");
+    for (auto path : paths) {
+        if (!Wide::Paths::Exists(path))
+            throw std::runtime_error("Could not find include path " + path);
+        copts.HeaderSearchOptions->AddPath(path, clang::frontend::IncludeDirGroup::CXXSystem, false, false);
+    }
 #else
     Wide::Driver::AddLinuxIncludePaths(copts);
 #endif
@@ -265,6 +278,7 @@ void Wide::Driver::Compile(Wide::Options::Clang& copts, std::string file) {
     std::vector<std::string> files(stdlib.begin(), stdlib.end());
     copts.HeaderSearchOptions->AddPath("../WideLibrary", clang::frontend::IncludeDirGroup::System, false, false);
     files.push_back(file);
+    
     Wide::Driver::Compile(copts, files, con, [&](Wide::Semantic::Analyzer& a, const Wide::Parse::Module* root) {
         auto global = a.GetGlobalModule()->BuildValueConstruction(Wide::Semantic::Expression::NoInstance(), {}, { a.GetGlobalModule(), loc });
         auto failure = Wide::Semantic::Type::AccessMember(Wide::Semantic::Expression::NoInstance(), global, std::string("ExpectedFailure"), { a.GetGlobalModule(), loc });

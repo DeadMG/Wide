@@ -15,7 +15,6 @@
 #include <Wide/Semantic/IntegralType.h>
 #include <Wide/Lexer/Token.h>
 #include <boost/algorithm/string.hpp>
-#include <iostream>
 #include <sstream>
 #include <array>
 

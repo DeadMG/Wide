@@ -2,7 +2,6 @@
 
 #include <functional>
 #include <string>
-#include <iostream>
 
 #pragma warning(push, 0)
 #include <clang/Basic/FileSystemOptions.h>
@@ -20,10 +19,7 @@ namespace Wide {
     namespace Options {
         struct Clang {
             Clang()
-                : OnDiagnostic([](std::string err) {
-                      std::cout << err;
-                  }) 
-                , DiagnosticIDs(new clang::DiagnosticIDs())
+                : DiagnosticIDs(new clang::DiagnosticIDs())
                 , DiagnosticOptions(new clang::DiagnosticOptions())           
                 , HeaderSearchOptions(new clang::HeaderSearchOptions())
                 , PreprocessorOptions(new clang::PreprocessorOptions())
@@ -44,7 +40,6 @@ namespace Wide {
         
                 FrontendOptions.OutputFile = "a.o";
             }
-            std::function<void(std::string)> OnDiagnostic;
             clang::FileSystemOptions FileSearchOptions;
             llvm::IntrusiveRefCntPtr<clang::DiagnosticIDs> DiagnosticIDs;
             llvm::IntrusiveRefCntPtr<clang::DiagnosticOptions> DiagnosticOptions;

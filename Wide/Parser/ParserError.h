@@ -7,21 +7,23 @@
 
 namespace Wide {
     namespace Parse {
-        class ParserError : public std::exception {
+        class Error : public std::exception {
             Wide::Lexer::Token previous;
-            Wide::Lexer::Token unexpected;
-            std::vector<Wide::Lexer::TokenType> expected;
+            Wide::Util::optional<Wide::Lexer::Token> unexpected;
+            std::unordered_set<Wide::Lexer::TokenType> expected;
+            std::string err;
         public:
-            ParserError(Wide::Lexer::Token previous, Wide::Lexer::Token error, std::vector<Wide::Lexer::TokenType> expected)
-                : previous(previous), unexpected(error), expected(expected) {}
+            Error(Wide::Lexer::Token previous, Wide::Util::optional<Wide::Lexer::Token> error, std::unordered_set<Wide::Lexer::TokenType> expected);
             const char* what() const
 #ifndef _MSC_VER
                 noexcept
 #endif
-                ;
-            Wide::Lexer::Token GetLastValidToken();
-            Wide::Lexer::Token GetInvalidToken();
-            std::vector<Wide::Lexer::TokenType> GetExpectedTokenTypes();
+            {
+                return err.c_str();
+            };
+            Wide::Lexer::Token GetLastValidToken() const;
+            Wide::Util::optional<Wide::Lexer::Token> GetInvalidToken() const;
+            std::unordered_set<Wide::Lexer::TokenType> GetExpectedTokenTypes();
         };
     }
 }

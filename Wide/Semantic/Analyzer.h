@@ -97,7 +97,7 @@ namespace Wide {
         class Analyzer {
         public:
             // Other people remove things from here on destruction, so it needs to be destructed last.
-            std::unordered_set<Error*> errors;
+            std::unordered_set<AnalyzerError*> errors;
 
         private:
             std::unique_ptr<ClangTU> AggregateTU;
@@ -147,10 +147,8 @@ namespace Wide {
             llvm::DataLayout layout;
             std::unordered_map<const Parse::Expression*, std::unordered_map<Type*, std::shared_ptr<Expression>>> ExpressionCache;
             std::unordered_map<Type*, std::string> ExportedTypes;
-            std::unordered_map<std::string, std::string> ImportHeaders;
             std::unique_ptr<llvm::Module> ConstantModule;
         public:
-            const std::unordered_map<std::string, std::string>& GetImportHeaders() { return ImportHeaders; }
             std::string GetTypeExports();
             std::string GetTypeExport(Type* t);
             auto GetFunctions() -> const decltype(WideFunctions)& { return WideFunctions; }
@@ -233,11 +231,12 @@ namespace Wide {
             ContextLookupHandlers;
 
             std::unordered_map<const Parse::Statement*, std::vector<std::unique_ptr<Semantic::Error>>> StatementErrors;
+            std::vector<ClangDiagnostic> ClangDiagnostics;
 
             std::shared_ptr<Expression> AnalyzeExpression(Type* lookup, const Parse::Expression* e, Scope* current, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup);
             std::shared_ptr<Expression> AnalyzeExpression(Type* lookup, const Parse::Expression* e, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup);
 
-            Analyzer(const Options::Clang&, const Parse::Module*, llvm::LLVMContext& con, const std::unordered_map<std::string, std::string>& = std::unordered_map<std::string, std::string>());
+            Analyzer(const Options::Clang&, const Parse::Module*, llvm::LLVMContext& con);
 
             ClangTU* LoadCPPHeader(std::string file, Lexer::Range where);
             ClangTU* AggregateCPPHeader(std::string file, Lexer::Range where);

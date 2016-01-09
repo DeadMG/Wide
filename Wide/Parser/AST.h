@@ -710,11 +710,11 @@ namespace Wide {
         struct Combiner {
             std::unordered_set<Module*> modules;
             
-            Module root;            
+            std::shared_ptr<Module> root;            
         public:
-            Combiner() : root(Wide::Util::none) {}
+            Combiner() : root(std::make_shared<Module>(Wide::Util::none)) {}
 
-            Module* GetGlobalModule() { return &root; }
+            std::shared_ptr<Module> GetGlobalModule() { return root; }
 
             void Add(Module* m);
             void Remove(Module* m);

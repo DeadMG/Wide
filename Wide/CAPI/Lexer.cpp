@@ -1,11 +1,12 @@
 #include <Wide/CAPI/Lexer.h>
+#include <Wide/Lexer/LexerError.h>
 
 extern "C" DLLEXPORT void LexWide(
     void* con,
     std::add_pointer<CEquivalents::OptionalChar(void*)>::type curr,
     std::add_pointer<bool(CEquivalents::Range, const char*, Wide::Lexer::TokenType, Wide::Lexer::Invocation*, void*)>::type token,
     std::add_pointer<void(CEquivalents::Range, void*)>::type comment,
-    std::add_pointer<bool(CEquivalents::Position, Wide::Lexer::Invocation::Failure, void*)>::type err,
+    std::add_pointer<bool(CEquivalents::Position, Wide::Lexer::Failure, void*)>::type err,
     const char* filename
 ) {
     CEquivalents::LexerRange range;
@@ -20,11 +21,11 @@ extern "C" DLLEXPORT void LexWide(
             comment(debug, con);
     };
 
-    p.inv.OnError = [=](Wide::Lexer::Position loc, Wide::Lexer::Invocation::Failure f, decltype(&p.inv) lex) -> Wide::Util::optional<Wide::Lexer::Token> {
+    p.inv.OnError = [=, &p](Wide::Lexer::Error error) -> Wide::Util::optional<Wide::Lexer::Token> {
         if (err)
-            if (err(loc, f, con))
+            if (err(error.Where, error.What, con))
                 return Wide::Util::none;
-        return (*lex)();
+        return p.inv();
     };
         
     while(auto tok = p.inv()) { 

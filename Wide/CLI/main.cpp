@@ -1,205 +1,61 @@
-// ClangExperiments.cpp : Defines the entry point for the console application.
-
-#include <Wide/Semantic/ClangOptions.h>
-#include <Wide/Util/Driver/Compile.h>
-#include <Wide/Semantic/Module.h>
-#include <Wide/Semantic/Analyzer.h>
-#include <Wide/Semantic/OverloadSet.h>
-#include <Wide/Semantic/SemanticError.h>
-#include <Wide/Semantic/Function.h>
-#include <Wide/Util/Codegen/CreateModule.h>
-#include <Wide/Util/Driver/IncludePaths.h>
 #include <boost/program_options.hpp>
-#include <memory>
 #include <iterator>
 #include <fstream>
-#include <iostream>
-#include <unordered_map>
-#include <Wide/Util/Driver/Warnings.h>
-#include <Wide/Util/Driver/StdlibDirectorySearch.h>
-#include <Wide/CLI/Link.h>
-#include <Wide/CLI/Export.h>
-#include <Wide/Util/Paths/Exists.h>
-#include <Wide/CLI/Options.h>
-#include <jsonpp/parser.hpp>
-#include <jsonpp/value.hpp>
-
-#pragma warning(push, 0)
-#include <llvm/Support/FileSystem.h>
-#include <llvm/Support/Path.h>
-#include <llvm/Support/Host.h>
-#pragma warning(pop)
+#include <Wide/Util/Driver/Execute.h>
+#include <iostream> 
 
 int main(int argc, char** argv)
 {
     boost::program_options::options_description initial_desc;
     initial_desc.add_options()
         ("interface", boost::program_options::value<std::string>(), "Choose interface- command-line, JSON");
-    boost::program_options::variables_map initial_input;
-    try {
-        boost::program_options::store(boost::program_options::command_line_parser(argc, argv).options(initial_desc).allow_unregistered().run(), initial_input);
-    }
-    catch (std::exception& e) {
-        std::cout << "Malformed command line.\n" << e.what();
-        return 1;
-    }
-
-
-
-    std::unordered_map<std::string, std::pair<std::function<void(boost::program_options::options_description&)>, std::function<void(llvm::LLVMContext&, llvm::Module*, std::vector<std::string>, const Wide::Options::Clang&, const boost::program_options::variables_map&)>>> actions = {
-        {
-            "link", 
-            {
-                [](boost::program_options::options_description& desc) {
-                    Wide::Driver::AddLinkOptions(desc);
-                },
-                [](llvm::LLVMContext& con, llvm::Module* mod, std::vector<std::string> files, const Wide::Options::Clang& opts, const boost::program_options::variables_map& args) {
-                    Wide::Driver::Link(con, mod, files, opts, args);
-                }
-            }
-        },
-        {
-            "export",
-            {
-                [](boost::program_options::options_description& desc) {
-                    Wide::Driver::AddExportOptions(desc);
-                },
-                [](llvm::LLVMContext& con, llvm::Module* mod, std::vector<std::string> files, const Wide::Options::Clang& opts, const boost::program_options::variables_map& args) {
-                    Wide::Driver::Export(con, mod, files, opts, args);
-                }
-            }
-        }
-    };
-    boost::program_options::options_description desc;
-    std::string modes = "Sets the compiler mode. The default is link. The possible modes are: ";
-    for (auto&& pair : actions) {
-        pair.second.first(desc);
-        modes += pair.first + ", ";
-    }
-    desc.add_options()
-        ("help", "Print all available options")
-#ifdef _MSC_VER
-        ("mingw", boost::program_options::value<std::string>(), "The location of MinGW. Defaulted to \".\\MinGW\\\".")
-#endif
-        ("triple", boost::program_options::value<std::string>(), "The target triple. Defaulted to "
-#ifdef _MSC_VER
-        "i686-pc-mingw32.")
-#else
-        "the LLVM Host triple.")
-#endif
-        ("input", boost::program_options::value<std::vector<std::string>>(), "One input file. May be specified multiple times.")
-        ("stdlib", boost::program_options::value<std::string>(), "The Standard library path. Defaulted to \".\\WideLibrary\\\".")
-        ("include", boost::program_options::value<std::vector<std::string>>(), "One include path. May be specified multiple times.")
-        ("mode", boost::program_options::value<std::string>(), modes.c_str())
-        ("interface", boost::program_options::value<std::string>(), "Permits interface in JSON or text")
-        ("version", "Outputs the build of Wide.")
-    ;
-
     boost::program_options::positional_options_description positional;
     positional.add("input", -1);
-    
-    boost::program_options::variables_map input;
+    boost::program_options::variables_map initial_input;
+
     try {
-        boost::program_options::store(boost::program_options::command_line_parser(argc, argv).options(desc).positional(positional).run(), input);
-    } catch(std::exception& e) {
+        boost::program_options::store(boost::program_options::command_line_parser(argc, argv).options(initial_desc).positional(positional).allow_unregistered().run(), initial_input);
+    }
+    catch (std::exception& e) {
         std::cout << "Malformed command line.\n" << e.what();
         return 1;
     }
 
-    if (input.count("version")) {
-#ifdef TEAMCITY
-        std::cout << "TeamCity build " << TEAMCITY << "\n";
-#else
-        std::cout << "Local development build, date " __DATE__ " time " __TIMESTAMP__ ".\n";
-#endif
-        return 0;
-    }
-
-    if(input.count("help")) {
-        std::cout << desc;
-        return 0;
-    }
-
-    Wide::Options::Clang ClangOpts;
-
-#ifdef _MSC_VER
-    ClangOpts.TargetOptions.Triple = input.count("triple") ? input["triple"].as<std::string>() : "i686-pc-mingw32";
-#else
-    ClangOpts.TargetOptions.Triple = input.count("triple") ? input["triple"].as<std::string>() : llvm::sys::getDefaultTargetTriple();
-#endif
-
-    ClangOpts.OnDiagnostic = [](std::string) {};
-
-    ClangOpts.FrontendOptions.OutputFile = input.count("output") ? input["output"].as<std::string>() : "a.o";
-    try {
-#ifdef _MSC_VER
-        Wide::Driver::AddMinGWIncludePaths(ClangOpts, input.count("mingw") ? input["mingw"].as<std::string>() : ".\\MinGW\\");
-#else
-        Wide::Driver::AddLinuxIncludePaths(ClangOpts);
-#endif
-    }
-    catch (std::exception& e) {
-        std::cout << e.what();
-        return 1;
-    }
-
-    std::unordered_set<std::string> files;
-    if (input.count("input")) {
-        auto list = input["input"].as<std::vector<std::string>>();
-        files.insert(list.begin(), list.end());
-    } else {
-        std::cout << "Didn't request any files to be compiled.\n";
-        return 1;
-    }
-
-    if (input.count("include")) {
-        for(auto path : input["include"].as<std::vector<std::string>>()) {
-            if (!Wide::Paths::Exists(path)) {
-                std::cout << "Could not find include path " + path;
-                return 1;
-            }
-            ClangOpts.HeaderSearchOptions->AddPath(path, clang::frontend::IncludeDirGroup::CXXSystem, false, false);
+    if (initial_input.count("interface") && initial_input["interface"].as<std::string>() == "JSON") {
+        try {
+            std::fstream file(initial_input["input"].as<std::string>(), std::ios::in | std::ios::binary);
+            auto json = std::string(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
+            auto useropts = Wide::Driver::ParseJSONOptions(json);
+            auto driveropts = Wide::Driver::Translate(useropts);
+            auto response = Wide::Driver::Execute(driveropts);
+            auto response_text = Wide::Driver::JsonResponse(response, useropts);
+            std::cout << response_text;
+            return Wide::Driver::Failed(response);
+        } catch (std::exception& e) {
+            std::cout << "Could not interpret JSON options\n" << e.what();
+            return 1;
         }
     }
 
-    std::string default_dir = "./WideLibrary/";
-    auto selfpath = llvm::sys::fs::getMainExecutable(argv[0], (void*)&main);
-    if (selfpath != "") { // Fucking bullshit error handling
-        llvm::SmallVector<char, 5> fuck_small_vector(selfpath.begin(), selfpath.end());
-        llvm::sys::path::remove_filename(fuck_small_vector);
-        llvm::sys::path::append(fuck_small_vector, "WideLibrary");
-        std::string result_path(fuck_small_vector.begin(), fuck_small_vector.end());
-        if (llvm::sys::fs::is_directory(result_path)) {
-            default_dir = result_path;
-        }
-    }
-
-    std::string stdlib = input.count("stdlib") ? input["stdlib"].as<std::string>() : default_dir;
-
-    auto stdfiles = Wide::Driver::SearchStdlibDirectory(stdlib, ClangOpts.TargetOptions.Triple);
-    auto final_files = files;
-    final_files.insert(stdfiles.begin(), stdfiles.end());
-    ClangOpts.HeaderSearchOptions->AddPath(stdlib, clang::frontend::IncludeDirGroup::System, false, false);
-
-    llvm::LLVMContext con;
-    auto mod = Wide::Util::CreateModuleForTriple(ClangOpts.TargetOptions.Triple, con);
-    auto mode = input.count("mode") ? input["mode"].as<std::string>() : "link";
-    if (actions.find(mode) == actions.end()) {
-        std::cout << "Error: Unrecognized mode " << mode << "\n";
+    if (initial_input.count("interface") && initial_input["interface"].as<std::string>() != "CLI") {
+        std::cout << "Unrecognized interface " << initial_input["interface"].as<std::string>() << " expected JSON or CLI";
         return 1;
     }
-    
+
     try {
-        actions.at(mode).second(con, mod.get(), std::vector<std::string>(final_files.begin(), final_files.end()), ClangOpts, input);
-    } catch (Wide::Semantic::Error& e) {
-        std::cout << "Error at " << to_string(e.location()) << "\n";
-        std::cout << e.what() << "\n";
+        auto useropts = Wide::Driver::ParseCommandLineOptions(argc, argv);
+        auto translated_useropts = Wide::Driver::Translate(useropts);
+        if (auto str = boost::get<std::string>(&translated_useropts)) {
+            std::cout << *str;
+            return 0;
+        }
+        auto driveropts = boost::get<Wide::Driver::DriverOptions>(translated_useropts);
+        auto response = Wide::Driver::Execute(driveropts);
+        auto response_text = Wide::Driver::TextualResponse(response);
+        std::cout << response_text;
+        return Wide::Driver::Failed(response);
+    } catch (std::exception& e) {
+        std::cout << "Could not interpret CLI options\n" << e.what();
         return 1;
     }
-    catch (std::exception& e) {
-        std::cout << "Error:\n";
-        std::cout << e.what() << "\n";
-        return 1;
-    }
-    return 0;
 }

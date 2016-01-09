@@ -9,26 +9,11 @@
 #include <Wide/Lexer/Token.h>
 #include <Wide/Parser/AST.h>
 #include <Wide/Util/Ranges/Optional.h>
+#include <Wide/Parser/ParserError.h>
 #include <boost/optional.hpp>
 
 namespace Wide {
     namespace Parse {
-        class Error : public std::exception {
-            Wide::Lexer::Token previous;
-            Wide::Util::optional<Wide::Lexer::Token> unexpected;
-            std::unordered_set<Wide::Lexer::TokenType> expected;
-            std::string err;
-        public:
-            Error(Wide::Lexer::Token previous, Wide::Util::optional<Wide::Lexer::Token> error, std::unordered_set<Wide::Lexer::TokenType> expected);
-            const char* what() const
-#ifndef _MSC_VER
-                noexcept
-#endif
-            { return err.c_str(); };
-            Wide::Lexer::Token GetLastValidToken();
-            Wide::Util::optional<Wide::Lexer::Token> GetInvalidToken();
-            std::unordered_set<Wide::Lexer::TokenType> GetExpectedTokenTypes();
-        };
         struct PutbackLexer {
         private:
             std::unordered_set<Lexer::TokenType> latest_terminators;

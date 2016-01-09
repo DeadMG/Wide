@@ -2,6 +2,7 @@
 #include <string>
 #include <unordered_map>
 #include <functional>
+#include <Wide/Util/Driver/Compile.h>
 
 namespace Wide {
     namespace Options {

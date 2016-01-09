@@ -114,12 +114,12 @@ bool Module::remove(const Module& with) {
 void Combiner::Add(Module* mod) {
     assert(modules.find(mod) == modules.end());
     modules.insert(mod);
-    root.unify(*mod);
+    root->unify(*mod);
 }
 void Combiner::Remove(Module* mod) {
     assert(modules.find(mod) != modules.end());
     modules.erase(mod);
-    root.remove(*mod);
+    root->remove(*mod);
 }
 void Combiner::SetModules(std::unordered_set<Module*> mods) {
     std::vector<Module*> removals;

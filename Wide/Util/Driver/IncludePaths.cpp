@@ -33,15 +33,8 @@ namespace {
         return result;
     }
 }
-namespace {
-    void AddPath(Wide::Options::Clang& clangopts, std::string path) {
-        if (!Wide::Paths::Exists(path))
-            throw std::runtime_error("Could not find include path " + path);
-        clangopts.HeaderSearchOptions->AddPath(path, clang::frontend::IncludeDirGroup::CXXSystem, false, false);
-    }
-}
-void Wide::Driver::AddLinuxIncludePaths(Options::Clang& ClangOpts) {
-    auto result = ExecuteProcess("g++ -E -x c++ - -v < /dev/null 2>&1");
+std::vector<std::string> Wide::Driver::GetGCCIncludePaths(std::string gcc) {
+    auto result = ExecuteProcess(gcc + " -E -x c++ - -v < /dev/null 2>&1");
     auto begin = boost::algorithm::find_first(result, "#include <...> search starts here:");
     auto end = boost::algorithm::find_first(result, "End of search list.");
     if (!begin || !end)
@@ -49,24 +42,9 @@ void Wide::Driver::AddLinuxIncludePaths(Options::Clang& ClangOpts) {
     auto path_strings = std::string(begin.end(), end.begin());
     std::vector<std::string> paths;
     boost::algorithm::split(paths, path_strings, [](char c) { return c == '\n'; });
-    for(auto&& path : paths) {
-        boost::algorithm::trim(path);
-        if (path.empty()) continue;
-        AddPath(ClangOpts, path);
+    for (auto begin = paths.begin(), end = paths.end(); begin != end; ++begin) {
+        boost::algorithm::trim(*begin);
+        if (begin->empty()) begin = paths.erase(begin);
     }
-}
-void Wide::Driver::AddMinGWIncludePaths(Options::Clang& ClangOpts, std::string MinGWInstallPath) {
-    auto result = ExecuteProcess(Wide::Paths::Append(MinGWInstallPath, { "bin", "g++" }) + " -E -x c++ - -v < NUL 2>&1");
-    auto begin = boost::algorithm::find_first(result, "#include <...> search starts here:");
-    auto end = boost::algorithm::find_first(result, "End of search list.");
-    if (!begin || !end)
-        throw std::runtime_error("Could not find G++ header search paths in G++ output.");
-    auto path_strings = std::string(begin.end(), end.begin());
-    std::vector<std::string> paths;
-    boost::algorithm::split(paths, path_strings, [](char c) { return c == '\n'; });
-    for (auto&& path : paths) {
-        boost::algorithm::trim(path);
-        if (path.empty()) continue;
-        AddPath(ClangOpts, path);
-    }
+    return paths;
 }

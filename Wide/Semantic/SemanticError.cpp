@@ -5,22 +5,25 @@
 using namespace Wide;
 using namespace Semantic;
 
-Error::Error(Analyzer& a, Lexer::Range loc, std::string err)
-    : a(&a), where(loc), msg(err) {
+AnalyzerError::AnalyzerError(Analyzer& a, Lexer::Range loc, std::string err)
+    : Error(loc, err), a(&a)
+{
     a.errors.insert(this);
 }
-Error::Error(const Error& other)
-    : a(other.a), where(other.where), msg(other.msg) {
+Error::Error(Lexer::Range loc, std::string err)
+    : where(loc), msg(err) {}
+AnalyzerError::AnalyzerError(const AnalyzerError& other)
+    : a(other.a), Error(other) {
     a->errors.insert(this);
 }
-Error::Error(Error&& other)
-    : a(other.a), where(other.where), msg(other.msg) {
+AnalyzerError::AnalyzerError(AnalyzerError&& other)
+    : a(other.a), Error(std::move(other)) {
     a->errors.insert(this);
 }
-Error::~Error() {
+AnalyzerError::~AnalyzerError() {
     disconnect();
 }
-void Error::disconnect() {
+void AnalyzerError::disconnect() {
     if (a) {
         a->errors.erase(this);
         a = nullptr;

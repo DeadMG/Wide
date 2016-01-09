@@ -65,8 +65,20 @@ clang::TargetInfo* CreateTargetInfoFromTriple(clang::DiagnosticsEngine& engine, 
 }
 
 class ClangTUDiagnosticConsumer : public clang::DiagnosticConsumer {
+private:
+    Lexer::Position GetPosition(clang::SourceManager& sm, clang::SourceLocation l) {
+        auto offset = sm.getFileOffset(l);
+        auto startcol = sm.getColumnNumber(sm.getFileID(l), offset);
+        auto startline = sm.getLineNumber(sm.getFileID(l), offset);
+        auto filename = std::string(sm.getFilename(l));
+        Lexer::Position p(std::make_shared<std::string>(filename));
+        p.column = startcol;
+        p.line = startline;
+        p.offset = offset;
+        return p;
+    }
 public:
-    std::vector<std::string> diagnostics;
+    std::vector<ClangDiagnostic> diagnostics;
     ClangTUDiagnosticConsumer() {}
 
     void BeginSourceFile(const clang::LangOptions& langopts, const clang::Preprocessor* PP) override final {}
@@ -76,7 +88,14 @@ public:
     void HandleDiagnostic(clang::DiagnosticsEngine::Level level, const clang::Diagnostic& Info) {
         llvm::SmallVector<char, 5> diagnostic;
         Info.FormatDiagnostic(diagnostic);
-        diagnostics.emplace_back(diagnostic.begin(), diagnostic.end());
+        ClangDiagnostic diag;
+        diag.severity = (ClangDiagnostic::Severity)level;
+        diag.what = std::string(diagnostic.begin(), diagnostic.end());
+        auto locations = Info.getRanges();
+        for (auto&& loc : locations) {
+            diag.where.push_back(Lexer::Range(GetPosition(Info.getSourceManager(), loc.getBegin()), GetPosition(Info.getSourceManager(), loc.getEnd())));
+        }
+        diagnostics.emplace_back(diag);
         clang::DiagnosticConsumer::HandleDiagnostic(level, Info);
     }
 };
@@ -169,19 +188,7 @@ public:
             return false;
         }
     };
-
-    const clang::FileEntry* CheckImportedHeader(std::string file, Analyzer& a) {
-        if (a.GetImportHeaders().find(file) != a.GetImportHeaders().end()) {
-            auto entry = FileManager.getVirtualFile(file, a.GetImportHeaders().at(file).size(), 0);
-            bool invalid = true;
-            sm.getBuffer(sm.translateFile(entry), &invalid);
-            if (invalid)
-                sm.overrideFileContents(entry, llvm::MemoryBuffer::getMemBuffer(a.GetImportHeaders().at(file)));
-            return entry;
-        }
-        return FileManager.getFile(file);
-    }
-
+    
     Impl(std::string file, const Wide::Options::Clang& opts, Lexer::Range where, Analyzer& a)        
         : Options(&opts)
         , FileManager(opts.FileSearchOptions)
@@ -221,8 +228,6 @@ public:
         const clang::DirectoryLookup* directlookup = nullptr;
         auto entry = hs.LookupFile(file, clang::SourceLocation(), true, nullptr, directlookup, {}, nullptr, nullptr, nullptr);
         if (!entry)
-            entry = CheckImportedHeader(file, a);
-        if (!entry)
             throw SpecificError<CouldNotFindCPPFile>(a, where, "Could not find file.");
         
         auto fileid = sm.createFileID(entry, clang::SourceLocation(), clang::SrcMgr::CharacteristicKind::C_User);
@@ -246,13 +251,9 @@ public:
 
         Consumer->HandleTranslationUnit(sema.getASTContext());
 
-        std::string errors;
-        for (auto diag : DiagnosticConsumer.diagnostics)
-            errors += diag + "\n";
+        a.ClangDiagnostics.insert(a.ClangDiagnostics.end(), DiagnosticConsumer.diagnostics.begin(), DiagnosticConsumer.diagnostics.end());
         if (engine.hasFatalErrorOccurred())
             throw SpecificError<CPPFileContainedErrors>(a, where, "Clang reported errors in file.");
-        if (!errors.empty()) Options->OnDiagnostic(errors);
-        errors.clear();
     }
 
     clang::DeclContext* GetDeclContext() {
@@ -271,8 +272,6 @@ public:
             paths.push_back(it->getDir()->getName());
         const clang::DirectoryLookup* directlookup = nullptr;
         auto entry = hs.LookupFile(filename, clang::SourceLocation(), true, nullptr, directlookup, {}, nullptr, nullptr, nullptr);
-        if (!entry)
-            entry = CheckImportedHeader(filename, a);
         if (!entry)
             throw SpecificError<CouldNotFindCPPFile>(a, where, "Could not find C++ file " + filename);
 
@@ -293,23 +292,13 @@ public:
             Consumer->HandleTopLevelDecl(clang::DeclGroupRef(*I));
 
         Consumer->HandleTranslationUnit(sema.getASTContext());
-        std::string errors;
-        for (auto diag : DiagnosticConsumer.diagnostics)
-            errors += diag;
+        a.ClangDiagnostics.insert(a.ClangDiagnostics.end(), DiagnosticConsumer.diagnostics.begin(), DiagnosticConsumer.diagnostics.end());
         if (engine.hasFatalErrorOccurred())
             throw SpecificError<CPPFileContainedErrors>(a, where, "Clang reported errors in file.");
-        if (!errors.empty()) Options->OnDiagnostic(errors);
-        errors.clear();
     }
 };
 
 ClangTU::~ClangTU() {}
-
-std::string ClangTU::PopLastDiagnostic() {
-    auto lastdiag = std::move(impl->DiagnosticConsumer.diagnostics.back());
-    impl->DiagnosticConsumer.diagnostics.pop_back();
-    return lastdiag;
-}
 
 ClangTU::ClangTU(std::string file, const Wide::Options::Clang& ccs, Lexer::Range where, Analyzer& an)
 : impl(Wide::Memory::MakeUnique<Impl>(file, ccs, where, an)), a(an)

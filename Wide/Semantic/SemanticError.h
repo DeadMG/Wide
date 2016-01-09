@@ -16,30 +16,47 @@ namespace Wide {
     namespace Semantic {
         struct Type;
         class Analyzer;
+        struct ClangDiagnostic {
+            enum Severity {
+                Ignored,
+                Note,
+                Remark,
+                Warning,
+                Error,
+                Fatal
+            };
+            Severity severity;
+            std::string what;
+            std::vector<Lexer::Range> where;
+        };
         class Error : public std::exception {
             Lexer::Range where;
             std::string msg;
-            Analyzer* a;
-        protected:
-            Error(Analyzer& a, Lexer::Range loc, std::string err);
-            Error(const Error&);
-            Error(Error&&);
         public:
-            Lexer::Range location() { return where; }
+            Error(Lexer::Range loc, std::string err);
+            Error(const Error&) = default;
+            Error(Error&&) = default;
+            Lexer::Range location() const { return where; }
             const char* what() const WIDE_NOEXCEPT {
                 return msg.c_str();
             }
-            void disconnect();
-            ~Error();
         };
-        template<typename T> class SpecificError : public Error {
+        class AnalyzerError : public Error {
+            Analyzer* a;
+        protected:
+            AnalyzerError(Analyzer& a, Lexer::Range loc, std::string err);
+            AnalyzerError(const AnalyzerError&);
+            AnalyzerError(AnalyzerError&&);
+        public:
+            ~AnalyzerError();
+            void disconnect();
+        };
+        template<typename T> class SpecificError : public AnalyzerError {
         public:
             SpecificError(Analyzer& a, Lexer::Range loc, std::string err)
-                : Error(a, loc, err) {}
-            SpecificError(const SpecificError& other)
-                : Error(other) {}
-            SpecificError(SpecificError&& other)
-                : Error(std::move(other)) {}
+                : AnalyzerError(a, loc, err) {}
+            SpecificError(const SpecificError& other) = default;
+            SpecificError(SpecificError&& other) = default;
         };
 
         struct SizeOverrideTooSmall {};

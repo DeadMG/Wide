@@ -72,7 +72,6 @@ namespace Wide {
             clang::Sema& GetSema();
             clang::IdentifierInfo* GetIdentifierInfo(std::string ident);
             clang::SourceLocation GetFileEnd();
-            std::string PopLastDiagnostic();
             void AddFile(std::string filename, Lexer::Range where);
             clang::Expr* ParseMacro(std::string macro, Lexer::Range where);
 

@@ -1,4 +1,5 @@
 #include <Wide/Lexer/Lexer.h>
+#include <Wide/Lexer/LexerError.h>
 
 using namespace Wide;
 using namespace Lexer;
@@ -14,8 +15,8 @@ Lexer::Invocation::Invocation(std::function<Wide::Util::optional<char>()> range,
     
     OnComment = [](Range) {};
 
-    OnError = [](Position, Failure, Invocation* self) {
-        return (*self)();
+    OnError = [=](Error self) {
+        return (*this)();
     };
 }
 
@@ -91,7 +92,7 @@ Wide::Util::optional<Lexer::Token> Invocation::operator()() {
             if (*next == '\\') {
                 auto very_next = get();
                 if (!very_next)
-                    return OnError(current_position, Failure::UnterminatedStringLiteral, this);
+                    return OnError({ current_position, Failure::UnterminatedStringLiteral });
                 if (*very_next == '"') {
                     variable_length_value.push_back('"');
                     continue;
@@ -103,7 +104,7 @@ Wide::Util::optional<Lexer::Token> Invocation::operator()() {
             variable_length_value.push_back(*next);
         }
         if (!next)
-            return OnError(begin_pos, Failure::UnterminatedStringLiteral, this);
+            return OnError({ begin_pos, Failure::UnterminatedStringLiteral });
         return Wide::Lexer::Token(begin_pos + current_position, &TokenTypes::String, escape(variable_length_value));
     }
 
@@ -113,7 +114,7 @@ Wide::Util::optional<Lexer::Token> Invocation::operator()() {
         result = &TokenTypes::Identifier;
         val = get();
     } else if (!((*val >= '0' && *val <= '9') || (*val >= 'a' && *val <= 'z') || (*val >= 'A' && *val <= 'Z') || *val == '_')) {
-        return OnError(begin_pos, Failure::UnlexableCharacter, this);
+        return OnError({ begin_pos, Failure::UnlexableCharacter });
     }
     while (val) {
         if (*val < '0' || *val > '9')
@@ -210,7 +211,7 @@ Wide::Util::optional<Lexer::Token> Lexer::Invocation::ParseCComments(Position st
         OnComment(start + current_position);
         return (*this)();
     }
-    return OnError(start, Failure::UnterminatedComment, this);
+    return OnError({ start, Failure::UnterminatedComment });
 }
 
 const std::unordered_map<char, Lexer::TokenType> Lexer::default_singles = {

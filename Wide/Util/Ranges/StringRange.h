@@ -17,7 +17,7 @@ namespace Wide {
                 return Wide::Util::none;
             }
         };
-        stringrange StringRange(std::string val) {
+        inline stringrange StringRange(std::string val) {
             return stringrange(std::move(val));
         }
     }

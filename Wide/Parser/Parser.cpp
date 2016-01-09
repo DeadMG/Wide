@@ -1436,10 +1436,10 @@ std::unique_ptr<Destructor> Parser::ParseDestructor(const Lexer::Token& first, s
         });
     });
 }
-Wide::Lexer::Token Parse::Error::GetLastValidToken() {
+Wide::Lexer::Token Parse::Error::GetLastValidToken() const {
     return previous;
 }
-Wide::Util::optional<Wide::Lexer::Token> Parse::Error::GetInvalidToken() {
+Wide::Util::optional<Wide::Lexer::Token> Parse::Error::GetInvalidToken() const {
     return unexpected;
 }
 std::unordered_set<Wide::Lexer::TokenType> Parse::Error::GetExpectedTokenTypes() {

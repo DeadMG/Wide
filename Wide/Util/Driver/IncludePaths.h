@@ -1,13 +1,13 @@
 #pragma once
 
 #include <string>
+#include <vector>
 
 namespace Wide {
     namespace Options {
         struct Clang;
     }
     namespace Driver {
-        void AddLinuxIncludePaths(Options::Clang& ClangOpts);
-        void AddMinGWIncludePaths(Options::Clang& clangopts, std::string MinGWBase);
+        std::vector<std::string> GetGCCIncludePaths(std::string);
     }
 }

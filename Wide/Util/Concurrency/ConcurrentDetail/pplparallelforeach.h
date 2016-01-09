@@ -1,6 +1,7 @@
 #pragma once
 
 #include <ppl.h>
+#include <vector>
 #include <exception>
 #include <Wide/Util/Concurrency/ConcurrentVector.h>
 

@@ -24,13 +24,5 @@ namespace Wide {
     namespace Driver {
         void Compile(const Wide::Options::Clang& copts, const std::vector<std::string>& files, llvm::LLVMContext& con, std::function<void(Semantic::Analyzer&, const Parse::Module*)>);
         void Compile(const Wide::Options::Clang& copts, const std::vector<std::string>& files, llvm::LLVMContext& con, const std::vector<std::pair<std::string, std::string>>& sources, std::function<void(Semantic::Analyzer&, const Parse::Module*)>);
-        void Compile(
-            const Wide::Options::Clang& copts, 
-            const std::vector<std::string>& files, 
-            llvm::LLVMContext& con,
-            const std::vector<std::pair<std::string, std::string>>& sources, 
-            const std::unordered_map<std::string, std::string>& import_headers, 
-            std::function<void(Semantic::Analyzer&, const Parse::Module*)>
-        );
     }
 }

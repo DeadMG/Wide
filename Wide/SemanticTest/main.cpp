@@ -8,6 +8,7 @@
 #include <Wide/Util/Concurrency/ConcurrentUnorderedSet.h>
 #include <Wide/Util/Concurrency/ParallelForEach.h>
 #include <Wide/Util/Codegen/GetMCJITProcessTriple.h>
+#include <iostream>
 
 #pragma warning(push, 0)
 #include <llvm/Support/Path.h>
@@ -20,7 +21,6 @@ int main(int argc, char** argv) {
     clangopts.LanguageOptions.MSCompatibilityVersion = 0;
     clangopts.LanguageOptions.MSVCCompat = 0;
     clangopts.LanguageOptions.MicrosoftExt = 0;
-    clangopts.OnDiagnostic = [](std::string err) {};
     clangopts.TargetOptions.Triple = Wide::Util::GetMCJITProcessTriple();
     // Enabling RTTI requires a Standard Library to be linked.
     // Else, there is an undefined reference to an ABI support class.

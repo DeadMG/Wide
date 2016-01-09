@@ -2,7 +2,6 @@
 //#include <Wide/Semantic/Warnings/UnusedFunction.h>
 //#include <Wide/Semantic/Warnings/NonvoidFalloff.h>
 #include <Wide/Parser/AST.h>
-#include <iostream>
 
 void Wide::Driver::PrintUnusedFunctionsWarning(const std::unordered_set<std::string>& files, Semantic::Analyzer& a) {
     //auto unused = Wide::Semantic::GetUnusedFunctions(a);

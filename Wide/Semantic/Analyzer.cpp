@@ -31,7 +31,6 @@
 #include <Wide/Util/Codegen/InitializeLLVM.h>
 #include <Wide/Semantic/Expression.h>
 #include <sstream>
-#include <iostream>
 #include <unordered_set>
 #include <fstream>
 #include <boost/uuid/uuid_io.hpp>
@@ -84,9 +83,8 @@ Analyzer::~Analyzer() {
         err->disconnect();
 }
 
-Analyzer::Analyzer(const Options::Clang& opts, const Parse::Module* GlobalModule, llvm::LLVMContext& con, const std::unordered_map<std::string, std::string>& headers)
+Analyzer::Analyzer(const Options::Clang& opts, const Parse::Module* GlobalModule, llvm::LLVMContext& con)
     : clangopts(&opts)
-    , ImportHeaders(headers)
     , QuickInfo([](Lexer::Range, Type*) {})
     , ParameterHighlight([](Lexer::Range){})
     , layout(::GetDataLayout(opts.TargetOptions.Triple))
@@ -208,7 +206,6 @@ void Analyzer::GenerateCode(llvm::Module* module) {
     ConstantModule->print(stream, nullptr);
     std::string err;
 	auto copy = std::unique_ptr<llvm::Module>(llvm::CloneModule(ConstantModule.get()));
-    llvm::DiagnosticInfo* info;
     if (llvm::Linker::LinkModules(module, copy.get(), [&](const llvm::DiagnosticInfo& info) {
         llvm::raw_string_ostream stream(err);
         llvm::DiagnosticPrinterRawOStream printer(stream);
