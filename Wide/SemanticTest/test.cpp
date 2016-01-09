@@ -98,14 +98,19 @@ template<typename F> auto GenerateCode(std::unique_ptr<llvm::Module> mod, F f) -
 void Wide::Driver::Jit(Wide::Options::Clang& copts, std::string file) {
 #ifdef _MSC_VER
     const std::string MinGWInstallPath = "..\\Deployment\\MinGW\\";
-    auto paths = Wide::Driver::GetGCCIncludePaths(MinGWInstallPath + "bin/g++");
+    auto paths = Wide::Driver::GetGCCIncludePaths(MinGWInstallPath + "bin\\g++");
     for (auto path : paths) {
         if (!Wide::Paths::Exists(path))
             throw std::runtime_error("Could not find include path " + path);
         copts.HeaderSearchOptions->AddPath(path, clang::frontend::IncludeDirGroup::CXXSystem, false, false);
     }
 #else
-    Wide::Driver::AddLinuxIncludePaths(copts);
+    auto paths = Wide::Driver::GetGCCIncludePaths("g++");
+    for (auto path : paths) {
+        if (!Wide::Paths::Exists(path))
+            throw std::runtime_error("Could not find include path " + path);
+        copts.HeaderSearchOptions->AddPath(path, clang::frontend::IncludeDirGroup::CXXSystem, false, false);
+    }
 #endif
 
     auto AddStdlibLink = [&](llvm::ExecutionEngine* ee, llvm::Module* m) {
@@ -131,6 +136,7 @@ void Wide::Driver::Jit(Wide::Options::Clang& copts, std::string file) {
     std::vector<std::string> files(stdlib.begin(), stdlib.end());
     files.push_back(file);
     copts.HeaderSearchOptions->AddPath("../WideLibrary", clang::frontend::IncludeDirGroup::System, false, false);
+    copts.HeaderSearchOptions->AddPath("./", clang::frontend::IncludeDirGroup::System, false, false);
     llvm::Function* main = nullptr;
     Wide::Driver::Compile(copts, files, con, [&](Wide::Semantic::Analyzer& a, const Wide::Parse::Module* root) {
         Wide::Semantic::AnalyzeExportedFunctions(a);
@@ -261,14 +267,19 @@ const std::unordered_map<std::string, std::function<bool(Wide::Semantic::Error& 
 void Wide::Driver::Compile(Wide::Options::Clang& copts, std::string file) {
 #ifdef _MSC_VER
     const std::string MinGWInstallPath = "..\\Deployment\\MinGW\\";
-    auto paths = Wide::Driver::GetGCCIncludePaths(MinGWInstallPath + "bin/g++");
+    auto paths = Wide::Driver::GetGCCIncludePaths(MinGWInstallPath + "bin\\g++");
     for (auto path : paths) {
         if (!Wide::Paths::Exists(path))
             throw std::runtime_error("Could not find include path " + path);
         copts.HeaderSearchOptions->AddPath(path, clang::frontend::IncludeDirGroup::CXXSystem, false, false);
     }
 #else
-    Wide::Driver::AddLinuxIncludePaths(copts);
+    auto paths = Wide::Driver::GetGCCIncludePaths("g++");
+    for (auto path : paths) {
+        if (!Wide::Paths::Exists(path))
+            throw std::runtime_error("Could not find include path " + path);
+        copts.HeaderSearchOptions->AddPath(path, clang::frontend::IncludeDirGroup::CXXSystem, false, false);
+    }
 #endif
     std::string name;
     static const auto loc = Wide::Lexer::Range(std::make_shared<std::string>("Test harness internal"));
@@ -277,6 +288,7 @@ void Wide::Driver::Compile(Wide::Options::Clang& copts, std::string file) {
     auto stdlib = Wide::Driver::SearchStdlibDirectory("../WideLibrary", copts.TargetOptions.Triple);
     std::vector<std::string> files(stdlib.begin(), stdlib.end());
     copts.HeaderSearchOptions->AddPath("../WideLibrary", clang::frontend::IncludeDirGroup::System, false, false);
+    copts.HeaderSearchOptions->AddPath("./", clang::frontend::IncludeDirGroup::System, false, false);
     files.push_back(file);
     
     Wide::Driver::Compile(copts, files, con, [&](Wide::Semantic::Analyzer& a, const Wide::Parse::Module* root) {

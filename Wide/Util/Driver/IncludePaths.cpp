@@ -34,7 +34,11 @@ namespace {
     }
 }
 std::vector<std::string> Wide::Driver::GetGCCIncludePaths(std::string gcc) {
+#ifdef _MSC_VER
+    auto result = ExecuteProcess(gcc + " -E -x c++ - -v < NUL 2>&1");
+#else
     auto result = ExecuteProcess(gcc + " -E -x c++ - -v < /dev/null 2>&1");
+#endif
     auto begin = boost::algorithm::find_first(result, "#include <...> search starts here:");
     auto end = boost::algorithm::find_first(result, "End of search list.");
     if (!begin || !end)
@@ -42,9 +46,11 @@ std::vector<std::string> Wide::Driver::GetGCCIncludePaths(std::string gcc) {
     auto path_strings = std::string(begin.end(), end.begin());
     std::vector<std::string> paths;
     boost::algorithm::split(paths, path_strings, [](char c) { return c == '\n'; });
-    for (auto begin = paths.begin(), end = paths.end(); begin != end; ++begin) {
-        boost::algorithm::trim(*begin);
-        if (begin->empty()) begin = paths.erase(begin);
+    std::vector<std::string> non_empty_paths;
+    for (auto&& path : paths) {
+        boost::algorithm::trim(path);
+        if (!path.empty())
+            non_empty_paths.push_back(path);
     }
-    return paths;
+    return non_empty_paths;
 }
