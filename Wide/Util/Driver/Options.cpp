@@ -10,6 +10,8 @@
 #include <Wide/Util/Driver/IncludePaths.h>
 #include <Wide/Util/Driver/StdlibDirectorySearch.h>
 #include <Wide/Util/Driver/Execute.h>
+#include <llvm/Support/Host.h>
+
 using namespace Wide;
 using namespace Driver;
 
