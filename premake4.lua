@@ -354,6 +354,21 @@ WideProjects = {
                 end
             end
         end,
+    },
+    SemanticTest = {
+        action = function(plat, conf)
+            kind("ConsoleApp")
+            links { "Util", "Lexer", "Parser", "Semantic" }
+        end,
+        configure = function(plat, conf)
+            if _OPTIONS["test"] then
+                if os.is("windows") then
+                    postbuildcommands ({ "$(TargetPath)" })
+                else
+                    postbuildcommands ({ "$@" })
+                end
+            end
+        end   
     }
 }
 

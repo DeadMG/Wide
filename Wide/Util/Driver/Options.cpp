@@ -297,5 +297,6 @@ std::string Wide::Driver::JsonResponse(const Response& r, JSONOptions opts) {
         errors.push_back(error);
     }
     response["Errors"] = errors;
+    response["Version"] = 1;
     return json::dump_string(response);
 }
