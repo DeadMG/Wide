@@ -1,5 +1,6 @@
 #include <Wide/Lexer/Lexer.h>
 #include <Wide/Lexer/LexerError.h>
+#include <Wide/Util/Ranges/StringRange.h>
 
 using namespace Wide;
 using namespace Lexer;
@@ -410,3 +411,43 @@ std::string Lexer::operator+(std::string s, Lexer::Range r) {
 std::string Lexer::operator+(Lexer::Range r, std::string s) {
     return to_string(r) + s;
 }
+#if defined(__has_include)
+#if __has_include(<emscripten/bind.h>)
+#include <emscripten/bind.h>
+using namespace emscripten;
+namespace Wide {
+    namespace Lexer {
+        val Lex(std::string source) {
+            int num = 0;
+            auto result = val::array();
+            Wide::Lexer::Invocation inv(Wide::Range::StringRange(source), Wide::Lexer::Position(std::make_shared<std::string>("test")));
+            while (auto tok = inv())
+                result.set(num++, *tok);
+            return result;
+        }
+        bool IsKeyword(Wide::Lexer::Token& tok) {
+            return default_keyword_types.find(tok.GetType()) != default_keyword_types.end();
+        }
+        bool IsLiteral(Wide::Lexer::Token& tok) {
+            return tok.GetType() == &Wide::Lexer::TokenTypes::String || tok.GetType() == &Wide::Lexer::TokenTypes::Integer;
+        }
+    }
+}
+EMSCRIPTEN_BINDINGS(dunno_what_goes_here) {
+    register_vector<Wide::Lexer::Token>("TokenVector");
+    class_<Wide::Lexer::Position>("Position")
+        .property("line", &Wide::Lexer::Position::line)
+        .property("column", &Wide::Lexer::Position::column)
+        .property("offset", &Wide::Lexer::Position::offset);
+    class_<Wide::Lexer::Range>("Range")
+        .property("begin", &Wide::Lexer::Range::begin)
+        .property("end", &Wide::Lexer::Range::end);
+    class_<Wide::Lexer::Token>("Token")
+        .function("GetLocation", &Wide::Lexer::Token::GetLocation)
+        .function("GetValue", &Wide::Lexer::Token::GetValue)
+        .function("IsKeyword", &Wide::Lexer::IsKeyword)
+        .function("IsLiteral", &Wide::Lexer::IsLiteral);
+    function("Lex", &Wide::Lexer::Lex);
+}
+#endif
+#endif
