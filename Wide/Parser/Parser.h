@@ -14,6 +14,30 @@
 
 namespace Wide {
     namespace Parse {
+        struct OutliningContext {
+            std::unordered_map<std::type_index, std::function<std::vector<Wide::Lexer::Range>(const void*, const OutliningContext&)>> OutliningHandlers;
+            template<typename T, typename F> void AddHandler(F f) {
+                OutliningHandlers[typeid(T)] = [f](const void* farg, const OutliningContext& con) {
+                    return f(static_cast<T*>(farg), con);
+                };
+            }
+            template<typename T> std::vector<Wide::Lexer::Range> Outline(const T* p) const {
+                auto&& id = typeid(*p);
+                if (OutliningHandlers.find(id) != OutliningHandlers.end())
+                    return OutliningHandlers.at(id)(p, *this);
+                return std::vector<Wide::Lexer::Range>();
+            }
+            template<typename T> std::vector<Wide::Lexer::Range> Outline(const std::shared_ptr<T>& p) const {
+                return Outline(p.get());
+            }
+            template<typename T> std::vector<Wide::Lexer::Range> Outline(const std::unique_ptr<T>& p) const {
+                return Outline(p.get());
+            }
+        };
+        inline std::vector<Wide::Lexer::Range> collect(std::vector<Wide::Lexer::Range> lhs, std::vector<Wide::Lexer::Range> rhs) {
+            lhs.insert(lhs.end(), rhs.begin(), rhs.end());
+            return lhs;
+        }
         struct PutbackLexer {
         private:
             std::unordered_set<Lexer::TokenType> latest_terminators;
@@ -58,6 +82,7 @@ namespace Wide {
 
         struct Parser {
             PutbackLexer lex;
+            OutliningContext con;
             
             // All the valid productions in the global module.
             std::unordered_map<Lexer::TokenType, std::function<ModuleParseResult(Parser&, ModuleParseState, Lexer::Token& token)>> GlobalModuleTokens;

@@ -97,6 +97,7 @@ namespace Wide {
             extern const std::string Import;
             extern const std::string From;
             extern const std::string Hiding;
+            extern const std::string Comment;
         };
         struct Position {
             Position(std::shared_ptr<std::string> where)
@@ -178,7 +179,7 @@ namespace Wide {
                 : location(r), type(t), value(std::move(val)) 
             {
                 // Identifier can occur with some malformed input, e.g. @0 causes the lexer to bail on parsing the identifier immediately.
-                if (t != &Wide::Lexer::TokenTypes::String && t != &Wide::Lexer::TokenTypes::Identifier)
+                if (t != &Wide::Lexer::TokenTypes::String && t != &Wide::Lexer::TokenTypes::Identifier && t != &Wide::Lexer::TokenTypes::Comment)
                     assert(value != "");
             }
             Range GetLocation() const { return location; }

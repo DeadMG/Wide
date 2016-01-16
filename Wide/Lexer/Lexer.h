@@ -21,7 +21,6 @@ namespace Wide {
             Wide::Util::optional<Lexer::Token> ParseCComments(Position start);
         public:
             std::function<Wide::Util::optional<Token>(Error)> OnError;
-            std::function<void(Range)> OnComment;
 
             std::unordered_map<char, Lexer::TokenType> singles;
             std::unordered_map<char, std::unordered_map<char, Lexer::TokenType>> doubles;

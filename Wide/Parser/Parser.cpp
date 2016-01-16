@@ -21,6 +21,8 @@ boost::optional<Lexer::Token> PutbackLexer::operator()() {
     }
     auto val = lex();
     if (val) {
+        if (val->GetType() == &Lexer::TokenTypes::Comment)
+            return (*this)();
         tokens.push_back(*val);
         return *val;
     }
@@ -1006,6 +1008,36 @@ Parser::Parser(std::function<Wide::Util::optional<Lexer::Token>()> l)
         (*overset)[a].insert(std::move(func));
         return funcptr;
     };
+
+    con.AddHandler<const Wide::Parse::Module>([](const Wide::Parse::Module* p, const OutliningContext& con) {
+        auto results = std::vector<Wide::Lexer::Range>();
+        for (auto&& cons : p->constructor_decls) {
+            results = collect(results, con.Outline(cons));
+        }
+        for (auto&& des : p->destructor_decls) {
+            results = collect(results, con.Outline(des));
+        }
+        for (auto&& op : p->OperatorOverloads) {
+            for (auto&& access : op.second) {
+                for (auto&& func : access.second) {
+                    results = collect(results, con.Outline(func));
+                }
+            }
+        }
+        for (auto&& name : p->named_decls) {
+            if (auto&& unique = boost::get<std::pair<Wide::Parse::Access, std::unique_ptr<Wide::Parse::UniqueAccessContainer>>>(&name.second)) {
+                results = collect(results, con.Outline(unique->second));
+            }
+            if (auto&& shared = boost::get<std::pair<Wide::Parse::Access, std::shared_ptr<Wide::Parse::SharedObject>>>(&name.second))
+                results = collect(results, con.Outline(shared->second));
+            if (auto&& multi = boost::get<std::unique_ptr<Wide::Parse::MultipleAccessContainer>>(&name.second))
+                results = collect(results, con.Outline(multi));
+        }
+        for (auto&& loc : p->locations)
+            if (auto&& longform = boost::get<Wide::Parse::ModuleLocation::LongForm>(&loc.location))
+                results = collect(results, std::vector<Lexer::Range>{ longform->OpenCurly, longform->CloseCurly });
+        return results;
+    });
 }
 OperatorName Parser::ParseOperatorName(std::unordered_set<OperatorName> valid_ops, OperatorName current, OperatorName valid) {
     if (valid_ops.empty())

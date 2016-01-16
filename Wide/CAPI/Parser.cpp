@@ -16,6 +16,7 @@ namespace CEquivalents {
     struct Builder {
         std::unordered_set<Combiner*> combiners;
         std::unique_ptr<Wide::Parse::Module> GlobalModule;
+        std::unique_ptr<Wide::Parse::Parser> parser;
         ~Builder() {
             for (auto&& comb : combiners) {
                 comb->combiner.Remove(GlobalModule.get());
@@ -43,7 +44,7 @@ extern "C" DLLEXPORT CEquivalents::Builder* ParseWide(
     };
     auto ret = new CEquivalents::Builder();
     ret->GlobalModule = Wide::Memory::MakeUnique<Wide::Parse::Module>(Wide::Util::none);
-    Wide::Parse::Parser p([TokenCallback, context, filename]() -> Wide::Util::optional<Wide::Lexer::Token> {
+    auto p = std::make_unique<Wide::Parse::Parser>([TokenCallback, context, filename]() -> Wide::Util::optional<Wide::Lexer::Token> {
         auto tok = TokenCallback(context);
         if (!tok.exists) return Wide::Util::none;
         auto str = std::make_shared<std::string>(filename);
@@ -58,9 +59,10 @@ extern "C" DLLEXPORT CEquivalents::Builder* ParseWide(
         return Wide::Lexer::Token(Wide::Lexer::Range(begin, end), tok.type, tok.value);
     });
     try {
-        auto contents = p.ParseGlobalModuleContents(nullptr);
+        auto contents = p->ParseGlobalModuleContents(nullptr);
         for (auto&& member : contents)
-            p.AddMemberToModule(ret->GlobalModule.get(), std::move(member));
+            p->AddMemberToModule(ret->GlobalModule.get(), std::move(member));
+        ret->parser = std::move(p);
     } catch(Wide::Parse::Error& e) {        
         if (auto tok = e.GetInvalidToken())
             onerror({ tok->GetLocation() }, e.what());
@@ -95,61 +97,12 @@ extern "C" DLLEXPORT void AddParser(CEquivalents::Combiner* c, CEquivalents::Bui
     c->combiner.SetModules(std::move(modules));
 }
 
-struct OutliningContext {
-    std::unordered_map<std::type_index, std::function<void(const void*, const OutliningContext&)>> OutliningHandlers;
-    std::function<void(Wide::Lexer::Range)> OutlineCallback;
-    template<typename T, typename F> void AddHandler(F f) {
-        OutliningHandlers[typeid(T)] = [f](const void* farg, const OutliningContext& con) {
-            return f(static_cast<T*>(farg), con);
-        };
-    }
-    template<typename T> void Outline(const T* p) const {
-        auto&& id = typeid(*p);
-        if (OutliningHandlers.find(id) != OutliningHandlers.end())
-            OutliningHandlers.at(id)(p, *this);
-    }
-    template<typename T> void Outline(const std::shared_ptr<T>& p) const {
-        Outline(p.get());
-    }
-    template<typename T> void Outline(const std::unique_ptr<T>& p) const {
-        Outline(p.get());
-    }
-};
 extern "C" DLLEXPORT void GetOutlining(
     CEquivalents::Builder* p, 
     std::add_pointer<void(CEquivalents::Range, void*)>::type OutliningCallback,
     void* context
 ) {
-    OutliningContext con;
-    con.OutlineCallback = [&](Wide::Lexer::Range range) {
+    auto ranges = p->parser->con.Outline(p->GlobalModule);
+    for (auto&& range : ranges)
         OutliningCallback(range, context);
-    };
-    con.AddHandler<const Wide::Parse::Module>([](const Wide::Parse::Module* p, const OutliningContext& con) {
-        for (auto&& cons : p->constructor_decls) {
-            con.Outline(cons);
-        }
-        for (auto&& des : p->destructor_decls) {
-            con.Outline(des);
-        }
-        for (auto&& op : p->OperatorOverloads) {
-            for (auto&& access : op.second) {
-                for (auto&& func : access.second) {
-                    con.Outline(func);
-                }
-            }
-        }
-        for (auto&& name : p->named_decls) {
-            if (auto&& unique = boost::get<std::pair<Wide::Parse::Access, std::unique_ptr<Wide::Parse::UniqueAccessContainer>>>(&name.second)) {
-                con.Outline(unique->second);
-            }
-            if (auto&& shared = boost::get<std::pair<Wide::Parse::Access, std::shared_ptr<Wide::Parse::SharedObject>>>(&name.second))
-                con.Outline(shared->second);
-            if (auto&& multi = boost::get<std::unique_ptr<Wide::Parse::MultipleAccessContainer>>(&name.second))
-                con.Outline(multi);
-        }
-        for (auto&& loc : p->locations)
-            if (auto&& longform = boost::get<Wide::Parse::ModuleLocation::LongForm>(&loc.location))
-                con.OutlineCallback(longform->OpenCurly + longform->CloseCurly);
-    });
-    con.Outline(p->GlobalModule.get());
 }

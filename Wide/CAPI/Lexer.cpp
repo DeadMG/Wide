@@ -15,12 +15,6 @@ extern "C" DLLEXPORT void LexWide(
 
     CEquivalents::LexerBody p(range, std::make_shared<std::string>(filename));
 
-    p.inv.OnComment = [=](Wide::Lexer::Range r) {
-        CEquivalents::Range debug = r;
-        if (comment)
-            comment(debug, con);
-    };
-
     p.inv.OnError = [=, &p](Wide::Lexer::Error error) -> Wide::Util::optional<Wide::Lexer::Token> {
         if (err)
             if (err(error.Where, error.What, con))
@@ -29,7 +23,10 @@ extern "C" DLLEXPORT void LexWide(
     };
         
     while(auto tok = p.inv()) { 
-        if (token(tok->GetLocation(), tok->GetValue().c_str(), tok->GetType(), &p.inv, con))
+        if (tok->GetType() == &Wide::Lexer::TokenTypes::Comment) {
+            if (comment)
+                comment(tok->GetLocation(), con);
+        } else if (token(tok->GetLocation(), tok->GetValue().c_str(), tok->GetType(), &p.inv, con))
             break;
     }
 }

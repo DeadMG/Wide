@@ -13,8 +13,6 @@ Lexer::Invocation::Invocation(std::function<Wide::Util::optional<char>()> range,
     whitespace = default_whitespace;
     keywords = default_keywords;
     KeywordTypes = default_keyword_types;
-    
-    OnComment = [](Range) {};
 
     OnError = [=](Error self) {
         return (*this)();
@@ -35,12 +33,13 @@ Wide::Util::optional<Lexer::Token> Invocation::operator()() {
         if (next && *next == '/' || *next == '*') {
             if (*next == '/') {
                 // An //comment at the end of the file is NOT an unterminated comment.
+                std::string comment = "";
                 while (auto val = get()) {
                     if (*val == '\n')
                         break;
+                    comment.push_back(*val);
                 }
-                OnComment(begin_pos + current_position);
-                return (*this)();
+                return Lexer::Token(begin_pos + current_position, &Lexer::TokenTypes::Comment, comment);
             }
             if (*next == '*') {
                 return ParseCComments(begin_pos);
@@ -191,6 +190,7 @@ Wide::Util::optional<char> Lexer::Invocation::get() {
 Wide::Util::optional<Lexer::Token> Lexer::Invocation::ParseCComments(Position start) {
     // Already saw /*
     unsigned num = 1;
+    std::string comment = "";
     while (auto val = get()) {
         if (*val == '*') {
             val = get();
@@ -207,10 +207,11 @@ Wide::Util::optional<Lexer::Token> Lexer::Invocation::ParseCComments(Position st
             if (*val == '*')
                 ++num;
         }
+        comment.push_back(*val);
     }
     if (num == 0) {
-        OnComment(start + current_position);
-        return (*this)();
+        Lexer::Token tok(start + current_position, &Lexer::TokenTypes::Comment, comment);
+        return tok;
     }
     return OnError({ start, Failure::UnterminatedComment });
 }
@@ -398,6 +399,7 @@ const std::string TokenTypes::Default = "default";
 const std::string TokenTypes::Import = "import";
 const std::string TokenTypes::From = "from";
 const std::string TokenTypes::Hiding = "hiding";
+const std::string TokenTypes::Comment = "comment";
 
 std::string Lexer::to_string(Lexer::Position p) {
     return *p.name + ":" + std::to_string(p.line) + ":" + std::to_string(p.column);
@@ -421,6 +423,10 @@ namespace Wide {
             int num = 0;
             auto result = val::array();
             Wide::Lexer::Invocation inv(Wide::Range::StringRange(source), Wide::Lexer::Position(std::make_shared<std::string>("test")));
+            inv.OnError = [&](Wide::Lexer::Error err) {
+                result.set(num++, err);
+                return inv();
+            };
             while (auto tok = inv())
                 result.set(num++, *tok);
             return result;
@@ -430,6 +436,21 @@ namespace Wide {
         }
         bool IsLiteral(Wide::Lexer::Token& tok) {
             return tok.GetType() == &Wide::Lexer::TokenTypes::String || tok.GetType() == &Wide::Lexer::TokenTypes::Integer;
+        }
+        bool IsComment(Wide::Lexer::Token& tok) {
+            return tok.GetType() == &Wide::Lexer::TokenTypes::Comment;
+        }
+        std::string DescribeError(const Wide::Lexer::Error& err) {
+            if (err.What == Failure::UnterminatedStringLiteral)
+                return "Unterminated string literal";
+            if (err.What == Failure::UnlexableCharacter)
+                return "Unlexable character";
+            return "Unterminated comment";
+        }
+        Lexer::Range GetLocation(const Wide::Lexer::Error& err) {
+            Lexer::Position end = err.Where;
+            end.offset += 1;
+            return Lexer::Range(err.Where, end);
         }
     }
 }
@@ -443,10 +464,14 @@ EMSCRIPTEN_BINDINGS(dunno_what_goes_here) {
         .property("begin", &Wide::Lexer::Range::begin)
         .property("end", &Wide::Lexer::Range::end);
     class_<Wide::Lexer::Token>("Token")
-        .function("GetLocation", &Wide::Lexer::Token::GetLocation)
+        .property("where", &Wide::Lexer::Token::GetLocation)
         .function("GetValue", &Wide::Lexer::Token::GetValue)
         .function("IsKeyword", &Wide::Lexer::IsKeyword)
-        .function("IsLiteral", &Wide::Lexer::IsLiteral);
+        .function("IsLiteral", &Wide::Lexer::IsLiteral)
+        .function("IsComment", &Wide::Lexer::IsComment);
+    class_<Wide::Lexer::Error>("Error")
+        .property("where", &Wide::Lexer::GetLocation)
+        .property("what", &Wide::Lexer::DescribeError);
     function("Lex", &Wide::Lexer::Lex);
 }
 #endif
