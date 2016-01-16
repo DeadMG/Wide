@@ -1,1 +1,0 @@
-D:\Code\Wide>"C:\Program Files\Emscripten\emscripten\1.35.0\em++" -I ./ --std=c++14 --bind --memory-init-file 0 -O3 -o Lexer.js Wide/Lexer/Lexer.cpp

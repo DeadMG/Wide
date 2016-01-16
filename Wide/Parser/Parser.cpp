@@ -181,7 +181,7 @@ Parser::Parser(std::function<Wide::Util::optional<Lexer::Token>()> l)
                     state.access
                 }
             };
-            return RecursiveWhile<ModuleParseResult>([&](auto continuation) {
+            return RecursiveWhile<ModuleParseResult>([&](std::function<ModuleParseResult()> continuation) {
                 Parse::Name name;
                 return p.lex({ &Lexer::TokenTypes::Identifier, &Lexer::TokenTypes::Operator }, [&](Lexer::Token& lead) {
                     if (lead.GetType() == &Lexer::TokenTypes::Operator)
@@ -210,7 +210,7 @@ Parser::Parser(std::function<Wide::Util::optional<Lexer::Token>()> l)
         p.lex(&Lexer::TokenTypes::Import);
         // Import only these
         std::vector<Parse::Name> names;
-        return RecursiveWhile<ModuleParseResult>([&](auto continuation) {
+        return RecursiveWhile<ModuleParseResult>([&](std::function<ModuleParseResult()> continuation) {
             Parse::Name name;
             return p.lex({ &Lexer::TokenTypes::Identifier, &Lexer::TokenTypes::Operator }, [&](Lexer::Token& lead) {
                 if (lead.GetType() == &Lexer::TokenTypes::Operator)
@@ -252,7 +252,7 @@ Parser::Parser(std::function<Wide::Util::optional<Lexer::Token>()> l)
         p.lex(&Lexer::TokenTypes::OpenBracket);
         auto&& args = p.ParseFunctionDefinitionArguments(state.imp);
         auto&& attrs = std::vector<Attribute>();
-        return RecursiveWhile<ModuleParseResult>([&](auto continuation) {
+        return RecursiveWhile<ModuleParseResult>([&](std::function<ModuleParseResult()> continuation) {
             return p.lex({ &Lexer::TokenTypes::OpenSquareBracket, &Lexer::TokenTypes::Type }, [&](Lexer::Token& tok) {
                 if (tok.GetType() == &Lexer::TokenTypes::OpenSquareBracket) {
                     attrs.push_back(p.ParseAttribute(tok, state.imp));
@@ -453,7 +453,7 @@ Parser::Parser(std::function<Wide::Util::optional<Lexer::Token>()> l)
         std::vector<std::unique_ptr<Expression>> exprs;
         auto&& expected = p.GetExpressionBeginnings();
         expected.insert(&Lexer::TokenTypes::CloseCurlyBracket);   
-        return RecursiveWhile<std::unique_ptr<Expression>>([&](auto continuation) {
+        return RecursiveWhile<std::unique_ptr<Expression>>([&](std::function<std::unique_ptr<Expression>()> continuation) {
             return p.lex(expected, [&](Lexer::Token& terminator) {
                 if (terminator.GetType() != &Lexer::TokenTypes::CloseCurlyBracket) {
                     p.lex(terminator);
@@ -563,7 +563,7 @@ Parser::Parser(std::function<Wide::Util::optional<Lexer::Token>()> l)
         auto handlecurly = [&](Lexer::Token& tok) {
             auto&& expected = p.GetStatementBeginnings();
             expected.insert(&Lexer::TokenTypes::CloseCurlyBracket);
-            return RecursiveWhile<std::unique_ptr<Expression>>([&](auto continuation) {
+            return RecursiveWhile<std::unique_ptr<Expression>>([&](std::function<std::unique_ptr<Expression>()> continuation) {
                 return p.lex(expected, [&](Lexer::Token& tok) {
                     if (tok.GetType() == &Lexer::TokenTypes::CloseCurlyBracket)
                         return std::unique_ptr<Expression>(Wide::Memory::MakeUnique<Lambda>(std::move(grp), std::move(args), pos + tok.GetLocation(), defaultref, std::move(caps)));
@@ -689,7 +689,7 @@ Parser::Parser(std::function<Wide::Util::optional<Lexer::Token>()> l)
         auto&& expected = p.GetStatementBeginnings();
         expected.insert(&Lexer::TokenTypes::CloseCurlyBracket);
         std::vector<std::unique_ptr<Statement>> stmts;
-        return RecursiveWhile<std::unique_ptr<Statement>>([&](auto continuation) {
+        return RecursiveWhile<std::unique_ptr<Statement>>([&](std::function<std::unique_ptr<Statement>()> continuation) {
             return p.lex(expected, [&](Lexer::Token& next) {
                 if (next.GetType() == &Lexer::TokenTypes::CloseCurlyBracket)
                     return std::unique_ptr<Statement>(Wide::Memory::MakeUnique<CompoundStatement>(std::move(stmts), pos + t.GetLocation()));
@@ -746,7 +746,7 @@ Parser::Parser(std::function<Wide::Util::optional<Lexer::Token>()> l)
                 return std::unique_ptr<Statement>(std::move(expr));
             } else {
                 p.lex(next);
-                return RecursiveWhile<std::unique_ptr<Statement>>([&](auto continuation) {
+                return RecursiveWhile<std::unique_ptr<Statement>>([&](std::function<std::unique_ptr<Statement>()> continuation) {
                     return p.lex({ &Lexer::TokenTypes::Comma, &Lexer::TokenTypes::VarCreate, &Lexer::TokenTypes::Colon }, [&](Lexer::Token& next) {
                         if (next.GetType() == &Lexer::TokenTypes::Comma) {
                             return p.lex(&Lexer::TokenTypes::Identifier, [&](Lexer::Token& ident) {
@@ -804,7 +804,7 @@ Parser::Parser(std::function<Wide::Util::optional<Lexer::Token>()> l)
         catch_expected.insert(&Lexer::TokenTypes::Catch);
         // Could also be end-of-scope next.
         catch_expected.insert(&Lexer::TokenTypes::CloseCurlyBracket);
-        return RecursiveWhile<std::unique_ptr<TryCatch>>([&](auto continuation) {
+        return RecursiveWhile<std::unique_ptr<TryCatch>>([&](std::function<std::unique_ptr<TryCatch>()> continuation) {
             return p.lex(expected, [&](Lexer::Token& next) {
                 if (next.GetType() != &Lexer::TokenTypes::CloseCurlyBracket) {
                     p.lex(next);
@@ -814,7 +814,7 @@ Parser::Parser(std::function<Wide::Util::optional<Lexer::Token>()> l)
                 auto&& compound = Wide::Memory::MakeUnique<CompoundStatement>(std::move(stmts), open + t.GetLocation());
                 // Catches- there must be at least one.
                 auto&& catches = std::vector<Catch>();
-                return RecursiveWhile<std::unique_ptr<TryCatch>>([&](auto continuation) {
+                return RecursiveWhile<std::unique_ptr<TryCatch>>([&](std::function<std::unique_ptr<TryCatch>()> continuation) {
                     auto current_catch_expected = catches.empty() ? std::unordered_set<Lexer::TokenType>({ &Lexer::TokenTypes::Catch }) : catch_expected;
                     return p.lex(current_catch_expected, [&](Lexer::Token& catch_) {
                         if (catch_.GetType() != &Lexer::TokenTypes::Catch) {
@@ -827,7 +827,7 @@ Parser::Parser(std::function<Wide::Util::optional<Lexer::Token>()> l)
                             if (next.GetType() == &Lexer::TokenTypes::Ellipsis) {
                                 p.lex(&Lexer::TokenTypes::CloseBracket);
                                 p.lex(&Lexer::TokenTypes::OpenCurlyBracket);
-                                return RecursiveWhile<std::unique_ptr<TryCatch>>([&](auto continuation) {
+                                return RecursiveWhile<std::unique_ptr<TryCatch>>([&](std::function<std::unique_ptr<TryCatch>()> continuation) {
                                     return p.lex(expected, [&](Lexer::Token& next) {
                                         if (next.GetType() == &Lexer::TokenTypes::CloseCurlyBracket) {
                                             catches.push_back(Catch{ std::move(catch_stmts) });
@@ -844,7 +844,7 @@ Parser::Parser(std::function<Wide::Util::optional<Lexer::Token>()> l)
                             auto&& type = p.ParseExpression(imp);
                             p.lex(&Lexer::TokenTypes::CloseBracket);
                             p.lex(&Lexer::TokenTypes::OpenCurlyBracket);
-                            return RecursiveWhile<std::unique_ptr<TryCatch>>([&](auto nested_continuation) {
+                            return RecursiveWhile<std::unique_ptr<TryCatch>>([&](std::function<std::unique_ptr<TryCatch>()> nested_continuation) {
                                 return p.lex(expected, [&](Lexer::Token& next) {
                                     if (next.GetType() == &Lexer::TokenTypes::CloseCurlyBracket) {
                                         catches.push_back(Catch{ std::move(catch_stmts), name, std::move(type) });
@@ -893,7 +893,7 @@ Parser::Parser(std::function<Wide::Util::optional<Lexer::Token>()> l)
         p.lex(&Lexer::TokenTypes::Import);
         std::vector<Parse::Name> names;
         bool constructors = false;
-        return RecursiveWhile<Parse::Access>([&](auto continuation) {
+        return RecursiveWhile<Parse::Access>([&](std::function<Parse::Access()>  continuation) {
             return p.lex({ &Lexer::TokenTypes::Identifier, &Lexer::TokenTypes::Operator, &Lexer::TokenTypes::Type }, [&](Lexer::Token& lead) {
                 if (lead.GetType() == &Lexer::TokenTypes::Operator) {
                     names.push_back(p.ParseOperatorName(p.GetAllOperators()));
@@ -1217,7 +1217,7 @@ std::vector<std::unique_ptr<Expression>> Parser::ParseFunctionArguments(std::sha
         if (tok.GetType() == &Lexer::TokenTypes::CloseBracket)
             return std::move(result);
         lex(tok);
-        return RecursiveWhile<std::vector<std::unique_ptr<Expression>>>([&, this](auto continuation) {
+        return RecursiveWhile<std::vector<std::unique_ptr<Expression>>>([&, this](std::function<std::vector<std::unique_ptr<Expression>>()> continuation) {
             result.push_back(this->ParseExpression(imp));
             return lex({ &Lexer::TokenTypes::Comma, &Lexer::TokenTypes::CloseBracket }, [&](Lexer::Token& tok) {
                 if (tok.GetType() == &Lexer::TokenTypes::CloseBracket)
@@ -1551,7 +1551,7 @@ std::unique_ptr<Module> Parser::ParseModuleFunction(Lexer::Range where, ModulePa
     // When we got here, we found "identifier ." at module scope.
     return lex({ &Lexer::TokenTypes::Identifier, &Lexer::TokenTypes::Operator }, [&](Lexer::Token& token) {
         auto result = GlobalModuleAttributeTokens[token.GetType()](*this, state, token, std::move(attributes));
-        auto mod = std::make_unique<Module>(ModuleLocation::ShortForm{ where });
+        auto mod = Wide::Memory::MakeUnique<Module>(ModuleLocation::ShortForm{ where });
         AddMemberToModule(mod.get(), std::move(*result.member));
         return mod;
     });

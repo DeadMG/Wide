@@ -106,3 +106,4 @@ extern "C" DLLEXPORT void GetOutlining(
     for (auto&& range : ranges)
         OutliningCallback(range, context);
 }
+ 

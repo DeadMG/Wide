@@ -1,0 +1,3 @@
+call "C:\Program Files\Emscripten\emscripten\1.35.0\emcc" -I ./ --std=c++14 --bind --memory-init-file 0 -O3 -o Lexer.js Wide/Lexer/Lexer.cpp
+call "C:\Program Files\Emscripten\emscripten\1.35.0\emcc" -I ./ -I D:\Code\Boost --std=c++14 --bind --memory-init-file 0 -O3 -o Parser.js Wide/Parser/Parser.cpp
+call "C:\Program Files\Emscripten\emscripten\1.35.0\emcc" -I ./ -I D:\Code\Boost --std=c++14 --bind --memory-init-file 0 -O3 -o AST.js Wide/Parser/AST.cpp
