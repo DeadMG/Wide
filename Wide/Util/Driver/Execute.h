@@ -33,7 +33,11 @@ namespace Wide {
         };
         struct AnalysisResponse {
             std::vector<Semantic::Error> AnalysisErrors;
-            std::vector<Semantic::ClangDiagnostic> ClangDiagnostics;
+            std::vector<Semantic::ClangDiagnostic> ClangNotes;
+            std::vector<Semantic::ClangDiagnostic> ClangRemarks;
+            std::vector<Semantic::ClangDiagnostic> ClangWarnings;
+            std::vector<Semantic::ClangDiagnostic> ClangErrors;
+            std::vector<Semantic::ClangDiagnostic> ClangFatals;
             std::unique_ptr<llvm::LLVMContext> Context;
             std::unique_ptr<llvm::Module> Module;
             std::unique_ptr<std::runtime_error> OldError;
@@ -48,7 +52,7 @@ namespace Wide {
         ParseResponse Parse(std::vector<std::vector<Lexer::Token>>);
         CombineResponse Combine(std::vector<std::shared_ptr<Parse::Module>>);
         AnalysisResponse Analyse(const Parse::Module*, const Options::Clang&);
-        AnalysisResponse Analyse(const Parse::Module*, const Options::Clang&, std::function<void(Wide::Semantic::Analyzer& a)>);
+        AnalysisResponse Analyse(const Parse::Module*, const Options::Clang&, std::function<void(Wide::Semantic::Analyzer& a, llvm::Module*)>);
         Options::Clang PrepareClangOptions(DriverOptions);
         Response Execute(DriverOptions);
         bool Failed(const Response&);

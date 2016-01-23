@@ -1,10 +1,8 @@
-using header := cpp("JITSuccess/CPPInterop/DerivedSingleInheritance.h");
-
-[export := header.f.resolve(header.x.rvalue)]
-f(arg : header.x.rvalue) {
+[export := cpp.f.resolve(cpp.x.rvalue)]
+f(arg : cpp.x.rvalue) {
     return arg.f();
 }
 
 Main() {
-    return header.g() & header.y().f();
+    return cpp.g() & cpp.y().f();
 }

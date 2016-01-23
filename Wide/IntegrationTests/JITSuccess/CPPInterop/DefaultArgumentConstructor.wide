@@ -1,4 +1,3 @@
-using header := cpp("JITSuccess/CPPInterop/DefaultArgumentConstructor.h");
 Main() {
-    return header.f();
+    return cpp.f();
 }

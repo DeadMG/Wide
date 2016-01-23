@@ -1,4 +1,4 @@
-using header := cpp("JITSuccess/CPPInterop/WideThrowCppCatch.h");
+using header := cpp;
 [export := header.f]
 func() {
     throw int32(1);

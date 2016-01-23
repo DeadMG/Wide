@@ -1,4 +1,4 @@
-using header := cpp("JITSuccess/CPPInterop/ExportMemberFunction.h");
+using header := cpp;
 
 [export := header.test.members.f]
 f() {

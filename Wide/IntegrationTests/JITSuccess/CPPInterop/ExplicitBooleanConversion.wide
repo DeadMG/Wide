@@ -1,6 +1,5 @@
-using header := cpp("JITSuccess/CPPInterop/ExplicitBooleanConversion.h");
 Main() {
-    if (header.test())
+    if (cpp.test())
         return true;
     return false;
 }

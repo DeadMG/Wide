@@ -9,7 +9,7 @@
 
 std::unordered_set<std::string> Wide::Driver::SearchStdlibDirectory(std::string path, std::string triple) {
     auto trip = llvm::Triple(triple);
-    if (!trip.isOSWindows() && !trip.isOSLinux() && !trip.isMacOSX()) {
+    if (!trip.isOSWindows() && !trip.isOSLinux() && !trip.isMacOSX() && !trip.getEnvironment()) {
         throw std::runtime_error("Error: Wide only supports targetting Windows, Mac, and Linux right now.\n");
     }
     std::string system =

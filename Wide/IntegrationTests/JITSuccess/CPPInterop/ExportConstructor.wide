@@ -1,4 +1,4 @@
-using test := cpp("JITSuccess/CPPInterop/ExportConstructor.h").test;
+using test := cpp.test;
 
 [export := test.constructors.resolve(test.lvalue)]
 type()

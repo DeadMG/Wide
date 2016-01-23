@@ -1,4 +1,4 @@
-using header := cpp("JITSuccess/CPPInterop/ThrowDestructorWideCatch.h");
+using header := cpp;
 Main() {
     try {
         header.f();

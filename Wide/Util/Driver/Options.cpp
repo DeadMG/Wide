@@ -26,10 +26,10 @@ JSONOptions Wide::Driver::ParseJSONOptions(std::string json) {
             opts.CppIncludePaths = pair.second.as<std::vector<std::string>>();
         else if (pair.first == "Source")
             for (auto file : pair.second.as<std::vector<std::map<std::string, std::string>>>())
-                opts.WideInputFiles.push_back(std::make_pair(file["Name"], file["Contents"]));
+                opts.WideInputFiles.push_back(std::make_pair(file["Contents"], file["Name"]));
         else if (pair.first == "CppSource")
             for (auto file : pair.second.as<std::vector<std::map<std::string, std::string>>>())
-                opts.CppInputFiles.push_back(std::make_pair(file["Name"], file["Contents"]));
+                opts.CppInputFiles.push_back(std::make_pair(file["Contents"], file["Name"]));
         else if (pair.first == "Output")
             opts.Output = pair.second.as<std::string>();
         else if (pair.first == "Link") {
@@ -133,7 +133,7 @@ std::string Wide::Driver::GetDefaultOutputFile() {
 }
 #ifdef _MSC_VER
 std::string Wide::Driver::GetDefaultTargetTriple() {
-    return "i686-pc-mingw32";
+    return "i686-w64-windows-gnu";
 }
 #else
 std::string Wide::Driver::GetDefaultTargetTriple() {
@@ -166,8 +166,9 @@ DriverOptions Wide::Driver::Translate(UserSpecifiedOptions inopts) {
     DriverOptions outopts;
     outopts.OutputFile = inopts.Output ? *inopts.Output : GetDefaultOutputFile();
     outopts.TargetTriple = inopts.TargetTriple ? *inopts.TargetTriple : GetDefaultTargetTriple();
-    outopts.CppIncludePaths = Wide::Driver::GetGCCIncludePaths(Wide::Driver::GetDefaultGCC());
+    outopts.CppIncludePaths = Wide::Driver::GetGCCIncludePaths(inopts.GCCPath ? *inopts.GCCPath : Wide::Driver::GetDefaultGCC());
     outopts.CppIncludePaths.insert(outopts.CppIncludePaths.end(), inopts.CppIncludePaths.begin(), inopts.CppIncludePaths.end());
+    outopts.CppIncludePaths.push_back("./");
     outopts.Mode = inopts.Mode;
     auto stdlibpath = inopts.StdlibPath ? *inopts.StdlibPath : GetDefaultStdlibPath();
     outopts.CppIncludePaths.push_back(stdlibpath);
@@ -175,7 +176,7 @@ DriverOptions Wide::Driver::Translate(UserSpecifiedOptions inopts) {
     for (auto&& file : files) {
         std::fstream infile(file, std::ios::in | std::ios::binary);
         std::string contents((std::istreambuf_iterator<char>(infile)), std::istreambuf_iterator<char>());
-        outopts.WideInputFiles.push_back(std::make_pair(file, contents));
+        outopts.WideInputFiles.push_back(std::make_pair(contents, file));
     }
     return outopts;
 }
@@ -185,10 +186,10 @@ DriverOptions Wide::Driver::Translate(JSONOptions jopts) {
         throw std::runtime_error("JSON did not specify any Wide input files");
     driveropts.WideInputFiles.insert(driveropts.WideInputFiles.end(), jopts.WideInputFiles.begin(), jopts.WideInputFiles.end());
     for (auto&& pair : jopts.CppInputFiles) {
-        std::fstream tempfile(pair.first, std::ios::out | std::ios::binary);
-        tempfile.write(pair.second.c_str(), pair.second.size());
+        std::fstream tempfile(pair.second, std::ios::out | std::ios::binary);
+        tempfile.write(pair.first.c_str(), pair.first.size());
         tempfile.flush();
-        driveropts.CppInputFiles.push_back(pair.first);
+        driveropts.CppInputFiles.push_back(pair.second);
     }
     return driveropts;
 }
@@ -211,23 +212,27 @@ std::string Wide::Driver::TextualResponse(const Response& r) {
     return std::string();
 }
 namespace {
+    json::value JsonPosition(Lexer::Position p) {
+        std::map<std::string, json::value> where;
+        where["Line"] = p.line;
+        where["Column"] = p.column;
+        return where;
+    }
     json::value JsonRange(Lexer::Range r) {
-        json::value where;
+        std::map<std::string, json::value> where;
         where["Filename"] = *r.begin.name;
-        where["Begin"]["Line"] = r.begin.line;
-        where["Begin"]["Column"] = r.begin.column;
-        where["End"]["Line"] = r.end.line;
-        where["End"]["Column"] = r.end.column;
+        where["Begin"] = JsonPosition(r.begin);
+        where["End"] = JsonPosition(r.end);
         return where;
     }
 }
 std::string Wide::Driver::JsonResponse(const Response& r, JSONOptions opts) {
-    json::value response;
+    std::map<std::string, json::value> response;
     if (opts.RegurgitateSource) {
         // Should be enough to refill the playground's state from a share.
         std::vector<json::value> sources;
         for (auto&& src : opts.WideInputFiles) {
-            json::value source;
+            std::map<std::string, json::value> source;
             source["Name"] = src.first;
             source["Contents"] = src.second;
             sources.push_back(source);
@@ -235,7 +240,7 @@ std::string Wide::Driver::JsonResponse(const Response& r, JSONOptions opts) {
         response["Source"] = sources;
         std::vector<json::value> cppsources;
         for (auto&& src : opts.CppInputFiles) {
-            json::value source;
+            std::map<std::string, json::value> source;
             source["Name"] = src.first;
             source["Contents"] = src.second;
             cppsources.push_back(source);
@@ -244,7 +249,7 @@ std::string Wide::Driver::JsonResponse(const Response& r, JSONOptions opts) {
     }
     std::vector<json::value> errors;
     for (auto&& err : r.Lex.LexErrors) {
-        json::value error;
+        std::map<std::string, json::value> error;
         error["Where"] = JsonRange(err.Where);
         switch (err.What) {
         case Lexer::Failure::UnlexableCharacter:
@@ -260,29 +265,39 @@ std::string Wide::Driver::JsonResponse(const Response& r, JSONOptions opts) {
         errors.push_back(error);
     }
     for (auto&& err : r.Parse.ParseErrors) {
-        json::value error;
+        std::map<std::string, json::value> error;
         error["Where"] = JsonRange(err.GetInvalidToken() ? err.GetInvalidToken()->GetLocation() : err.GetLastValidToken().GetLocation());
         error["What"] = err.what();
         errors.push_back(error);
     }
     for (auto&& err : r.Parse.ASTErrors) {
-        json::value error;
+        std::map<std::string, json::value> error;
         error["What"] = err.what();
         errors.push_back(error);
     }
     for (auto&& err : r.Combine.ASTErrors) {
-        json::value error;
+        std::map<std::string, json::value> error;
         error["What"] = err.what();
         errors.push_back(error);
     }
     for (auto&& err : r.Analysis.AnalysisErrors) {
-        json::value error;
+        std::map<std::string, json::value> error;
         error["What"] = err.what();
         error["Where"] = JsonRange(err.location());
         errors.push_back(error);
     }
-    for (auto&& err : r.Analysis.ClangDiagnostics) {
-        json::value error;
+    for (auto&& err : r.Analysis.ClangErrors) {
+        std::map<std::string, json::value> error;
+        error["What"] = err.what;
+        std::vector<json::value> locations;
+        for (auto loc : err.where)
+            locations.push_back(JsonRange(loc));
+        error["Where"] = locations;
+        error["Severity"] = err.severity;
+        errors.push_back(error);
+    }
+    for (auto&& err : r.Analysis.ClangFatals) {
+        std::map<std::string, json::value> error;
         error["What"] = err.what;
         std::vector<json::value> locations;
         for (auto loc : err.where)
@@ -292,7 +307,7 @@ std::string Wide::Driver::JsonResponse(const Response& r, JSONOptions opts) {
         errors.push_back(error);
     }
     if (r.Analysis.OldError) {
-        json::value error;
+        std::map<std::string, json::value> error;
         error["What"] = r.Analysis.OldError->what();
         errors.push_back(error);
     }

@@ -1,0 +1,9 @@
+{
+    "GCCPath": ".\/Wide\/Deployment\/MinGW\/bin\/",
+    "Source": [
+        {
+            "Contents": "Main() {\r\n    return type { f() { return true; } }().f();\r\n}",
+            "Name": "Wide\/IntegrationTests\/JITSuccess\/AnonymousType.wide"
+        }
+    ]
+}

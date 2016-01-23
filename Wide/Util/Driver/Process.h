@@ -6,6 +6,10 @@
 
 namespace Wide {
 	namespace Driver {
-		int StartAndWaitForProcess(std::string name, std::vector<std::string> args, Util::optional<unsigned> timeout);
+        struct ProcessResult {
+            int exitcode;
+            std::string std_out;
+        };
+        ProcessResult StartAndWaitForProcess(std::string name, std::vector<std::string> args, Util::optional<unsigned> timeout);
 	}
 }

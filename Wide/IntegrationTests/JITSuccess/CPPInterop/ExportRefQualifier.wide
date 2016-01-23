@@ -1,4 +1,4 @@
-using test := cpp("JITSuccess/CPPInterop/ExportRefQualifier.h").test;
+using test := cpp.test;
 
 [export := test.members.f.resolve(test.lvalue)]
 f() { return true; }

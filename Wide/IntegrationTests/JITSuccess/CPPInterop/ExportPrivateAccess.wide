@@ -1,4 +1,4 @@
-using header := cpp("JITSuccess/CPPInterop/ExportPrivateAccess.h");
+using header := cpp;
 
 [export := header.test.members.f]
 func()

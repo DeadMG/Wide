@@ -1,29 +1,67 @@
-#include <Wide/Semantic/ClangOptions.h>
-#include <Wide/Util/DebugBreak.h>
-#include <boost/program_options.hpp>
-#include <Wide/IntegrationTests/test.h>
-#include <unordered_map>
 #include <string>
-#include <functional>
-#include <Wide/Util/Concurrency/ConcurrentUnorderedSet.h>
-#include <Wide/Util/Concurrency/ParallelForEach.h>
-#include <Wide/Util/Codegen/GetMCJITProcessTriple.h>
+#include <fstream>
+#include <jsonpp/parser.hpp>
+#include <jsonpp/value.hpp>
+#include <unordered_set>
 #include <iostream>
+#include <Wide/Util/Driver/Process.h>
+#include <set>
+#include <boost/program_options.hpp>
+#include <Wide/Util/DebugBreak.h>
 
-#pragma warning(push, 0)
-#include <llvm/Support/Path.h>
-#pragma warning(pop)
+bool ExecuteJsonTest(json::value test) {
+#ifdef _MSC_VER
+    auto CLIPath = std::string("Wide\\Deployment\\Wide.exe");
+#else
+    auto CLIPath = std::string("./Wide/Deployment/Wide");
+#endif
+#ifdef _MSC_VER
+    auto stdlibpath = std::string("Wide\\WideLibrary");
+#else
+    auto stdlibpath = std::string("./Wide/WideLibrary");
+#endif
+#ifdef _MSC_VER
+    auto gccpath = std::string("Wide\\Deployment\\MinGW\\bin\\");
+#else
+    auto gccpath = std::string("");
+#endif
+    auto type = test["type"].as<std::string>();
+    if (type == "JITSuccess") {
+        std::ifstream wide_src(test["wide"].as<std::string>(), std::ios::in | std::ios::binary);
+        json::value sourcefile = json::value::object({
+            { "Name", test["wide"].as<std::string>() },
+            { "Contents", std::string(std::istreambuf_iterator<char>(wide_src), std::istreambuf_iterator<char>()) }
+        });
+        auto val = json::value::object({
+            { "Source", json::value::array({ sourcefile }) },
+            { "GCCPath", gccpath + "g++" },
+            { "StdlibPath", stdlibpath }
+        });
+        if (test["cpp"].is<std::string>()) {
+            std::ifstream cpp_src(test["cpp"].as<std::string>(), std::ios::in | std::ios::binary);
+            val["CppSource"] = json::value::array({
+                json::value::object({
+                    { "Name", test["cpp"].as<std::string>() },
+                    { "Contents", std::string(std::istreambuf_iterator<char>(cpp_src), std::istreambuf_iterator<char>()) }
+                })
+            });
+        }
+        std::ofstream test_json("current_test.json", std::ios::out | std::ios::trunc);
+        auto json_test_input = json::dump_string(val);
+        test_json.write(json_test_input.c_str(), json_test_input.size());
+        test_json.flush();
+        auto compile = Wide::Driver::StartAndWaitForProcess(CLIPath, { "--interface=JSON", "current_test.json" }, 10000);
+        if (compile.exitcode != 0)
+            return compile.exitcode;
+        auto link = Wide::Driver::StartAndWaitForProcess(gccpath + "g++.exe", { "-o a.exe", "a.o" }, 10000);
+        if (link.exitcode != 0)
+            return link.exitcode;
+        return Wide::Driver::StartAndWaitForProcess("a.exe", {}, 10000).exitcode != 0;
+    }
+    return false;
+}
 
 int main(int argc, char** argv) {
-    Wide::Options::Clang clangopts;
-    clangopts.LanguageOptions.CPlusPlus14 = true;
-    clangopts.LanguageOptions.CPlusPlus1z = true;
-    clangopts.LanguageOptions.MSCompatibilityVersion = 0;
-    clangopts.LanguageOptions.MSVCCompat = 0;
-    clangopts.LanguageOptions.MicrosoftExt = 0;
-    clangopts.TargetOptions.Triple = Wide::Util::GetMCJITProcessTriple();
-    // Enabling RTTI requires a Standard Library to be linked.
-    // Else, there is an undefined reference to an ABI support class.
     boost::program_options::options_description desc;
     desc.add_options()
         ("input", boost::program_options::value<std::string>(), "One input file. May be specified multiple times.")
@@ -33,62 +71,36 @@ int main(int argc, char** argv) {
     boost::program_options::variables_map input;
     try {
         boost::program_options::store(boost::program_options::command_line_parser(argc, argv).options(desc).run(), input);
-    } catch (std::exception& e) {
+    }
+    catch (std::exception& e) {
         std::cout << "Malformed command line.\n" << e.what();
         return 1;
     }
-    std::unordered_map<std::string, std::function<int()>> modes([&]() -> std::unordered_map<std::string, std::function<int()>> {
-        std::unordered_map<std::string, std::function<int()>> ret;
 
-        ret["CompileFail"] = [&] {
-            try {
-                Wide::Driver::Compile(clangopts, input["input"].as<std::string>());
-                return 0;
-            } catch (std::exception& e) {
-                std::cout << e.what() << "\n";
-                return 1;
-            }
-        };
-        ret["JITSuccess"] = [&] {
-            try {
-                Wide::Driver::Jit(clangopts, input["input"].as<std::string>());
-                return 0;
-            } catch (...) {
-                return 1;
-            }
-        };
-        return ret;
-    }());
-    if (input.count("input")) {
-        if (input.count("mode")) {
-            if (modes.find(input["mode"].as<std::string>()) != modes.end())
-                return modes[input["mode"].as<std::string>()]();
-            return 1;
-        }
-        return modes[*llvm::sys::path::begin(input["input"].as<std::string>())]();
+    auto testspath = std::string("./Wide/IntegrationTests/Tests.json");
+    std::fstream jsonfile(testspath, std::ios::in | std::ios::binary);
+    std::string json((std::istreambuf_iterator<char>(jsonfile)), std::istreambuf_iterator<char>());
+    json::value jsonval;
+    json::parse(json, jsonval);
+    auto tests = jsonval.as<std::vector<json::value>>();
+    std::set<std::string> failures;
+    for (auto&& test : tests) {
+        auto name = test["name"].is<std::string>() ? test["name"].as<std::string>() : test["wide"].as<std::string>();
+        if (input.count("input") && input["input"].as<std::string>() != name)
+            continue;
+        auto failed = ExecuteJsonTest(test);
+        if (failed)
+            failures.insert("JSON: " + name);
     }
-    std::unordered_map<std::string, std::function<bool()>> files;
-#pragma warning(disable : 4800)
-    for(auto mode : modes) {
-        Wide::Driver::TestDirectory(mode.first, mode.first, argv[0], input.count("break"), files);
-    }
-    Wide::Concurrency::UnorderedSet<std::string> failed;
-#ifdef _MSC_VER
-    // LLVM's ExecuteAndWait can't handle parallel execution on non-Windows machines.
-    Wide::Concurrency::ParallelForEach(files.begin(), files.end(), 
-#else
-    std::for_each(files.begin(), files.end(), 
-#endif
-        [&failed](std::pair<const std::string, std::function<bool()>>& ref) {
-            if (ref.second())
-                failed.insert(ref.first); 
-        }
-    );
-    std::cout << "\n\nTotal succeeded: " << files.size() - failed.size() << " failed: " << failed.size() << "\n";
-    if (failed.size() > 0)
-        for(auto fail : failed)
+    if (!failures.empty()) {
+        for (auto&& fail : failures)
             std::cout << "Failed: " << fail << "\n";
-    if (input.count("break"))
-        Wide::Util::DebugBreak();
-    return failed.size() != 0;
+        std::cout << failures.size() << "failed. " << tests.size() - failures.size() << "succeeded.";
+    } else
+        std::cout << tests.size() << " completed. 0 failures.";
+    if (input.count("break")) {
+        int i;
+        std::cin >> i;
+    }
+    return failures.empty() ? 0 : 1;
 }

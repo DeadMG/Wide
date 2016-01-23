@@ -1,4 +1,4 @@
-using header := cpp("JITSuccess/CPPInterop/ThrowDestructor.h");
+using header := cpp;
 type hi {
     ptr : bool.pointer;
     type(arg : bool.lvalue) : ptr := &arg {}

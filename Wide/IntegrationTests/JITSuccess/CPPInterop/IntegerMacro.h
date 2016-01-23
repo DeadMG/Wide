@@ -1,1 +1,0 @@
-#define FUCK_CLANG 5

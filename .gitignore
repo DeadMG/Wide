@@ -18,14 +18,16 @@ build/
 bld/
 [Bb]in/
 [Oo]bj/
+Wide/.vs
+current_test.json
 
 # Roslyn cache directories
 *.ide/
-
+*.dll
 # MSTest test Results
 [Tt]est[Rr]esult*/
 [Bb]uild[Ll]og.*
-
+*.o
 #NUNIT
 *.VisualState.xml
 TestResult.xml

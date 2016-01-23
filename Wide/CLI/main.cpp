@@ -8,7 +8,8 @@ int main(int argc, char** argv)
 {
     boost::program_options::options_description initial_desc;
     initial_desc.add_options()
-        ("interface", boost::program_options::value<std::string>(), "Choose interface- command-line, JSON");
+        ("interface", boost::program_options::value<std::string>(), "Choose interface- command-line, JSON")
+        ("input", boost::program_options::value<std::string>(), "JSON input file");
     boost::program_options::positional_options_description positional;
     positional.add("input", -1);
     boost::program_options::variables_map initial_input;

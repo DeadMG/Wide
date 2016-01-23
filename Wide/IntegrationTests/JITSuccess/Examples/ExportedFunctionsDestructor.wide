@@ -1,4 +1,4 @@
-using cplusplus := cpp("JITSuccess/Examples/ExportedFunctionsDestructor.h");
+using cplusplus := cpp("Wide/IntegrationTests/JITSuccess/Examples/ExportedFunctionsDestructor.h");
 [export := cplusplus.t.destructor]
 ~type() {
     std.cout << "Hello, World!";

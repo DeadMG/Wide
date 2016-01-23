@@ -1,4 +1,3 @@
-using header := cpp("JITSuccess/CPPInterop/DefaultArgument.h");
 Main() {
-    return header.f() & header.g(true);
+    return cpp.f() & cpp.g(true);
 }

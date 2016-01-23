@@ -96,7 +96,9 @@ std::shared_ptr<Expression> ClangIncludeEntity::AccessNamedMember(Expression::In
         if (!HeaderIncluder) HeaderIncluder = Wide::Memory::MakeUnique<ClangHeaderHandler>();
         return BuildChain(std::move(t), analyzer.GetOverloadSet(HeaderIncluder.get())->BuildValueConstruction(key, {}, { this, c.where }));
     }
-    return nullptr;
+    auto clangtu = analyzer.GetAggregateTU();
+    auto _namespace = analyzer.GetClangNamespace(*clangtu, clangtu->GetDeclContext())->BuildValueConstruction(key, {}, c);
+    return Wide::Semantic::Type::AccessMember(key, _namespace, name, c);
 }
 
 std::shared_ptr<Expression> ClangIncludeEntity::ConstructCall(Expression::InstanceKey key, std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c) {

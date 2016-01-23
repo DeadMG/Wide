@@ -1,4 +1,4 @@
-using cplusplus := cpp("JITSuccess/Examples/ExportedFunctionsMemberSets.h");
+using cplusplus := cpp("Wide/IntegrationTests/JITSuccess/Examples/ExportedFunctionsMemberSets.h");
 using t := cplusplus.t;
 [export := t.members.f.resolve(t.lvalue)]
 f() {

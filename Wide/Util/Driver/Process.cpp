@@ -23,19 +23,58 @@ int Wide::Driver::StartAndWaitForProcess(std::string name, std::vector<std::stri
 #else
 #include <Windows.h>
 
-int Wide::Driver::StartAndWaitForProcess(std::string name, std::vector<std::string> args, Util::optional<unsigned> timeout)
+class Pipe {
+    HANDLE ReadHandle;
+    HANDLE writehandle;
+public:
+    Pipe() {
+        SECURITY_ATTRIBUTES saAttr;
+        saAttr.nLength = sizeof(SECURITY_ATTRIBUTES);
+        saAttr.bInheritHandle = TRUE;
+        saAttr.lpSecurityDescriptor = NULL;
+        CreatePipe(&ReadHandle, &writehandle, &saAttr, 0);
+    }
+    HANDLE WriteHandle() {
+        return writehandle;
+    }
+    std::string Contents() {
+        CloseHandle(writehandle);
+        DWORD dwRead;
+        CHAR chBuf[1024];
+        BOOL bSuccess = FALSE;
+
+        std::string result;
+        for (;;)
+        {
+            bSuccess = ReadFile(ReadHandle, chBuf, 1024, &dwRead, NULL);
+            if (!bSuccess || dwRead == 0) break;
+            result += std::string(chBuf, chBuf + dwRead);
+        }
+        return result;
+    }
+    ~Pipe() {
+        CloseHandle(ReadHandle);
+    }
+};
+Wide::Driver::ProcessResult Wide::Driver::StartAndWaitForProcess(std::string name, std::vector<std::string> args, Util::optional<unsigned> timeout)
 {
+    ProcessResult result;
+    Pipe stdoutpipe;
     PROCESS_INFORMATION info = { 0 };
     STARTUPINFO startinfo = { sizeof(STARTUPINFO) };
     std::string final_args = name;
     for (auto arg : args)
          final_args += " " + arg;
+    startinfo.hStdOutput = stdoutpipe.WriteHandle();
+    startinfo.hStdError = INVALID_HANDLE_VALUE;
+    startinfo.hStdInput = INVALID_HANDLE_VALUE;
+    startinfo.dwFlags |= STARTF_USESTDHANDLES;
     auto proc = CreateProcess(
         name.c_str(),
         &final_args[0],
         nullptr,
         nullptr,
-        FALSE,
+        TRUE,
         NORMAL_PRIORITY_CLASS | CREATE_NO_WINDOW,
         nullptr,
         nullptr,
@@ -54,6 +93,7 @@ int Wide::Driver::StartAndWaitForProcess(std::string name, std::vector<std::stri
     if (timeout == 0)
         timeout = INFINITE;
 
+    result.std_out = stdoutpipe.Contents();
     if (WaitForSingleObject(info.hProcess, timeout ? *timeout : INFINITE) == WAIT_TIMEOUT)
          TerminateProcess(info.hProcess, 1);
 
@@ -61,6 +101,9 @@ int Wide::Driver::StartAndWaitForProcess(std::string name, std::vector<std::stri
     GetExitCodeProcess(info.hProcess, &exit_code);
     CloseHandle(info.hProcess);
     CloseHandle(info.hThread);
-    return exit_code;
+    result.exitcode = exit_code;
+    if (exit_code != 0)
+        return result;
+    return result;
 }
 #endif

@@ -1,4 +1,4 @@
-using cplusplus := cpp("JITSuccess/Examples/OverloadSetsBoundSets.h");
+using cplusplus := cpp("Wide/IntegrationTests/JITSuccess/Examples/OverloadSetsBoundSets.h");
 Main() {
     local := cplusplus.f;
     c_string := local().c_str;

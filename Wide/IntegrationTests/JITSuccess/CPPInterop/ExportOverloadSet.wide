@@ -1,4 +1,4 @@
-using header := cpp("JITSuccess/CPPInterop/ExportOverloadSet.h");
+using header := cpp;
 [export := header.f.resolve()]
 f() {
     return true;

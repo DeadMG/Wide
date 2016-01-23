@@ -1,4 +1,4 @@
-using header := cpp("JITSuccess/CPPInterop/InheritCPPInterface.h");
+using header := cpp;
 using test := header.test;
 type t : test {
     f() { return true; }
