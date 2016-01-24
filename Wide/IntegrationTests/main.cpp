@@ -13,12 +13,12 @@ bool ExecuteJsonTest(json::value test) {
 #ifdef _MSC_VER
     auto CLIPath = std::string("Wide\\Deployment\\Wide.exe");
 #else
-    auto CLIPath = std::string("./Wide/Deployment/Wide");
+    auto CLIPath = std::string("Wide/Deployment/Wide");
 #endif
 #ifdef _MSC_VER
     auto stdlibpath = std::string("Wide\\WideLibrary");
 #else
-    auto stdlibpath = std::string("./Wide/WideLibrary");
+    auto stdlibpath = std::string("Wide/WideLibrary");
 #endif
 #ifdef _MSC_VER
     auto gccpath = std::string("Wide\\Deployment\\MinGW\\bin\\");
@@ -53,10 +53,18 @@ bool ExecuteJsonTest(json::value test) {
         auto compile = Wide::Driver::StartAndWaitForProcess(CLIPath, { "--interface=JSON", "current_test.json" }, 10000);
         if (compile.exitcode != 0)
             return compile.exitcode;
+#ifdef _MSC_VER
         auto link = Wide::Driver::StartAndWaitForProcess(gccpath + "g++.exe", { "-o a.exe", "a.o" }, 10000);
+#else
+        auto link = Wide::Driver::StartAndWaitForProcess(gccpath + "g++", { "-o", "a.out", "a.o" }, 10000);
+#endif
         if (link.exitcode != 0)
             return link.exitcode;
+#ifdef _MSC_VER
         return Wide::Driver::StartAndWaitForProcess("a.exe", {}, 10000).exitcode != 0;
+#else
+        return Wide::Driver::StartAndWaitForProcess("./a.out", {}, 10000).exitcode != 0;
+#endif
     }
     return false;
 }

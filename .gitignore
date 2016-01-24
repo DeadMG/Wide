@@ -39,6 +39,7 @@ dlldata.c
 Deployment/
 Packages
 
+*.out
 *_i.c
 *_p.c
 *_i.h

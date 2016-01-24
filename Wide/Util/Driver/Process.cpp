@@ -1,24 +1,64 @@
 #include <Wide/Util/Driver/Process.h>
 
 #ifndef _MSC_VER 
-#include <unistd.h>
-#include <sys/types.h>
+#include <unistd.h>    
+#include <sys/types.h>    
 #include <sys/wait.h> 
-int Wide::Driver::StartAndWaitForProcess(std::string name, std::vector<std::string> args, Util::optional<unsigned> timeout) {
+#include <iostream>
+#include <fcntl.h>
+#include <string.h>
+Wide::Driver::ProcessResult Wide::Driver::StartAndWaitForProcess(std::string name, std::vector<std::string> args, Util::optional<unsigned> timeout) {
+    int filedes[2];
+    pipe(filedes);
     pid_t pid = fork();
     if (pid == 0) {
+        while ((dup2(filedes[1], STDOUT_FILENO) == -1) && (errno == EINTR)) {}
+        auto fd = open("/dev/null", O_RDWR);
+        while ((dup2(fd, STDIN_FILENO) == -1) && (errno == EINTR)) {}
+        //freopen("/dev/null", "rw", stdin);
+        //freopen("/dev/null", "rw", stderr);
+        //close(filedes[1]);
+        close(filedes[0]);
         std::vector<const char*> cargs;
         cargs.push_back(name.c_str());
         for (auto&& arg : args)
             cargs.push_back(arg.c_str());
         cargs.push_back(nullptr);
-        execv(name.c_str(), const_cast<char* const*>(&cargs[0]));
+        execvp(name.c_str(), const_cast<char* const*>(&cargs[0]));
+        throw std::runtime_error("execvp failed for " + name + " because " + strerror(errno));
     }
+    std::string std_out;
+    close(filedes[1]);
+    char buffer[4096];
+    while (1) {
+        ssize_t count = read(filedes[0], buffer, sizeof(buffer));
+        if (count == -1) {
+            if (errno == EINTR) {
+                continue;
+            } else {
+                perror("read");
+                exit(1);
+            }
+        } else if (count == 0) {
+            break;
+        } else {
+            std_out += std::string(buffer, buffer + count);
+        }
+    }
+    close(filedes[0]);
     int status;
+    ProcessResult result;
+    result.std_out = std_out;
     waitpid(pid, &status, 0);
     if (!WIFEXITED(status))
-        return 1;
-    return WEXITSTATUS(status);
+        result.exitcode = 1;
+    else {
+        result.exitcode = WEXITSTATUS(status);
+        if (result.exitcode != 0) {
+            std::cout << name << " failed with code " << result.exitcode << "\n";
+        }
+    }
+    return result;
 }
 #else
 #include <Windows.h>

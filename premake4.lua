@@ -273,7 +273,7 @@ WideProjects = {
             if os.is("windows") then
                 postbuildcommands ({ "copy /Y \"$(TargetDir)$(TargetName).exe\" \"$(SolutionDir)Deployment/Wide.exe\"" })
             else
-                postbuildcommands ({ "mkdir ../Deployment",  "cp -f \"../Build/" .. plat .. "/" .. conf .. "/CLI\" \"../Deployment/CLI\"" })
+                postbuildcommands ({ "cp -f \"../Build/" .. plat .. "/" .. conf .. "/CLI\" \"../Deployment/Wide\"" })
             end
         end,
     },
@@ -305,7 +305,7 @@ WideProjects = {
             if os.is("windows") then
                 postbuildcommands ({ "(robocopy /mir \"Standard\" \"../Deployment/WideLibrary/Standard\") ^& IF %ERRORLEVEL% LEQ 1 exit 0" })
             else
-                postbuildcommands ({ "mkdir -p ../Deployment/", "cp -r ../WideLibrary ../Deployment/" })
+                postbuildcommands ({ "cp -r ../WideLibrary ../Deployment/" })
             end
         end
     },

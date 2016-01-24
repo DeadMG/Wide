@@ -30,7 +30,7 @@ int main(int argc, char** argv)
             auto driveropts = Wide::Driver::Translate(useropts);
             auto response = Wide::Driver::Execute(driveropts);
             auto response_text = Wide::Driver::JsonResponse(response, useropts);
-            std::cout << response_text;
+            std::cout << response_text << "\n" << std::boolalpha << Wide::Driver::Failed(response) << "\n";
             return Wide::Driver::Failed(response);
         } catch (std::exception& e) {
             std::cout << "Could not interpret JSON options\n" << e.what();
