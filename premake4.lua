@@ -273,7 +273,7 @@ WideProjects = {
             if os.is("windows") then
                 postbuildcommands ({ "copy /Y \"$(TargetDir)$(TargetName).exe\" \"$(SolutionDir)Deployment/Wide.exe\"" })
             else
-                postbuildcommands ({ "cp -f \"../Build/" .. plat .. "/" .. conf .. "/CLI\" \"../Deployment/Wide\"" })
+                postbuildcommands ({ "mkdir -p ../Deployment", "cp -f \"../Build/" .. plat .. "/" .. conf .. "/CLI\" \"../Deployment/Wide\"" })
             end
         end,
     },
