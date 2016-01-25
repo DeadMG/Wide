@@ -7,6 +7,7 @@
 #include <iostream>
 #include <fcntl.h>
 #include <string.h>
+#include <stdexcept>
 Wide::Driver::ProcessResult Wide::Driver::StartAndWaitForProcess(std::string name, std::vector<std::string> args, Util::optional<unsigned> timeout) {
     int filedes[2];
     pipe(filedes);
