@@ -1,30 +1,425 @@
 [
-    { "type": "CompileFail", "wide": "Wide/IntegrationTests/CompileFail/AddressOfNonLvalue/ComplexValue.wide" },
-    { "type": "CompileFail", "wide": "Wide/IntegrationTests/CompileFail/AddressOfNonLvalue/FunctionReturn.wide" },
-    { "type": "CompileFail", "wide": "Wide/IntegrationTests/CompileFail/AddressOfNonLvalue/FunctionReturnComplexRvalue.wide" },
-    { "type": "CompileFail", "wide": "Wide/IntegrationTests/CompileFail/AddressOfNonLvalue/FunctionReturnComplexValue.wide" },
-    { "type": "CompileFail", "wide": "Wide/IntegrationTests/CompileFail/AddressOfNonLvalue/FunctionRvalueReference.wide" },
-    { "type": "CompileFail", "wide": "Wide/IntegrationTests/CompileFail/AddressOfNonLvalue/Literal.wide" },
-    { "type": "CompileFail", "wide": "Wide/IntegrationTests/CompileFail/BadUsingTarget/UsingUserDefined.wide" },
-    { "type": "CompileFail", "wide": "Wide/IntegrationTests/CompileFail/InvalidBase/InheritsFromFunction.wide" },
-    { "type": "CompileFail", "wide": "Wide/IntegrationTests/CompileFail/InvalidBase/InheritsFromPrimitive.wide" },
-    { "type": "CompileFail", "wide": "Wide/IntegrationTests/CompileFail/InvalidBase/InheritsFromSelf.wide" },
-    { "type": "CompileFail", "wide": "Wide/IntegrationTests/CompileFail/NoMember/AccessPrivateMemberFunction.wide", "cpp": "Wide/IntegrationTests/CompileFail/NoMember/AccessPrivateMemberFunction.h" },
-    { "type": "CompileFail", "wide": "Wide/IntegrationTests/CompileFail/NoMember/AccessPrivateMemberVariable.wide", "cpp": "Wide/IntegrationTests/CompileFail/NoMember/AccessPrivateMemberVariable.h" },
-    { "type": "CompileFail", "wide": "Wide/IntegrationTests/CompileFail/NoMember/ClangAccessPrivateMemberFunction.wide" },
-    { "type": "CompileFail", "wide": "Wide/IntegrationTests/CompileFail/NoMember/ClangAccessPrivateMemberVariable.wide" },
-    { "type": "CompileFail", "wide": "Wide/IntegrationTests/CompileFail/NoMember/SubmoduleNoQualifiedLookup.wide" },
-    { "type": "CompileFail", "wide": "Wide/IntegrationTests/CompileFail/NoMemberToInitialize/NonexistentMemberInitializer.wide" },
-    { "type": "CompileFail", "wide": "Wide/IntegrationTests/CompileFail/OverloadResolutionFailure/CopyWithMoveOnlyElement.wide" },
-    { "type": "CompileFail", "wide": "Wide/IntegrationTests/CompileFail/OverloadResolutionFailure/DoesntGenerateCopyAssignmentOperator.wide" },
-    { "type": "CompileFail", "wide": "Wide/IntegrationTests/CompileFail/OverloadResolutionFailure/DoesntGenerateCopyConstructor.wide" },
-    { "type": "CompileFail", "wide": "Wide/IntegrationTests/CompileFail/OverloadResolutionFailure/LvalueQualifiedThis.wide" },
-    { "type": "CompileFail", "wide": "Wide/IntegrationTests/CompileFail/OverloadResolutionFailure/ModuleOperator.wide" },
-    { "type": "CompileFail", "wide": "Wide/IntegrationTests/CompileFail/OverloadResolutionFailure/NoCopyAssignmentOperatorWithConstructor.wide" },
-    { "type": "CompileFail", "wide": "Wide/IntegrationTests/CompileFail/OverloadResolutionFailure/NonCopyable.wide", "cpp": "Wide/IntegrationTests/CompileFail/OverloadResolutionFailure/NonCopyable.h" },
-    { "type": "CompileFail", "wide": "Wide/IntegrationTests/CompileFail/OverloadResolutionFailure/PrivateCopyMovableTuple.wide" },
-    { "type": "CompileFail", "wide": "Wide/IntegrationTests/CompileFail/OverloadResolutionFailure/RvalueQualifiedThis.wide" },
-    { "type": "CompileFail", "wide": "Wide/IntegrationTests/CompileFail/RecursiveMember/MemberOfSelf.wide" },
+  {
+    "type": "CompileFail",
+    "wide": "Wide/IntegrationTests/CompileFail/AddressOfNonLvalue/ComplexValue.wide",
+    "expectedErrors": [
+      {
+        "Begin": {
+          "Line": 7,
+          "Column": 13
+        },
+        "End": {
+          "Line": 7,
+          "Column": 17
+        }
+      }
+    ]
+  },
+  {
+    "type": "CompileFail",
+    "wide": "Wide/IntegrationTests/CompileFail/AddressOfNonLvalue/FunctionReturn.wide",
+    "expectedErrors": [
+      {
+        "Begin": {
+          "Line": 3,
+          "Column": 13
+        },
+        "End": {
+          "Line": 3,
+          "Column": 17
+        }
+      }
+    ]
+  },
+  {
+    "type": "CompileFail",
+    "wide": "Wide/IntegrationTests/CompileFail/AddressOfNonLvalue/FunctionReturnComplexRvalue.wide",
+    "expectedErrors": [
+      {
+        "Begin": {
+          "Line": 12,
+          "Column": 13
+        },
+        "End": {
+          "Line": 12,
+          "Column": 20
+        }
+      }
+    ]
+  },
+  {
+    "type": "CompileFail",
+    "wide": "Wide/IntegrationTests/CompileFail/AddressOfNonLvalue/FunctionReturnComplexValue.wide",
+    "expectedErrors": [
+      {
+        "Begin": {
+          "Line": 10,
+          "Column": 13
+        },
+        "End": {
+          "Line": 10,
+          "Column": 17
+        }
+      }
+    ]
+  },
+  {
+    "type": "CompileFail",
+    "wide": "Wide/IntegrationTests/CompileFail/AddressOfNonLvalue/FunctionRvalueReference.wide",
+    "expectedErrors": [
+      {
+        "Begin": {
+          "Line": 6,
+          "Column": 13
+        },
+        "End": {
+          "Line": 6,
+          "Column": 20
+        }
+      }
+    ]
+  },
+  {
+    "type": "CompileFail",
+    "wide": "Wide/IntegrationTests/CompileFail/AddressOfNonLvalue/Literal.wide",
+    "expectedErrors": [
+      {
+        "Begin": {
+          "Line": 2,
+          "Column": 13
+        },
+        "End": {
+          "Line": 2,
+          "Column": 19
+        }
+      }
+    ]
+  },
+  {
+    "type": "CompileFail",
+    "wide": "Wide/IntegrationTests/CompileFail/BadUsingTarget/UsingUserDefined.wide",
+    "expectedErrors": [
+      {
+        "Begin": {
+          "Line": 6,
+          "Column": 14
+        },
+        "End": {
+          "Line": 6,
+          "Column": 18
+        }
+      }
+    ]
+  },
+  {
+    "type": "CompileFail",
+    "wide": "Wide/IntegrationTests/CompileFail/InvalidBase/InheritsFromFunction.wide",
+    "expectedErrors": [
+      {
+        "Begin": {
+          "Line": 4,
+          "Column": 10
+        },
+        "End": {
+          "Line": 4,
+          "Column": 11
+        }
+      }
+    ]
+  },
+  {
+    "type": "CompileFail",
+    "wide": "Wide/IntegrationTests/CompileFail/InvalidBase/InheritsFromPrimitive.wide",
+    "expectedErrors": [
+      {
+        "Begin": {
+          "Line": 1,
+          "Column": 10
+        },
+        "End": {
+          "Line": 1,
+          "Column": 13
+        }
+      }
+    ]
+  },
+  {
+    "type": "CompileFail",
+    "wide": "Wide/IntegrationTests/CompileFail/InvalidBase/InheritsFromSelf.wide",
+    "expectedErrors": [
+      {
+        "Begin": {
+          "Line": 1,
+          "Column": 10
+        },
+        "End": {
+          "Line": 1,
+          "Column": 11
+        }
+      }
+    ]
+  },
+  {
+    "type": "CompileFail",
+    "wide": "Wide/IntegrationTests/CompileFail/NoMember/AccessPrivateMemberFunction.wide",
+    "cpp": "Wide/IntegrationTests/CompileFail/NoMember/AccessPrivateMemberFunction.h",
+    "expectedErrors": [
+      {
+        "Begin": {
+          "Line": 6,
+          "Column": 12
+        },
+        "End": {
+          "Line": 6,
+          "Column": 17
+        }
+      }
+    ]  
+  },
+  {
+    "type": "CompileFail",
+    "wide": "Wide/IntegrationTests/CompileFail/NoMember/AccessPrivateMemberVariable.wide",
+    "cpp": "Wide/IntegrationTests/CompileFail/NoMember/AccessPrivateMemberVariable.h",    
+    "expectedErrors": [
+      {
+        "Begin": {
+          "Line": 7,
+          "Column": 12
+        },
+        "End": {
+          "Line": 7,
+          "Column": 19
+        }
+      }
+    ]
+  },
+  {    
+    "type": "CompileFail",
+    "wide": "Wide/IntegrationTests/CompileFail/NoMember/ClangAccessPrivateMemberFunction.wide",
+    "cpp": "Wide/IntegrationTests/CompileFail/NoMember/AccessPrivateMemberVariable.h",
+    "expectedErrors": [
+      {
+        "Begin": {
+          "Line": 2,
+          "Column": 12
+        },
+        "End": {
+          "Line": 2,
+          "Column": 24
+        }
+      }
+    ]
+  },
+  {
+    "type": "CompileFail",
+    "wide": "Wide/IntegrationTests/CompileFail/NoMember/ClangAccessPrivateMemberVariable.wide",    
+    "cpp": "Wide/IntegrationTests/CompileFail/NoMember/AccessPrivateMemberVariable.h",
+    "expectedErrors": [
+      {
+        "Begin": {
+          "Line": 2,
+          "Column": 12
+        },
+        "End": {
+          "Line": 2,
+          "Column": 24
+        }
+      }
+    ]
+  },
+  {    
+    "type": "CompileFail",
+    "wide": "Wide/IntegrationTests/CompileFail/NoMember/SubmoduleNoQualifiedLookup.wide",
+    "expectedErrors": [
+      {
+        "Begin": {
+          "Line": 4,
+          "Column": 5
+        },
+        "End": {
+          "Line": 4,
+          "Column": 24
+        }
+      }
+    ]
+  },
+  {
+    "type": "CompileFail",
+    "wide": "Wide/IntegrationTests/CompileFail/NoMemberToInitialize/NonexistentMemberInitializer.wide",    
+    "expectedErrors": [
+      {
+        "Begin": {
+          "Line": 2,
+          "Column": 12
+        },
+        "End": {
+          "Line": 2,
+          "Column": 23
+        }
+      }
+    ]
+  },
+  {
+    "type": "CompileFail",
+    "wide": "Wide/IntegrationTests/CompileFail/OverloadResolutionFailure/CopyWithMoveOnlyElement.wide",
+    "expectedErrors": [
+      {
+        "Begin": {
+          "Line": 7,
+          "Column": 13
+        },
+        "End": {
+          "Line": 7,
+          "Column": 16
+        }
+      }
+    ]
+  },
+  {    
+    "type": "CompileFail",
+    "wide": "Wide/IntegrationTests/CompileFail/OverloadResolutionFailure/DoesntGenerateCopyAssignmentOperator.wide",
+    "expectedErrors": [
+      {
+        "Begin": {
+          "Line": 9,
+          "Column": 5
+        },
+        "End": {
+          "Line": 9,
+          "Column": 15
+        }
+      }
+    ]
+  },
+  {   
+    "type": "CompileFail",
+    "wide": "Wide/IntegrationTests/CompileFail/OverloadResolutionFailure/DoesntGenerateCopyConstructor.wide",
+    "expectedErrors": [
+      {
+        "Begin": {
+          "Line": 8,
+          "Column": 13
+        },
+        "End": {
+          "Line": 8,
+          "Column": 16
+        }
+      }
+    ]
+  },
+  {
+    "type": "CompileFail",
+    "wide": "Wide/IntegrationTests/CompileFail/OverloadResolutionFailure/LvalueQualifiedThis.wide",
+    "expectedErrors": [
+      {
+        "Begin": {
+          "Line": 7,
+          "Column": 12
+        },
+        "End": {
+          "Line": 7,
+          "Column": 18
+        }
+      }
+    ]
+  },
+  {    
+    "type": "CompileFail",
+    "wide": "Wide/IntegrationTests/CompileFail/OverloadResolutionFailure/ModuleOperator.wide",
+    "expectedErrors": [
+      {
+        "Begin": {
+          "Line": 7,
+          "Column": 12
+        },
+        "End": {
+          "Line": 7,
+          "Column": 20
+        }
+      }
+    ]
+  },
+  {    
+    "type": "CompileFail",
+    "wide": "Wide/IntegrationTests/CompileFail/OverloadResolutionFailure/NoCopyAssignmentOperatorWithConstructor.wide",
+    "expectedErrors": [
+      {
+        "Begin": {
+          "Line": 9,
+          "Column": 5
+        },
+        "End": {
+          "Line": 9,
+          "Column": 15
+        }
+      }
+    ]
+  },
+  {    
+    "type": "CompileFail",
+    "wide": "Wide/IntegrationTests/CompileFail/OverloadResolutionFailure/NonCopyable.wide",
+    "cpp": "Wide/IntegrationTests/CompileFail/OverloadResolutionFailure/NonCopyable.h",
+    "expectedErrors": [
+      {
+        "Begin": {
+          "Line": 4,
+          "Column": 13
+        },
+        "End": {
+          "Line": 4,
+          "Column": 16
+        }
+      }
+    ]
+  },
+  {
+    "type": "CompileFail",
+    "wide": "Wide/IntegrationTests/CompileFail/OverloadResolutionFailure/PrivateCopyMovableTuple.wide",    
+    "expectedErrors": [
+      {
+        "Begin": {
+          "Line": 9,
+          "Column": 13
+        },
+        "End": {
+          "Line": 9,
+          "Column": 16
+        }
+      }
+    ]
+  },
+  {
+    "type": "CompileFail",
+    "wide": "Wide/IntegrationTests/CompileFail/OverloadResolutionFailure/RvalueQualifiedThis.wide",    
+    "expectedErrors": [
+      {
+        "Begin": {
+          "Line": 8,
+          "Column": 12
+        },
+        "End": {
+          "Line": 8,
+          "Column": 15
+        }
+      }
+    ]
+  },
+  {
+    "type": "CompileFail",
+    "wide": "Wide/IntegrationTests/CompileFail/RecursiveMember/MemberOfSelf.wide",
+    "expectedErrors": [
+      {
+        "Begin": {
+          "Line": 2,
+          "Column": 11
+        },
+        "End": {
+          "Line": 2,
+          "Column": 12
+        }
+      }
+    ]
+  },
     { "type": "JITSuccess", "wide": "Wide/IntegrationTests/JITSuccess/AnonymousType.wide" },
     { "type": "JITSuccess", "wide": "Wide/IntegrationTests/JITSuccess/Arrays/ArrayBadIndex.wide" },
     { "type": "JITSuccess", "wide": "Wide/IntegrationTests/JITSuccess/Arrays/ArraySize.wide" },

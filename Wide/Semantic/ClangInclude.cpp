@@ -102,10 +102,10 @@ std::shared_ptr<Expression> ClangIncludeEntity::AccessNamedMember(Expression::In
 }
 
 std::shared_ptr<Expression> ClangIncludeEntity::ConstructCall(Expression::InstanceKey key, std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c) {
-    if (!dynamic_cast<String*>(args[0].get()))
-        throw SpecificError<FileNameNotConstant>(analyzer, c.where, "First argument to cpp must be a string.");
     if (args.size() != 1)
         throw SpecificError<CPPWrongArgumentNumber>(analyzer, c.where, "cpp accepts only one argument.");
+    if (!dynamic_cast<String*>(args[0].get()))
+        throw SpecificError<FileNameNotConstant>(analyzer, c.where, "First argument to cpp must be a string.");
     auto str = dynamic_cast<String*>(args[0].get());
     auto name = str->str;
     if (name.size() > 1 && name[0] == '<')

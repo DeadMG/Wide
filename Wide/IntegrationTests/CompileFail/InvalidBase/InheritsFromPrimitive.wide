@@ -1,4 +1,3 @@
-ExpectedFailure() { return { { "BaseFinal", 2, 10, 2, 13 } }; }
 type t : int {
     f() { return false; }
 }

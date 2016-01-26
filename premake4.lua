@@ -342,7 +342,7 @@ WideProjects = {
     IntegrationTests = {
         action = function(plat, conf)
             kind("ConsoleApp")
-            links { "Util", "Lexer", "Parser", "Semantic" }
+            links { "Util" }
             files ({ "Wide/IntegrationTests/**.wide" })
         end,
         configure = function(plat, conf)

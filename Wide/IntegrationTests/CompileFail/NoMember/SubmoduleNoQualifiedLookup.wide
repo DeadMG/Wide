@@ -1,4 +1,3 @@
-ExpectedFailure() { return { { "NoMemberFound", 5, 5, 5, 24 } }; }
 module Submodule {
 }
 Main() {

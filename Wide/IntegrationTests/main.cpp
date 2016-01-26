@@ -8,6 +8,50 @@
 #include <set>
 #include <boost/program_options.hpp>
 #include <Wide/Util/DebugBreak.h>
+#include <map>
+
+Wide::Driver::ProcessResult ExecuteCompile(json::value test, std::string gccpath, std::string stdlibpath, std::string CLIPath) {
+    std::ifstream wide_src(test["wide"].as<std::string>(), std::ios::in | std::ios::binary);
+    json::value sourcefile = json::value::object({
+        { "Name", test["wide"].as<std::string>() },
+        { "Contents", std::string(std::istreambuf_iterator<char>(wide_src), std::istreambuf_iterator<char>()) }
+    });
+    auto val = json::value::object({
+        { "Source", json::value::array({ sourcefile }) },
+        { "GCCPath", gccpath + "g++" },
+        { "StdlibPath", stdlibpath }
+    });
+    if (test["cpp"].is<std::string>()) {
+        std::ifstream cpp_src(test["cpp"].as<std::string>(), std::ios::in | std::ios::binary);
+        val["CppSource"] = json::value::array({
+            json::value::object({
+                { "Name", test["cpp"].as<std::string>() },
+                { "Contents", std::string(std::istreambuf_iterator<char>(cpp_src), std::istreambuf_iterator<char>()) }
+        })
+        });
+    }
+    std::ofstream test_json("current_test.json", std::ios::out | std::ios::trunc);
+    auto json_test_input = json::dump_string(val);
+    test_json.write(json_test_input.c_str(), json_test_input.size());
+    test_json.flush();
+    return Wide::Driver::StartAndWaitForProcess(CLIPath, { "--interface=JSON", "current_test.json" }, 10000);
+}
+
+bool MatchesError(json::value expected_error, const json::array& actual_errors) {
+    for (auto&& actual_err : actual_errors) {
+        auto location = actual_err["Where"];
+        if (location["Begin"].as<json::object>()["Line"].as<double>() != expected_error["Begin"].as<json::object>()["Line"].as<double>())
+            continue;
+        if (location["Begin"].as<json::object>()["Column"].as<double>() != expected_error["Begin"].as<json::object>()["Column"].as<double>())
+            continue;
+        if (location["End"].as<json::object>()["Line"].as<double>() != expected_error["End"].as<json::object>()["Line"].as<double>())
+            continue;
+        if (location["End"].as<json::object>()["Column"].as<double>() != expected_error["End"].as<json::object>()["Column"].as<double>())
+            continue;
+        return true;
+    }
+    return false;
+}
 
 bool ExecuteJsonTest(json::value test) {
 #ifdef _MSC_VER
@@ -27,30 +71,7 @@ bool ExecuteJsonTest(json::value test) {
 #endif
     auto type = test["type"].as<std::string>();
     if (type == "JITSuccess") {
-        std::ifstream wide_src(test["wide"].as<std::string>(), std::ios::in | std::ios::binary);
-        json::value sourcefile = json::value::object({
-            { "Name", test["wide"].as<std::string>() },
-            { "Contents", std::string(std::istreambuf_iterator<char>(wide_src), std::istreambuf_iterator<char>()) }
-        });
-        auto val = json::value::object({
-            { "Source", json::value::array({ sourcefile }) },
-            { "GCCPath", gccpath + "g++" },
-            { "StdlibPath", stdlibpath }
-        });
-        if (test["cpp"].is<std::string>()) {
-            std::ifstream cpp_src(test["cpp"].as<std::string>(), std::ios::in | std::ios::binary);
-            val["CppSource"] = json::value::array({
-                json::value::object({
-                    { "Name", test["cpp"].as<std::string>() },
-                    { "Contents", std::string(std::istreambuf_iterator<char>(cpp_src), std::istreambuf_iterator<char>()) }
-                })
-            });
-        }
-        std::ofstream test_json("current_test.json", std::ios::out | std::ios::trunc);
-        auto json_test_input = json::dump_string(val);
-        test_json.write(json_test_input.c_str(), json_test_input.size());
-        test_json.flush();
-        auto compile = Wide::Driver::StartAndWaitForProcess(CLIPath, { "--interface=JSON", "current_test.json" }, 10000);
+        auto compile = ExecuteCompile(test, gccpath, stdlibpath, CLIPath);
         if (compile.exitcode != 0)
             return compile.exitcode;
 #ifdef _MSC_VER
@@ -65,6 +86,24 @@ bool ExecuteJsonTest(json::value test) {
 #else
         return Wide::Driver::StartAndWaitForProcess("./a.out", {}, 10000).exitcode != 0;
 #endif
+    }
+    if (type == "CompileFail") {
+        auto compile = ExecuteCompile(test, gccpath, stdlibpath, CLIPath);
+        if (compile.exitcode != 1)
+            return true;
+        json::value result;
+        json::parse(compile.std_out, result);
+        if (!result["Errors"].is<json::array>())
+            return true;
+        auto errors = result["Errors"].as<json::array>();
+        if (!test["expectedErrors"].is<json::array>())
+            return true;
+        auto expected_errors = test["expectedErrors"].as<json::array>();
+        for (auto&& expected_error : expected_errors) {
+            if (!MatchesError(expected_error, errors))
+                return true;
+        }
+        return false;
     }
     return false;
 }

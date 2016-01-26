@@ -1,4 +1,3 @@
-ExpectedFailure() { return { { "AddressOfNonLvalue", 3, 13, 3, 19 } }; }
 Main() {
     return *&false;
 }

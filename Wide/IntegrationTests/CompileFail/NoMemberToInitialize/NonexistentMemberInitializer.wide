@@ -1,4 +1,3 @@
-ExpectedFailure() { return { { "NoMemberToInitialize", 3, 12, 3, 23 } }; }
 type t {
     type() : oops := 5 {}
 }

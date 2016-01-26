@@ -1,4 +1,3 @@
-ExpectedFailure() { return { { "OverloadResolutionFailed", 9, 13, 9, 16 } }; }
 type t {
     val : bool;
     type() : val := true {}
