@@ -23,7 +23,7 @@ namespace Wide {
             };
             Wide::Lexer::Token GetLastValidToken() const;
             Wide::Util::optional<Wide::Lexer::Token> GetInvalidToken() const;
-            std::unordered_set<Wide::Lexer::TokenType> GetExpectedTokenTypes();
+            std::unordered_set<Wide::Lexer::TokenType> GetExpectedTokenTypes() const;
         };
     }
 }

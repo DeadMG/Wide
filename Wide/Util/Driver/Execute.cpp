@@ -67,8 +67,8 @@ ParseResponse Wide::Driver::Parse(std::vector<std::vector<Lexer::Token>> tokens)
     Wide::Concurrency::Vector<std::runtime_error> ASTErrors;
     Wide::Concurrency::ParallelForEach(tokens.begin(), tokens.end(), [&](const std::vector<Lexer::Token>& source) {
         auto tokens = Wide::Range::IteratorRange(source.begin(), source.end());
+        auto parser = std::make_shared<Wide::Parse::Parser>(tokens);
         try {
-            auto parser = std::make_shared<Wide::Parse::Parser>(tokens);
             auto mod = Wide::Memory::MakeUnique<Wide::Parse::Module>(Wide::Util::none);
             auto results = parser->ParseGlobalModuleContents();
             for (auto&& member : results)
@@ -80,7 +80,9 @@ ParseResponse Wide::Driver::Parse(std::vector<std::vector<Lexer::Token>> tokens)
         }
         catch (std::runtime_error& e) {
             ASTErrors.push_back(e);
-        }        
+        }
+        for (auto&& err : parser->lex.errors)
+            ParseErrors.push_back(err);
     });
     return ParseResponse{
         std::vector<std::shared_ptr<Parse::Module>>(Modules.begin(), Modules.end()),

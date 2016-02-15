@@ -42,10 +42,16 @@ template<typename F> auto PutbackLexer::operator()(std::unordered_set<Lexer::Tok
 }
 template<typename F> auto PutbackLexer::operator()(std::unordered_set<Lexer::TokenType> required, std::unordered_set<Lexer::TokenType> terminators, F f) -> decltype(f(std::declval<Wide::Lexer::Token&>())) {
     auto val = (*this)();
-    if (!val)
-        throw Error(tokens.back(), Wide::Util::none, required);
-    if (required.find(val->GetType()) == required.end())
-        throw Error(tokens[tokens.size() - 2], *val, required);
+    if (!val) {
+        auto error = Error(tokens.back(), Wide::Util::none, required);
+        errors.push_back(error);
+        throw error;
+    }
+    if (required.find(val->GetType()) == required.end()) {
+        auto error = Error(tokens[tokens.size() - 2], *val, required);
+        errors.push_back(error);
+        throw error;
+    }
     try {
         return f(*val);
     }
@@ -1035,7 +1041,7 @@ Parser::Parser(std::function<Wide::Util::optional<Lexer::Token>()> l)
         }
         for (auto&& loc : p->locations)
             if (auto&& longform = boost::get<Wide::Parse::ModuleLocation::LongForm>(&loc.location))
-                results = collect(results, std::vector<Lexer::Range>{ longform->OpenCurly, longform->CloseCurly });
+                results = collect(results, std::vector<Lexer::Range>{ longform->OpenCurly + longform->CloseCurly });
         return results;
     });
 }
@@ -1474,7 +1480,7 @@ Wide::Lexer::Token Parse::Error::GetLastValidToken() const {
 Wide::Util::optional<Wide::Lexer::Token> Parse::Error::GetInvalidToken() const {
     return unexpected;
 }
-std::unordered_set<Wide::Lexer::TokenType> Parse::Error::GetExpectedTokenTypes() {
+std::unordered_set<Wide::Lexer::TokenType> Parse::Error::GetExpectedTokenTypes() const {
     return expected;
 }
 
@@ -1556,3 +1562,137 @@ std::unique_ptr<Module> Parser::ParseModuleFunction(Lexer::Range where, ModulePa
         return mod;
     });
 }
+
+namespace Wide { namespace Wide2 {
+
+    }
+}
+#if defined(__has_include)
+#if __has_include(<emscripten/bind.h>)
+#include <emscripten/bind.h>
+#include <Wide/Lexer/Lexer.h>
+#include <Wide/Lexer/Token.h>
+#include <Wide/Lexer/LexerError.h>
+#include <Wide/Util/Ranges/StringRange.h>
+#include <Wide/Util/Ranges/Container.h>
+using namespace emscripten;
+namespace Wide {
+    namespace Emscripten {
+        val Lex(std::string source) {
+            int num = 0;
+            auto result = val::array();
+            Wide::Lexer::Invocation inv(Wide::Range::StringRange(source), Wide::Lexer::Position(std::make_shared<std::string>("test")));
+            inv.OnError = [&](Wide::Lexer::Error err) {
+                result.set(num++, err);
+                return inv();
+            };
+            while (auto tok = inv())
+                result.set(num++, *tok);
+            return result;
+        }
+        bool IsKeyword(Wide::Lexer::Token& tok) {
+            return Lexer::default_keyword_types.find(tok.GetType()) != Lexer::default_keyword_types.end();
+        }
+        bool IsLiteral(Wide::Lexer::Token& tok) {
+            return tok.GetType() == &Wide::Lexer::TokenTypes::String || tok.GetType() == &Wide::Lexer::TokenTypes::Integer;
+        }
+        bool IsComment(Wide::Lexer::Token& tok) {
+            return tok.GetType() == &Wide::Lexer::TokenTypes::Comment;
+        }
+        std::string DescribeError(const Wide::Lexer::Error& err) {
+            if (err.What == Lexer::Failure::UnterminatedStringLiteral)
+                return "Unterminated string literal";
+            if (err.What == Lexer::Failure::UnlexableCharacter)
+                return "Unlexable character";
+            return "Unterminated comment";
+        }
+        std::string DescribeParseError(const Wide::Parse::Error& err) {
+            std::string error = "Unexpected ";
+            error += err.GetInvalidToken() ? *err.GetInvalidToken()->GetType() : "end of input";
+            error += " expected ";
+            auto validTypes = err.GetExpectedTokenTypes();
+            bool first = true;
+            for (auto&& type : validTypes) {
+                if (!first)
+                    error += ", ";
+                else
+                    first = false;
+                error += *type;
+            }
+            return error;
+        }
+        Lexer::Range GetParseLocation(const Wide::Parse::Error& err) {
+            return err.GetInvalidToken() ? err.GetInvalidToken()->GetLocation() : err.GetLastValidToken().GetLocation();
+        }
+        Lexer::Range GetLexerLocation(const Wide::Lexer::Error& err) {
+            Lexer::Position end = err.Where;
+            end.offset += 1;
+            return Lexer::Range(err.Where, end);
+        }
+        val Parse(std::string source) {
+            int num = 0;
+            auto result = val::object();
+            auto lexerResult = val::array();
+            std::vector<Wide::Lexer::Token> tokens;
+            Wide::Lexer::Invocation inv(Wide::Range::StringRange(source), Wide::Lexer::Position(std::make_shared<std::string>("test")));
+            inv.OnError = [&](Wide::Lexer::Error err) {
+                lexerResult.set(num++, err);
+                return inv();
+            };
+            while (auto tok = inv()) {
+                lexerResult.set(num++, *tok);
+                tokens.push_back(*tok);
+            }
+            result.set("lexerResult", lexerResult);
+            auto parser = std::make_shared<Wide::Parse::Parser>(Wide::Range::Container(tokens));
+            std::unique_ptr<Wide::Parse::Module> mod;
+            try {
+                auto results = parser->ParseGlobalModuleContents();
+                mod = Wide::Memory::MakeUnique<Wide::Parse::Module>(Wide::Util::none);
+                for (auto&& member : results)
+                    parser->AddMemberToModule(mod.get(), std::move(member));
+            }
+            catch (Wide::Parse::Error& e) {}
+            catch (std::runtime_error& e) {}
+            auto js_errors = val::array();
+            auto i = 0;
+            for (auto&& err : parser->lex.errors)
+                js_errors.set(i++, err);
+            result.set("parserResult", js_errors);
+            if (mod != nullptr) {
+                auto js_outlines = val::array();
+                i = 0;
+                for (auto&& outline : parser->con.Outline(mod.get()))
+                    js_outlines.set(i++, outline);
+                result.set("outlines", js_outlines);
+            }
+            return result;
+        }
+    }
+}
+EMSCRIPTEN_BINDINGS(dunno_what_goes_here) {
+    register_vector<Wide::Lexer::Token>("TokenVector");
+    class_<Wide::Lexer::Position>("Position")
+        .property("line", &Wide::Lexer::Position::line)
+        .property("column", &Wide::Lexer::Position::column)
+        .property("offset", &Wide::Lexer::Position::offset);
+    class_<Wide::Lexer::Range>("Range")
+        .property("begin", &Wide::Lexer::Range::begin)
+        .property("end", &Wide::Lexer::Range::end);
+    class_<Wide::Lexer::Token>("Token")
+        .property("where", &Wide::Lexer::Token::GetLocation)
+        .function("GetValue", &Wide::Lexer::Token::GetValue)
+        .function("IsKeyword", &Wide::Emscripten::IsKeyword)
+        .function("IsLiteral", &Wide::Emscripten::IsLiteral)
+        .function("IsComment", &Wide::Emscripten::IsComment);
+    class_<Wide::Lexer::Error>("Error")
+        .property("where", &Wide::Emscripten::GetLexerLocation)
+        .property("what", &Wide::Emscripten::DescribeError);
+    class_<Wide::Parse::Error>("ParseError")
+        .property("where", &Wide::Emscripten::GetParseLocation)
+        .property("what", &Wide::Emscripten::DescribeParseError);
+    function("Lex", &Wide::Emscripten::Lex);
+    function("Parse", &Wide::Emscripten::Parse);
+}
+#endif
+#endif

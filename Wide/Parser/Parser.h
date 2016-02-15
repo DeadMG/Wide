@@ -42,6 +42,7 @@ namespace Wide {
         private:
             std::unordered_set<Lexer::TokenType> latest_terminators;
         public:
+            std::vector<Error> errors;
             PutbackLexer(std::function<Wide::Util::optional<Lexer::Token>()> lex) : lex(std::move(lex)) {}
             
             std::function<Wide::Util::optional<Lexer::Token>()> lex;
