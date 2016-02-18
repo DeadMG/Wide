@@ -4,6 +4,6 @@ f() {
     return "Hello, World!"; 
 }
 Main() {
-    cplusplus.bar(();
+    cplusplus.bar();
     return true;
 }
