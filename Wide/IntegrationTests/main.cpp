@@ -18,7 +18,7 @@ Wide::Driver::ProcessResult ExecuteCompile(json::value test, std::string gccpath
     });
     auto val = json::value::object({
         { "Source", json::value::array({ sourcefile }) },
-        { "GCCPath", gccpath + "g++" },
+        { "GCCPath", gccpath },
         { "StdlibPath", stdlibpath }
     });
     if (test["cpp"].is<std::string>()) {
@@ -65,17 +65,25 @@ bool ExecuteJsonTest(json::value test) {
     auto stdlibpath = std::string("Wide/WideLibrary");
 #endif
 #ifdef _MSC_VER
-    auto gccpath = std::string("Wide\\Deployment\\MinGW\\bin\\");
+    auto gccpath = std::string("Wide\\Deployment\\MinGW\\bin\\g++");
 #else
-    auto gccpath = std::string("");
+    auto gccpath = std::string("clang++");
 #endif
     auto type = test["type"].as<std::string>();
     if (type == "JITSuccess") {
         auto compile = ExecuteCompile(test, gccpath, stdlibpath, CLIPath);
         if (compile.exitcode != 0)
             return compile.exitcode;
+#ifndef _MSC_VER
+        // Don't support this on Windoze right now- clang and libstdc++ don't always get along
+        json::value result;
+        json::parse(compile.std_out, result);
+        auto errors = result["Errors"].as<json::array>();
+        if (!errors.empty())
+            return 1;
+#endif
 #ifdef _MSC_VER
-        auto link = Wide::Driver::StartAndWaitForProcess(gccpath + "g++.exe", { "-o a.exe", "a.o" }, 10000);
+        auto link = Wide::Driver::StartAndWaitForProcess(gccpath + ".exe", { "-o a.exe", "a.o" }, 10000);
 #else
         auto link = Wide::Driver::StartAndWaitForProcess(gccpath + "g++", { "-o", "a.out", "a.o" }, 10000);
 #endif

@@ -259,7 +259,11 @@ Wide::Options::Clang Wide::Driver::PrepareClangOptions(DriverOptions opts) {
     ClangOpts.LanguageOptions.MSCompatibilityVersion = 0;
     ClangOpts.LanguageOptions.MSVCCompat = 0;
     ClangOpts.LanguageOptions.MicrosoftExt = 0;
-    
+    ClangOpts.LanguageOptions.GNUMode = true;
+    ClangOpts.LanguageOptions.GNUKeywords = true;
+    ClangOpts.LanguageOptions.CPlusPlus11 = true;
+    ClangOpts.LanguageOptions.CPlusPlus = true;
+    ClangOpts.LanguageOptions.LaxVectorConversions = true;
     for (auto&& path : opts.CppIncludePaths) {
         ClangOpts.HeaderSearchOptions->AddPath(path, clang::frontend::IncludeDirGroup::CXXSystem, false, false);
     }
@@ -273,6 +277,6 @@ bool Wide::Driver::Failed(const Response& r) {
         || !r.Combine.ASTErrors.empty()
         || !r.Analysis.AnalysisErrors.empty()
         || r.Analysis.OldError
-        //|| !r.Analysis.ClangErrors.empty()
+        || !r.Analysis.ClangErrors.empty()
         || !r.Analysis.ClangFatals.empty();
 }

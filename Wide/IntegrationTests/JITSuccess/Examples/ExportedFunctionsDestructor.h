@@ -1,4 +1,4 @@
-struct t { ~t(); };
-void g() {
-    t obj;
+struct test { ~test(); };
+void gtest() {
+    test obj;
 }

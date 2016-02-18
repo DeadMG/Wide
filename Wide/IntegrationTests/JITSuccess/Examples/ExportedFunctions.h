@@ -1,3 +1,3 @@
 #include <iostream>
 const char* f(); 
-void g() { std::cout << f(); }
+void bar() { std::cout << f(); }

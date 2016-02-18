@@ -1,9 +1,8 @@
-using cplusplus := cpp("Wide/IntegrationTests/JITSuccess/Examples/ExportedFunctionsDestructor.h");
-[export := cplusplus.t.destructor]
+[export := cpp.test.destructor]
 ~type() {
     std.cout << "Hello, World!";
 }
 Main() {
-    cplusplus.g();
+    cpp.gtest();
     return true;
 }
