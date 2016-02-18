@@ -216,6 +216,7 @@ namespace {
         std::map<std::string, json::value> where;
         where["Line"] = p.line;
         where["Column"] = p.column;
+        where["Offset"] = p.offset;
         return where;
     }
     json::value JsonRange(Lexer::Range r) {
