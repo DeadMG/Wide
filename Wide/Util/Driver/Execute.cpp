@@ -277,6 +277,6 @@ bool Wide::Driver::Failed(const Response& r) {
         || !r.Combine.ASTErrors.empty()
         || !r.Analysis.AnalysisErrors.empty()
         || r.Analysis.OldError
-        || !r.Analysis.ClangErrors.empty()
+        //|| !r.Analysis.ClangErrors.empty()
         || !r.Analysis.ClangFatals.empty();
 }

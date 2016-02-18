@@ -287,7 +287,7 @@ std::string Wide::Driver::JsonResponse(const Response& r, JSONOptions opts) {
         error["Where"] = JsonRange(err.location());
         errors.push_back(error);
     }
-    for (auto&& err : r.Analysis.ClangErrors) {
+    /*for (auto&& err : r.Analysis.ClangErrors) {
         std::map<std::string, json::value> error;
         error["What"] = err.what;
         std::vector<json::value> locations;
@@ -296,7 +296,7 @@ std::string Wide::Driver::JsonResponse(const Response& r, JSONOptions opts) {
         error["Where"] = locations;
         error["Severity"] = err.severity;
         errors.push_back(error);
-    }
+    }*/
     for (auto&& err : r.Analysis.ClangFatals) {
         std::map<std::string, json::value> error;
         error["What"] = err.what;

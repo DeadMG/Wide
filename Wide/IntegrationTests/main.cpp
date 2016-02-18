@@ -85,7 +85,7 @@ bool ExecuteJsonTest(json::value test) {
 #ifdef _MSC_VER
         auto link = Wide::Driver::StartAndWaitForProcess(gccpath + ".exe", { "-o a.exe", "a.o" }, 10000);
 #else
-        auto link = Wide::Driver::StartAndWaitForProcess(gccpath + "g++", { "-o", "a.out", "a.o" }, 10000);
+        auto link = Wide::Driver::StartAndWaitForProcess(gccpath, { "-o", "a.out", "a.o" }, 10000);
 #endif
         if (link.exitcode != 0)
             return link.exitcode;
