@@ -1563,10 +1563,6 @@ std::unique_ptr<Module> Parser::ParseModuleFunction(Lexer::Range where, ModulePa
     });
 }
 
-namespace Wide { namespace Wide2 {
-
-    }
-}
 #if defined(__has_include)
 #if __has_include(<emscripten/bind.h>)
 #include <emscripten/bind.h>
