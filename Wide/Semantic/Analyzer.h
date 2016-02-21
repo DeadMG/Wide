@@ -153,9 +153,6 @@ namespace Wide {
             std::string GetTypeExport(Type* t);
             auto GetFunctions() -> const decltype(WideFunctions)& { return WideFunctions; }
             
-            std::function<void(Lexer::Range where, Type* t)> QuickInfo;
-            std::function<void(Lexer::Range where)> ParameterHighlight;
-
             const llvm::DataLayout& GetDataLayout() { return layout; }
             void AddClangType(const clang::CXXRecordDecl* t, ClangTypeInfo match);
             ClangTypeInfo* MaybeGetClangTypeInfo(const clang::CXXRecordDecl* decl);

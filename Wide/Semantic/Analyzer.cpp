@@ -85,8 +85,6 @@ Analyzer::~Analyzer() {
 
 Analyzer::Analyzer(const Options::Clang& opts, const Parse::Module* GlobalModule, llvm::LLVMContext& con)
     : clangopts(&opts)
-    , QuickInfo([](Lexer::Range, Type*) {})
-    , ParameterHighlight([](Lexer::Range){})
     , layout(::GetDataLayout(opts.TargetOptions.Triple))
     , ConstantModule(Wide::Util::CreateModuleForTriple(Wide::Util::GetMCJITProcessTriple(), con))
 {
@@ -473,13 +471,9 @@ std::vector<Type*> Analyzer::GetFunctionParameters(const Parse::FunctionBase* fu
     for (auto&& arg : func->args) {
         if (!arg.type) {
             if (arg.default_value) {
-                auto p_type = AnalyzeExpression(context, arg.default_value.get(), [](Parse::Name, Lexer::Range) { return nullptr; })->GetType(Expression::NoInstance())->Decay();
-                QuickInfo(arg.location, p_type);
-                ParameterHighlight(arg.location);
-                out.push_back(p_type);
+                out.push_back(AnalyzeExpression(context, arg.default_value.get(), [](Parse::Name, Lexer::Range) { return nullptr; })->GetType(Expression::NoInstance())->Decay());
                 continue;
             }
-            ParameterHighlight(arg.location);
             out.push_back(nullptr);
             continue;
         }      
@@ -499,8 +493,6 @@ std::vector<Type*> Analyzer::GetFunctionParameters(const Parse::FunctionBase* fu
             } else
                 throw SpecificError<ExplicitThisNotFirstArgument>(*this, arg.location, "Explicit this was not the first argument.");
         }
-        QuickInfo(arg.location, con_type->GetConstructedType());
-        ParameterHighlight(arg.location);
         out.push_back(con_type->GetConstructedType());
     }
     return out;
@@ -705,7 +697,6 @@ OverloadResolvable* Analyzer::GetCallableForTemplateType(const Parse::TemplateTy
                 if (!arg->IsConstant())
                     return Util::none;
                 if (!templatetype->arguments[num].type) {
-                    a.ParameterHighlight(templatetype->arguments[num].location); 
                     valid.push_back(arg);
                     continue;
                 }
@@ -713,8 +704,6 @@ OverloadResolvable* Analyzer::GetCallableForTemplateType(const Parse::TemplateTy
                 auto con_type = dynamic_cast<ConstructorType*>(p_type);
                 if (!con_type)
                     throw SpecificError<TemplateArgumentNotAType>(a, templatetype->arguments[num].type->location, "Template argument type was not a type.");
-                a.QuickInfo(templatetype->arguments[num].location, con_type->GetConstructedType());
-                a.ParameterHighlight(templatetype->arguments[num].location);
                 if (Type::IsFirstASecond(arg, con_type->GetConstructedType(), source))
                     valid.push_back(con_type->GetConstructedType());
                 else
