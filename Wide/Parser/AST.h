@@ -311,15 +311,11 @@ namespace Wide {
         };
         struct FunctionArgument {
             FunctionArgument(const FunctionArgument&) = delete;
-            FunctionArgument(FunctionArgument&& other)
-                : type(std::move(other.type))
-                , default_value(std::move(other.default_value))
-                , name(std::move(other.name))
-                , location(std::move(other.location)) {}
+            FunctionArgument(FunctionArgument&& other) = default;
             FunctionArgument(Lexer::Range where, std::string name, std::unique_ptr<Expression> ty, std::unique_ptr<Expression> def)
-                : location(std::move(where)), name(std::move(name)), type(std::move(ty)), default_value(std::move(def)) {}
+                : location(std::move(where)), name(std::move(name)), non_nullable_type(std::move(ty)), default_value(std::move(def)) {}
             // May be null
-            std::unique_ptr<Expression> type;
+            std::unique_ptr<Expression> non_nullable_type;
             std::unique_ptr<Expression> default_value;
             std::string name;
             Lexer::Range location;

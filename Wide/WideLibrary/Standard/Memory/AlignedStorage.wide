@@ -1,8 +1,0 @@
-module Standard {
-    module Memory {
-        template(t)
-        [alignment := t.alignment]
-        [size := t.size]
-        type AlignedStorage {}
-    }
-}

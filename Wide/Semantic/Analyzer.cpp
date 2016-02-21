@@ -469,21 +469,12 @@ std::vector<Type*> Analyzer::GetFunctionParameters(const Parse::FunctionBase* fu
             out.push_back(GetLvalueType(GetNonstaticContext(func, context)));
     }
     for (auto&& arg : func->args) {
-        if (!arg.type) {
-            if (arg.default_value) {
-                out.push_back(AnalyzeExpression(context, arg.default_value.get(), [](Parse::Name, Lexer::Range) { return nullptr; })->GetType(Expression::NoInstance())->Decay());
-                continue;
-            }
-            out.push_back(nullptr);
-            continue;
-        }      
-
-        auto ty_expr = arg.type.get();
+        auto ty_expr = arg.non_nullable_type.get();
         auto expr = AnalyzeExpression(context, ty_expr, [](Parse::Name, Lexer::Range) { return nullptr; });
         auto p_type = expr->GetType(Expression::NoInstance())->Decay();
         auto con_type = dynamic_cast<ConstructorType*>(p_type);
         if (!con_type)
-            throw SpecificError<FunctionArgumentNotType>(*this, arg.type->location, "Function argument type was not a type.");
+            throw SpecificError<FunctionArgumentNotType>(*this, arg.non_nullable_type->location, "Function argument type was not a type.");
         if (arg.name == "this") {
             if (&arg == &func->args[0]) {
                 if (!GetNonstaticContext(func, context))
@@ -615,7 +606,6 @@ Parse::Access Semantic::GetAccessSpecifier(Type* from, Type* to) {
 }
 namespace {
     void ProcessFunction(const Parse::AttributeFunctionBase* f, Analyzer& a, Module* m, std::string name, std::function<void(const Parse::AttributeFunctionBase*, std::string, Module*)> callback) {
-        if (IsMultiTyped(f)) return;
         bool exported = false;
         for (auto&& attr : f->attributes) {
             if (auto ident = dynamic_cast<const Parse::Identifier*>(attr.initialized.get()))
@@ -696,14 +686,10 @@ OverloadResolvable* Analyzer::GetCallableForTemplateType(const Parse::TemplateTy
                 auto arg = types[num]->Decay();
                 if (!arg->IsConstant())
                     return Util::none;
-                if (!templatetype->arguments[num].type) {
-                    valid.push_back(arg);
-                    continue;
-                }
-                auto p_type = a.AnalyzeExpression(context, templatetype->arguments[num].type.get(), [](Parse::Name, Lexer::Range) { return nullptr; })->GetType(Expression::NoInstance())->Decay();
+                auto p_type = a.AnalyzeExpression(context, templatetype->arguments[num].non_nullable_type.get(), [](Parse::Name, Lexer::Range) { return nullptr; })->GetType(Expression::NoInstance())->Decay();
                 auto con_type = dynamic_cast<ConstructorType*>(p_type);
                 if (!con_type)
-                    throw SpecificError<TemplateArgumentNotAType>(a, templatetype->arguments[num].type->location, "Template argument type was not a type.");
+                    throw SpecificError<TemplateArgumentNotAType>(a, templatetype->arguments[num].non_nullable_type->location, "Template argument type was not a type.");
                 if (Type::IsFirstASecond(arg, con_type->GetConstructedType(), source))
                     valid.push_back(con_type->GetConstructedType());
                 else
@@ -753,15 +739,6 @@ LambdaType* Analyzer::GetLambdaType(FunctionSkeleton* skel, std::vector<std::pai
      || LambdaTypes[skel].find(types) == LambdaTypes[skel].end())
         LambdaTypes[skel][types] = Wide::Memory::MakeUnique<LambdaType>(types, skel, *this);
     return LambdaTypes[skel][types].get();
-}
-bool Semantic::IsMultiTyped(const Parse::FunctionArgument& f) {
-    return !f.type;
-}
-bool Semantic::IsMultiTyped(const Parse::FunctionBase* f) {
-    bool ret = false;
-    for (auto&& var : f->args)
-        ret = ret || IsMultiTyped(var);
-    return ret;
 }
 std::shared_ptr<Expression> Analyzer::AnalyzeExpression(Type* lookup, const Parse::Expression* e, Scope* current, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup) {
     return AnalyzeExpression(lookup, e, [=](Parse::Name name, Lexer::Range where) {

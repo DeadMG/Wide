@@ -1,5 +1,5 @@
 module x {
-    operator+(y, z) {
+    operator+(y: bool, z: bool) {
         return y & z;
     }
 }

@@ -538,7 +538,6 @@ Wide::Util::optional<clang::QualType> UserDefinedType::GetClangType(ClangTU& TU)
             if (!maybe_overset) continue;
             for (auto&& access : *maybe_overset) {
                 for (auto&& func : access.second) {
-                    if (IsMultiTyped(func.get())) continue;
                     if (access.first == Parse::Access::Private) continue;
                     auto types = GetArgsForFunc(func.get());
                     std::vector<clang::QualType> args;
@@ -656,7 +655,6 @@ UserDefinedType::DefaultData::DefaultData(UserDefinedType* self) {
 
     for (auto&& conset : self->type->constructor_decls) {
         for (auto&& con : conset.second) {
-            if (IsMultiTyped(con.get())) continue;
             auto params = self->analyzer.GetFunctionParameters(con.get(), self);
             if (params.size() > 2) continue; //???
             if (params.size() == 1) {
@@ -680,7 +678,6 @@ UserDefinedType::DefaultData::DefaultData(UserDefinedType* self) {
             for (auto&& op_access_pair : *set) {
                 auto&& ops = op_access_pair.second;
                 for (auto&& op : ops) {
-                    if (IsMultiTyped(op.get())) continue;
                     auto params = self->analyzer.GetFunctionParameters(op.get(), self);
                     if (params.size() > 2) continue; //???
                     if (params[1] == self->analyzer.GetLvalueType(self)) {
@@ -1005,7 +1002,6 @@ std::pair<FunctionType*, std::function<llvm::Function*(llvm::Module*)>> UserDefi
     for (auto&& access : set) {
         for (auto&& func : access.second) {
             if (func->deleted) continue;
-            if (IsMultiTyped(func.get())) continue;
 
             auto widefunc = analyzer.GetWideFunction(GetWideFunction(func.get(), GetNameAsString(name)));
             if (!FunctionType::CanThunkFromFirstToSecond(entry.type, widefunc->GetSignature(), this, true))

@@ -1274,14 +1274,12 @@ std::vector<std::unique_ptr<Expression>> Parser::ParseTypeBases(std::shared_ptr<
 }
 std::vector<FunctionArgument> Parser::ParseFunctionDefinitionArguments(std::shared_ptr<Parse::Import> imp) {
     auto ret = std::vector<FunctionArgument>();
-    auto type = std::unique_ptr<Expression>();
-    auto default_value = std::unique_ptr<Expression>();
     return lex({ &Lexer::TokenTypes::CloseBracket, &Lexer::TokenTypes::Identifier, &Lexer::TokenTypes::This }, [&](Lexer::Token& t) {
         if (t.GetType() == &Lexer::TokenTypes::CloseBracket)
             return std::move(ret);
         lex(t);
         // At least one argument.
-        // The form is this or this : expr, then t, or t : expr
+        // The form is this : expr, then t : expr
         bool first = true;
         return RecursiveWhile<std::vector<FunctionArgument>>([&](std::function<std::vector<FunctionArgument>()> continuation) {
             std::unordered_set<Lexer::TokenType> expected = { &Lexer::TokenTypes::Identifier };
@@ -1289,31 +1287,25 @@ std::vector<FunctionArgument> Parser::ParseFunctionDefinitionArguments(std::shar
                 expected.insert(&Lexer::TokenTypes::This);
             return lex(expected, [&](Lexer::Token& ident) {
                 first = false;
-                auto handle_noncolon = [&](Lexer::Token& t2) {
-                    if (t2.GetType() == &Lexer::TokenTypes::CloseBracket) {
-                        ret.push_back(FunctionArgument(ident.GetLocation(), ident.GetValue(), std::move(type), std::move(default_value)));
-                        return std::move(ret);
-                    }
-                    if (t2.GetType() == &Lexer::TokenTypes::Comma) {
-                        ret.push_back({ ident.GetLocation(), ident.GetValue(), std::move(type), std::move(default_value) });
-                        return continuation();
-                    }
-                    default_value = ParseExpression(imp);
-                    ret.push_back(FunctionArgument(ident.GetLocation() + lex.GetLastToken().GetLocation(), ident.GetValue(), std::move(type), nullptr));
-                    return lex({ &Lexer::TokenTypes::Comma, &Lexer::TokenTypes::CloseBracket }, [&](Lexer::Token& next) {
-                        if (next.GetType() == &Lexer::TokenTypes::Comma)
+                return lex({ &Lexer::TokenTypes::Colon }, [&](Lexer::Token& t2) {
+                    auto type = ParseExpression(imp);
+                    return lex({ &Lexer::TokenTypes::Comma, &Lexer::TokenTypes::CloseBracket, &Lexer::TokenTypes::VarCreate }, [&](Lexer::Token& t2) {
+                        if (t2.GetType() == &Lexer::TokenTypes::CloseBracket) {
+                            ret.push_back(FunctionArgument(ident.GetLocation(), ident.GetValue(), std::move(type), nullptr ));
+                            return std::move(ret);
+                        }
+                        if (t2.GetType() == &Lexer::TokenTypes::Comma) {
+                            ret.push_back({ ident.GetLocation(), ident.GetValue(), std::move(type), nullptr });
                             return continuation();
-                        return std::move(ret);
-                    });
-                };
-                return lex({ &Lexer::TokenTypes::VarCreate, &Lexer::TokenTypes::CloseBracket, &Lexer::TokenTypes::Comma, &Lexer::TokenTypes::Colon }, [&](Lexer::Token& t2) {
-                    if (t2.GetType() == &Lexer::TokenTypes::Colon) {
-                        type = ParseExpression(imp);
-                        return lex({ &Lexer::TokenTypes::Comma, &Lexer::TokenTypes::CloseBracket, &Lexer::TokenTypes::VarCreate }, [&](Lexer::Token& t2) {
-                            return handle_noncolon(t2);
+                        }
+                        auto default_value = ParseExpression(imp);
+                        ret.push_back(FunctionArgument(ident.GetLocation() + lex.GetLastToken().GetLocation(), ident.GetValue(), std::move(type), nullptr));
+                        return lex({ &Lexer::TokenTypes::Comma, &Lexer::TokenTypes::CloseBracket }, [&](Lexer::Token& next) {
+                            if (next.GetType() == &Lexer::TokenTypes::Comma)
+                                return continuation();
+                            return std::move(ret);
                         });
-                    }
-                    return handle_noncolon(t2);
+                    });
                 });
             });
         });

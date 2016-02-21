@@ -1,4 +1,4 @@
-f(lhs, rhs) {
+f(lhs: int64, rhs: int64) {
    return lhs + rhs;
 }
 Main() {

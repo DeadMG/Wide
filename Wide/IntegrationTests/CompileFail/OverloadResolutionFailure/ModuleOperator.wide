@@ -1,5 +1,5 @@
 module x {
-    operator+(t, y) {
+    operator+(t: decltype(x), y: bool) {
         return y;
     }
 }

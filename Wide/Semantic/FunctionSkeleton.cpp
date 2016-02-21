@@ -229,7 +229,7 @@ Scope* FunctionSkeleton::ComputeBody() {
                         root_scope.push_back(SetVirtualPointers());
                     }
                     // A single-argument constructor.
-                    auto argcon = analyzer.AnalyzeExpression(GetContext(), con->args[0].type.get(), [](Parse::Name, Lexer::Range) { return nullptr; });
+                    auto argcon = analyzer.AnalyzeExpression(GetContext(), con->args[0].non_nullable_type.get(), [](Parse::Name, Lexer::Range) { return nullptr; });
                     if (auto argconty = dynamic_cast<ConstructorType*>(argcon->GetType(Expression::NoInstance()))) {
                         if (argconty->GetConstructedType() == analyzer.GetLvalueType(GetContext())) {
                             // Copy constructor- copy all.
@@ -381,7 +381,7 @@ Scope* FunctionSkeleton::ComputeBody() {
                 auto members = member->GetConstructionMembers();
                 if (func->args.size() != 1)
                     throw std::runtime_error("Bad defaulted function.");
-                auto argty = dynamic_cast<ConstructorType*>(analyzer.AnalyzeExpression(GetContext(), func->args[0].type.get(), [](Parse::Name, Lexer::Range) { return nullptr; })->GetType(Expression::NoInstance()));
+                auto argty = dynamic_cast<ConstructorType*>(analyzer.AnalyzeExpression(GetContext(), func->args[0].non_nullable_type.get(), [](Parse::Name, Lexer::Range) { return nullptr; })->GetType(Expression::NoInstance()));
                 if (!argty)
                     throw std::runtime_error("Bad defaulted function.");
                 if (argty->GetConstructedType() == analyzer.GetLvalueType(GetContext())) {

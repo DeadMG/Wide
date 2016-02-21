@@ -809,10 +809,6 @@
   },
   {
     "type": "JITSuccess",
-    "wide": "Wide/IntegrationTests/JITSuccess/Examples/FunctionsGeneric.wide"
-  },
-  {
-    "type": "JITSuccess",
     "wide": "Wide/IntegrationTests/JITSuccess/Examples/FunctionsReturnTypeInference.wide"
   },
   {
@@ -1366,19 +1362,11 @@
   },
   {
     "type": "JITSuccess",
-    "wide": "Wide/IntegrationTests/JITSuccess/UserDefined/SimpleTemplateType.wide"
-  },
-  {
-    "type": "JITSuccess",
     "wide": "Wide/IntegrationTests/JITSuccess/UserDefined/SimpleTupleConstructible.wide"
   },
   {
     "type": "JITSuccess",
     "wide": "Wide/IntegrationTests/JITSuccess/UserDefined/SizeOverride.wide"
-  },
-  {
-    "type": "JITSuccess",
-    "wide": "Wide/IntegrationTests/JITSuccess/UserDefined/TemplateParameterAttribute.wide"
   },
   {
     "type": "JITSuccess",

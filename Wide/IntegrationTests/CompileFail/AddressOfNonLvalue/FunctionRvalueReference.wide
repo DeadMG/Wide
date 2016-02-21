@@ -1,4 +1,4 @@
-f(arg := bool.lvalue) : bool.rvalue { 
+f(arg : bool.lvalue) : bool.rvalue { 
     return move(arg); 
 }
 Main() {

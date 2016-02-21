@@ -1,6 +1,6 @@
 module Submodule {
     type t {}
-    operator+(lhs, rhs) { return true; }        
+    operator+(lhs: int64, rhs: t) { return true; }        
 }
 Main() {
     x := 5;

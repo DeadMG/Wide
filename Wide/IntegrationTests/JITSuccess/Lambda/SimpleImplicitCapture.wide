@@ -1,4 +1,4 @@
-f(arg) {
+f(arg: bool) {
     return () => arg;
 }
 Main() {

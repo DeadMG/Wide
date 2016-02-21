@@ -1,6 +1,0 @@
-template(t) 
-[size := t.size]
-type storage {}
-Main() {
-    return storage(int).size == int.size & storage(void.pointer).size == void.pointer.size;
-}

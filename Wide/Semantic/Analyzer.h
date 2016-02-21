@@ -271,8 +271,6 @@ namespace Wide {
         Parse::Access GetAccessSpecifier(Type* from, Type* to);
         void AnalyzeExportedFunctions(Analyzer& a, std::function<void(const Parse::AttributeFunctionBase*, std::string, Module*)> func);
         void AnalyzeExportedFunctions(Analyzer& a);
-        bool IsMultiTyped(const Parse::FunctionArgument& f);
-        bool IsMultiTyped(const Parse::FunctionBase* f);
         std::string GetOperatorName(Parse::OperatorName name);
         std::string GetNameAsString(Parse::Name name);
         Type* CollapseType(Type* source, Type* member);

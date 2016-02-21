@@ -1,7 +1,0 @@
-module Standard {
-    module Algorithm {
-        operator|(lhs, rhs) {
-            return rhs(move(lhs));
-        }
-    }
-}

@@ -1,9 +1,0 @@
-module Standard {
-    module Algorithms {
-        Any(pred) {
-            return function(range)[pred := move(pred)] {
-                return ~All(function(val)[pred := move(pred)] { return ~pred(val); })(move(range));
-            };
-        }
-    }
-}
