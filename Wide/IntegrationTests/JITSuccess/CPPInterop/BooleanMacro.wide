@@ -3,5 +3,5 @@ f(b : bool) {
     return b;
 }
 Main() {
-    return f(cpp.macro(cpp.literal("#define MACRO true"), "MACRO"));
+    return f(cpp.macro("MACRO"));
 }

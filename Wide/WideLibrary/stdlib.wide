@@ -1,1 +1,1 @@
-using std := cpp("test.h").std;
+using std := cpp.std;

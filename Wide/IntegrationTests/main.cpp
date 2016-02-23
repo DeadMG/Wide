@@ -30,6 +30,18 @@ Wide::Driver::ProcessResult ExecuteCompile(json::value test, std::string gccpath
         })
         });
     }
+    if (test["cpp"].is<std::vector<std::string>>()) {
+        std::vector<json::value> cpp_src_array;
+        for (auto&& var : test["cpp"].as<std::vector<std::string>>()) {
+            std::ifstream cpp_src(var, std::ios::in | std::ios::binary);
+            cpp_src_array.push_back(json::value::object({
+                { "Name", var },
+                { "Contents", std::string(std::istreambuf_iterator<char>(cpp_src), std::istreambuf_iterator<char>()) }
+            }));
+        }
+        val["CppSource"] = cpp_src_array;
+
+    }
     std::ofstream test_json("current_test.json", std::ios::out | std::ios::trunc);
     auto json_test_input = json::dump_string(val);
     test_json.write(json_test_input.c_str(), json_test_input.size());

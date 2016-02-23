@@ -1,9 +1,8 @@
-using cplusplus := cpp("Wide/IntegrationTests/JITSuccess/Examples/ExportedFunctions.h");
-[export := cplusplus.f]
+[export := cpp.f]
 f() {
     return "Hello, World!"; 
 }
 Main() {
-    cplusplus.bar();
+    cpp.bar();
     return true;
 }

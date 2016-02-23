@@ -54,19 +54,16 @@ std::shared_ptr<Expression> ClangIncludeEntity::AccessNamedMember(Expression::In
     if (name == "macro") {
         struct ClangMacroHandler : public OverloadResolvable, Callable {
             Util::optional<std::vector<Type*>> MatchParameter(std::vector<Type*> types, Analyzer& a, Type* source) override final {
-                if (types.size() != 2) return Util::none;
-                if (!dynamic_cast<ClangNamespace*>(types[0]->Decay())) return Util::none;
-                if (!dynamic_cast<StringType*>(types[1]->Decay())) return Util::none;
+                if (types.size() != 1) return Util::none;
+                if (!dynamic_cast<StringType*>(types[0]->Decay())) return Util::none;
                 return types;
             }
             Callable* GetCallableForResolution(std::vector<Type*>, Type*, Analyzer& a) override final { return this; }
             std::vector<std::shared_ptr<Expression>> AdjustArguments(Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c) override final { return args; }
             std::shared_ptr<Expression> CallFunction(Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c) override final{
-                auto gnamespace = dynamic_cast<ClangNamespace*>(args[0]->GetType(key)->Decay());
-                auto str = dynamic_cast<String*>(args[1].get());
-                assert(gnamespace && "Overload resolution picked bad candidate.");
+                auto str = dynamic_cast<String*>(args[0].get());
                 if (!str) throw SpecificError<MacroNameNotConstant>(str->a, c.where, "Failed to evaluate macro: name was not a constant expression.");
-                auto tu = gnamespace->GetTU();
+                auto tu = c.from->analyzer.GetAggregateTU();
                 return InterpretExpression(tu->ParseMacro(str->str, c.where), *tu, c, c.from->analyzer);
             }
         };
@@ -99,21 +96,6 @@ std::shared_ptr<Expression> ClangIncludeEntity::AccessNamedMember(Expression::In
     auto clangtu = analyzer.GetAggregateTU();
     auto _namespace = analyzer.GetClangNamespace(*clangtu, clangtu->GetDeclContext())->BuildValueConstruction(key, {}, c);
     return Wide::Semantic::Type::AccessMember(key, _namespace, name, c);
-}
-
-std::shared_ptr<Expression> ClangIncludeEntity::ConstructCall(Expression::InstanceKey key, std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c) {
-    if (args.size() != 1)
-        throw SpecificError<CPPWrongArgumentNumber>(analyzer, c.where, "cpp accepts only one argument.");
-    if (!dynamic_cast<String*>(args[0].get()))
-        throw SpecificError<FileNameNotConstant>(analyzer, c.where, "First argument to cpp must be a string.");
-    auto str = dynamic_cast<String*>(args[0].get());
-    auto name = str->str;
-    if (name.size() > 1 && name[0] == '<')
-        name = std::string(name.begin() + 1, name.end());
-    if (name.size() > 1 && name.back() == '>')
-        name = std::string(name.begin(), name.end() - 1);
-    auto clangtu = analyzer.AggregateCPPHeader(std::move(name), c.where);
-    return BuildChain(std::move(val), analyzer.GetClangNamespace(*clangtu, clangtu->GetDeclContext())->BuildValueConstruction(key, {}, { this, c.where }));
 }
 
 std::string ClangIncludeEntity::explain() {

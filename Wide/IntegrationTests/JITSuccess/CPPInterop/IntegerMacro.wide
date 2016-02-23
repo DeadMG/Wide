@@ -1,4 +1,4 @@
 // Fails if parsing this macro with Clang fails.
 Main() {
-    return cpp.macro(cpp.literal("#define FUCK_CLANG 5"), "FUCK_CLANG") == int32(5);
+    return cpp.macro("FUCK_CLANG") == int32(5);
 }

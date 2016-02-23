@@ -1,4 +1,4 @@
 Main() {
-    cpp("iostream").std.cout << true;
+    cpp.literal("#include <iostream>").std.cout << true;
     return true;
 }

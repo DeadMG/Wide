@@ -1,5 +1,5 @@
-using f := cpp("Wide/IntegrationTests/JITSuccess/CPPInterop/DoubleHeaderTemplate.h").f;
-using argument := cpp("Wide/IntegrationTests/JITSuccess/CPPInterop/DoubleHeaderArgument.h").argument;
+using f := cpp.f;
+using argument := cpp.argument;
 Main() {
     return f(argument());
 }

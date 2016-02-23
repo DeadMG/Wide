@@ -197,10 +197,14 @@ UserDefinedType::MemberData::MemberData(UserDefinedType* self) {
         Type* explicit_type = nullptr;
         if (var.type) {
             auto expr = self->analyzer.AnalyzeExpression(self->context, var.type.get(), [](Parse::Name, Lexer::Range) { return nullptr; });
-            if (auto&& con = dynamic_cast<ConstructorType*>(expr->GetType(Expression::NoInstance())->Decay()))
-                members.push_back(explicit_type = con->GetConstructedType());
-            else
+            auto type = expr->GetType(Expression::NoInstance());
+            if (!type)
                 MemberErrors.push_back(Memory::MakeUnique<SpecificError<MemberNotAType>>(self->analyzer, var.type->location, "Member type not a type."));
+            else 
+                if (auto&& con = dynamic_cast<ConstructorType*>(type->Decay()))
+                    members.push_back(explicit_type = con->GetConstructedType());
+                else
+                    MemberErrors.push_back(Memory::MakeUnique<SpecificError<MemberNotAType>>(self->analyzer, var.type->location, "Member type not a type."));
         }
         if (var.initializer) {
             auto expr = self->analyzer.AnalyzeExpression(self->context, var.initializer.get(), [](Parse::Name, Lexer::Range) { return nullptr; });

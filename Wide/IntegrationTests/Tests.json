@@ -503,7 +503,8 @@
   },
   {
     "type": "JITSuccess",
-    "wide": "Wide/IntegrationTests/JITSuccess/CPPInterop/BooleanMacro.wide"
+    "wide": "Wide/IntegrationTests/JITSuccess/CPPInterop/BooleanMacro.wide",
+    "cpp": "Wide/IntegrationTests/JITSuccess/CPPInterop/BooleanMacro.h"
   },
   {
     "type": "JITSuccess",
@@ -545,7 +546,11 @@
   },
   {
     "type": "JITSuccess",
-    "wide": "Wide/IntegrationTests/JITSuccess/CPPInterop/DoubleHeader.wide"
+    "wide": "Wide/IntegrationTests/JITSuccess/CPPInterop/DoubleHeader.wide",
+    "cpp": [
+      "Wide/IntegrationTests/JITSuccess/CPPInterop/DoubleHeaderTemplate.h",
+      "Wide/IntegrationTests/JITSuccess/CPPInterop/DoubleHeaderArgument.h"
+    ]
   },
   {
     "type": "JITSuccess",
@@ -805,7 +810,8 @@
   },
   {
     "type": "JITSuccess",
-    "wide": "Wide/IntegrationTests/JITSuccess/Examples/Functions.wide"
+    "wide": "Wide/IntegrationTests/JITSuccess/Examples/Functions.wide",
+    "cpp": "Wide/IntegrationTests/JITSuccess/Examples/Functions.h"
   },
   {
     "type": "JITSuccess",
@@ -813,19 +819,23 @@
   },
   {
     "type": "JITSuccess",
-    "wide": "Wide/IntegrationTests/JITSuccess/Examples/HelloWorld.wide"
+    "wide": "Wide/IntegrationTests/JITSuccess/Examples/HelloWorld.wide",
+    "cpp": "Wide/IntegrationTests/JITSuccess/Examples/HelloWorld.h"
   },
   {
     "type": "JITSuccess",
-    "wide": "Wide/IntegrationTests/JITSuccess/Examples/LocalVariables.wide"
+    "wide": "Wide/IntegrationTests/JITSuccess/Examples/LocalVariables.wide",
+    "cpp": "Wide/IntegrationTests/JITSuccess/Examples/LocalVariables.h"
   },
   {
     "type": "JITSuccess",
-    "wide": "Wide/IntegrationTests/JITSuccess/Examples/LocalVariablesReference.wide"
+    "wide": "Wide/IntegrationTests/JITSuccess/Examples/LocalVariablesReference.wide",
+    "cpp": "Wide/IntegrationTests/JITSuccess/Examples/LocalVariablesReference.h"
   },
   {
     "type": "JITSuccess",
-    "wide": "Wide/IntegrationTests/JITSuccess/Examples/OverloadSets.wide"
+    "wide": "Wide/IntegrationTests/JITSuccess/Examples/OverloadSets.wide",
+    "cpp": "Wide/IntegrationTests/JITSuccess/Examples/OverloadSets.h"
   },
   {
     "type": "JITSuccess",
@@ -834,19 +844,23 @@
   },
   {
     "type": "JITSuccess",
-    "wide": "Wide/IntegrationTests/JITSuccess/Examples/TemplateConversionExample.wide"
+    "wide": "Wide/IntegrationTests/JITSuccess/Examples/TemplateConversionExample.wide",
+    "cpp": "Wide/IntegrationTests/JITSuccess/Examples/TemplateConversionExample.h"
   },
   {
     "type": "JITSuccess",
-    "wide": "Wide/IntegrationTests/JITSuccess/Examples/Templates.wide"
+    "wide": "Wide/IntegrationTests/JITSuccess/Examples/Templates.wide",
+    "cpp": "Wide/IntegrationTests/JITSuccess/Examples/Templates.h"
   },
   {
     "type": "JITSuccess",
-    "wide": "Wide/IntegrationTests/JITSuccess/Examples/UDTCPPBase.wide"
+    "wide": "Wide/IntegrationTests/JITSuccess/Examples/UDTCPPBase.wide",
+    "cpp": "Wide/IntegrationTests/JITSuccess/Examples/UDTCPPBase.h"
   },
   {
     "type": "JITSuccess",
-    "wide": "Wide/IntegrationTests/JITSuccess/Examples/UDTs.wide"
+    "wide": "Wide/IntegrationTests/JITSuccess/Examples/UDTs.wide",
+    "cpp": "Wide/IntegrationTests/JITSuccess/Examples/UDTs.h"
   },
   {
     "type": "JITSuccess",
@@ -1118,15 +1132,18 @@
   },
   {
     "type": "JITSuccess",
-    "wide": "Wide/IntegrationTests/JITSuccess/StdlibSmoke/CoutMalloc.wide"
+    "wide": "Wide/IntegrationTests/JITSuccess/StdlibSmoke/CoutMalloc.wide",
+    "cpp": "Wide/IntegrationTests/JITSuccess/StdlibSmoke/CoutMalloc.h"
   },
   {
     "type": "JITSuccess",
-    "wide": "Wide/IntegrationTests/JITSuccess/StdlibSmoke/CoutStdString.wide"
+    "wide": "Wide/IntegrationTests/JITSuccess/StdlibSmoke/CoutStdString.wide",
+    "cpp": "Wide/IntegrationTests/JITSuccess/StdlibSmoke/CoutStdString.h"
   },
   {
     "type": "JITSuccess",
-    "wide": "Wide/IntegrationTests/JITSuccess/StdlibSmoke/Vector.wide"
+    "wide": "Wide/IntegrationTests/JITSuccess/StdlibSmoke/Vector.wide",
+    "cpp": "Wide/IntegrationTests/JITSuccess/StdlibSmoke/Vector.h"
   },
   {
     "type": "JITSuccess",

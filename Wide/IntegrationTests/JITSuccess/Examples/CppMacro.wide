@@ -1,5 +1,4 @@
-using cplusplus := cpp("Wide/IntegrationTests/JITSuccess/Examples/CppMacro.h");
 Main() {
-    cpp.macro(cplusplus, "COUT") << cpp.macro(cplusplus, "MACRO");
+    cpp.macro("COUT") << cpp.macro("MACRO");
     return true;
 }

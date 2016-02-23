@@ -1,7 +1,6 @@
-using cplusplus := cpp("Wide/IntegrationTests/JITSuccess/Examples/OverloadSetsBoundSets.h");
 Main() {
-    local := cplusplus.f;
+    local := cpp.f;
     c_string := local().c_str;
-    cplusplus.std.cout << c_string();
+    cpp.std.cout << c_string();
     return true;
 }
