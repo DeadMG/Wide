@@ -15,25 +15,16 @@ struct TestExpression : public TestStatement {};
 struct TestAttribute {
     template<typename X, typename Y> TestAttribute(X x, Y y)
     : initialized(Wide::Memory::MakeUnique<X>(std::move(x))), initializer(Wide::Memory::MakeUnique<Y>(std::move(y))) {}
-    TestAttribute(TestAttribute&& other)
-        : initialized(std::move(other.initialized)), initializer(std::move(other.initializer)) {}
-    TestAttribute& operator=(TestAttribute&& other) {
-        initialized = std::move(other.initialized);
-        initializer = std::move(other.initializer);
-        return *this;
-    }
+    TestAttribute(TestAttribute&& other) = default;
+    TestAttribute& operator=(TestAttribute&& other) = default;
     std::unique_ptr<TestExpression> initialized;
     std::unique_ptr<TestExpression> initializer;
 };
 struct TestFunction;
 struct TestAttributes {
     TestAttributes() {}
-    TestAttributes(TestAttributes&& other)
-    : attributes(std::move(other.attributes)) {}
-    TestAttributes& operator=(TestAttributes&& other) {
-        attributes = std::move(other.attributes);
-        return *this;
-    }
+    TestAttributes(TestAttributes&& other) = default;
+    TestAttributes& operator=(TestAttributes&& other) = default;
     std::vector<TestAttribute> attributes;
     TestAttributes&& operator()(TestAttribute attr) {
         attributes.push_back(std::move(attr));
@@ -43,20 +34,14 @@ struct TestAttributes {
 };
 struct TestFunction {
     TestFunction() {}
-    TestFunction(TestFunction&& other)
-        : attrs(std::move(other.attrs)) {}
+    TestFunction(TestFunction&& other) = default;
     TestAttributes attrs;
 };
 struct TestOverloadSet {
     std::unordered_set<std::unique_ptr<TestFunction>> functions;
     TestOverloadSet() {}
-    TestOverloadSet(TestOverloadSet&& mod)
-        : functions(std::move(mod.functions)) {}
-
-    TestOverloadSet& operator=(TestOverloadSet&& other) {
-        functions = std::move(other.functions);
-        return *this;
-    }
+    TestOverloadSet(TestOverloadSet&& mod) = default;
+    TestOverloadSet& operator=(TestOverloadSet&& other) = default;
 
     TestOverloadSet&& operator()(TestFunction mod) {
         functions.insert(Wide::Memory::MakeUnique<TestFunction>(std::move(mod)));
@@ -68,15 +53,8 @@ struct TestModule {
     std::unordered_map<std::string, std::unique_ptr<TestOverloadSet>> overloadsets;
 
     TestModule() {}
-    TestModule(TestModule&& mod)
-        : modules(std::move(mod.modules))
-        , overloadsets(std::move(mod.overloadsets)) {}
-
-    TestModule& operator=(TestModule&& other) {
-        modules = std::move(other.modules);
-        overloadsets = std::move(other.overloadsets);
-        return *this;
-    }
+    TestModule(TestModule&& mod) = default;
+    TestModule& operator=(TestModule&& other) = default;
 
     TestModule&& operator()(std::string str, TestModule mod) {
         modules[str] = Wide::Memory::MakeUnique<TestModule>(std::move(mod));
@@ -110,8 +88,7 @@ struct TestTuple : public TestExpression {
     std::vector<std::unique_ptr<TestExpression>> expressions;
 
     TestTuple() {}
-    TestTuple(TestTuple&& other)
-        : expressions(std::move(other.expressions)) {}
+    TestTuple(TestTuple&& other) = default;
 
     TestTuple&& operator()(TestInteger i) {
         expressions.push_back(Wide::Memory::MakeUnique<TestInteger>(i));
@@ -121,10 +98,7 @@ struct TestTuple : public TestExpression {
         expressions.push_back(Wide::Memory::MakeUnique<TestString>(i));
         return std::move(*this);
     }
-    TestTuple& operator=(TestTuple&& other) {
-        expressions = std::move(other.expressions);
-        return *this;
-    }
+    TestTuple& operator=(TestTuple&& other) = default;
 };
 bool operator==(const Wide::Parse::Expression* e, const TestExpression& rhs);
 bool operator!=(const Wide::Parse::Expression* e, const TestExpression& rhs) {

@@ -43,8 +43,8 @@ namespace Wide {
 
             struct BaseData {
                 BaseData(UserDefinedType* self);
-                BaseData(BaseData&& other);
-                BaseData& operator=(BaseData&& other);
+                BaseData(BaseData&& other) = default;
+                BaseData& operator=(BaseData&& other) = default;
                 std::vector<std::unique_ptr<Error>> base_errors;
                 std::vector<Type*> bases;
                 Type* PrimaryBase = nullptr;
@@ -73,8 +73,8 @@ namespace Wide {
 
             struct MemberData {
                 MemberData(UserDefinedType* self);
-                MemberData(MemberData&& other);
-                MemberData& operator=(MemberData&& other);
+                MemberData(MemberData&& other) = default;
+                MemberData& operator=(MemberData&& other) = default;
                 // Actually a list of member variables
                 std::unordered_map<std::string, unsigned> member_indices;
                 std::vector<const Parse::Expression*> NSDMIs;
@@ -105,8 +105,8 @@ namespace Wide {
 
             struct DefaultData {
                 DefaultData(UserDefinedType* self);
-                DefaultData(DefaultData&&);
-                DefaultData& operator=(DefaultData&&);
+                DefaultData(DefaultData&&) = default;
+                DefaultData& operator=(DefaultData&&) = default;
 
                 OverloadSet* SimpleConstructors;
                 OverloadSet* SimpleAssOps;

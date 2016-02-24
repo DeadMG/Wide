@@ -235,29 +235,6 @@ UserDefinedType::MemberData::MemberData(UserDefinedType* self) {
     }
 }
 
-UserDefinedType::MemberData::MemberData(MemberData&& other)
-    : members(std::move(other.members))
-    , NSDMIs(std::move(other.NSDMIs))
-    , HasNSDMI(other.HasNSDMI)
-    , member_indices(std::move(other.member_indices))
-    , BaseImports(std::move(other.BaseImports))
-    , imported_constructors(std::move(other.imported_constructors))
-    , ImportErrors(std::move(other.ImportErrors))
-    , MemberErrors(std::move(other.MemberErrors)) {}
-
-UserDefinedType::MemberData& UserDefinedType::MemberData::operator=(MemberData&& other) {
-    members = std::move(other.members);
-    NSDMIs = std::move(other.NSDMIs);
-    HasNSDMI = other.HasNSDMI;
-    member_indices = std::move(other.member_indices);
-    BaseImports = std::move(other.BaseImports);
-    imported_constructors = std::move(other.imported_constructors);
-    ImportErrors = std::move(other.ImportErrors);
-    MemberErrors = std::move(other.MemberErrors);
-
-    return *this;
-}
-
 UserDefinedType::UserDefinedType(const Parse::Type* t, Analyzer& a, Type* higher, std::string name)
 : AggregateType(a)
 , context(higher)
@@ -1130,15 +1107,6 @@ bool UserDefinedType::HasDeclaredDynamicFunctions() {
         return type->destructor_decl->dynamic;
     return false;
 }
-UserDefinedType::BaseData::BaseData(BaseData&& other)
-: bases(std::move(other.bases)), PrimaryBase(other.PrimaryBase), base_errors(std::move(other.base_errors)) {}
-
-UserDefinedType::BaseData& UserDefinedType::BaseData::operator=(BaseData&& other) {
-    bases = std::move(other.bases);
-    PrimaryBase = other.PrimaryBase;
-    base_errors = std::move(other.base_errors);
-    return *this;
-}
 bool UserDefinedType::IsConstant() {
     return !type->destructor_decl && AggregateType::IsConstant();
 }
@@ -1203,21 +1171,7 @@ bool UserDefinedType::IsTriviallyCopyConstructible() {
 bool UserDefinedType::IsTriviallyDestructible() {
     return (!type->destructor_decl || (type->destructor_decl->defaulted && !type->destructor_decl->dynamic)) && AggregateType::IsTriviallyDestructible();
 }
-UserDefinedType::DefaultData::DefaultData(DefaultData&& other)
-    : SimpleConstructors(other.SimpleConstructors)
-    , SimpleAssOps(other.SimpleAssOps)
-    , AggregateOps(other.AggregateOps)
-    , AggregateCons(other.AggregateCons)
-    , IsComplex(other.IsComplex) {}
 
-UserDefinedType::DefaultData& UserDefinedType::DefaultData::operator=(DefaultData&& other) {
-    SimpleConstructors = other.SimpleConstructors;
-    SimpleAssOps = other.SimpleAssOps; 
-    AggregateOps = other.AggregateOps;
-    AggregateCons = other.AggregateCons;
-    IsComplex = other.IsComplex;
-    return *this;
-}
 std::shared_ptr<Expression> UserDefinedType::AccessStaticMember(std::string name, Context c) {
     auto spec = GetAccessSpecifier(c.from, this);
     if (GetMemberData().member_indices.find(name) != GetMemberData().member_indices.end()) {

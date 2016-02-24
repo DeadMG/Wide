@@ -116,10 +116,7 @@ namespace Wide {
         };
         struct Attribute {
             Attribute(const Attribute&) = delete;
-            Attribute(Attribute&& other)
-                : where(std::move(other.where))
-                , initializer(std::move(other.initializer))
-                , initialized(std::move(other.initialized)) {}
+            Attribute(Attribute&& other) = default;
             Attribute(std::unique_ptr<Expression> begin, std::unique_ptr<Expression> end, Lexer::Range where)
                 : where(where), initialized(std::move(begin)), initializer(std::move(end)) {}
             Lexer::Range where;
@@ -293,13 +290,7 @@ namespace Wide {
 
         struct MemberVariable {
             MemberVariable(const MemberVariable&) = delete;
-            MemberVariable(MemberVariable&& other)
-                : name(std::move(other.name))
-                , where(std::move(other.where))
-                , access(other.access)
-                , initializer(std::move(other.initializer))
-                , type(std::move(other.type))
-                , attributes(std::move(other.attributes)) {}
+            MemberVariable(MemberVariable&& other) = default;
             MemberVariable(std::string nam, std::unique_ptr<Expression> expr, Parse::Access access, Lexer::Range loc, std::vector<Attribute> attributes, std::unique_ptr<Expression> type)
                 : name(std::move(nam)), initializer(std::move(expr)), where(loc), access(access), attributes(std::move(attributes)), type(std::move(type)) {}
             std::string name;
@@ -469,11 +460,7 @@ namespace Wide {
         };
         struct Variable : public Statement {
             Variable(const Variable&) = delete;
-            Variable(Variable&& other)
-                : Statement(std::move(other))
-                , name(std::move(other.name))
-                , type(std::move(other.type))
-                , initializer(std::move(other.initializer)) {}
+            Variable(Variable&& other) = default;
             struct Name {
                 std::string name;
                 Lexer::Range where;
@@ -493,11 +480,7 @@ namespace Wide {
             std::vector<Variable> Captures;
             bool defaultref;
             Lambda(const Lambda&) = delete;
-            Lambda(Lambda&& other) 
-                : Expression(std::move(other))
-                , FunctionBase(std::move(other))
-                , Captures(std::move(other.Captures))
-                , defaultref(std::move(other.defaultref)) {}
+            Lambda(Lambda&& other) = default;
             Lambda(std::vector<std::unique_ptr<Statement>> body, std::vector<FunctionArgument> arg, Lexer::Range r, bool ref, std::vector<Variable> caps)
                 : Expression(r), FunctionBase(std::move(arg), std::move(body), r), Captures(std::move(caps)), defaultref(ref) {}
             //void TraverseNode(const Visitor& visitor) const {
@@ -517,10 +500,7 @@ namespace Wide {
         };
         struct VariableInitializer {
             VariableInitializer(const VariableInitializer&) = delete;
-            VariableInitializer(VariableInitializer&& other)
-                : where(other.where)
-                , initializer(std::move(other.initializer))
-                , initialized(std::move(other.initialized)) {}
+            VariableInitializer(VariableInitializer&& other) = default;
             VariableInitializer(std::unique_ptr<Expression> begin, std::unique_ptr<Expression> end, Lexer::Range where)
             : where(where), initialized(std::move(begin)), initializer(std::move(end)) {}
             Lexer::Range where;
@@ -577,11 +557,7 @@ namespace Wide {
         };
         struct Catch {
             Catch(const Catch&) = delete;
-            Catch(Catch&& other) 
-                : name(std::move(other.name))
-                , type(std::move(other.type))
-                , all(std::move(other.all))
-                , statements(std::move(other.statements)) {}
+            Catch(Catch&& other) = default;
             Catch(std::vector<std::unique_ptr<Statement>> statements)
             : statements(std::move(statements)), all(true) {}
             Catch(std::vector<std::unique_ptr<Statement>> statements, std::string name, std::unique_ptr<Expression> type)
@@ -592,10 +568,7 @@ namespace Wide {
             std::vector<std::unique_ptr<Statement>> statements;
         };
         struct TryCatch : public Statement {
-            TryCatch(TryCatch&& other)
-                : Statement(std::move(other))
-                , statements(std::move(other.statements))
-                , catches(std::move(other.catches)) {}
+            TryCatch(TryCatch&& other) = default;
             TryCatch(const TryCatch&) = delete;
             TryCatch(std::unique_ptr<CompoundStatement> stmt, std::vector<Catch> catches, Lexer::Range range)
             : statements(std::move(stmt)), catches(std::move(catches)), Statement(range) {}

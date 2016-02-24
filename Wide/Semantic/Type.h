@@ -229,12 +229,7 @@ namespace Wide {
                 member(Lexer::Range where)
                 : location(where) {}
                 member(const member&) = delete;
-                member(member&& other)
-                    : name(std::move(other.name))
-                    , t(other.t)
-                    , num(other.num)
-                    , InClassInitializer(std::move(other.InClassInitializer))
-                    , location(std::move(other.location)) {}
+                member(member&& other) = default;
                 Wide::Util::optional<std::string> name;
                 Type* t;
                 // Not necessarily actually an empty base but ClangType will only give us offsets pre-codegen.

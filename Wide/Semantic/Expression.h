@@ -129,13 +129,8 @@ namespace Wide {
                 boost::signals2::scoped_connection connection;
                 ExpressionData(std::unordered_map<InstanceKey, Type*> types, boost::signals2::scoped_connection connection)
                     : types(std::move(types)), connection(std::move(connection)) {}
-                ExpressionData(ExpressionData&& other)
-                    : types(std::move(other.types))
-                    , connection(std::move(other.connection)) {}
-                ExpressionData& operator=(ExpressionData&& other) {
-                    types = std::move(other.types);
-                    connection = std::move(other.connection);
-                }
+                ExpressionData(ExpressionData&& other) = default;
+                ExpressionData& operator=(ExpressionData&& other) = default;
             };
         private:
             std::unordered_map<std::shared_ptr<Expression>, ExpressionData> exprs;

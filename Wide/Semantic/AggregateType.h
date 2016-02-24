@@ -37,8 +37,8 @@ namespace Wide {
                     llvm::Type* GetLLVMType(AggregateType* agg, llvm::Module* module);
                 };
                 Layout(AggregateType* agg, Analyzer& a);
-                Layout(Layout&& other);
-                Layout& operator=(Layout&& other);
+                Layout(Layout&& other) = default;
+                Layout& operator=(Layout&& other) = default;
                 std::size_t allocsize;
                 std::size_t align;
 
