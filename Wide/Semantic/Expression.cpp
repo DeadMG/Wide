@@ -478,11 +478,11 @@ llvm::Value* ResultExpression::ComputeValue(CodegenContext& con) {
 }
 
 void Expression::AddDefaultHandlers(Analyzer& a) {
-    AddHandler<const Parse::String>(a.ExpressionHandlers, [](const Parse::String* str, Analyzer& a, Type* lookup, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup) {
+    AddHandler<const Parse::String>(a.ExpressionHandlers, [](const Parse::String* str, Analyzer& a, Type* lookup, NonstaticLookupFunction NonstaticLookup) {
         return Wide::Memory::MakeUnique<String>(str->val, a);
     });
 
-    AddHandler<const Parse::MemberAccess>(a.ExpressionHandlers, [](const Parse::MemberAccess* memaccess, Analyzer& a, Type* lookup, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup) -> std::shared_ptr<Expression> {
+    AddHandler<const Parse::MemberAccess>(a.ExpressionHandlers, [](const Parse::MemberAccess* memaccess, Analyzer& a, Type* lookup, NonstaticLookupFunction NonstaticLookup) -> std::shared_ptr<Expression> {
         auto object = a.AnalyzeExpression(lookup, memaccess->expr.get(), NonstaticLookup);
         return CreateResultExpression(Range::Elements(object), [=, &a](InstanceKey f) {
             auto access = Type::AccessMember(f, object, memaccess->mem, Context{ lookup, memaccess->location });
@@ -491,14 +491,14 @@ void Expression::AddDefaultHandlers(Analyzer& a) {
         });
     });
 
-    AddHandler<const Parse::BooleanTest>(a.ExpressionHandlers, [](const Parse::BooleanTest* test, Analyzer& a, Type* lookup, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup) {
+    AddHandler<const Parse::BooleanTest>(a.ExpressionHandlers, [](const Parse::BooleanTest* test, Analyzer& a, Type* lookup, NonstaticLookupFunction NonstaticLookup) {
         auto sub_expr = a.AnalyzeExpression(lookup, test->ex.get(), NonstaticLookup); 
         return CreateResultExpression(Range::Elements(sub_expr), [=](Expression::InstanceKey key) {
             return Type::BuildBooleanConversion(key, sub_expr, { lookup, test->location });
         });
     });
 
-    AddHandler<const Parse::FunctionCall>(a.ExpressionHandlers, [](const Parse::FunctionCall* call, Analyzer& a, Type* lookup, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup) -> std::shared_ptr<Expression> {
+    AddHandler<const Parse::FunctionCall>(a.ExpressionHandlers, [](const Parse::FunctionCall* call, Analyzer& a, Type* lookup, NonstaticLookupFunction NonstaticLookup) -> std::shared_ptr<Expression> {
         std::vector<std::shared_ptr<Expression>> args;
         for (auto&& arg : call->args)
             args.push_back(a.AnalyzeExpression(lookup, arg.get(), NonstaticLookup));
@@ -508,35 +508,35 @@ void Expression::AddDefaultHandlers(Analyzer& a) {
         });
     });
 
-    AddHandler<const Parse::Identifier>(a.ExpressionHandlers, [](const Parse::Identifier* ident, Analyzer& a, Type* lookup, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup) -> std::shared_ptr<Expression> {
+    AddHandler<const Parse::Identifier>(a.ExpressionHandlers, [](const Parse::Identifier* ident, Analyzer& a, Type* lookup, NonstaticLookupFunction NonstaticLookup) -> std::shared_ptr<Expression> {
         auto val = LookupIdentifier(lookup, ident->val, ident->location, ident->imp.get(), NonstaticLookup);
         if (!val) throw SpecificError<IdentifierLookupFailed>(a, ident->location, "Could not find identifier.");
         return val;
     });
 
-    AddHandler<const Parse::True>(a.ExpressionHandlers, [](const Parse::True* tru, Analyzer& a, Type* lookup, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup) {
+    AddHandler<const Parse::True>(a.ExpressionHandlers, [](const Parse::True* tru, Analyzer& a, Type* lookup, NonstaticLookupFunction NonstaticLookup) {
         return Wide::Memory::MakeUnique<Semantic::Boolean>(true, a);
     });
 
-    AddHandler<const Parse::False>(a.ExpressionHandlers, [](const Parse::False* fals, Analyzer& a, Type* lookup, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup) {
+    AddHandler<const Parse::False>(a.ExpressionHandlers, [](const Parse::False* fals, Analyzer& a, Type* lookup, NonstaticLookupFunction NonstaticLookup) {
         return Wide::Memory::MakeUnique<Semantic::Boolean>(false, a);
     });
 
-    AddHandler<const Parse::This>(a.ExpressionHandlers, [](const Parse::This* thi, Analyzer& a, Type* lookup, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup) {
+    AddHandler<const Parse::This>(a.ExpressionHandlers, [](const Parse::This* thi, Analyzer& a, Type* lookup, NonstaticLookupFunction NonstaticLookup) {
         return LookupIdentifier(lookup, "this", thi->location, nullptr, NonstaticLookup);
     });
 
-    AddHandler<const Parse::Type>(a.ExpressionHandlers, [](const Parse::Type* ty, Analyzer& a, Type* lookup, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup) {
+    AddHandler<const Parse::Type>(a.ExpressionHandlers, [](const Parse::Type* ty, Analyzer& a, Type* lookup, NonstaticLookupFunction NonstaticLookup) {
         auto udt = a.GetUDT(ty, lookup->IsConstant() ? lookup : lookup->GetContext(), "anonymous");
         return a.GetConstructorType(udt)->BuildValueConstruction(Expression::NoInstance(), {}, { lookup, ty->location });
     });
 
 
-    AddHandler<const Parse::Integer>(a.ExpressionHandlers, [](const Parse::Integer* integer, Analyzer& a, Type* lookup, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup) {
+    AddHandler<const Parse::Integer>(a.ExpressionHandlers, [](const Parse::Integer* integer, Analyzer& a, Type* lookup, NonstaticLookupFunction NonstaticLookup) {
         return Wide::Memory::MakeUnique<Integer>(llvm::APInt(64, std::stoll(integer->integral_value), true), a);
     });
 
-    AddHandler<const Parse::BinaryExpression>(a.ExpressionHandlers, [](const Parse::BinaryExpression* bin, Analyzer& a, Type* lookup, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup) {
+    AddHandler<const Parse::BinaryExpression>(a.ExpressionHandlers, [](const Parse::BinaryExpression* bin, Analyzer& a, Type* lookup, NonstaticLookupFunction NonstaticLookup) {
         auto lhs = a.AnalyzeExpression(lookup, bin->lhs.get(), NonstaticLookup);
         auto rhs = a.AnalyzeExpression(lookup, bin->rhs.get(), NonstaticLookup);
         return CreateResultExpression(Range::Elements(lhs, rhs), [=](Expression::InstanceKey key) {
@@ -544,7 +544,7 @@ void Expression::AddDefaultHandlers(Analyzer& a) {
         });
     });
 
-    AddHandler<const Parse::UnaryExpression>(a.ExpressionHandlers, [](const Parse::UnaryExpression* unex, Analyzer& a, Type* lookup, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup) -> std::shared_ptr<Expression> {
+    AddHandler<const Parse::UnaryExpression>(a.ExpressionHandlers, [](const Parse::UnaryExpression* unex, Analyzer& a, Type* lookup, NonstaticLookupFunction NonstaticLookup) -> std::shared_ptr<Expression> {
         auto expr = a.AnalyzeExpression(lookup, unex->ex.get(), NonstaticLookup);
         if (unex->type == &Lexer::TokenTypes::And)
             return CreateAddressOf(std::move(expr), Context(lookup, unex->location));
@@ -554,7 +554,7 @@ void Expression::AddDefaultHandlers(Analyzer& a) {
     });
 
 
-    AddHandler<const Parse::Increment>(a.ExpressionHandlers, [](const Parse::Increment* inc, Analyzer& a, Type* lookup, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup) {
+    AddHandler<const Parse::Increment>(a.ExpressionHandlers, [](const Parse::Increment* inc, Analyzer& a, Type* lookup, NonstaticLookupFunction NonstaticLookup) {
         auto expr = a.AnalyzeExpression(lookup, inc->ex.get(), NonstaticLookup);
         return CreateResultExpression(Range::Elements(expr), [=, &a](InstanceKey f) {
             if (inc->postfix) {
@@ -566,7 +566,7 @@ void Expression::AddDefaultHandlers(Analyzer& a) {
         });
     });
 
-    AddHandler<const Parse::Tuple>(a.ExpressionHandlers, [](const Parse::Tuple* tup, Analyzer& a, Type* lookup, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup) {
+    AddHandler<const Parse::Tuple>(a.ExpressionHandlers, [](const Parse::Tuple* tup, Analyzer& a, Type* lookup, NonstaticLookupFunction NonstaticLookup) {
         std::vector<std::shared_ptr<Expression>> exprs;
         for (auto&& elem : tup->expressions)
             exprs.push_back(a.AnalyzeExpression(lookup, elem.get(), NonstaticLookup));
@@ -578,7 +578,7 @@ void Expression::AddDefaultHandlers(Analyzer& a) {
         });
     });
 
-    AddHandler<const Parse::PointerMemberAccess>(a.ExpressionHandlers, [](const Parse::PointerMemberAccess* paccess, Analyzer& a, Type* lookup, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup) {
+    AddHandler<const Parse::PointerMemberAccess>(a.ExpressionHandlers, [](const Parse::PointerMemberAccess* paccess, Analyzer& a, Type* lookup, NonstaticLookupFunction NonstaticLookup) {
         auto source = a.AnalyzeExpression(lookup, paccess->ex.get(), NonstaticLookup);
         return CreateResultExpression(Range::Elements(source), [=](Expression::InstanceKey key) {
             auto subobj = Type::BuildUnaryExpression(key, source, &Lexer::TokenTypes::Star, { lookup, paccess->location });
@@ -586,12 +586,12 @@ void Expression::AddDefaultHandlers(Analyzer& a) {
         });
     });
 
-    AddHandler<const Parse::Decltype>(a.ExpressionHandlers, [](const Parse::Decltype* declty, Analyzer& a, Type* lookup, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup) {
+    AddHandler<const Parse::Decltype>(a.ExpressionHandlers, [](const Parse::Decltype* declty, Analyzer& a, Type* lookup, NonstaticLookupFunction NonstaticLookup) {
         auto expr = a.AnalyzeExpression(lookup, declty->ex.get(), NonstaticLookup);
         return CreateResultExpression(Range::Elements(expr), [=, &a](InstanceKey f) { return a.GetConstructorType(expr->GetType(f))->BuildValueConstruction(f, {}, { lookup, declty->location }); });
     });
 
-    AddHandler<const Parse::Typeid>(a.ExpressionHandlers, [](const Parse::Typeid* rtti, Analyzer& a, Type* lookup, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup)  {
+    AddHandler<const Parse::Typeid>(a.ExpressionHandlers, [](const Parse::Typeid* rtti, Analyzer& a, Type* lookup, NonstaticLookupFunction NonstaticLookup)  {
         auto expr = a.AnalyzeExpression(lookup, rtti->ex.get(), NonstaticLookup);
         return CreateResultExpression(Range::Elements(expr), [=, &a](InstanceKey f) -> std::shared_ptr<Expression> {
             auto tu = expr->GetType(f)->analyzer.AggregateCPPHeader("typeinfo", rtti->location);
@@ -634,7 +634,7 @@ void Expression::AddDefaultHandlers(Analyzer& a) {
         });
     });
 
-    AddHandler<const Parse::Lambda>(a.ExpressionHandlers, [](const Parse::Lambda* lam, Analyzer& a, Type* lookup, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup) {
+    AddHandler<const Parse::Lambda>(a.ExpressionHandlers, [](const Parse::Lambda* lam, Analyzer& a, Type* lookup, NonstaticLookupFunction NonstaticLookup) {
         std::unordered_map<Parse::Name, std::shared_ptr<Expression>> outer_implicit_captures;
         std::unordered_map<Parse::Name, std::shared_ptr<Expression>> inner_implicit_captures;
         std::unordered_map<Parse::Name, std::shared_ptr<Expression>> explicit_captures;
@@ -649,19 +649,19 @@ void Expression::AddDefaultHandlers(Analyzer& a) {
                 assert(lambda);
                 return lambda;
             },
-            [&](Parse::Name name, Lexer::Range where) -> std::shared_ptr < Expression > {
+            [&](Parse::Name name, Lexer::Range where, std::function<std::shared_ptr<Expression>(Expression::InstanceKey)> GetThis) -> std::shared_ptr<Expression> {
                 auto local_skeleton = skeleton;
                 if (explicit_captures.find(name) != explicit_captures.end())
                     return explicit_captures[name];
                 if (outer_implicit_captures.find(name) != outer_implicit_captures.end())
                     return outer_implicit_captures[name];
-                if (auto result = NonstaticLookup(name, where)) {
+                if (auto result = NonstaticLookup(name, where, GetThis)) {
                     outer_implicit_captures[name] = result;
                     inner_implicit_captures[name] = CreateResultExpression(Range::Empty(), [=, &a, &skeleton](Expression::InstanceKey key) -> std::shared_ptr<Expression> {
                         if (key == Expression::NoInstance()) return nullptr;
-                        auto func = a.GetWideFunction(local_skeleton, *key);
-                        auto lambda = dynamic_cast<LambdaType*>((*key)[0]->Decay());
-                        return lambda->LookupCapture(func->GetThis(), name);
+                        auto _this = GetThis(key);
+                        Context c(_this->GetType(key), where);
+                        return Type::AccessMember(key, _this, name, c);
                     });
                     return inner_implicit_captures[name];
                 }

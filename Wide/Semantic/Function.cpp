@@ -13,10 +13,10 @@
 using namespace Wide;
 using namespace Semantic;
 
-Function::Function(Analyzer& a, FunctionSkeleton* skel, std::vector<Type*> args)
+Function::Function(Analyzer& a, FunctionSkeleton* skel, FunctionOverload* overload)
     : analyzer(a)
     , skeleton(skel)
-    , Args(args) 
+    , Overload(overload) 
 {
     llvmname = a.GetUniqueFunctionName();
 

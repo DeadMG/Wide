@@ -286,14 +286,11 @@ WideFunctionType* Analyzer::GetFunctionType(Type* ret, const std::vector<Type*>&
     return FunctionTypes[ret][t][conv][variadic].get();
 }
 
-Function* Analyzer::GetWideFunction(FunctionSkeleton* skeleton) {
-    return GetWideFunction(skeleton, GetFunctionParameters(skeleton->GetASTFunction(), skeleton->GetContext()));
-}
-Function* Analyzer::GetWideFunction(FunctionSkeleton* skeleton, const std::vector<Type*>& types) {
+Function* Analyzer::GetWideFunction(FunctionSkeleton* skeleton, FunctionOverload* overload) {
     if (WideFunctions.find(skeleton) == WideFunctions.end()
-        || WideFunctions[skeleton].find(types) == WideFunctions[skeleton].end())
-        WideFunctions[skeleton][types] = Wide::Memory::MakeUnique<Function>(*this, skeleton, types);
-    return WideFunctions[skeleton][types].get();
+        || WideFunctions[skeleton].find(overload) == WideFunctions[skeleton].end())
+        WideFunctions[skeleton][overload] = Wide::Memory::MakeUnique<Function>(*this, skeleton, overload);
+    return WideFunctions[skeleton][overload].get();
 }
 
 Module* Analyzer::GetWideModule(const Parse::Module* p, Module* higher, std::string name) {
@@ -435,8 +432,16 @@ OverloadSet* Analyzer::GetOverloadSet(std::unordered_set<clang::NamedDecl*> decl
     }
     return clang_overload_sets[decls][context].get();
 }
-std::vector<Type*> Analyzer::GetFunctionParameters(const Parse::FunctionBase* func, Type* context) {
-    std::vector<Type*> out;
+std::unordered_set<FunctionOverload*> Analyzer::GetFunctionOverloads(const Parse::FunctionBase* func, Type* context) {
+    if (FunctionOverloads.find(func) != FunctionOverloads.end()) {
+        if (FunctionOverloads.at(func).find(context) != FunctionOverloads.at(func).end()) {
+            std::unordered_set<FunctionOverload*> set;
+            for (auto&& overload : FunctionOverloads.at(func).at(context))
+                set.insert(overload.get());
+            return set;
+        }
+    }
+    std::vector<FunctionOverload> overloads;
     if (HasImplicitThis(func, context)) {
         // If we're exported as an rvalue-qualified function, we need rvalue.
         if (auto astfun = dynamic_cast<const Parse::AttributeFunctionBase*>(func)) {
@@ -455,9 +460,9 @@ std::vector<Type*> Analyzer::GetFunctionParameters(const Parse::FunctionBase* fu
                             if (auto meth = llvm::dyn_cast<clang::CXXMethodDecl>(decl)) {
                                 if (!meth->isStatic()) {
                                     if (meth->getType()->getAs<clang::FunctionProtoType>()->getExtProtoInfo().RefQualifier == clang::RefQualifierKind::RQ_RValue)
-                                        out.push_back(GetRvalueType(GetNonstaticContext(func, context)));
-                                    else
-                                        out.push_back(GetLvalueType(GetNonstaticContext(func, context)));
+                                        overloads.push_back(FunctionOverload{ ThisFunctionParameter{ GetRvalueType(GetNonstaticContext(func, context)) } });
+                                    else if (meth->getType()->getAs<clang::FunctionProtoType>()->getExtProtoInfo().RefQualifier == clang::RefQualifierKind::RQ_LValue)
+                                        overloads.push_back(FunctionOverload{ ThisFunctionParameter{ GetLvalueType(GetNonstaticContext(func, context)) } });
                                 }
                             }
                         }
@@ -465,8 +470,13 @@ std::vector<Type*> Analyzer::GetFunctionParameters(const Parse::FunctionBase* fu
                 }
             }
         }
-        if (out.empty())
-            out.push_back(GetLvalueType(GetNonstaticContext(func, context)));
+        if (overloads.empty()) {
+            overloads.push_back(FunctionOverload{ ThisFunctionParameter{ GetLvalueType(GetNonstaticContext(func, context)) } });
+            overloads.push_back(FunctionOverload{ ThisFunctionParameter{ GetRvalueType(GetNonstaticContext(func, context)), true } });
+        }
+    }
+    if (overloads.empty()) {
+        overloads.push_back(FunctionOverload());
     }
     for (auto&& arg : func->args) {
         auto ty_expr = arg.non_nullable_type.get();
@@ -484,9 +494,24 @@ std::vector<Type*> Analyzer::GetFunctionParameters(const Parse::FunctionBase* fu
             } else
                 throw SpecificError<ExplicitThisNotFirstArgument>(*this, arg.location, "Explicit this was not the first argument.");
         }
-        out.push_back(con_type->GetConstructedType());
+        if (arg.default_value.get() != nullptr) {
+            for (auto&& over : overloads) {
+                auto params = over.Parameters;
+                params.push_back({ con_type->GetConstructedType(), arg.name });
+                overloads.push_back(FunctionOverload{ over.This, std::move(params), over.Defaults });
+                over.Defaults.push_back({ con_type->GetConstructedType(), arg.default_value.get() });
+            };
+        }
+        else
+            for (auto&& over : overloads) {
+                over.Parameters.push_back({ con_type->GetConstructedType(), arg.name });
+            }
     }
-    return out;
+    std::unordered_set<std::unique_ptr<FunctionOverload>> function_overloads;
+    for (auto&& overload : overloads)
+        function_overloads.insert(std::make_unique<FunctionOverload>(overload));
+    FunctionOverloads[func][context] = std::move(function_overloads);
+    return GetFunctionOverloads(func, context);
 }
 bool Analyzer::HasImplicitThis(const Parse::FunctionBase* func, Type* context) {
     // If we are a member without an explicit this, then we have an implicit this.
@@ -532,15 +557,20 @@ FunctionSkeleton* Analyzer::GetWideFunction(const Parse::FunctionBase* p, Type* 
     return GetWideFunction(p, context, name, [=](Expression::InstanceKey key) { return nonstatic_context; }, NonstaticLookup);
 }
 
-OverloadResolvable* Analyzer::GetCallableForFunction(FunctionSkeleton* skel) {
-    if (FunctionCallables.find(skel) != FunctionCallables.end())
-        return FunctionCallables.at(skel).get();
+std::unordered_set<OverloadResolvable*> Analyzer::GetCallablesForFunction(FunctionSkeleton* skel) {
+    if (FunctionCallables.find(skel) != FunctionCallables.end()) {
+        std::unordered_set<OverloadResolvable*> resolvables;
+        for (auto&& resolvable : FunctionCallables.at(skel))
+            resolvables.insert(resolvable.get());
+        return resolvables;
+    }
 
     struct FunctionCallable : public OverloadResolvable {
-        FunctionCallable(FunctionSkeleton* skel)
-            : skeleton(skel)
+        FunctionCallable(FunctionSkeleton* skel, FunctionOverload* overload)
+            : skeleton(skel), overload(overload)
         {}
         
+        FunctionOverload* overload;
         FunctionSkeleton* skeleton;
 
         Util::optional<std::vector<Type*>> MatchParameter(std::vector<Type*> types, Analyzer& a, Type* source) override final {
@@ -550,30 +580,12 @@ OverloadResolvable* Analyzer::GetCallableForFunction(FunctionSkeleton* skel) {
             auto context = types.size() > 0 && dynamic_cast<LambdaType*>(types[0]->Decay())
                 ? types[0]->Decay()
                 : skeleton->GetContext();
-            auto parameters = a.GetFunctionParameters(skeleton->GetASTFunction(), context);
-            //if (dynamic_cast<const Parse::Lambda*>(skeleton->GetASTFunction()))
-            //    if (dynamic_cast<LambdaType*>(types[0]->Decay()))
-            //        if (types.size() == parameters.size() + 1)
-            //            parameters.insert(parameters.begin(), types[0]);
-            if (types.size() != parameters.size()) return Util::none;
+            // We match if any of the overloads are a match.
+            if (types.size() != overload->TotalRequiredParameterSize()) return Util::none;
             std::vector<Type*> result;
             for (unsigned i = 0; i < types.size(); ++i) {
-                if (a.HasImplicitThis(skeleton->GetASTFunction(), context) && i == 0) {
-                    // First, if no conversion is necessary.
-                    if (Type::IsFirstASecond(types[i], parameters[i], source)) {
-                        result.push_back(parameters[i]);
-                        continue;
-                    }
-                    // If the parameter is-a nonstatic-context&&, then we're good. Let Function::AdjustArguments handle the adjustment, if necessary.
-                    if (Type::IsFirstASecond(types[i], a.GetRvalueType(a.GetNonstaticContext(skeleton->GetASTFunction(), context)), source)) {
-                        result.push_back(parameters[i]);
-                        continue;
-                    }
-                    return Util::none;
-                }
-                auto parameter = parameters[i] ? parameters[i] : types[i]->Decay();
-                if (Type::IsFirstASecond(types[i], parameter, source))
-                    result.push_back(parameter);
+                if (Type::IsFirstASecond(types[i], overload->GetParameterAt(i), source))
+                    result.push_back(overload->GetParameterAt(i));
                 else
                     return Util::none;
             }
@@ -587,11 +599,14 @@ OverloadResolvable* Analyzer::GetCallableForFunction(FunctionSkeleton* skel) {
             if (auto con = dynamic_cast<const Parse::Constructor*>(skeleton->GetASTFunction()))
                 if (con->deleted)
                     return nullptr;
-            return a.GetWideFunction(skeleton, types);
+            // Find the overload that matches this.
+            return a.GetWideFunction(skeleton, overload);
         }
     };
-    FunctionCallables[skel] = Wide::Memory::MakeUnique<FunctionCallable>(skel);
-    return FunctionCallables.at(skel).get();
+
+    for (auto&& overload : GetFunctionOverloads(skel->GetASTFunction(), skel->GetContext()))
+        FunctionCallables[skel].insert(std::make_unique<FunctionCallable>(skel, overload));
+    return GetCallablesForFunction(skel);
 }
 
 Parse::Access Semantic::GetAccessSpecifier(Type* from, Type* to) {
@@ -652,8 +667,11 @@ void Semantic::AnalyzeExportedFunctions(Analyzer& a, std::function<void(const Pa
 void Semantic::AnalyzeExportedFunctions(Analyzer& a) {
     AnalyzeExportedFunctions(a, [](const Parse::AttributeFunctionBase* func, std::string name, Module* m) {
         auto skeleton = m->analyzer.GetWideFunction(func, m, name, nullptr, [](Parse::Name, Lexer::Range) { return nullptr; });
-        auto function = m->analyzer.GetWideFunction(skeleton);
-        function->ComputeBody();
+        auto params = m->analyzer.GetFunctionOverloads(func, m);
+        for (auto&& overload : params) {
+            auto function = m->analyzer.GetWideFunction(skeleton, overload);
+            function->ComputeBody();
+        }
     });
 }
 OverloadResolvable* Analyzer::GetCallableForTemplateType(const Parse::TemplateType* t, Type* context) {

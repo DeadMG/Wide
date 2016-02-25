@@ -32,10 +32,27 @@ struct TestAttributes {
     }
     TestFunction operator()(TestFunction f);
 };
+struct TestFunctionArgument {
+    std::string name;
+    std::unique_ptr<TestExpression> type;
+    std::unique_ptr<TestExpression> default_value;
+};
+struct TestArguments {
+    TestArguments() {}
+    TestArguments(TestArguments&& other) = default;
+    TestArguments& operator=(TestArguments&& other) = default;
+    std::vector<TestFunctionArgument> arguments;
+    TestArguments&& operator()(TestFunctionArgument attr) {
+        arguments.push_back(std::move(attr));
+        return std::move(*this);
+    }
+    TestFunction operator()(TestFunction f);
+};
 struct TestFunction {
     TestFunction() {}
     TestFunction(TestFunction&& other) = default;
     TestAttributes attrs;
+    TestArguments args;
 };
 struct TestOverloadSet {
     std::unordered_set<std::unique_ptr<TestFunction>> functions;
@@ -69,6 +86,12 @@ TestFunction TestAttributes::operator()(TestFunction f) {
     f.attrs = std::move(*this);
     return std::move(f);
 }
+TestFunction TestArguments::operator()(TestFunction f) {
+    f.args = std::move(*this);
+    return std::move(f);
+}
+struct TestNullExpression : public TestExpression {
+};
 struct TestInteger : public TestExpression {
     TestInteger(int arg)
     : val(arg) {}
@@ -110,6 +133,14 @@ bool operator==(const Wide::Parse::Function* func, const TestFunction& testfunc)
         if (func->attributes[i].initialized.get() != *testfunc.attrs.attributes[i].initialized)
             return false;
         if (func->attributes[i].initializer.get() != *testfunc.attrs.attributes[i].initializer)
+            return false;
+    }
+    for (unsigned i = 0; i < func->args.size(); ++i) {
+        if (func->args[i].name != testfunc.args.arguments[i].name)
+            return false;
+        if (func->args[i].type.get() != *testfunc.args.arguments[i].type)
+            return false;
+        if (func->args[i].default_value.get() != *testfunc.args.arguments[i].default_value)
             return false;
     }
     return true;
@@ -189,6 +220,9 @@ bool operator==(const Wide::Parse::Expression* e, const TestExpression& rhs) {
         if (auto testident = dynamic_cast<const TestIdentifier*>(&rhs))
             return boost::get<std::string>(ident->val) == testident->ident;
 
+    if (e == nullptr)
+        return !!dynamic_cast<const TestNullExpression*>(&rhs);
+    
     return false;
 }
 
@@ -241,6 +275,11 @@ int main() {
         ret["ModuleBasic"] = std::make_pair("module X {}", TestModule()("X", TestModule()));
         ret["FunctionShortForm"] = std::make_pair("X.Y.Z() {}", TestModule()("X", TestModule()("Y", TestModule()("Z", TestOverloadSet()(TestFunction())))));
         ret["AttrBasic"] = std::make_pair("[attr := initializer]f() {}", TestModule()("f", TestOverloadSet()(TestAttributes()(TestAttribute(TestIdentifier("attr"), TestIdentifier("initializer")))(TestFunction()))));
+        ret["DefaultArgumentBasic"] = std::make_pair("f(i := 1){}", TestModule()("f", TestOverloadSet()(TestArguments()(TestFunctionArgument{
+            "i",
+            std::make_unique<TestNullExpression>(),
+            std::make_unique<TestInteger>(1)
+        })(TestFunction()))));
         return ret;
     }();
 

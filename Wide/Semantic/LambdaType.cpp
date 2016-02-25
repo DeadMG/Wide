@@ -29,7 +29,7 @@ std::shared_ptr<Expression> LambdaType::ConstructCall(Expression::InstanceKey ke
     std::vector<Type*> types;
     for (auto&& arg : args)
         types.push_back(arg->GetType(key));
-    auto overset = analyzer.GetOverloadSet(analyzer.GetCallableForFunction(skeleton));
+    auto overset = analyzer.GetOverloadSet(analyzer.GetCallablesForFunction(skeleton));
     auto call = overset->Resolve(types, c.from);
     if (!call) return overset->IssueResolutionError(types, c);
     return call->Call(key, std::move(args), c);

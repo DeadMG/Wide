@@ -11,13 +11,14 @@ namespace Wide {
         class FunctionSkeleton;
         class ClangFunctionType;
         class WideFunctionType;
+        struct FunctionOverload;
         class Function : public Callable {
             std::vector<std::unique_ptr<Semantic::Error>> trampoline_errors;
             FunctionSkeleton* skeleton;
             std::string llvmname;
             llvm::Function* llvmfunc = nullptr;
             Type* ReturnType = nullptr;
-            std::vector<Type*> Args;
+            FunctionOverload* Overload;
             std::vector<std::function<void(llvm::Module*)>> trampoline;
             Analyzer& analyzer;
             Wide::Util::optional<std::string> import_name;
@@ -27,7 +28,7 @@ namespace Wide {
             void ComputeReturnType();
             
         public:
-            Function(Analyzer& a, FunctionSkeleton*, std::vector<Type*> args);
+            Function(Analyzer& a, FunctionSkeleton*, FunctionOverload* overload);
             
             llvm::Function* EmitCode(llvm::Module* module);
             WideFunctionType* GetSignature();
@@ -41,7 +42,7 @@ namespace Wide {
 
             boost::signals2::signal<void(Type*)> ReturnTypeChanged;
             void AddReturnExpression(Expression*);
-            std::vector<Type*> GetArguments() { return Args; }
+            FunctionOverload* GetOverload() { return Overload; }
 
             std::shared_ptr<Expression> GetThis();
             std::shared_ptr<Expression> GetStaticSelf();
