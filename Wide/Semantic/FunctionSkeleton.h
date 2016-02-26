@@ -64,6 +64,7 @@ namespace Wide {
             std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range, std::function<std::shared_ptr<Expression>(Expression::InstanceKey key)>)> NonstaticLookup;
             std::vector<std::tuple<std::function<llvm::Function*(llvm::Module*)>, ClangFunctionType*, clang::FunctionDecl*, Lexer::Range>> clang_exports;
 
+            static std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> BindNonstaticLookup(Scope* current, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)>);
             std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> BindNonstaticLookup();
         public:
             std::shared_ptr<Expression> GetParameter(unsigned num) { return parameters[num]; }

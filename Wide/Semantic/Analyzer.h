@@ -230,7 +230,6 @@ namespace Wide {
             std::unordered_map<const Parse::Statement*, std::vector<std::unique_ptr<Semantic::Error>>> StatementErrors;
             std::vector<ClangDiagnostic> ClangDiagnostics;
 
-            std::shared_ptr<Expression> AnalyzeExpression(Type* lookup, const Parse::Expression* e, Scope* current, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup);
             std::shared_ptr<Expression> AnalyzeExpression(Type* lookup, const Parse::Expression* e, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup);
 
             Analyzer(const Options::Clang&, const Parse::Module*, llvm::LLVMContext& con);

@@ -740,13 +740,6 @@ LambdaType* Analyzer::GetLambdaType(FunctionSkeleton* skel, std::vector<std::pai
         LambdaTypes[skel][types] = Wide::Memory::MakeUnique<LambdaType>(types, skel, *this);
     return LambdaTypes[skel][types].get();
 }
-std::shared_ptr<Expression> Analyzer::AnalyzeExpression(Type* lookup, const Parse::Expression* e, Scope* current, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup) {
-    return AnalyzeExpression(lookup, e, [=](Parse::Name name, Lexer::Range where) {
-        if (auto local = current->LookupLocal(GetNameAsString(name)))
-            return local;
-        return NonstaticLookup(name, where);
-    });
-}
 std::shared_ptr<Expression> Analyzer::AnalyzeExpression(Type* lookup, const Parse::Expression* e, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup) {
     static_assert(std::is_polymorphic<Parse::Expression>::value, "Expression must be polymorphic.");
     auto&& type_info = typeid(*e);
@@ -920,14 +913,9 @@ llvm::APInt Analyzer::EvaluateConstantIntegerExpression(std::shared_ptr<Expressi
     return result.IntVal;
 }
 std::shared_ptr<Statement> Semantic::AnalyzeStatement(Analyzer& analyzer, FunctionSkeleton* skel, const Parse::Statement* s, Type* parent, Scope* current, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> nonstatic) {
-    auto local_nonstatic = [=](Parse::Name name, Lexer::Range where) { 
-        if (auto result = current->LookupLocal(Semantic::GetNameAsString(name)))
-            return result;
-        return nonstatic(name, where);
-    };
     if (analyzer.ExpressionHandlers.find(typeid(*s)) != analyzer.ExpressionHandlers.end())
-        return analyzer.ExpressionHandlers[typeid(*s)](static_cast<const Parse::Expression*>(s), analyzer, parent, local_nonstatic);
-    return analyzer.StatementHandlers[typeid(*s)](s, skel, analyzer, parent, current, local_nonstatic);
+        return analyzer.ExpressionHandlers[typeid(*s)](static_cast<const Parse::Expression*>(s), analyzer, parent, nonstatic);
+    return analyzer.StatementHandlers[typeid(*s)](s, skel, analyzer, parent, current, nonstatic);
 }
 std::shared_ptr<Expression> Semantic::LookupFromImport(Type* context, Wide::Parse::Name name, Lexer::Range where, Parse::Import* imp) {
     auto propagate = [=]() -> std::shared_ptr<Expression> {
