@@ -202,10 +202,6 @@ void Function::AddExportName(std::function<void(llvm::Module*)> func) {
 void Function::AddReturnExpression(Expression* expr) {
     return_expressions.insert(expr);
 }
-std::shared_ptr<Expression> Function::GetThis() {
-    assert(skeleton->GetNonstaticMemberContext(Args));
-    return skeleton->GetParameter(0);
-}
 std::shared_ptr<Expression> Function::GetStaticSelf() {
     return CreatePrimGlobal(Range::Empty(), GetSignature(), [=](CodegenContext& con) -> llvm::Value* {
         if (!llvmfunc)

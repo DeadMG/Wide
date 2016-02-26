@@ -43,7 +43,6 @@ namespace Wide {
             void AddReturnExpression(Expression*);
             std::vector<Type*> GetArguments() { return Args; }
 
-            std::shared_ptr<Expression> GetThis();
             std::shared_ptr<Expression> GetStaticSelf();
 
             virtual ~Function() {}

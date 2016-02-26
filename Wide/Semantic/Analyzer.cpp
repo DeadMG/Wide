@@ -526,7 +526,7 @@ Type* Analyzer::GetNonstaticContext(const Parse::FunctionBase* p, Type* context)
     }
     return nullptr;
 }
-FunctionSkeleton* Analyzer::GetWideFunction(const Parse::FunctionBase* p, Type* context, std::string name, Type* nonstatic_context, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup) {
+FunctionSkeleton* Analyzer::GetWideFunction(const Parse::FunctionBase* p, Type* context, std::string name, Type* nonstatic_context, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range, std::function<std::shared_ptr<Expression>(Expression::InstanceKey key)>)> NonstaticLookup) {
     if (nonstatic_context == nullptr)
         return GetWideFunction(p, context, name, std::function<Type*(Expression::InstanceKey)>(), NonstaticLookup);
     return GetWideFunction(p, context, name, [=](Expression::InstanceKey key) { return nonstatic_context; }, NonstaticLookup);
@@ -651,7 +651,7 @@ void Semantic::AnalyzeExportedFunctions(Analyzer& a, std::function<void(const Pa
 }
 void Semantic::AnalyzeExportedFunctions(Analyzer& a) {
     AnalyzeExportedFunctions(a, [](const Parse::AttributeFunctionBase* func, std::string name, Module* m) {
-        auto skeleton = m->analyzer.GetWideFunction(func, m, name, nullptr, [](Parse::Name, Lexer::Range) { return nullptr; });
+        auto skeleton = m->analyzer.GetWideFunction(func, m, name, nullptr, [](Parse::Name, Lexer::Range, std::function<std::shared_ptr<Expression>(Expression::InstanceKey key)>) { return nullptr; });
         auto function = m->analyzer.GetWideFunction(skeleton);
         function->ComputeBody();
     });
@@ -892,7 +892,7 @@ std::string Analyzer::GetTypeExports() {
         exports += pair.second;
     return exports;
 }
-FunctionSkeleton* Analyzer::GetWideFunction(const Parse::FunctionBase* p, Type* context, std::string name, std::function<Type*(Expression::InstanceKey)> nonstatic_context, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup) {
+FunctionSkeleton* Analyzer::GetWideFunction(const Parse::FunctionBase* p, Type* context, std::string name, std::function<Type*(Expression::InstanceKey)> nonstatic_context, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range, std::function<std::shared_ptr<Expression>(Expression::InstanceKey key)>)> NonstaticLookup) {
     if (FunctionSkeletons.find(p) == FunctionSkeletons.end()
      || FunctionSkeletons[p].find(context) == FunctionSkeletons[p].end())
         FunctionSkeletons[p][context] = Wide::Memory::MakeUnique<FunctionSkeleton>(p, *this, context, name, nonstatic_context, NonstaticLookup);

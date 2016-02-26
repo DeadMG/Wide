@@ -30,7 +30,7 @@ namespace Wide {
             struct ImportConstructorCallable;
             struct ImportConstructorResolvable;
             FunctionSkeleton* GetWideFunction(const Parse::FunctionBase* base, Parse::Name name);
-            std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> GetNonstaticLookup(const Parse::FunctionBase* base, Parse::Name name);
+            std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range, std::function<std::shared_ptr<Expression>(Expression::InstanceKey key)>)> GetNonstaticLookup(const Parse::FunctionBase* base, Parse::Name name);
             std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> GetNonstaticLookup(Expression::InstanceKey key, std::shared_ptr<Expression>);
 
             std::vector<Type*> GetMembers() { return GetMemberData().members; }

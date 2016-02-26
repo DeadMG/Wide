@@ -649,7 +649,7 @@ void Expression::AddDefaultHandlers(Analyzer& a) {
                 assert(lambda);
                 return lambda;
             },
-            [&](Parse::Name name, Lexer::Range where) -> std::shared_ptr < Expression > {
+            [&](Parse::Name name, Lexer::Range where, std::function<std::shared_ptr<Expression>(Expression::InstanceKey key)> GetThis) -> std::shared_ptr<Expression> {
                 auto local_skeleton = skeleton;
                 if (explicit_captures.find(name) != explicit_captures.end())
                     return explicit_captures[name];
@@ -659,9 +659,8 @@ void Expression::AddDefaultHandlers(Analyzer& a) {
                     outer_implicit_captures[name] = result;
                     inner_implicit_captures[name] = CreateResultExpression(Range::Empty(), [=, &a, &skeleton](Expression::InstanceKey key) -> std::shared_ptr<Expression> {
                         if (key == Expression::NoInstance()) return nullptr;
-                        auto func = a.GetWideFunction(local_skeleton, *key);
                         auto lambda = dynamic_cast<LambdaType*>((*key)[0]->Decay());
-                        return lambda->LookupCapture(func->GetThis(), name);
+                        return lambda->LookupCapture(GetThis(key), name);
                     });
                     return inner_implicit_captures[name];
                 }

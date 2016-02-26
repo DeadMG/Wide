@@ -62,15 +62,13 @@ std::function<std::shared_ptr<Expression>(Wide::Parse::Name, Wide::Lexer::Range)
         return Type::AccessMember(key, self, name, { this, where });
     };
 }
-std::function<std::shared_ptr<Expression>(Wide::Parse::Name, Wide::Lexer::Range)> UserDefinedType::GetNonstaticLookup(const Parse::FunctionBase* base, Parse::Name funcname) {
-    return [=](Parse::Name name, Lexer::Range where) -> std::shared_ptr<Expression> {
-        auto skel = GetWideFunction(base, funcname);
+std::function<std::shared_ptr<Expression>(Wide::Parse::Name, Wide::Lexer::Range, std::function<std::shared_ptr<Expression>(Expression::InstanceKey key)>)> UserDefinedType::GetNonstaticLookup(const Parse::FunctionBase* base, Parse::Name funcname) {
+    return [=](Parse::Name name, Lexer::Range where, std::function<std::shared_ptr<Expression>(Expression::InstanceKey key)> GetThis) -> std::shared_ptr<Expression> {
         auto totally_not_this = CreatePrimGlobal(Range::Empty(), analyzer.GetLvalueType(this), [](CodegenContext& con) { return nullptr; });
         if (auto member = Type::AccessMember(Expression::NoInstance(), totally_not_this, name, { this, where }))
             return CreateResultExpression(Range::Empty(), [=](Expression::InstanceKey key) -> std::shared_ptr<Expression> {
                 if (!key) return nullptr;
-                auto func = analyzer.GetWideFunction(skel, *key);
-                return Type::AccessMember(key, func->GetThis(), name, { this, where });
+                return Type::AccessMember(key, GetThis(key), name, { this, where });
             });
         return nullptr;
     };

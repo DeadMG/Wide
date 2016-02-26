@@ -54,11 +54,11 @@ std::shared_ptr<Expression> Scope::LookupLocal(std::string name) {
         return parent->LookupLocal(name);
     return nullptr;
 }
-FunctionSkeleton::FunctionSkeleton(const Parse::FunctionBase* astfun, Analyzer& a, Type* container, std::string name, Type* nonstatic, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup)
+FunctionSkeleton::FunctionSkeleton(const Parse::FunctionBase* astfun, Analyzer& a, Type* container, std::string name, Type* nonstatic, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range, std::function<std::shared_ptr<Expression>(Expression::InstanceKey key)>)> NonstaticLookup)
     : FunctionSkeleton(astfun, a, container, name, [=](Expression::InstanceKey key) { return nonstatic; }, NonstaticLookup) {}
-FunctionSkeleton::FunctionSkeleton(const Parse::FunctionBase* astfun, Analyzer& a, Type* container, std::string name, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup)
+FunctionSkeleton::FunctionSkeleton(const Parse::FunctionBase* astfun, Analyzer& a, Type* container, std::string name, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range, std::function<std::shared_ptr<Expression>(Expression::InstanceKey key)>)> NonstaticLookup)
     : FunctionSkeleton(astfun, a, container, name, [](Expression::InstanceKey key) { return nullptr; }, NonstaticLookup) {}
-FunctionSkeleton::FunctionSkeleton(const Parse::FunctionBase* astfun, Analyzer& a, Type* mem, std::string src_name, std::function<Type*(Expression::InstanceKey)> nonstatic_context, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup)
+FunctionSkeleton::FunctionSkeleton(const Parse::FunctionBase* astfun, Analyzer& a, Type* mem, std::string src_name, std::function<Type*(Expression::InstanceKey)> nonstatic_context, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range, std::function<std::shared_ptr<Expression>(Expression::InstanceKey key)>)> NonstaticLookup)
     : fun(astfun)
     , context(mem)
     , current_state(State::NotYetAnalyzed)
@@ -99,8 +99,8 @@ FunctionSkeleton::FunctionSkeleton(const Parse::FunctionBase* astfun, Analyzer& 
                             nonstatic_context = [=](Expression::InstanceKey key) {
                                 return analyzer.GetClangType(*tu, tu->GetASTContext().getRecordType(mem->getParent()));
                             };
-                            this->NonstaticLookup = [=](Parse::Name name, Lexer::Range where) {
-                                if (auto result = NonstaticLookup(name, where))
+                            this->NonstaticLookup = [=](Parse::Name name, Lexer::Range where, std::function<std::shared_ptr<Expression>(Expression::InstanceKey key)> GetThis) {
+                                if (auto result = NonstaticLookup(name, where, GetThis))
                                     return result;
                                 return Type::AccessMember(Expression::NoInstance(), LookupLocal("this"), name, { GetNonstaticMemberContext(Expression::NoInstance()), where });
                             };
@@ -188,6 +188,15 @@ Type* FunctionSkeleton::GetExplicitReturn(Expression::InstanceKey key) {
     return nullptr;
 }
 
+
+std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> FunctionSkeleton::BindNonstaticLookup() {
+    return [this](Parse::Name name, Lexer::Range where) {
+        return NonstaticLookup(name, where, [this](Expression::InstanceKey key) {
+            return LookupLocal("this");
+        });
+    };
+}
+
 Scope* FunctionSkeleton::ComputeBody() {
     if (current_state == State::NotYetAnalyzed) {
         current_state = State::AnalyzeInProgress;
@@ -265,7 +274,7 @@ Scope* FunctionSkeleton::ComputeBody() {
                     };
                     if (is_delegating()) {
                         Context c{ GetContext(), con->initializers.front().where };
-                        auto expr = analyzer.AnalyzeExpression(GetContext(), con->initializers.front().initializer.get(), local_scope, NonstaticLookup);
+                        auto expr = analyzer.AnalyzeExpression(GetContext(), con->initializers.front().initializer.get(), local_scope, BindNonstaticLookup());
                         auto conty = dynamic_cast<Type*>(ConstructorContext);
                         auto conoverset = conty->GetConstructorOverloadSet(Parse::Access::Private);
                         auto destructor = conty->BuildDestructorCall(key, LookupLocal("this"), c, true);
@@ -292,7 +301,7 @@ Scope* FunctionSkeleton::ComputeBody() {
                                                 return &init;
                                     } else {
                                         // Match if it's a type and the one we were looking for.
-                                        auto ty = analyzer.AnalyzeExpression(GetContext(), init.initialized.get(), NonstaticLookup);
+                                        auto ty = analyzer.AnalyzeExpression(GetContext(), init.initialized.get(), BindNonstaticLookup());
                                         if (auto conty = dynamic_cast<ConstructorType*>(ty->GetType(key))) {
                                             if (conty->GetConstructedType() == x.t)
                                                 return &init;
@@ -328,9 +337,9 @@ Scope* FunctionSkeleton::ComputeBody() {
                                     std::vector<std::shared_ptr<Expression>> exprs;
                                     if (auto tup = dynamic_cast<const Parse::Tuple*>(init->initializer.get())) {
                                         for (auto&& expr : tup->expressions)
-                                            exprs.push_back(analyzer.AnalyzeExpression(GetContext(), expr.get(), local_scope, NonstaticLookup));
+                                            exprs.push_back(analyzer.AnalyzeExpression(GetContext(), expr.get(), local_scope, BindNonstaticLookup()));
                                     } else
-                                        exprs.push_back(analyzer.AnalyzeExpression(GetContext(), init->initializer.get(), local_scope, NonstaticLookup));
+                                        exprs.push_back(analyzer.AnalyzeExpression(GetContext(), init->initializer.get(), local_scope, BindNonstaticLookup()));
                                     root_scope.push_back(make_member_initializer(std::move(exprs), init->where));
                                 } else
                                     root_scope.push_back(make_member_initializer({}, init->where));
@@ -349,7 +358,7 @@ Scope* FunctionSkeleton::ComputeBody() {
                                     InitializerErrors[&x] = Wide::Memory::MakeUnique<Semantic::SpecificError<NoMemberToInitialize>>(analyzer, x.where, "Identifier " + Semantic::GetNameAsString(ident->val) + " was not a member.");
                                     continue;
                                 }
-                                auto expr = analyzer.AnalyzeExpression(GetContext(), x.initializer.get(), local_scope, NonstaticLookup);
+                                auto expr = analyzer.AnalyzeExpression(GetContext(), x.initializer.get(), local_scope, BindNonstaticLookup());
                                 auto ty = expr->GetType(Expression::NoInstance());
                                 auto conty = dynamic_cast<ConstructorType*>(expr->GetType(Expression::NoInstance()));
                                 if (!conty) {
@@ -403,7 +412,7 @@ Scope* FunctionSkeleton::ComputeBody() {
 
         // Now the body.
         for (std::size_t i = 0; i < fun->statements.size(); ++i) {
-            root_scope->active.push_back(AnalyzeStatement(analyzer, this, fun->statements[i].get(), GetContext(), root_scope.get(), NonstaticLookup));
+            root_scope->active.push_back(AnalyzeStatement(analyzer, this, fun->statements[i].get(), GetContext(), root_scope.get(), BindNonstaticLookup()));
         }
 
         // If we were a destructor, destroy.

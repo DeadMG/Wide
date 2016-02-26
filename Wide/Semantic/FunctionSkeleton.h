@@ -61,14 +61,16 @@ namespace Wide {
             State current_state;
             std::unique_ptr<Scope> root_scope;
             const Parse::FunctionBase* fun;
-            std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup;
+            std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range, std::function<std::shared_ptr<Expression>(Expression::InstanceKey key)>)> NonstaticLookup;
             std::vector<std::tuple<std::function<llvm::Function*(llvm::Module*)>, ClangFunctionType*, clang::FunctionDecl*, Lexer::Range>> clang_exports;
+
+            std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> BindNonstaticLookup();
         public:
             std::shared_ptr<Expression> GetParameter(unsigned num) { return parameters[num]; }
             static void AddDefaultHandlers(Analyzer& a);
-            FunctionSkeleton(const Parse::FunctionBase* astfun, Analyzer& a, Type* container, std::string name, std::function<Type*(Expression::InstanceKey)>, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup);
-            FunctionSkeleton(const Parse::FunctionBase* astfun, Analyzer& a, Type* container, std::string name, Type*, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup);
-            FunctionSkeleton(const Parse::FunctionBase* astfun, Analyzer& a, Type* container, std::string name, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> NonstaticLookup);
+            FunctionSkeleton(const Parse::FunctionBase* astfun, Analyzer& a, Type* container, std::string name, std::function<Type*(Expression::InstanceKey)>, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range, std::function<std::shared_ptr<Expression>(Expression::InstanceKey key)>)> NonstaticLookup);
+            FunctionSkeleton(const Parse::FunctionBase* astfun, Analyzer& a, Type* container, std::string name, Type*, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range, std::function<std::shared_ptr<Expression>(Expression::InstanceKey key)>)> NonstaticLookup);
+            FunctionSkeleton(const Parse::FunctionBase* astfun, Analyzer& a, Type* container, std::string name, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range, std::function<std::shared_ptr<Expression>(Expression::InstanceKey key)>)> NonstaticLookup);
 
             Type* GetNonstaticMemberContext(Expression::InstanceKey key);
 
