@@ -128,7 +128,6 @@ namespace Wide {
             void PrepareExportedFunctions(AggregateAssignmentOperators, AggregateConstructors, bool);
             OverloadSet* CreateAssignmentOperatorOverloadSet(AggregateAssignmentOperators which);
             OverloadSet* CreateConstructorOverloadSet(AggregateConstructors which);
-            void Export(llvm::Module* mod) override;
         public:
             enum class SpecialFunction {
                 DefaultConstructor,

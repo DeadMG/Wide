@@ -642,7 +642,7 @@ void Expression::AddDefaultHandlers(Analyzer& a) {
             explicit_captures.insert(std::make_pair(arg.name.front().name, a.AnalyzeExpression(lookup, arg.initializer.get(), NonstaticLookup)));
         }
         FunctionSkeleton* skeleton;
-        skeleton = a.GetWideFunction(lam, lookup, "lambda at " + to_string(lam->where), 
+        skeleton = a.GetWideFunction(lam, lookup, 
             [](Expression::InstanceKey key) -> Type* {
                 if (!key) return nullptr;
                 auto lambda = dynamic_cast<LambdaType*>((*key)[0]->Decay());

@@ -54,16 +54,15 @@ std::shared_ptr<Expression> Scope::LookupLocal(std::string name) {
         return parent->LookupLocal(name);
     return nullptr;
 }
-FunctionSkeleton::FunctionSkeleton(const Parse::FunctionBase* astfun, Analyzer& a, Type* container, std::string name, Type* nonstatic, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range, std::function<std::shared_ptr<Expression>(Expression::InstanceKey key)>)> NonstaticLookup)
-    : FunctionSkeleton(astfun, a, container, name, [=](Expression::InstanceKey key) { return nonstatic; }, NonstaticLookup) {}
-FunctionSkeleton::FunctionSkeleton(const Parse::FunctionBase* astfun, Analyzer& a, Type* container, std::string name, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range, std::function<std::shared_ptr<Expression>(Expression::InstanceKey key)>)> NonstaticLookup)
-    : FunctionSkeleton(astfun, a, container, name, [](Expression::InstanceKey key) { return nullptr; }, NonstaticLookup) {}
-FunctionSkeleton::FunctionSkeleton(const Parse::FunctionBase* astfun, Analyzer& a, Type* mem, std::string src_name, std::function<Type*(Expression::InstanceKey)> nonstatic_context, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range, std::function<std::shared_ptr<Expression>(Expression::InstanceKey key)>)> NonstaticLookup)
+FunctionSkeleton::FunctionSkeleton(const Parse::FunctionBase* astfun, Analyzer& a, Type* container, Type* nonstatic, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range, std::function<std::shared_ptr<Expression>(Expression::InstanceKey key)>)> NonstaticLookup)
+    : FunctionSkeleton(astfun, a, container, [=](Expression::InstanceKey key) { return nonstatic; }, NonstaticLookup) {}
+FunctionSkeleton::FunctionSkeleton(const Parse::FunctionBase* astfun, Analyzer& a, Type* container, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range, std::function<std::shared_ptr<Expression>(Expression::InstanceKey key)>)> NonstaticLookup)
+    : FunctionSkeleton(astfun, a, container, [](Expression::InstanceKey key) { return nullptr; }, NonstaticLookup) {}
+FunctionSkeleton::FunctionSkeleton(const Parse::FunctionBase* astfun, Analyzer& a, Type* mem, std::function<Type*(Expression::InstanceKey)> nonstatic_context, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range, std::function<std::shared_ptr<Expression>(Expression::InstanceKey key)>)> NonstaticLookup)
     : fun(astfun)
     , context(mem)
     , current_state(State::NotYetAnalyzed)
     , root_scope(nullptr)
-    , source_name(src_name)
     , analyzer(a)
     , NonstaticLookup(NonstaticLookup) 
 {
@@ -187,7 +186,6 @@ Type* FunctionSkeleton::GetExplicitReturn(Expression::InstanceKey key) {
     }
     return nullptr;
 }
-
 
 std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> FunctionSkeleton::BindNonstaticLookup() {
     return [this](Parse::Name name, Lexer::Range where) {

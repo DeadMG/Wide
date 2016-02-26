@@ -165,8 +165,6 @@ namespace Wide {
             std::string explain() override final;
             Wide::Util::optional<unsigned> GetVirtualFunctionIndex(const Parse::DynamicFunction* func);
             bool IsFinal() override final;
-            std::string GetExportBody() override final;
-            void Export(llvm::Module* mod) override final;
             bool AlwaysKeepInMemory(llvm::Module* mod) override final;
         };
     }

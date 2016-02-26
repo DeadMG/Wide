@@ -156,9 +156,6 @@ namespace Wide {
             virtual bool IsNonstaticMemberContext();
             virtual bool IsLookupContext();
             virtual std::function<llvm::Constant*(llvm::Module*)> GetRTTI();
-            virtual std::string Export();
-            virtual std::string GetExportBody();
-            virtual void Export(llvm::Module* mod);
 
             // Do not ever call from public API, it is for derived types and implementation details only.
             virtual bool IsSourceATarget(Type* source, Type* target, Type* context) { return false; }

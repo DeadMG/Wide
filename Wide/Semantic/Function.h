@@ -32,7 +32,6 @@ namespace Wide {
             llvm::Function* EmitCode(llvm::Module* module);
             WideFunctionType* GetSignature();
 
-            std::string GetExportBody();
             void ComputeBody();
             void AddExportName(std::function<void(llvm::Module*)> mod);
 

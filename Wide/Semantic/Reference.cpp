@@ -139,9 +139,3 @@ std::string RvalueType::explain() {
 std::function<llvm::Constant*(llvm::Module*)> Reference::GetRTTI() {
     return Decay()->GetRTTI();
 }
-std::string LvalueType::Export() {
-    return analyzer.GetTypeExport(Decay()) + ".lvalue";
-}
-std::string RvalueType::Export() {
-    return analyzer.GetTypeExport(Decay()) + ".rvalue";
-}

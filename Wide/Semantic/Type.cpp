@@ -914,10 +914,3 @@ std::shared_ptr<Expression> Type::BuildIndex(Expression::InstanceKey key, std::s
     if (!call) return set->IssueResolutionError(types, c);
     return call->Call(key, std::move(args), c);
 }
-std::string Type::Export() {
-    return explain();
-}
-void Type::Export(llvm::Module* mod) {}
-std::string Type::GetExportBody() {
-    return "";
-}

@@ -721,14 +721,6 @@ void AggregateType::PrepareExportedFunctions(AggregateAssignmentOperators ops, A
     if (cons.move_constructor) CreateMoveConstructorInitializers();
     if (cons.copy_constructor) CreateCopyConstructorInitializers();
 }
-void AggregateType::Export(llvm::Module* mod) {
-    EmitMoveConstructor(mod);
-    EmitCopyConstructor(mod);
-    EmitMoveAssignmentOperator(mod);
-    EmitCopyAssignmentOperator(mod);
-    EmitDefaultConstructor(mod);
-    if (!destructors.empty()) GetDestructorFunction()(mod);
-}
 std::string AggregateType::GetLLVMTypeName() {
     std::stringstream strstr;
     strstr << this;

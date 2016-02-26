@@ -93,30 +93,6 @@ void Function::ComputeBody() {
             trampoline.push_back(std::get<1>(pair)->CreateThunk(std::get<0>(pair), CreatePrimGlobal(Range::Empty(), GetSignature(), [this](CodegenContext& con) { return EmitCode(con); }), std::get<2>(pair), skeleton->GetContext()));
     }
 }
-std::string Function::GetExportBody() {
-    auto sig = GetSignature();
-    auto import = "[import_name := \"" + llvmname + "\"]\n";
-    if (!dynamic_cast<UserDefinedType*>(skeleton->GetContext()))
-        import += analyzer.GetTypeExport(skeleton->GetContext());
-    import += skeleton->GetSourceName();
-    import += "(";
-    unsigned i = 0;
-    for (auto& ty : Args) {
-        if (Args.size() == skeleton->GetASTFunction()->args.size() + 1 && i == 0) {
-            import += "this := ";
-            ++i;
-        } else {
-            import += skeleton->GetASTFunction()->args[i++].name + " := ";
-        }
-        if (&ty != &Args.back())
-            import += analyzer.GetTypeExport(ty) + ", ";
-        else
-            import += analyzer.GetTypeExport(ty);
-    }
-    import += ")";
-    import += " := " + analyzer.GetTypeExport(sig->GetReturnType()) + " { } \n";
-    return import;
-}
 llvm::Function* Function::EmitCode(llvm::Module* module) {
     if (llvmfunc) {
         if (llvmfunc->getParent() == module)

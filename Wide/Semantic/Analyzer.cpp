@@ -197,8 +197,6 @@ void Analyzer::GenerateCode(llvm::Module* module) {
     for (auto&& set : WideFunctions)
         for (auto&& signature : set.second)
             signature.second->EmitCode(ConstantModule.get());
-    for (auto&& pair : ExportedTypes)
-        pair.first->Export(ConstantModule.get());
     std::string ir;
     llvm::raw_string_ostream stream(ir);
     ConstantModule->print(stream, nullptr);
@@ -526,10 +524,10 @@ Type* Analyzer::GetNonstaticContext(const Parse::FunctionBase* p, Type* context)
     }
     return nullptr;
 }
-FunctionSkeleton* Analyzer::GetWideFunction(const Parse::FunctionBase* p, Type* context, std::string name, Type* nonstatic_context, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range, std::function<std::shared_ptr<Expression>(Expression::InstanceKey key)>)> NonstaticLookup) {
+FunctionSkeleton* Analyzer::GetWideFunction(const Parse::FunctionBase* p, Type* context, Type* nonstatic_context, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range, std::function<std::shared_ptr<Expression>(Expression::InstanceKey key)>)> NonstaticLookup) {
     if (nonstatic_context == nullptr)
-        return GetWideFunction(p, context, name, std::function<Type*(Expression::InstanceKey)>(), NonstaticLookup);
-    return GetWideFunction(p, context, name, [=](Expression::InstanceKey key) { return nonstatic_context; }, NonstaticLookup);
+        return GetWideFunction(p, context, std::function<Type*(Expression::InstanceKey)>(), NonstaticLookup);
+    return GetWideFunction(p, context, [=](Expression::InstanceKey key) { return nonstatic_context; }, NonstaticLookup);
 }
 
 OverloadResolvable* Analyzer::GetCallableForFunction(FunctionSkeleton* skel) {
@@ -651,7 +649,7 @@ void Semantic::AnalyzeExportedFunctions(Analyzer& a, std::function<void(const Pa
 }
 void Semantic::AnalyzeExportedFunctions(Analyzer& a) {
     AnalyzeExportedFunctions(a, [](const Parse::AttributeFunctionBase* func, std::string name, Module* m) {
-        auto skeleton = m->analyzer.GetWideFunction(func, m, name, nullptr, [](Parse::Name, Lexer::Range, std::function<std::shared_ptr<Expression>(Expression::InstanceKey key)>) { return nullptr; });
+        auto skeleton = m->analyzer.GetWideFunction(func, m, nullptr, [](Parse::Name, Lexer::Range, std::function<std::shared_ptr<Expression>(Expression::InstanceKey key)>) { return nullptr; });
         auto function = m->analyzer.GetWideFunction(skeleton);
         function->ComputeBody();
     });
@@ -871,24 +869,10 @@ ClangTypeInfo* Analyzer::MaybeGetClangTypeInfo(const clang::CXXRecordDecl* decl)
         return &GeneratedClangTypes[decl];
     return nullptr;
 }
-std::string Analyzer::GetTypeExport(Type* t) {
-    if (ExportedTypes.find(t) == ExportedTypes.end()) {
-        // Break any recursion here.
-        ExportedTypes[t] = "";
-        ExportedTypes[t] = t->GetExportBody();
-    }
-    return t->Export();
-}
-std::string Analyzer::GetTypeExports() {
-    std::string exports;
-    for (auto&& pair : ExportedTypes)
-        exports += pair.second;
-    return exports;
-}
-FunctionSkeleton* Analyzer::GetWideFunction(const Parse::FunctionBase* p, Type* context, std::string name, std::function<Type*(Expression::InstanceKey)> nonstatic_context, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range, std::function<std::shared_ptr<Expression>(Expression::InstanceKey key)>)> NonstaticLookup) {
+FunctionSkeleton* Analyzer::GetWideFunction(const Parse::FunctionBase* p, Type* context, std::function<Type*(Expression::InstanceKey)> nonstatic_context, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range, std::function<std::shared_ptr<Expression>(Expression::InstanceKey key)>)> NonstaticLookup) {
     if (FunctionSkeletons.find(p) == FunctionSkeletons.end()
      || FunctionSkeletons[p].find(context) == FunctionSkeletons[p].end())
-        FunctionSkeletons[p][context] = Wide::Memory::MakeUnique<FunctionSkeleton>(p, *this, context, name, nonstatic_context, NonstaticLookup);
+        FunctionSkeletons[p][context] = Wide::Memory::MakeUnique<FunctionSkeleton>(p, *this, context, nonstatic_context, NonstaticLookup);
     return FunctionSkeletons[p][context].get();
 }
 

@@ -52,7 +52,7 @@ namespace {
     }
 }
 FunctionSkeleton* UserDefinedType::GetWideFunction(const Parse::FunctionBase* base, Parse::Name funcname) {
-    return analyzer.GetWideFunction(base, this, GetNameAsString(funcname), [](Expression::InstanceKey key) -> Type* {
+    return analyzer.GetWideFunction(base, this, [](Expression::InstanceKey key) -> Type* {
         if (!key) return nullptr;
         return Expression::GetArgumentType(key, 0);
     }, GetNonstaticLookup(base, funcname));
@@ -274,7 +274,7 @@ std::shared_ptr<Expression> UserDefinedType::AccessNamedMember(Expression::Insta
             for (auto&& access : *set) {
                 if (spec >= access.first)
                     for (auto&& func : access.second)
-                        resolvables.insert(analyzer.GetCallableForFunction(analyzer.GetWideFunction(func.get(), this, GetNameAsString(name), this, GetNonstaticLookup(func.get(), name))));
+                        resolvables.insert(analyzer.GetCallableForFunction(analyzer.GetWideFunction(func.get(), this, this, GetNonstaticLookup(func.get(), name))));
             }
             // Check for imports.
             OverloadSet* imports = analyzer.GetOverloadSet();
@@ -806,7 +806,7 @@ OverloadSet* UserDefinedType::CreateConstructorOverloadSet(Parse::Access access)
         for (auto&&f : type->constructor_decls) {
             if (f.first <= access)
                 for (auto&& func : f.second)
-                    resolvables.insert(analyzer.GetCallableForFunction(analyzer.GetWideFunction(func.get(), this, "type", this, GetNonstaticLookup(func.get(), "type"))));
+                    resolvables.insert(analyzer.GetCallableForFunction(analyzer.GetWideFunction(func.get(), this, this, GetNonstaticLookup(func.get(), "type"))));
         }
         return analyzer.GetOverloadSet(resolvables, GetContext());
     };
@@ -870,7 +870,7 @@ OverloadSet* UserDefinedType::CreateOperatorOverloadSet(Parse::OperatorName name
                 for (auto&& f : *set) {
                     if (f.first <= access)
                         for (auto&& func : f.second)
-                            resolvable.insert(analyzer.GetCallableForFunction(analyzer.GetWideFunction(func.get(), this, GetNameAsString(name), this, GetNonstaticLookup(func.get(), name))));
+                            resolvable.insert(analyzer.GetCallableForFunction(analyzer.GetWideFunction(func.get(), this, this, GetNonstaticLookup(func.get(), name))));
                 }
             }
         }
@@ -892,7 +892,7 @@ OverloadSet* UserDefinedType::CreateOperatorOverloadSet(Parse::OperatorName name
 std::function<void(CodegenContext&)> UserDefinedType::BuildDestruction(Expression::InstanceKey key, std::shared_ptr<Expression> self, Context c, bool devirtualize) {
     if (type->destructor_decl) {
         std::unordered_set<OverloadResolvable*> resolvables;
-        resolvables.insert(analyzer.GetCallableForFunction(analyzer.GetWideFunction(type->destructor_decl.get(), this, "~type", this, GetNonstaticLookup(type->destructor_decl.get(), "~type"))));
+        resolvables.insert(analyzer.GetCallableForFunction(analyzer.GetWideFunction(type->destructor_decl.get(), this, this, GetNonstaticLookup(type->destructor_decl.get(), "~type"))));
         auto desset = analyzer.GetOverloadSet(resolvables, analyzer.GetLvalueType(this));
         auto callable = dynamic_cast<Wide::Semantic::Function*>(desset->Resolve({ analyzer.GetLvalueType(this) }, c.from));
         auto call = callable->Call(key, { self }, { this, c.where });
@@ -1157,7 +1157,7 @@ bool UserDefinedType::IsTriviallyCopyConstructible() {
         std::unordered_set<OverloadResolvable*> resolvables;
         for (auto&& f : type->constructor_decls) {
             for (auto&& func : f.second)
-                resolvables.insert(analyzer.GetCallableForFunction(analyzer.GetWideFunction(func.get(), this, "type", this, GetNonstaticLookup(func.get(), "type"))));
+                resolvables.insert(analyzer.GetCallableForFunction(analyzer.GetWideFunction(func.get(), this, this, GetNonstaticLookup(func.get(), "type"))));
         }
         return analyzer.GetOverloadSet(resolvables, analyzer.GetLvalueType(this));
     };
@@ -1182,7 +1182,7 @@ std::shared_ptr<Expression> UserDefinedType::AccessStaticMember(std::string name
             for (auto&& access : *nonvar) {
                 if (spec >= access.first)
                     for (auto&& func : access.second)
-                        resolvables.insert(analyzer.GetCallableForFunction(analyzer.GetWideFunction(func.get(), this, GetNameAsString(name), this, GetNonstaticLookup(func.get(), name))));
+                        resolvables.insert(analyzer.GetCallableForFunction(analyzer.GetWideFunction(func.get(), this, this, GetNonstaticLookup(func.get(), name))));
             }
             if (!resolvables.empty())
                 return analyzer.GetOverloadSet(resolvables, nullptr)->BuildValueConstruction(Expression::NoInstance(), {}, c);
@@ -1231,108 +1231,6 @@ bool UserDefinedType::IsFinal() {
         }
     }
     return false;
-}
-std::string UserDefinedType::GetExportBody() {
-    GetExportData().exported = true;
-    std::string import = "[size := " + std::to_string(size()) + "]\n";
-    import += "[alignment := " + std::to_string(alignment()) + "]\n";
-    import += "[__always_keep_in_memory := true]\n";
-    import += "[__llvm_name := \"" + GetLLVMTypeName() + "\"]\n";
-    import += "type " + explain() + "{\n";
-    for (auto&&member : GetMemberData().member_indices) {
-        // Need lvalue/rvalue/value overloads.
-        auto&& var = type->variables[member.second];
-        if (IsFinal() && var.access == Parse::Access::Protected) continue;
-        if (var.access != Parse::Access::Public) continue;
-        import += "private:\n";
-        auto refname = analyzer.GetUniqueFunctionName();
-        import += "[import_name := \"" + refname + "\"]\n";
-        import += "get_" + member.first + "(this := " + explain() + ".rvalue) := " + analyzer.GetTypeExport(Semantic::CollapseType(analyzer.GetRvalueType(this), GetMemberData().members[member.second])) + " {}\n";
-        import += "[import_name := \"" + refname + "\"]\n";
-        import += "get_" + member.first + "(this := " + explain() + ".lvalue) := " + analyzer.GetTypeExport(Semantic::CollapseType(analyzer.GetLvalueType(this), GetMemberData().members[member.second])) + " {}\n";
-        auto valname = analyzer.GetUniqueFunctionName();
-        import += "[import_name := \"" + valname + "\"]\n";
-        import += "get_" + member.first + "(this := " + explain() + ") := " + analyzer.GetTypeExport(GetMemberData().members[member.second]) + " {}\n";
-        import += "public:\n";
-        import += "using " + member.first + " := " + "get_" + member.first + "();\n";
-        GetExportData().MemberPropertyNames[member.first] = { refname, valname };
-    }
-    if (!GetDefaultData().IsComplex) {
-        // Make sure that all exported implicitly generated functions are prepared.
-        AggregateType::PrepareExportedFunctions(GetDefaultData().AggregateOps, GetDefaultData().AggregateCons, !type->destructor_decl);
-        if (GetDefaultData().AggregateCons.copy_constructor) {
-            import += "public:\n";
-            import += "[import_name := \"" + GetSpecialFunctionName(SpecialFunction::CopyConstructor) + "\"]\n";
-            import += "type(other := " + explain() + ".lvalue) {}\n";
-        }
-        if (GetDefaultData().AggregateCons.move_constructor) {
-            import += "public:\n";
-            import += "[import_name := \"" + GetSpecialFunctionName(SpecialFunction::MoveConstructor) + "\"]\n";
-            import += "type(other := " + explain() + ".rvalue) {}\n";
-        }
-        if (GetDefaultData().AggregateCons.default_constructor) {
-            import += "public:\n";
-            import += "[import_name := \"" + GetSpecialFunctionName(SpecialFunction::DefaultConstructor) + "\"]\n";
-            import += "type() {}\n";
-        }
-        if (GetDefaultData().AggregateOps.copy_operator) {
-            import += "public:\n";
-            import += "[import_name := \"" + GetSpecialFunctionName(SpecialFunction::CopyAssignmentOperator) + "\"]\n";
-            import += "operator=(other := " + explain() + ".lvalue) {}\n";
-        }
-        if (GetDefaultData().AggregateOps.move_operator) {
-            import += "public:\n";
-            import += "[import_name := \"" + GetSpecialFunctionName(SpecialFunction::MoveAssignmentOperator) + "\"]\n";
-            import += "operator=(other := " + explain() + ".rvalue) {}\n";
-        }
-        import += "public:\n";
-        import += "[import_name := \"" + GetSpecialFunctionName(SpecialFunction::Destructor) + "\"]\n";
-        import += "~type() {}\n";
-    }
-    import += "}";
-    return import;
-}
-void UserDefinedType::Export(llvm::Module* mod) {
-    for (auto&&tuple : GetExportData().MemberPropertyNames) {
-        auto memtype = GetMemberData().members[GetMemberData().member_indices[tuple.first]];
-        auto fty = analyzer.GetFunctionType(Semantic::CollapseType(analyzer.GetLvalueType(this), memtype), { analyzer.GetLvalueType(this) }, false);
-        llvm::Function* reffunc = llvm::Function::Create(llvm::cast<llvm::FunctionType>(fty->GetLLVMType(mod)->getElementType()), llvm::GlobalValue::LinkageTypes::ExternalLinkage, tuple.second.first, mod);
-        auto location = GetLocation(GetMemberData().member_indices[tuple.first] + type->bases.size());
-        CodegenContext::EmitFunctionBody(reffunc, { analyzer.GetLvalueType(this) }, [&](CodegenContext& con) {
-            auto val = con->GetInsertBlock()->getParent()->arg_begin();
-            if (auto&& field = boost::get<Wide::Semantic::LLVMFieldIndex>(&location)) {
-                con->CreateRet(con->CreateStructGEP(val, field->index));
-                return;
-            } 
-            auto self = con->CreatePointerCast(val, con.GetInt8PtrTy());
-            self = con->CreateConstGEP1_32(self, boost::get<Wide::Semantic::EmptyBaseOffset>(location).offset);
-            con->CreateRet(con->CreatePointerCast(self, memtype->GetLLVMType(con)->getPointerTo()));
-        });
-        fty = analyzer.GetFunctionType(memtype, { this }, false);
-        llvm::Function* valfunc = llvm::Function::Create(llvm::cast<llvm::FunctionType>(fty->GetLLVMType(mod)->getElementType()), llvm::GlobalValue::LinkageTypes::ExternalLinkage, tuple.second.second, mod);
-        auto complexmem = CreatePrimGlobal(Range::Empty(), analyzer.GetLvalueType(memtype), [valfunc](CodegenContext& con) { return valfunc->arg_begin(); });
-        auto self = CreatePrimGlobal(Range::Empty(), this, [valfunc](CodegenContext& con) { return ++valfunc->arg_begin(); });
-        auto val = PrimitiveAccessMember(self, GetMemberData().member_indices[tuple.first] + type->bases.size());
-        auto inplace = memtype->BuildInplaceConstruction(Expression::NoInstance(), complexmem, { val }, { this, Wide::Lexer::Range(std::make_shared<std::string>("Analyzer internal function")) });
-        CodegenContext::EmitFunctionBody(valfunc, { this }, [&](CodegenContext& con) {
-            if (AlwaysKeepInMemory(mod)) {
-                if (memtype->AlwaysKeepInMemory(mod)) {
-                    inplace->GetValue(con);
-                    con->CreateRetVoid();
-                    return;
-                }
-                con->CreateRet(con->CreateLoad(con->CreateCall(reffunc, con->GetInsertBlock()->getParent()->arg_begin())));
-                return;
-            }
-            if (auto&& field = boost::get<Wide::Semantic::LLVMFieldIndex>(&location)) {
-                con->CreateRet(con->CreateExtractValue(con->GetInsertBlock()->getParent()->arg_begin(), { field->index }));
-                return;
-            }
-            con->CreateRet(llvm::UndefValue::get(memtype->GetLLVMType(con)));
-        });
-    }
-    // Emit any and all aggregate functions that need emitting.
-    AggregateType::Export(mod);
 }
 bool UserDefinedType::AlwaysKeepInMemory(llvm::Module* mod) {
     if (GetExportData().exported)

@@ -146,11 +146,8 @@ namespace Wide {
 
             llvm::DataLayout layout;
             std::unordered_map<const Parse::Expression*, std::unordered_map<Type*, std::shared_ptr<Expression>>> ExpressionCache;
-            std::unordered_map<Type*, std::string> ExportedTypes;
             std::unique_ptr<llvm::Module> ConstantModule;
         public:
-            std::string GetTypeExports();
-            std::string GetTypeExport(Type* t);
             auto GetFunctions() -> const decltype(WideFunctions)& { return WideFunctions; }
             
             const llvm::DataLayout& GetDataLayout() { return layout; }
@@ -175,8 +172,8 @@ namespace Wide {
             ClangFunctionType* GetFunctionType(const clang::FunctionProtoType*, ClangTU&);
             ClangFunctionType* GetFunctionType(const clang::FunctionProtoType*, Wide::Util::optional<clang::QualType>, ClangTU&);
             Module* GetWideModule(const Parse::Module* m, Module* higher, std::string name);
-            FunctionSkeleton* GetWideFunction(const Parse::FunctionBase* p, Type* context, std::string name, Type* nonstatic_context, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range, std::function<std::shared_ptr<Expression>(Expression::InstanceKey key)>)> NonstaticLookup);
-            FunctionSkeleton* GetWideFunction(const Parse::FunctionBase* p, Type* context, std::string name, std::function<Type*(Expression::InstanceKey)> nonstatic_context, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range, std::function<std::shared_ptr<Expression>(Expression::InstanceKey key)>)> NonstaticLookup);
+            FunctionSkeleton* GetWideFunction(const Parse::FunctionBase* p, Type* context, Type* nonstatic_context, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range, std::function<std::shared_ptr<Expression>(Expression::InstanceKey key)>)> NonstaticLookup);
+            FunctionSkeleton* GetWideFunction(const Parse::FunctionBase* p, Type* context, std::function<Type*(Expression::InstanceKey)> nonstatic_context, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range, std::function<std::shared_ptr<Expression>(Expression::InstanceKey key)>)> NonstaticLookup);
             Function* GetWideFunction(FunctionSkeleton* skeleton, const std::vector<Type*>&);
             Function* GetWideFunction(FunctionSkeleton* skeleton);
             LvalueType* GetLvalueType(Type* t);
