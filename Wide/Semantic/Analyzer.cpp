@@ -18,7 +18,6 @@
 #include <Wide/Semantic/ClangTemplateClass.h>
 #include <Wide/Semantic/OverloadSet.h>
 #include <Wide/Semantic/UserDefinedType.h>
-#include <Wide/Semantic/TemplateType.h>
 #include <Wide/Semantic/NullType.h>
 #include <Wide/Semantic/SemanticError.h>
 #include <Wide/Semantic/ClangOptions.h>
@@ -654,78 +653,6 @@ void Semantic::AnalyzeExportedFunctions(Analyzer& a) {
         function->ComputeBody();
     });
 }
-OverloadResolvable* Analyzer::GetCallableForTemplateType(const Parse::TemplateType* t, Type* context) {
-    if (TemplateTypeCallables.find(t) != TemplateTypeCallables.end())
-        return TemplateTypeCallables[t].get();
-
-    struct TemplateTypeCallable : Callable {
-        TemplateTypeCallable(Type* con, const Wide::Parse::TemplateType* tempty, std::vector<Type*> args)
-        : context(con), templatetype(tempty), types(args) {}
-        Type* context;
-        const Wide::Parse::TemplateType* templatetype;
-        std::vector<Type*> types;
-        std::vector<std::shared_ptr<Expression>> AdjustArguments(Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c) override final { return args; }
-        std::shared_ptr<Expression> CallFunction(Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c) override final {
-            return context->analyzer.GetConstructorType(context->analyzer.GetTemplateType(templatetype, context, types, ""))->BuildValueConstruction(key, {}, c);
-        }
-    };
-
-    struct TemplateTypeResolvable : OverloadResolvable {
-        TemplateTypeResolvable(const Parse::TemplateType* f, Type* con)
-        : templatetype(f), context(con) {}
-        Type* context;
-        const Wide::Parse::TemplateType* templatetype;
-        std::unordered_map<std::vector<Type*>, std::unique_ptr<TemplateTypeCallable>, VectorTypeHasher> Callables;
-
-        Util::optional<std::vector<Type*>> MatchParameter(std::vector<Type*> types, Analyzer& a, Type* source) override final {
-            if (types.size() != templatetype->arguments.size()) return Util::none;
-            std::vector<Type*> valid;
-            for (unsigned num = 0; num < types.size(); ++num) {
-                auto arg = types[num]->Decay();
-                if (!arg->IsConstant())
-                    return Util::none;
-                auto p_type = a.AnalyzeExpression(context, templatetype->arguments[num].non_nullable_type.get(), [](Parse::Name, Lexer::Range) { return nullptr; })->GetType(Expression::NoInstance())->Decay();
-                auto con_type = dynamic_cast<ConstructorType*>(p_type);
-                if (!con_type)
-                    throw SpecificError<TemplateArgumentNotAType>(a, templatetype->arguments[num].non_nullable_type->location, "Template argument type was not a type.");
-                if (Type::IsFirstASecond(arg, con_type->GetConstructedType(), source))
-                    valid.push_back(con_type->GetConstructedType());
-                else
-                    return Util::none;
-            }
-            return valid;
-        }
-        Callable* GetCallableForResolution(std::vector<Type*> types, Type*, Analyzer& a) override final {
-            if (Callables.find(types) != Callables.end())
-                return Callables[types].get();
-            Callables[types] = Wide::Memory::MakeUnique<TemplateTypeCallable>(context, templatetype, types);
-            return Callables[types].get();
-        }
-    };
-
-    TemplateTypeCallables[t] = Wide::Memory::MakeUnique<TemplateTypeResolvable>(t, context);
-    return TemplateTypeCallables[t].get();
-}
-
-TemplateType* Analyzer::GetTemplateType(const Wide::Parse::TemplateType* ty, Type* context, std::vector<Type*> arguments, std::string name) {
-    if (WideTemplateInstantiations.find(ty) == WideTemplateInstantiations.end()
-     || WideTemplateInstantiations[ty].find(arguments) == WideTemplateInstantiations[ty].end()) {
-
-        name += "(";
-        std::unordered_map<std::string, Type*> args;
-
-        for (unsigned num = 0; num < ty->arguments.size(); ++num) {
-            args[ty->arguments[num].name] = arguments[num];
-            name += arguments[num]->explain();
-            if (num != arguments.size() - 1)
-                name += ", ";
-        }
-        name += ")";
-        
-        WideTemplateInstantiations[ty][arguments] = Wide::Memory::MakeUnique<TemplateType>(ty->t.get(), *this, context, args, name);
-    }
-    return WideTemplateInstantiations[ty][arguments].get();
-}
 
 Type* Analyzer::GetLiteralStringType() {
     if (!LiteralStringType)
@@ -975,10 +902,6 @@ void Semantic::AddDefaultContextHandlers(Analyzer& a) {
         if (auto nam = boost::get<std::string>(&name))
             return udt->AccessStaticMember(*nam, { udt, where });
         return nullptr;
-    });
-
-    AddHandler<Semantic::TemplateType>(a.ContextLookupHandlers, [](TemplateType* udt, Parse::Name name, Lexer::Range where) -> std::shared_ptr<Expression> {
-        return udt->analyzer.ContextLookupHandlers[typeid(UserDefinedType)](udt, name, where);
     });
 
     AddHandler<Semantic::LambdaType>(a.ContextLookupHandlers, [](LambdaType* lambda, Parse::Name, Lexer::Range where) -> std::shared_ptr < Expression > {

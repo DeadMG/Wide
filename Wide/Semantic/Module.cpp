@@ -86,16 +86,4 @@ void Module::AddDefaultHandlers(Analyzer& a) {
         if (resolvable.empty()) return nullptr;
         return analyzer.GetOverloadSet(resolvable)->BuildValueConstruction(Expression::NoInstance(), {}, { lookup, where });
     });
-
-    AddHandler<const Parse::ModuleOverloadSet<Parse::TemplateType>>(a.MultiObjectHandlers, [](const Parse::ModuleOverloadSet<Parse::TemplateType>* overset, Analyzer& analyzer, Module* lookup, Parse::Access access, std::string name, Lexer::Range where) -> std::shared_ptr<Expression> {
-        std::unordered_set<OverloadResolvable*> resolvable;
-        for (auto&& map : overset->funcs) {
-            if (map.first > access)
-                continue;
-            for (auto&& func : map.second)
-                resolvable.insert(analyzer.GetCallableForTemplateType(func.get(), lookup));
-        }
-        if (resolvable.empty()) return nullptr;
-        return analyzer.GetOverloadSet(resolvable)->BuildValueConstruction(Expression::NoInstance(), {}, { lookup, where });
-    });
 }

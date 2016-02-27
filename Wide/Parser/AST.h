@@ -451,13 +451,6 @@ namespace Wide {
             std::unique_ptr<Expression> object;
             std::unique_ptr<Expression> index;
         };
-        struct TemplateType {
-            std::unique_ptr<Type> t;
-            std::vector<FunctionArgument> arguments;
-            Wide::Lexer::Range where;
-            TemplateType(Wide::Lexer::Range where, std::unique_ptr<Type> what, std::vector<FunctionArgument> args)
-                : where(where), t(std::move(what)), arguments(std::move(args)) {}
-        };
         struct Variable : public Statement {
             Variable(const Variable&) = delete;
             Variable(Variable&& other) = default;

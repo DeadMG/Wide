@@ -76,7 +76,6 @@ namespace Wide {
         class Bool;
         class StringType;
         class ArrayType;
-        class TemplateType;
         class LambdaType;
         class MemberDataPointer;
         class MemberFunctionPointer;
@@ -109,7 +108,6 @@ namespace Wide {
             std::unordered_map<clang::DeclContext*, std::unique_ptr<ClangNamespace>> ClangNamespaces;
             std::unordered_map<Type*, std::unordered_map<std::vector<Type*>, std::map<llvm::CallingConv::ID, std::unordered_map<bool, std::unique_ptr<WideFunctionType>>>, VectorTypeHasher>> FunctionTypes;
             std::unordered_map<FunctionSkeleton*, std::unordered_map<std::vector<Type*>, std::unique_ptr<Function>, VectorTypeHasher>> WideFunctions;
-            std::unordered_map<const Parse::TemplateType*, std::unordered_map<std::vector<Type*>, std::unique_ptr<TemplateType>, VectorTypeHasher>> WideTemplateInstantiations;
             std::unordered_map<Type*, std::unique_ptr<LvalueType>> LvalueTypes;
             std::unordered_map<Type*, std::unique_ptr<RvalueType>> RvalueTypes;
             std::unordered_map<Type*, std::unique_ptr<ConstructorType>> ConstructorTypes;
@@ -122,7 +120,6 @@ namespace Wide {
             std::unordered_map<Type*, std::unique_ptr<PointerType>> Pointers;
             std::unordered_map<std::pair<OverloadSet*, OverloadSet*>, std::unordered_map<Type*, std::unique_ptr<OverloadSet>>, PairTypeHasher, PairTypeEquality> CombinedOverloadSets;
             std::unordered_map<FunctionSkeleton*, std::unique_ptr<OverloadResolvable>> FunctionCallables;
-            std::unordered_map<const Parse::TemplateType*, std::unique_ptr<OverloadResolvable>> TemplateTypeCallables;
             std::unordered_map<std::vector<Type*>, std::unique_ptr<TupleType>, VectorTypeHasher> tupletypes;
             std::unordered_map<FunctionSkeleton*, std::unordered_map<std::vector<std::pair<Parse::Name, Type*>>, std::unique_ptr<LambdaType>, VectorTypeHasher>> LambdaTypes;
             std::unordered_map<Type*, std::unordered_map<unsigned, std::unique_ptr<ArrayType>>> ArrayTypes;
@@ -192,8 +189,6 @@ namespace Wide {
             Module* GetGlobalModule();
             TupleType* GetTupleType(std::vector<Type*> types);
             OverloadResolvable* GetCallableForFunction(FunctionSkeleton*);
-            OverloadResolvable* GetCallableForTemplateType(const Parse::TemplateType* t, Type* context);
-            TemplateType* GetTemplateType(const Parse::TemplateType* t, Type* context, std::vector<Type*> arguments, std::string name);
             LambdaType* GetLambdaType(FunctionSkeleton*, std::vector<std::pair<Parse::Name, Type*>> types);
             ArrayType* GetArrayType(Type* t, unsigned num);
             MemberDataPointer* GetMemberDataPointer(Type* source, Type* dest);
