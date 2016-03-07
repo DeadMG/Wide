@@ -14,7 +14,7 @@ using namespace Wide;
 using namespace Semantic;
 
 ArrayType::ArrayType(Analyzer& a, Type* t, unsigned num)
-: AggregateType(a)
+: AggregateType(a, Location(a))
 , t(t)
 , count(num) {}
 
@@ -67,7 +67,7 @@ OverloadSet* ArrayType::CreateOperatorOverloadSet(Parse::OperatorName what, Pars
         ArrayType* array;
         std::shared_ptr<Expression> CallFunction(Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c) override final {
             args[1] = BuildValue(std::move(args[1]));
-            auto globmod = c.from->analyzer.GetGlobalModule()->BuildValueConstruction(key, {}, c);
+            auto globmod = array->analyzer.GetGlobalModule()->BuildValueConstruction(key, {}, c);
             auto stdmod = Type::AccessMember(key, globmod, "Standard", c);
             if (!stdmod) throw std::runtime_error("No Standard module found!");
             auto errmod = Type::AccessMember(key, stdmod, "Error", c);
@@ -102,7 +102,7 @@ OverloadSet* ArrayType::CreateOperatorOverloadSet(Parse::OperatorName what, Pars
                 return Semantic::CollapseMember(argty, { con->CreateGEP(arr, indices), array->t }, con);
             });
         }
-        Wide::Util::optional<std::vector<Type*>> MatchParameter(std::vector<Type*> args, Analyzer& a, Type* source) override final {
+        Wide::Util::optional<std::vector<Type*>> MatchParameter(std::vector<Type*> args, Analyzer& a, Location source) override final {
             if (args.size() != 2) return Util::none;
             auto arrty = dynamic_cast<ArrayType*>(args[0]->Decay());
             auto intty = dynamic_cast<IntegralType*>(args[1]->Decay());
@@ -110,7 +110,7 @@ OverloadSet* ArrayType::CreateOperatorOverloadSet(Parse::OperatorName what, Pars
             return args;
         }
         std::vector<std::shared_ptr<Expression>> AdjustArguments(Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c) override final { return args; }
-        Callable* GetCallableForResolution(std::vector<Type*>, Type*, Analyzer& a) override final { return this; }
+        Callable* GetCallableForResolution(std::vector<Type*>, Location, Analyzer& a) override final { return this; }
     };
     if (!IndexOperator) IndexOperator = Wide::Memory::MakeUnique<IndexOperatorResolvable>(this);
     return analyzer.GetOverloadSet(IndexOperator.get());

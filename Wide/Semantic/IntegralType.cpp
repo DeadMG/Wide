@@ -55,7 +55,7 @@ OverloadSet* IntegralType::CreateConstructorOverloadSet(Parse::Access access) {
             : integral(self) {}
 
         IntegralType* integral;
-        Util::optional<std::vector<Type*>> MatchParameter(std::vector<Type*> types, Analyzer& a, Type* source) override final {
+        Util::optional<std::vector<Type*>> MatchParameter(std::vector<Type*> types, Analyzer& a, Location source) override final {
             if (types.size() != 2) return Util::none;
             if (types[0] != a.GetLvalueType(integral)) return Util::none;
             auto intty = dynamic_cast<IntegralType*>(types[1]->Decay());
@@ -65,7 +65,7 @@ OverloadSet* IntegralType::CreateConstructorOverloadSet(Parse::Access access) {
             if (integral->bits == intty->bits) return types;
             return Util::none;
         }
-        Callable* GetCallableForResolution(std::vector<Type*> types, Type*, Analyzer& a) override final { return this; }
+        Callable* GetCallableForResolution(std::vector<Type*> types, Location, Analyzer& a) override final { return this; }
         std::shared_ptr<Expression> CallFunction(Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c) override final {
             args[1] = BuildValue(std::move(args[1]));
             if (args[1]->GetType(key) == integral)
@@ -214,15 +214,15 @@ OverloadSet* IntegralType::CreateADLOverloadSet(Parse::OperatorName opname, Pars
         });
     } else if (name == &Lexer::TokenTypes::LT) {
         LT = MakeResolvable([this](Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c) {
-            return CreatePrimOp(std::move(args[0]), std::move(args[1]), c.from->analyzer.GetBooleanType(), [this](llvm::Value* lhs, llvm::Value* rhs, CodegenContext& con) {
+            return CreatePrimOp(std::move(args[0]), std::move(args[1]), analyzer.GetBooleanType(), [this](llvm::Value* lhs, llvm::Value* rhs, CodegenContext& con) {
                 llvm::Value* result = is_signed ? con->CreateICmpSLT(lhs, rhs) : con->CreateICmpULT(lhs, rhs);
                 return con->CreateZExt(result, llvm::Type::getInt8Ty(con));
             });
         }, { this, this });
         return analyzer.GetOverloadSet(LT.get());
     } else if (name == &Lexer::TokenTypes::EqCmp) {
-        EQ = MakeResolvable([](Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c) {
-            return CreatePrimOp(std::move(args[0]), std::move(args[1]), c.from->analyzer.GetBooleanType(), [](llvm::Value* lhs, llvm::Value* rhs, CodegenContext& con) {
+        EQ = MakeResolvable([this](Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c) {
+            return CreatePrimOp(std::move(args[0]), std::move(args[1]), analyzer.GetBooleanType(), [](llvm::Value* lhs, llvm::Value* rhs, CodegenContext& con) {
                 return con->CreateZExt(con->CreateICmpEQ(lhs, rhs), llvm::Type::getInt8Ty(con));
             });
         }, { this, this });
@@ -238,7 +238,7 @@ OverloadSet* IntegralType::CreateADLOverloadSet(Parse::OperatorName opname, Pars
     }
     return PrimitiveType::CreateADLOverloadSet(opname, access);
 }
-bool IntegralType::IsSourceATarget(Type* source, Type* target, Type* context) {
+bool IntegralType::IsSourceATarget(Type* source, Type* target, Location context) {
     // If the target is an lvalue type, we fail
     if (IsLvalueType(target)) return false;
     auto sourceint = dynamic_cast<IntegralType*>(source->Decay());

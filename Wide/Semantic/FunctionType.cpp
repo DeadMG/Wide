@@ -38,7 +38,7 @@ std::string FunctionType::explain() {
     }
     return begin + ")";
 }
-bool FunctionType::CanThunkFromFirstToSecond(FunctionType* lhs, FunctionType* rhs, Type* context, bool adjust) {
+bool FunctionType::CanThunkFromFirstToSecond(FunctionType* lhs, FunctionType* rhs, Location context, bool adjust) {
     // RHS is most derived type- that is, we are building a thunk which is of type lhs, and returns a function call of type rhs.
     // Calling convention mismatch totally acceptable here.
     // The first argument may be adjusted.
@@ -156,7 +156,7 @@ Wide::Util::optional<clang::QualType> WideFunctionType::GetClangType(ClangTU& fr
     protoinfo.ExtInfo = protoinfo.ExtInfo.withCallingConv(convconverter.at(convention));
     return from.GetASTContext().getFunctionType(*retty, types, protoinfo);
 }
-std::shared_ptr<Expression> WideFunctionType::CreateThunkFrom(Expression::InstanceKey key, std::shared_ptr<Expression> to, Type* context) {
+std::shared_ptr<Expression> WideFunctionType::CreateThunkFrom(Expression::InstanceKey key, std::shared_ptr<Expression> to, Location context) {
     if (to->GetType(key) == this) return to;
     auto name = analyzer.GetUniqueFunctionName();
     auto func = [name](llvm::Module* mod) { return mod->getFunction(name); };
@@ -168,7 +168,7 @@ std::shared_ptr<Expression> WideFunctionType::CreateThunkFrom(Expression::Instan
         return func;
     });
 }
-std::function<void(llvm::Module*)> WideFunctionType::CreateThunk(std::function<llvm::Function*(llvm::Module*)> src, std::shared_ptr<Expression> dest, Type* context) {
+std::function<void(llvm::Module*)> WideFunctionType::CreateThunk(std::function<llvm::Function*(llvm::Module*)> src, std::shared_ptr<Expression> dest, Location context) {
     std::vector<std::shared_ptr<Expression>> conversion_exprs;
     auto destty = dynamic_cast<WideFunctionType*>(dest->GetType(Expression::NoInstance()));
     assert(destty);
@@ -325,7 +325,7 @@ std::shared_ptr<Expression> ClangFunctionType::ConstructCall(Expression::Instanc
         return con->CreateLoad(val);
     });
 }
-std::function<void(llvm::Module*)> ClangFunctionType::CreateThunk(std::function<llvm::Function*(llvm::Module*)> src, std::shared_ptr<Expression> dest, clang::FunctionDecl* decl, Type* context) {
+std::function<void(llvm::Module*)> ClangFunctionType::CreateThunk(std::function<llvm::Function*(llvm::Module*)> src, std::shared_ptr<Expression> dest, clang::FunctionDecl* decl, Location context) {
     // Emit thunk from from to to, with functiontypes source and dest.
     // Beware of ABI demons.
     std::vector<std::shared_ptr<Expression>> conversion_exprs;
@@ -367,7 +367,7 @@ std::function<void(llvm::Module*)> ClangFunctionType::CreateThunk(std::function<
     auto call = Type::BuildCall(Expression::NoInstance(), dest, conversion_exprs, c);
     std::shared_ptr<Expression> ret_expr;
     if (dynamic_cast<StringType*>(destty->GetReturnType())) {
-        call = CreatePrimGlobal(Range::Elements(call), context->analyzer.GetPointerType(context->analyzer.GetIntegralType(8, true)), [=](CodegenContext& con) {
+        call = CreatePrimGlobal(Range::Elements(call), analyzer.GetPointerType(analyzer.GetIntegralType(8, true)), [=](CodegenContext& con) {
             return call->GetValue(con);
         }); 
     } else
@@ -422,7 +422,7 @@ std::function<void(llvm::Module*)> ClangFunctionType::CreateThunk(std::function<
         });
     };
 }
-std::shared_ptr<Expression> ClangFunctionType::CreateThunkFrom(Expression::InstanceKey key, std::shared_ptr<Expression> dest, Type* context) {
+std::shared_ptr<Expression> ClangFunctionType::CreateThunkFrom(Expression::InstanceKey key, std::shared_ptr<Expression> dest, Location context) {
     auto qualty = from->GetASTContext().getFunctionType(type->getReturnType(), type->getParamTypes(), type->getExtProtoInfo());
     clang::FunctionDecl* decl;
     std::string name = analyzer.GetUniqueFunctionName();

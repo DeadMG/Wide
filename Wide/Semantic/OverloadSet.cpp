@@ -55,10 +55,12 @@ std::shared_ptr<Expression> OverloadSet::ConstructCall(Expression::InstanceKey k
 }
 
 OverloadSet::OverloadSet(std::unordered_set<OverloadResolvable*> call, Type* t, Analyzer& a)
-: callables(std::move(call)), from(nullptr), nonstatic(t), AggregateType(a) {}
+: callables(std::move(call)), from(nullptr), nonstatic(t), AggregateType(a, Location(a)) {}
 
 struct cppcallable : public Callable {
-    Type* source;
+    cppcallable(Analyzer& a)
+        : analyzer(a) {}
+    Analyzer& analyzer;
     clang::FunctionDecl* fun;
     ClangTU* from;
     std::vector<std::pair<Type*, bool>> types;
@@ -67,7 +69,6 @@ struct cppcallable : public Callable {
         std::vector<Type*> local;
         for (auto x : types)
             local.push_back(x.first);
-        auto&& analyzer = source->analyzer;
         auto fty = GetFunctionType(fun, *from, analyzer);
         auto self = args.size() > 0 ? args[0] : nullptr;
         std::function<llvm::Function*(llvm::Module*)> object;
@@ -119,7 +120,7 @@ struct cppcallable : public Callable {
                     auto list = fun->getTemplateSpecializationArgs();
                     from->GetSema().SetParamDefaultArgument(paramdecl, from->GetSema().SubstInitializer(paramdecl->getUninstantiatedDefaultArg(), from->GetSema().getTemplateInstantiationArgs(fun), paramdecl->isDirectInit()).get(), clang::SourceLocation());
                 }
-                args.push_back(InterpretExpression(paramdecl->getDefaultArg(), *from, { source, c.where }, source->analyzer));
+                args.push_back(InterpretExpression(paramdecl->getDefaultArg(), *from, { c.from, c.where }, analyzer));
             }
         }
         // Clang may ask us to call overloads where we think the arguments are not a match
@@ -141,7 +142,7 @@ struct cppcallable : public Callable {
                 // Just pretend that the argument was an int8*.
 
                 auto ImplicitStringDecay = [this](std::shared_ptr<Expression> expr) {
-                    return CreatePrimGlobal(Range::Elements(expr), source->analyzer.GetPointerType(source->analyzer.GetIntegralType(8, true)), [=](CodegenContext& con) {
+                    return CreatePrimGlobal(Range::Elements(expr), analyzer.GetPointerType(analyzer.GetIntegralType(8, true)), [=](CodegenContext& con) {
                         return expr->GetValue(con);
                     });
                 };
@@ -157,7 +158,7 @@ struct cppcallable : public Callable {
                     if (types[i].first->Decay() == args[i]->GetType(key)->Decay())
                         return types[i].first->analyzer.GetRvalueType(types[i].first->Decay())->BuildValueConstruction(key, { std::move(args[i]) }, c);
                     else {
-                        if (types[i].first->Decay() == source->analyzer.GetPointerType(source->analyzer.GetIntegralType(8, true)) && dynamic_cast<StringType*>(args[i]->GetType(key)->Decay()))
+                        if (types[i].first->Decay() == analyzer.GetPointerType(analyzer.GetIntegralType(8, true)) && dynamic_cast<StringType*>(args[i]->GetType(key)->Decay()))
                             return types[i].first->Decay()->BuildRvalueConstruction(key, { ImplicitStringDecay(BuildValue(std::move(args[i]))) }, c);
                         else
                             return types[i].first->Decay()->BuildRvalueConstruction(key, { std::move(args[i]) }, c);
@@ -166,7 +167,7 @@ struct cppcallable : public Callable {
 
                 // Clang may ask us to build an int8* from a string literal.
                 // Just pretend that the argument was an int8*.
-                if (types[i].first->Decay() == source->analyzer.GetPointerType(source->analyzer.GetIntegralType(8, true)) && dynamic_cast<StringType*>(args[i]->GetType(key)->Decay()))
+                if (types[i].first->Decay() == analyzer.GetPointerType(analyzer.GetIntegralType(8, true)) && dynamic_cast<StringType*>(args[i]->GetType(key)->Decay()))
                     return types[i].first->BuildValueConstruction(key, { ImplicitStringDecay(BuildValue(std::move(args[i]))) }, c);
 
                 return types[i].first->BuildValueConstruction(key, { std::move(args[i]) }, c);
@@ -177,7 +178,7 @@ struct cppcallable : public Callable {
     }
 };
 
-std::pair<Callable*, std::vector<Type*>> OverloadSet::ResolveWithArguments(std::vector<Type*> f_args, Type* source) {
+std::pair<Callable*, std::vector<Type*>> OverloadSet::ResolveWithArguments(std::vector<Type*> f_args, Location source) {
     // Terrible hack but need to get this to work right now
     std::vector<std::pair<OverloadResolvable*, std::vector<Type*>>> call;
     for (auto funcobj : callables) {
@@ -313,10 +314,9 @@ std::pair<Callable*, std::vector<Type*>> OverloadSet::ResolveWithArguments(std::
         if (wide_result.first)
             return std::make_pair(nullptr, std::vector<Type*>());
         auto fun = best->Function;
-        auto p = new cppcallable();
+        auto p = new cppcallable(analyzer);
         p->fun = fun;
         p->from = from;
-        p->source = source;
         // The function may be expecting a base type.
         if (auto meth = llvm::dyn_cast<clang::CXXMethodDecl>(p->fun)) {
             if (!meth->isStatic()) {
@@ -338,12 +338,12 @@ std::pair<Callable*, std::vector<Type*>> OverloadSet::ResolveWithArguments(std::
     }
     return get_wide_or_result();
 }
-Callable* OverloadSet::Resolve(std::vector<Type*> f_args, Type* source) {
+Callable* OverloadSet::Resolve(std::vector<Type*> f_args, Location source) {
     return ResolveWithArguments(f_args, source).first;
 }
 
-OverloadSet::OverloadSet(OverloadSet* s, OverloadSet* other, Analyzer& a, Type* context)
-: AggregateType(a), nonstatic(nullptr) {
+OverloadSet::OverloadSet(OverloadSet* s, OverloadSet* other, Analyzer& a, Type* nonstatic_override)
+: AggregateType(a, Location(a)), nonstatic(nullptr) {
     for(auto x : s->callables)
         callables.insert(x);
     for(auto x : other->callables)
@@ -356,17 +356,17 @@ OverloadSet::OverloadSet(OverloadSet* s, OverloadSet* other, Analyzer& a, Type* 
     from = s->from;
     if (!from)
         from = other->from;
-    if (!context) {
+    if (!nonstatic_override) {
         if (s->nonstatic && other->nonstatic) {
             assert(s->nonstatic != other->nonstatic && "Attempted to combine an overload set of two overload sets containing functions which are members of two different types.");
             nonstatic = s->nonstatic;
         }
     } else {
-        nonstatic = context;
+        nonstatic = nonstatic_override;
     }
 }
 OverloadSet::OverloadSet(std::unordered_set<clang::NamedDecl*> clangdecls, ClangTU* tu, Type* context, Analyzer& a)
-: clangfuncs(std::move(clangdecls)), from(tu), AggregateType(a), nonstatic(nullptr)
+: clangfuncs(std::move(clangdecls)), from(tu), AggregateType(a, Location(a)), nonstatic(nullptr)
 {
     if(context)
         if(dynamic_cast<ClangType*>(context->Decay()))
@@ -399,13 +399,13 @@ std::shared_ptr<Expression> OverloadSet::AccessNamedMember(Expression::InstanceK
         ResolveCallable(OverloadSet* f, Analyzer& a)
         : from(f) {}
         OverloadSet* from;
-        Wide::Util::optional<std::vector<Type*>> MatchParameter(std::vector<Type*> types, Analyzer& a, Type* source) override final {
+        Wide::Util::optional<std::vector<Type*>> MatchParameter(std::vector<Type*> types, Analyzer& a, Location source) override final {
             for (auto ty : types)
                 if (!dynamic_cast<ConstructorType*>(ty))
                     return Wide::Util::none;
             return types;
         }
-        Callable* GetCallableForResolution(std::vector<Type*>, Type*, Analyzer& a) override final {
+        Callable* GetCallableForResolution(std::vector<Type*>, Location, Analyzer& a) override final {
             return this;
         }
         std::vector<std::shared_ptr<Expression>> AdjustArguments(Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c) override final {

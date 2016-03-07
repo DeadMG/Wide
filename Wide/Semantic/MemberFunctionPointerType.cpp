@@ -46,8 +46,8 @@ OverloadSet* MemberFunctionPointer::CreateOperatorOverloadSet(Parse::OperatorNam
     if (what.size() != 1 || what.front() != &Lexer::TokenTypes::QuestionMark) return analyzer.GetOverloadSet();
     if (access != Parse::Access::Public) return AccessMember(what, Parse::Access::Public, kind);
     if (!booltest)
-        booltest = MakeResolvable([](Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c) {
-            return CreatePrimUnOp(std::move(args[0]), c.from->analyzer.GetBooleanType(), [](llvm::Value* val, CodegenContext& con) {
+        booltest = MakeResolvable([this](Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c) {
+            return CreatePrimUnOp(std::move(args[0]), analyzer.GetBooleanType(), [](llvm::Value* val, CodegenContext& con) {
                 auto ptrbits = con.module->getDataLayout()->getPointerSizeInBits();
                 auto ptr = con->CreateExtractValue(val, { 0 });
                 auto constantzero = llvm::ConstantInt::get(llvm::IntegerType::get(con, ptrbits), uint64_t(0), true);

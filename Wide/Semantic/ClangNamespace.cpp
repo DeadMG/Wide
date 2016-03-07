@@ -27,7 +27,7 @@ std::shared_ptr<Expression> ClangNamespace::AccessNamedMember(Expression::Instan
         from->GetSema(), 
         clang::DeclarationNameInfo(clang::DeclarationName(from->GetIdentifierInfo(name)), clang::SourceLocation()),
         clang::Sema::LookupNameKind::LookupOrdinaryName);
-
+    
     if (!from->GetSema().LookupQualifiedName(lr, con))
         return nullptr;
     if (lr.isAmbiguous())
@@ -38,7 +38,7 @@ std::shared_ptr<Expression> ClangNamespace::AccessNamedMember(Expression::Instan
         if (auto fundecl = llvm::dyn_cast<clang::FunctionDecl>(result)) {
             std::unordered_set<clang::NamedDecl*> decls;
             decls.insert(fundecl);
-            return BuildChain(std::move(t), analyzer.GetOverloadSet(std::move(decls), from, GetContext())->BuildValueConstruction(key, {}, { this, c.where }));
+            return BuildChain(std::move(t), analyzer.GetOverloadSet(std::move(decls), from)->BuildValueConstruction(key, {}, { l, c.where }));
         }
         if (auto vardecl = llvm::dyn_cast<clang::VarDecl>(result)) {
             auto object = from->GetObject(analyzer, vardecl);
@@ -47,31 +47,26 @@ std::shared_ptr<Expression> ClangNamespace::AccessNamedMember(Expression::Instan
             });
         }
         if (auto namedecl = llvm::dyn_cast<clang::NamespaceDecl>(result)) {
-            return BuildChain(std::move(t), analyzer.GetClangNamespace(*from, namedecl)->BuildValueConstruction(key, {}, { this, c.where }));
+            return BuildChain(std::move(t), analyzer.GetClangNamespace(*from, Location(l, this), namedecl)->BuildValueConstruction(key, {}, { l, c.where }));
         }
         if (auto typedefdecl = llvm::dyn_cast<clang::TypeDecl>(result)) {
-            return BuildChain(std::move(t), analyzer.GetConstructorType(analyzer.GetClangType(*from, from->GetASTContext().getTypeDeclType(typedefdecl)))->BuildValueConstruction(key, {}, { this, c.where }));
+            return BuildChain(std::move(t), analyzer.GetConstructorType(analyzer.GetClangType(*from, from->GetASTContext().getTypeDeclType(typedefdecl)))->BuildValueConstruction(key, {}, { l, c.where }));
         }
         if (auto tempdecl = llvm::dyn_cast<clang::ClassTemplateDecl>(result)) {
-            return BuildChain(std::move(t), analyzer.GetClangTemplateClass(*from, tempdecl)->BuildValueConstruction(key, {}, { this, c.where }));
+            return BuildChain(std::move(t), analyzer.GetClangTemplateClass(*from, tempdecl)->BuildValueConstruction(key, {}, { l, c.where }));
         }
         throw SpecificError<UnknownCPPDecl>(analyzer, c.where, "Could not interpret C++ declaration.");
     }
     std::unordered_set<clang::NamedDecl*> decls;
     decls.insert(lr.begin(), lr.end());
-    return BuildChain(std::move(t), analyzer.GetOverloadSet(std::move(decls), from, GetContext())->BuildValueConstruction(key, {}, { this, c.where }));
-}
-
-ClangNamespace* ClangNamespace::GetContext() {
-    if (con == from->GetDeclContext())
-        return nullptr;
-    return analyzer.GetClangNamespace(*from, con->getParent());
+    return BuildChain(std::move(t), analyzer.GetOverloadSet(std::move(decls), from)->BuildValueConstruction(key, {}, { l, c.where }));
 }
 
 std::string ClangNamespace::explain() {
     if (con == from->GetDeclContext())
         return "";
-    if (GetContext()->con == from->GetDeclContext()) {
+    // Just me and global namespace.
+    if (boost::get<Location::CppLocation>(l.location).namespaces.size() == 2) {
         auto namespac = llvm::dyn_cast<clang::NamespaceDecl>(con);
         auto sloc = namespac->getLocation();
         std::string filepath;
@@ -84,7 +79,7 @@ std::string ClangNamespace::explain() {
         return "cpp(\"" + filenames[filepath] + "\")." + namespac->getName().str();
     }
     auto names = llvm::dyn_cast<clang::NamespaceDecl>(con);
-    return GetContext()->explain() + "." + names->getName().str();
+    return boost::get<Location::CppLocation>(l.location).namespaces.back()->explain() + "." + names->getName().str();
 }
 OverloadSet* ClangNamespace::CreateOperatorOverloadSet(Parse::OperatorName what, Parse::Access access, OperatorAccess kind) {
     if (kind != OperatorAccess::Explicit)
@@ -97,5 +92,5 @@ OverloadSet* ClangNamespace::CreateOperatorOverloadSet(Parse::OperatorName what,
         return nullptr;
     std::unordered_set<clang::NamedDecl*> decls;
     decls.insert(lr.begin(), lr.end());
-    return analyzer.GetOverloadSet(std::move(decls), from, GetContext());
+    return analyzer.GetOverloadSet(std::move(decls), from);
 }

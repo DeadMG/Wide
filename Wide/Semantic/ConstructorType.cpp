@@ -25,7 +25,7 @@ namespace {
             if (!args[0]->IsConstant(key))
                 throw SpecificError<ArrayNotConstantSize>(analyzer, c.where, "Attempted to make an array but the size was not a constant integer.");
             auto integer = analyzer.EvaluateConstantIntegerExpression(args[0], key);
-            return BuildChain(std::move(self), analyzer.GetConstructorType(analyzer.GetArrayType(t->GetConstructedType(), integer.getLimitedValue()))->BuildValueConstruction(Expression::NoInstance(), {}, { this, c.where }));
+            return BuildChain(std::move(self), analyzer.GetConstructorType(analyzer.GetArrayType(t->GetConstructedType(), integer.getLimitedValue()))->BuildValueConstruction(Expression::NoInstance(), {}, { c.from, c.where }));
         }
 
         std::string explain() override final { return t->explain() + ".array"; }
@@ -57,9 +57,9 @@ std::shared_ptr<Expression> ConstructorType::ConstructCall(Expression::InstanceK
 std::shared_ptr<Expression> ConstructorType::AccessNamedMember(Expression::InstanceKey key, std::shared_ptr<Expression> self, std::string name, Context c) {
     //return t->AccessStaticMember(name, c);
     if (name == "decay")
-        return BuildChain(std::move(self), analyzer.GetConstructorType(t->Decay())->BuildValueConstruction(key, {}, { this, c.where }));
+        return BuildChain(std::move(self), analyzer.GetConstructorType(t->Decay())->BuildValueConstruction(key, {}, { c.from, c.where }));
     if (name == "pointer")
-        return BuildChain(std::move(self), analyzer.GetConstructorType(analyzer.GetPointerType(t))->BuildValueConstruction(key, {}, { this, c.where }));
+        return BuildChain(std::move(self), analyzer.GetConstructorType(analyzer.GetPointerType(t))->BuildValueConstruction(key, {}, { c.from, c.where }));
     if (name == "size")
         return BuildChain(std::move(self), Wide::Memory::MakeUnique<Integer>(llvm::APInt(64, t->size()), analyzer));
     if (name == "alignment")
@@ -67,12 +67,12 @@ std::shared_ptr<Expression> ConstructorType::AccessNamedMember(Expression::Insta
     if (t == analyzer.GetVoidType())
         return nullptr;
     if (name == "lvalue")
-        return BuildChain(std::move(self), analyzer.GetConstructorType(analyzer.GetLvalueType(t))->BuildValueConstruction(key, {}, { this, c.where }));
+        return BuildChain(std::move(self), analyzer.GetConstructorType(analyzer.GetLvalueType(t))->BuildValueConstruction(key, {}, { c.from, c.where }));
     if (name == "rvalue")
-        return BuildChain(std::move(self), analyzer.GetConstructorType(analyzer.GetRvalueType(t))->BuildValueConstruction(key, {}, { this, c.where }));
+        return BuildChain(std::move(self), analyzer.GetConstructorType(analyzer.GetRvalueType(t))->BuildValueConstruction(key, {}, { c.from, c.where }));
     // If we're a Clang type, offer constructor and destructor overload sets.
     if (name == "constructors") {
-        return BuildChain(std::move(self), t->GetConstructorOverloadSet(GetAccessSpecifier(c.from, t))->BuildValueConstruction(key, {}, c));
+        return BuildChain(std::move(self), t->GetConstructorOverloadSet(t->GetAccess(c.from))->BuildValueConstruction(key, {}, c));
     }
     if (auto clangty = dynamic_cast<ClangType*>(t)) {
         if (name == "destructor") {
@@ -83,26 +83,26 @@ std::shared_ptr<Expression> ConstructorType::AccessNamedMember(Expression::Insta
     if (!t->IsReference()) {
         if (name == "array") {
             if (!array) array = Wide::Memory::MakeUnique<Array>(this, analyzer);
-            return BuildChain(std::move(self), array->BuildValueConstruction(key, {}, { this, c.where }));
+            return BuildChain(std::move(self), array->BuildValueConstruction(key, {}, { c.from, c.where }));
         }
     }
     if (name == "trivially_destructible")
         return BuildChain(std::move(self), Wide::Memory::MakeUnique<Boolean>(t->IsTriviallyDestructible(), analyzer));
     if (name == "trivially_copy_constructible")
-        return BuildChain(std::move(self), Wide::Memory::MakeUnique<Boolean>(t->IsCopyConstructible(GetAccessSpecifier(c.from, t)) && t->IsTriviallyCopyConstructible(), analyzer));
+        return BuildChain(std::move(self), Wide::Memory::MakeUnique<Boolean>(t->IsCopyConstructible(c.from) && t->IsTriviallyCopyConstructible(), analyzer));
     if (name == "copy_constructible")
-        return BuildChain(std::move(self), Wide::Memory::MakeUnique<Boolean>(t->IsCopyConstructible(GetAccessSpecifier(c.from, t)), analyzer));
+        return BuildChain(std::move(self), Wide::Memory::MakeUnique<Boolean>(t->IsCopyConstructible(c.from), analyzer));
     if (name == "copy_assignable")
-        return BuildChain(std::move(self), Wide::Memory::MakeUnique<Boolean>(t->IsCopyAssignable(GetAccessSpecifier(c.from, t)), analyzer));
+        return BuildChain(std::move(self), Wide::Memory::MakeUnique<Boolean>(t->IsCopyAssignable(c.from), analyzer));
     if (name == "move_constructible")
-        return BuildChain(std::move(self), Wide::Memory::MakeUnique<Boolean>(t->IsMoveConstructible(GetAccessSpecifier(c.from, t)), analyzer));
+        return BuildChain(std::move(self), Wide::Memory::MakeUnique<Boolean>(t->IsMoveConstructible(c.from), analyzer));
     if (name == "move_assignable")
-        return BuildChain(std::move(self), Wide::Memory::MakeUnique<Boolean>(t->IsMoveAssignable(GetAccessSpecifier(c.from, t)), analyzer));
+        return BuildChain(std::move(self), Wide::Memory::MakeUnique<Boolean>(t->IsMoveAssignable(c.from), analyzer));
     if (name == "empty")
         return BuildChain(std::move(self), Wide::Memory::MakeUnique<Boolean>(t->IsEmpty(), analyzer));
     if (name == "members") {
         if (!members) members = Wide::Memory::MakeUnique<Member>(this, analyzer);
-        return BuildChain(std::move(self), members->BuildValueConstruction(key, {}, { this, c.where }));
+        return BuildChain(std::move(self), members->BuildValueConstruction(key, {}, { c.from, c.where }));
     }
     return nullptr;
 }

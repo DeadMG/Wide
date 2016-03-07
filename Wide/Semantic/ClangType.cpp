@@ -89,8 +89,8 @@ void ClangType::ProcessImplicitSpecialMember(std::function<bool()> needs, std::f
 };
 
 
-ClangType::ClangType(ClangTU* src, clang::QualType t, Analyzer& a) 
-: from(src), type(t.getCanonicalType()), Type(a)
+ClangType::ClangType(ClangTU* src, clang::QualType t, Location l, Analyzer& a) 
+: from(src), type(t.getCanonicalType()), l(std::move(l)), Type(a)
 {
     // Declare any special members that need it.    
     // Also fix up their exception spec because for some reason Clang doesn't until you ask it.
@@ -110,7 +110,7 @@ Wide::Util::optional<clang::QualType> ClangType::GetClangType(ClangTU& tu) {
 }
 
 std::shared_ptr<Expression> ClangType::AccessNamedMember(Expression::InstanceKey key, std::shared_ptr<Expression> val, std::string name, Context c) {
-    auto access = GetAccessSpecifier(c.from, this);
+    auto access = GetAccess(c.from);
 
     clang::LookupResult lr(
         from->GetSema(), 
@@ -131,7 +131,7 @@ std::shared_ptr<Expression> ClangType::AccessNamedMember(Expression::InstanceKey
             return PrimitiveAccessMember(std::move(val), field->getFieldIndex() + type->getAsCXXRecordDecl()->bases_end() - type->getAsCXXRecordDecl()->bases_begin());
         }        
         if (auto fun = llvm::dyn_cast<clang::CXXMethodDecl>(lr.getFoundDecl())) {
-            return GetOverloadSet(fun, from, std::move(val), { this, c.where }, analyzer);
+            return GetOverloadSet(fun, from, std::move(val), { l, c.where }, analyzer);
         }
         if (auto ty = llvm::dyn_cast<clang::TypeDecl>(lr.getFoundDecl()))
             return analyzer.GetConstructorType(analyzer.GetClangType(*from, from->GetASTContext().getTypeDeclType(ty)))->BuildValueConstruction(key, {}, c);
@@ -166,10 +166,6 @@ std::size_t ClangType::size() {
 std::size_t ClangType::alignment() {
     return from->GetASTContext().getTypeAlignInChars(type).getQuantity();
 }
-#pragma warning(default : 4244)
-Type* ClangType::GetContext() {
-    return analyzer .GetClangNamespace(*from, type->getAsCXXRecordDecl()->getDeclContext());
-}
 
 namespace std {
     template<> struct iterator_traits<clang::ADLResult::iterator> {
@@ -187,7 +183,7 @@ OverloadSet* ClangType::CreateADLOverloadSet(Parse::OperatorName what, Parse::Ac
     from->GetSema().ArgumentDependentLookup(from->GetASTContext().DeclarationNames.getCXXOperatorName(GetTokenMappings().at(what).first), clang::SourceLocation(), exprs, res);
     std::unordered_set<clang::NamedDecl*> decls;
     decls.insert(res.begin(), res.end());
-    return analyzer.GetOverloadSet(std::move(decls), from, GetContext());
+    return analyzer.GetOverloadSet(std::move(decls), from);
 }
 
 OverloadSet* ClangType::CreateOperatorOverloadSet(Parse::OperatorName opname, Parse::Access access, OperatorAccess kind) {
@@ -296,7 +292,7 @@ std::function<void(CodegenContext&)> ClangType::BuildDestruction(Expression::Ins
     if (des->isVirtual() && !devirtualize) {
         std::unordered_set<clang::NamedDecl*> decls;
         decls.insert(des);
-        auto set = analyzer.GetOverloadSet(decls, from, analyzer.GetLvalueType(this))->BuildValueConstruction(key, { self }, { this, c.where });
+        auto set = analyzer.GetOverloadSet(decls, from, analyzer.GetLvalueType(this))->BuildValueConstruction(key, { self }, { l, c.where });
         auto call = Type::BuildCall(key, std::move(set), {}, c);
         return [=](CodegenContext& con) {
             call->GetValue(con);
@@ -358,7 +354,7 @@ std::shared_ptr<Expression> ClangType::PrimitiveAccessMember(std::shared_ptr<Exp
 }
 
 std::string ClangType::explain() {
-    auto basename = GetContext()->explain() + "." + type->getAsCXXRecordDecl()->getName().str();
+    auto basename = boost::get<Location::CppLocation>(l.location).namespaces.back()->explain() + "." + type->getAsCXXRecordDecl()->getName().str();
     if (auto tempspec = llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(type->getAsCXXRecordDecl())) {
         basename += "(";
         for (auto&& arg : tempspec->getTemplateArgs().asArray()) {
@@ -506,7 +502,7 @@ std::pair<FunctionType*, std::function<llvm::Function*(llvm::Module*)>> ClangTyp
         if (!is_match())
             continue;
         auto functy = GetFunctionType(func, *from, analyzer);
-        if (!FunctionType::CanThunkFromFirstToSecond(entry.type, functy, this, true))
+        if (!FunctionType::CanThunkFromFirstToSecond(entry.type, functy, Location(l, this), true))
             continue;
         return{ functy, from->GetObject(analyzer, func) };
     }
@@ -518,7 +514,7 @@ bool ClangType::IsEmpty() {
 bool ClangType::IsConstant() {
     return type->getAsCXXRecordDecl()->isEmpty() && type->getAsCXXRecordDecl()->hasTrivialDefaultConstructor();
 }
-bool ClangType::IsSourceATarget(Type* first, Type* second, Type* context) {
+bool ClangType::IsSourceATarget(Type* first, Type* second, Location context) {
     auto firstclangty = first->GetClangType(*from);
     if (!firstclangty) return false;
     // Must succeed when we're a ClangType.
@@ -562,7 +558,7 @@ std::vector<ConstructorContext::member> ClangType::GetConstructionMembers() {
         if (auto expr = fieldit->getInClassInitializer()) {
             auto style = fieldit->getInClassInitStyle();
             mem.InClassInitializer = [this, expr, fieldit](std::shared_ptr<Expression> field) {
-                return InterpretExpression(expr, *from, { this, RangeFromSourceRange(fieldit->getSourceRange(), from->GetASTContext().getSourceManager()) }, analyzer);
+                return InterpretExpression(expr, *from, { Location(l, this), RangeFromSourceRange(fieldit->getSourceRange(), from->GetASTContext().getSourceManager()) }, analyzer);
             };
         }
         out.push_back(std::move(mem));
@@ -584,7 +580,7 @@ bool ClangType::IsTriviallyCopyConstructible() {
     return !type->getAsCXXRecordDecl() || type->getAsCXXRecordDecl()->hasTrivialCopyConstructor();
 }
 std::shared_ptr<Expression> ClangType::AccessStaticMember(std::string name, Context c) {
-    auto access = GetAccessSpecifier(c.from, this);
+    auto access = GetAccess(c.from);
     
     clang::LookupResult lr(
         from->GetSema(),

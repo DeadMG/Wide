@@ -114,6 +114,7 @@ namespace Wide {
                 if (!layout) layout = Layout(this, analyzer);
                 return *layout;
             }
+            Location l;
         protected:
             std::function<llvm::Function*(llvm::Module*)> CreateDestructorFunction() override;
             struct AggregateConstructors {
@@ -138,7 +139,7 @@ namespace Wide {
                 Destructor
             };
             std::string GetSpecialFunctionName(SpecialFunction f);
-            AggregateType(Analyzer& a);
+            AggregateType(Analyzer& a, Location l);
 
             std::function<llvm::Constant*(llvm::Module*)> GetRTTI() override;
             unsigned GetOffset(unsigned num) { return GetLayout().Offsets[num].ByteOffset; }
@@ -157,10 +158,10 @@ namespace Wide {
             std::function<void(CodegenContext&)> BuildDestruction(Expression::InstanceKey, std::shared_ptr<Expression> self, Context c, bool devirtualize) override;
             std::shared_ptr<Expression> AccessVirtualPointer(Expression::InstanceKey key, std::shared_ptr<Expression> self) override final;
 
-            bool IsCopyConstructible(Parse::Access access) override;
-            bool IsMoveConstructible(Parse::Access access) override;
-            bool IsCopyAssignable(Parse::Access access) override;
-            bool IsMoveAssignable(Parse::Access access) override;
+            bool IsCopyConstructible(Location) override;
+            bool IsMoveConstructible(Location) override;
+            bool IsCopyAssignable(Location) override;
+            bool IsMoveAssignable(Location) override;
             bool IsEmpty() override final;
             bool IsTriviallyDestructible() override;
             bool IsTriviallyCopyConstructible() override;

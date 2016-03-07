@@ -8,7 +8,7 @@ using namespace Wide;
 using namespace Semantic;
 
 TupleType::TupleType(std::vector<Type*> types, Analyzer& a)
-: contents(std::move(types)), AggregateType(a) {}
+: contents(std::move(types)), AggregateType(a, Location(a)) {}
 
 std::shared_ptr<Expression> TupleType::ConstructFromLiteral(std::vector<std::shared_ptr<Expression>> exprs, Context c) {
     //assert(exprs.size() == GetMembers().size());
@@ -39,7 +39,7 @@ std::shared_ptr<Expression> TupleType::ConstructFromLiteral(std::vector<std::sha
     });
 }
 
-bool TupleType::IsSourceATarget(Type* source, Type* target, Type* context) {
+bool TupleType::IsSourceATarget(Type* source, Type* target, Location context) {
     // Only value conversions allowed
     if (IsLvalueType(target)) return false;
 

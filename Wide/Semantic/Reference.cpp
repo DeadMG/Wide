@@ -38,7 +38,7 @@ std::size_t Reference::alignment() {
     return analyzer.GetDataLayout().getPointerABIAlignment();
 }
 
-bool RvalueType::IsSourceATarget(Type* source, Type* target, Type* context){
+bool RvalueType::IsSourceATarget(Type* source, Type* target, Location context){
     if (source == analyzer.GetLvalueType(target->Decay()))
         return false;
     if (!IsLvalueType(source) && !IsLvalueType(target) && Type::IsFirstASecond(analyzer.GetPointerType(source->Decay()), analyzer.GetPointerType(target->Decay()), context))
@@ -47,7 +47,7 @@ bool RvalueType::IsSourceATarget(Type* source, Type* target, Type* context){
     // Our decayed type may have something more useful to say.
     return Decay()->IsSourceATarget(source, target, context);
 }
-bool LvalueType::IsSourceATarget(Type* source, Type* target, Type* context) {
+bool LvalueType::IsSourceATarget(Type* source, Type* target, Location context) {
     if (source == analyzer.GetRvalueType(target->Decay()))
         return false;
     if (IsLvalueType(source) && IsLvalueType(target) && Type::IsFirstASecond(analyzer.GetPointerType(source->Decay()), analyzer.GetPointerType(target->Decay()), context))
@@ -60,9 +60,9 @@ struct rvalueconvertible : OverloadResolvable, Callable {
     rvalueconvertible(RvalueType* s)
     : self(s) {}
     RvalueType* self;
-    Callable* GetCallableForResolution(std::vector<Type*>, Type*, Analyzer& a) override final { return this; }
+    Callable* GetCallableForResolution(std::vector<Type*>, Location, Analyzer& a) override final { return this; }
     std::vector<std::shared_ptr<Expression>> AdjustArguments(Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c) override final { return args; }
-    Util::optional<std::vector<Type*>> MatchParameter(std::vector<Type*> types, Analyzer& a, Type* source) override final {
+    Util::optional<std::vector<Type*>> MatchParameter(std::vector<Type*> types, Analyzer& a, Location source) override final {
         if (types.size() != 2) return Util::none;
         if (types[0] != a.GetLvalueType(self)) return Util::none;
         if (IsLvalueType(types[1])) return Util::none;
@@ -96,7 +96,7 @@ struct PointerComparableResolvable : OverloadResolvable, Callable {
     PointerComparableResolvable(Reference* s)
     : self(s) {}
     Reference* self;
-    Util::optional<std::vector<Type*>> MatchParameter(std::vector<Type*> types, Analyzer& a, Type* source) override final {
+    Util::optional<std::vector<Type*>> MatchParameter(std::vector<Type*> types, Analyzer& a, Location source) override final {
         if (types.size() != 2) return Util::none;
         if (types[0] != a.GetLvalueType(self)) return Util::none;
         if (IsRvalueType(types[1])) return Util::none;
@@ -112,7 +112,7 @@ struct PointerComparableResolvable : OverloadResolvable, Callable {
             return Wide::Memory::MakeUnique<ImplicitStoreExpr>(std::move(args[0]), std::move(args[1]));
         return Wide::Memory::MakeUnique<ImplicitStoreExpr>(std::move(args[0]), Type::AccessBase(key, std::move(args[1]), self->Decay()));
     }
-    Callable* GetCallableForResolution(std::vector<Type*>, Type*, Analyzer& a) override final { return this; }
+    Callable* GetCallableForResolution(std::vector<Type*>, Location, Analyzer& a) override final { return this; }
 };
 OverloadSet* RvalueType::CreateConstructorOverloadSet(Parse::Access access) {
     if (access != Parse::Access::Public) return GetConstructorOverloadSet(Parse::Access::Public);

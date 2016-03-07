@@ -45,7 +45,7 @@ OverloadSet* PointerType::CreateConstructorOverloadSet(Parse::Access access) {
         PointerComparableResolvable(PointerType* s)
         : self(s) {}
         PointerType* self;
-        Util::optional<std::vector<Type*>> MatchParameter(std::vector<Type*> types, Analyzer& a, Type* source) override final {
+        Util::optional<std::vector<Type*>> MatchParameter(std::vector<Type*> types, Analyzer& a, Location source) override final {
             if (types.size() != 2) return Util::none;
             if (types[0] != a.GetLvalueType(self)) return Util::none;
             if (types[1]->Decay() == self) return Util::none;
@@ -58,7 +58,7 @@ OverloadSet* PointerType::CreateConstructorOverloadSet(Parse::Access access) {
             auto other = BuildValue(std::move(args[1]));
             return Wide::Memory::MakeUnique<ImplicitStoreExpr>(std::move(args[0]), Type::AccessBase(key, std::move(other), self->pointee));
         }
-        Callable* GetCallableForResolution(std::vector<Type*>, Type*, Analyzer& a) override final { return this; }
+        Callable* GetCallableForResolution(std::vector<Type*>, Location, Analyzer& a) override final { return this; }
     };
     auto usual = PrimitiveType::CreateConstructorOverloadSet(Parse::Access::Public);
     NullConstructor = MakeResolvable([this](Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c) {
@@ -73,7 +73,7 @@ OverloadSet* PointerType::CreateConstructorOverloadSet(Parse::Access access) {
     return analyzer.GetOverloadSet(analyzer.GetOverloadSet(usual, analyzer.GetOverloadSet(NullConstructor.get())), analyzer.GetOverloadSet(DerivedConstructor.get())); 
 }
 
-bool PointerType::IsSourceATarget(Type* source, Type* target, Type* context) {
+bool PointerType::IsSourceATarget(Type* source, Type* target, Location context) {
     // All pointer conversions are value conversions so big fat nope if target is an lvalue.
     if (IsLvalueType(target)) return false;
 

@@ -141,7 +141,6 @@ namespace Wide {
         public:
             std::function<llvm::Constant*(llvm::Module*)> GetRTTI() override final;
             UserDefinedType(const Parse::Type* t, Analyzer& a, Type* context, std::string);
-            Type* GetContext() override final { return context; }
             bool HasMember(Parse::Name name);
             Wide::Util::optional<clang::QualType> GetClangType(ClangTU& TU) override final;
             std::shared_ptr<Expression> AccessNamedMember(Expression::InstanceKey key, std::shared_ptr<Expression> t, std::string name, Context) override final;
@@ -151,13 +150,13 @@ namespace Wide {
             OverloadSet* CreateOperatorOverloadSet(Parse::OperatorName member, Parse::Access access, OperatorAccess) override final;
             bool IsConstant() override final;
 
-            bool IsCopyConstructible(Parse::Access access) override final;
-            bool IsMoveConstructible(Parse::Access access) override final;
-            bool IsCopyAssignable(Parse::Access access) override final;
-            bool IsMoveAssignable(Parse::Access access) override final;
+            bool IsCopyConstructible(Location) override final;
+            bool IsMoveConstructible(Location) override final;
+            bool IsCopyAssignable(Location) override final;
+            bool IsMoveAssignable(Location) override final;
             bool IsTriviallyCopyConstructible() override final;
             bool IsTriviallyDestructible() override final;
-            bool IsSourceATarget(Type* first, Type* second, Type* opcon) override final;
+            bool IsSourceATarget(Type* first, Type* second, Location opcon) override final;
             std::vector<Type*> GetBases() override final;
             Wide::Util::optional<std::vector<Type*>> GetTypesForTuple() override final;
             std::shared_ptr<Expression> PrimitiveAccessMember(std::shared_ptr<Expression> self, unsigned num) override final;

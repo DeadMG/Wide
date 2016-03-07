@@ -11,7 +11,7 @@ namespace Wide {
             std::vector<Type*> GetMembers() override final { return contents; }
 
             std::shared_ptr<Expression> ConstructFromLiteral(std::vector<std::shared_ptr<Expression>> exprs, Context c);
-            bool IsSourceATarget(Type* first, Type* second, Type* context) override final;
+            bool IsSourceATarget(Type* first, Type* second, Location context) override final;
             std::string explain() override final;
         };
     }

@@ -18,22 +18,18 @@ namespace Wide {
             }
             bool IsReference(Type* to) override final {
                 return to == Pointee;
-            }
-            Type* GetContext() override final {
-                return Pointee->GetContext();
-            }
-                        
+            }                        
             virtual Type* Decay() override final {
                 return Pointee;
             }
 
             std::size_t size() override;
             std::size_t alignment() override;
-            virtual bool IsSourceATarget(Type* first, Type* second, Type* context) override = 0;
-            bool IsCopyConstructible(Parse::Access access) override final { return true; }
-            bool IsMoveConstructible(Parse::Access access) override final { return true; }
-            bool IsCopyAssignable(Parse::Access access) override final { return false; }
-            bool IsMoveAssignable(Parse::Access access) override final { return false; }
+            virtual bool IsSourceATarget(Type* first, Type* second, Location context) override = 0;
+            bool IsCopyConstructible(Location) override final { return true; }
+            bool IsMoveConstructible(Location) override final { return true; }
+            bool IsCopyAssignable(Location) override final { return false; }
+            bool IsMoveAssignable(Location) override final { return false; }
         };
         class LvalueType : public Reference {
             std::unique_ptr<OverloadResolvable> DerivedConstructor;
@@ -41,7 +37,7 @@ namespace Wide {
         public:
             LvalueType(Type* t, Analyzer& a) : Reference(t, a) {}
             Wide::Util::optional<clang::QualType> GetClangType(ClangTU& tu) override final;
-            bool IsSourceATarget(Type* first, Type* second, Type* context) override final;
+            bool IsSourceATarget(Type* first, Type* second, Location context) override final;
             OverloadSet* CreateConstructorOverloadSet(Parse::Access access) override final;
             std::string explain() override final;
         };
@@ -51,7 +47,7 @@ namespace Wide {
         public:
             RvalueType(Type* t, Analyzer& a) : Reference(t, a) {}
             Wide::Util::optional<clang::QualType> GetClangType(ClangTU& tu) override final;
-            bool IsSourceATarget(Type* first, Type* second, Type* context) override final;
+            bool IsSourceATarget(Type* first, Type* second, Location context) override final;
             OverloadSet* CreateConstructorOverloadSet(Parse::Access access) override final;
             std::string explain() override final;
         };

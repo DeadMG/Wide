@@ -40,7 +40,7 @@ namespace Wide {
             OverloadSet* CreateADLOverloadSet(Parse::OperatorName name, Parse::Access access) override final;
             std::size_t size() override final;
             std::size_t alignment() override final;
-            bool IsSourceATarget(Type* first, Type* second, Type* context) override final;
+            bool IsSourceATarget(Type* first, Type* second, Location context) override final;
             OverloadSet* CreateConstructorOverloadSet(Parse::Access access) override final;
             OverloadSet* CreateOperatorOverloadSet(Parse::OperatorName what, Parse::Access access, OperatorAccess kind) override final;
             std::string explain() override final;

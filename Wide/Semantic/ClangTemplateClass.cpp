@@ -47,7 +47,7 @@ std::shared_ptr<Expression> ClangTemplateClass::ConstructCall(Expression::Instan
     void* pos = 0;
     auto spec = tempdecl->findSpecialization(tempargs, pos);
     if (spec)
-        return analyzer.GetConstructorType(analyzer.GetClangType(*from, from->GetASTContext().getRecordType(spec)))->BuildValueConstruction(key, {}, { this, c.where });
+        return analyzer.GetConstructorType(analyzer.GetClangType(*from, from->GetASTContext().getRecordType(spec)))->BuildValueConstruction(key, {}, { l, c.where });
     auto loc = from->GetFileEnd();
     if (!spec) {
         spec = clang::ClassTemplateSpecializationDecl::Create(
@@ -71,11 +71,8 @@ std::shared_ptr<Expression> ClangTemplateClass::ConstructCall(Expression::Instan
         if (from->GetSema().InstantiateClassTemplateSpecialization(loc, spec, tsk))
             throw SpecificError<CouldNotInstantiateTemplate>(analyzer, c.where, "Could not instantiate C++ template.");
 
-    return BuildChain(std::move(val), analyzer.GetConstructorType(analyzer.GetClangType(*from, from->GetASTContext().getRecordType(spec)))->BuildValueConstruction(key, {}, { this, c.where }));
+    return BuildChain(std::move(val), analyzer.GetConstructorType(analyzer.GetClangType(*from, from->GetASTContext().getRecordType(spec)))->BuildValueConstruction(key, {}, { l, c.where }));
 }
 std::string ClangTemplateClass::explain() {
-    return GetContext()->explain() + "." + tempdecl->getName().str();
+    return boost::get<Location::CppLocation>(l.location).namespaces.back()->explain() + "." + tempdecl->getName().str();
 } 
-Type* ClangTemplateClass::GetContext() {
-    return analyzer.GetClangNamespace(*from, tempdecl->getDeclContext());
-}

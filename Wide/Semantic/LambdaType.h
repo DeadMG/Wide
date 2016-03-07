@@ -15,8 +15,7 @@ namespace Wide {
             std::vector<Type*> GetMembers() { return contents; }
             bool IsNonstaticMemberContext() override final { return true; }
         public:
-            Type* GetContext();
-            LambdaType(std::vector<std::pair<Parse::Name, Type*>> capturetypes, FunctionSkeleton* skel, Analyzer& a);
+            LambdaType(const Parse::Lambda* lam, Location l, Analyzer& a);
             std::shared_ptr<Expression> ConstructCall(Expression::InstanceKey key, std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c) override final;
             std::shared_ptr<Expression> BuildLambdaFromCaptures(std::vector<std::shared_ptr<Expression>> exprs, Context c);
 

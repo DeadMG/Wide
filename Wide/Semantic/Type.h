@@ -61,9 +61,41 @@ namespace std {
 }
 namespace Wide {
     namespace Semantic {
+        class Module;
+        class UserDefinedType;
+        class ClangNamespace;
+        class ClangType;
+        class ClangTU;
+        class LambdaType;
+        struct Location {
+            Location(ClangTU* TU);
+            Location(Analyzer& a);
+            Location(Location previous, Module* next);
+            Location(Location previous, UserDefinedType* next);
+            Location(Location previous, LambdaType* next);
+            Location(Location previous, ClangNamespace* next);
+            Location(Location previous, ClangType* next);
+            Location(Location&&) = default;
+            Location(const Location&) = default;
+            Location& operator=(Location&&) = default;
+            Location& operator=(const Location&) = default;
+            Analyzer& GetAnalyzer() const;
+
+            struct WideLocation {
+                std::vector<Module*> modules;
+                std::vector<boost::variant<LambdaType*, UserDefinedType*>> types;
+            };
+            struct CppLocation {
+                std::vector<ClangNamespace*> namespaces;
+                std::vector<ClangType*> types;
+            };
+            boost::variant<WideLocation, CppLocation> location;
+            Parse::Access PublicOrWide(std::function<Parse::Access(WideLocation loc)>);
+            Parse::Access PublicOrCpp(std::function<Parse::Access(CppLocation loc)>);
+        };
         struct Context {
-            Context(Type* f, Lexer::Range r) : from(f), where(r) {}
-            Type* from;
+            Context(Location l, Lexer::Range r) : from(std::move(l)), where(r) {}
+            Location from;
             Lexer::Range where;
         };
         struct Type {
@@ -136,15 +168,14 @@ namespace Wide {
             virtual bool IsReference(Type* to);
             virtual bool IsReference();
             virtual Type* Decay();
-            virtual Type* GetContext();
             virtual bool AlwaysKeepInMemory(llvm::Module* mod);
             virtual bool IsTriviallyDestructible();
             virtual bool IsTriviallyCopyConstructible();
             virtual Wide::Util::optional<clang::QualType> GetClangType(ClangTU& TU);
-            virtual bool IsMoveConstructible(Parse::Access access);
-            virtual bool IsCopyConstructible(Parse::Access access);
-            virtual bool IsMoveAssignable(Parse::Access access);
-            virtual bool IsCopyAssignable(Parse::Access access);
+            virtual bool IsMoveConstructible(Location context);
+            virtual bool IsCopyConstructible(Location context);
+            virtual bool IsMoveAssignable(Location context);
+            virtual bool IsCopyAssignable(Location context);
             virtual bool IsConstant();
             virtual bool IsEmpty();
             virtual Type* GetVirtualPointerType();
@@ -154,11 +185,11 @@ namespace Wide {
             virtual bool HasVirtualDestructor();
             virtual std::vector<std::pair<Type*, unsigned>> GetBasesAndOffsets();
             virtual bool IsNonstaticMemberContext();
-            virtual bool IsLookupContext();
             virtual std::function<llvm::Constant*(llvm::Module*)> GetRTTI();
+            virtual Parse::Access GetAccess(Location location);
 
             // Do not ever call from public API, it is for derived types and implementation details only.
-            virtual bool IsSourceATarget(Type* source, Type* target, Type* context) { return false; }
+            virtual bool IsSourceATarget(Type* source, Type* target, Location location) { return false; }
             virtual std::shared_ptr<Expression> AccessStaticMember(std::string name, Context c);
 
             std::shared_ptr<Expression> BuildValueConstruction(Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c);
@@ -190,7 +221,7 @@ namespace Wide {
             static std::shared_ptr<Expression> BuildBinaryExpression(Expression::InstanceKey key, std::shared_ptr<Expression> lhs, std::shared_ptr<Expression> rhs, Lexer::TokenType type, Context c);
             static std::shared_ptr<Expression> SetVirtualPointers(Expression::InstanceKey key, std::shared_ptr<Expression>);
             static std::shared_ptr<Expression> BuildIndex(Expression::InstanceKey key, std::shared_ptr<Expression> obj, std::shared_ptr<Expression> arg, Context c);
-            static bool IsFirstASecond(Type* first, Type* second, Type* context);
+            static bool IsFirstASecond(Type* first, Type* second, Location location);
         };
 
         struct Callable {
@@ -200,8 +231,8 @@ namespace Wide {
             virtual std::vector<std::shared_ptr<Expression>> AdjustArguments(Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c) = 0;
         };
         struct OverloadResolvable {
-            virtual Wide::Util::optional<std::vector<Type*>> MatchParameter(std::vector<Type*>, Analyzer& a, Type* source) = 0;
-            virtual Callable* GetCallableForResolution(std::vector<Type*>, Type*, Analyzer& a) = 0;
+            virtual Wide::Util::optional<std::vector<Type*>> MatchParameter(std::vector<Type*>, Analyzer& a, Location location) = 0;
+            virtual Callable* GetCallableForResolution(std::vector<Type*>, Location, Analyzer& a) = 0;
         };
 
         std::vector<std::shared_ptr<Expression>> AdjustArgumentsForTypes(Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, std::vector<Type*> types, Context c);
@@ -248,8 +279,8 @@ namespace Wide {
         protected:
             PrimitiveType(Analyzer& a) : Type(a) {}
         public:
-            bool IsMoveConstructible(Parse::Access) override final { return true; }
-            bool IsCopyConstructible(Parse::Access) override final { return true; }
+            bool IsMoveConstructible(Location) override final { return true; }
+            bool IsCopyConstructible(Location) override final { return true; }
             OverloadSet* CreateConstructorOverloadSet(Parse::Access access) override;
             OverloadSet* CreateOperatorOverloadSet(Parse::OperatorName what, Parse::Access access, OperatorAccess kind) override;
         };

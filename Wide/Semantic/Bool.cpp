@@ -136,21 +136,21 @@ OverloadSet* Bool::CreateOperatorOverloadSet(Parse::OperatorName opname, Parse::
         return analyzer.GetOverloadSet(AndOperator.get());
     } else if (name == &Lexer::TokenTypes::LT) {
         LTOperator = MakeResolvable([](Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c) -> std::shared_ptr<Expression> {
-            return CreatePrimOp(std::move(args[0]), std::move(args[1]), c.from->analyzer.GetBooleanType(), [](llvm::Value* lhs, llvm::Value* rhs, CodegenContext& con) {
+            return CreatePrimOp(std::move(args[0]), std::move(args[1]), c.from.GetAnalyzer().GetBooleanType(), [](llvm::Value* lhs, llvm::Value* rhs, CodegenContext& con) {
                 return con->CreateZExt(con->CreateICmpSLT(lhs, rhs), llvm::Type::getInt8Ty(con));
             });
         }, { this, this });
         return analyzer.GetOverloadSet(LTOperator.get());
     } else if (name == &Lexer::TokenTypes::EqCmp) {
         EQOperator = MakeResolvable([](Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c) -> std::shared_ptr<Expression> {
-            return CreatePrimOp(std::move(args[0]), std::move(args[1]), c.from->analyzer.GetBooleanType(), [](llvm::Value* lhs, llvm::Value* rhs, CodegenContext& con) {
+            return CreatePrimOp(std::move(args[0]), std::move(args[1]), c.from.GetAnalyzer().GetBooleanType(), [](llvm::Value* lhs, llvm::Value* rhs, CodegenContext& con) {
                 return con->CreateZExt(con->CreateICmpEQ(lhs, rhs), llvm::Type::getInt8Ty(con));
             });
         }, { this, this });
         return analyzer.GetOverloadSet(EQOperator.get());
     } else if (name == &Lexer::TokenTypes::Negate) {
         NegOperator = MakeResolvable([](Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c)->std::shared_ptr<Expression> {
-            return CreatePrimUnOp(std::move(args[0]), c.from->analyzer.GetBooleanType(), [](llvm::Value* v, CodegenContext& con) {
+            return CreatePrimUnOp(std::move(args[0]), c.from.GetAnalyzer().GetBooleanType(), [](llvm::Value* v, CodegenContext& con) {
                 return con->CreateNot(v);
             });
         }, { this });

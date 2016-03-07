@@ -151,7 +151,7 @@ AnalysisResponse Wide::Driver::Analyse(const Parse::Module* mod, const Options::
 
 void AnalyseForLinking(Wide::Semantic::Analyzer& a, llvm::Module* mod, LinkOptions opts) {
     static const Wide::Lexer::Range location = std::make_shared<std::string>("Analyzer entry point");
-    Wide::Semantic::Context c(a.GetGlobalModule(), location);
+    Wide::Semantic::Context c(Wide::Semantic::Location(a), location);
     auto global = a.GetGlobalModule()->BuildValueConstruction(Wide::Semantic::Expression::NoInstance(), {}, c);
     auto main = Wide::Semantic::Type::AccessMember(Wide::Semantic::Expression::NoInstance(), std::move(global), std::string("Main"), c);
     if (!main)

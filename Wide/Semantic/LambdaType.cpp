@@ -16,11 +16,66 @@ std::vector<Type*> GetTypesFrom(std::vector<std::pair<Parse::Name, Type*>>& vec)
         out.push_back(cap.second);
     return out;
 }
-LambdaType::LambdaType(std::vector<std::pair<Parse::Name, Type*>> capturetypes, FunctionSkeleton* skel, Analyzer& a)
-: contents(GetTypesFrom(capturetypes)), skeleton(skel), AggregateType(a)
+LambdaType::LambdaType(const Parse::Lambda* lam, Location l, Analyzer& a)
+: AggregateType(a, l)
 {
+    std::unordered_map<Parse::Name, std::shared_ptr<Expression>> outer_implicit_captures;
+    std::unordered_map<Parse::Name, std::shared_ptr<Expression>> inner_implicit_captures;
+    std::unordered_map<Parse::Name, std::shared_ptr<Expression>> explicit_captures;
+    for (auto&& arg : lam->Captures) {
+        explicit_captures.insert(std::make_pair(arg.name.front().name, a.AnalyzeExpression(l, arg.initializer.get(), NonstaticLookup)));
+    }
+    FunctionSkeleton* skeleton;
+    skeleton = a.GetWideFunction(lam, Location(l, this),
+        this,
+        [&](Parse::Name name, Lexer::Range where, std::function<std::shared_ptr<Expression>(Expression::InstanceKey key)> GetThis) -> std::shared_ptr<Expression> {
+            auto local_skeleton = skeleton;
+            if (explicit_captures.find(name) != explicit_captures.end())
+                return explicit_captures[name];
+            if (outer_implicit_captures.find(name) != outer_implicit_captures.end())
+                return outer_implicit_captures[name];
+            if (auto result = NonstaticLookup(name, where, nullptr)) {
+                outer_implicit_captures[name] = result;
+                inner_implicit_captures[name] = CreateResultExpression(Range::Empty(), [=, &a, &skeleton](Expression::InstanceKey key) -> std::shared_ptr<Expression> {
+                    if (key == Expression::NoInstance()) return nullptr;
+                    auto lambda = dynamic_cast<LambdaType*>((*key)[0]->Decay());
+                    return lambda->LookupCapture(GetThis(key), name);
+                });
+                return inner_implicit_captures[name];
+            }
+            return nullptr;
+        }
+    );
+    skeleton->ComputeBody();
+
+    Context c(l, lam->location);
+    std::vector<std::pair<Parse::Name, std::shared_ptr<Expression>>> cap_expressions;
+    for (auto&& arg : lam->Captures) {
+        cap_expressions.push_back(std::make_pair(arg.name.front().name, a.AnalyzeExpression(l, arg.initializer.get(), NonstaticLookup)));
+    }
+    for (auto&& name : outer_implicit_captures) {
+        cap_expressions.push_back(std::make_pair(name.first, name.second));
+    }
+
+    std::vector<std::pair<Parse::Name, Type*>> types;
+    std::vector<std::shared_ptr<Expression>> expressions;
+    for (auto&& cap : cap_expressions) {
+        if (!lam->defaultref)
+            types.push_back(std::make_pair(cap.first, cap.second->GetType(f)->Decay()));
+        else {
+            if (outer_implicit_captures.find(cap.first) != outer_implicit_captures.end()) {
+                if (!cap.second->GetType(f)->IsReference())
+                    assert(false); // how the fuck
+                types.push_back(std::make_pair(cap.first, cap.second->GetType(f)));
+            } else {
+                types.push_back(std::make_pair(cap.first, cap.second->GetType(f)->Decay()));
+            }
+        }
+        expressions.push_back(std::move(cap.second));
+    }
+
     std::size_t i = 0;
-    for (auto pair : capturetypes)
+    for (auto pair : types)
         names[pair.first] = i++;
 }
 
@@ -44,7 +99,7 @@ std::shared_ptr<Expression> LambdaType::BuildLambdaFromCaptures(std::vector<std:
             std::vector<Type*> types;
             types.push_back(analyzer.GetLvalueType(GetMembers()[i]));
             types.push_back(exprs[i]->GetType(f));
-            auto conset = GetMembers()[i]->GetConstructorOverloadSet(GetAccessSpecifier(c.from, GetMembers()[i]));
+            auto conset = GetMembers()[i]->GetConstructorOverloadSet(GetMembers()[i]->GetAccess(c.from));
             auto call = conset->Resolve(types, c.from);
             if (!call) return conset->IssueResolutionError(types, c);
             // Don't PrimAccessMember because it collapses references, and DO NOT WANT
@@ -78,7 +133,4 @@ std::string LambdaType::explain() {
     strstream << this;
     auto lam = dynamic_cast<const Parse::Lambda*>(skeleton->GetASTFunction());
     return "(lambda instantiation " + strstream.str() + " at location " + lam->location + ")";
-}
-Type* LambdaType::GetContext() {
-    return skeleton->GetContext();
 }
