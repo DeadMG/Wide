@@ -9,13 +9,11 @@ int main(int argc, char** argv)
     boost::program_options::options_description initial_desc;
     initial_desc.add_options()
         ("interface", boost::program_options::value<std::string>(), "Choose interface- command-line, JSON")
-        ("input", boost::program_options::value<std::string>(), "JSON input file");
-    boost::program_options::positional_options_description positional;
-    positional.add("input", -1);
+        ("jsoninput", boost::program_options::value<std::string>(), "JSON input file");
     boost::program_options::variables_map initial_input;
 
     try {
-        boost::program_options::store(boost::program_options::command_line_parser(argc, argv).options(initial_desc).positional(positional).allow_unregistered().run(), initial_input);
+        boost::program_options::store(boost::program_options::command_line_parser(argc, argv).options(initial_desc).allow_unregistered().run(), initial_input);
     }
     catch (std::exception& e) {
         std::cout << "Malformed command line.\n" << e.what();
@@ -24,7 +22,7 @@ int main(int argc, char** argv)
 
     if (initial_input.count("interface") && initial_input["interface"].as<std::string>() == "JSON") {
         try {
-            std::fstream file(initial_input["input"].as<std::string>(), std::ios::in | std::ios::binary);
+            std::fstream file(initial_input["jsoninput"].as<std::string>(), std::ios::in | std::ios::binary);
             auto json = std::string(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
             auto useropts = Wide::Driver::ParseJSONOptions(json);
             auto driveropts = Wide::Driver::Translate(useropts);

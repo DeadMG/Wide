@@ -46,7 +46,7 @@ Wide::Driver::ProcessResult ExecuteCompile(json::value test, std::string gccpath
     auto json_test_input = json::dump_string(val);
     test_json.write(json_test_input.c_str(), json_test_input.size());
     test_json.flush();
-    return Wide::Driver::StartAndWaitForProcess(CLIPath, { "--interface=JSON", "current_test.json" }, 10000);
+    return Wide::Driver::StartAndWaitForProcess(CLIPath, { "--interface=JSON", "--jsoninput=current_test.json" }, 10000);
 }
 
 bool MatchesError(json::value expected_error, const json::array& actual_errors) {
