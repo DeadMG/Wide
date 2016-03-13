@@ -299,8 +299,6 @@ Module* Analyzer::GetWideModule(const Parse::Module* p, Location higher, std::st
 }
 
 LvalueType* Analyzer::GetLvalueType(Type* t) {
-    if (t == nullptr)
-        __debugbreak();
     assert(t);
     if (t == Void.get())
         assert(false);
@@ -312,8 +310,6 @@ LvalueType* Analyzer::GetLvalueType(Type* t) {
 }
 
 Type* Analyzer::GetRvalueType(Type* t) {
-    if (t == nullptr)
-        __debugbreak();
     assert(t);
     if (t == Void.get())
         assert(false);
