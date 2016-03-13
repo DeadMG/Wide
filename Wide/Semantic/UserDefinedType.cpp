@@ -1247,3 +1247,7 @@ std::string UserDefinedType::GetLLVMTypeName() {
     strstr << this;
     return "__" + strstr.str();
 }
+
+OverloadSet* UserDefinedType::CreateADLOverloadSet(Parse::OperatorName name, Location from) {
+    return Type::CreateADLOverloadSet(name, context);
+}

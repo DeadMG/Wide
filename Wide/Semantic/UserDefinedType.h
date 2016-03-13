@@ -163,6 +163,7 @@ namespace Wide {
             Wide::Util::optional<unsigned> GetVirtualFunctionIndex(const Parse::DynamicFunction* func);
             bool IsFinal() override final;
             bool AlwaysKeepInMemory(llvm::Module* mod) override final;
+            OverloadSet* CreateADLOverloadSet(Parse::OperatorName name, Location from) override final;
         };
     }
 }
