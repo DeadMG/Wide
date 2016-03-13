@@ -414,7 +414,7 @@ Type::VTableLayout ClangType::ComputePrimaryVTableLayout() {
         VTableLayout::VirtualFunctionEntry vfunc;
         vfunc.type = GetFunctionType(methit, *from, analyzer);
         vfunc.func = VTableLayout::VirtualFunction{
-            methit->getName(),
+            (std::string)methit->getName(),
             methit->hasAttr<clang::FinalAttr>(),
             methit->isPure()
         };
