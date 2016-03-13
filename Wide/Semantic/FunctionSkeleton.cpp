@@ -274,7 +274,7 @@ Scope* FunctionSkeleton::ComputeBody() {
                                                 return &init;
                                     } else {
                                         // Match if it's a type and the one we were looking for.
-                                        auto ty = analyzer.AnalyzeExpression(local_context, init.initialized.get(), nullptr);
+                                        auto ty = analyzer.AnalyzeExpression(local_context, init.initialized.get(), LookupLocal("this"));
                                         if (auto conty = dynamic_cast<ConstructorType*>(ty->GetType(key))) {
                                             if (conty->GetConstructedType() == x.t)
                                                 return &init;
