@@ -116,7 +116,7 @@ namespace Wide {
             }
             Location l;
         protected:
-            std::function<llvm::Function*(llvm::Module*)> CreateDestructorFunction() override;
+            std::function<llvm::Function*(llvm::Module*)> CreateDestructorFunction(Location from) override;
             struct AggregateConstructors {
                 bool default_constructor;
                 bool copy_constructor;

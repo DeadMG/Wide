@@ -22,6 +22,7 @@ namespace Wide {
             OverloadSet* CreateOperatorOverloadSet(Parse::OperatorName, Parse::Access access, OperatorAccess kind) override final;
             const Parse::Module* GetASTModule() { return m; }
             std::string explain() override final;
+            bool IsLookupContext() override final;
 
             static void AddDefaultHandlers(Analyzer& a);
         };

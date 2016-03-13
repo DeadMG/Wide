@@ -79,7 +79,6 @@ namespace Wide {
         class LambdaType;
         class MemberDataPointer;
         class MemberFunctionPointer;
-        struct Scope;
         struct Return;
         class FunctionSkeleton;
         struct ClangTypeInfo {
@@ -121,7 +120,7 @@ namespace Wide {
             std::unordered_map<std::pair<OverloadSet*, OverloadSet*>, std::unordered_map<Type*, std::unique_ptr<OverloadSet>>, PairTypeHasher, PairTypeEquality> CombinedOverloadSets;
             std::unordered_map<FunctionSkeleton*, std::unique_ptr<OverloadResolvable>> FunctionCallables;
             std::unordered_map<std::vector<Type*>, std::unique_ptr<TupleType>, VectorTypeHasher> tupletypes;
-            std::unordered_map<FunctionSkeleton*, std::unordered_map<std::vector<std::pair<Parse::Name, Type*>>, std::unique_ptr<LambdaType>, VectorTypeHasher>> LambdaTypes;
+            std::unordered_map<const Parse::Lambda*, std::unordered_map<std::vector<std::pair<Parse::Name, Type*>>, std::unique_ptr<LambdaType>, VectorTypeHasher>> LambdaTypes;
             std::unordered_map<Type*, std::unordered_map<unsigned, std::unique_ptr<ArrayType>>> ArrayTypes;
             std::unordered_map<Type*, std::unordered_map<Type*, std::unique_ptr<MemberDataPointer>>> MemberDataPointers;
             std::unordered_map<Type*, std::unordered_map<FunctionType*, std::unique_ptr<MemberFunctionPointer>>> MemberFunctionPointers;
@@ -169,13 +168,13 @@ namespace Wide {
             ClangFunctionType* GetFunctionType(const clang::FunctionProtoType*, ClangTU&);
             ClangFunctionType* GetFunctionType(const clang::FunctionProtoType*, Wide::Util::optional<clang::QualType>, ClangTU&);
             Module* GetWideModule(const Parse::Module* m, Location higher, std::string name);
-            FunctionSkeleton* GetWideFunction(const Parse::FunctionBase* p, Location context, Type* nonstatic_context, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range, std::function<std::shared_ptr<Expression>(Expression::InstanceKey key)>)> NonstaticLookup);
+            FunctionSkeleton* GetWideFunction(const Parse::FunctionBase* p, Location context);
             Function* GetWideFunction(FunctionSkeleton* skeleton, const std::vector<Type*>&);
             Function* GetWideFunction(FunctionSkeleton* skeleton);
             LvalueType* GetLvalueType(Type* t);
             Type* GetRvalueType(Type* t);
             ConstructorType* GetConstructorType(Type* t);
-            ClangTemplateClass* GetClangTemplateClass(ClangTU& from, clang::ClassTemplateDecl*);
+            ClangTemplateClass* GetClangTemplateClass(ClangTU& from, Location l, clang::ClassTemplateDecl*);
             OverloadSet* GetOverloadSet();
             OverloadSet* GetOverloadSet(std::unordered_set<OverloadResolvable*> c, Type* nonstatic = nullptr);
             OverloadSet* GetOverloadSet(OverloadResolvable* c);
@@ -188,14 +187,14 @@ namespace Wide {
             Module* GetGlobalModule();
             TupleType* GetTupleType(std::vector<Type*> types);
             OverloadResolvable* GetCallableForFunction(FunctionSkeleton*);
-            LambdaType* GetLambdaType(FunctionSkeleton*, std::vector<std::pair<Parse::Name, Type*>> types);
+            LambdaType* GetLambdaType(const Parse::Lambda* lam, Location l, std::vector<std::pair<Parse::Name, Type*>> types);
             ArrayType* GetArrayType(Type* t, unsigned num);
             MemberDataPointer* GetMemberDataPointer(Type* source, Type* dest);
             MemberFunctionPointer* GetMemberFunctionPointer(Type* source, FunctionType* dest);
 
             std::unordered_map<
                 std::type_index, 
-                std::function<std::shared_ptr<Expression>(const Parse::Expression*, Analyzer& a, Location location, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range, const Parse::Import* import)> NonstaticLookup) >>
+                std::function<std::shared_ptr<Expression>(const Parse::Expression*, Analyzer& a, Location location, std::shared_ptr<Expression>) >>
             ExpressionHandlers;
             std::unordered_map<
                 std::type_index, 
@@ -211,19 +210,15 @@ namespace Wide {
             MultiObjectHandlers;
             std::unordered_map<
                 std::type_index,
-                std::function<std::shared_ptr<Statement>(const Parse::Statement*, FunctionSkeleton* skel, Analyzer& a, Location l, Scope* current, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range, const Parse::Import* import)>) >>
+                std::function<std::shared_ptr<Statement>(const Parse::Statement*, FunctionSkeleton* skel, Analyzer& a, Location l, std::shared_ptr<Expression>) >>
             StatementHandlers;
-            std::unordered_map<
-                std::type_index,
-                std::function<std::shared_ptr<Expression>(Type* context, Parse::Name name, Lexer::Range where)>>
-            ContextLookupHandlers;
 
-            std::unordered_map<std::type_index, std::function<void(const Parse::Statement*)>> LambdaCaptureAnalyzers;
+            std::unordered_map<std::type_index, std::function<std::unordered_set<Parse::Name>(const Parse::Statement*, Analyzer& a, std::unordered_set<Parse::Name>&)>> LambdaCaptureAnalyzers;
 
             std::unordered_map<const Parse::Statement*, std::vector<std::unique_ptr<Semantic::Error>>> StatementErrors;
             std::vector<ClangDiagnostic> ClangDiagnostics;
 
-            std::shared_ptr<Expression> AnalyzeExpression(Location l, const Parse::Expression* e, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range, const Parse::Import* import)> Lookup);
+            std::shared_ptr<Expression> AnalyzeExpression(Location l, const Parse::Expression* e, std::shared_ptr<Expression> _this);
 
             Analyzer(const Options::Clang&, const Parse::Module*, llvm::LLVMContext& con);
 
@@ -256,7 +251,8 @@ namespace Wide {
         template<typename T> void AddError(Analyzer& a, const Parse::Statement* stmt, Lexer::Range where, std::string msg) {
             a.StatementErrors[stmt].push_back(Wide::Memory::MakeUnique<Semantic::SpecificError<T>>(a, where, msg));
         }
-        std::shared_ptr<Statement> AnalyzeStatement(Analyzer& a, FunctionSkeleton* skel, const Parse::Statement* stmt, Location l, Scope* current, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range, const Parse::Import* import, Scope* current)>);
+        std::shared_ptr<Expression> LookupName(Location l, Parse::Name name, Lexer::Range where, std::shared_ptr<Expression> _this, const Parse::Import* import);
+        std::shared_ptr<Statement> AnalyzeStatement(Analyzer& a, FunctionSkeleton* skel, const Parse::Statement* stmt, Location l, std::shared_ptr<Expression> _this);
         bool IsRvalueType(Type* t);
         bool IsLvalueType(Type* t);
         //Parse::Access GetAccessSpecifier(Type* from, Type* to);
@@ -267,7 +263,7 @@ namespace Wide {
         Type* CollapseType(Type* source, Type* member);
         llvm::Value* CollapseMember(Type* source, std::pair<llvm::Value*, Type*> member, CodegenContext& con);
         std::function<void(CodegenContext&)> ThrowObject(Expression::InstanceKey key, std::shared_ptr<Expression> expr, Context c);
-        void AddDefaultContextHandlers(Analyzer& a);
         Type* GetNonstaticContext(Location context);
+        std::unordered_set<Parse::Name> GetImplicitLambdaCaptures(Analyzer& a, const Parse::Lambda* l, std::unordered_set<Parse::Name>);
     }
 }

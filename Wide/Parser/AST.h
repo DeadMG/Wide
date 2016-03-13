@@ -34,8 +34,35 @@ namespace std {
 namespace Wide {
     namespace Parse {
         typedef std::vector<Wide::Lexer::TokenType> OperatorName;
-        typedef boost::variant<std::string, OperatorName> Name;
+        struct Name {
+            Name(const char* val)
+                : Name(std::string(val)) {}
+
+            Name(std::string value)
+                : name(std::move(value)) {}
+            Name& operator=(std::string val) {
+                name = std::move(val);
+                return *this;
+            }
+
+            Name(OperatorName name)
+                : name(std::move(name)) {}
+            Name& operator=(OperatorName op) {
+                name = std::move(op);
+                return *this;
+            }
+            Name() = default;
+            Name(const Name&) = default;
+            Name(Name&&) = default;
+            Name& operator=(Name&&) = default;
+            Name& operator=(const Name&) = default;
+
+            boost::variant<std::string, OperatorName> name;
+        };
         template<typename T> using OverloadSet = std::unordered_map<Parse::Access, std::unordered_set<T>>;
+        inline bool operator==(Name lhs, Name rhs) {
+            return lhs.name == rhs.name;
+        }
     }
 }
 namespace boost {
@@ -53,7 +80,7 @@ namespace std {
     };
     template<> struct hash<Wide::Parse::Name> {
         std::size_t operator()(Wide::Parse::Name ty) const {
-            return boost::hash_value(ty);
+            return boost::hash_value(ty.name);
         }
     };
 }

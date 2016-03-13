@@ -67,14 +67,21 @@ namespace Wide {
         class ClangType;
         class ClangTU;
         class LambdaType;
+        struct Scope;
         struct Location {
-            Location(ClangTU* TU);
+        private:
+            Location();
+        public:
+            static const Location Empty;
+            Location(Analyzer& a, ClangTU* TU);
             Location(Analyzer& a);
             Location(Location previous, Module* next);
             Location(Location previous, UserDefinedType* next);
             Location(Location previous, LambdaType* next);
             Location(Location previous, ClangNamespace* next);
             Location(Location previous, ClangType* next);
+            Location(Location previous, Scope* next);
+
             Location(Location&&) = default;
             Location(const Location&) = default;
             Location& operator=(Location&&) = default;
@@ -90,9 +97,24 @@ namespace Wide {
                 std::vector<ClangType*> types;
             };
             boost::variant<WideLocation, CppLocation> location;
+            Scope* localscope = nullptr;
             Parse::Access PublicOrWide(std::function<Parse::Access(WideLocation loc)>);
             Parse::Access PublicOrCpp(std::function<Parse::Access(CppLocation loc)>);
         };
+        inline bool operator==(Location lhs, Location rhs) {
+            return true;
+        }
+    }
+}
+namespace std {
+    template<> struct hash<Wide::Semantic::Location> {
+        std::size_t operator()(Wide::Semantic::Location l) const {
+            return 0;
+        }
+    };
+}
+namespace Wide {
+    namespace Semantic {
         struct Context {
             Context(Location l, Lexer::Range r) : from(std::move(l)), where(r) {}
             Location from;
@@ -129,25 +151,25 @@ namespace Wide {
         private:
             std::unordered_map<Parse::Access, OverloadSet*> ConstructorOverloadSets;
             std::unordered_map<Parse::Access, std::unordered_map<Parse::OperatorName, std::unordered_map<OperatorAccess, OverloadSet*>>> OperatorOverloadSets;
-            std::unordered_map<Parse::Access, std::unordered_map<Parse::OperatorName, OverloadSet*>> ADLResults;
+            std::unordered_map<Location, std::unordered_map<Parse::OperatorName, OverloadSet*>> ADLResults;
             std::unordered_map<std::vector<std::pair<Type*, unsigned>>, std::shared_ptr<Expression>, VectorTypeHasher> ComputedVTables;
             Wide::Util::optional<VTableLayout> VtableLayout;
             Wide::Util::optional<VTableLayout> PrimaryVtableLayout;
             Wide::Util::optional<std::function<llvm::Function*(llvm::Module*)>> GetDestructorFunctionCache;
             llvm::Function* DestructorFunction;
-            virtual std::function<llvm::Function*(llvm::Module*)> CreateDestructorFunction();
+            virtual std::function<llvm::Function*(llvm::Module*)> CreateDestructorFunction(Location from);
 
             VTableLayout ComputeVTableLayout();
-            std::shared_ptr<Expression> CreateVTable(std::vector<std::pair<Type*, unsigned>> path);
-            std::shared_ptr<Expression> GetVTablePointer(std::vector<std::pair<Type*, unsigned>> path);
-            static std::shared_ptr<Expression> SetVirtualPointers(Expression::InstanceKey key, std::shared_ptr<Expression> self, std::vector<std::pair<Type*, unsigned>> path);
+            std::shared_ptr<Expression> CreateVTable(std::vector<std::pair<Type*, unsigned>> path, Location from);
+            std::shared_ptr<Expression> GetVTablePointer(std::vector<std::pair<Type*, unsigned>> path, Location from);
+            static std::shared_ptr<Expression> SetVirtualPointers(Expression::InstanceKey key, std::shared_ptr<Expression> self, std::vector<std::pair<Type*, unsigned>> path, Location from);
             virtual VTableLayout ComputePrimaryVTableLayout();
             virtual std::shared_ptr<Expression> ConstructCall(Expression::InstanceKey key, std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c);
         protected:
             virtual std::function<void(CodegenContext&)> BuildDestruction(Expression::InstanceKey key, std::shared_ptr<Expression> self, Context c, bool devirtualize);
             virtual std::shared_ptr<Expression> AccessNamedMember(Expression::InstanceKey key, std::shared_ptr<Expression> t, std::string name, Context c);
             virtual OverloadSet* CreateOperatorOverloadSet(Parse::OperatorName what, Parse::Access access, OperatorAccess implicit);
-            virtual OverloadSet* CreateADLOverloadSet(Parse::OperatorName name, Parse::Access access);
+            virtual OverloadSet* CreateADLOverloadSet(Parse::OperatorName name, Location from);
             virtual OverloadSet* CreateConstructorOverloadSet(Parse::Access access) = 0;
         public:
             virtual std::shared_ptr<Expression> AccessVirtualPointer(Expression::InstanceKey key, std::shared_ptr<Expression> self);
@@ -187,6 +209,7 @@ namespace Wide {
             virtual bool IsNonstaticMemberContext();
             virtual std::function<llvm::Constant*(llvm::Module*)> GetRTTI();
             virtual Parse::Access GetAccess(Location location);
+            virtual bool IsLookupContext();
 
             // Do not ever call from public API, it is for derived types and implementation details only.
             virtual bool IsSourceATarget(Type* source, Type* target, Location location) { return false; }
@@ -197,13 +220,13 @@ namespace Wide {
 
             virtual ~Type() {}
 
-            virtual std::function<llvm::Function*(llvm::Module*)> GetDestructorFunction();
-            std::function<llvm::Function*(llvm::Module*)> GetDestructorFunctionForEH();
+            virtual std::function<llvm::Function*(llvm::Module*)> GetDestructorFunction(Location from);
+            std::function<llvm::Function*(llvm::Module*)> GetDestructorFunctionForEH(Location from);
             InheritanceRelationship IsDerivedFrom(Type* other);
             VTableLayout GetVtableLayout();
             VTableLayout GetPrimaryVTable();
             OverloadSet* GetConstructorOverloadSet(Parse::Access access);
-            OverloadSet* PerformADL(Parse::OperatorName what, Parse::Access access);
+            OverloadSet* PerformADL(Parse::OperatorName what, Location from);
             
             OverloadSet* AccessMember(Parse::OperatorName type, Parse::Access access, OperatorAccess implicit);
             std::shared_ptr<Expression> AccessStaticMember(Parse::Name name, Context c);
@@ -219,7 +242,7 @@ namespace Wide {
             static std::shared_ptr<Expression> BuildInplaceConstruction(Expression::InstanceKey key, std::shared_ptr<Expression> self, std::vector<std::shared_ptr<Expression>> exprs, Context c);
             static std::shared_ptr<Expression> BuildUnaryExpression(Expression::InstanceKey key, std::shared_ptr<Expression> self, Lexer::TokenType type, Context c);
             static std::shared_ptr<Expression> BuildBinaryExpression(Expression::InstanceKey key, std::shared_ptr<Expression> lhs, std::shared_ptr<Expression> rhs, Lexer::TokenType type, Context c);
-            static std::shared_ptr<Expression> SetVirtualPointers(Expression::InstanceKey key, std::shared_ptr<Expression>);
+            static std::shared_ptr<Expression> SetVirtualPointers(Expression::InstanceKey key, std::shared_ptr<Expression>, Location from);
             static std::shared_ptr<Expression> BuildIndex(Expression::InstanceKey key, std::shared_ptr<Expression> obj, std::shared_ptr<Expression> arg, Context c);
             static bool IsFirstASecond(Type* first, Type* second, Location location);
         };

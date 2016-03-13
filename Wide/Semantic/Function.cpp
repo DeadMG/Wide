@@ -133,7 +133,7 @@ std::vector<std::shared_ptr<Expression>> Function::AdjustArguments(Expression::I
     // May need to perform conversion on "this" that isn't handled by the usual machinery.
     // But check first, because e.g. Derived& to Base& is fine.
     if (Args.size() > 0) {
-        if (analyzer.HasImplicitThis(skeleton->GetASTFunction(), Args[0]->Decay()) && !Type::IsFirstASecond(args[0]->GetType(key), Args[0], c.from)) {
+        if (analyzer.HasImplicitThis(skeleton->GetASTFunction(), skeleton->GetContext()) && !Type::IsFirstASecond(args[0]->GetType(key), Args[0], c.from)) {
             auto argty = args[0]->GetType(key);
             // If T&&, cast.
             // Else, build a T&& from the U then cast that. Use this instead of BuildRvalueConstruction because we may need to preserve derived semantics.

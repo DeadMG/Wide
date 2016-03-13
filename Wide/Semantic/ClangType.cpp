@@ -88,9 +88,14 @@ void ClangType::ProcessImplicitSpecialMember(std::function<bool()> needs, std::f
     }
 };
 
+namespace {
+    Location GetLocationFromDecl(Analyzer& a, clang::CXXRecordDecl* decl, ClangTU* tu) {
+        return Location(a, tu);
+    }
+}
 
-ClangType::ClangType(ClangTU* src, clang::QualType t, Location l, Analyzer& a) 
-: from(src), type(t.getCanonicalType()), l(std::move(l)), Type(a)
+ClangType::ClangType(ClangTU* src, clang::QualType t, Analyzer& a) 
+: from(src), type(t.getCanonicalType()), l(GetLocationFromDecl(a, t->getAsCXXRecordDecl(), src)), Type(a)
 {
     // Declare any special members that need it.    
     // Also fix up their exception spec because for some reason Clang doesn't until you ask it.
@@ -142,7 +147,7 @@ std::shared_ptr<Expression> ClangType::AccessNamedMember(Expression::InstanceKey
             });
         }
         if (auto tempdecl = llvm::dyn_cast<clang::ClassTemplateDecl>(lr.getFoundDecl()))
-            return BuildChain(val, analyzer.GetClangTemplateClass(*from, tempdecl)->BuildValueConstruction(key, {}, c));
+            return BuildChain(val, analyzer.GetClangTemplateClass(*from, Location(l, this), tempdecl)->BuildValueConstruction(key, {}, c));
         throw SpecificError<UnknownCPPDecl>(analyzer, c.where, "Could not interpret C++ declaration.");
     }        
     std::unordered_set<clang::NamedDecl*> decls;
@@ -174,8 +179,7 @@ namespace std {
     };
 }
 
-OverloadSet* ClangType::CreateADLOverloadSet(Parse::OperatorName what, Parse::Access access) {
-    if (access != Parse::Access::Public) return CreateADLOverloadSet(what, access);
+OverloadSet* ClangType::CreateADLOverloadSet(Parse::OperatorName what, Location loc) {
     clang::ADLResult res;
     clang::OpaqueValueExpr lhsexpr(clang::SourceLocation(), type.getNonLValueExprType(from->GetASTContext()), Semantic::GetKindOfType(this));
     std::vector<clang::Expr*> exprs;
@@ -491,10 +495,10 @@ std::pair<FunctionType*, std::function<llvm::Function*(llvm::Module*)>> ClangTyp
         auto func = *methit;
         auto is_match = [func, name] {
             if (func->isOverloadedOperator()) {
-                if (auto op = boost::get<Parse::OperatorName>(&name))
+                if (auto op = boost::get<Parse::OperatorName>(&name.name))
                     if (func->getOverloadedOperator() == GetTokenMappings().at(*op).first)
                         return true;
-            } else if (auto string = boost::get<std::string>(&name))
+            } else if (auto string = boost::get<std::string>(&name.name))
                 if (func->getName() == *string)
                     return true;
             return false;
@@ -613,7 +617,7 @@ std::shared_ptr<Expression> ClangType::AccessStaticMember(std::string name, Cont
             });
         }
         if (auto tempdecl = llvm::dyn_cast<clang::ClassTemplateDecl>(lr.getFoundDecl()))
-            return analyzer.GetClangTemplateClass(*from, tempdecl)->BuildValueConstruction(Expression::NoInstance(), {}, c);
+            return analyzer.GetClangTemplateClass(*from, Location(l, this), tempdecl)->BuildValueConstruction(Expression::NoInstance(), {}, c);
         throw SpecificError<UnknownCPPDecl>(analyzer, c.where, "Could not interpret C++ declaration.");
     }
     std::unordered_set<clang::NamedDecl*> decls(lr.begin(), lr.end());

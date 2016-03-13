@@ -187,7 +187,7 @@ bool operator==(const Wide::Parse::Expression* e, const TestExpression& rhs) {
 
     if (auto ident = dynamic_cast<const Wide::Parse::Identifier*>(e))
         if (auto testident = dynamic_cast<const TestIdentifier*>(&rhs))
-            return boost::get<std::string>(ident->val) == testident->ident;
+            return boost::get<std::string>(ident->val.name) == testident->ident;
 
     return false;
 }

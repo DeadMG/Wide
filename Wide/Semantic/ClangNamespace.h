@@ -22,6 +22,7 @@ namespace Wide {
             OverloadSet* CreateOperatorOverloadSet(Parse::OperatorName what, Parse::Access access, OperatorAccess kind) override final;
             ClangTU* GetTU() { return from; }
             std::string explain() override final;
+            bool IsLookupContext() override final;
         };
     }
 }

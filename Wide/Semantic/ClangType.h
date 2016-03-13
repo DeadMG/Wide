@@ -43,7 +43,7 @@ namespace Wide {
             std::function<llvm::Constant*(llvm::Module*)> GetRTTI() override final;
             OverloadSet* GetDestructorOverloadSet();
             std::shared_ptr<Expression> AccessVirtualPointer(Expression::InstanceKey key, std::shared_ptr<Expression>) override final;
-            ClangType(ClangTU* src, clang::QualType t, Location l, Analyzer& a);
+            ClangType(ClangTU* src, clang::QualType t, Analyzer& a);
             llvm::Type* GetLLVMType(llvm::Module* m) override final;            
             Wide::Util::optional<clang::QualType> GetClangType(ClangTU& tu) override final;
             std::shared_ptr<Expression> AccessNamedMember(Expression::InstanceKey key, std::shared_ptr<Expression> t, std::string name, Context c) override final;
@@ -56,7 +56,7 @@ namespace Wide {
             bool IsTriviallyCopyConstructible() override final;
             std::size_t size() override final;
             std::size_t alignment() override final;
-            OverloadSet* CreateADLOverloadSet(Parse::OperatorName what, Parse::Access access) override final;
+            OverloadSet* CreateADLOverloadSet(Parse::OperatorName what, Location from) override final;
             OverloadSet* CreateOperatorOverloadSet(Parse::OperatorName name, Parse::Access access, OperatorAccess kind) override final;
             OverloadSet* CreateConstructorOverloadSet(Parse::Access) override final;
             Wide::Util::optional<std::vector<Type*>> GetTypesForTuple() override final;

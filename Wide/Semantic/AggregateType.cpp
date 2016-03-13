@@ -318,7 +318,7 @@ OverloadSet* AggregateType::CreateOperatorOverloadSet(Parse::OperatorName type, 
     return CreateAssignmentOperatorOverloadSet({ true, true });
 }
 
-std::function<llvm::Function*(llvm::Module*)> AggregateType::CreateDestructorFunction() {
+std::function<llvm::Function*(llvm::Module*)> AggregateType::CreateDestructorFunction(Location from) {
     // May only run once according to the laws of Type::GetDestructorFunction
     // but let's be careful anyway.
     if (destructors.empty()) {
@@ -349,7 +349,7 @@ std::function<llvm::Function*(llvm::Module*)> AggregateType::CreateDestructorFun
     };
 }
 std::function<void(CodegenContext&)> AggregateType::BuildDestruction(Expression::InstanceKey, std::shared_ptr<Expression> self, Context c, bool devirtualize) {
-    auto destructor = GetDestructorFunction();
+    auto destructor = GetDestructorFunction(l);
     return [this, destructor, self](CodegenContext& con) {
         con->CreateCall(destructor(con), self->GetValue(con));
     };
@@ -500,7 +500,7 @@ std::vector<std::shared_ptr<Expression>> AggregateType::GetConstructorInitialize
         auto init = Type::BuildInplaceConstruction(Expression::NoInstance(), lhs, initializers(i), c);
         exprs.push_back(MemberConstructionAccess(GetMembers()[i], c.where, init, lhs));
     }
-    exprs.push_back(Type::SetVirtualPointers(Expression::NoInstance(), self));
+    exprs.push_back(Type::SetVirtualPointers(Expression::NoInstance(), self, l));
     return exprs;
 }
 OverloadSet* AggregateType::GetDefaultConstructor() {
@@ -613,7 +613,7 @@ void AggregateType::CreateMoveConstructorInitializers() {
             return{ PrimitiveAccessMember(rhs, i) };
         });
         MoveConstructorInitializers = std::vector<std::shared_ptr<Expression>> {
-            Type::SetVirtualPointers(Expression::NoInstance(), self),
+            Type::SetVirtualPointers(Expression::NoInstance(), self, l),
             CreatePrimGlobal(Wide::Range::Container(initializers), analyzer, [=](CodegenContext& con) {
                 if (AlwaysKeepInMemory(con)) {
                     for (auto&& init : initializers)
@@ -623,7 +623,6 @@ void AggregateType::CreateMoveConstructorInitializers() {
             })
         };
     }
-
 }
 void AggregateType::CreateCopyConstructorInitializers() {
     if (!CopyConstructorInitializers) {

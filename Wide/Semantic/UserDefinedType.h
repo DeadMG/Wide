@@ -30,15 +30,13 @@ namespace Wide {
             struct ImportConstructorCallable;
             struct ImportConstructorResolvable;
             FunctionSkeleton* GetWideFunction(const Parse::FunctionBase* base, Parse::Name name);
-            std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range, std::function<std::shared_ptr<Expression>(Expression::InstanceKey key)>)> GetNonstaticLookup(const Parse::FunctionBase* base, Parse::Name name);
-            std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range)> GetNonstaticLookup(Expression::InstanceKey key, std::shared_ptr<Expression>);
 
             std::vector<Type*> GetMembers() { return GetMemberData().members; }
             std::vector<std::shared_ptr<Expression>> GetDefaultInitializerForMember(unsigned);
 
             const Parse::Type* type;
             std::string source_name;
-            Type* context;
+            Location context;
             std::unordered_map<Type*, std::unique_ptr<OverloadResolvable>> AssignmentOperatorImportResolvables;
 
             struct BaseData {
@@ -134,13 +132,13 @@ namespace Wide {
             Type* GetPrimaryBase() override final { return GetBaseData().PrimaryBase; }
             Wide::Util::optional<std::pair<unsigned, Lexer::Range>> SizeOverride() override final;
             Wide::Util::optional<std::pair<unsigned, Lexer::Range>> AlignOverride() override final;
-            std::function<llvm::Function*(llvm::Module*)> CreateDestructorFunction() override final;
+            std::function<llvm::Function*(llvm::Module*)> CreateDestructorFunction(Location from) override final;
             bool HasVirtualDestructor() override final;
             bool IsNonstaticMemberContext() override final { return true; }
             std::string GetLLVMTypeName() override final;
         public:
             std::function<llvm::Constant*(llvm::Module*)> GetRTTI() override final;
-            UserDefinedType(const Parse::Type* t, Analyzer& a, Type* context, std::string);
+            UserDefinedType(const Parse::Type* t, Analyzer& a, Location context, std::string);
             bool HasMember(Parse::Name name);
             Wide::Util::optional<clang::QualType> GetClangType(ClangTU& TU) override final;
             std::shared_ptr<Expression> AccessNamedMember(Expression::InstanceKey key, std::shared_ptr<Expression> t, std::string name, Context) override final;

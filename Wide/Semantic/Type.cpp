@@ -11,6 +11,7 @@
 #include <Wide/Semantic/Expression.h>
 #include <Wide/Semantic/FunctionType.h>
 #include <Wide/Semantic/IntegralType.h>
+#include <Wide/Semantic/ClangNamespace.h>
 #include <sstream>
 
 using namespace Wide;
@@ -22,13 +23,13 @@ using namespace Semantic;
 #include <clang/AST/AST.h>
 #pragma warning(pop)
 
-OverloadSet* Type::CreateADLOverloadSet(Parse::OperatorName what, Parse::Access access) {
+OverloadSet* Type::CreateADLOverloadSet(Parse::OperatorName what, Location from) {
     if (IsReference())
-        return Decay()->CreateADLOverloadSet(what, access);
-    auto context = GetContext();
-    if (!context)
-        return analyzer.GetOverloadSet();
-    return GetContext()->AccessMember(what, access, OperatorAccess::Explicit);
+        return Decay()->CreateADLOverloadSet(what, from);
+    auto context = boost::get<Location::WideLocation>(&from.location)
+        ? (Type*)boost::get<Location::WideLocation>(from.location).modules.back()
+        : (Type*)boost::get<Location::CppLocation>(from.location).namespaces.back();
+    return context->AccessMember(what, context->GetAccess(from), OperatorAccess::Explicit);
 }
 
 OverloadSet* Type::CreateOperatorOverloadSet(Parse::OperatorName type, Parse::Access access, OperatorAccess implicit) {
@@ -203,17 +204,17 @@ std::shared_ptr<Expression> Type::AccessNamedMember(Expression::InstanceKey key,
 }
 std::shared_ptr<Expression> Type::AccessMember(Expression::InstanceKey key, std::shared_ptr<Expression> t, Parse::Name name, Context c) {
     auto ty = t->GetType(key);
-    if (auto string = boost::get<std::string>(&name))
+    if (auto string = boost::get<std::string>(&name.name))
         return ty->Decay()->AccessNamedMember(key, t, *string, c);
-    auto set = ty->Decay()->AccessMember(boost::get<Parse::OperatorName>(name), ty->GetAccess(c.from), OperatorAccess::Explicit);
+    auto set = ty->Decay()->AccessMember(boost::get<Parse::OperatorName>(name.name), ty->GetAccess(c.from), OperatorAccess::Explicit);
     if (ty->Decay()->IsLookupContext())
         return ty->analyzer.GetOverloadSet(set, ty->analyzer.GetOverloadSet())->BuildValueConstruction(key, {}, c);
     return ty->analyzer.GetOverloadSet(set, ty->analyzer.GetOverloadSet(), ty)->BuildValueConstruction(key, { t }, c);
 }
 std::shared_ptr<Expression> Type::AccessStaticMember(Parse::Name name, Context c) {
-    if (auto string = boost::get<std::string>(&name))
+    if (auto string = boost::get<std::string>(&name.name))
         return AccessStaticMember(*string, c);
-    return analyzer.GetOverloadSet(AccessMember(boost::get<Parse::OperatorName>(name), GetAccess(c.from), OperatorAccess::Explicit), analyzer.GetOverloadSet())->BuildValueConstruction(Expression::NoInstance(), {}, c);
+    return analyzer.GetOverloadSet(AccessMember(boost::get<Parse::OperatorName>(name.name), GetAccess(c.from), OperatorAccess::Explicit), analyzer.GetOverloadSet())->BuildValueConstruction(Expression::NoInstance(), {}, c);
 }
 
 std::shared_ptr<Expression> Type::BuildCall(Expression::InstanceKey key, std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c) {
@@ -261,13 +262,13 @@ OverloadSet* Type::GetConstructorOverloadSet(Parse::Access access) {
     return ConstructorOverloadSets[access];
 }
 
-OverloadSet* Type::PerformADL(Parse::OperatorName what, Parse::Access access) {
+OverloadSet* Type::PerformADL(Parse::OperatorName what, Location where) {
     if (IsReference())
-        return Decay()->PerformADL(what, access);
-    if (ADLResults.find(access) != ADLResults.end())
-        if (ADLResults[access].find(what) != ADLResults[access].end())
-            return ADLResults[access][what];
-    return ADLResults[access][what] = CreateADLOverloadSet(what, access);
+        return Decay()->PerformADL(what, where);
+    if (ADLResults.find(where) != ADLResults.end())
+        if (ADLResults[where].find(what) != ADLResults[where].end())
+            return ADLResults[where][what];
+    return ADLResults[where][what] = CreateADLOverloadSet(what, where);
 }
 
 OverloadSet* Type::AccessMember(Parse::OperatorName type, Parse::Access access, OperatorAccess kind) {
@@ -501,8 +502,8 @@ std::shared_ptr<Expression> Type::BuildBinaryExpression(Expression::InstanceKey 
     auto&& analyzer = lhs->GetType(key)->analyzer;
     auto lhsaccess = lhs->GetType(key)->GetAccess(c.from);
     auto rhsaccess = rhs->GetType(key)->GetAccess(c.from);
-    auto lhsadl = lhs->GetType(key)->PerformADL({ type }, lhsaccess);
-    auto rhsadl = rhs->GetType(key)->PerformADL({ type }, rhsaccess);
+    auto lhsadl = lhs->GetType(key)->PerformADL({ type }, c.from);
+    auto rhsadl = rhs->GetType(key)->PerformADL({ type }, c.from);
     auto lhsmember = lhs->GetType(key)->AccessMember({ type }, lhsaccess, OperatorAccess::Implicit);
     auto finalset = analyzer.GetOverloadSet(lhsadl, analyzer.GetOverloadSet(rhsadl, lhsmember));
     std::vector<Type*> arguments;
@@ -696,10 +697,10 @@ OverloadSet* TupleInitializable::CreateConstructorOverloadSet(Parse::Access acce
     return GetSelfAsType()->analyzer.GetOverloadSet(TupleConstructor.get());
 }
 
-std::shared_ptr<Expression> Type::CreateVTable(std::vector<std::pair<Type*, unsigned>> path) {
+std::shared_ptr<Expression> Type::CreateVTable(std::vector<std::pair<Type*, unsigned>> path, Location from) {
     if (path.size() >= 2) {
         if (path[path.size() - 2].first->GetPrimaryBase() == path.back().first)
-            return path.front().first->GetVTablePointer(std::vector<std::pair<Type*, unsigned>>(path.begin(), path.end() - 1));
+            return path.front().first->GetVTablePointer(std::vector<std::pair<Type*, unsigned>>(path.begin(), path.end() - 1), from);
     }
     std::vector<std::shared_ptr<Expression>> entries;
     unsigned offset_total = 0;
@@ -733,7 +734,7 @@ std::shared_ptr<Expression> Type::CreateVTable(std::vector<std::pair<Type*, unsi
             });
             if (expr.first) {
                 if (func.type != expr.first)
-                    entries.push_back(func.type->CreateThunkFrom(Expression::NoInstance(), thunk, this));
+                    entries.push_back(func.type->CreateThunkFrom(Expression::NoInstance(), thunk, from));
                 else
                     entries.push_back(thunk);
                 found = true;
@@ -777,30 +778,30 @@ std::shared_ptr<Expression> Type::CreateVTable(std::vector<std::pair<Type*, unsi
     });
 }      
 
-std::shared_ptr<Expression> Type::GetVTablePointer(std::vector<std::pair<Type*, unsigned>> path) {
+std::shared_ptr<Expression> Type::GetVTablePointer(std::vector<std::pair<Type*, unsigned>> path, Location from) {
     if (ComputedVTables.find(path) == ComputedVTables.end())
-        ComputedVTables[path] = CreateVTable(path);
+        ComputedVTables[path] = CreateVTable(path, from);
     return ComputedVTables.at(path);
 }
 
-std::shared_ptr<Expression> Type::SetVirtualPointers(Expression::InstanceKey key, std::shared_ptr<Expression> self) {
-    return Type::SetVirtualPointers(key, std::move(self), {});
+std::shared_ptr<Expression> Type::SetVirtualPointers(Expression::InstanceKey key, std::shared_ptr<Expression> self, Location from) {
+    return Type::SetVirtualPointers(key, std::move(self), {}, from);
 }
 
-std::shared_ptr<Expression> Type::SetVirtualPointers(Expression::InstanceKey key, std::shared_ptr<Expression> self, std::vector<std::pair<Type*, unsigned>> path) {
+std::shared_ptr<Expression> Type::SetVirtualPointers(Expression::InstanceKey key, std::shared_ptr<Expression> self, std::vector<std::pair<Type*, unsigned>> path, Location from) {
     // Set the base vptrs first, because some Clang types share vtables with their base.
     auto selfty = self->GetType(key)->Decay();
     std::vector<std::shared_ptr<Expression>> BasePointerInitializers;
     for (auto base : selfty->GetBasesAndOffsets()) {
         path.push_back(std::make_pair(selfty, base.second));
-        BasePointerInitializers.push_back(Type::SetVirtualPointers(key, Type::AccessBase(key, self, base.first), path));
+        BasePointerInitializers.push_back(Type::SetVirtualPointers(key, Type::AccessBase(key, self, base.first), path, from));
         path.pop_back();
     }
     // If we actually have a vptr, and we don't share it, then set it; else just set the bases.   
     auto vptr = selfty->AccessVirtualPointer(key, self);
     if (vptr && !selfty->GetPrimaryBase()) {
         path.push_back(std::make_pair(selfty, 0));
-        BasePointerInitializers.push_back(Wide::Memory::MakeUnique<ImplicitStoreExpr>(std::move(vptr), selfty->GetVTablePointer(path)));
+        BasePointerInitializers.push_back(Wide::Memory::MakeUnique<ImplicitStoreExpr>(std::move(vptr), selfty->GetVTablePointer(path, from)));
     }
 
     return CreatePrimGlobal(Range::Container(BasePointerInitializers), self->GetType(key), [=](CodegenContext& con) {
@@ -856,16 +857,16 @@ Type::VTableLayout Type::ComputeVTableLayout() {
     }
     return playout;
 }
-std::function<llvm::Function*(llvm::Module*)> Type::GetDestructorFunction() {
-    if (!GetDestructorFunctionCache) GetDestructorFunctionCache = CreateDestructorFunction();
+std::function<llvm::Function*(llvm::Module*)> Type::GetDestructorFunction(Location from) {
+    if (!GetDestructorFunctionCache) GetDestructorFunctionCache = CreateDestructorFunction(from);
     return[=](llvm::Module* mod) {
         if (!DestructorFunction) DestructorFunction = (*GetDestructorFunctionCache)(mod);
         return DestructorFunction;
     };
 }
-std::function<llvm::Function*(llvm::Module*)> Wide::Semantic::Type::GetDestructorFunctionForEH()
+std::function<llvm::Function*(llvm::Module*)> Wide::Semantic::Type::GetDestructorFunctionForEH(Location from)
 {
-    auto func = CreateDestructorFunction();
+    auto func = CreateDestructorFunction(from);
     return [this, func](llvm::Module* module) {
         auto f = func(module);
         auto name = std::string(f->getName()) + "_for_eh";
@@ -880,15 +881,15 @@ std::function<llvm::Function*(llvm::Module*)> Wide::Semantic::Type::GetDestructo
         return newfunc;
     };
 }
-std::function<llvm::Function*(llvm::Module*)> Type::CreateDestructorFunction() {
-    return [this](llvm::Module* module) {
+std::function<llvm::Function*(llvm::Module*)> Type::CreateDestructorFunction(Location from) {
+    return [this, from](llvm::Module* module) {
         auto fty = llvm::FunctionType::get(llvm::Type::getVoidTy(module->getContext()), { llvm::Type::getInt8PtrTy(module->getContext()) }, false);
         auto desfunc = llvm::Function::Create(fty, llvm::GlobalValue::LinkageTypes::ExternalLinkage, analyzer.GetUniqueFunctionName(), module);
-        CodegenContext::EmitFunctionBody(desfunc, {}, [this, desfunc](CodegenContext& c) {
+        CodegenContext::EmitFunctionBody(desfunc, {}, [this, desfunc, from](CodegenContext& c) {
             auto obj = CreatePrimGlobal(Range::Empty(), analyzer.GetLvalueType(this), [=](CodegenContext& con) {
                 return con->CreateBitCast(desfunc->arg_begin(), analyzer.GetLvalueType(this)->GetLLVMType(con));
             });
-            BuildDestructorCall(Expression::NoInstance(), obj, { this, Lexer::Range(nullptr) }, true)(c);
+            BuildDestructorCall(Expression::NoInstance(), obj, { from, Lexer::Range(nullptr) }, true)(c);
             c->CreateRetVoid();
         });
         return desfunc;
@@ -907,3 +908,60 @@ std::shared_ptr<Expression> Type::BuildIndex(Expression::InstanceKey key, std::s
     if (!call) return set->IssueResolutionError(types, c);
     return call->Call(key, std::move(args), c);
 }
+
+bool Type::IsLookupContext() {
+    return false;
+}
+
+Parse::Access Type::GetAccess(Location loc) {
+    return Parse::Access::Public;
+}
+
+Location::Location(Analyzer& a, ClangTU* tu) {    
+    location = CppLocation{ { a.GetClangNamespace(*tu, Location::Empty, tu->GetDeclContext()) } };
+}
+Location::Location(Analyzer& a) {
+    location = WideLocation{ { a.GetGlobalModule() } };
+}
+
+Location::Location(Location previous, Module* next) {
+    auto prevloc = boost::get<WideLocation>(previous.location);
+    prevloc.modules.push_back(next);
+    if (!prevloc.types.empty())
+        throw std::runtime_error("Tried to append a module to a type location");
+    location = WideLocation{ prevloc.modules };
+}
+Location::Location(Location previous, UserDefinedType* next) {
+    auto prevloc = boost::get<WideLocation>(previous.location);
+    prevloc.types.push_back(next);
+    location = WideLocation{ prevloc.modules, prevloc.types };
+}
+Location::Location(Location previous, LambdaType* next) {
+    auto prevloc = boost::get<WideLocation>(previous.location);
+    prevloc.types.push_back(next);
+    location = WideLocation{ prevloc.modules, prevloc.types };
+}
+Location::Location(Location previous, ClangNamespace* next) {
+    auto prevloc = boost::get<CppLocation>(previous.location);
+    prevloc.namespaces.push_back(next);
+    if (!prevloc.types.empty())
+        throw std::runtime_error("Tried to append a namespace to a type location");
+    location = CppLocation{ prevloc.namespaces };
+}
+Location::Location(Location previous, ClangType* next) {
+    auto prevloc = boost::get<CppLocation>(previous.location);
+    prevloc.types.push_back(next);
+    location = CppLocation{ prevloc.namespaces, prevloc.types };
+}
+Location::Location(Location previous, Scope* next) {
+    location = previous.location;
+    localscope = next;
+}
+Analyzer& Location::GetAnalyzer() const {
+    if (auto wide = boost::get<WideLocation>(&location))
+        return wide->modules.back()->analyzer;
+    return boost::get<CppLocation>(location).namespaces.back()->analyzer;
+}
+const Location Location::Empty;
+
+Location::Location() {}

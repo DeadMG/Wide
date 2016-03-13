@@ -27,7 +27,7 @@ OverloadSet* Module::CreateOperatorOverloadSet(Parse::OperatorName ty, Parse::Ac
                 for (auto func : set.second) {
                     if (set.first > access)
                         continue;
-                    resolvable.insert(analyzer.GetCallableForFunction(analyzer.GetWideFunction(func.get(), Location(context, this), nullptr, [](Wide::Parse::Name, Wide::Lexer::Range, std::function<std::shared_ptr<Expression>(Expression::InstanceKey key)>) { return nullptr; })));
+                    resolvable.insert(analyzer.GetCallableForFunction(analyzer.GetWideFunction(func.get(), Location(context, this))));
                 }
             }
             return analyzer.GetOverloadSet(resolvable);
@@ -58,9 +58,12 @@ std::string Module::explain() {
         return ".";
     return boost::get<Location::WideLocation>(context.location).modules.back()->explain() + "." + name;
 }
+bool Module::IsLookupContext() {
+    return true;
+}
 void Module::AddDefaultHandlers(Analyzer& a) {
     AddHandler<const Parse::Using>(a.SharedObjectHandlers, [](const Parse::Using* usedecl, Analyzer& analyzer, Location lookup, std::string name) {
-        auto expr = analyzer.AnalyzeExpression(lookup, usedecl->expr.get(), [](Wide::Parse::Name, Wide::Lexer::Range) { return nullptr; });
+        auto expr = analyzer.AnalyzeExpression(lookup, usedecl->expr.get(), nullptr);
         if (!expr->IsConstant(Expression::NoInstance()))
             return CreateErrorExpression(Memory::MakeUnique<SpecificError<UsingTargetNotConstant>>(analyzer, usedecl->expr->location, "Using target not a constant expression."));
         return expr;
@@ -80,7 +83,7 @@ void Module::AddDefaultHandlers(Analyzer& a) {
             if (map.first > access)
                 continue;
             for (auto&& func : map.second)
-                resolvable.insert(analyzer.GetCallableForFunction(analyzer.GetWideFunction(func.get(), lookup, nullptr, [](Wide::Parse::Name, Wide::Lexer::Range, std::function<std::shared_ptr<Expression>(Expression::InstanceKey key)>) { return nullptr; })));
+                resolvable.insert(analyzer.GetCallableForFunction(analyzer.GetWideFunction(func.get(), lookup)));
         }
         if (resolvable.empty()) return nullptr;
         return analyzer.GetOverloadSet(resolvable)->BuildValueConstruction(Expression::NoInstance(), {}, { lookup, where });

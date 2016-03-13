@@ -36,27 +36,11 @@ namespace Wide {
             std::shared_ptr<Expression> LookupLocal(std::string name);
             ControlFlowStatement* GetCurrentControlFlow();
         };
-        struct NameLookup {
-            Location location;
-            std::function<std::shared_ptr<Expression>(Parse::Name name, Lexer::Range range)> nonstatic;
-            Scope* scope;
-
-            struct LookupResult {
-                bool local;
-                bool member;
-                bool context;
-                std::shared_ptr<Expression> result;
-            };
-
-            LookupResult operator()(Parse::Name name, Lexer::Range range, const Parse::Import* import);
-        };
         struct Return {
             boost::signals2::signal<void(Type*)> OnReturnType;
             virtual Type* GetReturnType(Expression::InstanceKey key) = 0;
         };
         class FunctionSkeleton {
-            NameLookup GetNameLookup(Scope* current, bool include_nonstatic);
-
             std::unordered_map<const Parse::Expression*, std::unique_ptr<Semantic::Error>> ExportErrors;
             std::unique_ptr<Semantic::Error> ExplicitReturnError;
             std::unordered_map<const Parse::VariableInitializer*, std::unique_ptr<Semantic::Error>> InitializerErrors;
@@ -71,10 +55,8 @@ namespace Wide {
             std::vector<std::shared_ptr<Expression>> parameters;
 
             Location context;
-            std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range, std::function<std::shared_ptr<Expression>(Expression::InstanceKey key)>)> NonstaticLookup;
 
             // You can only be exported as constructors of one, or nonstatic member of one, class.
-            Type* nonstatic_context;
             State current_state;
             std::unique_ptr<Scope> root_scope;
             const Parse::FunctionBase* fun;
@@ -83,11 +65,9 @@ namespace Wide {
         public:
             std::shared_ptr<Expression> GetParameter(unsigned num) { return parameters[num]; }
             static void AddDefaultHandlers(Analyzer& a);
-            //FunctionSkeleton(const Parse::FunctionBase* astfun, Analyzer& a, Location, std::function<Type*(Expression::InstanceKey)>, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range, std::function<std::shared_ptr<Expression>(Expression::InstanceKey key)>)> NonstaticLookup);
-            FunctionSkeleton(const Parse::FunctionBase* astfun, Analyzer& a, Location, Type*, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range, std::function<std::shared_ptr<Expression>(Expression::InstanceKey key)>)> NonstaticLookup);
-            FunctionSkeleton(const Parse::FunctionBase* astfun, Analyzer& a, Location, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range, std::function<std::shared_ptr<Expression>(Expression::InstanceKey key)>)> NonstaticLookup);
+            FunctionSkeleton(const Parse::FunctionBase* astfun, Analyzer& a, Location);
 
-            Type* GetNonstaticMemberContext() { return nonstatic_context; }
+            Type* GetNonstaticMemberContext();
 
             std::shared_ptr<Expression> LookupLocal(Parse::Name name);
             ~FunctionSkeleton(); 

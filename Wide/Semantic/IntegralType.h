@@ -37,7 +37,7 @@ namespace Wide {
             Wide::Util::optional<clang::QualType> GetClangType(ClangTU& TU) override final;
             llvm::IntegerType* GetLLVMType(llvm::Module* module) override final;
 
-            OverloadSet* CreateADLOverloadSet(Parse::OperatorName name, Parse::Access access) override final;
+            OverloadSet* CreateADLOverloadSet(Parse::OperatorName name, Location from) override final;
             std::size_t size() override final;
             std::size_t alignment() override final;
             bool IsSourceATarget(Type* first, Type* second, Location context) override final;

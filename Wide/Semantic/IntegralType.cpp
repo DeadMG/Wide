@@ -104,9 +104,8 @@ std::size_t IntegralType::alignment() {
     return analyzer.GetDataLayout().getABIIntegerTypeAlignment(bits);
 }
 
-OverloadSet* IntegralType::CreateADLOverloadSet(Parse::OperatorName opname, Parse::Access access) {
-    if (access != Parse::Access::Public) return CreateADLOverloadSet(opname, Parse::Access::Public);
-    if (opname.size() != 1) return CreateADLOverloadSet(opname, Parse::Access::Public);
+OverloadSet* IntegralType::CreateADLOverloadSet(Parse::OperatorName opname, Location from) {
+    if (opname.size() != 1) return CreateADLOverloadSet(opname, from);
     auto name = opname.front();
     auto CreateAssOp = [this](std::unique_ptr<OverloadResolvable>& owner, std::function<llvm::Value*(llvm::Value*, llvm::Value*, CodegenContext& con)> func) {
         owner = MakeResolvable([this, func](Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c) {
@@ -236,7 +235,7 @@ OverloadSet* IntegralType::CreateADLOverloadSet(Parse::OperatorName opname, Pars
         }, { analyzer.GetLvalueType(this) });
         return analyzer.GetOverloadSet(Increment.get());
     }
-    return PrimitiveType::CreateADLOverloadSet(opname, access);
+    return PrimitiveType::CreateADLOverloadSet(opname, from);
 }
 bool IntegralType::IsSourceATarget(Type* source, Type* target, Location context) {
     // If the target is an lvalue type, we fail
