@@ -657,13 +657,13 @@ void Expression::AddDefaultHandlers(Analyzer& a) {
                     if (!lam->defaultref)
                         types.push_back(std::make_pair(cap.first, cap.second->GetType(f)->Decay()));
                     else {
-                        /*if (captures.find(cap.first) != captures.end()) {
+                        if (captures.find(cap.first) != captures.end()) {
                             if (!cap.second->GetType(f)->IsReference())
                                 assert(false); // how the fuck
                             types.push_back(std::make_pair(cap.first, cap.second->GetType(f)));
-                        } else {*/
+                        } else {
                             types.push_back(std::make_pair(cap.first, cap.second->GetType(f)->Decay()));
-                        //}
+                        }
                     }
                     expressions.push_back(std::move(cap.second));
                 }
