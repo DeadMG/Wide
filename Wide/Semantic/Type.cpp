@@ -942,6 +942,9 @@ Location::Location(Location previous, LambdaType* next) {
     location = WideLocation{ prevloc.modules, prevloc.types };
 }
 Location::Location(Location previous, ClangNamespace* next) {
+    // previous may also be empty, which is technically a Wide location.
+    if (auto wide = boost::get<WideLocation>(&previous.location))
+        previous.location = CppLocation();
     auto prevloc = boost::get<CppLocation>(previous.location);
     prevloc.namespaces.push_back(next);
     if (!prevloc.types.empty())
