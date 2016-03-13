@@ -106,7 +106,8 @@ FunctionSkeleton::FunctionSkeleton(const Parse::FunctionBase* astfun, Analyzer& 
     auto Parameter = [this, &a, exported_this](unsigned num, Lexer::Range where) {
         return CreateResultExpression(Range::Empty(), [=, &a](Expression::InstanceKey key) -> std::shared_ptr<Expression> {
             // Did we have an exported this?
-            if (!key && !(num == 0 && exported_this)) return nullptr;
+            if (!key && !(num == 0)) return nullptr;
+            if (!key && !GetNonstaticMemberContext()) return nullptr;
             Type* root_ty = key
                 ? Expression::GetArgumentType(key, num)
                 : analyzer.GetLvalueType(GetNonstaticMemberContext());

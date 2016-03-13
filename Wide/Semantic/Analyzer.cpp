@@ -299,6 +299,8 @@ Module* Analyzer::GetWideModule(const Parse::Module* p, Location higher, std::st
 }
 
 LvalueType* Analyzer::GetLvalueType(Type* t) {
+    if (t == nullptr)
+        __debugbreak();
     assert(t);
     if (t == Void.get())
         assert(false);
@@ -310,6 +312,8 @@ LvalueType* Analyzer::GetLvalueType(Type* t) {
 }
 
 Type* Analyzer::GetRvalueType(Type* t) {
+    if (t == nullptr)
+        __debugbreak();
     assert(t);
     if (t == Void.get())
         assert(false);
@@ -527,7 +531,7 @@ OverloadResolvable* Analyzer::GetCallableForFunction(FunctionSkeleton* skel) {
             // If we are a member and we have an explicit this then treat the first normally.
             // Else if we are a member, blindly accept whatever is given for argument 0 as long as it's the member type.
             // Else, treat the first argument normally.
-            auto parameters = a.GetFunctionParameters(skeleton->GetASTFunction(), source);
+            auto parameters = a.GetFunctionParameters(skeleton->GetASTFunction(), skeleton->GetContext());
             //if (dynamic_cast<const Parse::Lambda*>(skeleton->GetASTFunction()))
             //    if (dynamic_cast<LambdaType*>(types[0]->Decay()))
             //        if (types.size() == parameters.size() + 1)
@@ -535,14 +539,14 @@ OverloadResolvable* Analyzer::GetCallableForFunction(FunctionSkeleton* skel) {
             if (types.size() != parameters.size()) return Util::none;
             std::vector<Type*> result;
             for (unsigned i = 0; i < types.size(); ++i) {
-                if (a.HasImplicitThis(skeleton->GetASTFunction(), source) && i == 0) {
+                if (a.HasImplicitThis(skeleton->GetASTFunction(), skeleton->GetContext()) && i == 0) {
                     // First, if no conversion is necessary.
                     if (Type::IsFirstASecond(types[i], parameters[i], source)) {
                         result.push_back(parameters[i]);
                         continue;
                     }
                     // If the parameter is-a nonstatic-context&&, then we're good. Let Function::AdjustArguments handle the adjustment, if necessary.
-                    if (Type::IsFirstASecond(types[i], a.GetRvalueType(GetNonstaticContext(source)), source)) {
+                    if (Type::IsFirstASecond(types[i], a.GetRvalueType(GetNonstaticContext(skeleton->GetContext())), source)) {
                         result.push_back(parameters[i]);
                         continue;
                     }

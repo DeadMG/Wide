@@ -1156,9 +1156,6 @@ bool UserDefinedType::IsTriviallyDestructible() {
 
 std::shared_ptr<Expression> UserDefinedType::AccessStaticMember(std::string name, Context c) {
     auto spec = GetAccess(c.from);
-    if (GetMemberData().member_indices.find(name) != GetMemberData().member_indices.end()) {
-        return nullptr;
-    }
     if (type->nonvariables.find(name) != type->nonvariables.end()) {
         auto nonvar = boost::get<Parse::OverloadSet<std::unique_ptr<Parse::Function>>>(&type->nonvariables.at(name));
         if (nonvar) {
