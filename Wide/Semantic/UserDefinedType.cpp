@@ -1156,7 +1156,7 @@ bool UserDefinedType::IsTriviallyDestructible() {
 
 std::shared_ptr<Expression> UserDefinedType::AccessStaticMember(std::string name, Context c) {
     auto spec = GetAccess(c.from);
-    if (type->nonvariables.find(name) != type->nonvariables.end()) {
+    /*if (type->nonvariables.find(name) != type->nonvariables.end()) {
         auto nonvar = boost::get<Parse::OverloadSet<std::unique_ptr<Parse::Function>>>(&type->nonvariables.at(name));
         if (nonvar) {
             std::unordered_set<OverloadResolvable*> resolvables;
@@ -1168,7 +1168,7 @@ std::shared_ptr<Expression> UserDefinedType::AccessStaticMember(std::string name
             if (!resolvables.empty())
                 return analyzer.GetOverloadSet(resolvables, nullptr)->BuildValueConstruction(Expression::NoInstance(), {}, c);
         }
-    }
+    }*/
     // Any of our bases have this member?
     Type* BaseType = nullptr;
     OverloadSet* BaseOverloadSet = nullptr;
