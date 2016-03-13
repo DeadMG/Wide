@@ -1,0 +1,7 @@
+#!/bin/bash
+
+PREMAKE=$PWD/../premake/bin/release/premake4
+$PREMAKE --llvm-path=$PWD/../llvm gmake
+cd Wide
+make -j `nproc` config=release64
+cd ..
