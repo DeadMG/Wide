@@ -26,6 +26,7 @@ namespace Wide {
             bool Version;
             bool Help;
             std::vector<std::string> WideInputFilepaths;
+            std::vector<std::string> CppInputFilepaths;
         };
         struct JSONOptions : UserSpecifiedOptions {
             bool RegurgitateSource;

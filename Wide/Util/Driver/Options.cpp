@@ -74,6 +74,7 @@ namespace {
                 "the LLVM Host triple.")
 #endif
             ("input", boost::program_options::value<std::vector<std::string>>(), "One input file. May be specified multiple times.")
+            ("cppinput", boost::program_options::value<std::vector<std::string>>(), "One C++ input file. May be specified multiple times.")
             ("version", "Outputs the build of Wide.")
             ("interface", boost::program_options::value<std::string>(), "Permits interface in JSON or text. For help for JSON, specify JSON interface before help.")
             ("stdlib", boost::program_options::value<std::string>(), "The Standard library path. Defaulted to \".\\WideLibrary\\\".")
@@ -111,8 +112,10 @@ CommandLineOptions Wide::Driver::ParseCommandLineOptions(int argc, char** argv) 
         // WTB to_string for desc
         opts.Help = true;
         //opts.HelpText = 
-    if (input.count("input")) 
+    if (input.count("input"))
         opts.WideInputFilepaths = input["input"].as<std::vector<std::string>>();
+    if (input.count("cppinput"))
+        opts.CppInputFilepaths = input["cppinput"].as<std::vector<std::string>>();
     if (input.count("mode") && input["mode"].as<std::string>() == "export") {
         ExportOptions exopts;
         if (input.count("export-include"))
@@ -206,6 +209,7 @@ boost::variant<DriverOptions, std::string> Wide::Driver::Translate(CommandLineOp
         auto contents = std::string(std::istreambuf_iterator<char>(infile), std::istreambuf_iterator<char>());
         driveropts.WideInputFiles.push_back(std::make_pair(path, contents));
     }
+    driveropts.CppInputFiles = cliopts.CppInputFilepaths;
     return driveropts;
 }
 std::string Wide::Driver::TextualResponse(const Response& r) {
