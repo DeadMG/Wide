@@ -968,3 +968,9 @@ Analyzer& Location::GetAnalyzer() const {
 const Location Location::Empty;
 
 Location::Location() {}
+
+Parse::Access Location::PublicOrWide(std::function<Parse::Access(WideLocation)> func) {
+    if (auto wide = boost::get<WideLocation>(&location))
+        return func(*wide);
+    return Parse::Public;
+}

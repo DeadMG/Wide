@@ -23,6 +23,7 @@ namespace Wide {
             const Parse::Module* GetASTModule() { return m; }
             std::string explain() override final;
             bool IsLookupContext() override final;
+            Parse::Access GetAccess(Location l) override final;
 
             static void AddDefaultHandlers(Analyzer& a);
         };

@@ -47,7 +47,8 @@ std::shared_ptr<Expression> Module::AccessNamedMember(Expression::InstanceKey ke
             return BuildChain(std::move(val), analyzer.UniqueObjectHandlers.at(typeid(*unique->second))(unique->second.get(), analyzer, Location(context, this), name));
         }
         auto&& multi = boost::get<std::unique_ptr<Parse::MultipleAccessContainer>>(m->named_decls.at(name));
-        return BuildChain(std::move(val), analyzer.MultiObjectHandlers.at(typeid(*multi))(multi.get(), analyzer, Location(context, this), access, name, c.where));
+        auto value = analyzer.MultiObjectHandlers.at(typeid(*multi))(multi.get(), analyzer, Location(context, this), access, name, c.where);
+        return BuildChain(std::move(val), std::move(value));
     }    
     if (SpecialMembers.find(name) != SpecialMembers.end())
         return BuildChain(std::move(val), SpecialMembers[name]);
@@ -85,7 +86,14 @@ void Module::AddDefaultHandlers(Analyzer& a) {
             for (auto&& func : map.second)
                 resolvable.insert(analyzer.GetCallableForFunction(analyzer.GetWideFunction(func.get(), lookup)));
         }
-        if (resolvable.empty()) return nullptr;
         return analyzer.GetOverloadSet(resolvable)->BuildValueConstruction(Expression::NoInstance(), {}, { lookup, where });
+    });
+}
+Parse::Access Module::GetAccess(Location l) {
+    return l.PublicOrWide([this](Location::WideLocation loc) {
+        for (auto mod : loc.modules)
+            if (mod == this)
+                return Parse::Access::Private;
+        return Parse::Access::Public;
     });
 }
