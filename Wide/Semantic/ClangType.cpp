@@ -89,13 +89,13 @@ void ClangType::ProcessImplicitSpecialMember(std::function<bool()> needs, std::f
 };
 
 namespace {
-    Location GetLocationFromDecl(Analyzer& a, clang::CXXRecordDecl* decl, ClangTU* tu) {
-        return Location(a, tu);
+    Location GetLocationFromDecl(Analyzer& a, ClangType* self, clang::CXXRecordDecl* decl, ClangTU* tu) {
+        return Location(Location(a, tu), self);
     }
 }
 
 ClangType::ClangType(ClangTU* src, clang::QualType t, Analyzer& a) 
-: from(src), type(t.getCanonicalType()), l(GetLocationFromDecl(a, t->getAsCXXRecordDecl(), src)), Type(a)
+: from(src), type(t.getCanonicalType()), l(GetLocationFromDecl(a, this, t->getAsCXXRecordDecl(), src)), Type(a)
 {
     // Declare any special members that need it.    
     // Also fix up their exception spec because for some reason Clang doesn't until you ask it.

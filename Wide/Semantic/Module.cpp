@@ -8,6 +8,7 @@
 #include <Wide/Semantic/UserDefinedType.h>
 #include <Wide/Semantic/ClangTemplateClass.h>
 #include <Wide/Semantic/Expression.h>
+#include <Wide/Semantic/ClangType.h>
 
 using namespace Wide;
 using namespace Semantic;
@@ -83,8 +84,9 @@ void Module::AddDefaultHandlers(Analyzer& a) {
         for (auto&& map : overset->funcs) {
             if (map.first > access)
                 continue;
-            for (auto&& func : map.second)
+            for (auto&& func : map.second) {
                 resolvable.insert(analyzer.GetCallableForFunction(analyzer.GetWideFunction(func.get(), lookup)));
+            }
         }
         return analyzer.GetOverloadSet(resolvable)->BuildValueConstruction(Expression::NoInstance(), {}, { lookup, where });
     });

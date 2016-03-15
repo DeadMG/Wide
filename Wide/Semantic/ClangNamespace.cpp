@@ -89,7 +89,7 @@ OverloadSet* ClangNamespace::CreateOperatorOverloadSet(Parse::OperatorName what,
         clang::DeclarationNameInfo(from->GetASTContext().DeclarationNames.getCXXOperatorName(GetTokenMappings().at(what).first), clang::SourceLocation()),
         clang::Sema::LookupNameKind::LookupOrdinaryName);
     if (!from->GetSema().LookupQualifiedName(lr, con))
-        return nullptr;
+        return analyzer.GetOverloadSet();
     std::unordered_set<clang::NamedDecl*> decls;
     decls.insert(lr.begin(), lr.end());
     return analyzer.GetOverloadSet(std::move(decls), from);

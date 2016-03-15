@@ -507,9 +507,36 @@ Type* Semantic::GetNonstaticContext(Location context) {
     return boost::get<UserDefinedType*>(ty);
 }
 FunctionSkeleton* Analyzer::GetWideFunction(const Parse::FunctionBase* p, Location context) {
-    if (FunctionSkeletons.find(p) == FunctionSkeletons.end() || FunctionSkeletons[p].find(context) == FunctionSkeletons[p].end())
-        FunctionSkeletons[p][context] = std::make_unique<FunctionSkeleton>(p, *this, context);
-    return FunctionSkeletons[p][context].get();
+    auto location = context;
+    if (auto astfun = dynamic_cast<const Parse::AttributeFunctionBase*>(p)) {
+        for (auto&& attr : astfun->attributes) {
+            if (auto name = dynamic_cast<const Parse::Identifier*>(attr.initialized.get())) {
+                if (auto string = boost::get<std::string>(&name->val.name)) {
+                    if (*string == "export") {
+                        auto expr = AnalyzeExpression(context, attr.initializer.get(), nullptr);
+                        auto overset = dynamic_cast<OverloadSet*>(expr->GetType(Expression::NoInstance())->Decay());
+                        if (!overset)
+                            throw SpecificError<ExportNonOverloadSet>(*this, attr.initializer->location, "Attempted to export as a non-overload set.");
+                        auto tuanddecl = overset->GetSingleFunction();
+                        if (!tuanddecl.second) throw SpecificError<ExportNotSingleFunction>(*this, attr.initializer->location, "The overload set was not a single C++ function.");
+                        auto tu = tuanddecl.first;
+                        auto decl = tuanddecl.second;
+                        if (auto meth = llvm::dyn_cast<clang::CXXMethodDecl>(decl)) {
+                            if (!meth->isStatic()) {
+                                auto record = meth->getParent();
+                                auto clangtype = (ClangType*)GetClangType(*tu, record->getASTContext().getRecordType(record));
+                                location = clangtype->GetLocation();
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if (FunctionSkeletons.find(p) == FunctionSkeletons.end() || FunctionSkeletons[p].find(location) == FunctionSkeletons[p].end())
+        FunctionSkeletons[p][location] = std::make_unique<FunctionSkeleton>(p, *this, location);
+    return FunctionSkeletons[p][location].get();
 }
 
 OverloadResolvable* Analyzer::GetCallableForFunction(FunctionSkeleton* skel) {

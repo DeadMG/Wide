@@ -64,6 +64,8 @@ namespace Wide {
             std::string explain() override final; 
             std::shared_ptr<Expression> AccessStaticMember(std::string name, Context c) override final;
             bool IsFinal() override final;
+
+            Location GetLocation() { return l; }
         };
     }
 }
