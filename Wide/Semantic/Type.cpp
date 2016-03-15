@@ -974,3 +974,8 @@ Parse::Access Location::PublicOrWide(std::function<Parse::Access(WideLocation)> 
         return func(*wide);
     return Parse::Public;
 }
+Parse::Access Location::PublicOrCpp(std::function<Parse::Access(CppLocation)> func) {
+    if (auto cpp = boost::get<CppLocation>(&location))
+        return func(*cpp);
+    return Parse::Public;
+}

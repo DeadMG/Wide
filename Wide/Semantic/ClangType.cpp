@@ -632,3 +632,11 @@ bool ClangType::HasVirtualDestructor() {
 bool ClangType::AlwaysKeepInMemory(llvm::Module* mod) {
     return from->IsComplexType(type->getAsCXXRecordDecl(), mod);
 }
+Parse::Access ClangType::GetAccess(Location l) {
+    return l.PublicOrCpp([this](Location::CppLocation loc) {
+        for (auto type : loc.types)
+            if (type == this)
+                return Parse::Private;
+        return Parse::Public;
+    });
+}
