@@ -637,7 +637,8 @@ void Expression::AddDefaultHandlers(Analyzer& a) {
     });
 
     AddHandler<const Parse::Lambda>(a.ExpressionHandlers, [](const Parse::Lambda* lam, Analyzer& a, Location lookup, std::shared_ptr<Expression> _this) {
-        auto captures = GetImplicitLambdaCaptures(a, lam, std::unordered_set<Parse::Name>());
+        std::unordered_set<Parse::Name> lambda_locals;
+        auto captures = a.LambdaCaptureAnalyzers[typeid(*lam)](lam, a, lambda_locals);
         Context c(lookup, lam->location);
         std::vector<std::pair<Parse::Name, std::shared_ptr<Expression>>> cap_expressions;
         for (auto&& arg : lam->Captures) {

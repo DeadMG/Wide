@@ -212,8 +212,10 @@ namespace Wide {
                 std::type_index,
                 std::function<std::shared_ptr<Statement>(const Parse::Statement*, FunctionSkeleton* skel, Analyzer& a, Location l, std::shared_ptr<Expression>) >>
             StatementHandlers;
-
-            std::unordered_map<std::type_index, std::function<std::unordered_set<Parse::Name>(const Parse::Statement*, Analyzer& a, std::unordered_set<Parse::Name>&)>> LambdaCaptureAnalyzers;
+            std::unordered_map<
+                std::type_index,
+                std::function<std::unordered_set<Parse::Name>(const Parse::Statement*, Analyzer& a, std::unordered_set<Parse::Name>&)>>
+            LambdaCaptureAnalyzers;
 
             std::unordered_map<const Parse::Statement*, std::vector<std::unique_ptr<Semantic::Error>>> StatementErrors;
             std::vector<ClangDiagnostic> ClangDiagnostics;
@@ -239,7 +241,7 @@ namespace Wide {
         };
         template<typename T> struct base_pointer; template<typename T> struct base_pointer<const T*> { typedef T type; };
         template<typename T> struct base_pointer; template<typename T> struct base_pointer<T*> { typedef T type; };
-        template<typename T, typename Ret, typename First, typename... Args, typename F> void AddHandler(std::unordered_map<std::type_index, std::function<std::shared_ptr<Ret>(First, Args...)>>& map, F f) {
+        template<typename T, typename Ret, typename First, typename... Args, typename F> void AddHandler(std::unordered_map<std::type_index, std::function<Ret(First, Args...)>>& map, F f) {
             static_assert(std::is_base_of<typename base_pointer<First>::type, T>::value, "T must derive from the first argument.");
             map[typeid(T)] = [f](First farg, Args... args) {
                 return f(static_cast<T*>(farg), std::forward<Args>(args)...);
@@ -264,6 +266,5 @@ namespace Wide {
         llvm::Value* CollapseMember(Type* source, std::pair<llvm::Value*, Type*> member, CodegenContext& con);
         std::function<void(CodegenContext&)> ThrowObject(Expression::InstanceKey key, std::shared_ptr<Expression> expr, Context c);
         Type* GetNonstaticContext(Location context);
-        std::unordered_set<Parse::Name> GetImplicitLambdaCaptures(Analyzer& a, const Parse::Lambda* l, std::unordered_set<Parse::Name>);
     }
 }

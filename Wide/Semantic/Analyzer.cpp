@@ -915,18 +915,3 @@ std::shared_ptr<Expression> Semantic::LookupName(Location l, Parse::Name name, L
         return l.GetAnalyzer().GetOverloadSet(over1, over2)->BuildValueConstruction(Expression::NoInstance(), {}, { l, where });
     throw SpecificError<IdentifierLookupAmbiguous>(l.GetAnalyzer(), where, "Ambiguous lookup of name " + Semantic::GetNameAsString(name));
 }
-std::unordered_set<Parse::Name> Semantic::GetImplicitLambdaCaptures(Analyzer& a, const Parse::Lambda* l, std::unordered_set<Parse::Name> local_names) {
-    std::unordered_set<Parse::Name> implicit_caps;
-    for (auto&& cap : l->Captures)
-        for (auto&& name : cap.name)
-            local_names.insert(name.name);
-    for (auto&& arg : l->args)
-        local_names.insert(arg.name);
-    for (auto&& stmt : l->statements) {
-        if (a.LambdaCaptureAnalyzers.find(typeid(*stmt)) == a.LambdaCaptureAnalyzers.end())
-            continue;
-        auto nested_caps = a.LambdaCaptureAnalyzers[typeid(*stmt)](stmt.get(), a, local_names);
-        implicit_caps.insert(nested_caps.begin(), nested_caps.end());
-    }
-    return implicit_caps;
-}

@@ -81,3 +81,31 @@ std::string LambdaType::explain() {
     auto lam = dynamic_cast<const Parse::Lambda*>(skeleton->GetASTFunction());
     return "(lambda instantiation " + strstream.str() + " at location " + lam->location + ")";
 }
+
+void LambdaType::AddDefaultHandlers(Analyzer& a) {
+    AddHandler<const Parse::Lambda>(a.LambdaCaptureAnalyzers, [](const Parse::Lambda* l, Analyzer& a, std::unordered_set<Parse::Name>& local_names) {
+        std::unordered_set<Parse::Name> implicit_caps;
+        std::unordered_set<Parse::Name> new_local_names;
+        for (auto&& cap : l->Captures)
+            for (auto&& name : cap.name)
+                new_local_names.insert(name.name);
+        for (auto&& arg : l->args)
+            new_local_names.insert(arg.name);
+        for (auto&& stmt : l->statements) {
+            if (a.LambdaCaptureAnalyzers.find(typeid(*stmt)) == a.LambdaCaptureAnalyzers.end())
+                continue;
+            auto nested_caps = a.LambdaCaptureAnalyzers[typeid(*stmt)](stmt.get(), a, new_local_names);
+            implicit_caps.insert(nested_caps.begin(), nested_caps.end());
+        }
+        auto copy = implicit_caps;
+        for (auto&& item : copy)
+            if (local_names.find(item) != local_names.end())
+                implicit_caps.erase(item);
+        return implicit_caps;
+    });
+    AddHandler<const Parse::Identifier>(a.LambdaCaptureAnalyzers, [](const Parse::Identifier* l, Analyzer& a, std::unordered_set<Parse::Name>& local_names) {
+        if (local_names.find(l->val) == local_names.end())
+            return std::unordered_set<Parse::Name>({ l->val });
+        return std::unordered_set<Parse::Name>();
+    });
+}

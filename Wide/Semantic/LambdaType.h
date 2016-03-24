@@ -21,6 +21,8 @@ namespace Wide {
 
             std::shared_ptr<Expression> LookupCapture(std::shared_ptr<Expression> self, Parse::Name name);
             std::string explain() override final;
+
+            static void AddDefaultHandlers(Analyzer& a);
        };
     }
 }
