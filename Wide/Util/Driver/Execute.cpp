@@ -220,6 +220,7 @@ namespace {
         llvm::formatted_raw_ostream format_out(out);
         targetmachine->addPassesToEmitFile(pm, format_out, llvm::TargetMachine::CodeGenFileType::CGFT_ObjectFile);
         pm.run(*r.Analysis.Module);
+        file.flush();
     }
 
     void WriteOutput(Response& r, DriverOptions& driveropts) {

@@ -63,6 +63,8 @@ Wide::Driver::ProcessResult Wide::Driver::StartAndWaitForProcess(std::string nam
 }
 #else
 #include <Windows.h>
+#include <iostream>
+#include <thread>
 
 class Pipe {
     HANDLE ReadHandle;
@@ -99,15 +101,25 @@ public:
 };
 Wide::Driver::ProcessResult Wide::Driver::StartAndWaitForProcess(std::string name, std::vector<std::string> args, Util::optional<unsigned> timeout)
 {
+    auto throw_last_err = [] {
+        DWORD dw = GetLastError();
+        const char* message;
+        FormatMessage(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+            nullptr, dw, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), (LPTSTR)&message, 0, nullptr);
+        std::string err = message;
+        LocalFree((void*)message);
+        throw std::runtime_error(err);
+    };
     ProcessResult result;
     Pipe stdoutpipe;
+    Pipe stderrpipe;
     PROCESS_INFORMATION info = { 0 };
     STARTUPINFO startinfo = { sizeof(STARTUPINFO) };
     std::string final_args = name;
     for (auto arg : args)
          final_args += " " + arg;
     startinfo.hStdOutput = stdoutpipe.WriteHandle();
-    startinfo.hStdError = INVALID_HANDLE_VALUE;
+    startinfo.hStdError = stderrpipe.WriteHandle();
     startinfo.hStdInput = INVALID_HANDLE_VALUE;
     startinfo.dwFlags |= STARTF_USESTDHANDLES;
     auto proc = CreateProcess(
@@ -123,21 +135,31 @@ Wide::Driver::ProcessResult Wide::Driver::StartAndWaitForProcess(std::string nam
         &info
          );
     if (!proc) {
-        DWORD dw = GetLastError();
-        const char* message;
-        FormatMessage(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
-            nullptr, dw, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), (LPTSTR)&message, 0, nullptr);
-        std::string err = message;
-        LocalFree((void*)message);
-        throw std::runtime_error(err);        
+        throw_last_err();        
     }
     if (timeout == 0)
         timeout = INFINITE;
 
-    result.std_out = stdoutpipe.Contents();
-    if (WaitForSingleObject(info.hProcess, timeout ? *timeout : INFINITE) == WAIT_TIMEOUT)
-         TerminateProcess(info.hProcess, 1);
+    std::thread writethread([&] {
+        result.std_out = stdoutpipe.Contents();
+    });
+    std::thread errthread([&] {
+        result.std_err = stderrpipe.Contents();
+    });
 
+    auto waiterr = WaitForSingleObject(info.hProcess, timeout ? *timeout : INFINITE);
+    if (waiterr == WAIT_TIMEOUT) {
+        TerminateProcess(info.hProcess, 1);
+        waiterr = WaitForSingleObject(info.hProcess, timeout ? *timeout : INFINITE);
+        if (waiterr != WAIT_OBJECT_0) {
+            throw_last_err();
+        }
+    } else if (waiterr != WAIT_OBJECT_0) {
+        throw_last_err();
+    }
+
+    writethread.join();
+    errthread.join();
     DWORD exit_code;
     GetExitCodeProcess(info.hProcess, &exit_code);
     CloseHandle(info.hProcess);
