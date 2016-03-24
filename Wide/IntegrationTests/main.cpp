@@ -46,7 +46,7 @@ Wide::Driver::ProcessResult ExecuteCompile(json::value test, std::string gccpath
     auto json_test_input = json::dump_string(val);
     test_json.write(json_test_input.c_str(), json_test_input.size());
     test_json.flush();
-    return Wide::Driver::StartAndWaitForProcess(CLIPath, { "--interface=JSON", "--jsoninput=current_test.json" }, 10000);
+    return Wide::Driver::StartAndWaitForProcess(CLIPath, { "--interface=JSON", "--jsoninput=current_test.json" }, 100000);
 }
 
 bool MatchesError(json::value expected_error, const json::array& actual_errors) {
@@ -95,16 +95,16 @@ bool ExecuteJsonTest(json::value test) {
             return 1;
 #endif
 #ifdef _MSC_VER
-        auto link = Wide::Driver::StartAndWaitForProcess(gccpath + ".exe", { "-o a.exe", "a.o" }, 10000);
+        auto link = Wide::Driver::StartAndWaitForProcess(gccpath + ".exe", { "-o a.exe", "a.o" }, 100000);
 #else
-        auto link = Wide::Driver::StartAndWaitForProcess(gccpath, { "-o", "a.out", "a.o" }, 10000);
+        auto link = Wide::Driver::StartAndWaitForProcess(gccpath, { "-o", "a.out", "a.o" }, 100000);
 #endif
         if (link.exitcode != 0)
             return link.exitcode;
 #ifdef _MSC_VER
-        return Wide::Driver::StartAndWaitForProcess("a.exe", {}, 10000).exitcode != 0;
+        return Wide::Driver::StartAndWaitForProcess("a.exe", {}, 100000).exitcode != 0;
 #else
-        return Wide::Driver::StartAndWaitForProcess("./a.out", {}, 10000).exitcode != 0;
+        return Wide::Driver::StartAndWaitForProcess("./a.out", {}, 100000).exitcode != 0;
 #endif
     }
     if (type == "CompileFail") {
