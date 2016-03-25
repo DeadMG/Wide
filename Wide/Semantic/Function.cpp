@@ -33,7 +33,7 @@ namespace {
 
 void Function::ComputeReturnType() {
     if (ReturnType) return;
-    if (auto ret = skeleton->GetExplicitReturn(Args)) {
+    if (auto ret = skeleton->GetExplicitReturn()) {
         ReturnType = ret;
         return;
     }
@@ -48,8 +48,8 @@ void Function::ComputeReturnType() {
             ret_types.insert(analyzer.GetVoidType());
             continue;
         }
-        if (!ret->GetType(Args)) continue;
-        ret_types.insert(ret->GetType(Args)->Decay());
+        if (!ret->GetType()) continue;
+        ret_types.insert(ret->GetType()->Decay());
     }
 
     if (ret_types.size() == 1) {
@@ -110,7 +110,7 @@ llvm::Function* Function::EmitCode(llvm::Module* module) {
         return llvmfunc;
     }
     llvmfunc = llvm::Function::Create(llvm::dyn_cast<llvm::FunctionType>(llvmsig->getElementType()), llvm::GlobalValue::LinkageTypes::ExternalLinkage, llvmname, module);
-    CodegenContext::EmitFunctionBody(llvmfunc, GetArguments(), [this](CodegenContext& c) {
+    CodegenContext::EmitFunctionBody(llvmfunc, [this](CodegenContext& c) {
         for (auto&& stmt : skeleton->ComputeBody()->active)
             if (!c.IsTerminated(c->GetInsertBlock()))
                 stmt->GenerateCode(c);
@@ -129,28 +129,28 @@ llvm::Function* Function::EmitCode(llvm::Module* module) {
     return llvmfunc;
 }
 
-std::vector<std::shared_ptr<Expression>> Function::AdjustArguments(Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c) {
+std::vector<std::shared_ptr<Expression>> Function::AdjustArguments(std::vector<std::shared_ptr<Expression>> args, Context c) {
     // May need to perform conversion on "this" that isn't handled by the usual machinery.
     // But check first, because e.g. Derived& to Base& is fine.
     if (Args.size() > 0) {
-        if (analyzer.HasImplicitThis(skeleton->GetASTFunction(), skeleton->GetContext()) && !Type::IsFirstASecond(args[0]->GetType(key), Args[0], c.from)) {
-            auto argty = args[0]->GetType(key);
+        if (analyzer.HasImplicitThis(skeleton->GetASTFunction(), skeleton->GetContext()) && !Type::IsFirstASecond(args[0]->GetType(), Args[0], c.from)) {
+            auto argty = args[0]->GetType();
             // If T&&, cast.
             // Else, build a T&& from the U then cast that. Use this instead of BuildRvalueConstruction because we may need to preserve derived semantics.
             if (argty == analyzer.GetRvalueType(skeleton->GetNonstaticMemberContext()->Decay())) {
                 args[0] = std::make_shared<LvalueCast>(args[0]);
             } else if (argty != analyzer.GetLvalueType(skeleton->GetNonstaticMemberContext())) {
-                args[0] = std::make_shared<LvalueCast>(analyzer.GetRvalueType(skeleton->GetNonstaticMemberContext())->BuildValueConstruction(Args, { args[0] }, c));
+                args[0] = std::make_shared<LvalueCast>(analyzer.GetRvalueType(skeleton->GetNonstaticMemberContext())->BuildValueConstruction({ args[0] }, c));
             }
         }
     }
-    return AdjustArgumentsForTypes(key, std::move(args), Args, c);
+    return AdjustArgumentsForTypes(std::move(args), Args, c);
 }
 WideFunctionType* Function::GetSignature() {
     ComputeBody();
     return analyzer.GetFunctionType(ReturnType, Args, false);
 }
-std::shared_ptr<Expression> Function::CallFunction(Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c) {
+std::shared_ptr<Expression> Function::CallFunction(std::vector<std::shared_ptr<Expression>> args, Context c) {
     ComputeBody();
 
     // Figure out if we need to do a dynamic dispatch.
@@ -162,15 +162,15 @@ std::shared_ptr<Expression> Function::CallFunction(Expression::InstanceKey key, 
             return llvmfunc;
 
         auto func = dynamic_cast<const Parse::DynamicFunction*>(skeleton->GetASTFunction());
-        auto udt = dynamic_cast<UserDefinedType*>(args[0]->GetType(key)->Decay());
+        auto udt = dynamic_cast<UserDefinedType*>(args[0]->GetType()->Decay());
         if (!func || !udt) return llvmfunc;
         auto vindex = udt->GetVirtualFunctionIndex(func);
         if (!vindex) return llvmfunc;
-        auto obj = Type::GetVirtualPointer(key, args[0]);
+        auto obj = Type::GetVirtualPointer(args[0]);
         auto vptr = con->CreateLoad(obj->GetValue(con));
         return con->CreatePointerCast(con->CreateLoad(con->CreateConstGEP1_32(vptr, *vindex)), GetSignature()->GetLLVMType(con));
     });
-    return Type::BuildCall(key, self, args, c);
+    return Type::BuildCall(self, args, c);
 }
 void Function::AddExportName(std::function<void(llvm::Module*)> func) {
     trampoline.push_back(func);

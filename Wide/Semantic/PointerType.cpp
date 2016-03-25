@@ -53,15 +53,15 @@ OverloadSet* PointerType::CreateConstructorOverloadSet(Parse::Access access) {
             if (!Type::IsFirstASecond(types[1], self, source)) return Util::none;
             return types;
         }
-        std::vector<std::shared_ptr<Expression>> AdjustArguments(Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c) override final { return args; }
-        std::shared_ptr<Expression> CallFunction(Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c) override final {
+        std::vector<std::shared_ptr<Expression>> AdjustArguments(std::vector<std::shared_ptr<Expression>> args, Context c) override final { return args; }
+        std::shared_ptr<Expression> CallFunction(std::vector<std::shared_ptr<Expression>> args, Context c) override final {
             auto other = BuildValue(std::move(args[1]));
-            return Wide::Memory::MakeUnique<ImplicitStoreExpr>(std::move(args[0]), Type::AccessBase(key, std::move(other), self->pointee));
+            return Wide::Memory::MakeUnique<ImplicitStoreExpr>(std::move(args[0]), Type::AccessBase(std::move(other), self->pointee));
         }
         Callable* GetCallableForResolution(std::vector<Type*>, Location, Analyzer& a) override final { return this; }
     };
     auto usual = PrimitiveType::CreateConstructorOverloadSet(Parse::Access::Public);
-    NullConstructor = MakeResolvable([this](Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c) {
+    NullConstructor = MakeResolvable([this](std::vector<std::shared_ptr<Expression>> args, Context c) {
         return CreatePrimOp(std::move(args[0]), std::move(args[1]), analyzer.GetLvalueType(this), [this](llvm::Value* lhs, llvm::Value* rhs, CodegenContext& con) {
             con->CreateStore(llvm::Constant::getNullValue(GetLLVMType(con)), lhs);
             return lhs;
@@ -95,14 +95,14 @@ OverloadSet* PointerType::CreateOperatorOverloadSet(Parse::OperatorName name, Pa
     if (name.size() != 1) return AccessMember(name, Parse::Access::Public, kind);
     auto what = name.front();
     if (what == &Lexer::TokenTypes::Star) {
-        DereferenceOperator = MakeResolvable([this](Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c) {
+        DereferenceOperator = MakeResolvable([this](std::vector<std::shared_ptr<Expression>> args, Context c) {
             return CreatePrimUnOp(std::move(args[0]), analyzer.GetLvalueType(pointee), [](llvm::Value* val, CodegenContext& con) {
                 return val;
             });
         }, { this });
         return analyzer.GetOverloadSet(DereferenceOperator.get());
     } else if (what == &Lexer::TokenTypes::QuestionMark) {
-        BooleanOperator = MakeResolvable([this](Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c) {
+        BooleanOperator = MakeResolvable([this](std::vector<std::shared_ptr<Expression>> args, Context c) {
             return CreatePrimUnOp(BuildValue(std::move(args[0])), analyzer.GetBooleanType(), [](llvm::Value* v, CodegenContext& con) {
                 return con->CreateZExt(con->CreateIsNotNull(v), llvm::Type::getInt8Ty(con));
             });
@@ -114,9 +114,9 @@ OverloadSet* PointerType::CreateOperatorOverloadSet(Parse::OperatorName name, Pa
 std::string PointerType::explain() {
     return pointee->explain() + ".pointer";
 }
-std::shared_ptr<Expression> PointerType::AccessVirtualPointer(Expression::InstanceKey key, std::shared_ptr<Expression> self) {
+std::shared_ptr<Expression> PointerType::AccessVirtualPointer(std::shared_ptr<Expression> self) {
     auto deref = CreatePrimUnOp(std::move(self), analyzer.GetLvalueType(pointee), [](llvm::Value* val, CodegenContext& con) {
         return val;
     });
-    return Type::GetVirtualPointer(key, deref);
+    return Type::GetVirtualPointer(deref);
 }

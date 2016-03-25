@@ -17,17 +17,17 @@ std::shared_ptr<Expression> TupleType::ConstructFromLiteral(std::vector<std::sha
 
     // If we have no members, return value (will be undef).
     if (GetMembers().size() == 0)
-        return BuildValueConstruction(Expression::NoInstance(), {}, c);
+        return BuildValueConstruction({}, c);
 
     // If we are complex, then build directly in-place.
     // Else try to avoid making an allocation.
     std::vector<std::shared_ptr<Expression>> initializers;
     auto self = CreateTemporary(this, c);
     for (std::size_t i = 0; i < exprs.size(); ++i) {
-        initializers.push_back(Type::BuildInplaceConstruction(Expression::NoInstance(), PrimitiveAccessMember(self, i), { std::move(exprs[i]) }, c));
+        initializers.push_back(Type::BuildInplaceConstruction(PrimitiveAccessMember(self, i), { std::move(exprs[i]) }, c));
     }
 
-    auto destructor = BuildDestructorCall(Expression::NoInstance(), self, c, true);
+    auto destructor = BuildDestructorCall(self, c, true);
     return CreatePrimGlobal(Range::Container(initializers), this, [=](CodegenContext& con) -> llvm::Value* {
         for (auto&& init : initializers)
             init->GetValue(con);

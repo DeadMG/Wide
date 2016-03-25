@@ -114,8 +114,8 @@ namespace Wide {
                 if (!layout) layout = Layout(this, analyzer);
                 return *layout;
             }
-            Location l;
         protected:
+            Location l;
             std::function<llvm::Function*(llvm::Module*)> CreateDestructorFunction(Location from) override;
             struct AggregateConstructors {
                 bool default_constructor;
@@ -155,8 +155,8 @@ namespace Wide {
 
             OverloadSet* CreateOperatorOverloadSet(Parse::OperatorName type, Parse::Access access, OperatorAccess) override;
             OverloadSet* CreateConstructorOverloadSet(Parse::Access access) override; 
-            std::function<void(CodegenContext&)> BuildDestruction(Expression::InstanceKey, std::shared_ptr<Expression> self, Context c, bool devirtualize) override;
-            std::shared_ptr<Expression> AccessVirtualPointer(Expression::InstanceKey key, std::shared_ptr<Expression> self) override final;
+            std::function<void(CodegenContext&)> BuildDestruction(std::shared_ptr<Expression> self, Context c, bool devirtualize) override;
+            std::shared_ptr<Expression> AccessVirtualPointer(std::shared_ptr<Expression> self) override final;
 
             bool IsCopyConstructible(Location) override;
             bool IsMoveConstructible(Location) override;

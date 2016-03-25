@@ -99,15 +99,15 @@ Analyzer::Analyzer(const Options::Clang& opts, const Parse::Module* GlobalModule
             return types;
         }
         Callable* GetCallableForResolution(std::vector<Type*>, Location, Analyzer& a) override final { return this; }
-        std::shared_ptr<Expression> CallFunction(Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c) override final {
-            auto conty = dynamic_cast<ConstructorType*>(args[0]->GetType(key)->Decay());
+        std::shared_ptr<Expression> CallFunction(std::vector<std::shared_ptr<Expression>> args, Context c) override final {
+            auto conty = dynamic_cast<ConstructorType*>(args[0]->GetType()->Decay());
             return CreatePrimGlobal(Range::Container(args), conty->GetConstructedType(), [=](CodegenContext& con) {
                 args[0]->GetValue(con);
                 auto val = args[1]->GetValue(con);
                 return con->CreatePointerCast(val, conty->GetConstructedType()->GetLLVMType(con));
             });
         }
-        std::vector<std::shared_ptr<Expression>> AdjustArguments(Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c) override final {
+        std::vector<std::shared_ptr<Expression>> AdjustArguments(std::vector<std::shared_ptr<Expression>> args, Context c) override final {
             return args; 
         }
     };
@@ -120,10 +120,10 @@ Analyzer::Analyzer(const Options::Clang& opts, const Parse::Module* GlobalModule
         Callable* GetCallableForResolution(std::vector<Type*>, Location, Analyzer& a) override final {
             return this; 
         }
-        std::vector<std::shared_ptr<Expression>> AdjustArguments(Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c) override final {
+        std::vector<std::shared_ptr<Expression>> AdjustArguments(std::vector<std::shared_ptr<Expression>> args, Context c) override final {
             return args; 
         }
-        std::shared_ptr<Expression> CallFunction(Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c) override final {
+        std::shared_ptr<Expression> CallFunction(std::vector<std::shared_ptr<Expression>> args, Context c) override final {
             return Wide::Memory::MakeUnique<RvalueCast>(std::move(args[0]));
         }
     };
@@ -138,31 +138,31 @@ Analyzer::Analyzer(const Options::Clang& opts, const Parse::Module* GlobalModule
     Move = Wide::Memory::MakeUnique<MoveType>();
 
     auto context = Context{ Location(*this), Lexer::Range(std::make_shared<std::string>("Analyzer internal.")) };
-    global->AddSpecialMember("cpp", ClangInclude->BuildValueConstruction(Expression::NoInstance(), {}, context));
-    global->AddSpecialMember("void", GetConstructorType(Void.get())->BuildValueConstruction(Expression::NoInstance(), {}, context));
-    global->AddSpecialMember("global", global->BuildValueConstruction(Expression::NoInstance(), {}, context));
-    global->AddSpecialMember("int8", GetConstructorType(GetIntegralType(8, true))->BuildValueConstruction(Expression::NoInstance(), {}, context));
-    global->AddSpecialMember("uint8", GetConstructorType(GetIntegralType(8, false))->BuildValueConstruction(Expression::NoInstance(), {}, context));
-    global->AddSpecialMember("int16", GetConstructorType(GetIntegralType(16, true))->BuildValueConstruction(Expression::NoInstance(), {}, context));
-    global->AddSpecialMember("uint16", GetConstructorType(GetIntegralType(16, false))->BuildValueConstruction(Expression::NoInstance(), {}, context));
-    global->AddSpecialMember("int32", GetConstructorType(GetIntegralType(32, true))->BuildValueConstruction(Expression::NoInstance(), {}, context));
-    global->AddSpecialMember("uint32", GetConstructorType(GetIntegralType(32, false))->BuildValueConstruction(Expression::NoInstance(), {}, context));
-    global->AddSpecialMember("int64", GetConstructorType(GetIntegralType(64, true))->BuildValueConstruction(Expression::NoInstance(), {}, context));
-    global->AddSpecialMember("uint64", GetConstructorType(GetIntegralType(64, false))->BuildValueConstruction(Expression::NoInstance(), {}, context));
-    global->AddSpecialMember("float32", GetConstructorType(GetFloatType(32))->BuildValueConstruction(Expression::NoInstance(), {}, context));
-    global->AddSpecialMember("float64", GetConstructorType(GetFloatType(64))->BuildValueConstruction(Expression::NoInstance(), {}, context));
-    global->AddSpecialMember("bool", GetConstructorType(Boolean.get())->BuildValueConstruction(Expression::NoInstance(), {}, context));
+    global->AddSpecialMember("cpp", ClangInclude->BuildValueConstruction({}, context));
+    global->AddSpecialMember("void", GetConstructorType(Void.get())->BuildValueConstruction({}, context));
+    global->AddSpecialMember("global", global->BuildValueConstruction({}, context));
+    global->AddSpecialMember("int8", GetConstructorType(GetIntegralType(8, true))->BuildValueConstruction({}, context));
+    global->AddSpecialMember("uint8", GetConstructorType(GetIntegralType(8, false))->BuildValueConstruction({}, context));
+    global->AddSpecialMember("int16", GetConstructorType(GetIntegralType(16, true))->BuildValueConstruction({}, context));
+    global->AddSpecialMember("uint16", GetConstructorType(GetIntegralType(16, false))->BuildValueConstruction({}, context));
+    global->AddSpecialMember("int32", GetConstructorType(GetIntegralType(32, true))->BuildValueConstruction({}, context));
+    global->AddSpecialMember("uint32", GetConstructorType(GetIntegralType(32, false))->BuildValueConstruction({}, context));
+    global->AddSpecialMember("int64", GetConstructorType(GetIntegralType(64, true))->BuildValueConstruction({}, context));
+    global->AddSpecialMember("uint64", GetConstructorType(GetIntegralType(64, false))->BuildValueConstruction({}, context));
+    global->AddSpecialMember("float32", GetConstructorType(GetFloatType(32))->BuildValueConstruction({}, context));
+    global->AddSpecialMember("float64", GetConstructorType(GetFloatType(64))->BuildValueConstruction({}, context));
+    global->AddSpecialMember("bool", GetConstructorType(Boolean.get())->BuildValueConstruction({}, context));
 
-    global->AddSpecialMember("byte", GetConstructorType(GetIntegralType(8, false))->BuildValueConstruction(Expression::NoInstance(), {}, context));
-    global->AddSpecialMember("int", GetConstructorType(GetIntegralType(32, true))->BuildValueConstruction(Expression::NoInstance(), {}, context));
-    global->AddSpecialMember("short", GetConstructorType(GetIntegralType(16, true))->BuildValueConstruction(Expression::NoInstance(), {}, context));
-    global->AddSpecialMember("long", GetConstructorType(GetIntegralType(64, true))->BuildValueConstruction(Expression::NoInstance(), {}, context));
-    global->AddSpecialMember("float", GetConstructorType(GetFloatType(32))->BuildValueConstruction(Expression::NoInstance(), {}, context));
-    global->AddSpecialMember("double", GetConstructorType(GetFloatType(64))->BuildValueConstruction(Expression::NoInstance(), {}, context));
+    global->AddSpecialMember("byte", GetConstructorType(GetIntegralType(8, false))->BuildValueConstruction({}, context));
+    global->AddSpecialMember("int", GetConstructorType(GetIntegralType(32, true))->BuildValueConstruction({}, context));
+    global->AddSpecialMember("short", GetConstructorType(GetIntegralType(16, true))->BuildValueConstruction({}, context));
+    global->AddSpecialMember("long", GetConstructorType(GetIntegralType(64, true))->BuildValueConstruction({}, context));
+    global->AddSpecialMember("float", GetConstructorType(GetFloatType(32))->BuildValueConstruction({}, context));
+    global->AddSpecialMember("double", GetConstructorType(GetFloatType(64))->BuildValueConstruction({}, context));
 
-    global->AddSpecialMember("null", GetNullType()->BuildValueConstruction(Expression::NoInstance(), {}, context));
-    global->AddSpecialMember("reinterpret_cast", GetOverloadSet(PointerCast.get())->BuildValueConstruction(Expression::NoInstance(), {}, context));
-    global->AddSpecialMember("move", GetOverloadSet(Move.get())->BuildValueConstruction(Expression::NoInstance(), {}, context));
+    global->AddSpecialMember("null", GetNullType()->BuildValueConstruction({}, context));
+    global->AddSpecialMember("reinterpret_cast", GetOverloadSet(PointerCast.get())->BuildValueConstruction({}, context));
+    global->AddSpecialMember("move", GetOverloadSet(Move.get())->BuildValueConstruction({}, context));
 
     Module::AddDefaultHandlers(*this);
     Expression::AddDefaultHandlers(*this);
@@ -284,9 +284,7 @@ WideFunctionType* Analyzer::GetFunctionType(Type* ret, const std::vector<Type*>&
 }
 
 Function* Analyzer::GetWideFunction(FunctionSkeleton* skeleton) {
-    return GetWideFunction(skeleton, GetFunctionParameters(skeleton->GetASTFunction(), skeleton->GetContext()));
-}
-Function* Analyzer::GetWideFunction(FunctionSkeleton* skeleton, const std::vector<Type*>& types) {
+    auto types = GetFunctionParameters(skeleton->GetASTFunction(), skeleton->GetContext());
     if (WideFunctions.find(skeleton) == WideFunctions.end()
         || WideFunctions[skeleton].find(types) == WideFunctions[skeleton].end())
         WideFunctions[skeleton][types] = Wide::Memory::MakeUnique<Function>(*this, skeleton, types);
@@ -442,7 +440,7 @@ std::vector<Type*> Analyzer::GetFunctionParameters(const Parse::FunctionBase* fu
                     if (auto string = boost::get<std::string>(&name->val.name)) {
                         if (*string == "export") {
                             auto expr = AnalyzeExpression(context, attr.initializer.get(), nullptr);
-                            auto overset = dynamic_cast<OverloadSet*>(expr->GetType(Expression::NoInstance())->Decay());
+                            auto overset = dynamic_cast<OverloadSet*>(expr->GetType()->Decay());
                             if (!overset)
                                 throw SpecificError<ExportNonOverloadSet>(*this, attr.initializer->location, "Attempted to export as a non-overload set.");
                             auto tuanddecl = overset->GetSingleFunction();
@@ -468,7 +466,7 @@ std::vector<Type*> Analyzer::GetFunctionParameters(const Parse::FunctionBase* fu
     for (auto&& arg : func->args) {
         auto ty_expr = arg.non_nullable_type.get();
         auto expr = AnalyzeExpression(context, ty_expr, nullptr);
-        auto p_type = expr->GetType(Expression::NoInstance())->Decay();
+        auto p_type = expr->GetType()->Decay();
         auto con_type = dynamic_cast<ConstructorType*>(p_type);
         if (!con_type)
             throw SpecificError<FunctionArgumentNotType>(*this, arg.non_nullable_type->location, "Function argument type was not a type.");
@@ -507,7 +505,7 @@ Type* Semantic::GetNonstaticContext(Location context) {
         return *lambda;
     return boost::get<UserDefinedType*>(ty);
 }
-FunctionSkeleton* Analyzer::GetWideFunction(const Parse::FunctionBase* p, Location context) {
+FunctionSkeleton* Analyzer::GetFunctionSkeleton(const Parse::FunctionBase* p, Location context) {
     auto location = context;
     if (auto astfun = dynamic_cast<const Parse::AttributeFunctionBase*>(p)) {
         for (auto&& attr : astfun->attributes) {
@@ -515,7 +513,7 @@ FunctionSkeleton* Analyzer::GetWideFunction(const Parse::FunctionBase* p, Locati
                 if (auto string = boost::get<std::string>(&name->val.name)) {
                     if (*string == "export") {
                         auto expr = AnalyzeExpression(context, attr.initializer.get(), nullptr);
-                        auto overset = dynamic_cast<OverloadSet*>(expr->GetType(Expression::NoInstance())->Decay());
+                        auto overset = dynamic_cast<OverloadSet*>(expr->GetType()->Decay());
                         if (!overset)
                             throw SpecificError<ExportNonOverloadSet>(*this, attr.initializer->location, "Attempted to export as a non-overload set.");
                         auto tuanddecl = overset->GetSingleFunction();
@@ -540,22 +538,23 @@ FunctionSkeleton* Analyzer::GetWideFunction(const Parse::FunctionBase* p, Locati
     return FunctionSkeletons[p][location].get();
 }
 
-OverloadResolvable* Analyzer::GetCallableForFunction(FunctionSkeleton* skel) {
-    if (FunctionCallables.find(skel) != FunctionCallables.end())
-        return FunctionCallables.at(skel).get();
+OverloadResolvable* Analyzer::GetCallableForFunction(const Parse::FunctionBase* func, Location context) {
+    if (FunctionCallables.find(func) != FunctionCallables.end() && FunctionCallables[func].find(context) != FunctionCallables[func].end())
+        return FunctionCallables.at(func).at(context).get();
 
     struct FunctionCallable : public OverloadResolvable {
-        FunctionCallable(FunctionSkeleton* skel)
-            : skeleton(skel)
+        FunctionCallable(const Parse::FunctionBase* func, Location context)
+            : func(func), context(context)
         {}
         
-        FunctionSkeleton* skeleton;
+        const Parse::FunctionBase* func;
+        Location context;
 
         Util::optional<std::vector<Type*>> MatchParameter(std::vector<Type*> types, Analyzer& a, Location source) override final {
             // If we are a member and we have an explicit this then treat the first normally.
             // Else if we are a member, blindly accept whatever is given for argument 0 as long as it's the member type.
             // Else, treat the first argument normally.
-            auto parameters = a.GetFunctionParameters(skeleton->GetASTFunction(), skeleton->GetContext());
+            auto parameters = a.GetFunctionParameters(func, context);
             //if (dynamic_cast<const Parse::Lambda*>(skeleton->GetASTFunction()))
             //    if (dynamic_cast<LambdaType*>(types[0]->Decay()))
             //        if (types.size() == parameters.size() + 1)
@@ -563,14 +562,14 @@ OverloadResolvable* Analyzer::GetCallableForFunction(FunctionSkeleton* skel) {
             if (types.size() != parameters.size()) return Util::none;
             std::vector<Type*> result;
             for (unsigned i = 0; i < types.size(); ++i) {
-                if (a.HasImplicitThis(skeleton->GetASTFunction(), skeleton->GetContext()) && i == 0) {
+                if (a.HasImplicitThis(func, context) && i == 0) {
                     // First, if no conversion is necessary.
                     if (Type::IsFirstASecond(types[i], parameters[i], source)) {
                         result.push_back(parameters[i]);
                         continue;
                     }
                     // If the parameter is-a nonstatic-context&&, then we're good. Let Function::AdjustArguments handle the adjustment, if necessary.
-                    if (Type::IsFirstASecond(types[i], a.GetRvalueType(GetNonstaticContext(skeleton->GetContext())), source)) {
+                    if (Type::IsFirstASecond(types[i], a.GetRvalueType(GetNonstaticContext(context)), source)) {
                         result.push_back(parameters[i]);
                         continue;
                     }
@@ -586,17 +585,17 @@ OverloadResolvable* Analyzer::GetCallableForFunction(FunctionSkeleton* skel) {
         }
 
         Callable* GetCallableForResolution(std::vector<Type*> types, Location, Analyzer& a) override final {
-            if (auto function = dynamic_cast<const Parse::Function*>(skeleton->GetASTFunction()))
+            if (auto function = dynamic_cast<const Parse::Function*>(func))
                 if (function->deleted)
                     return nullptr;
-            if (auto con = dynamic_cast<const Parse::Constructor*>(skeleton->GetASTFunction()))
+            if (auto con = dynamic_cast<const Parse::Constructor*>(func))
                 if (con->deleted)
                     return nullptr;
-            return a.GetWideFunction(skeleton, types);
+            return a.GetWideFunction(a.GetFunctionSkeleton(func, context));
         }
     };
-    FunctionCallables[skel] = Wide::Memory::MakeUnique<FunctionCallable>(skel);
-    return FunctionCallables.at(skel).get();
+    FunctionCallables[func][context] = Wide::Memory::MakeUnique<FunctionCallable>(func, context);
+    return FunctionCallables.at(func).at(context).get();
 }
 
 /*Parse::Access Semantic::GetAccessSpecifier(Type* from, Type* to) {
@@ -656,7 +655,7 @@ void Semantic::AnalyzeExportedFunctions(Analyzer& a, std::function<void(const Pa
 }
 void Semantic::AnalyzeExportedFunctions(Analyzer& a) {
     AnalyzeExportedFunctions(a, [&a](const Parse::AttributeFunctionBase* func, std::string name, Location l) {
-        auto skeleton = a.GetWideFunction(func, l);
+        auto skeleton = a.GetFunctionSkeleton(func, l);
         auto function = a.GetWideFunction(skeleton);
         function->ComputeBody();
     });
@@ -755,10 +754,10 @@ llvm::Value* Semantic::CollapseMember(Type* source, std::pair<llvm::Value*, Type
         return con->CreateLoad(member.first);
     return member.first;
 }
-std::function<void(CodegenContext&)> Semantic::ThrowObject(Expression::InstanceKey key, std::shared_ptr<Expression> expr, Context c) {
+std::function<void(CodegenContext&)> Semantic::ThrowObject(std::shared_ptr<Expression> expr, Context c) {
     // http://mentorembedded.github.io/cxx-abi/abi-eh.html
     // 2.4.2
-    auto ty = expr->GetType(key)->Decay();
+    auto ty = expr->GetType()->Decay();
     auto RTTI = ty->GetRTTI();
     auto destructor_func = ty->GetDestructorFunctionForEH(c.from);
     return [=](CodegenContext& con) {
@@ -775,7 +774,7 @@ std::function<void(CodegenContext&)> Semantic::ThrowObject(Expression::InstanceK
         // There is no longer a guarantee thas, as an argument, except_memory will be in the same CodegenContext
         // and the iterator could be invalidated. Strictly get the value in the original CodegenContext that ThrowStatement::GenerateCode
         // is called with so that we can erase the destructor later.
-        auto exception = BuildChain(BuildChain(except_memory, Type::BuildInplaceConstruction(con.func, except_memory, { std::move(expr) }, c)), except_memory);
+        auto exception = BuildChain(BuildChain(except_memory, Type::BuildInplaceConstruction(except_memory, { std::move(expr) }, c)), except_memory);
         auto value = exception->GetValue(con);
         auto cxa_throw = con.GetCXAThrow();
         // Throw this shit.
@@ -803,14 +802,14 @@ ClangTypeInfo* Analyzer::MaybeGetClangTypeInfo(const clang::CXXRecordDecl* decl)
         return &GeneratedClangTypes[decl];
     return nullptr;
 }
-llvm::APInt Analyzer::EvaluateConstantIntegerExpression(std::shared_ptr<Expression> e, Expression::InstanceKey key) {
+llvm::APInt Analyzer::EvaluateConstantIntegerExpression(std::shared_ptr<Expression> e) {
     assert(dynamic_cast<IntegralType*>(e->GetType(key)));
     assert(e->IsConstant(key));
     if (auto integer = dynamic_cast<Integer*>(e.get()))
         return integer->value;
     // BUG: Invoking MCJIT causes second MCJIT invocation to fail. This causes spurious test failures.
-    auto evalfunc = llvm::Function::Create(llvm::FunctionType::get(e->GetType(key)->GetLLVMType(ConstantModule.get()), {}, false), llvm::GlobalValue::LinkageTypes::InternalLinkage, GetUniqueFunctionName(), ConstantModule.get());
-    CodegenContext::EmitFunctionBody(evalfunc, {}, [e](CodegenContext& con) {
+    auto evalfunc = llvm::Function::Create(llvm::FunctionType::get(e->GetType()->GetLLVMType(ConstantModule.get()), {}, false), llvm::GlobalValue::LinkageTypes::InternalLinkage, GetUniqueFunctionName(), ConstantModule.get());
+    CodegenContext::EmitFunctionBody(evalfunc, [e](CodegenContext& con) {
         con->CreateRet(e->GetValue(con));
     });
     auto mod = Wide::Util::CloneModule(*ConstantModule);
@@ -842,13 +841,13 @@ namespace {
             if (std::find(import->names.begin(), import->names.end(), name) == import->names.end())
                 return propagate();
         auto con = a.AnalyzeExpression(context, import->from.get(), nullptr);
-        if (auto result = Type::AccessMember(Expression::NoInstance(), con, name, { context, where })) {
+        if (auto result = Type::AccessMember(con, name, { context, where })) {
             auto subresult = propagate();
             if (!subresult) return result;
-            auto over1 = dynamic_cast<OverloadSet*>(result->GetType(Expression::NoInstance()));
-            auto over2 = dynamic_cast<OverloadSet*>(subresult->GetType(Expression::NoInstance()));
+            auto over1 = dynamic_cast<OverloadSet*>(result->GetType());
+            auto over2 = dynamic_cast<OverloadSet*>(subresult->GetType());
             if (over1 && over2)
-                return a.GetOverloadSet(over1, over2)->BuildValueConstruction(Expression::NoInstance(), {}, { context, where });
+                return a.GetOverloadSet(over1, over2)->BuildValueConstruction({}, { context, where });
             throw SpecificError<ImportIdentifierLookupAmbiguous>(a, where, "Ambiguous lookup of name " + Semantic::GetNameAsString(name));
         }
         return propagate();
@@ -861,8 +860,8 @@ namespace {
             }
         }
         for (auto&& module : l.modules) {
-            auto instance = module->BuildValueConstruction(Expression::NoInstance(), {}, c);
-            if (auto expr = Type::AccessMember(Expression::NoInstance(), instance, name, c))
+            auto instance = module->BuildValueConstruction({}, c);
+            if (auto expr = Type::AccessMember(instance, name, c))
                 return expr;
         }
         return nullptr;
@@ -873,8 +872,8 @@ namespace {
                 return expr;
         }
         for (auto&& namespace_ : l.namespaces) {
-            auto instance = namespace_->BuildValueConstruction(Expression::NoInstance(), {}, c);
-            if (auto expr = Type::AccessMember(Expression::NoInstance(), instance, name, c))
+            auto instance = namespace_->BuildValueConstruction({}, c);
+            if (auto expr = Type::AccessMember(instance, name, c))
                 return expr;
         }
         return nullptr;
@@ -892,7 +891,7 @@ namespace {
                 return (*lambda)->LookupCapture(_this, name);
             }
         }
-        return Type::AccessMember(Expression::NoInstance(), _this, name, { l, where });
+        return Type::AccessMember(_this, name, { l, where });
     }
     std::shared_ptr<Expression> LookupNameFromLocalScope(Location l, Parse::Name name) {
         if (l.localscope) {
@@ -915,10 +914,10 @@ std::shared_ptr<Expression> Semantic::LookupName(Location l, Parse::Name name, L
     auto result2 = import ? LookupNameFromImport(l, name, where, import) : nullptr;
     if (!result) return result2;
     if (!result2) return result;
-    auto over1 = dynamic_cast<OverloadSet*>(result->GetType(Expression::NoInstance()));
-    auto over2 = dynamic_cast<OverloadSet*>(result2->GetType(Expression::NoInstance()));
+    auto over1 = dynamic_cast<OverloadSet*>(result->GetType());
+    auto over2 = dynamic_cast<OverloadSet*>(result2->GetType());
     if (over1 && over2)
-        return l.GetAnalyzer().GetOverloadSet(over1, over2)->BuildValueConstruction(Expression::NoInstance(), {}, { l, where });
+        return l.GetAnalyzer().GetOverloadSet(over1, over2)->BuildValueConstruction({}, { l, where });
     throw SpecificError<IdentifierLookupAmbiguous>(l.GetAnalyzer(), where, "Ambiguous lookup of name " + Semantic::GetNameAsString(name));
 }
 std::unordered_set<Parse::Name> Semantic::GetLambdaCaptures(const Parse::Statement* s, Analyzer& a, std::unordered_set<Parse::Name>& local_names) {

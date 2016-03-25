@@ -17,12 +17,12 @@
 using namespace Wide;
 using namespace Semantic;
 
-std::shared_ptr<Expression> ClangTemplateClass::ConstructCall(Expression::InstanceKey key, std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c){
+std::shared_ptr<Expression> ClangTemplateClass::ConstructCall(std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c){
     clang::TemplateArgumentListInfo tl;
     std::vector<Type*> types;
     std::list<clang::IntegerLiteral> literals;
     for (auto&& x : args) {
-        if (auto con = dynamic_cast<ConstructorType*>(x->GetType(key))) {
+        if (auto con = dynamic_cast<ConstructorType*>(x->GetType())) {
             auto clangty = con->GetConstructedType()->GetClangType(*from);
             if (!clangty) throw SpecificError<TemplateTypeNoCPPConversion>(analyzer, c.where, "Template argument type has no C++ equivalent type.");
             auto tysrcinfo = from->GetASTContext().getTrivialTypeSourceInfo(*clangty);
@@ -34,7 +34,7 @@ std::shared_ptr<Expression> ClangTemplateClass::ConstructCall(Expression::Instan
         if (auto in = dynamic_cast<Integer*>(x.get())) {
             literals.emplace_back(from->GetASTContext(), in->value, from->GetASTContext().LongLongTy, clang::SourceLocation());
             tl.addArgument(clang::TemplateArgumentLoc(clang::TemplateArgument(&literals.back()), clang::TemplateArgumentLocInfo(&literals.back())));
-            types.push_back(x->GetType(key));
+            types.push_back(x->GetType());
             continue;
         }
         throw SpecificError<TemplateArgumentNoConversion>(analyzer, c.where, "Template argument was not a type or integer.");
@@ -47,7 +47,7 @@ std::shared_ptr<Expression> ClangTemplateClass::ConstructCall(Expression::Instan
     void* pos = 0;
     auto spec = tempdecl->findSpecialization(tempargs, pos);
     if (spec)
-        return analyzer.GetConstructorType(analyzer.GetClangType(*from, from->GetASTContext().getRecordType(spec)))->BuildValueConstruction(key, {}, { l, c.where });
+        return analyzer.GetConstructorType(analyzer.GetClangType(*from, from->GetASTContext().getRecordType(spec)))->BuildValueConstruction({}, { l, c.where });
     auto loc = from->GetFileEnd();
     if (!spec) {
         spec = clang::ClassTemplateSpecializationDecl::Create(
@@ -71,7 +71,7 @@ std::shared_ptr<Expression> ClangTemplateClass::ConstructCall(Expression::Instan
         if (from->GetSema().InstantiateClassTemplateSpecialization(loc, spec, tsk))
             throw SpecificError<CouldNotInstantiateTemplate>(analyzer, c.where, "Could not instantiate C++ template.");
 
-    return BuildChain(std::move(val), analyzer.GetConstructorType(analyzer.GetClangType(*from, from->GetASTContext().getRecordType(spec)))->BuildValueConstruction(key, {}, { l, c.where }));
+    return BuildChain(std::move(val), analyzer.GetConstructorType(analyzer.GetClangType(*from, from->GetASTContext().getRecordType(spec)))->BuildValueConstruction({}, { l, c.where }));
 }
 std::string ClangTemplateClass::explain() {
     return boost::get<Location::CppLocation>(l.location).namespaces.back()->explain() + "." + tempdecl->getName().str();

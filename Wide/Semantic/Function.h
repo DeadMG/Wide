@@ -35,8 +35,8 @@ namespace Wide {
             void ComputeBody();
             void AddExportName(std::function<void(llvm::Module*)> mod);
 
-            std::shared_ptr<Expression> CallFunction(Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c) override final;
-            std::vector<std::shared_ptr<Expression>> AdjustArguments(Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c) override final;
+            std::shared_ptr<Expression> CallFunction(std::vector<std::shared_ptr<Expression>> args, Context c) override final;
+            std::vector<std::shared_ptr<Expression>> AdjustArguments(std::vector<std::shared_ptr<Expression>> args, Context c) override final;
 
             boost::signals2::signal<void(Type*)> ReturnTypeChanged;
             void AddReturnExpression(Expression*);

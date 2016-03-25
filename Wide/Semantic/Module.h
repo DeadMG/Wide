@@ -18,7 +18,7 @@ namespace Wide {
             Module(const Parse::Module* p, Location location, std::string name, Analyzer& a);
             void AddSpecialMember(std::string name, std::shared_ptr<Expression> t);
 
-            std::shared_ptr<Expression> AccessNamedMember(Expression::InstanceKey key, std::shared_ptr<Expression> val, std::string name1, Context c) override final;
+            std::shared_ptr<Expression> AccessNamedMember(std::shared_ptr<Expression> val, std::string name1, Context c) override final;
             OverloadSet* CreateOperatorOverloadSet(Parse::OperatorName, Parse::Access access, OperatorAccess kind) override final;
             const Parse::Module* GetASTModule() { return m; }
             std::string explain() override final;

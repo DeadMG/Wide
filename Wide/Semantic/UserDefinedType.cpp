@@ -52,12 +52,12 @@ namespace {
     }
 }
 FunctionSkeleton* UserDefinedType::GetWideFunction(const Parse::FunctionBase* base, Parse::Name funcname) {
-    return analyzer.GetWideFunction(base, Location(context, this));
+    return analyzer.GetFunctionSkeleton(base, Location(context, this));
 }
 UserDefinedType::BaseData::BaseData(UserDefinedType* self) {
     for (auto&& expr : self->type->bases) {
         auto base = self->analyzer.AnalyzeExpression(self->context, expr.get(), nullptr);
-        auto con = dynamic_cast<ConstructorType*>(base->GetType(Expression::NoInstance())->Decay());
+        auto con = dynamic_cast<ConstructorType*>(base->GetType()->Decay());
         if (!con) {
             base_errors.push_back(Wide::Memory::MakeUnique<SpecificError<BaseNotAType>>(self->analyzer, expr->location, "Base expression not a type."));
             continue;
@@ -144,7 +144,7 @@ UserDefinedType::VTableData::VTableData(UserDefinedType* self) {
     // For every dynamic function that is not inherited from the primary base, add a slot.
     // Else, set the slot to the primary base's slot.
     for (auto&& func : dynamic_functions) {
-        auto fty = analyzer.GetWideFunction(self->GetWideFunction(func.first, GetNameAsString(func.second)), analyzer.GetFunctionParameters(func.first, Location(self->context, self)))->GetSignature();
+        auto fty = analyzer.GetWideFunction(self->GetWideFunction(func.first, GetNameAsString(func.second)))->GetSignature();
         VTableLayout::VirtualFunction vfunc = {
             func.second,
             HasAttribute(func.first, "final"),
@@ -176,7 +176,7 @@ UserDefinedType::MemberData::MemberData(UserDefinedType* self) {
         Type* explicit_type = nullptr;
         if (var.type) {
             auto expr = self->analyzer.AnalyzeExpression(Location(self->context, self), var.type.get(), nullptr);
-            auto type = expr->GetType(Expression::NoInstance());
+            auto type = expr->GetType();
             if (!type)
                 MemberErrors.push_back(Memory::MakeUnique<SpecificError<MemberNotAType>>(self->analyzer, var.type->location, "Member type not a type."));
             else 
@@ -188,7 +188,7 @@ UserDefinedType::MemberData::MemberData(UserDefinedType* self) {
         if (var.initializer) {
             auto expr = self->analyzer.AnalyzeExpression(Location(self->context, self), var.initializer.get(), nullptr);
             if (!explicit_type)
-                members.push_back(expr->GetType(Expression::NoInstance())->Decay());
+                members.push_back(expr->GetType()->Decay());
             HasNSDMI = true;
             NSDMIs.push_back(var.initializer.get());
         } else
@@ -202,7 +202,7 @@ UserDefinedType::MemberData::MemberData(UserDefinedType* self) {
     }
     for (auto&& tuple : self->type->imports) {
         auto expr = self->analyzer.AnalyzeExpression(Location(self->context, self), std::get<0>(tuple).get(), nullptr);
-        auto conty = dynamic_cast<ConstructorType*>(expr->GetType(Expression::NoInstance())->Decay());
+        auto conty = dynamic_cast<ConstructorType*>(expr->GetType()->Decay());
         if (!conty) {
             ImportErrors.push_back(Wide::Memory::MakeUnique<SpecificError<ImportNotAType>>(self->analyzer, std::get<0>(tuple)->location, "Import expression was not a type."));
         }
@@ -242,7 +242,7 @@ std::vector<UserDefinedType::member> UserDefinedType::GetConstructionMembers() {
     return out;
 }
 
-std::shared_ptr<Expression> UserDefinedType::AccessNamedMember(Expression::InstanceKey key, std::shared_ptr<Expression> self, std::string name, Context c) {
+std::shared_ptr<Expression> UserDefinedType::AccessNamedMember(std::shared_ptr<Expression> self, std::string name, Context c) {
     auto spec = GetAccess(c.from);
     if (GetMemberData().member_indices.find(name) != GetMemberData().member_indices.end()) {
         auto&& member = type->variables[GetMemberData().member_indices[name]];
@@ -255,7 +255,7 @@ std::shared_ptr<Expression> UserDefinedType::AccessNamedMember(Expression::Insta
             for (auto&& access : *set) {
                 if (spec >= access.first)
                     for (auto&& func : access.second)
-                        resolvables.insert(analyzer.GetCallableForFunction(analyzer.GetWideFunction(func.get(), Location(context, this))));
+                        resolvables.insert(analyzer.GetCallableForFunction(func.get(), Location(context, this)));
             }
             // Check for imports.
             OverloadSet* imports = analyzer.GetOverloadSet();
@@ -267,10 +267,10 @@ std::shared_ptr<Expression> UserDefinedType::AccessNamedMember(Expression::Insta
                             FunctionImportErrors[name][base.first] = Wide::Memory::MakeUnique<SpecificError<ImportNotUnambiguousBase>>(analyzer, base.second, "Import type was not an unambiguous base.");
                         continue;
                     }
-                    auto baseobj = Type::AccessBase(key, self, base.first);
-                    auto member = Type::AccessMember(key, baseobj, name, c);
+                    auto baseobj = Type::AccessBase(self, base.first);
+                    auto member = Type::AccessMember(baseobj, name, c);
                     if (!member) continue;
-                    auto os = dynamic_cast<OverloadSet*>(member->GetType(Expression::NoInstance())->Decay());
+                    auto os = dynamic_cast<OverloadSet*>(member->GetType()->Decay());
                     if (!os){
                         if (FunctionImportErrors.find(name) == FunctionImportErrors.end()
                          || FunctionImportErrors[name].find(base.first) == FunctionImportErrors[name].end())
@@ -281,9 +281,7 @@ std::shared_ptr<Expression> UserDefinedType::AccessNamedMember(Expression::Insta
                 }
             }
             if (!resolvables.empty() || imports != analyzer.GetOverloadSet())
-                return CreateResultExpression(Range::Elements(self), [=](Expression::InstanceKey key) {
-                    return analyzer.GetOverloadSet(imports, analyzer.GetOverloadSet(resolvables), analyzer.GetRvalueType(self->GetType(key)))->BuildValueConstruction(key, { self }, c);
-                });
+               return analyzer.GetOverloadSet(imports, analyzer.GetOverloadSet(resolvables), analyzer.GetRvalueType(self->GetType()))->BuildValueConstruction({ self }, c);
         } else {
             auto&& use = boost::get<std::pair<Parse::Access, std::unique_ptr<Parse::Using>>>(type->nonvariables.at(name));
             if (spec >= use.first) {
@@ -294,18 +292,18 @@ std::shared_ptr<Expression> UserDefinedType::AccessNamedMember(Expression::Insta
     // Any of our bases have this member?
     std::vector<std::shared_ptr<Expression>> basemembers;
     for (auto&&base : GetBases()) {
-        auto baseobj = Type::AccessBase(key, self, base);
-        if (auto&& member = Type::AccessMember(key, std::move(baseobj), name, c))
+        auto baseobj = Type::AccessBase(self, base);
+        if (auto&& member = Type::AccessMember(std::move(baseobj), name, c))
             basemembers.push_back(member);
     }
     if (basemembers.empty()) return nullptr;
     if (basemembers.size() == 1) return basemembers[0];
     OverloadSet* BaseOverloadSet = analyzer.GetOverloadSet();
     for (auto&& member : basemembers) {
-        auto otheros = dynamic_cast<OverloadSet*>(member->GetType(key)->Decay());
+        auto otheros = dynamic_cast<OverloadSet*>(member->GetType()->Decay());
         if (otheros) {
             if (BaseOverloadSet)
-                BaseOverloadSet = analyzer.GetOverloadSet(BaseOverloadSet, otheros, self->GetType(key));
+                BaseOverloadSet = analyzer.GetOverloadSet(BaseOverloadSet, otheros, self->GetType());
             else
                 BaseOverloadSet = otheros;
             continue;
@@ -313,7 +311,7 @@ std::shared_ptr<Expression> UserDefinedType::AccessNamedMember(Expression::Insta
         throw SpecificError<AmbiguousMemberLookup>(analyzer, c.where, "Member lookup was ambiguous in base classes.");
     }
     if (BaseOverloadSet)
-        return BaseOverloadSet->BuildValueConstruction(key, { std::move(self) }, c);
+        return BaseOverloadSet->BuildValueConstruction({ std::move(self) }, c);
     return nullptr;
 }
 
@@ -453,7 +451,7 @@ Wide::Util::optional<clang::QualType> UserDefinedType::GetClangType(ClangTU& TU)
                 );
             if (HasVirtualDestructor())
                 des->setVirtualAsWritten(true);
-            auto widedes = analyzer.GetWideFunction(GetWideFunction(type->destructor_decl.get(), "~type"), { analyzer.GetLvalueType(this) });
+            auto widedes = analyzer.GetWideFunction(GetWideFunction(type->destructor_decl.get(), "~type"));
             widedes->ComputeBody();
             widedes->AddExportName(GetFunctionType(des, TU, analyzer)->CreateThunk(TU.GetObject(analyzer, des, clang::CodeGen::StructorType::Complete), widedes->GetStaticSelf(), des, Location(context, this)));
         }
@@ -483,7 +481,7 @@ Wide::Util::optional<clang::QualType> UserDefinedType::GetClangType(ClangTU& TU)
                 con->setParams(GetParmVarDecls(*args, TU, con));
                 cons.push_back(con);
                 if (!func->deleted) {
-                    auto mfunc = analyzer.GetWideFunction(GetWideFunction(func.get(), "type"), types);
+                    auto mfunc = analyzer.GetWideFunction(GetWideFunction(func.get(), "type"));
                     mfunc->ComputeBody();
                     mfunc->AddExportName(GetFunctionType(con, TU, analyzer)->CreateThunk(TU.GetObject(analyzer, con, clang::CodeGen::StructorType::Complete), mfunc->GetStaticSelf(), con, Location(context, this)));
                 } else
@@ -509,12 +507,12 @@ Wide::Util::optional<clang::QualType> UserDefinedType::GetClangType(ClangTU& TU)
                     }
                     auto get_return_type = [&] {
                         if (!func->deleted) {
-                            auto mfunc = analyzer.GetWideFunction(GetWideFunction(func.get(), GetNameAsString(nonvar.first)), types);
+                            auto mfunc = analyzer.GetWideFunction(GetWideFunction(func.get(), GetNameAsString(nonvar.first)));
                             return mfunc->GetSignature()->GetReturnType()->GetClangType(TU);
                         }
                         if (func->explicit_return) {
                             auto con = analyzer.AnalyzeExpression(Location(context, this), func->explicit_return.get(), nullptr);
-                            auto conty = dynamic_cast<ConstructorType*>(con->GetType(Expression::NoInstance())->Decay());
+                            auto conty = dynamic_cast<ConstructorType*>(con->GetType()->Decay());
                             return conty->GetConstructedType()->GetClangType(TU);
                         }
                         return analyzer.GetVoidType()->GetClangType(TU);
@@ -563,7 +561,7 @@ Wide::Util::optional<clang::QualType> UserDefinedType::GetClangType(ClangTU& TU)
                     if (func->deleted)
                         meth->setDeletedAsWritten(true);
                     else {
-                        auto mfunc = analyzer.GetWideFunction(GetWideFunction(func.get(), GetNameAsString(nonvar.first)), types);
+                        auto mfunc = analyzer.GetWideFunction(GetWideFunction(func.get(), GetNameAsString(nonvar.first)));
                         mfunc->ComputeBody();
                         mfunc->AddExportName(GetFunctionType(meth, TU, analyzer)->CreateThunk(TU.GetObject(analyzer, meth), mfunc->GetStaticSelf(), meth, Location(context, this)));
                     }
@@ -670,14 +668,14 @@ struct Wide::Semantic::UserDefinedType::ImportConstructorCallable : Callable {
     // Don't need to do that much ABI handling here fortunately.
     ImportConstructorCallable(Callable* target, UserDefinedType* self, Type* base, std::vector<Type*> args)
         : base_callable(target), self(self), target_base(base), arguments(args), thunk_function(nullptr) {}
-    std::vector<std::shared_ptr<Expression>> AdjustArguments(Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c) override final {
-        auto adjusted = base_callable->AdjustArguments(key, args, c);
-        adjusted[0] = Wide::Semantic::AdjustArgumentsForTypes(key, { args[0] }, { self->analyzer.GetLvalueType(self) }, c)[0];
+    std::vector<std::shared_ptr<Expression>> AdjustArguments(std::vector<std::shared_ptr<Expression>> args, Context c) override final {
+        auto adjusted = base_callable->AdjustArguments(args, c);
+        adjusted[0] = Wide::Semantic::AdjustArgumentsForTypes({ args[0] }, { self->analyzer.GetLvalueType(self) }, c)[0];
         return adjusted;
     }
-    std::shared_ptr<Expression> CallFunction(Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c) override final {
+    std::shared_ptr<Expression> CallFunction(std::vector<std::shared_ptr<Expression>> args, Context c) override final {
         CreateInitializers(c);
-        return Type::BuildCall(Expression::NoInstance(), CreatePrimGlobal(Range::Empty(), GetFunctionType(), [this](CodegenContext& con) {
+        return Type::BuildCall(CreatePrimGlobal(Range::Empty(), GetFunctionType(), [this](CodegenContext& con) {
             EmitCode(con);
             return thunk_function;
         }), args, c);
@@ -689,11 +687,11 @@ struct Wide::Semantic::UserDefinedType::ImportConstructorCallable : Callable {
                 return std::next(thunk_function->arg_begin(), num);
             });
         };
-        auto MemberConstructionAccess = [=](Expression::InstanceKey key, Type* member, Lexer::Range where, std::shared_ptr<Expression> Construction, std::shared_ptr<Expression> memexpr) {
+        auto MemberConstructionAccess = [=](Type* member, Lexer::Range where, std::shared_ptr<Expression> Construction, std::shared_ptr<Expression> memexpr) {
             std::function<void(CodegenContext&)> destructor;
             if (!member->IsTriviallyDestructible())
-                destructor = member->BuildDestructorCall(key, memexpr, { Location(self->context, self), where }, true);
-            return CreatePrimGlobal(Range::Elements(Construction), Construction->GetType(key), [=](CodegenContext& con) {
+                destructor = member->BuildDestructorCall(memexpr, { Location(self->context, self), where }, true);
+            return CreatePrimGlobal(Range::Elements(Construction), Construction->GetType(), [=](CodegenContext& con) {
                 auto val = Construction->GetValue(con);
                 if (destructor)
                     con.AddExceptionOnlyDestructor(destructor);
@@ -713,27 +711,27 @@ struct Wide::Semantic::UserDefinedType::ImportConstructorCallable : Callable {
         for (auto&&base : self->GetBases()) {
             if (base == target_base) {
                 std::vector<std::shared_ptr<Expression>> args;
-                args.push_back(Type::AccessBase(Expression::NoInstance(), this_, base));
+                args.push_back(Type::AccessBase(this_, base));
                 for (auto&&i = 1; i < arguments.size(); ++i)
                     args.push_back(Argument(i));
-                inits.push_back(base_callable->CallFunction(arguments, args, c));
+                inits.push_back(base_callable->CallFunction(args, c));
                 continue;
             }
-            auto init = Type::BuildInplaceConstruction(Expression::NoInstance(), Type::AccessBase(Expression::NoInstance(), this_, base), {}, c);
-            inits.push_back(MemberConstructionAccess(arguments, base, c.where, init, Type::AccessBase(Expression::NoInstance(), this_, base)));
+            auto init = Type::BuildInplaceConstruction(Type::AccessBase(this_, base), {}, c);
+            inits.push_back(MemberConstructionAccess(base, c.where, init, Type::AccessBase(this_, base)));
         }
         for (auto&&member : self->GetMembers()) {
             auto lhs = GetMemberFromThis(this_, [this, i] { return self->GetOffset(i); }, member->analyzer.GetLvalueType(member));
-            auto init = member->BuildInplaceConstruction(Expression::NoInstance(), lhs, self->GetDefaultInitializerForMember(i++), c);
-            inits.push_back(MemberConstructionAccess(arguments, member, c.where, init, lhs));
+            auto init = member->BuildInplaceConstruction(lhs, self->GetDefaultInitializerForMember(i++), c);
+            inits.push_back(MemberConstructionAccess(member, c.where, init, lhs));
         }
-        inits.push_back(Type::SetVirtualPointers(Expression::NoInstance(), this_, Location(self->context, self)));
+        inits.push_back(Type::SetVirtualPointers(this_, Location(self->context, self)));
         initializers = inits;
     }
     void EmitCode(llvm::Module* module) {
         if (thunk_function) return;
         thunk_function = llvm::Function::Create(llvm::cast<llvm::FunctionType>(GetFunctionType()->GetLLVMType(module)->getElementType()), llvm::GlobalValue::LinkageTypes::ExternalLinkage, self->analyzer.GetUniqueFunctionName(), module);
-        Wide::Semantic::CodegenContext::EmitFunctionBody(thunk_function, arguments, [this](Wide::Semantic::CodegenContext& con) {
+        Wide::Semantic::CodegenContext::EmitFunctionBody(thunk_function, [this](Wide::Semantic::CodegenContext& con) {
             assert(initializers);
             for (auto&&init : *initializers)
                 init->GetValue(con);
@@ -787,7 +785,7 @@ OverloadSet* UserDefinedType::CreateConstructorOverloadSet(Parse::Access access)
         for (auto&&f : type->constructor_decls) {
             if (f.first <= access)
                 for (auto&& func : f.second)
-                    resolvables.insert(analyzer.GetCallableForFunction(analyzer.GetWideFunction(func.get(), Location(context, this))));
+                    resolvables.insert(analyzer.GetCallableForFunction(func.get(), Location(context, this)));
         }
         return analyzer.GetOverloadSet(resolvables);
     };
@@ -851,7 +849,7 @@ OverloadSet* UserDefinedType::CreateOperatorOverloadSet(Parse::OperatorName name
                 for (auto&& f : *set) {
                     if (f.first <= access)
                         for (auto&& func : f.second)
-                            resolvable.insert(analyzer.GetCallableForFunction(analyzer.GetWideFunction(func.get(), Location(context, this))));
+                            resolvable.insert(analyzer.GetCallableForFunction(func.get(), Location(context, this)));
                 }
             }
         }
@@ -870,13 +868,13 @@ OverloadSet* UserDefinedType::CreateOperatorOverloadSet(Parse::OperatorName name
     return AggregateType::CreateOperatorOverloadSet(name, access, kind);
 }
 
-std::function<void(CodegenContext&)> UserDefinedType::BuildDestruction(Expression::InstanceKey key, std::shared_ptr<Expression> self, Context c, bool devirtualize) {
+std::function<void(CodegenContext&)> UserDefinedType::BuildDestruction(std::shared_ptr<Expression> self, Context c, bool devirtualize) {
     if (type->destructor_decl) {
         std::unordered_set<OverloadResolvable*> resolvables;
-        resolvables.insert(analyzer.GetCallableForFunction(analyzer.GetWideFunction(type->destructor_decl.get(), Location(context, this))));
+        resolvables.insert(analyzer.GetCallableForFunction(type->destructor_decl.get(), Location(context, this)));
         auto desset = analyzer.GetOverloadSet(resolvables, analyzer.GetLvalueType(this));
         auto callable = dynamic_cast<Wide::Semantic::Function*>(desset->Resolve({ analyzer.GetLvalueType(this) }, c.from));
-        auto call = callable->Call(key, { self }, c);
+        auto call = callable->Call({ self }, c);
         if (HasVirtualDestructor() && !devirtualize) 
             return [=](CodegenContext& c) {
                 call->GetValue(c);
@@ -885,7 +883,7 @@ std::function<void(CodegenContext&)> UserDefinedType::BuildDestruction(Expressio
             c->CreateCall(callable->EmitCode(c.module), self->GetValue(c));
         };
     }
-    return AggregateType::BuildDestruction(key, self, c, true);    
+    return AggregateType::BuildDestruction(self, c, true);    
 }
 
 // Gotta override these to respect our user-defined functions
@@ -1098,15 +1096,15 @@ Wide::Util::optional<std::pair<unsigned, Lexer::Range>> UserDefinedType::SizeOve
             if (auto&& string = boost::get<std::string>(&ident->val.name)) {
                 if (*string == "size") {
                     auto expr = analyzer.AnalyzeExpression(Location(context, this), attr.initializer.get(), nullptr);
-                    if (!dynamic_cast<IntegralType*>(expr->GetType(Expression::NoInstance()))) {
+                    if (!dynamic_cast<IntegralType*>(expr->GetType())) {
                         SizeOverrideError = Wide::Memory::MakeUnique<SpecificError<SizeOverrideNotInteger>>(analyzer, attr.initializer->location, "Alignment override not an integer.");
                         return Util::none;
                     }
-                    if (!expr->IsConstant(Expression::NoInstance())) {
+                    if (!expr->IsConstant()) {
                         SizeOverrideError = Wide::Memory::MakeUnique<SpecificError<SizeOverrideNotConstant>>(analyzer, attr.initializer->location, "Alignment override not constant.");
                         return Util::none;
                     }
-                    return std::pair<unsigned, Lexer::Range>{ analyzer.EvaluateConstantIntegerExpression(expr, Expression::NoInstance()).getLimitedValue(), attr.initializer->location };
+                    return std::pair<unsigned, Lexer::Range>{ analyzer.EvaluateConstantIntegerExpression(expr).getLimitedValue(), attr.initializer->location };
                 }
             }
         }
@@ -1119,15 +1117,15 @@ Wide::Util::optional<std::pair<unsigned, Lexer::Range>> UserDefinedType::AlignOv
             if (auto&& string = boost::get<std::string>(&ident->val.name)) {
                 if (*string == "alignment") {
                     auto expr = analyzer.AnalyzeExpression(Location(context, this), attr.initializer.get(), nullptr);
-                    if (!dynamic_cast<IntegralType*>(expr->GetType(Expression::NoInstance()))) {
+                    if (!dynamic_cast<IntegralType*>(expr->GetType())) {
                         AlignOverrideError = Wide::Memory::MakeUnique<SpecificError<AlignmentOverrideNotInteger>>(analyzer, attr.initializer->location, "Alignment override not an integer.");
                         return Util::none;
                     }
-                    if (!expr->IsConstant(Expression::NoInstance())) {
+                    if (!expr->IsConstant()) {
                         AlignOverrideError = Wide::Memory::MakeUnique<SpecificError<AlignmentOverrideNotConstant>>(analyzer, attr.initializer->location, "Alignment override not constant.");
                         return Util::none;
                     }
-                    return std::pair<unsigned, Lexer::Range>{ analyzer.EvaluateConstantIntegerExpression(expr, Expression::NoInstance()).getLimitedValue(), attr.initializer->location };
+                    return std::pair<unsigned, Lexer::Range>{ analyzer.EvaluateConstantIntegerExpression(expr).getLimitedValue(), attr.initializer->location };
                 }
             }
         }
@@ -1141,7 +1139,7 @@ bool UserDefinedType::IsTriviallyCopyConstructible() {
         std::unordered_set<OverloadResolvable*> resolvables;
         for (auto&& f : type->constructor_decls) {
             for (auto&& func : f.second)
-                resolvables.insert(analyzer.GetCallableForFunction(analyzer.GetWideFunction(func.get(), Location(context, this))));
+                resolvables.insert(analyzer.GetCallableForFunction(func.get(), Location(context, this)));
         }
         return analyzer.GetOverloadSet(resolvables, analyzer.GetLvalueType(this));
     };
@@ -1177,7 +1175,7 @@ std::shared_ptr<Expression> UserDefinedType::AccessStaticMember(std::string name
             // If there's nothing there, we win.
             // If we're an OS and the existing is an OS, we win by unifying.
             // Else we lose.
-            auto otheros = dynamic_cast<OverloadSet*>(member->GetType(Expression::NoInstance())->Decay());
+            auto otheros = dynamic_cast<OverloadSet*>(member->GetType()->Decay());
             if (!BaseType) {
                 if (otheros) {
                     if (BaseOverloadSet)
@@ -1193,7 +1191,7 @@ std::shared_ptr<Expression> UserDefinedType::AccessStaticMember(std::string name
         }
     }
     if (BaseOverloadSet)
-        return BaseOverloadSet->BuildValueConstruction(Expression::NoInstance(), {}, c);
+        return BaseOverloadSet->BuildValueConstruction({}, c);
     if (!BaseType)
         return nullptr;
     return BaseType->AccessStaticMember(name, c);

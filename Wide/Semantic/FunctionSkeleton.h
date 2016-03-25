@@ -38,7 +38,7 @@ namespace Wide {
         };
         struct Return {
             boost::signals2::signal<void(Type*)> OnReturnType;
-            virtual Type* GetReturnType(Expression::InstanceKey key) = 0;
+            virtual Type* GetReturnType() = 0;
         };
         class FunctionSkeleton {
             std::unordered_map<const Parse::Expression*, std::unique_ptr<Semantic::Error>> ExportErrors;
@@ -74,7 +74,7 @@ namespace Wide {
             Location GetContext() { return context; }
             const Parse::FunctionBase* GetASTFunction() { return fun; }
             Scope* ComputeBody();
-            Type* GetExplicitReturn(Expression::InstanceKey key);
+            Type* GetExplicitReturn();
             std::vector<std::tuple<std::function<llvm::Function*(llvm::Module*)>, ClangFunctionType*, clang::FunctionDecl*, Lexer::Range>>& GetClangExports();
         };
     }
