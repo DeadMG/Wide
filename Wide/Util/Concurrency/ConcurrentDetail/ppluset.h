@@ -23,6 +23,9 @@ namespace Wide {
             std::size_t size() {
                 return umap.size();
             }
+            bool empty() {
+                return umap.empty();
+            }
         };
     }
 }

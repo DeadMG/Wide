@@ -65,7 +65,6 @@ Wide::Driver::ProcessResult Wide::Driver::StartAndWaitForProcess(std::string nam
 #include <Windows.h>
 #include <iostream>
 #include <thread>
-
 class Pipe {
     HANDLE ReadHandle;
     HANDLE writehandle;
