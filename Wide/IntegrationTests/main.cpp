@@ -167,7 +167,7 @@ int main(int argc, char** argv) {
     json::parse(json, jsonval);
     auto tests = jsonval.as<std::vector<json::value>>();
     Wide::Concurrency::UnorderedSet<std::string> failures;
-    std::atomic<int> testnum = 0;
+    std::atomic<int> testnum(0);
     Wide::Concurrency::ParallelForEach(tests.begin(), tests.end(), [&](json::value& test) {
         auto name = test["name"].is<std::string>() ? test["name"].as<std::string>() : test["wide"].as<std::string>();
         if (input.count("input") && input["input"].as<std::string>() != name)
