@@ -266,5 +266,6 @@ namespace Wide {
         llvm::Value* CollapseMember(Type* source, std::pair<llvm::Value*, Type*> member, CodegenContext& con);
         std::function<void(CodegenContext&)> ThrowObject(Expression::InstanceKey key, std::shared_ptr<Expression> expr, Context c);
         Type* GetNonstaticContext(Location context);
+        std::unordered_set<Parse::Name> GetLambdaCaptures(const Parse::Statement* s, Analyzer& a, std::unordered_set<Parse::Name>& local_names);
     }
 }

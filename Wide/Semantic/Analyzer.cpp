@@ -167,6 +167,7 @@ Analyzer::Analyzer(const Options::Clang& opts, const Parse::Module* GlobalModule
     Module::AddDefaultHandlers(*this);
     Expression::AddDefaultHandlers(*this);
     FunctionSkeleton::AddDefaultHandlers(*this);
+    LambdaType::AddDefaultHandlers(*this);
 }
 
 ClangTU* Analyzer::LoadCPPHeader(std::string file, Lexer::Range where) {
@@ -854,8 +855,8 @@ namespace {
     }
     std::shared_ptr<Expression> LookupNameFromWide(Location::WideLocation l, Parse::Name name, Context c) {
         for (auto&& nonstatic : l.types) {
-            if (auto udt = boost::get<UserDefinedType*>(nonstatic)) {
-                if (auto expr = udt->AccessStaticMember(boost::get<std::string>(name.name), c))
+            if (auto udt = boost::get<UserDefinedType*>(&nonstatic)) {
+                if (auto expr = (*udt)->AccessStaticMember(boost::get<std::string>(name.name), c))
                     return expr;
             }
         }
@@ -886,6 +887,11 @@ namespace {
     std::shared_ptr<Expression> LookupNameFromThis(Location l, Parse::Name name, Lexer::Range where, std::shared_ptr<Expression> _this) {
         if (!_this)
             return nullptr;
+        if (auto wide = boost::get<Location::WideLocation>(&l.location)) {
+            if (auto lambda = boost::get<LambdaType*>(&wide->types.back())) {
+                return (*lambda)->LookupCapture(_this, name);
+            }
+        }
         return Type::AccessMember(Expression::NoInstance(), _this, name, { l, where });
     }
     std::shared_ptr<Expression> LookupNameFromLocalScope(Location l, Parse::Name name) {
@@ -914,4 +920,14 @@ std::shared_ptr<Expression> Semantic::LookupName(Location l, Parse::Name name, L
     if (over1 && over2)
         return l.GetAnalyzer().GetOverloadSet(over1, over2)->BuildValueConstruction(Expression::NoInstance(), {}, { l, where });
     throw SpecificError<IdentifierLookupAmbiguous>(l.GetAnalyzer(), where, "Ambiguous lookup of name " + Semantic::GetNameAsString(name));
+}
+std::unordered_set<Parse::Name> Semantic::GetLambdaCaptures(const Parse::Statement* s, Analyzer& a, std::unordered_set<Parse::Name>& local_names) {
+    if (a.LambdaCaptureAnalyzers.find(typeid(*s)) == a.LambdaCaptureAnalyzers.end())
+        return {};
+    auto names = a.LambdaCaptureAnalyzers[typeid(*s)](s, a, local_names);
+    auto copy = names;
+    for (auto&& item : copy)
+        if (local_names.find(item) != local_names.end())
+            names.erase(item);
+    return copy;
 }

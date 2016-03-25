@@ -97,15 +97,18 @@ void LambdaType::AddDefaultHandlers(Analyzer& a) {
             auto nested_caps = a.LambdaCaptureAnalyzers[typeid(*stmt)](stmt.get(), a, new_local_names);
             implicit_caps.insert(nested_caps.begin(), nested_caps.end());
         }
-        auto copy = implicit_caps;
-        for (auto&& item : copy)
-            if (local_names.find(item) != local_names.end())
-                implicit_caps.erase(item);
         return implicit_caps;
     });
     AddHandler<const Parse::Identifier>(a.LambdaCaptureAnalyzers, [](const Parse::Identifier* l, Analyzer& a, std::unordered_set<Parse::Name>& local_names) {
-        if (local_names.find(l->val) == local_names.end())
-            return std::unordered_set<Parse::Name>({ l->val });
-        return std::unordered_set<Parse::Name>();
+        return std::unordered_set<Parse::Name>({ l->val });
+    });
+    AddHandler<const Parse::Return>(a.LambdaCaptureAnalyzers, [](const Parse::Return* r, Analyzer& a, std::unordered_set<Parse::Name>& local_names) {
+        return GetLambdaCaptures(r->RetExpr.get(), a, local_names);
+    });
+    AddHandler<const Parse::BinaryExpression>(a.LambdaCaptureAnalyzers, [](const Parse::BinaryExpression* expr, Analyzer& a, std::unordered_set<Parse::Name>& local_names) {
+        auto left = GetLambdaCaptures(expr->lhs.get(), a, local_names);
+        auto rhs = GetLambdaCaptures(expr->rhs.get(), a, local_names);
+        left.insert(rhs.begin(), rhs.end());
+        return left;
     });
 }
