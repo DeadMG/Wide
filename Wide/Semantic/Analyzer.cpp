@@ -923,7 +923,7 @@ std::shared_ptr<Expression> Semantic::LookupName(Location l, Parse::Name name, L
 }
 std::unordered_set<Parse::Name> Semantic::GetLambdaCaptures(const Parse::Statement* s, Analyzer& a, std::unordered_set<Parse::Name>& local_names) {
     if (a.LambdaCaptureAnalyzers.find(typeid(*s)) == a.LambdaCaptureAnalyzers.end())
-        return {};
+        return std::unordered_set<Parse::Name>();
     auto names = a.LambdaCaptureAnalyzers[typeid(*s)](s, a, local_names);
     auto copy = names;
     for (auto&& item : copy)
