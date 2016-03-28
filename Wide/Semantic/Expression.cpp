@@ -169,11 +169,9 @@ std::shared_ptr<Expression> Semantic::CreatePrimOp(std::shared_ptr<Expression> l
     });
 }
 std::shared_ptr<Expression> Semantic::BuildValue(std::shared_ptr<Expression> e) {
-    return CreateResultExpression(Range::Elements(e), [=]() -> std::shared_ptr<Expression> {
-        if (e->GetType()->IsReference())
-            return std::make_shared<ImplicitLoadExpr>(std::move(e));
-        return e;
-    });
+    if (e->GetType()->IsReference())
+        return std::make_shared<ImplicitLoadExpr>(std::move(e));
+    return e;
 }
 Chain::Chain(std::shared_ptr<Expression> effect, std::shared_ptr<Expression> result)
     : SourceExpression(Range::Elements(effect, result)), SideEffect(std::move(effect)), result(std::move(result)) {}
@@ -783,14 +781,12 @@ std::shared_ptr<Expression> Semantic::CreateTemporary(Type* t, Context c) {
     });
 }
 std::shared_ptr<Expression> Semantic::CreateAddressOf(std::shared_ptr<Expression> expr, Context c) {
-    return CreateResultExpression(Range::Elements(expr), [=]() {
-        auto ty = expr->GetType();
-        if (!IsLvalueType(ty)) 
-            return Semantic::CreateErrorExpression(Wide::Memory::MakeUnique<SpecificError<AddressOfNonLvalue>>(ty->analyzer, c.where, "Attempted to take the address of a non-lvalue."));
-        auto result = ty->analyzer.GetPointerType(ty->Decay());
-        return CreatePrimGlobal(Range::Elements(expr), result, [=](CodegenContext& con) {
-            return expr->GetValue(con);
-        });
+    auto ty = expr->GetType();
+    if (!IsLvalueType(ty)) 
+        return Semantic::CreateErrorExpression(Wide::Memory::MakeUnique<SpecificError<AddressOfNonLvalue>>(ty->analyzer, c.where, "Attempted to take the address of a non-lvalue."));
+    auto result = ty->analyzer.GetPointerType(ty->Decay());
+    return CreatePrimGlobal(Range::Elements(expr), result, [=](CodegenContext& con) {
+        return expr->GetValue(con);
     });
 }
 std::shared_ptr<Expression> Semantic::CreateResultExpression(Range::Erased<std::shared_ptr<Expression>> dependents, std::function<std::shared_ptr<Expression>()> func) {
