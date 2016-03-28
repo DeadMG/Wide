@@ -417,14 +417,6 @@ std::shared_ptr<Expression> FunctionSkeleton::LookupLocal(Parse::Name name) {
     return nullptr;
 }
 
-namespace {
-    std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range, const Parse::Import*)> BindNonstaticLookup(Scope* current, std::function<std::shared_ptr<Expression>(Parse::Name, Lexer::Range, const Parse::Import*, Scope*)> lookup) {
-        return [=](Parse::Name name, Lexer::Range range, const Parse::Import* import) {
-            return lookup(name, range, import, current);
-        };
-    }
-}
-
 void FunctionSkeleton::AddDefaultHandlers(Analyzer& a) {
     AddHandler<const Parse::Return>(a.StatementHandlers, [](const Parse::Return* ret, FunctionSkeleton* skel, Analyzer& analyzer, Location l, std::shared_ptr<Expression> _this) {
         auto ret_expr = ret->RetExpr ? analyzer.AnalyzeExpression(l, ret->RetExpr.get(), _this) : nullptr;
