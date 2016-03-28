@@ -1,5 +1,9 @@
 [
   {
+    "type": "JITSuccess",
+    "wide": "Wide/IntegrationTests/JITSuccess/UserDefined/CopyConstructorDestroysMembers.wide"
+  },
+  {
     "type": "CompileFail",
     "wide": "Wide/IntegrationTests/CompileFail/UnlexableCharacter.wide",
     "expectedErrors": [

@@ -1,6 +1,6 @@
 #include <Wide/Semantic/OverloadSet.h>
 #include <Wide/Semantic/Analyzer.h>
-#include <Wide/Semantic/Function.h>
+#include <Wide/Semantic/Functions/Function.h>
 #include <Wide/Semantic/ClangType.h>
 #include <Wide/Semantic/FunctionType.h>
 #include <Wide/Parser/AST.h>

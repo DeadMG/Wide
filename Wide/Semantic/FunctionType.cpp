@@ -2,7 +2,7 @@
 #include <Wide/Semantic/Analyzer.h>
 #include <Wide/Semantic/ClangTU.h>
 #include <Wide/Semantic/Expression.h>
-#include <Wide/Semantic/Function.h>
+#include <Wide/Semantic/Functions/Function.h>
 #include <Wide/Semantic/StringType.h>
 #include <Wide/Semantic/Reference.h>
 #include <Wide/Semantic/PointerType.h>

@@ -7,7 +7,6 @@ namespace Wide {
         struct Lambda;
     }
     namespace Semantic {
-        class FunctionSkeleton;
         class LambdaType : public AggregateType {
             const Parse::Lambda* lam;
             std::unordered_map<Parse::Name, std::size_t> names;

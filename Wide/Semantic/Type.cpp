@@ -956,7 +956,7 @@ Location::Location(Location previous, ClangType* next) {
     prevloc.types.push_back(next);
     location = CppLocation{ prevloc.namespaces, prevloc.types };
 }
-Location::Location(Location previous, Scope* next) {
+Location::Location(Location previous, Functions::Scope* next) {
     location = previous.location;
     localscope = next;
 }

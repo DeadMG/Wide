@@ -1,7 +1,7 @@
 #include <Wide/Semantic/Module.h>
 #include <Wide/Parser/AST.h>
 #include <Wide/Semantic/Analyzer.h>
-#include <Wide/Semantic/Function.h>
+#include <Wide/Semantic/Functions/Function.h>
 #include <Wide/Semantic/ClangNamespace.h>
 #include <Wide/Semantic/OverloadSet.h>
 #include <Wide/Semantic/ConstructorType.h>

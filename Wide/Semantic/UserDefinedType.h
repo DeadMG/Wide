@@ -18,10 +18,12 @@ namespace Wide {
         struct DynamicFunction;
     }
     namespace Semantic {
-        class Function;
         class OverloadSet;
         class Module;
-        class FunctionSkeleton;
+        namespace Functions {
+            class FunctionSkeleton;
+            class Function;
+        }
         class UserDefinedType : public AggregateType, public TupleInitializable, public ConstructorContext {
             std::unique_ptr<Semantic::Error> AlignOverrideError;
             std::unique_ptr<Semantic::Error> SizeOverrideError;
@@ -29,7 +31,8 @@ namespace Wide {
 
             struct ImportConstructorCallable;
             struct ImportConstructorResolvable;
-            FunctionSkeleton* GetWideFunction(const Parse::FunctionBase* base, Parse::Name name);
+
+            Functions::FunctionSkeleton* GetWideFunction(const Parse::FunctionBase* base, Parse::Name name);
 
             std::vector<Type*> GetMembers() { return GetMemberData().members; }
             std::vector<std::shared_ptr<Expression>> GetDefaultInitializerForMember(unsigned);

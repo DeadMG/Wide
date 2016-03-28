@@ -5,14 +5,12 @@
 #include <Wide/Semantic/Expression.h>
 #include <Wide/Util/Memory/MakeUnique.h>
 #include <Wide/Semantic/Analyzer.h>
-#include <Wide/Semantic/FunctionSkeleton.h>
 #include <llvm/IR/Verifier.h>
 #include <Wide/Semantic/UserDefinedType.h>
 #include <Wide/Semantic/ConstructorType.h>
 #include <Wide/Semantic/TupleType.h>
 #include <Wide/Semantic/Module.h>
 #include <Wide/Semantic/LambdaType.h>
-#include <Wide/Semantic/Function.h>
 #include <Wide/Semantic/FunctionType.h>
 #include <Wide/Util/DebugBreak.h>
 
@@ -41,7 +39,7 @@ llvm::Value* ImplicitStoreExpr::ComputeValue(CodegenContext& con) {
     con->CreateStore(value, memory);
     return memory;
 }
-void Expression::Instantiate(Function* f) {
+void Expression::Instantiate() {
     GetType();
 }
 

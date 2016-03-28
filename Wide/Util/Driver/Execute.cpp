@@ -17,7 +17,7 @@
 #include <Wide/Util/Ranges/StringRange.h>
 #include <Wide/Parser/Parser.h>
 #include <Wide/Semantic/Analyzer.h>
-#include <Wide/Semantic/Function.h>
+#include <Wide/Semantic/Functions/Function.h>
 #include <Wide/Semantic/OverloadSet.h>
 #include <Wide/Semantic/Module.h>
 #include <Wide/Semantic/FunctionType.h>
@@ -160,7 +160,7 @@ void AnalyseForLinking(Wide::Semantic::Analyzer& a, llvm::Module* mod, LinkOptio
     if (!overset)
         throw std::runtime_error("Main in global namespace was not an overload set.");
     auto f = overset->Resolve({}, c.from);
-    auto func = dynamic_cast<Wide::Semantic::Function*>(f);
+    auto func = dynamic_cast<Wide::Semantic::Functions::Function*>(f);
     if (!func)
         throw std::runtime_error("Could not resolve a zero-arguments function from global Main overload set.");
     func->ComputeBody();

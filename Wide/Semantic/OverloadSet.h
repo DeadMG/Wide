@@ -18,7 +18,6 @@ namespace clang {
 }
 namespace Wide {
     namespace Semantic {
-        class Function;
         class UserDefinedType;
         class OverloadSet : public AggregateType {
             std::unique_ptr<OverloadResolvable> ReferenceConstructor;

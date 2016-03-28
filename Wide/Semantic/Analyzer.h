@@ -49,9 +49,12 @@ namespace Wide {
         struct Lambda;
     };
     namespace Semantic {
+        namespace Functions {
+            class Function;
+            class FunctionSkeleton;
+        }
         class ClangTU;
         struct Callable;
-        class Function;
         class Module;
         class ClangNamespace;
         class ClangType;
@@ -80,7 +83,6 @@ namespace Wide {
         class MemberDataPointer;
         class MemberFunctionPointer;
         struct Return;
-        class FunctionSkeleton;
         struct ClangTypeInfo {
             Type* ty;
             std::function<void()> Complete;
@@ -106,7 +108,7 @@ namespace Wide {
             std::unordered_map<clang::QualType, std::unique_ptr<ClangType>, ClangTypeHasher> ClangTypes;
             std::unordered_map<clang::DeclContext*, std::unique_ptr<ClangNamespace>> ClangNamespaces;
             std::unordered_map<Type*, std::unordered_map<std::vector<Type*>, std::map<llvm::CallingConv::ID, std::unordered_map<bool, std::unique_ptr<WideFunctionType>>>, VectorTypeHasher>> FunctionTypes;
-            std::unordered_map<FunctionSkeleton*, std::unordered_map<std::vector<Type*>, std::unique_ptr<Function>, VectorTypeHasher>> WideFunctions;
+            std::unordered_map<Functions::FunctionSkeleton*, std::unordered_map<std::vector<Type*>, std::unique_ptr<Functions::Function>, VectorTypeHasher>> WideFunctions;
             std::unordered_map<Type*, std::unique_ptr<LvalueType>> LvalueTypes;
             std::unordered_map<Type*, std::unique_ptr<RvalueType>> RvalueTypes;
             std::unordered_map<Type*, std::unique_ptr<ConstructorType>> ConstructorTypes;
@@ -127,7 +129,7 @@ namespace Wide {
             std::unordered_map<const clang::FunctionProtoType*, std::unordered_map<clang::QualType, std::unordered_map<ClangTU*, std::unique_ptr<ClangFunctionType>>, ClangTypeHasher>> ClangMemberFunctionTypes;
             std::unordered_map<const clang::FunctionProtoType*, std::unordered_map<ClangTU*, std::unique_ptr<ClangFunctionType>>> ClangFunctionTypes;
             std::unordered_map<const clang::CXXRecordDecl*, ClangTypeInfo> GeneratedClangTypes;
-            std::unordered_map<const Parse::FunctionBase*, std::unordered_map<Location, std::unique_ptr<FunctionSkeleton>>> FunctionSkeletons;
+            std::unordered_map<const Parse::FunctionBase*, std::unordered_map<Location, std::unique_ptr<Functions::FunctionSkeleton>>> FunctionSkeletons;
 
             const Options::Clang* clangopts;
 
@@ -168,8 +170,10 @@ namespace Wide {
             ClangFunctionType* GetFunctionType(const clang::FunctionProtoType*, ClangTU&);
             ClangFunctionType* GetFunctionType(const clang::FunctionProtoType*, Wide::Util::optional<clang::QualType>, ClangTU&);
             Module* GetWideModule(const Parse::Module* m, Location higher, std::string name);
-            FunctionSkeleton* GetFunctionSkeleton(const Parse::FunctionBase* p, Location context);
-            Function* GetWideFunction(FunctionSkeleton* skeleton);
+            Functions::FunctionSkeleton* GetFunctionSkeleton(const Parse::FunctionBase* p, Location context);
+            Functions::FunctionSkeleton* GetFunctionSkeleton(const Parse::Constructor* p, Location context) = delete;
+            Functions::FunctionSkeleton* GetFunctionSkeleton(const Parse::Destructor* p, Location context) = delete;
+            Functions::Function* GetWideFunction(Functions::FunctionSkeleton* skeleton);
             LvalueType* GetLvalueType(Type* t);
             Type* GetRvalueType(Type* t);
             ConstructorType* GetConstructorType(Type* t);
@@ -209,7 +213,7 @@ namespace Wide {
             MultiObjectHandlers;
             std::unordered_map<
                 std::type_index,
-                std::function<std::shared_ptr<Statement>(const Parse::Statement*, FunctionSkeleton* skel, Analyzer& a, Location l, std::shared_ptr<Expression>) >>
+                std::function<std::shared_ptr<Statement>(const Parse::Statement*, Functions::FunctionSkeleton* skel, Analyzer& a, Location l, std::shared_ptr<Expression>) >>
             StatementHandlers;
             std::unordered_map<
                 std::type_index,
@@ -253,7 +257,7 @@ namespace Wide {
             a.StatementErrors[stmt].push_back(Wide::Memory::MakeUnique<Semantic::SpecificError<T>>(a, where, msg));
         }
         std::shared_ptr<Expression> LookupName(Location l, Parse::Name name, Lexer::Range where, std::shared_ptr<Expression> _this, const Parse::Import* import);
-        std::shared_ptr<Statement> AnalyzeStatement(Analyzer& a, FunctionSkeleton* skel, const Parse::Statement* stmt, Location l, std::shared_ptr<Expression> _this);
+        std::shared_ptr<Statement> AnalyzeStatement(Analyzer& a, Functions::FunctionSkeleton* skel, const Parse::Statement* stmt, Location l, std::shared_ptr<Expression> _this);
         bool IsRvalueType(Type* t);
         bool IsLvalueType(Type* t);
         //Parse::Access GetAccessSpecifier(Type* from, Type* to);

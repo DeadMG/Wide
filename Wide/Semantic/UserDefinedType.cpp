@@ -3,7 +3,7 @@
 #include <Wide/Semantic/Module.h>
 #include <Wide/Semantic/ClangTU.h>
 #include <Wide/Semantic/OverloadSet.h>
-#include <Wide/Semantic/Function.h>
+#include <Wide/Semantic/Functions/Function.h>
 #include <Wide/Semantic/FunctionType.h>
 #include <Wide/Semantic/SemanticError.h>
 #include <Wide/Semantic/Expression.h>
@@ -51,7 +51,7 @@ namespace {
         }
     }
 }
-FunctionSkeleton* UserDefinedType::GetWideFunction(const Parse::FunctionBase* base, Parse::Name funcname) {
+Functions::FunctionSkeleton* UserDefinedType::GetWideFunction(const Parse::FunctionBase* base, Parse::Name funcname) {
     return analyzer.GetFunctionSkeleton(base, Location(context, this));
 }
 UserDefinedType::BaseData::BaseData(UserDefinedType* self) {
@@ -873,7 +873,7 @@ std::function<void(CodegenContext&)> UserDefinedType::BuildDestruction(std::shar
         std::unordered_set<OverloadResolvable*> resolvables;
         resolvables.insert(analyzer.GetCallableForFunction(type->destructor_decl.get(), Location(context, this)));
         auto desset = analyzer.GetOverloadSet(resolvables, analyzer.GetLvalueType(this));
-        auto callable = dynamic_cast<Wide::Semantic::Function*>(desset->Resolve({ analyzer.GetLvalueType(this) }, c.from));
+        auto callable = dynamic_cast<Wide::Semantic::Functions::Function*>(desset->Resolve({ analyzer.GetLvalueType(this) }, c.from));
         auto call = callable->Call({ self }, c);
         if (HasVirtualDestructor() && !devirtualize) 
             return [=](CodegenContext& c) {

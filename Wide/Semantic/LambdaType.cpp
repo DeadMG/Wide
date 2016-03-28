@@ -3,7 +3,7 @@
 #include <Wide/Semantic/OverloadSet.h>
 #include <Wide/Semantic/Reference.h>
 #include <Wide/Semantic/Expression.h>
-#include <Wide/Semantic/FunctionSkeleton.h>
+#include <Wide/Semantic/Functions/FunctionSkeleton.h>
 #include <sstream>
 #include <Wide/Parser/AST.h>
 

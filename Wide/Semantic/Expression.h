@@ -22,7 +22,6 @@
 
 namespace Wide {
     namespace Semantic {
-        class Function;
         struct Type;
         struct CodegenContext;
         enum Change {
@@ -32,7 +31,7 @@ namespace Wide {
         struct Context;
         struct Statement {
             virtual void GenerateCode(CodegenContext& con) = 0;
-            virtual void Instantiate(Function* f) = 0;
+            virtual void Instantiate() = 0;
         };
         struct Expression : public Statement {
             static void AddDefaultHandlers(Analyzer& a);
@@ -41,7 +40,7 @@ namespace Wide {
             bool IsConstant();
             boost::signals2::signal<void(Expression*)> OnChanged;
         private:
-            void Instantiate(Function* f);
+            void Instantiate();
             std::unordered_map<llvm::Function*, llvm::Value*> values;
             void GenerateCode(CodegenContext& con) override final {
                 GetValue(con);

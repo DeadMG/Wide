@@ -67,7 +67,9 @@ namespace Wide {
         class ClangType;
         class ClangTU;
         class LambdaType;
-        struct Scope;
+        namespace Functions {
+            struct Scope;
+        }
         struct Location {
         private:
             Location();
@@ -80,7 +82,7 @@ namespace Wide {
             Location(Location previous, LambdaType* next);
             Location(Location previous, ClangNamespace* next);
             Location(Location previous, ClangType* next);
-            Location(Location previous, Scope* next);
+            Location(Location previous, Functions::Scope* next);
 
             Location(Location&&) = default;
             Location(const Location&) = default;
@@ -97,7 +99,7 @@ namespace Wide {
                 std::vector<ClangType*> types;
             };
             boost::variant<WideLocation, CppLocation> location;
-            Scope* localscope = nullptr;
+            Functions::Scope* localscope = nullptr;
             Parse::Access PublicOrWide(std::function<Parse::Access(WideLocation loc)>);
             Parse::Access PublicOrCpp(std::function<Parse::Access(CppLocation loc)>);
         };

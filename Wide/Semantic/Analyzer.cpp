@@ -5,7 +5,7 @@
 #include <Wide/Semantic/ClangType.h>
 #include <Wide/Semantic/StringType.h>
 #include <Wide/Semantic/Module.h>
-#include <Wide/Semantic/Function.h>
+#include <Wide/Semantic/Functions/Function.h>
 #include <Wide/Semantic/Reference.h>
 #include <Wide/Semantic/FunctionType.h>
 #include <Wide/Semantic/ClangNamespace.h>
@@ -34,7 +34,7 @@
 #include <fstream>
 #include <boost/uuid/uuid_io.hpp>
 #include <Wide/Util/Codegen/GetMCJITProcessTriple.h>
-#include <Wide/Semantic/FunctionSkeleton.h>
+#include <Wide/Semantic/Functions/FunctionSkeleton.h>
 #include <llvm/Transforms/Utils/Cloning.h>
 #include <Wide/Util/Codegen/CreateModule.h>
 #include <Wide/Util/Codegen/CloneFunctionIntoModule.h>
@@ -61,6 +61,7 @@
 
 using namespace Wide;
 using namespace Semantic;
+using namespace Functions;
 
 namespace {
     llvm::DataLayout GetDataLayout(std::string triple) {
@@ -506,6 +507,9 @@ Type* Semantic::GetNonstaticContext(Location context) {
     return boost::get<UserDefinedType*>(ty);
 }
 FunctionSkeleton* Analyzer::GetFunctionSkeleton(const Parse::FunctionBase* p, Location context) {
+    assert(!dynamic_cast<const Parse::Constructor*>(p));
+    assert(!dynamic_cast<const Parse::Destructor*>(p));
+    assert(!dynamic_cast<const Parse::Function*>(p) || !static_cast<const Parse::Function*>(p)->defaulted);
     auto location = context;
     if (auto astfun = dynamic_cast<const Parse::AttributeFunctionBase*>(p)) {
         for (auto&& attr : astfun->attributes) {

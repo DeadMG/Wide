@@ -1,0 +1,35 @@
+type t {
+    ptr: bool.pointer;
+    type(ptr: bool.pointer)
+        : ptr := ptr 
+    {
+    }
+    type(other: t.lvalue)
+        : ptr := other.ptr 
+    {
+    }
+    ~type() {
+        *ptr = true;
+    }
+}
+type t2 {
+    type() default
+    type(other: t2.lvalue) {
+        throw true;
+    }
+}
+type t3 {
+    member: t;
+    member2: t2;
+    type(ptr: bool.pointer)
+        : t := ptr {}
+}
+Main() {
+    result := false;
+    local := t3(&result);
+    try {
+        copy := local;
+    } catch(...) {
+    }
+    return result;
+}
