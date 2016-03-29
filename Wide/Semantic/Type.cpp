@@ -12,6 +12,8 @@
 #include <Wide/Semantic/FunctionType.h>
 #include <Wide/Semantic/IntegralType.h>
 #include <Wide/Semantic/ClangNamespace.h>
+#include <Wide/Semantic/ClangType.h>
+#include <Wide/Semantic/LambdaType.h>
 #include <sstream>
 
 using namespace Wide;
@@ -26,10 +28,9 @@ using namespace Semantic;
 OverloadSet* Type::CreateADLOverloadSet(Parse::OperatorName what, Location from) {
     if (IsReference())
         return Decay()->CreateADLOverloadSet(what, from);
-    auto context = boost::get<Location::WideLocation>(&from.location)
-        ? (Type*)boost::get<Location::WideLocation>(from.location).modules.back()
-        : (Type*)boost::get<Location::CppLocation>(from.location).namespaces.back();
-    return context->AccessMember(what, context->GetAccess(from), OperatorAccess::Explicit);
+    auto WideADL = from.WideLocation.back()->AccessMember(what, from.WideLocation.back()->GetAccess(from), OperatorAccess::Implicit);
+    auto CppADL = from.CppLocation.empty() ? analyzer.GetOverloadSet() : from.CppLocation.back()->AccessMember(what, from.CppLocation.back()->GetAccess(from), OperatorAccess::Implicit);
+    return analyzer.GetOverloadSet(WideADL, CppADL);
 }
 
 OverloadSet* Type::CreateOperatorOverloadSet(Parse::OperatorName type, Parse::Access access, OperatorAccess implicit) {
@@ -194,6 +195,8 @@ std::shared_ptr<Expression> Type::GetVirtualPointer(std::shared_ptr<Expression> 
 }
 
 std::shared_ptr<Expression> Type::AccessStaticMember(std::string name, Context c) {
+    if (IsLookupContext())
+        return Type::AccessMember(BuildValueConstruction({}, c), name, c);
     return nullptr;
 }
 
@@ -917,65 +920,49 @@ Parse::Access Type::GetAccess(Location loc) {
     return Parse::Access::Public;
 }
 
-Location::Location(Analyzer& a, ClangTU* tu) {    
-    location = CppLocation{ { a.GetClangNamespace(*tu, Location::Empty, tu->GetDeclContext()) } };
+Location::Location(Analyzer& a, ClangTU* tu)
+    : Location(a) 
+{    
+    CppLocation.push_back(a.GetClangNamespace(*tu, *this, tu->GetDeclContext()));
 }
 Location::Location(Analyzer& a) {
-    location = WideLocation{ { a.GetGlobalModule() } };
+    WideLocation.push_back(a.GetGlobalModule());
 }
 
-Location::Location(Location previous, Module* next) {
-    auto prevloc = boost::get<WideLocation>(previous.location);
-    prevloc.modules.push_back(next);
-    if (!prevloc.types.empty())
-        throw std::runtime_error("Tried to append a module to a type location");
-    location = WideLocation{ prevloc.modules };
+Location::Location(Location previous, Module* next)
+    : Location(previous) 
+{
+    WideLocation.push_back(next);
+    Nonstatic = nullptr;
 }
-Location::Location(Location previous, UserDefinedType* next) {
-    auto prevloc = boost::get<WideLocation>(previous.location);
-    prevloc.types.push_back(next);
-    location = WideLocation{ prevloc.modules, prevloc.types };
+Location::Location(Location previous, UserDefinedType* next)
+    : Location(previous) 
+{
+    WideLocation.push_back(next);
+    Nonstatic = next;
 }
-Location::Location(Location previous, LambdaType* next) {
-    auto prevloc = boost::get<WideLocation>(previous.location);
-    prevloc.types.push_back(next);
-    location = WideLocation{ prevloc.modules, prevloc.types };
+Location::Location(Location previous, LambdaType* next) 
+    : Location(previous) 
+{
+    WideLocation.push_back(next);
+    Nonstatic = next;
 }
-Location::Location(Location previous, ClangNamespace* next) {
-    // previous may also be empty, which is technically a Wide location.
-    if (auto wide = boost::get<WideLocation>(&previous.location))
-        previous.location = CppLocation();
-    auto prevloc = boost::get<CppLocation>(previous.location);
-    prevloc.namespaces.push_back(next);
-    if (!prevloc.types.empty())
-        throw std::runtime_error("Tried to append a namespace to a type location");
-    location = CppLocation{ prevloc.namespaces };
+Location::Location(Location previous, ClangNamespace* next)
+    : Location(previous)
+{
+    CppLocation.push_back(next);
+    Nonstatic = nullptr;
 }
-Location::Location(Location previous, ClangType* next) {
-    auto prevloc = boost::get<CppLocation>(previous.location);
-    prevloc.types.push_back(next);
-    location = CppLocation{ prevloc.namespaces, prevloc.types };
+Location::Location(Location previous, ClangType* next) 
+    : Location(previous)
+{
+    CppLocation.push_back(next);
+    Nonstatic = next;
 }
-Location::Location(Location previous, Functions::Scope* next) {
-    location = previous.location;
+Location::Location(Location previous, Functions::Scope* next)
+: Location(previous) {
     localscope = next;
 }
 Analyzer& Location::GetAnalyzer() const {
-    if (auto wide = boost::get<WideLocation>(&location))
-        return wide->modules.back()->analyzer;
-    return boost::get<CppLocation>(location).namespaces.back()->analyzer;
-}
-const Location Location::Empty;
-
-Location::Location() {}
-
-Parse::Access Location::PublicOrWide(std::function<Parse::Access(WideLocation)> func) {
-    if (auto wide = boost::get<WideLocation>(&location))
-        return func(*wide);
-    return Parse::Public;
-}
-Parse::Access Location::PublicOrCpp(std::function<Parse::Access(CppLocation)> func) {
-    if (auto cpp = boost::get<CppLocation>(&location))
-        return func(*cpp);
-    return Parse::Public;
+    return WideLocation.front()->analyzer;
 }

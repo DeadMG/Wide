@@ -56,9 +56,9 @@ std::shared_ptr<Expression> Module::AccessNamedMember(std::shared_ptr<Expression
     return nullptr;
 }
 std::string Module::explain() {
-    if (boost::get<Location::WideLocation>(context.location).modules.size() == 1)
+    if (context.WideLocation.size() == 1)
         return ".";
-    return boost::get<Location::WideLocation>(context.location).modules.back()->explain() + "." + name;
+    return context.WideLocation.back()->explain() + "." + name;
 }
 bool Module::IsLookupContext() {
     return true;
@@ -92,10 +92,8 @@ void Module::AddDefaultHandlers(Analyzer& a) {
     });
 }
 Parse::Access Module::GetAccess(Location l) {
-    return l.PublicOrWide([this](Location::WideLocation loc) {
-        for (auto mod : loc.modules)
-            if (mod == this)
-                return Parse::Access::Private;
-        return Parse::Access::Public;
-    });
+    for (auto ty : l.WideLocation)
+        if (ty == this)
+            return Parse::Access::Private;
+    return Parse::Access::Public;
 }

@@ -71,12 +71,9 @@ namespace Wide {
             struct Scope;
         }
         struct Location {
-        private:
-            Location();
         public:
-            static const Location Empty;
-            Location(Analyzer& a, ClangTU* TU);
             Location(Analyzer& a);
+            Location(Analyzer& a, ClangTU* tu);
             Location(Location previous, Module* next);
             Location(Location previous, UserDefinedType* next);
             Location(Location previous, LambdaType* next);
@@ -90,18 +87,10 @@ namespace Wide {
             Location& operator=(const Location&) = default;
             Analyzer& GetAnalyzer() const;
 
-            struct WideLocation {
-                std::vector<Module*> modules;
-                std::vector<boost::variant<LambdaType*, UserDefinedType*>> types;
-            };
-            struct CppLocation {
-                std::vector<ClangNamespace*> namespaces;
-                std::vector<ClangType*> types;
-            };
-            boost::variant<WideLocation, CppLocation> location;
+            std::vector<Type*> WideLocation;
+            std::vector<Type*> CppLocation;
+            Type* Nonstatic;
             Functions::Scope* localscope = nullptr;
-            Parse::Access PublicOrWide(std::function<Parse::Access(WideLocation loc)>);
-            Parse::Access PublicOrCpp(std::function<Parse::Access(CppLocation loc)>);
         };
         inline bool operator==(Location lhs, Location rhs) {
             return true;

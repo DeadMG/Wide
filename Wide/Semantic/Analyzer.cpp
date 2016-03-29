@@ -500,15 +500,7 @@ bool Analyzer::HasImplicitThis(const Parse::FunctionBase* func, Location context
     return true;
 }
 Type* Semantic::GetNonstaticContext(Location context) {
-    if (auto cpp = boost::get<Location::CppLocation>(&context.location))
-        return cpp->types.empty() ? nullptr : cpp->types.back();
-    auto wideloc = boost::get<Location::WideLocation>(context.location);
-    if (wideloc.types.empty())
-        return nullptr;
-    auto ty = wideloc.types.back();
-    if (auto lambda = boost::get<LambdaType*>(&ty))
-        return *lambda;
-    return boost::get<UserDefinedType*>(ty);
+    return context.Nonstatic;
 }
 FunctionSkeleton* Analyzer::GetFunctionSkeleton(const Parse::FunctionBase* p, Location context) {
     auto location = context;
@@ -659,7 +651,7 @@ namespace {
 }
 
 void AnalyzeExportedFunctionsInModule(Analyzer& a, Location l, std::function<void(const Parse::AttributeFunctionBase*, std::string, Location)> callback) {
-    auto mod = boost::get<Location::WideLocation>(l.location).modules.back()->GetASTModule();
+    auto mod = static_cast<Module*>(l.WideLocation.back())->GetASTModule();
     ProcessOverloadSet(mod->constructor_decls, a, l, "type", callback);
     ProcessOverloadSet(mod->destructor_decls, a, l, "~type", callback);
     for (auto name : mod->OperatorOverloads) {
@@ -904,6 +896,7 @@ namespace {
         return nullptr;
     }
     std::shared_ptr<Expression> LookupNameFromContext(Location l, Parse::Name name, Context c) {
+
         if (auto wide = boost::get<Location::WideLocation>(&l.location))
             return LookupNameFromWide(*wide, name, c);
         return LookupNameFromCpp(boost::get<Location::CppLocation>(l.location), name, c);

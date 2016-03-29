@@ -354,7 +354,7 @@ std::shared_ptr<Expression> ClangType::PrimitiveAccessMember(std::shared_ptr<Exp
 }
 
 std::string ClangType::explain() {
-    auto basename = boost::get<Location::CppLocation>(l.location).namespaces.back()->explain() + "." + type->getAsCXXRecordDecl()->getName().str();
+    auto basename = l.CppLocation.back()->explain() + "." + type->getAsCXXRecordDecl()->getName().str();
     if (auto tempspec = llvm::dyn_cast<clang::ClassTemplateSpecializationDecl>(type->getAsCXXRecordDecl())) {
         basename += "(";
         for (auto&& arg : tempspec->getTemplateArgs().asArray()) {
@@ -629,10 +629,13 @@ bool ClangType::AlwaysKeepInMemory(llvm::Module* mod) {
     return from->IsComplexType(type->getAsCXXRecordDecl(), mod);
 }
 Parse::Access ClangType::GetAccess(Location l) {
-    return l.PublicOrCpp([this](Location::CppLocation loc) {
-        for (auto type : loc.types)
-            if (type == this)
-                return Parse::Private;
-        return Parse::Public;
-    });
+    for (auto type : l.CppLocation) {
+        if (type == this)
+            return Parse::Private;
+    }
+    for (auto type : l.CppLocation) {
+        if (type->IsDerivedFrom(this) != InheritanceRelationship::NotDerived)
+            return Parse::Protected;
+    }
+    return Parse::Public;
 }
