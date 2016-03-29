@@ -22,7 +22,7 @@ type t3 {
     member: t;
     member2: t2;
     type(ptr: bool.pointer)
-        : t := ptr {}
+        : member := ptr {}
 }
 Main() {
     result := false;
