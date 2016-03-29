@@ -23,3 +23,5 @@ void UserDefinedDestructor::ComputeBody() {
         root_scope->active.push_back(CreatePrimGlobal(Range::Empty(), analyzer, destructor));
     }
 }
+UserDefinedDestructor::UserDefinedDestructor(const Parse::Destructor* astfun, Analyzer& a, Location l, std::vector<ConstructorContext::member> members)
+    : FunctionSkeleton(astfun, a, l), members(std::move(members)) {}

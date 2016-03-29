@@ -48,3 +48,6 @@ std::shared_ptr<Expression> ConstructorBase::MakeMemberInitializer(ConstructorCo
         return nullptr;
     });
 }
+
+ConstructorBase::ConstructorBase(const Parse::Constructor* astfun, Analyzer& a, Location l, std::vector<ConstructorContext::member> members)
+    : FunctionSkeleton(astfun, a, l), constructor(astfun), members(std::move(members)) {}

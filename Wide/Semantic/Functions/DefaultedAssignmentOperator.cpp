@@ -35,3 +35,5 @@ std::shared_ptr<Expression> DefaultedAssignmentOperator::AccessMember(std::share
         return Type::AccessMember(self, *member.name, c);
     return Type::AccessBase(self, member.t);
 }
+DefaultedAssignmentOperator::DefaultedAssignmentOperator(const Parse::Function* astfun, Analyzer& a, Location l, std::vector<ConstructorContext::member> members)
+    : FunctionSkeleton(astfun, a, l), func(astfun), members(std::move(members)) {}

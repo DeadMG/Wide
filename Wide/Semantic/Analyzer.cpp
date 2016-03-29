@@ -39,6 +39,10 @@
 #include <Wide/Util/Codegen/CreateModule.h>
 #include <Wide/Util/Codegen/CloneFunctionIntoModule.h>
 #include <Wide/Util/Codegen/CloneModule.h>
+#include <Wide/Semantic/Functions/UserDefinedDestructor.h>
+#include <Wide/Semantic/Functions/UserDefinedConstructor.h>
+#include <Wide/Semantic/Functions/DefaultedConstructor.h>
+#include <Wide/Semantic/Functions/DefaultedAssignmentOperator.h>
 
 #pragma warning(push, 0)
 #include <clang/AST/Type.h>
@@ -507,9 +511,6 @@ Type* Semantic::GetNonstaticContext(Location context) {
     return boost::get<UserDefinedType*>(ty);
 }
 FunctionSkeleton* Analyzer::GetFunctionSkeleton(const Parse::FunctionBase* p, Location context) {
-    assert(!dynamic_cast<const Parse::Constructor*>(p));
-    assert(!dynamic_cast<const Parse::Destructor*>(p));
-    assert(!dynamic_cast<const Parse::Function*>(p) || !static_cast<const Parse::Function*>(p)->defaulted);
     auto location = context;
     if (auto astfun = dynamic_cast<const Parse::AttributeFunctionBase*>(p)) {
         for (auto&& attr : astfun->attributes) {
@@ -533,6 +534,26 @@ FunctionSkeleton* Analyzer::GetFunctionSkeleton(const Parse::FunctionBase* p, Lo
                         }
                     }
                 }
+            }
+        }
+    }
+
+    if (FunctionSkeletons.find(p) != FunctionSkeletons.end() && FunctionSkeletons[p].find(location) != FunctionSkeletons[p].end())
+        return FunctionSkeletons[p][location].get();
+    if (auto con_context = dynamic_cast<ConstructorContext*>(GetNonstaticContext(location))) {
+        if (auto des = dynamic_cast<const Parse::Destructor*>(p)) {
+            FunctionSkeletons[p][location] = std::make_unique<UserDefinedDestructor>(des, *this, location, con_context->GetConstructionMembers());
+        }
+        if (auto con = dynamic_cast<const Parse::Constructor*>(p)) {
+            if (con->defaulted) {
+                FunctionSkeletons[p][location] = std::make_unique<DefaultedConstructor>(con, *this, location, con_context->GetConstructionMembers());
+            } else {
+                FunctionSkeletons[p][location] = std::make_unique<UserDefinedConstructor>(con, *this, location, con_context->GetConstructionMembers());
+            }
+        }
+        if (auto func = dynamic_cast<const Parse::Function*>(p)) {
+            if (func->defaulted) {
+                FunctionSkeletons[p][location] = std::make_unique<DefaultedAssignmentOperator>(func, *this, location, con_context->GetConstructionMembers());
             }
         }
     }

@@ -54,3 +54,5 @@ std::shared_ptr<Expression> DefaultedConstructor::GetMemberInitializer(Construct
         return MakeMemberInitializer(member, { Type::AccessMember(other, *member.name, { GetLocalContext(), constructor->where }) }, constructor->where);
     return MakeMemberInitializer(member, { Type::AccessBase(other, member.t) }, constructor->where);
 }
+DefaultedConstructor::DefaultedConstructor(const Parse::Constructor* astfun, Analyzer& a, Location l, std::vector<ConstructorContext::member> members)
+    : ConstructorBase(astfun, a, l, std::move(members)) {}

@@ -88,3 +88,5 @@ void UserDefinedConstructor::ComputeBody() {
         ComputeConstructorInitializers();
     FunctionSkeleton::ComputeBody();
 }
+UserDefinedConstructor::UserDefinedConstructor(const Parse::Constructor* astfun, Analyzer& a, Location l, std::vector<ConstructorContext::member> members)
+    : ConstructorBase(astfun, a, l, std::move(members)) {}

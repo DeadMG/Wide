@@ -7,6 +7,7 @@ namespace Wide {
         namespace Functions {
             class ConstructorBase : public FunctionSkeleton {
             protected:
+                ConstructorBase(const Parse::Constructor* astfun, Analyzer& a, Location, std::vector<ConstructorContext::member>);
                 std::vector<ConstructorContext::member> members;
                 const Parse::Constructor* constructor;
 

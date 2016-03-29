@@ -11,6 +11,8 @@ namespace Wide {
                 void ComputeCopyConstructorBody();
                 void ComputeMoveConstructorBody();
                 std::shared_ptr<Expression> GetMemberInitializer(ConstructorContext::member& member, std::shared_ptr<Expression> _this);
+            public:
+                DefaultedConstructor(const Parse::Constructor* astfun, Analyzer& a, Location, std::vector<ConstructorContext::member>);
             };
         }
     }

@@ -10,6 +10,8 @@ namespace Wide {
                 const Parse::Function* func;
                 void ComputeBody();
                 std::shared_ptr<Expression> AccessMember(std::shared_ptr<Expression> self, ConstructorContext::member& member, Context c);
+            public:
+                DefaultedAssignmentOperator(const Parse::Function* astfun, Analyzer& a, Location, std::vector<ConstructorContext::member>);
             };
         }
     }

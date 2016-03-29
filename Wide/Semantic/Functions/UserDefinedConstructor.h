@@ -11,6 +11,8 @@ namespace Wide {
                 void ComputeBody();
                 void ComputeDelegatedConstructorInitializers();
                 void ComputeConstructorInitializers();
+            public:
+                UserDefinedConstructor(const Parse::Constructor* astfun, Analyzer& a, Location, std::vector<ConstructorContext::member>);
             };
         }
     }
