@@ -1,7 +1,7 @@
 #include <Wide/Semantic/Module.h>
 #include <Wide/Parser/AST.h>
 #include <Wide/Semantic/Analyzer.h>
-#include <Wide/Semantic/Function.h>
+#include <Wide/Semantic/Functions/Function.h>
 #include <Wide/Semantic/ClangNamespace.h>
 #include <Wide/Semantic/OverloadSet.h>
 #include <Wide/Semantic/ConstructorType.h>
@@ -28,7 +28,7 @@ OverloadSet* Module::CreateOperatorOverloadSet(Parse::OperatorName ty, Parse::Ac
                 for (auto func : set.second) {
                     if (set.first > access)
                         continue;
-                    resolvable.insert(analyzer.GetCallableForFunction(analyzer.GetWideFunction(func.get(), Location(context, this))));
+                    resolvable.insert(analyzer.GetCallableForFunction(func.get(), Location(context, this)));
                 }
             }
             return analyzer.GetOverloadSet(resolvable);
@@ -36,7 +36,7 @@ OverloadSet* Module::CreateOperatorOverloadSet(Parse::OperatorName ty, Parse::Ac
     }
     return PrimitiveType::CreateOperatorOverloadSet(ty, access, kind);
 }
-std::shared_ptr<Expression> Module::AccessNamedMember(Expression::InstanceKey key, std::shared_ptr<Expression> val, std::string name, Context c)  {
+std::shared_ptr<Expression> Module::AccessNamedMember(std::shared_ptr<Expression> val, std::string name, Context c)  {
     auto access = GetAccess(c.from);
     if (m->named_decls.find(name) != m->named_decls.end()) {
         if (auto shared = boost::get<std::pair<Parse::Access, std::shared_ptr<Parse::SharedObject>>>(&m->named_decls.at(name))) {
@@ -66,17 +66,17 @@ bool Module::IsLookupContext() {
 void Module::AddDefaultHandlers(Analyzer& a) {
     AddHandler<const Parse::Using>(a.SharedObjectHandlers, [](const Parse::Using* usedecl, Analyzer& analyzer, Location lookup, std::string name) {
         auto expr = analyzer.AnalyzeExpression(lookup, usedecl->expr.get(), nullptr);
-        if (!expr->IsConstant(Expression::NoInstance()))
+        if (!expr->IsConstant())
             return CreateErrorExpression(Memory::MakeUnique<SpecificError<UsingTargetNotConstant>>(analyzer, usedecl->expr->location, "Using target not a constant expression."));
         return expr;
     });
 
     AddHandler<const Parse::Type>(a.SharedObjectHandlers, [](const Parse::Type* type, Analyzer& analyzer, Location lookup, std::string name) {
-        return analyzer.GetConstructorType(analyzer.GetUDT(type, lookup, name))->BuildValueConstruction(Expression::NoInstance(), {}, { lookup, type->location });
+        return analyzer.GetConstructorType(analyzer.GetUDT(type, lookup, name))->BuildValueConstruction({}, { lookup, type->location });
     });
 
     AddHandler<const Parse::Module>(a.UniqueObjectHandlers, [](const Parse::Module* mod, Analyzer& analyzer, Location lookup, std::string name) {
-        return analyzer.GetWideModule(mod, lookup, name)->BuildValueConstruction(Expression::NoInstance(), {}, { lookup, mod->locations.begin()->GetIdentifier() });
+        return analyzer.GetWideModule(mod, lookup, name)->BuildValueConstruction({}, { lookup, mod->locations.begin()->GetIdentifier() });
     });
 
     AddHandler<const Parse::ModuleOverloadSet<Parse::Function>>(a.MultiObjectHandlers, [](const Parse::ModuleOverloadSet<Parse::Function>* overset, Analyzer& analyzer, Location lookup, Parse::Access access, std::string name, Lexer::Range where) -> std::shared_ptr<Expression> {
@@ -85,10 +85,10 @@ void Module::AddDefaultHandlers(Analyzer& a) {
             if (map.first > access)
                 continue;
             for (auto&& func : map.second) {
-                resolvable.insert(analyzer.GetCallableForFunction(analyzer.GetWideFunction(func.get(), lookup)));
+                resolvable.insert(analyzer.GetCallableForFunction(func.get(), lookup));
             }
         }
-        return analyzer.GetOverloadSet(resolvable)->BuildValueConstruction(Expression::NoInstance(), {}, { lookup, where });
+        return analyzer.GetOverloadSet(resolvable)->BuildValueConstruction({}, { lookup, where });
     });
 }
 Parse::Access Module::GetAccess(Location l) {

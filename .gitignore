@@ -198,5 +198,6 @@ FakesAssemblies/
 *.lib
 *.exe
 **/Makefile
+**.opendb
 Tests
 boost_1_59_0

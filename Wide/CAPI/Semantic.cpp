@@ -5,7 +5,7 @@
 #include <Wide/Semantic/ClangOptions.h>
 #include <Wide/Semantic/Analyzer.h>
 #include <Wide/Semantic/Module.h>
-#include <Wide/Semantic/Function.h>
+#include <Wide/Semantic/Functions/Function.h>
 #include <Wide/Semantic/OverloadSet.h>
 #include <Wide/Semantic/Type.h>
 #include <Wide/Semantic/ConstructorType.h>

@@ -8,9 +8,13 @@
 #include <set>
 #include <boost/program_options.hpp>
 #include <Wide/Util/DebugBreak.h>
+#include <Wide/Util/Paths/CreateDirectories.h>
+#include <Wide/Util/Concurrency/ParallelForEach.h>
+#include <Wide/Util/Concurrency/ConcurrentUnorderedSet.h>
 #include <map>
+#include <atomic>
 
-Wide::Driver::ProcessResult ExecuteCompile(json::value test, std::string gccpath, std::string stdlibpath, std::string CLIPath) {
+Wide::Driver::ProcessResult ExecuteCompile(json::value test, std::string gccpath, std::string stdlibpath, std::string CLIPath, std::string outputpath, std::string testdir) {
     std::ifstream wide_src(test["wide"].as<std::string>(), std::ios::in | std::ios::binary);
     json::value sourcefile = json::value::object({
         { "Name", test["wide"].as<std::string>() },
@@ -19,7 +23,8 @@ Wide::Driver::ProcessResult ExecuteCompile(json::value test, std::string gccpath
     auto val = json::value::object({
         { "Source", json::value::array({ sourcefile }) },
         { "GCCPath", gccpath },
-        { "StdlibPath", stdlibpath }
+        { "StdlibPath", stdlibpath },
+        { "Output", outputpath }
     });
     if (test["cpp"].is<std::string>()) {
         std::ifstream cpp_src(test["cpp"].as<std::string>(), std::ios::in | std::ios::binary);
@@ -42,11 +47,12 @@ Wide::Driver::ProcessResult ExecuteCompile(json::value test, std::string gccpath
         val["CppSource"] = cpp_src_array;
 
     }
-    std::ofstream test_json("current_test.json", std::ios::out | std::ios::trunc);
+    auto jsonfile = testdir + "/test_input.json";
+    std::ofstream test_json(jsonfile, std::ios::out | std::ios::trunc);
     auto json_test_input = json::dump_string(val);
     test_json.write(json_test_input.c_str(), json_test_input.size());
     test_json.flush();
-    return Wide::Driver::StartAndWaitForProcess(CLIPath, { "--interface=JSON", "--jsoninput=current_test.json" }, 100000);
+    return Wide::Driver::StartAndWaitForProcess(CLIPath, { "--interface=JSON", "--jsoninput=" + jsonfile }, 100000);
 }
 
 bool MatchesError(json::value expected_error, const json::array& actual_errors) {
@@ -65,7 +71,7 @@ bool MatchesError(json::value expected_error, const json::array& actual_errors) 
     return false;
 }
 
-bool ExecuteJsonTest(json::value test) {
+bool ExecuteJsonTest(json::value test, int testnum) {
 #ifdef _MSC_VER
     auto CLIPath = std::string("Wide\\Deployment\\Wide.exe");
 #else
@@ -82,8 +88,18 @@ bool ExecuteJsonTest(json::value test) {
     auto gccpath = std::string("clang++");
 #endif
     auto type = test["type"].as<std::string>();
+    auto testdir = "./Tests/Test" + std::to_string(testnum);
+    Wide::Paths::CreateDirectories(testdir);
+    auto objectfile = testdir + "/a.o";
+    auto executable = testdir + "/a";
+#ifndef _MSC_VER
+    executable += ".out";
+#else
+    executable += ".exe";
+#endif
+    testnum++;
     if (type == "JITSuccess") {
-        auto compile = ExecuteCompile(test, gccpath, stdlibpath, CLIPath);
+        auto compile = ExecuteCompile(test, gccpath, stdlibpath, CLIPath, objectfile, testdir);
         if (compile.exitcode != 0)
             return compile.exitcode;
 #ifndef _MSC_VER
@@ -95,20 +111,20 @@ bool ExecuteJsonTest(json::value test) {
             return 1;
 #endif
 #ifdef _MSC_VER
-        auto link = Wide::Driver::StartAndWaitForProcess(gccpath + ".exe", { "-o a.exe", "a.o" }, 100000);
+        auto link = Wide::Driver::StartAndWaitForProcess(gccpath + ".exe", { "-o",  executable, objectfile }, 100000);
 #else
-        auto link = Wide::Driver::StartAndWaitForProcess(gccpath, { "-o", "a.out", "a.o" }, 100000);
+        auto link = Wide::Driver::StartAndWaitForProcess(gccpath, { "-o", executable, objectfile }, 100000);
 #endif
         if (link.exitcode != 0)
             return link.exitcode;
 #ifdef _MSC_VER
-        return Wide::Driver::StartAndWaitForProcess("a.exe", {}, 100000).exitcode != 0;
+        return Wide::Driver::StartAndWaitForProcess(executable, {}, 100000).exitcode != 0;
 #else
-        return Wide::Driver::StartAndWaitForProcess("./a.out", {}, 100000).exitcode != 0;
+        return Wide::Driver::StartAndWaitForProcess("./" + executable, {}, 100000).exitcode != 0;
 #endif
     }
     if (type == "CompileFail") {
-        auto compile = ExecuteCompile(test, gccpath, stdlibpath, CLIPath);
+        auto compile = ExecuteCompile(test, gccpath, stdlibpath, CLIPath, objectfile, testdir);
         if (compile.exitcode != 1)
             return true;
         json::value result;
@@ -150,15 +166,16 @@ int main(int argc, char** argv) {
     json::value jsonval;
     json::parse(json, jsonval);
     auto tests = jsonval.as<std::vector<json::value>>();
-    std::set<std::string> failures;
-    for (auto&& test : tests) {
+    Wide::Concurrency::UnorderedSet<std::string> failures;
+    std::atomic<int> testnum(0);
+    Wide::Concurrency::ParallelForEach(tests.begin(), tests.end(), [&](json::value& test) {
         auto name = test["name"].is<std::string>() ? test["name"].as<std::string>() : test["wide"].as<std::string>();
         if (input.count("input") && input["input"].as<std::string>() != name)
-            continue;
-        auto failed = ExecuteJsonTest(test);
+            return;
+        auto failed = ExecuteJsonTest(test, testnum++);
         if (failed)
             failures.insert("JSON: " + name);
-    }
+    });
     if (!failures.empty()) {
         for (auto&& fail : failures)
             std::cout << "Failed: " << fail << "\n";

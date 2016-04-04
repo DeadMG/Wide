@@ -35,16 +35,14 @@ std::string ArrayType::explain() {
 }
 std::shared_ptr<Expression> ArrayType::PrimitiveAccessMember(std::shared_ptr<Expression> self, unsigned num) {
     assert(num < count);
-    return CreateResultExpression(Range::Elements(self), [=](Expression::InstanceKey f) {
-        auto result_ty = IsLvalueType(self->GetType(f))
-            ? t->analyzer.GetLvalueType(t)
-            : IsRvalueType(self->GetType(f))
-            ? t->analyzer.GetRvalueType(t)
-            : t;
-        return CreatePrimGlobal(Range::Elements(self), result_ty, [=](CodegenContext& con) {
-            auto val = self->GetValue(con);
-            return con.CreateStructGEP(val, num);
-        });
+    auto result_ty = IsLvalueType(self->GetType())
+        ? t->analyzer.GetLvalueType(t)
+        : IsRvalueType(self->GetType())
+        ? t->analyzer.GetRvalueType(t)
+        : t;
+    return CreatePrimGlobal(Range::Elements(self), result_ty, [=](CodegenContext& con) {
+        auto val = self->GetValue(con);
+        return con.CreateStructGEP(val, num);
     });
 }
 std::size_t ArrayType::size() {
@@ -65,18 +63,18 @@ OverloadSet* ArrayType::CreateOperatorOverloadSet(Parse::OperatorName what, Pars
     struct IndexOperatorResolvable : OverloadResolvable, Callable {
         IndexOperatorResolvable(ArrayType* el) : array(el) {}
         ArrayType* array;
-        std::shared_ptr<Expression> CallFunction(Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c) override final {
+        std::shared_ptr<Expression> CallFunction(std::vector<std::shared_ptr<Expression>> args, Context c) override final {
             args[1] = BuildValue(std::move(args[1]));
-            auto globmod = array->analyzer.GetGlobalModule()->BuildValueConstruction(key, {}, c);
-            auto stdmod = Type::AccessMember(key, globmod, "Standard", c);
+            auto globmod = array->analyzer.GetGlobalModule()->BuildValueConstruction({}, c);
+            auto stdmod = Type::AccessMember(globmod, "Standard", c);
             if (!stdmod) throw std::runtime_error("No Standard module found!");
-            auto errmod = Type::AccessMember(key, stdmod, "Error", c);
+            auto errmod = Type::AccessMember(stdmod, "Error", c);
             if (!errmod) throw std::runtime_error("Standard.Error module not found!");
-            auto array_bounds_exception = Type::AccessMember(key, errmod, "ArrayIndexOutOfBounds", c);
+            auto array_bounds_exception = Type::AccessMember(errmod, "ArrayIndexOutOfBounds", c);
             if (!array_bounds_exception) throw std::runtime_error("Could not find Standard.Error.ArrayIndexOutOfBounds.");
-            auto throw_ = Semantic::ThrowObject(key, Type::BuildCall(key, array_bounds_exception, {}, c), c);
-            auto intty = dynamic_cast<IntegralType*>(args[1]->GetType(key));
-            auto argty = args[0]->GetType(key);
+            auto throw_ = Semantic::ThrowObject(Type::BuildCall(array_bounds_exception, {}, c), c);
+            auto intty = dynamic_cast<IntegralType*>(args[1]->GetType());
+            auto argty = args[0]->GetType();
             return CreatePrimOp(std::move(args[0]), std::move(args[1]), Semantic::CollapseType(argty, array->t), [this, argty, throw_, intty](llvm::Value* arr, llvm::Value* index, CodegenContext& con) -> llvm::Value* {
                 auto zero = (llvm::Value*)llvm::ConstantInt::get(intty->GetLLVMType(con), llvm::APInt(intty->GetLLVMType(con)->getBitWidth(), uint64_t(0), false));
                 llvm::BasicBlock* out_of_bounds = llvm::BasicBlock::Create(con, "out_of_bounds", con->GetInsertBlock()->getParent());
@@ -109,7 +107,7 @@ OverloadSet* ArrayType::CreateOperatorOverloadSet(Parse::OperatorName what, Pars
             if (!arrty || !intty) return Util::none;
             return args;
         }
-        std::vector<std::shared_ptr<Expression>> AdjustArguments(Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c) override final { return args; }
+        std::vector<std::shared_ptr<Expression>> AdjustArguments(std::vector<std::shared_ptr<Expression>> args, Context c) override final { return args; }
         Callable* GetCallableForResolution(std::vector<Type*>, Location, Analyzer& a) override final { return this; }
     };
     if (!IndexOperator) IndexOperator = Wide::Memory::MakeUnique<IndexOperatorResolvable>(this);
@@ -122,7 +120,7 @@ OverloadSet* ArrayType::CreateConstructorOverloadSet(Parse::Access access) {
 bool ArrayType::AlwaysKeepInMemory(llvm::Module* mod) {
     return true;
 }
-std::shared_ptr<Expression> ArrayType::AccessNamedMember(Expression::InstanceKey key, std::shared_ptr<Expression> t, std::string name, Context c) {
+std::shared_ptr<Expression> ArrayType::AccessNamedMember(std::shared_ptr<Expression> t, std::string name, Context c) {
     if (name != "size") return nullptr;
     return std::make_shared<Integer>(llvm::APInt(64, (uint64_t)count, false), analyzer);
 }

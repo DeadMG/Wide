@@ -29,6 +29,9 @@ namespace Wide {
             iterator begin() {
                 return umap.begin();
             }
+            bool empty() {
+                return umap.empty();
+            }
         };
     }
 }

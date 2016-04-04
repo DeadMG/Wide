@@ -17,7 +17,7 @@
 #include <Wide/Util/Ranges/StringRange.h>
 #include <Wide/Parser/Parser.h>
 #include <Wide/Semantic/Analyzer.h>
-#include <Wide/Semantic/Function.h>
+#include <Wide/Semantic/Functions/Function.h>
 #include <Wide/Semantic/OverloadSet.h>
 #include <Wide/Semantic/Module.h>
 #include <Wide/Semantic/FunctionType.h>
@@ -152,15 +152,15 @@ AnalysisResponse Wide::Driver::Analyse(const Parse::Module* mod, const Options::
 void AnalyseForLinking(Wide::Semantic::Analyzer& a, llvm::Module* mod, LinkOptions opts) {
     static const Wide::Lexer::Range location = std::make_shared<std::string>("Analyzer entry point");
     Wide::Semantic::Context c(Wide::Semantic::Location(a), location);
-    auto global = a.GetGlobalModule()->BuildValueConstruction(Wide::Semantic::Expression::NoInstance(), {}, c);
-    auto main = Wide::Semantic::Type::AccessMember(Wide::Semantic::Expression::NoInstance(), std::move(global), std::string("Main"), c);
+    auto global = a.GetGlobalModule()->BuildValueConstruction({}, c);
+    auto main = Wide::Semantic::Type::AccessMember(std::move(global), std::string("Main"), c);
     if (!main)
         throw std::runtime_error("Could not find Main in global namespace.");
-    auto overset = dynamic_cast<Wide::Semantic::OverloadSet*>(main->GetType(Wide::Semantic::Expression::NoInstance())->Decay());
+    auto overset = dynamic_cast<Wide::Semantic::OverloadSet*>(main->GetType()->Decay());
     if (!overset)
         throw std::runtime_error("Main in global namespace was not an overload set.");
     auto f = overset->Resolve({}, c.from);
-    auto func = dynamic_cast<Wide::Semantic::Function*>(f);
+    auto func = dynamic_cast<Wide::Semantic::Functions::Function*>(f);
     if (!func)
         throw std::runtime_error("Could not resolve a zero-arguments function from global Main overload set.");
     func->ComputeBody();

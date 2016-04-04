@@ -22,7 +22,7 @@
 using namespace Wide;
 using namespace Semantic;
 
-std::shared_ptr<Expression> ClangNamespace::AccessNamedMember(Expression::InstanceKey key, std::shared_ptr<Expression> t, std::string name, Context c) {
+std::shared_ptr<Expression> ClangNamespace::AccessNamedMember(std::shared_ptr<Expression> t, std::string name, Context c) {
     clang::LookupResult lr(
         from->GetSema(), 
         clang::DeclarationNameInfo(clang::DeclarationName(from->GetIdentifierInfo(name)), clang::SourceLocation()),
@@ -38,7 +38,7 @@ std::shared_ptr<Expression> ClangNamespace::AccessNamedMember(Expression::Instan
         if (auto fundecl = llvm::dyn_cast<clang::FunctionDecl>(result)) {
             std::unordered_set<clang::NamedDecl*> decls;
             decls.insert(fundecl);
-            return BuildChain(std::move(t), analyzer.GetOverloadSet(std::move(decls), from)->BuildValueConstruction(key, {}, c));
+            return BuildChain(std::move(t), analyzer.GetOverloadSet(std::move(decls), from)->BuildValueConstruction({}, c));
         }
         if (auto vardecl = llvm::dyn_cast<clang::VarDecl>(result)) {
             auto object = from->GetObject(analyzer, vardecl);
@@ -47,19 +47,19 @@ std::shared_ptr<Expression> ClangNamespace::AccessNamedMember(Expression::Instan
             });
         }
         if (auto namedecl = llvm::dyn_cast<clang::NamespaceDecl>(result)) {
-            return BuildChain(std::move(t), analyzer.GetClangNamespace(*from, Location(l, this), namedecl)->BuildValueConstruction(key, {}, c));
+            return BuildChain(std::move(t), analyzer.GetClangNamespace(*from, Location(l, this), namedecl)->BuildValueConstruction({}, c));
         }
         if (auto typedefdecl = llvm::dyn_cast<clang::TypeDecl>(result)) {
-            return BuildChain(std::move(t), analyzer.GetConstructorType(analyzer.GetClangType(*from, from->GetASTContext().getTypeDeclType(typedefdecl)))->BuildValueConstruction(key, {}, c));
+            return BuildChain(std::move(t), analyzer.GetConstructorType(analyzer.GetClangType(*from, from->GetASTContext().getTypeDeclType(typedefdecl)))->BuildValueConstruction({}, c));
         }
         if (auto tempdecl = llvm::dyn_cast<clang::ClassTemplateDecl>(result)) {
-            return BuildChain(std::move(t), analyzer.GetClangTemplateClass(*from, Location(l, this), tempdecl)->BuildValueConstruction(key, {}, c));
+            return BuildChain(std::move(t), analyzer.GetClangTemplateClass(*from, Location(l, this), tempdecl)->BuildValueConstruction({}, c));
         }
         throw SpecificError<UnknownCPPDecl>(analyzer, c.where, "Could not interpret C++ declaration.");
     }
     std::unordered_set<clang::NamedDecl*> decls;
     decls.insert(lr.begin(), lr.end());
-    return BuildChain(std::move(t), analyzer.GetOverloadSet(std::move(decls), from)->BuildValueConstruction(key, {}, c));
+    return BuildChain(std::move(t), analyzer.GetOverloadSet(std::move(decls), from)->BuildValueConstruction({}, c));
 }
 
 std::string ClangNamespace::explain() {

@@ -2,7 +2,7 @@
 #include <Wide/Semantic/Analyzer.h>
 #include <Wide/Semantic/ClangTU.h>
 #include <Wide/Semantic/Expression.h>
-#include <Wide/Semantic/Function.h>
+#include <Wide/Semantic/Functions/Function.h>
 #include <Wide/Semantic/StringType.h>
 #include <Wide/Semantic/Reference.h>
 #include <Wide/Semantic/PointerType.h>
@@ -84,13 +84,13 @@ llvm::PointerType* WideFunctionType::GetLLVMType(llvm::Module* module) {
     return llvm::FunctionType::get(ret, args, variadic)->getPointerTo();
 }
 
-std::shared_ptr<Expression> WideFunctionType::ConstructCall(Expression::InstanceKey key, std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c) {
-    auto result_type = dynamic_cast<FunctionType*>(val->GetType(key)->Decay())->GetReturnType();
+std::shared_ptr<Expression> WideFunctionType::ConstructCall(std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c) {
+    auto result_type = dynamic_cast<FunctionType*>(val->GetType()->Decay())->GetReturnType();
     auto Ret = result_type != analyzer.GetVoidType()
         ? CreateTemporary(result_type, c)
         : nullptr;
     auto Destructor = !result_type->IsTriviallyDestructible()
-        ? result_type->BuildDestructorCall(key, Ret, c, true)
+        ? result_type->BuildDestructorCall(Ret, c, true)
         : std::function<void(CodegenContext&)>();
     return CreatePrimGlobal(Range::Elements(val) | Range::Concat(Range::Container(args)), result_type, [=](CodegenContext& con) {
         llvm::Value* llvmfunc = val->GetValue(con);
@@ -156,8 +156,8 @@ Wide::Util::optional<clang::QualType> WideFunctionType::GetClangType(ClangTU& fr
     protoinfo.ExtInfo = protoinfo.ExtInfo.withCallingConv(convconverter.at(convention));
     return from.GetASTContext().getFunctionType(*retty, types, protoinfo);
 }
-std::shared_ptr<Expression> WideFunctionType::CreateThunkFrom(Expression::InstanceKey key, std::shared_ptr<Expression> to, Location context) {
-    if (to->GetType(key) == this) return to;
+std::shared_ptr<Expression> WideFunctionType::CreateThunkFrom(std::shared_ptr<Expression> to, Location context) {
+    if (to->GetType() == this) return to;
     auto name = analyzer.GetUniqueFunctionName();
     auto func = [name](llvm::Module* mod) { return mod->getFunction(name); };
     auto emit = CreateThunk(func, to, context);
@@ -170,7 +170,7 @@ std::shared_ptr<Expression> WideFunctionType::CreateThunkFrom(Expression::Instan
 }
 std::function<void(llvm::Module*)> WideFunctionType::CreateThunk(std::function<llvm::Function*(llvm::Module*)> src, std::shared_ptr<Expression> dest, Location context) {
     std::vector<std::shared_ptr<Expression>> conversion_exprs;
-    auto destty = dynamic_cast<WideFunctionType*>(dest->GetType(Expression::NoInstance()));
+    auto destty = dynamic_cast<WideFunctionType*>(dest->GetType());
     assert(destty);
     assert(destty != this);
     Context c{ context, std::make_shared<std::string>("Analyzer internal thunk") };
@@ -196,16 +196,16 @@ std::function<void(llvm::Module*)> WideFunctionType::CreateThunk(std::function<l
                 continue;
             }
         }
-        conversion_exprs.push_back(destty->GetArguments()[i]->BuildValueConstruction(Expression::NoInstance(), { arg(GetArguments()[i], [this, i](llvm::Module* mod) { return i + GetReturnType()->AlwaysKeepInMemory(mod); }) }, c));
+        conversion_exprs.push_back(destty->GetArguments()[i]->BuildValueConstruction({ arg(GetArguments()[i], [this, i](llvm::Module* mod) { return i + GetReturnType()->AlwaysKeepInMemory(mod); }) }, c));
     }
-    auto call = Type::BuildCall(Expression::NoInstance(), dest, conversion_exprs, c);
+    auto call = Type::BuildCall(dest, conversion_exprs, c);
     std::shared_ptr<Expression> ret_expr = call;
     if (GetReturnType() != analyzer.GetVoidType()) {
-        call = GetReturnType()->BuildValueConstruction(Expression::NoInstance(), { call }, c);
-        ret_expr = Type::BuildInplaceConstruction(Expression::NoInstance(), arg(analyzer.GetLvalueType(GetReturnType()), [](llvm::Module* mod) { return 0; }), { call }, c);
+        call = GetReturnType()->BuildValueConstruction({ call }, c);
+        ret_expr = Type::BuildInplaceConstruction( arg(analyzer.GetLvalueType(GetReturnType()), [](llvm::Module* mod) { return 0; }), { call }, c);
     }
     return [this, src, ret_expr, call](llvm::Module* mod) {
-        CodegenContext::EmitFunctionBody(src(mod), GetArguments(), [this, ret_expr, call](CodegenContext& con) {
+        CodegenContext::EmitFunctionBody(src(mod), [this, ret_expr, call](CodegenContext& con) {
             if (!GetReturnType()->AlwaysKeepInMemory(con)) {
                 auto val = call->GetValue(con);
                 con.DestroyAll(false);
@@ -245,13 +245,13 @@ std::vector<Type*> ClangFunctionType::GetArguments() {
     return out;
 }
 
-std::shared_ptr<Expression> ClangFunctionType::ConstructCall(Expression::InstanceKey key, std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c) {
-    auto clangfuncty = dynamic_cast<ClangFunctionType*>(val->GetType(key)->Decay());
+std::shared_ptr<Expression> ClangFunctionType::ConstructCall(std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c) {
+    auto clangfuncty = dynamic_cast<ClangFunctionType*>(val->GetType()->Decay());
     auto RetType = clangfuncty->GetReturnType();
     auto Ret = RetType == analyzer.GetVoidType() ? nullptr : CreateTemporary(RetType, c);
     std::function<void(CodegenContext&)> Destructor;
     if (!RetType->IsTriviallyDestructible())
-        Destructor = RetType->BuildDestructorCall(key, Ret, c, true);
+        Destructor = RetType->BuildDestructorCall(Ret, c, true);
     else
         Destructor = {};
     return CreatePrimGlobal(Range::Elements(val) | Range::Concat(Range::Container(args)), RetType, [=](CodegenContext& con) -> llvm::Value* {
@@ -259,10 +259,10 @@ std::shared_ptr<Expression> ClangFunctionType::ConstructCall(Expression::Instanc
         clang::CodeGen::CallArgList list;
         for (auto&& arg : args) {
             auto val = arg->GetValue(con);
-            if (arg->GetType(key) == analyzer.GetBooleanType())
+            if (arg->GetType() == analyzer.GetBooleanType())
                 val = con->CreateTrunc(val, llvm::IntegerType::getInt1Ty(con));
-            auto clangty = *arg->GetType(key)->GetClangType(*clangfuncty->from);
-            if (arg->GetType(key)->AlwaysKeepInMemory(con))
+            auto clangty = *arg->GetType()->GetClangType(*clangfuncty->from);
+            if (arg->GetType()->AlwaysKeepInMemory(con))
                 list.add(clang::CodeGen::RValue::getAggregate(val), clangty);
             else
                 list.add(clang::CodeGen::RValue::get(val), clangty);
@@ -329,7 +329,7 @@ std::function<void(llvm::Module*)> ClangFunctionType::CreateThunk(std::function<
     // Emit thunk from from to to, with functiontypes source and dest.
     // Beware of ABI demons.
     std::vector<std::shared_ptr<Expression>> conversion_exprs;
-    auto destty = dynamic_cast<WideFunctionType*>(dest->GetType(Expression::NoInstance()));
+    auto destty = dynamic_cast<WideFunctionType*>(dest->GetType());
     assert(destty);
     Context c{ context, std::make_shared<std::string>("Analyzer internal thunk") };
     // For the zeroth argument, if the rhs is derived from the lhs, force a cast for vthunks.
@@ -362,9 +362,9 @@ std::function<void(llvm::Module*)> ClangFunctionType::CreateThunk(std::function<
                 continue;
             }
         }
-        conversion_exprs.push_back(destty->GetArguments()[i]->BuildValueConstruction(Expression::NoInstance(), { arg(GetArguments()[i], [this, i](llvm::Module* mod) { return i + GetReturnType()->AlwaysKeepInMemory(mod); }) }, c));
+        conversion_exprs.push_back(destty->GetArguments()[i]->BuildValueConstruction({ arg(GetArguments()[i], [this, i](llvm::Module* mod) { return i + GetReturnType()->AlwaysKeepInMemory(mod); }) }, c));
     }
-    auto call = Type::BuildCall(Expression::NoInstance(), dest, conversion_exprs, c);
+    auto call = Type::BuildCall(dest, conversion_exprs, c);
     std::shared_ptr<Expression> ret_expr;
     if (dynamic_cast<StringType*>(destty->GetReturnType())) {
         call = CreatePrimGlobal(Range::Elements(call), analyzer.GetPointerType(analyzer.GetIntegralType(8, true)), [=](CodegenContext& con) {
@@ -372,12 +372,12 @@ std::function<void(llvm::Module*)> ClangFunctionType::CreateThunk(std::function<
         }); 
     } else
         if (GetReturnType() != analyzer.GetVoidType())
-            call = GetReturnType()->BuildValueConstruction(Expression::NoInstance(), { call }, c);
+            call = GetReturnType()->BuildValueConstruction({ call }, c);
     if (GetReturnType() != analyzer.GetVoidType())
-        ret_expr = Type::BuildInplaceConstruction(Expression::NoInstance(), arg(analyzer.GetLvalueType(GetReturnType()), [](llvm::Module* mod) { return 0; }), { call }, c);
+        ret_expr = Type::BuildInplaceConstruction(arg(analyzer.GetLvalueType(GetReturnType()), [](llvm::Module* mod) { return 0; }), { call }, c);
     return [src, ret_expr, decl, this, args, call](llvm::Module* mod) {
         auto func = src(mod);
-        CodegenContext::EmitFunctionBody(func, GetArguments(), [ret_expr, func, decl, args, this, call](CodegenContext& con) {
+        CodegenContext::EmitFunctionBody(func, [ret_expr, func, decl, args, this, call](CodegenContext& con) {
             clang::CodeGen::CodeGenFunction codegenfunc(from->GetCodegenModule(con), true);
             codegenfunc.AllocaInsertPt = con.GetAllocaInsertPoint();
             codegenfunc.Builder.SetInsertPoint(con->GetInsertBlock(), con->GetInsertBlock()->end());
@@ -422,7 +422,7 @@ std::function<void(llvm::Module*)> ClangFunctionType::CreateThunk(std::function<
         });
     };
 }
-std::shared_ptr<Expression> ClangFunctionType::CreateThunkFrom(Expression::InstanceKey key, std::shared_ptr<Expression> dest, Location context) {
+std::shared_ptr<Expression> ClangFunctionType::CreateThunkFrom(std::shared_ptr<Expression> dest, Location context) {
     auto qualty = from->GetASTContext().getFunctionType(type->getReturnType(), type->getParamTypes(), type->getExtProtoInfo());
     clang::FunctionDecl* decl;
     std::string name = analyzer.GetUniqueFunctionName();

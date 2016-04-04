@@ -61,7 +61,7 @@ struct rvalueconvertible : OverloadResolvable, Callable {
     : self(s) {}
     RvalueType* self;
     Callable* GetCallableForResolution(std::vector<Type*>, Location, Analyzer& a) override final { return this; }
-    std::vector<std::shared_ptr<Expression>> AdjustArguments(Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c) override final { return args; }
+    std::vector<std::shared_ptr<Expression>> AdjustArguments(std::vector<std::shared_ptr<Expression>> args, Context c) override final { return args; }
     Util::optional<std::vector<Type*>> MatchParameter(std::vector<Type*> types, Analyzer& a, Location source) override final {
         if (types.size() != 2) return Util::none;
         if (types[0] != a.GetLvalueType(self)) return Util::none;
@@ -74,22 +74,22 @@ struct rvalueconvertible : OverloadResolvable, Callable {
         if (!Type::IsFirstASecond(ptrt, ptrself, source) && !Type::IsFirstASecond(types[1]->Decay(), self->Decay(), source)) return Util::none;
         return types;
     }
-    std::shared_ptr<Expression> CallFunction(Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c) override final {
-        if (args[1]->GetType(key) == self)
+    std::shared_ptr<Expression> CallFunction(std::vector<std::shared_ptr<Expression>> args, Context c) override final {
+        if (args[1]->GetType() == self)
             return Wide::Memory::MakeUnique<ImplicitStoreExpr>(std::move(args[0]), std::move(args[1]));
-        if (args[1]->GetType(key)->Decay() == self->Decay())
+        if (args[1]->GetType()->Decay() == self->Decay())
             return Wide::Memory::MakeUnique<ImplicitStoreExpr>(std::move(args[0]), Wide::Memory::MakeUnique<RvalueCast>(std::move(args[1])));
         // If pointer-is then use that, else go with value-is.
-        auto ptrt = self->analyzer.GetPointerType(args[1]->GetType(key)->Decay());
+        auto ptrt = self->analyzer.GetPointerType(args[1]->GetType()->Decay());
         auto ptrself = self->analyzer.GetPointerType(self->Decay());
         if (Type::IsFirstASecond(ptrt, ptrself, c.from)) {
             auto args1 = args[1];
-            auto basety = args1->GetType(key)->Decay();
-            if (!args1->GetType(key)->IsReference())
+            auto basety = args1->GetType()->Decay();
+            if (!args1->GetType()->IsReference())
                 args1 = Wide::Memory::MakeUnique<RvalueCast>(std::move(args1));
-            return Wide::Memory::MakeUnique<ImplicitStoreExpr>(std::move(args[0]), Type::AccessBase(key, std::move(args1), self->Decay()));
+            return Wide::Memory::MakeUnique<ImplicitStoreExpr>(std::move(args[0]), Type::AccessBase(std::move(args1), self->Decay()));
         }
-        return Wide::Memory::MakeUnique<ImplicitStoreExpr>(std::move(args[0]), self->Decay()->BuildRvalueConstruction(key, { std::move(args[1]) }, c));
+        return Wide::Memory::MakeUnique<ImplicitStoreExpr>(std::move(args[0]), self->Decay()->BuildRvalueConstruction({ std::move(args[1]) }, c));
     }
 };
 struct PointerComparableResolvable : OverloadResolvable, Callable {
@@ -106,11 +106,11 @@ struct PointerComparableResolvable : OverloadResolvable, Callable {
         if (!Type::IsFirstASecond(ptrt, ptrself, source)) return Util::none;
         return types;
     }
-    std::vector<std::shared_ptr<Expression>> AdjustArguments(Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c) override final { return args; }
-    std::shared_ptr<Expression> CallFunction(Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c) override final {
-        if (args[1]->GetType(key) == self)
+    std::vector<std::shared_ptr<Expression>> AdjustArguments(std::vector<std::shared_ptr<Expression>> args, Context c) override final { return args; }
+    std::shared_ptr<Expression> CallFunction(std::vector<std::shared_ptr<Expression>> args, Context c) override final {
+        if (args[1]->GetType() == self)
             return Wide::Memory::MakeUnique<ImplicitStoreExpr>(std::move(args[0]), std::move(args[1]));
-        return Wide::Memory::MakeUnique<ImplicitStoreExpr>(std::move(args[0]), Type::AccessBase(key, std::move(args[1]), self->Decay()));
+        return Wide::Memory::MakeUnique<ImplicitStoreExpr>(std::move(args[0]), Type::AccessBase(std::move(args[1]), self->Decay()));
     }
     Callable* GetCallableForResolution(std::vector<Type*>, Location, Analyzer& a) override final { return this; }
 };

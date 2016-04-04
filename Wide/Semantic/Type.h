@@ -67,7 +67,9 @@ namespace Wide {
         class ClangType;
         class ClangTU;
         class LambdaType;
-        struct Scope;
+        namespace Functions {
+            struct Scope;
+        }
         struct Location {
         private:
             Location();
@@ -80,7 +82,7 @@ namespace Wide {
             Location(Location previous, LambdaType* next);
             Location(Location previous, ClangNamespace* next);
             Location(Location previous, ClangType* next);
-            Location(Location previous, Scope* next);
+            Location(Location previous, Functions::Scope* next);
 
             Location(Location&&) = default;
             Location(const Location&) = default;
@@ -97,7 +99,7 @@ namespace Wide {
                 std::vector<ClangType*> types;
             };
             boost::variant<WideLocation, CppLocation> location;
-            Scope* localscope = nullptr;
+            Functions::Scope* localscope = nullptr;
             Parse::Access PublicOrWide(std::function<Parse::Access(WideLocation loc)>);
             Parse::Access PublicOrCpp(std::function<Parse::Access(CppLocation loc)>);
         };
@@ -162,17 +164,17 @@ namespace Wide {
             VTableLayout ComputeVTableLayout();
             std::shared_ptr<Expression> CreateVTable(std::vector<std::pair<Type*, unsigned>> path, Location from);
             std::shared_ptr<Expression> GetVTablePointer(std::vector<std::pair<Type*, unsigned>> path, Location from);
-            static std::shared_ptr<Expression> SetVirtualPointers(Expression::InstanceKey key, std::shared_ptr<Expression> self, std::vector<std::pair<Type*, unsigned>> path, Location from);
+            static std::shared_ptr<Expression> SetVirtualPointers(std::shared_ptr<Expression> self, std::vector<std::pair<Type*, unsigned>> path, Location from);
             virtual VTableLayout ComputePrimaryVTableLayout();
-            virtual std::shared_ptr<Expression> ConstructCall(Expression::InstanceKey key, std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c);
+            virtual std::shared_ptr<Expression> ConstructCall(std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c);
         protected:
-            virtual std::function<void(CodegenContext&)> BuildDestruction(Expression::InstanceKey key, std::shared_ptr<Expression> self, Context c, bool devirtualize);
-            virtual std::shared_ptr<Expression> AccessNamedMember(Expression::InstanceKey key, std::shared_ptr<Expression> t, std::string name, Context c);
+            virtual std::function<void(CodegenContext&)> BuildDestruction(std::shared_ptr<Expression> self, Context c, bool devirtualize);
+            virtual std::shared_ptr<Expression> AccessNamedMember(std::shared_ptr<Expression> t, std::string name, Context c);
             virtual OverloadSet* CreateOperatorOverloadSet(Parse::OperatorName what, Parse::Access access, OperatorAccess implicit);
             virtual OverloadSet* CreateADLOverloadSet(Parse::OperatorName name, Location from);
             virtual OverloadSet* CreateConstructorOverloadSet(Parse::Access access) = 0;
         public:
-            virtual std::shared_ptr<Expression> AccessVirtualPointer(Expression::InstanceKey key, std::shared_ptr<Expression> self);
+            virtual std::shared_ptr<Expression> AccessVirtualPointer(std::shared_ptr<Expression> self);
             virtual std::pair<FunctionType*, std::function<llvm::Function*(llvm::Module*)>> VirtualEntryFor(VTableLayout::VirtualFunctionEntry entry) {
                 assert(false); return{ {}, {} };
             }
@@ -215,8 +217,8 @@ namespace Wide {
             virtual bool IsSourceATarget(Type* source, Type* target, Location location) { return false; }
             virtual std::shared_ptr<Expression> AccessStaticMember(std::string name, Context c);
 
-            std::shared_ptr<Expression> BuildValueConstruction(Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c);
-            std::shared_ptr<Expression> BuildRvalueConstruction(Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> exprs, Context c);
+            std::shared_ptr<Expression> BuildValueConstruction(std::vector<std::shared_ptr<Expression>> args, Context c);
+            std::shared_ptr<Expression> BuildRvalueConstruction(std::vector<std::shared_ptr<Expression>> exprs, Context c);
 
             virtual ~Type() {}
 
@@ -233,33 +235,33 @@ namespace Wide {
             bool InheritsFromAtOffsetZero(Type* other);
             unsigned GetOffsetToBase(Type* base);
 
-            std::function<void(CodegenContext&)> BuildDestructorCall(Expression::InstanceKey key, std::shared_ptr<Expression> self, Context c, bool devirtualize);
-            static std::shared_ptr<Expression> GetVirtualPointer(Expression::InstanceKey key, std::shared_ptr<Expression> self);
-            static std::shared_ptr<Expression> BuildCall(Expression::InstanceKey key, std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c);
-            static std::shared_ptr<Expression> AccessMember(Expression::InstanceKey key, std::shared_ptr<Expression> t, Parse::Name name, Context c);
-            static std::shared_ptr<Expression> BuildBooleanConversion(Expression::InstanceKey key, std::shared_ptr<Expression>, Context);
-            static std::shared_ptr<Expression> AccessBase(Expression::InstanceKey key, std::shared_ptr<Expression> self, Type* other);
-            static std::shared_ptr<Expression> BuildInplaceConstruction(Expression::InstanceKey key, std::shared_ptr<Expression> self, std::vector<std::shared_ptr<Expression>> exprs, Context c);
-            static std::shared_ptr<Expression> BuildUnaryExpression(Expression::InstanceKey key, std::shared_ptr<Expression> self, Lexer::TokenType type, Context c);
-            static std::shared_ptr<Expression> BuildBinaryExpression(Expression::InstanceKey key, std::shared_ptr<Expression> lhs, std::shared_ptr<Expression> rhs, Lexer::TokenType type, Context c);
-            static std::shared_ptr<Expression> SetVirtualPointers(Expression::InstanceKey key, std::shared_ptr<Expression>, Location from);
-            static std::shared_ptr<Expression> BuildIndex(Expression::InstanceKey key, std::shared_ptr<Expression> obj, std::shared_ptr<Expression> arg, Context c);
+            std::function<void(CodegenContext&)> BuildDestructorCall(std::shared_ptr<Expression> self, Context c, bool devirtualize);
+            static std::shared_ptr<Expression> GetVirtualPointer(std::shared_ptr<Expression> self);
+            static std::shared_ptr<Expression> BuildCall(std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c);
+            static std::shared_ptr<Expression> AccessMember(std::shared_ptr<Expression> t, Parse::Name name, Context c);
+            static std::shared_ptr<Expression> BuildBooleanConversion(std::shared_ptr<Expression>, Context);
+            static std::shared_ptr<Expression> AccessBase(std::shared_ptr<Expression> self, Type* other);
+            static std::shared_ptr<Expression> BuildInplaceConstruction(std::shared_ptr<Expression> self, std::vector<std::shared_ptr<Expression>> exprs, Context c);
+            static std::shared_ptr<Expression> BuildUnaryExpression(std::shared_ptr<Expression> self, Lexer::TokenType type, Context c);
+            static std::shared_ptr<Expression> BuildBinaryExpression(std::shared_ptr<Expression> lhs, std::shared_ptr<Expression> rhs, Lexer::TokenType type, Context c);
+            static std::shared_ptr<Expression> SetVirtualPointers(std::shared_ptr<Expression>, Location from);
+            static std::shared_ptr<Expression> BuildIndex(std::shared_ptr<Expression> obj, std::shared_ptr<Expression> arg, Context c);
             static bool IsFirstASecond(Type* first, Type* second, Location location);
         };
 
         struct Callable {
         public:
-            std::shared_ptr<Expression> Call(Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c);
-            virtual std::shared_ptr<Expression> CallFunction(Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c) = 0;
-            virtual std::vector<std::shared_ptr<Expression>> AdjustArguments(Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, Context c) = 0;
+            std::shared_ptr<Expression> Call(std::vector<std::shared_ptr<Expression>> args, Context c);
+            virtual std::shared_ptr<Expression> CallFunction(std::vector<std::shared_ptr<Expression>> args, Context c) = 0;
+            virtual std::vector<std::shared_ptr<Expression>> AdjustArguments(std::vector<std::shared_ptr<Expression>> args, Context c) = 0;
         };
         struct OverloadResolvable {
             virtual Wide::Util::optional<std::vector<Type*>> MatchParameter(std::vector<Type*>, Analyzer& a, Location location) = 0;
             virtual Callable* GetCallableForResolution(std::vector<Type*>, Location, Analyzer& a) = 0;
         };
 
-        std::vector<std::shared_ptr<Expression>> AdjustArgumentsForTypes(Expression::InstanceKey key, std::vector<std::shared_ptr<Expression>> args, std::vector<Type*> types, Context c);
-        std::unique_ptr<OverloadResolvable> MakeResolvable(std::function<std::shared_ptr<Expression>(Expression::InstanceKey, std::vector<std::shared_ptr<Expression>>, Context)> f, std::vector<Type*> types);
+        std::vector<std::shared_ptr<Expression>> AdjustArgumentsForTypes(std::vector<std::shared_ptr<Expression>> args, std::vector<Type*> types, Context c);
+        std::unique_ptr<OverloadResolvable> MakeResolvable(std::function<std::shared_ptr<Expression>(std::vector<std::shared_ptr<Expression>>, Context)> f, std::vector<Type*> types);
 
         struct TupleInitializable {
         private:

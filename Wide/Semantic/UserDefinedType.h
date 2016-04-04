@@ -18,10 +18,12 @@ namespace Wide {
         struct DynamicFunction;
     }
     namespace Semantic {
-        class Function;
         class OverloadSet;
         class Module;
-        class FunctionSkeleton;
+        namespace Functions {
+            class FunctionSkeleton;
+            class Function;
+        }
         class UserDefinedType : public AggregateType, public TupleInitializable, public ConstructorContext {
             std::unique_ptr<Semantic::Error> AlignOverrideError;
             std::unique_ptr<Semantic::Error> SizeOverrideError;
@@ -29,7 +31,8 @@ namespace Wide {
 
             struct ImportConstructorCallable;
             struct ImportConstructorResolvable;
-            FunctionSkeleton* GetWideFunction(const Parse::FunctionBase* base, Parse::Name name);
+
+            Functions::FunctionSkeleton* GetWideFunction(const Parse::FunctionBase* base, Parse::Name name);
 
             std::vector<Type*> GetMembers() { return GetMemberData().members; }
             std::vector<std::shared_ptr<Expression>> GetDefaultInitializerForMember(unsigned);
@@ -141,9 +144,9 @@ namespace Wide {
             UserDefinedType(const Parse::Type* t, Analyzer& a, Location context, std::string);
             bool HasMember(Parse::Name name);
             Wide::Util::optional<clang::QualType> GetClangType(ClangTU& TU) override final;
-            std::shared_ptr<Expression> AccessNamedMember(Expression::InstanceKey key, std::shared_ptr<Expression> t, std::string name, Context) override final;
+            std::shared_ptr<Expression> AccessNamedMember(std::shared_ptr<Expression> t, std::string name, Context) override final;
             using Type::AccessMember;
-            std::function<void(CodegenContext&)> BuildDestruction(Expression::InstanceKey key, std::shared_ptr<Expression> self, Context c, bool devirtualize) override final;
+            std::function<void(CodegenContext&)> BuildDestruction(std::shared_ptr<Expression> self, Context c, bool devirtualize) override final;
             OverloadSet* CreateConstructorOverloadSet(Parse::Access access) override final;
             OverloadSet* CreateOperatorOverloadSet(Parse::OperatorName member, Parse::Access access, OperatorAccess) override final;
             bool IsConstant() override final;

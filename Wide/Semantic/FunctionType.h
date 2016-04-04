@@ -23,7 +23,7 @@ namespace Wide {
             FunctionType(Analyzer& a) : PrimitiveType(a) {}
         
             virtual llvm::PointerType* GetLLVMType(llvm::Module* module) override = 0;
-            virtual std::shared_ptr<Expression> ConstructCall(Expression::InstanceKey key, std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c) override = 0;
+            virtual std::shared_ptr<Expression> ConstructCall(std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c) override = 0;
             virtual Type* GetReturnType() = 0;
             virtual std::vector<Type*> GetArguments() = 0;           
 
@@ -32,7 +32,7 @@ namespace Wide {
             std::string explain() override final;
             // RHS is most derived type.
             static bool CanThunkFromFirstToSecond(FunctionType* lhs, FunctionType* rhs, Location context, bool adjust);
-            virtual std::shared_ptr<Expression> CreateThunkFrom(Expression::InstanceKey key, std::shared_ptr<Expression> self, Location context) = 0;
+            virtual std::shared_ptr<Expression> CreateThunkFrom(std::shared_ptr<Expression> self, Location context) = 0;
         };
         class WideFunctionType : public FunctionType {
             Type* ReturnType;
@@ -43,11 +43,11 @@ namespace Wide {
             WideFunctionType(Type* ret, std::vector<Type*> args, Analyzer& a, llvm::CallingConv::ID callingconvention, bool variadic)
                 : ReturnType(ret), Args(std::move(args)), FunctionType(a), convention(callingconvention), variadic(variadic) {}
             llvm::PointerType* GetLLVMType(llvm::Module* module) override final;
-            std::shared_ptr<Expression> ConstructCall(Expression::InstanceKey key, std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c) override final;
+            std::shared_ptr<Expression> ConstructCall(std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c) override final;
             Type* GetReturnType() override final;
             std::vector<Type*> GetArguments() override final;
             Wide::Util::optional<clang::QualType> GetClangType(ClangTU& from) override final;
-            std::shared_ptr<Expression> CreateThunkFrom(Expression::InstanceKey key, std::shared_ptr<Expression> self, Location context) override final;
+            std::shared_ptr<Expression> CreateThunkFrom(std::shared_ptr<Expression> self, Location context) override final;
             std::function<void(llvm::Module*)> CreateThunk(std::function<llvm::Function*(llvm::Module*)> src, std::shared_ptr<Expression> dest, Location context);
         };
         class ClangFunctionType : public FunctionType {
@@ -62,8 +62,8 @@ namespace Wide {
             Wide::Util::optional<clang::QualType> GetClangType(ClangTU& fromtu) override final;
             Type* GetReturnType() override final;
             std::vector<Type*> GetArguments() override final;
-            std::shared_ptr<Expression> CreateThunkFrom(Expression::InstanceKey key, std::shared_ptr<Expression> selfex, Location context) override final;
-            std::shared_ptr<Expression> ConstructCall(Expression::InstanceKey key, std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c) override final;
+            std::shared_ptr<Expression> CreateThunkFrom(std::shared_ptr<Expression> selfex, Location context) override final;
+            std::shared_ptr<Expression> ConstructCall(std::shared_ptr<Expression> val, std::vector<std::shared_ptr<Expression>> args, Context c) override final;
             std::function<void(llvm::Module*)> CreateThunk(std::function<llvm::Function*(llvm::Module*)> src, std::shared_ptr<Expression> dest, clang::FunctionDecl* decl, Location context);
        };
     }
