@@ -29,7 +29,7 @@ namespace Wide {
             std::vector<std::string> CppInputFilepaths;
         };
         struct JSONOptions : UserSpecifiedOptions {
-            bool RegurgitateSource;
+            bool RegurgitateSource = false;
             std::vector<std::pair<std::string, std::string>> WideInputFiles;
             std::vector<std::pair<std::string, std::string>> CppInputFiles;
         };
