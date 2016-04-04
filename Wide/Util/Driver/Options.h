@@ -23,8 +23,8 @@ namespace Wide {
             boost::variant<LinkOptions, ExportOptions> Mode;
         };
         struct CommandLineOptions : UserSpecifiedOptions {
-            bool Version;
-            bool Help;
+            bool Version = false;
+            bool Help = false;
             std::vector<std::string> WideInputFilepaths;
             std::vector<std::string> CppInputFilepaths;
         };
