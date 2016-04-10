@@ -65,7 +65,7 @@ namespace {
     boost::program_options::options_description GetCLIOptions() {
         boost::program_options::options_description desc;
         desc.add_options()
-            ("help", "Print all available options")
+            ("help", boost::program_options::value<bool>(), "Print all available options")
             ("gcc", boost::program_options::value<std::string>(), "The GCC executable. Defaulted to g++.")
             ("triple", boost::program_options::value<std::string>(), "The target triple. Defaulted to "
 #ifdef _MSC_VER
@@ -83,6 +83,7 @@ namespace {
             ("mode", boost::program_options::value<std::string>(), "Wide can export a module, or link modules and source into a program")
             ("export-include", boost::program_options::value<std::vector<std::string>>(), "Package files in this directory for inclusion by module consumers")
             ("link-module", boost::program_options::value<std::vector<std::string>>(), "Additional modules to link in to form the final program")
+            ("jsoninput", boost::program_options::value<std::string>(), "JSON input file. Only one permitted.")
         ;
         return desc;
     }
