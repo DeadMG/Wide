@@ -17,9 +17,9 @@ std::unique_ptr<llvm::Module> Wide::Util::CreateModuleForTriple(std::string trip
     std::string err;
 	const llvm::Target& target = *llvm::TargetRegistry::lookupTarget(triple, err);
     llvm::TargetOptions targetopts;
-    targetmachine = std::unique_ptr<llvm::TargetMachine>(target.createTargetMachine(triple, llvm::Triple(triple).getArchName(), "", targetopts));
+    targetmachine = std::unique_ptr<llvm::TargetMachine>(target.createTargetMachine(triple, llvm::Triple(triple).getArchName(), "", targetopts, llvm::None));
     auto module = Wide::Memory::MakeUnique<llvm::Module>("Wide", context);
-    module->setDataLayout(targetmachine->getSubtargetImpl()->getDataLayout()->getStringRepresentation());
+    module->setDataLayout(targetmachine->createDataLayout());
     module->setTargetTriple(triple);
     return module;
 }

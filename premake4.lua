@@ -37,6 +37,9 @@ path.join = function(first, second, ...)
     elseif first and not second then
         return first
     end
+	if not first and second then
+	    return path.join(second, ...)
+    end
     error("Must provide at least one argument to path.join!\n" .. debug.traceback())
 end
 
@@ -278,6 +281,11 @@ WideProjects = {
         end,
     },
     Util = {},
+	Driver = {
+	    action = function(plat, conf)
+            links { "Util", "Lexer", "Parser", "Semantic" }
+	    end
+	},
     Semantic = {
         action = function()
             links { "Util" }

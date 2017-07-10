@@ -4,7 +4,7 @@
 #include <jsonpp/value.hpp>
 #include <unordered_set>
 #include <iostream>
-#include <Wide/Util/Driver/Process.h>
+#include <Wide/Driver/Process.h>
 #include <set>
 #include <boost/program_options.hpp>
 #include <Wide/Util/DebugBreak.h>
